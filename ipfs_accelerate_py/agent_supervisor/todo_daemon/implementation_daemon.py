@@ -2350,6 +2350,85 @@ def _host_cli_binary(name: str) -> str | None:
     return None
 
 
+def _codex_vendor_pair_from_bin_dir(bindir: Path) -> tuple[Path, Path] | None:
+    """Return native Codex plus matching code-mode-host from one vendor bin."""
+
+    try:
+        codex = (bindir / "codex").resolve(strict=True)
+        companion = (bindir / "codex-code-mode-host").resolve(strict=True)
+    except OSError:
+        return None
+    if (
+        not codex.is_file()
+        or not companion.is_file()
+        or not os.access(codex, os.X_OK)
+        or not os.access(companion, os.X_OK)
+        or codex.parent != companion.parent
+    ):
+        return None
+    return codex, companion
+
+
+def _host_codex_vendor_binaries() -> tuple[Path, Path] | None:
+    """Locate the host npm Codex native pair (newer than the sealed image).
+
+    Image Codex 0.148.0 has no ``codex-code-mode-host``.  gpt-5.6-terra
+    fail-closes without that companion, so isolation bind-mounts the matching
+    host 0.149.0 vendor binaries together — never a mismatched companion.
+    """
+
+    roots: list[Path] = []
+    located = _host_cli_binary("codex")
+    if located:
+        path = Path(located)
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError:
+            resolved = path
+        pair = _codex_vendor_pair_from_bin_dir(resolved.parent)
+        if pair is not None:
+            return pair
+        if resolved.name in {"codex.js", "codex"}:
+            roots.append(resolved.parent.parent)
+    roots.extend(
+        (
+            Path("/usr/local/lib/node_modules/@openai/codex"),
+            _operator_home_dir()
+            / ".npm-global"
+            / "lib"
+            / "node_modules"
+            / "@openai"
+            / "codex",
+            _operator_home_dir()
+            / ".local"
+            / "lib"
+            / "node_modules"
+            / "@openai"
+            / "codex",
+        )
+    )
+    seen: set[Path] = set()
+    for root in roots:
+        try:
+            key = root.resolve()
+        except OSError:
+            key = root
+        if key in seen or not root.is_dir():
+            continue
+        seen.add(key)
+        try:
+            matches = tuple(
+                root.glob("node_modules/@openai/codex-linux-*/vendor/*/bin")
+            )
+        except OSError:
+            continue
+        for bindir in matches:
+            pair = _codex_vendor_pair_from_bin_dir(bindir)
+            if pair is not None:
+                return pair
+    return None
+
+
 def _goose_binary() -> str | None:
     try:
         from ...llm_router import find_goose_cli
@@ -3360,12 +3439,15 @@ def _isolated_codex_code_mode_host_ready(
     *,
     probe: bool = False,
 ) -> bool:
-    """Return whether the sealed Codex image can run Code Mode.
+    """Return whether isolated Codex can run Code Mode.
 
-    gpt-5.6-terra fail-closes without ``codex-code-mode-host``. A newer host
-    npm companion must not be bind-mounted onto a different image digest.
+    gpt-5.6-terra fail-closes without ``codex-code-mode-host``. The sealed
+    0.148.0 image has none; a matching host npm vendor pair (Codex plus
+    companion from the same bin directory) is bind-mounted together.
     """
 
+    if _host_codex_vendor_binaries() is not None:
+        return True
     cached = _ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE.get(config.image_id)
     if cached is not None:
         return cached
@@ -3612,6 +3694,34 @@ def _external_validation_authority_roots() -> tuple[Path, Path]:
     return repository, control_root
 
 
+def _docker_codex_host_vendor_mounts() -> list[str]:
+    """Bind-mount the host npm Codex pair over the sealed image binaries."""
+
+    vendor = _host_codex_vendor_binaries()
+    if vendor is None:
+        return []
+    host_codex, host_companion = vendor
+    mounts: list[str] = []
+    try:
+        mounts.extend(
+            _external_isolation_mount(
+                host_codex,
+                destination=_CODEX_CONTAINER_EXECUTABLE,
+                read_only=True,
+            )
+        )
+        mounts.extend(
+            _external_isolation_mount(
+                host_companion,
+                destination=_CODEX_CONTAINER_CODE_MODE_HOST,
+                read_only=True,
+            )
+        )
+    except (OSError, ValueError):
+        return []
+    return mounts
+
+
 def _docker_codex_implementation_command(
     *,
     inner_command: Sequence[str],
@@ -3687,6 +3797,7 @@ def _docker_codex_implementation_command(
             destination=_CODEX_CONTAINER_HOME / "auth.json",
             read_only=True,
         ),
+        *_docker_codex_host_vendor_mounts(),
         config.image_id,
         "-i",
         "BASH_ENV=",
@@ -3720,10 +3831,10 @@ def _docker_host_cli_implementation_command(
 ) -> list[str]:
     """Run a host CLI (Claude, Gemini, Goose, Mistral, Copilot) in Docker.
 
-    Codex keeps the sealed image executable.  Other CLIs are bind-mounted from
-    the operator host into the same isolation image, with operator credentials
-    projected into an ephemeral CLI home.  Grok stays on ``grok_cli_runner`` so
-    its inner Docker wrap is not nested.
+    Codex bind-mounts the host npm vendor pair when present; other CLIs are
+    bind-mounted from the operator host into the same isolation image, with
+    operator credentials projected into an ephemeral CLI home.  Grok stays on
+    ``grok_cli_runner`` so its inner Docker wrap is not nested.
     """
 
     config = validate_external_provider_isolation_config(config.to_dict())
@@ -4395,9 +4506,8 @@ def _codex_implementation_command(
         command.extend(["-c", f"agents.max_depth={codex_max_depth}"])
     # gpt-5.6-terra prefers Code Mode. Forcing Direct tools fail-closes when
     # the host is disabled and produces empty candidates. Leave Code Mode
-    # enabled; automatic routing skips isolated Codex when the sealed image
-    # lacks ``codex-code-mode-host``. Do not bind-mount a newer npm companion
-    # onto a different image digest.
+    # enabled; isolation bind-mounts the matching host npm Codex pair when
+    # the sealed image lacks ``codex-code-mode-host``.
     command.append("-")
     external_isolation = os.environ.get(
         PROVIDER_EXTERNAL_ISOLATION_ENV,

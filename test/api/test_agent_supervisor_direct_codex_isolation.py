@@ -202,6 +202,17 @@ def test_direct_codex_command_has_a_fail_closed_external_boundary(
         "dst=/opt/codex-home/auth.json,readonly"
     ) in mounts
     assert not any(str(runtime_root) in item for item in mounts)
+    vendor = daemon_module._host_codex_vendor_binaries()
+    if vendor is not None:
+        host_codex, host_companion = vendor
+        assert (
+            f"type=bind,src={host_codex},"
+            "dst=/usr/local/bin/codex,readonly"
+        ) in mounts
+        assert (
+            f"type=bind,src={host_companion},"
+            "dst=/usr/local/bin/codex-code-mode-host,readonly"
+        ) in mounts
     assert not any("/proc" in item for item in mounts)
     assert not any("docker.sock" in item for item in mounts)
     assert not any("/unsafe/host/codex" in item for item in command)
@@ -1540,6 +1551,7 @@ def test_isolated_codex_without_code_mode_host_is_not_auto_ready(
     config = daemon_module.ExternalProviderIsolationConfig.parse(
         _isolation_payload(credential)
     )
+    monkeypatch.setattr(daemon_module, "_host_codex_vendor_binaries", lambda: None)
     daemon_module._ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE.clear()
     assert (
         daemon_module._isolated_codex_code_mode_host_ready(config, probe=False)
@@ -1596,4 +1608,91 @@ def test_isolation_still_wraps_explicit_codex(
     ]
     assert config.image_id in command
     assert "--dangerously-bypass-approvals-and-sandbox" in command
+    assert "features.code_mode=false" not in command
+
+
+def test_host_codex_vendor_pair_makes_isolated_codex_auto_ready(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credential = _credential(tmp_path)
+    config = daemon_module.ExternalProviderIsolationConfig.parse(
+        _isolation_payload(credential)
+    )
+    vendor_bin = tmp_path / "vendor-bin"
+    vendor_bin.mkdir()
+    host_codex = vendor_bin / "codex"
+    host_companion = vendor_bin / "codex-code-mode-host"
+    host_codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    host_companion.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    host_codex.chmod(0o755)
+    host_companion.chmod(0o755)
+    monkeypatch.setattr(
+        daemon_module,
+        "_host_codex_vendor_binaries",
+        lambda: (host_codex.resolve(), host_companion.resolve()),
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "validate_external_provider_isolation_config",
+        _fake_host_validation,
+    )
+    monkeypatch.setenv(
+        daemon_module.PROVIDER_EXTERNAL_ISOLATION_ENV,
+        config.environment_json(),
+    )
+    daemon_module._ISOLATED_CODEX_CODE_MODE_HOST_PROBE_CACHE.clear()
+    assert (
+        daemon_module._isolated_codex_code_mode_host_ready(config, probe=False)
+        is True
+    )
+    assert daemon_module._codex_ready_for_automatic_routing() is True
+
+
+def test_isolation_bind_mounts_newer_host_codex_vendor_pair(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    credential = _credential(tmp_path)
+    repository, workspace = _linked_workspace(tmp_path)
+    vendor_bin = tmp_path / "vendor-bin"
+    vendor_bin.mkdir()
+    host_codex = vendor_bin / "codex"
+    host_companion = vendor_bin / "codex-code-mode-host"
+    host_codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    host_companion.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    host_codex.chmod(0o755)
+    host_companion.chmod(0o755)
+    config = daemon_module.ExternalProviderIsolationConfig.parse(
+        _isolation_payload(credential)
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "validate_external_provider_isolation_config",
+        _fake_host_validation,
+    )
+    monkeypatch.setattr(
+        daemon_module,
+        "_host_codex_vendor_binaries",
+        lambda: (host_codex.resolve(), host_companion.resolve()),
+    )
+    monkeypatch.setenv(
+        daemon_module.PROVIDER_EXTERNAL_ISOLATION_ENV,
+        config.environment_json(),
+    )
+    command = daemon_module._codex_implementation_command(
+        codex="/unsafe/host/codex",
+        workspace_path=workspace,
+        repository_root=repository,
+    )
+    mounts = _mounts(command)
+    assert (
+        f"type=bind,src={host_codex.resolve()},"
+        "dst=/usr/local/bin/codex,readonly"
+    ) in mounts
+    assert (
+        f"type=bind,src={host_companion.resolve()},"
+        "dst=/usr/local/bin/codex-code-mode-host,readonly"
+    ) in mounts
+    assert config.container_executable in command
     assert "features.code_mode=false" not in command
