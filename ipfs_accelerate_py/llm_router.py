@@ -3632,10 +3632,45 @@ def _grok_cli_command() -> str:
     )
 
 
+def _operator_home_dir() -> Path:
+    """Return the uid home even when ``HOME`` is a sealed qualification directory."""
+
+    try:
+        import pwd
+
+        return Path(pwd.getpwuid(os.getuid()).pw_dir)
+    except Exception:
+        return Path.home()
+
+
+def _host_cli_binary(name: str) -> Optional[str]:
+    """Locate a host CLI without relying on a sealed ``PATH`` or ``HOME``."""
+
+    found = shutil.which(name)
+    if found:
+        return found
+    candidates = [
+        _operator_home_dir() / ".local" / "bin" / name,
+        Path("/usr/local/bin") / name,
+        Path("/usr/bin") / name,
+    ]
+    for path in candidates:
+        try:
+            if path.is_file() and os.access(path, os.X_OK):
+                return str(path)
+        except OSError:
+            continue
+    return None
+
+
 def _grok_cli_auth_path() -> Path:
     configured_home = os.getenv("GROK_HOME", "").strip()
-    grok_home = Path(configured_home).expanduser() if configured_home else Path.home() / ".grok"
-    return grok_home / "auth.json"
+    if configured_home:
+        return Path(configured_home).expanduser() / "auth.json"
+    sealed = Path.home() / ".grok" / "auth.json"
+    if sealed.is_file():
+        return sealed
+    return _operator_home_dir() / ".grok" / "auth.json"
 
 
 def _grok_cli_auth_available() -> bool:
@@ -4858,7 +4893,7 @@ def find_goose_cli() -> Optional[str]:
         path = Path(configured).expanduser()
         if path.is_file() and os.access(path, os.X_OK):
             return str(path)
-    return shutil.which("goose")
+    return _host_cli_binary("goose")
 
 
 def _goose_default_model() -> str:
@@ -5099,7 +5134,7 @@ def find_grok_cli() -> Optional[str]:
             found = shutil.which(parts[0])
             if found:
                 return found
-    return shutil.which("grok")
+    return _host_cli_binary("grok")
 
 
 def _grok_default_model() -> str:

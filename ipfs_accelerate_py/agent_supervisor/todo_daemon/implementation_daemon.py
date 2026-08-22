@@ -2006,6 +2006,39 @@ def _resolve_meta_spark_api_key() -> str:
         return ""
 
 
+def _host_cli_binary(name: str) -> str | None:
+    """Locate a host CLI when sealed PATH is ``/usr/bin:/bin``."""
+
+    try:
+        from ...llm_router import _host_cli_binary as locate
+
+        found = locate(name)
+        if found:
+            return found
+    except Exception:
+        pass
+    found = shutil.which(name)
+    if found:
+        return found
+    try:
+        import pwd
+
+        home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    except Exception:
+        home = Path.home()
+    for path in (
+        home / ".local" / "bin" / name,
+        Path("/usr/local/bin") / name,
+        Path("/usr/bin") / name,
+    ):
+        try:
+            if path.is_file() and os.access(path, os.X_OK):
+                return str(path)
+        except OSError:
+            continue
+    return None
+
+
 def _goose_binary() -> str | None:
     try:
         from ...llm_router import find_goose_cli
@@ -2020,7 +2053,7 @@ def _goose_binary() -> str | None:
         path = Path(configured).expanduser()
         if path.is_file() and os.access(path, os.X_OK):
             return str(path)
-    return shutil.which("goose")
+    return _host_cli_binary("goose")
 
 
 def _goose_meta_spark_available() -> bool:
@@ -2118,7 +2151,7 @@ def _grok_binary() -> str | None:
         found = shutil.which(configured)
         if found:
             return found
-    return shutil.which("grok")
+    return _host_cli_binary("grok")
 
 
 def _grok_cli_available() -> bool:
@@ -20126,7 +20159,7 @@ class PortalImplementationDaemon:
             add("codex")
         if _goose_meta_spark_available() and _goose_binary():
             add("goose")
-        copilot = shutil.which("copilot")
+        copilot = _host_cli_binary("copilot")
         if copilot and _copilot_has_auth():
             add("copilot")
         try:
@@ -61670,7 +61703,7 @@ class PortalImplementationDaemon:
                 mistral_authenticated = bool(mistral_probe.get("authenticated"))
             except Exception:
                 # Fall back to daemon-local readiness helpers.
-                copilot_binary = bool(shutil.which("copilot"))
+                copilot_binary = bool(_host_cli_binary("copilot"))
                 copilot_authenticated = bool(_copilot_has_auth())
                 meta_spark_binary = bool(_goose_binary())
                 meta_spark_authenticated = bool(
@@ -61740,7 +61773,7 @@ class PortalImplementationDaemon:
                     raise RuntimeError(
                         "Grok quota is exhausted and Copilot is in capacity cooldown"
                     )
-                copilot = shutil.which("copilot")
+                copilot = _host_cli_binary("copilot")
                 if not copilot or not _copilot_has_auth():
                     raise RuntimeError(
                         "Grok quota is exhausted, but authenticated Copilot CLI "

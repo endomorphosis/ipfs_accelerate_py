@@ -1350,7 +1350,7 @@ def test_scheduler_accepts_auto_provider_with_codex_isolation(
         stamp="20260820T000000Z",
     )
     environment = plan["environment"]
-    assert scheduler_module.PROVIDER_ENV not in environment
+    assert environment[scheduler_module.PROVIDER_ENV] == "auto"
     sealed = environment[scheduler_module.EXTERNAL_PROVIDER_ISOLATION_ENV]
     assert json.loads(sealed)["provider_id"] == "codex"
 

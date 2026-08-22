@@ -4713,7 +4713,12 @@ def configured_board_launch_plan(
         provider_id = str(provider.get("provider_id") or "").strip()
         model_id = str(provider.get("model_id") or "").strip()
         environment = {}
-        if provider_id and provider_id != "auto":
+        if provider_id:
+            # Always pin the scheduler value, including ``auto``. Leaving the
+            # variable unset lets an ambient Grok-session
+            # IMPLEMENTATION_PROVIDER leak into sealed lanes and force a
+            # Grok-only pin that then fail-closes without login in the
+            # qualification HOME.
             environment[PROVIDER_ENV] = provider_id
         if model_id and provider_id in {"", "auto", "codex", "openai"}:
             environment[CODEX_MODEL_ENV] = model_id
