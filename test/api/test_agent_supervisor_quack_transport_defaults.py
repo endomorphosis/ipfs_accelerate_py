@@ -228,6 +228,56 @@ def test_unstall_stale_in_progress_tasks_retries_dead_gate(tmp_path) -> None:
     assert rows["PCCE-022"] == ("in_progress", 1)
 
 
+def test_unstall_drops_status_indexes_that_fatal_status_updates(tmp_path) -> None:
+    import duckdb
+    from datetime import datetime, timedelta, timezone
+
+    connection = duckdb.connect(str(tmp_path / "control.duckdb"))
+    connection.execute(
+        """
+        CREATE TABLE tasks (
+            task_cid VARCHAR PRIMARY KEY,
+            task_alias VARCHAR NOT NULL UNIQUE,
+            goal_cid VARCHAR NOT NULL,
+            ordinal BIGINT NOT NULL,
+            status VARCHAR NOT NULL,
+            revision BIGINT NOT NULL,
+            updated_at VARCHAR NOT NULL
+        )
+        """
+    )
+    connection.execute("CREATE INDEX tasks_goal_idx ON tasks(goal_cid, status)")
+    connection.execute("CREATE INDEX tasks_status_idx ON tasks(status, ordinal)")
+    now = datetime.now(timezone.utc)
+    connection.execute(
+        "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            "cid-021",
+            "PCCE-021",
+            "goal:root",
+            21,
+            "in_progress",
+            9,
+            (now - timedelta(hours=12)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        ],
+    )
+    result = unstall_stale_in_progress_tasks(connection, now=now, stale_seconds=16_200)
+    assert [item["task_alias"] for item in result["unstalled"]] == ["PCCE-021"]
+    assert any("tasks_status_idx" in sql for sql in result["status_indexes_rebuilt"])
+    row = connection.execute(
+        "SELECT status, revision FROM tasks WHERE task_alias = 'PCCE-021'"
+    ).fetchone()
+    assert tuple(row) == ("retrying", 10)
+    names = {
+        str(_row[0])
+        for _row in connection.execute(
+            "SELECT index_name FROM duckdb_indexes() WHERE table_name = 'tasks'"
+        ).fetchall()
+    }
+    assert "tasks_status_idx" in names
+    assert "tasks_goal_idx" in names
+
+
 def test_apply_owner_command_payload_unstalls_without_client_sql(tmp_path) -> None:
     import duckdb
     from datetime import datetime, timedelta, timezone

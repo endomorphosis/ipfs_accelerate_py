@@ -655,6 +655,48 @@ def _parse_task_updated_at(value: Any) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+def _quote_duckdb_ident(name: str) -> str:
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def _drop_task_status_indexes(connection: Any) -> list[str]:
+    """Drop status-bearing task indexes that can fatal status UPDATEs.
+
+    DuckDB ART indexes on ``tasks.status`` have failed closed with
+    ``Failed to delete all rows from index`` after a leftover in_progress
+    CAS. Drop them for the unstall UPDATE, then recreate from the saved
+    DDL.
+    """
+
+    try:
+        rows = connection.execute(
+            "SELECT index_name, sql FROM duckdb_indexes() WHERE table_name = 'tasks'"
+        ).fetchall()
+    except Exception:
+        return []
+    statements: list[str] = []
+    names: list[str] = []
+    for row in rows:
+        name, sql = _row_tuple(row)[:2]
+        text = str(sql or "").strip()
+        if "status" not in text.lower():
+            continue
+        names.append(str(name))
+        if text.upper().startswith("CREATE "):
+            statements.append(text)
+    for name in names:
+        connection.execute("DROP INDEX IF EXISTS " + _quote_duckdb_ident(name))
+    return statements
+
+
+def _restore_task_status_indexes(connection: Any, statements: Sequence[str]) -> None:
+    for sql in statements:
+        text = str(sql or "").strip()
+        if not text:
+            continue
+        connection.execute(text)
+
+
 def unstall_stale_in_progress_tasks(
     connection: Any,
     *,
@@ -680,6 +722,7 @@ def unstall_stale_in_progress_tasks(
     ).fetchall()
     unstalled: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
+    pending: list[tuple[Any, ...]] = []
     for row in rows:
         task_cid, task_alias, status, revision, updated_at = _row_tuple(row)[:5]
         updated = _parse_task_updated_at(updated_at)
@@ -703,28 +746,38 @@ def unstall_stale_in_progress_tasks(
                 }
             )
             continue
-        new_revision = int(revision) + 1
-        stamp = clock.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        connection.execute(
-            "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
-            "WHERE task_cid = ? AND revision = ? AND status = 'in_progress'",
-            ["retrying", new_revision, stamp, str(task_cid), int(revision)],
-        )
-        unstalled.append(
-            {
-                "task_cid": str(task_cid),
-                "task_alias": str(task_alias),
-                "previous_revision": int(revision),
-                "revision": new_revision,
-                "previous_status": str(status),
-                "status": "retrying",
-                "age_seconds": int(age),
-            }
-        )
+        pending.append((task_cid, task_alias, status, revision, int(age)))
+    index_sql: list[str] = []
+    if pending:
+        index_sql = _drop_task_status_indexes(connection)
+    try:
+        for task_cid, task_alias, status, revision, age in pending:
+            new_revision = int(revision) + 1
+            stamp = clock.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            connection.execute(
+                "UPDATE tasks SET status = ?, revision = ?, updated_at = ? "
+                "WHERE task_cid = ? AND revision = ? AND status = 'in_progress'",
+                ["retrying", new_revision, stamp, str(task_cid), int(revision)],
+            )
+            unstalled.append(
+                {
+                    "task_cid": str(task_cid),
+                    "task_alias": str(task_alias),
+                    "previous_revision": int(revision),
+                    "revision": new_revision,
+                    "previous_status": str(status),
+                    "status": "retrying",
+                    "age_seconds": int(age),
+                }
+            )
+    finally:
+        if index_sql:
+            _restore_task_status_indexes(connection, index_sql)
     return {
         "unstalled": unstalled,
         "skipped": skipped,
         "stale_seconds": int(stale_seconds),
+        "status_indexes_rebuilt": list(index_sql),
     }
 
 
