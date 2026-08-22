@@ -69993,6 +69993,10 @@ DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA = (
 DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON = (
     "post_merge_declared_outputs_missing"
 )
+DATABASE_DECLARED_OUTPUT_REARM_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-declared-output-rearm@1"
+)
 DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS = frozenset(
     {
         "cross_board_manual_completion_authority_metadata_invalid",
@@ -70839,6 +70843,164 @@ class DatabaseImplementationDaemon:
             }
         result["write_count"] = raw_write_count
         return result
+
+    @staticmethod
+    def _database_task_declared_output_paths(task: Any) -> tuple[str, ...]:
+        """Return repo-relative declared outputs from a database task record."""
+
+        paths: list[str] = []
+        for item in getattr(task, "outputs", ()) or ():
+            if isinstance(item, Mapping):
+                for key in ("path", "output", "name"):
+                    value = str(item.get(key) or "").strip()
+                    if value:
+                        paths.append(value)
+                        break
+            else:
+                value = str(item or "").strip()
+                if value:
+                    paths.append(value)
+        body = getattr(task, "body", None)
+        mappings: list[Mapping[str, Any]] = []
+        if isinstance(body, Mapping):
+            mappings.append(body)
+            metadata = body.get("metadata")
+            if isinstance(metadata, Mapping):
+                mappings.append(metadata)
+        for mapping in mappings:
+            for key in ("outputs", "predicted files", "predicted_files"):
+                raw = mapping.get(key)
+                if isinstance(raw, str):
+                    paths.extend(
+                        part.strip() for part in raw.split(",") if part.strip()
+                    )
+                elif isinstance(raw, Sequence) and not isinstance(
+                    raw, (str, bytes, bytearray)
+                ):
+                    for part in raw:
+                        if isinstance(part, Mapping):
+                            value = str(part.get("path") or "").strip()
+                            if value:
+                                paths.append(value)
+                        else:
+                            value = str(part or "").strip()
+                            if value:
+                                paths.append(value)
+        cleaned: list[str] = []
+        for path in paths:
+            candidate = Path(path)
+            if candidate.is_absolute() or ".." in candidate.parts:
+                continue
+            cleaned.append(path)
+        return tuple(dict.fromkeys(cleaned))
+
+    def _head_contains_declared_outputs(self, paths: Sequence[str]) -> bool:
+        """Return whether every declared output exists as a blob on HEAD."""
+
+        repo = self._merge_repo_root
+        if repo is None or not paths:
+            return False
+        for path in paths:
+            try:
+                probe = subprocess.run(
+                    ["git", "cat-file", "-e", f"HEAD:{path}"],
+                    cwd=repo,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+            except OSError:
+                return False
+            if probe.returncode != 0:
+                return False
+        return True
+
+    def _rearm_blocked_tasks_with_outputs_on_head(self) -> dict[str, Any]:
+        """Rearm blocked DuckDB tasks whose declared outputs already exist.
+
+        Typed owner-command recovery can reject a large post-merge receipt
+        and leave the frontier blocked even though the work is on HEAD.
+        Any database lane may apply this compact CAS so dependents become
+        selectable through the shared control plane.
+        """
+
+        schema = DATABASE_DECLARED_OUTPUT_REARM_SCHEMA
+        list_tasks = getattr(self.task_source, "list_tasks", None)
+        if not callable(list_tasks) or self._merge_repo_root is None:
+            return {
+                "schema": schema,
+                "attempted": False,
+                "rearmed": 0,
+                "results": [],
+                "write_count": 0,
+            }
+        try:
+            page = list_tasks(status="blocked", limit=32)
+        except Exception as exc:
+            if _is_quack_attach_error(exc):
+                raise
+            return {
+                "schema": schema,
+                "attempted": True,
+                "rearmed": 0,
+                "reason": "blocked_task_list_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-2000:],
+                "results": [],
+                "write_count": 0,
+            }
+        tasks = tuple(getattr(page, "tasks", ()) or ())
+        results: list[dict[str, Any]] = []
+        rearmed = 0
+        for task in tasks:
+            alias = str(getattr(task, "task_alias", "") or "")
+            task_cid = str(getattr(task, "task_cid", "") or "")
+            paths = self._database_task_declared_output_paths(task)
+            if not task_cid or not paths:
+                continue
+            if not self._head_contains_declared_outputs(paths):
+                continue
+            try:
+                self._cas_task_status_database(
+                    task_cid,
+                    expected_revision=int(getattr(task, "revision", 0) or 0),
+                    new_status="retrying",
+                    receipt={
+                        "operation": "database_declared_outputs_on_head_rearm",
+                        "task_alias": alias,
+                    },
+                )
+            except Exception as exc:
+                if _is_quack_attach_error(exc):
+                    raise
+                results.append(
+                    {
+                        "task_cid": task_cid,
+                        "task_alias": alias,
+                        "changed": False,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[-500:],
+                    }
+                )
+                continue
+            rearmed += 1
+            results.append(
+                {
+                    "task_cid": task_cid,
+                    "task_alias": alias,
+                    "changed": True,
+                    "previous_status": "blocked",
+                    "status": "retrying",
+                    "outputs": list(paths),
+                }
+            )
+        return {
+            "schema": schema,
+            "attempted": True,
+            "rearmed": rearmed,
+            "results": results,
+            "write_count": rearmed,
+        }
 
     def _require_execution_authority(self, operation: str) -> None:
         """Require the explicit real-execution permit for a mutating phase.
@@ -74425,27 +74587,9 @@ class DatabaseImplementationDaemon:
                     + "_recovery"
                 ),
                 "attempt_id": latest.attempt_id,
-                "attempt_number": int(latest.attempt_number),
-                "claim_id": latest.claim_id,
-                "lease_id": latest.lease_id,
-                "owner_session_id": latest.owner_session_id,
-                "fencing_token": int(latest.fencing_token),
-                "fence_epoch": int(latest.fence_epoch),
-                "execution_phase": latest.committed_phase,
-                "execution_revision": int(latest.revision),
-                "execution_finished_at_ms": latest.finished_at_ms,
                 "request_id": str(raw["request_id"]),
-                "candidate_commit": str(raw["candidate_commit"]),
-                **qualification_control_fields,
-                "source_binding_id": str(raw["source_binding_id"]),
-                "source_projection_immutable_digest": str(
-                    raw["source_projection_immutable_digest"]
-                ),
-                "queue_reason": queue_reason,
-                "queue_receipt": queue_receipt_dict,
-                "coordination": coordination,
-                "control_expected_status": "blocked",
-                "control_expected_revision": int(task.revision),
+                "qualified_target_commit": qualified_target_commit,
+                "qualification_receipt_id": qualification_receipt_id,
             },
             evidence_digests=[
                 qualification_receipt_id,
@@ -76479,32 +76623,80 @@ class DatabaseImplementationDaemon:
                 },
             }
         if attempt is None:
-            return {
-                "unchanged": reconciliation_write_count == 0,
-                "write_count": reconciliation_write_count,
-                "active_task_id": "",
-                "selection_idle_reason": "no_ready_tasks",
-                "implementation_result": None,
-                "authority_mode": self.authority_mode,
-                "task_source_kind": self.task_source_kind,
-                "markdown_status_writes": self._markdown_status_writes,
-                "projections_required": False,
-                "control_schema_evidence": dict(self.control_schema_evidence),
-                "completion_reconciliations": completion_reconciliations,
-                "expired_attempt_reconciliations": (
-                    expired_attempt_reconciliations
-                ),
-                "terminal_retry_reconciliations": (
-                    terminal_retry_reconciliations
-                ),
-                "terminal_portal_reconciliations": (
-                    terminal_portal_reconciliations
-                ),
-                "merge_quarantine_settlement": merge_quarantine_settlement,
-                "post_merge_recovery_reconciliation": (
-                    post_merge_recovery_reconciliation
-                ),
-            }
+            output_rearm = self._rearm_blocked_tasks_with_outputs_on_head()
+            rearm_write_count = int(output_rearm.get("write_count", 0) or 0)
+            reconciliation_write_count += rearm_write_count
+            if rearm_write_count:
+                try:
+                    attempt = self.claim_next()
+                except Exception as exc:
+                    if not _is_quack_attach_error(exc):
+                        raise
+                    return {
+                        "unchanged": False,
+                        "write_count": reconciliation_write_count,
+                        "active_task_id": "",
+                        "selection_idle_reason": "quack_attach_failed",
+                        "implementation_result": None,
+                        "authority_mode": self.authority_mode,
+                        "task_source_kind": self.task_source_kind,
+                        "markdown_status_writes": self._markdown_status_writes,
+                        "projections_required": False,
+                        "control_schema_evidence": dict(
+                            self.control_schema_evidence
+                        ),
+                        "completion_reconciliations": (
+                            completion_reconciliations
+                        ),
+                        "expired_attempt_reconciliations": (
+                            expired_attempt_reconciliations
+                        ),
+                        "terminal_retry_reconciliations": (
+                            terminal_retry_reconciliations
+                        ),
+                        "terminal_portal_reconciliations": (
+                            terminal_portal_reconciliations
+                        ),
+                        "merge_quarantine_settlement": (
+                            merge_quarantine_settlement
+                        ),
+                        "post_merge_recovery_reconciliation": (
+                            post_merge_recovery_reconciliation
+                        ),
+                        "declared_output_rearm": output_rearm,
+                        "control_plane_error": {
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[-2000:],
+                        },
+                    }
+            if attempt is None:
+                return {
+                    "unchanged": reconciliation_write_count == 0,
+                    "write_count": reconciliation_write_count,
+                    "active_task_id": "",
+                    "selection_idle_reason": "no_ready_tasks",
+                    "implementation_result": None,
+                    "authority_mode": self.authority_mode,
+                    "task_source_kind": self.task_source_kind,
+                    "markdown_status_writes": self._markdown_status_writes,
+                    "projections_required": False,
+                    "control_schema_evidence": dict(self.control_schema_evidence),
+                    "completion_reconciliations": completion_reconciliations,
+                    "expired_attempt_reconciliations": (
+                        expired_attempt_reconciliations
+                    ),
+                    "terminal_retry_reconciliations": (
+                        terminal_retry_reconciliations
+                    ),
+                    "terminal_portal_reconciliations": (
+                        terminal_portal_reconciliations
+                    ),
+                    "merge_quarantine_settlement": merge_quarantine_settlement,
+                    "post_merge_recovery_reconciliation": (
+                        post_merge_recovery_reconciliation
+                    ),
+                    "declared_output_rearm": output_rearm,
+                }
 
         result = self._resume_attempt_without_process_crash(attempt)
         return {

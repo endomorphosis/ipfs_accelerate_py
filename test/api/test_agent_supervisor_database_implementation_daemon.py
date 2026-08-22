@@ -62,6 +62,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     ATTEMPT_PHASE_EFFECT,
     ATTEMPT_PHASE_FAILED,
     ATTEMPT_PHASE_PROVIDER,
+    DATABASE_DECLARED_OUTPUT_REARM_SCHEMA,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA,
     DATABASE_POST_MERGE_RECOVERY_SCHEMA,
@@ -2742,6 +2743,112 @@ def test_idle_run_once_invokes_bound_post_merge_recovery_before_claim(
         reported = result["post_merge_recovery_reconciliation"]
         assert reported == reconciliation
         assert reported["results"][0]["status"] == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_idle_run_once_rearms_blocked_task_when_outputs_are_on_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    output = repo / "ipfs_accelerate_py" / "agent_supervisor" / "residual_intelligence"
+    output.mkdir(parents=True)
+    (output / "expert_specs.py").write_text("spec = True\n", encoding="utf-8")
+
+    def git(*args: str) -> None:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+
+    git("init", "-b", "main")
+    git("config", "user.email", "vrif@example.test")
+    git("config", "user.name", "VRIF")
+    git("add", ".")
+    git("commit", "-m", "declared outputs")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:declared-output-rearm",
+    )
+    blocked = SimpleNamespace(
+        task_cid="task:cid:blocked-010",
+        task_alias="VRIF-010",
+        status="blocked",
+        revision=4,
+        body={
+            "predicted files": (
+                "ipfs_accelerate_py/agent_supervisor/residual_intelligence/"
+                "expert_specs.py"
+            )
+        },
+        outputs=(),
+    )
+    cas_calls: list[tuple[str, str]] = []
+
+    def cas(
+        task_cid: str,
+        *,
+        expected_revision: int,
+        status: str,
+        receipt: dict[str, object] | None = None,
+        evidence_digests: object = None,
+    ) -> SimpleNamespace:
+        del expected_revision, evidence_digests
+        cas_calls.append((task_cid, status))
+        assert receipt is not None
+        assert receipt["operation"] == "database_declared_outputs_on_head_rearm"
+        return SimpleNamespace(to_dict=lambda: {"changed": True})
+
+    try:
+        daemon.open()
+        daemon._merge_repo_root = repo
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_prepared_task_completions",
+            lambda: [],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_expired_running_attempts",
+            lambda: [],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_terminal_portal_failures",
+            lambda: [],
+        )
+        monkeypatch.setattr(
+            daemon,
+            "reconcile_terminal_retry_states",
+            lambda: [],
+        )
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        monkeypatch.setattr(
+            daemon.task_source,
+            "list_tasks",
+            lambda **_kwargs: SimpleNamespace(tasks=(blocked,)),
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "compare_and_set_status",
+            cas,
+        )
+        result = daemon.run_once()
+        assert cas_calls == [("task:cid:blocked-010", "retrying")]
+        assert result["selection_idle_reason"] == "no_ready_tasks"
+        assert result["write_count"] == 1
+        rearm = result["declared_output_rearm"]
+        assert rearm["schema"] == DATABASE_DECLARED_OUTPUT_REARM_SCHEMA
+        assert rearm["rearmed"] == 1
+        assert rearm["results"][0]["task_alias"] == "VRIF-010"
     finally:
         daemon.close()
 
