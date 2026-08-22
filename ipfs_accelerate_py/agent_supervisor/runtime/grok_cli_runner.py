@@ -2680,10 +2680,22 @@ def _docker_grok_command(
     )
     source_auth = _existing_path(source_home / "auth.json")
     if source_auth is not None:
-        # The symlink in the ephemeral home resolves to this exact path.  No
-        # alternate-provider home or credential directory is mounted, and the
-        # isolated child cannot mutate the parent's Grok credential either.
+        # Replace the ephemeral symlink with a file bind so Docker does not
+        # have to follow a host path that later deny-masks may hide.
+        auth_link = grok_home / "auth.json"
+        try:
+            if auth_link.is_symlink() or auth_link.is_file():
+                auth_link.unlink()
+        except OSError:
+            pass
         command.extend(_docker_mount(source_auth, read_only=True))
+        command.extend(
+            _docker_mount(
+                source_auth,
+                destination=auth_link,
+                read_only=True,
+            )
+        )
 
     mask_root.mkdir(mode=0o700)
     sentinel = grok_home / "alternate-provider-deny-sentinel"
