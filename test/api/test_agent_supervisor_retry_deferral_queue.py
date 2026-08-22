@@ -62,6 +62,9 @@ def test_direct_codex_command_is_ephemeral_and_ignores_ambient_user_config(
     ]
     assert "--dangerously-bypass-approvals-and-sandbox" in command
     assert command[-1] == "-"
+    assert "features.code_mode=false" not in command
+    assert "features.code_mode_only=false" not in command
+    assert "features.code_mode_host=false" not in command
     assert not any("grok" in part.lower() or "docker" in part.lower() for part in command)
 
 

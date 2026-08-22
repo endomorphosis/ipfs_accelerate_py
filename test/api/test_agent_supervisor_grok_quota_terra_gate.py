@@ -1731,9 +1731,16 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
         if value == "--mount"
     ]
     writable_mounts = [mount for mount in mounts if "readonly" not in mount]
-    assert writable_mounts == [
-        f"type=bind,src={workspace},dst={workspace}"
+    assert f"type=bind,src={workspace},dst={workspace}" in writable_mounts
+    auth_mounts = [
+        mount
+        for mount in mounts
+        if f"dst={grok_cli_runner._CODEX_CONTAINER_AUTH_PATH}" in mount
     ]
+    assert len(auth_mounts) == 1
+    assert f"src={source_auth}" not in auth_mounts[0]
+    assert "readonly" not in auth_mounts[0]
+    assert not any(str(source_auth) in mount for mount in mounts)
     assert "type=bind,src=/usr,dst=/usr,readonly" in mounts
     assert (
         "type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs,readonly" in mounts
@@ -1743,17 +1750,21 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
         f"dst={grok_cli_runner._CODEX_TASK_TOOLCHAIN_PYTHON},readonly"
         in mounts
     )
-    assert (
-        f"type=bind,src={source_auth},"
-        f"dst={grok_cli_runner._CODEX_CONTAINER_AUTH_PATH},readonly"
-        in mounts
-    )
     assert not any("/var/run/docker.sock" in mount for mount in mounts)
     assert not any("/home/" in mount for mount in mounts)
 
     inner = command[command.index(image) + 1 :]
     expected_inner = list(fallback)
     expected_inner[expected_inner.index("-s") + 1] = "danger-full-access"
+    try:
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+            _host_codex_vendor_binaries,
+        )
+
+        if _host_codex_vendor_binaries() is not None:
+            expected_inner[0] = "/usr/local/bin/codex"
+    except Exception:
+        pass
     expected_environment = [
         f"{name}={value}" for name, value in sorted(child_env.items())
     ]

@@ -88,6 +88,7 @@ def test_quack_mutation_dir_follows_store_id(tmp_path, monkeypatch) -> None:
     store = tmp_path / "control.duckdb"
     store.write_bytes(b"")
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", raising=False)
+    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(tmp_path))
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH", raising=False)
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE", raising=False)
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(store))
@@ -96,6 +97,21 @@ def test_quack_mutation_dir_follows_store_id(tmp_path, monkeypatch) -> None:
     )
 
     assert quack_owner_mutation_dir() == store.resolve().parent / "quack-owner" / "mutations"
+
+
+def test_relative_quack_store_never_uses_child_worktree_cwd(tmp_path, monkeypatch) -> None:
+    accepted = tmp_path / "accepted"
+    child = tmp_path / "child-worktree"
+    accepted.mkdir()
+    child.mkdir()
+    monkeypatch.chdir(child)
+    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(accepted))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "state/control.duckdb")
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        quack_owner_mutation_dir,
+    )
+
+    assert quack_owner_mutation_dir() == accepted / "state" / "quack-owner" / "mutations"
 
 
 def test_quack_mutation_dir_rejects_missing_or_mismatched_registry_binding(

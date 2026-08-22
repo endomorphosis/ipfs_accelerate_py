@@ -17,12 +17,14 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
     duckdb_available,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS,
     DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_RETRY_DEFERRAL_SCHEMA,
     DatabasePortalBridgeConsumedNoProgressError,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
+    DatabasePortalCandidateRetry,
     DatabasePortalExecutionBridge,
     database_portal_consumed_no_progress_fingerprint,
     database_portal_task_contract_digest,
@@ -1100,6 +1102,195 @@ def test_bridge_does_not_infer_retryability_from_generic_failure_text(
         bridge.run_provider(_attempt())
 
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+    assert not isinstance(caught.value, DatabasePortalCandidateRetry)
+
+
+def test_bridge_defers_external_protected_checkout_contention(
+    tmp_path: Path,
+) -> None:
+    class CheckoutContentionPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "blocked": True,
+                "unchanged": True,
+                "write_count": 0,
+                "implementation_result": None,
+                "reason": "external_protected_checkout_recovery_required",
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: CheckoutContentionPortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.reason == "external_protected_checkout_recovery_required"
+    assert caught.value.backoff_seconds == (
+        DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS
+    )
+    assert caught.value.attempt_consumed is False
+    assert caught.value.provider_dispatched is False
+
+
+def test_bridge_keeps_invalid_protected_recovery_journal_terminal(
+    tmp_path: Path,
+) -> None:
+    class InvalidJournalPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "blocked": True,
+                "unchanged": True,
+                "write_count": 0,
+                "implementation_result": None,
+                "reason": "protected_recovery_journal_invalid",
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: InvalidJournalPortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+    assert str(caught.value) == "protected_recovery_journal_invalid"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {
+            "returncode": 78,
+            "attempt": 1,
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "validation_result": {
+                "attempted": False,
+                "passed": False,
+                "reason": "no_change_completion_not_allowed",
+            },
+        },
+        {
+            "returncode": 78,
+            "attempt": 1,
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "reason": "proposal_gate_failed",
+                "error": "proposal_validation_failed",
+            },
+            "commit_result": {"reason": "expected_output_ignored_or_unstaged"},
+        },
+        {
+            "returncode": 1,
+            "attempt": 2,
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "reason": "incomplete_expected_outputs",
+        },
+    ),
+)
+def test_bridge_retries_unusable_dispatched_candidates(
+    tmp_path: Path,
+    payload: dict[str, object],
+) -> None:
+    class CandidatePortal:
+        def run_once(self) -> dict[str, object]:
+            return {"implementation_result": dict(payload)}
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: CandidatePortal(),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+
+    with pytest.raises(DatabasePortalCandidateRetry) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.attempt_consumed is True
+    assert caught.value.provider_dispatched is True
+    assert caught.value.reason in {
+        "no_change_completion_not_allowed",
+        "proposal_gate_failed",
+        "incomplete_expected_outputs",
+    }
+
+
+def test_bridge_keeps_exhausted_unusable_candidate_terminal(
+    tmp_path: Path,
+) -> None:
+    class ExhaustedPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 78,
+                    "attempt": 4,
+                    "attempt_consumed": True,
+                    "provider_dispatched": True,
+                    "validation_result": {
+                        "reason": "no_change_completion_not_allowed"
+                    },
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: ExhaustedPortal(),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert not isinstance(caught.value, DatabasePortalCandidateRetry)
+    assert str(caught.value) == "portal_provider_failed"
+
+
+def test_bridge_stops_candidate_retry_when_durable_attempt_reaches_cap(
+    tmp_path: Path,
+) -> None:
+    class ResetPortalAttempt:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 78,
+                    "attempt": 1,
+                    "attempt_consumed": True,
+                    "provider_dispatched": True,
+                    "validation_result": {
+                        "attempted": False,
+                        "passed": False,
+                        "reason": "no_change_completion_not_allowed",
+                    },
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: ResetPortalAttempt(),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt(attempt_number=4))
+
+    assert not isinstance(caught.value, DatabasePortalCandidateRetry)
+    assert str(caught.value) == "portal_provider_failed"
 
 
 def test_bridge_defers_protected_recovery_fence_contention(
