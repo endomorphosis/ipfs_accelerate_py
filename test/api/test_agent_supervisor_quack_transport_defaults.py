@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
 )
@@ -80,7 +79,7 @@ def test_database_task_source_keeps_quack_uri(monkeypatch) -> None:
     assert repo._open_target == "quack:127.0.0.1:45123"
 
 
-def test_quack_mutation_dir_follows_store_id(tmp_path, monkeypatch) -> None:
+def test_raw_sql_quack_mutation_inbox_is_disabled(tmp_path, monkeypatch) -> None:
     store = tmp_path / "control.duckdb"
     store.write_bytes(b"")
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", raising=False)
@@ -89,7 +88,8 @@ def test_quack_mutation_dir_follows_store_id(tmp_path, monkeypatch) -> None:
         quack_owner_mutation_dir,
     )
 
-    assert quack_owner_mutation_dir() == store.resolve().parent / "quack-owner" / "mutations"
+    assert quack_owner_mutation_dir() is None
+    assert not (store.resolve().parent / "quack-owner" / "mutations").exists()
 
 
 def test_database_daemon_defaults_to_quack_and_refuses_file_open(tmp_path) -> None:
