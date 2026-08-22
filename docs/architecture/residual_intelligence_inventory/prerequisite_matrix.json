@@ -1,0 +1,150 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-prerequisite-matrix@1",
+  "source_revision": "84a056e41e48a81d4484be43840196578d6c87da",
+  "source_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
+  "environment": "python-3.12.3/linux-aarch64/origin-main",
+  "findings": [
+    {
+      "authority": "SemanticCompressionHarness",
+      "status": "available",
+      "source": "ipfs_accelerate_py/agent_supervisor/semantic_state/harness.py:780",
+      "schemas": ["SemanticCompressionHarness@1"],
+      "evidence": ["test/api/semantic_state/test_harness.py", "import probe passed"],
+      "reason_codes": []
+    },
+    {
+      "authority": "SemanticCompressionGovernor",
+      "status": "available_with_caveats",
+      "source": "ipfs_accelerate_py/agent_supervisor/semantic_governor/governor.py:450",
+      "schemas": ["SemanticCompressionGovernor@1", "SemanticCompressionGovernorPublicApi@1"],
+      "evidence": ["test/api/semantic_governor/test_public_api.py", "lazy facade import passed"],
+      "reason_codes": ["datasets_gitlink_uninitialized", "default_sealer_discovery_misses_incremental_leaf"]
+    },
+    {
+      "authority": "AdversarialAssuranceEngine",
+      "status": "available_with_caveats",
+      "source": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/api.py:1710",
+      "schemas": ["AssuranceCampaignApi@1", "AdversarialAssurancePublicApi@1"],
+      "evidence": ["test/api/adversarial_assurance/test_current_tree_conformance.py", "config/adversarial_assurance_prerequisites.json"],
+      "reason_codes": ["exact_engine_symbol_absent", "datasets_contract_import_unavailable"]
+    },
+    {
+      "authority": "IncrementalVerificationPlanner",
+      "status": "available",
+      "source": "ipfs_accelerate_py/agent_supervisor/verification/planner.py:2310",
+      "schemas": ["IncrementalVerificationPlanner@1", "IncrementalVerificationPublicApi@1"],
+      "evidence": ["test/api/test_agent_supervisor_incremental_verification_planner.py", "import probe passed"],
+      "reason_codes": []
+    },
+    {
+      "authority": "IncrementalProofSealer",
+      "status": "available_with_caveats",
+      "source": "ipfs_accelerate_py/agent_supervisor/proof/incremental_sealing/sealer.py:377",
+      "schemas": ["IncrementalProofSealer@1", "incremental sealing contracts @1"],
+      "evidence": ["test/api/incremental_sealing/test_atomic_sealer.py", "source inspection"],
+      "reason_codes": ["datasets_incremental_sealing_import_unavailable", "package_facade_omits_sealer_classes"]
+    },
+    {
+      "authority": "AdaptivePlanner",
+      "status": "incompatible",
+      "source": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py:2750",
+      "schemas": ["AdaptivePlanner@2", "adaptive selection receipts @1/@2"],
+      "evidence": ["test/api/test_agent_supervisor_adaptive_planner.py", "import probe failed"],
+      "reason_codes": ["undefined_HAMMER_TRACE_SCHEMA"]
+    },
+    {
+      "authority": "ContextCompiler",
+      "status": "available",
+      "source": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py:4028",
+      "schemas": ["ContextCompiler@1", "compilation receipt @2", "delta/retry/prefix/VOI @1"],
+      "evidence": ["test/api/test_agent_supervisor_context_compiler.py", "import probe passed"],
+      "reason_codes": []
+    },
+    {
+      "authority": "SupervisorControlService",
+      "status": "available",
+      "source": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py:4383",
+      "schemas": ["SupervisorControlService@1", "catalog/conformance @2"],
+      "evidence": ["test/api/test_agent_supervisor_control_conformance_v2.py", "import probe passed"],
+      "reason_codes": ["mutations_require_authorization_lease_fence_and_allowlist"]
+    },
+    {
+      "authority": "AutonomousMetaController",
+      "status": "missing",
+      "source": "absent from audited origin/main",
+      "schemas": [],
+      "evidence": ["exact-symbol source search at audited revision"],
+      "reason_codes": ["feature_branch_only", "do_not_recreate"]
+    },
+    {
+      "authority": "ProofCarryingProcedureCompiler",
+      "status": "missing",
+      "source": "absent from audited origin/main",
+      "schemas": [],
+      "evidence": ["exact-symbol source search at audited revision"],
+      "reason_codes": ["feature_branch_only", "do_not_recreate", "use_narrow_optional_interface"]
+    },
+    {
+      "authority": "ProofCarryingArchitectureRefactorer",
+      "status": "missing",
+      "source": "absent from audited origin/main",
+      "schemas": [],
+      "evidence": ["exact-symbol source search and feature-worktree inspection"],
+      "reason_codes": ["planning_artifacts_only", "do_not_recreate", "use_narrow_optional_interface"]
+    },
+    {
+      "authority": "ProofGroundedIRLearningFabric",
+      "status": "incompatible",
+      "source": "ipfs_accelerate_py/agent_supervisor/objectives/ir_learning_campaign_contracts.py:1168",
+      "schemas": ["IRLearningCampaign@1"],
+      "evidence": ["docs/architecture/proof_grounded_ir_learning/final_report.md", "data/agent_supervisor/proof_grounded_ir_learning/freeze/result.v3.json"],
+      "reason_codes": ["exact_fabric_symbol_absent", "qualified_claim_false", "training_no_go", "no_checkpoint", "publication_denied"]
+    },
+    {
+      "authority": "LearningCheckpointBinding",
+      "status": "available",
+      "source": "ipfs_accelerate_py/agent_supervisor/runtime/learning_checkpoint.py:197",
+      "schemas": ["LearningCheckpointBinding@1", "LearningCheckpointResumeDecision@1"],
+      "evidence": ["test/api/test_agent_supervisor_fault_recovery_v2.py", "import probe passed"],
+      "reason_codes": ["binding_is_not_promotion_authority"]
+    }
+  ],
+  "independent_work_continues": ["VRIF-001", "VRIF-002", "VRIF-003", "VRIF-004", "VRIF-005", "VRIF-006", "VRIF-007", "VRIF-008"],
+  "current_tree_requalification": {
+    "source_revision": "84a056e41e48a81d4484be43840196578d6c87da",
+    "source_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
+    "environment": "python-3.12.3/linux-aarch64/origin-main",
+    "changed_findings": [
+      {
+        "authority": "AdaptivePlanner",
+        "status": "available",
+        "source": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py:2750",
+        "schemas": ["AdaptivePlanner@2", "adaptive selection receipts @1/@2"],
+        "evidence": [
+          "python -m pytest -q test/api/test_agent_supervisor_adaptive_planner.py test/api/test_agent_supervisor_and_or_planner.py: 41 passed",
+          "current-tree import and collection passed"
+        ],
+        "reason_codes": ["upstream_proof_schema_repair"]
+      },
+      {
+        "authority": "ProofCarryingArchitectureRefactorer",
+        "status": "available_with_caveats",
+        "source": "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/architecture_ir.py:118",
+        "schemas": ["architecture-ir@1", "architecture-contracts@1"],
+        "evidence": [
+          "python -m pytest -q test/api/architecture_refactorer/test_contracts.py test/api/architecture_refactorer/test_architecture_ir.py: 5 passed",
+          "docs/architecture/architecture_refactorer_inventory/qualified_tests.json"
+        ],
+        "reason_codes": [
+          "architecture_ir_available",
+          "qualified_test_ledger_not_completed_by_pcar_000",
+          "full_refactorer_program_incomplete",
+          "exact_controller_symbol_absent"
+        ]
+      }
+    ],
+    "unchanged_findings_inherit_starting_audit": true,
+    "global_blocker": null
+  },
+  "global_blocker": null
+}

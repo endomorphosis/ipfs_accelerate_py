@@ -299,3 +299,9 @@ data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
 !docs/architecture/architecture_refactorer_inventory/*.json
 !benchmarks/agent_supervisor/architecture_refactorer/*.json
 !benchmarks/agent_supervisor/architecture_refactorer/fixtures/*.json
+
+# Verified Residual Intelligence Foundry mutable DuckDB/Quack/DuckLake state.
+!config/agent_supervisor_residual_intelligence_scheduler.json
+!docs/architecture/residual_intelligence_inventory/*.json
+!benchmarks/agent_supervisor/residual_intelligence/*.json
+/data/agent_supervisor/residual_intelligence_foundry/
