@@ -1,0 +1,6 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.tokenizer-fixture@1",
+  "fixture_id": "byte-stable-v1",
+  "policy": "UTF-8 byte length plus the same frozen ContextCompiler tokenizer adapter on both comparison sides.",
+  "fallback": "If the frozen adapter is unavailable, report unavailable and do not claim a token reduction."
+}

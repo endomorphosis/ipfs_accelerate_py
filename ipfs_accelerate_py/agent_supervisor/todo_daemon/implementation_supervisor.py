@@ -8355,6 +8355,9 @@ class PortalImplementationSupervisor:
             self._implementation_watchdog_timeout_seconds()
             + max(30.0, float(self.config.check_interval) * 2.0),
         )
+        child_environment = _managed_daemon_child_environment(
+            database_program=self.config.database_program,
+        )
         spec = ManagedDaemonSpec(
             name=f"{prefix}-implementation-daemon",
             schema="ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor",
@@ -18721,12 +18724,25 @@ class PortalImplementationSupervisor:
             return False
         tokens = command_line.split()
 
+        has_strict_task_sharding = "--strict-task-sharding" in tokens
+        if self.config.strict_task_sharding != has_strict_task_sharding:
+            return False
+
         def option_values(option: str) -> set[str]:
             return {
                 tokens[index + 1]
                 for index, token in enumerate(tokens[:-1])
                 if token == option
             }
+
+        if option_values("--task-shard-count") != {
+            str(self.config.task_shard_count)
+        }:
+            return False
+        if option_values("--task-shard-index") != {
+            str(self.config.task_shard_index)
+        }:
+            return False
 
         if option_values("--execution-slice-task-id") != set(
             self.config.execution_slice_task_ids

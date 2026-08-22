@@ -1,0 +1,170 @@
+{
+  "cohort": "hermetic_local_execution",
+  "excluded_cohorts": [
+    "simulated",
+    "live_local_model_execution",
+    "live_remote_model_execution",
+    "production_authoritative_evidence"
+  ],
+  "execution_evidence": {
+    "artifact_cid": "baguqeerar5y7qwii6r2rooyrryewuadtim7bxkiiqtnzfd2dep6yp7pfcu4a",
+    "artifact_verification_receipt_cid": "baguqeeras6k4a4gn3fj57kqc4ndoslh4ese2x6g2oxjoywsmym5fk2hfjeqq",
+    "fresh_execution_receipts_reproducible": false,
+    "vertical_result_cid": "baguqeeracqgqh5pyqb5aqsi6fgxzrqmfq2rptgjhpgcfw3ocgnbjh4kwaqkq"
+  },
+  "interface": "LgcvfSymbolicDisplacementBenchmark@1",
+  "limitations": [
+    "this is a hermetic local fixture, not a representative maintenance suite",
+    "threshold misses and unavailable measurements remain visible",
+    "no live-model, remote-model, external-verifier, release, or production evidence is aggregated"
+  ],
+  "overall_disposition": "partial",
+  "paired_result": {
+    "baseline": {
+      "context_tokens": 384,
+      "model_calls": 0,
+      "raw_source_bytes": 1534,
+      "tests_selected": 3,
+      "verification_strategy": "raw-source-full-fixture"
+    },
+    "challenger": {
+      "abstract_state_reused": 1,
+      "capsule_reuse_count": 13,
+      "context_tokens": 549,
+      "deterministic_closures": 1,
+      "model_calls": 0,
+      "proof_test_reuse_bps": 10000,
+      "selected_tests": 2,
+      "solver_session_replay_manifests": 1,
+      "verification_strategy": "contracts-abstract-interpretation-incremental-smt-capsule-reuse"
+    },
+    "cohort": "hermetic_local_execution",
+    "comparison": {
+      "accepted_patch_quality_equal": true,
+      "context_reduction_bps": 0,
+      "critical_omissions_accepted": 0,
+      "model_call_reduction_bps": 0,
+      "safety_floor_violations": 0
+    },
+    "limitations": [
+      "single hermetic fixture is not a representative maintenance suite",
+      "both paired paths intentionally made zero model calls",
+      "no production or remote-model evidence is aggregated",
+      "wall-time/cost qualification remains a successor benchmark task"
+    ],
+    "production_authoritative": false,
+    "schema": "lgcvf-paired-benchmark@1"
+  },
+  "pairing": {
+    "model_invocation_count": 0,
+    "note": "the raw-source baseline is a context/test-selection projection; separate baseline wall-time and resource execution is not measured",
+    "policy_root": "policy:lgcvf-hermetic-deny-network@1",
+    "repository_base_commit": "6423b6a361e44288b35c71a5e376b534df2b8d9b",
+    "repository_base_tree": "d2cf28f048cc1875058ddadd91b31a7a849f416d",
+    "scope": "single_vertical_run_same_fixture_and_acceptance_oracle"
+  },
+  "production_authoritative": false,
+  "production_authorized": false,
+  "release_qualified": false,
+  "report_cid": "baguqeera5eunnikkby5xg4kkkrwrwp7wmo4x26u6xvxerx4lp2lbzhkrdqma",
+  "reproducible_projection_cid": "baguqeeratddf3jpln5olhturxvhiqbk67foxoqiuq3rpnm23jxg2vocwcjqq",
+  "schema": "lgcvf-symbolic-displacement-benchmark@1",
+  "task_class_coverage": {
+    "missing": [
+      "behavior_preserving_refactor",
+      "concurrency_interference_change",
+      "configuration_change",
+      "dependency_api_migration",
+      "dynamic_opaque_python_escalation",
+      "exception_behavior_change",
+      "proof_repair",
+      "schema_serializer_change",
+      "security_policy_change"
+    ],
+    "observed": [
+      "local_bug_repair",
+      "cross_module_contract_change",
+      "repeated_maintenance_warm_cache"
+    ],
+    "required": [
+      "local_bug_repair",
+      "cross_module_contract_change",
+      "exception_behavior_change",
+      "schema_serializer_change",
+      "configuration_change",
+      "dependency_api_migration",
+      "security_policy_change",
+      "concurrency_interference_change",
+      "proof_repair",
+      "behavior_preserving_refactor",
+      "dynamic_opaque_python_escalation",
+      "repeated_maintenance_warm_cache"
+    ]
+  },
+  "thresholds": [
+    {
+      "comparison": "equal",
+      "disposition": "met",
+      "observed": 0,
+      "reason": "",
+      "target": 0,
+      "threshold_id": "zero_safety_floor_violations"
+    },
+    {
+      "comparison": "equal",
+      "disposition": "met",
+      "observed": 0,
+      "reason": "",
+      "target": 0,
+      "threshold_id": "zero_critical_omissions_accepted"
+    },
+    {
+      "comparison": "at_least",
+      "disposition": "missed",
+      "observed": 0,
+      "reason": "",
+      "target": 5000,
+      "threshold_id": "median_context_reduction_bps"
+    },
+    {
+      "comparison": "at_least",
+      "disposition": "not_evaluated",
+      "observed": null,
+      "reason": "both fixture routes made zero model calls; a repeated task with a nonzero baseline is required to measure displacement",
+      "target": 5000,
+      "threshold_id": "warm_cache_model_call_reduction_bps"
+    },
+    {
+      "comparison": "at_least",
+      "disposition": "met",
+      "observed": 10000,
+      "reason": "",
+      "target": 2500,
+      "threshold_id": "symbolically_closable_deterministic_route_share_bps"
+    },
+    {
+      "comparison": "at_least",
+      "disposition": "met",
+      "observed": 10000,
+      "reason": "",
+      "target": 8000,
+      "threshold_id": "unaffected_proof_test_reuse_bps"
+    },
+    {
+      "comparison": "equal",
+      "disposition": "met",
+      "observed": true,
+      "reason": "",
+      "target": true,
+      "threshold_id": "accepted_patch_quality_not_lower"
+    },
+    {
+      "comparison": "at_least",
+      "disposition": "missed",
+      "observed": 3,
+      "reason": "",
+      "target": 12,
+      "threshold_id": "representative_task_class_coverage"
+    }
+  ]
+}

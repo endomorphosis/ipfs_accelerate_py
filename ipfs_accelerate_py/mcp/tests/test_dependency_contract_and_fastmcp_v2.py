@@ -126,7 +126,8 @@ def test_requirements_are_the_setup_source_of_truth() -> None:
     assert fastmcp.marker.evaluate({"python_version": "3.10"}) is True
 
     urllib3 = _find_requirement(root_requirements, "urllib3")
-    assert urllib3.specifier.contains("2.0")
+    assert not urllib3.specifier.contains("2.0")
+    assert urllib3.specifier.contains("2.5.0")
     assert urllib3.specifier.contains("2.7.0")
     assert not urllib3.specifier.contains("1.26.20")
     assert not urllib3.specifier.contains("3.0.0")
@@ -318,7 +319,70 @@ def test_all_legacy_urllib3_constraints_accept_the_vendored_intersection() -> No
     for constraint_surface in constraint_surfaces:
         source = constraint_surface.read_text(encoding="utf-8")
         assert "urllib3<2" not in source, constraint_surface
-        assert "urllib3>=2,<3" in source, constraint_surface
+        assert "urllib3>=2" in source, constraint_surface
+        assert "<3" in source, constraint_surface
+
+
+def test_root_urllib3_contract_matches_vendored_datasets() -> None:
+    root = _find_requirement(
+        _requirement_lines(REPO_ROOT / "requirements.txt"),
+        "urllib3",
+    )
+
+    assert not root.specifier.contains("2.0")
+    assert root.specifier.contains("2.5.0")
+    assert root.specifier.contains("2.7.0")
+    assert not root.specifier.contains("3.0.0")
+
+
+def test_installed_http_stack_accepts_the_restored_urllib3_contract_without_io() -> None:
+    """Qualify the local validation stack without contacting an IPFS node."""
+
+    root_requirements = _requirement_lines(REPO_ROOT / "requirements.txt")
+    installed_versions = {
+        distribution: importlib.metadata.version(distribution)
+        for distribution in ("urllib3", "requests", "ipfshttpclient")
+    }
+    for distribution, version in installed_versions.items():
+        assert _find_requirement(root_requirements, distribution).specifier.contains(
+            version
+        )
+
+    requests_requirements = [
+        Requirement(raw)
+        for raw in (importlib.metadata.requires("requests") or ())
+        if Requirement(raw).name.lower() == "urllib3"
+    ]
+    ipfs_requirements = [
+        Requirement(raw)
+        for raw in (importlib.metadata.requires("ipfshttpclient") or ())
+        if Requirement(raw).name.lower() == "requests"
+    ]
+    assert requests_requirements
+    assert ipfs_requirements
+    assert all(
+        requirement.specifier.contains(installed_versions["urllib3"])
+        for requirement in requests_requirements
+    )
+    assert all(
+        requirement.specifier.contains(installed_versions["requests"])
+        for requirement in ipfs_requirements
+    )
+
+    import ipfshttpclient
+    import requests
+    import urllib3
+
+    with patch(
+        "socket.create_connection",
+        side_effect=AssertionError("HTTP compatibility smoke attempted network I/O"),
+    ):
+        pool = urllib3.PoolManager()
+        session = requests.Session()
+        client = ipfshttpclient.Client(offline=True)
+    pool.clear()
+    session.close()
+    client.close()
 
 
 def test_mcp_package_import_is_cold_even_when_auto_install_is_enabled() -> None:

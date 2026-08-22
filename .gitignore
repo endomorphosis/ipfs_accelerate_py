@@ -275,3 +275,26 @@ state/**/*.out
 !test/fixtures/adversarial_assurance/manifest.json
 !artifacts/agent_supervisor/adversarial_assurance/*.json
 !test/fixtures/semantic_governor/**/*.json
+
+# LGCVF immutable FormalWorkPlan@1 control projection. Runtime/benchmark JSON
+# remains ignored and must be admitted separately by its evidence policy.
+!config/agent_supervisor_logic_governed_compositional_verification_fabric_scheduler.json
+!data/agent_supervisor/logic_governed_compositional_verification_fabric/formal_work_plan.json
+!data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json
+!data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json
+!data/agent_supervisor/logic_governed_compositional_verification_fabric/plan_revisions/
+!data/agent_supervisor/logic_governed_compositional_verification_fabric/plan_revisions/*.json
+!docs/architecture/logic_governed_compositional_verification/vertical_slice_result.json
+!docs/architecture/logic_governed_compositional_verification/paired_benchmark_result.json
+!docs/architecture/logic_governed_compositional_verification/current_tree_capability_gap_matrix.json
+!test/fixtures/agent_supervisor/compositional_verification/config/schema.json
+
+# LGCVF operational state is mutable, machine-local evidence and never source.
+data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
+
+# Proof-Carrying Architecture Refactorer compact control and evidence sources.
+/data/agent_supervisor/proof_carrying_architecture_refactorer/
+!config/agent_supervisor_architecture_refactorer_scheduler.json
+!docs/architecture/architecture_refactorer_inventory/*.json
+!benchmarks/agent_supervisor/architecture_refactorer/*.json
+!benchmarks/agent_supervisor/architecture_refactorer/fixtures/*.json

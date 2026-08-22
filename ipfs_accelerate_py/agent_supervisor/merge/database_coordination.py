@@ -2384,6 +2384,142 @@ class DatabaseCoordinator:
                 self._rollback_if_open(connection)
                 raise
 
+
+    def add_unstarted_task_dependency(
+        self,
+        *,
+        task_cid: str,
+        dependency_task_cid: str,
+        expected_dependency_task_cids: Sequence[str],
+        operation_id: str,
+    ) -> dict[str, Any]:
+        """Add one dependency edge to an exactly matched, unstarted task.
+
+        This is the deliberately narrow coordination counterpart of an
+        ``AMEND_UNSTARTED_TASK`` plan revision.  It never rewrites the task
+        row, task identity, completion evidence, or execution history.  The
+        caller must provide the complete dependency set it observed; a stale
+        set fails closed.  Retrying after response loss is idempotent only
+        when the current set is exactly that expected set plus this one edge.
+
+        A task with any completion, claim, or attempt history is no longer
+        amendable, including when that history has reached a terminal state.
+        This prevents a plan amendment from changing the prerequisites under
+        evidence already produced for the task.
+        """
+
+        cid = _text(task_cid, "task_cid")
+        dependency_cid = _text(dependency_task_cid, "dependency_task_cid")
+        operation = _text(operation_id, "operation_id")
+        if cid == dependency_cid:
+            raise DatabaseCoordinationConflictError(
+                "a task cannot depend on itself"
+            )
+        expected = tuple(
+            sorted(
+                {
+                    _text(item, "expected_dependency_task_cid")
+                    for item in expected_dependency_task_cids
+                }
+            )
+        )
+        if len(expected) != len(expected_dependency_task_cids):
+            raise DatabaseCoordinationConflictError(
+                "expected_dependency_task_cids must be unique"
+            )
+        if dependency_cid in expected:
+            raise DatabaseCoordinationConflictError(
+                "new dependency is already present in the expected set"
+            )
+        after = tuple(sorted((*expected, dependency_cid)))
+
+        with self._lock:
+            connection = self._require()
+            self._begin(connection)
+            try:
+                task = connection.execute(
+                    "SELECT task_cid FROM coordination_tasks WHERE task_cid = ?",
+                    [cid],
+                ).fetchone()
+                if task is None:
+                    raise DatabaseCoordinationConflictError(
+                        f"task is absent from the coordination registry: {cid}"
+                    )
+                dependency_task = connection.execute(
+                    "SELECT task_cid FROM coordination_tasks WHERE task_cid = ?",
+                    [dependency_cid],
+                ).fetchone()
+                if dependency_task is None:
+                    raise DatabaseCoordinationConflictError(
+                        "dependency task is absent from the coordination registry: "
+                        f"{dependency_cid}"
+                    )
+
+                for table in ("task_completions", "task_claims", "task_attempts"):
+                    history = connection.execute(
+                        f"SELECT 1 FROM {table} WHERE task_cid = ? LIMIT 1",
+                        [cid],
+                    ).fetchone()
+                    if history is not None:
+                        raise DatabaseCoordinationConflictError(
+                            "dependency amendment requires an unstarted task; "
+                            f"{table} history exists for {cid}"
+                        )
+
+                rows = connection.execute(
+                    """
+                    SELECT dependency_task_cid FROM task_dependencies
+                    WHERE task_cid = ? ORDER BY dependency_task_cid
+                    """,
+                    [cid],
+                ).fetchall()
+                current = tuple(
+                    str(
+                        _row_get(
+                            _row_mapping(row),
+                            "dependency_task_cid",
+                            "0",
+                        )
+                    )
+                    for row in rows
+                )
+                if current == expected:
+                    connection.execute(
+                        """
+                        INSERT INTO task_dependencies(task_cid, dependency_task_cid)
+                        VALUES (?, ?)
+                        """,
+                        [cid, dependency_cid],
+                    )
+                    changed = True
+                elif current == after:
+                    changed = False
+                else:
+                    raise DatabaseCoordinationConflictError(
+                        "dependency amendment compare-and-swap failed: "
+                        f"expected {list(expected)!r}, observed {list(current)!r}"
+                    )
+
+                body = {
+                    "schema": TASK_DEPENDENCY_AMENDMENT_SCHEMA,
+                    "operation_id": operation,
+                    "task_cid": cid,
+                    "dependency_task_cid": dependency_cid,
+                    "before_dependency_task_cids": list(expected),
+                    "after_dependency_task_cids": list(after),
+                    "changed": changed,
+                    "task_identity_preserved": True,
+                    "execution_history_preserved": True,
+                }
+                body["receipt_cid"] = _sha256_hex(
+                    _canonical_json(body).encode("utf-8")
+                )
+                self._commit_if_idle(connection)
+                return body
+            except Exception:
+                self._rollback_if_open(connection)
+                raise
+
     def mark_task_complete(
         self,
         task_cid: str,

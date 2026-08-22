@@ -166,6 +166,9 @@ from ..merge.merge_conflict_repair import (
     resolve_reconciliation_guardrail_todo_conflicts,
 )
 from ..core.submodule_degradation import DegradationState
+from ..task_sources.database_task_source import (
+    TaskSourceConflictError as DatabaseTaskSourceConflictError,
+)
 from ..task_sources.persistent_task_queue import PersistentTaskQueue
 from ..task_sources.database_task_source import (
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
@@ -219,8 +222,12 @@ from ..task_sources.taskboard_store import (
 )
 from ..validation.project_dependency_preflight import (
     PROJECT_DEPENDENCY_PREFLIGHT_BACKOFF_SECONDS,
+    PROJECT_DEPENDENCY_PREFLIGHT_EVENT_PROJECTION_SCHEMA,
+    PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA,
     SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA,
     compact_project_dependency_preflight_receipt,
+    canonical_project_dependency_preflight_receipt_bytes,
+    project_dependency_preflight_for_event,
     project_dependency_preflight_backoff_seconds,
     project_dependency_preflight_error_receipt,
     preflight_validation_project_dependencies,
@@ -415,6 +422,12 @@ ABANDONED_MERGE_RECONCILE_REASONS = frozenset(
         "main_checkout_dirty_conflict",
         "main_checkout_dirty",
         "dirty_worktree",
+    }
+)
+STALE_QUARANTINED_MERGE_FAILURE_REASONS = frozenset(
+    {
+        "inventory_published_gate_not_satisfied",
+        "merge_branch_candidate_mismatch",
     }
 )
 INVENTORY_TASK_IDS = frozenset({"IPS-001", "IPS-002", "IPS-003"})
@@ -2664,6 +2677,8 @@ def _codex_implementation_command(
     command = [
         codex,
         "exec",
+        "--ignore-user-config",
+        "--ephemeral",
         "--dangerously-bypass-approvals-and-sandbox",
         "-C",
         str(workspace_path),
@@ -4798,6 +4813,7 @@ class PortalImplementationDaemon:
         implementation_provider_max_input_tokens: int | None = None,
         implementation_max_repair_rounds: int = 3,
         implementation_cancelled: Any = None,
+        dependency_preflight_artifact_store_path: Path | None = None,
         decision_runtime: Any = None,
         decision_runtime_config: Mapping[str, Any] | None = None,
     ) -> None:
@@ -4962,6 +4978,14 @@ class PortalImplementationDaemon:
             implementation_max_repair_rounds
         )
         self.implementation_cancelled = implementation_cancelled
+        self._dependency_preflight_artifact_store_path = Path(
+            dependency_preflight_artifact_store_path
+            or self.state_path.parent / "dependency-preflight-artifacts"
+        ).absolute()
+        self._dependency_preflight_artifact_store: Any = None
+        self._dependency_preflight_event_projections: dict[
+            str, dict[str, Any]
+        ] = {}
         if decision_runtime is not None and decision_runtime_config is not None:
             configured = getattr(decision_runtime, "config", None)
             if configured is None:
@@ -14192,11 +14216,17 @@ class PortalImplementationDaemon:
         """Release watcher resources owned by the event-driven runtime."""
 
         coordinator = self._runtime_wake_coordinator
+        artifact_store = self._dependency_preflight_artifact_store
         self._runtime_wake_coordinator = None
+        self._dependency_preflight_artifact_store = None
         self._pending_runtime_wake_events = []
         self._current_runtime_wake_events = []
-        if coordinator is not None:
-            coordinator.close()
+        try:
+            if coordinator is not None:
+                coordinator.close()
+        finally:
+            if artifact_store is not None:
+                artifact_store.close()
 
     def _mark_long_running_phase(self, *, task_id: str, phase: str, detail: str = "") -> None:
         state = PortalTaskState.load(self.state_path)
@@ -17528,6 +17558,11 @@ class PortalImplementationDaemon:
         elif selected is None and any(
             resolved_statuses.get(task.task_id) == "ready"
             and task.task_id in resource_reserved_task_ids
+            and (
+                not self.strict_task_sharding
+                or task.task_id in virgin_transfer_granted_to_lane
+                or self._task_belongs_to_shard(task.task_id)
+            )
             for task in execution_tasks
         ):
             selection_scope["selection_idle_reason"] = (
@@ -29341,6 +29376,108 @@ class PortalImplementationDaemon:
             self._record_event(reconciliation_event_type(), result)
         return result
 
+    def _dependency_preflight_event_projection(
+        self,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Persist a full receipt once and return its bounded event view."""
+
+        canonical = canonical_project_dependency_preflight_receipt_bytes(
+            receipt
+        )
+        receipt_id = str(receipt.get("receipt_id") or "")
+        cached = self._dependency_preflight_event_projections.get(receipt_id)
+        if cached is not None:
+            reference = cached.get("full_receipt_artifact")
+            if reference is not None and (
+                self._dependency_preflight_artifact_store is None
+                or not self._dependency_preflight_artifact_store.verify_blob(
+                    reference
+                )
+            ):
+                raise RuntimeError(
+                    "cached dependency preflight artifact is unavailable"
+                )
+            return dict(cached)
+        if self._dependency_preflight_artifact_store is None:
+            from ..runtime.artifact_store import BoundedArtifactStore
+
+            self._dependency_preflight_artifact_store = BoundedArtifactStore(
+                self._dependency_preflight_artifact_store_path
+            )
+        reference = self._dependency_preflight_artifact_store.put_blob(
+            canonical,
+            kind="validation_project_dependency_preflight_receipt",
+            retention_class="checkpoint",
+            media_type="application/json",
+        )
+        if not self._dependency_preflight_artifact_store.verify_blob(reference):
+            raise RuntimeError(
+                "dependency preflight artifact failed persistence verification"
+            )
+        projection = project_dependency_preflight_for_event(
+            receipt,
+            full_receipt_reference=reference.to_dict(),
+        )
+        # A daemon normally sees one or two receipts per attempt.  Bound the
+        # in-memory accelerator without affecting the immutable artifact.
+        if len(self._dependency_preflight_event_projections) >= 128:
+            self._dependency_preflight_event_projections.pop(
+                next(iter(self._dependency_preflight_event_projections))
+            )
+        self._dependency_preflight_event_projections[receipt_id] = dict(
+            projection
+        )
+        return projection
+
+    def _inline_dependency_preflight_error_projection(
+        self,
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Cache a small fail-closed receipt when its CAS is unavailable."""
+
+        projection = project_dependency_preflight_for_event(
+            receipt,
+            full_receipt_reference=None,
+        )
+        receipt_id = str(receipt.get("receipt_id") or "")
+        self._dependency_preflight_event_projections[receipt_id] = dict(
+            projection
+        )
+        return projection
+
+    def _project_dependency_preflights_for_event(
+        self,
+        value: Any,
+    ) -> Any:
+        """Replace only canonical dependency receipts in an event payload."""
+
+        if isinstance(value, Mapping):
+            schema = value.get("schema")
+            if schema == PROJECT_DEPENDENCY_PREFLIGHT_EVENT_PROJECTION_SCHEMA:
+                # Only this daemon may construct the compact projection after
+                # it has verified and persisted the canonical full receipt.
+                # Accepting a caller-supplied projection would let an
+                # arbitrary nested provider/result payload forge ``passed``
+                # or ``completion_authority`` fields and bypass the artifact
+                # integrity boundary.
+                raise RuntimeError(
+                    "caller-supplied dependency preflight event projection "
+                    "is not authoritative"
+                )
+            if schema == PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA:
+                return self._dependency_preflight_event_projection(value)
+            return {
+                str(key): self._project_dependency_preflights_for_event(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [
+                self._project_dependency_preflights_for_event(item)
+                for item in value
+            ]
+        return value
+
     def _validation_project_dependency_preflight_backoff(
         self,
         *,
@@ -29424,6 +29561,23 @@ class PortalImplementationDaemon:
                 task.validation,
                 exc,
             )
+        try:
+            self._dependency_preflight_event_projection(receipt)
+        except Exception as exc:
+            # Artifact persistence is part of the pre-dispatch evidence
+            # boundary.  If it is unavailable, replace the apparent semantic
+            # result with a small typed infrastructure failure.  The inline
+            # receipt remains independently self-identifying and can never
+            # authorize provider dispatch or completion.
+            receipt = project_dependency_preflight_error_receipt(
+                workspace_path,
+                task.validation,
+                RuntimeError(
+                    "dependency preflight receipt persistence failed: "
+                    f"{type(exc).__name__}"
+                ),
+            )
+            self._inline_dependency_preflight_error_projection(receipt)
         if receipt.get("passed") is True:
             return receipt
         backoff_seconds = (
@@ -33546,6 +33700,178 @@ class PortalImplementationDaemon:
         expected_cid = expected_identity.canonical_task_cid
         expected_key = expected_identity.canonical_task_key
         for event in reversed(self._iter_events()):
+            if (
+                event.get("type")
+                == "database_portal_validation_retry_seeded"
+                and str(event.get("task_id") or "").strip() == task.task_id
+            ):
+                from .database_portal_bridge import (
+                    DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
+                    DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA,
+                )
+
+                retry = event.get("validation_retry_receipt")
+                if not isinstance(retry, Mapping):
+                    return {
+                        "ok": False,
+                        "reason": "database_retry_seed_receipt_missing",
+                        "authorized_paths": [],
+                    }
+                retry_body = dict(retry)
+                retry_receipt_id = retry_body.pop("receipt_id", None)
+                seed_payload = {
+                    key: event.get(key)
+                    for key in (
+                        "schema",
+                        "task_id",
+                        "canonical_task_key",
+                        "canonical_task_cid",
+                        "source_database_attempt_id",
+                        "target_database_attempt_id",
+                        "target_claim_id",
+                        "source_retry_receipt_id",
+                        "implementation_commit",
+                        "rescue_branch",
+                        "changed_paths",
+                        "validation_retry_receipt",
+                        "completion_authoritative",
+                    )
+                }
+                expected_seed_id = (
+                    "sha256:"
+                    + hashlib.sha256(
+                        _database_daemon_json(seed_payload).encode("utf-8")
+                    ).hexdigest()
+                )
+                receipt_paths = retry.get("changed_paths")
+                portal_attempt = retry.get("portal_attempt")
+                commit = str(retry.get("implementation_commit") or "")
+                rescue_branch = str(retry.get("rescue_branch") or "")
+                resolved_rescue = (
+                    self._resolve_git_commit_in_repo(
+                        self.repo_root,
+                        rescue_branch,
+                    )
+                    if rescue_branch and self._git_ref_exists(rescue_branch)
+                    else ""
+                )
+                if (
+                    event.get("schema")
+                    != DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA
+                    or event.get("seed_id") != expected_seed_id
+                    or event.get("canonical_task_cid") != expected_cid
+                    or event.get("canonical_task_key") != expected_key
+                    or retry.get("schema")
+                    != DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA
+                    or retry.get("task_cid") != expected_cid
+                    or retry.get("task_alias") != task.task_id
+                    or retry.get("disposition") != "retry"
+                    or retry.get("attempt_consumed") is not True
+                    or retry.get("provider_dispatched") is not True
+                    or retry.get("proposal_policy_accepted") is not True
+                    or retry.get("output_policy_passed") is not True
+                    or retry.get("denial_findings") != []
+                    or retry.get("max_task_attempts") != self.max_task_attempts
+                    or isinstance(portal_attempt, bool)
+                    or not isinstance(portal_attempt, int)
+                    or portal_attempt < 1
+                    or portal_attempt >= self.max_task_attempts
+                    or retry.get("typed_retry_generation")
+                    != portal_attempt
+                    or retry.get("retry_budget_basis") != "portal_attempt"
+                    or retry.get("legacy_database_attempts_excluded") is not True
+                    or retry.get("remaining_task_attempts")
+                    != self.max_task_attempts - portal_attempt
+                    or not str(retry.get("proposal_id") or "")
+                    or not str(retry.get("proposal_receipt_id") or "")
+                    or not isinstance(receipt_paths, list)
+                    or not receipt_paths
+                    or event.get("changed_paths") != receipt_paths
+                    or event.get("implementation_commit") != commit
+                    or event.get("rescue_branch") != rescue_branch
+                    or event.get("source_retry_receipt_id")
+                    != retry_receipt_id
+                    or retry_receipt_id
+                    != (
+                        "sha256:"
+                        + hashlib.sha256(
+                            _database_daemon_json(retry_body).encode("utf-8")
+                        ).hexdigest()
+                    )
+                    or not re.fullmatch(r"[0-9a-f]{40}", commit)
+                    or not self._git_commit_exists_in_repo(
+                        self.repo_root,
+                        commit,
+                    )
+                    or resolved_rescue != commit
+                ):
+                    return {
+                        "ok": False,
+                        "reason": "database_retry_seed_receipt_invalid",
+                        "authorized_paths": [],
+                    }
+                normalized_paths: list[str] = []
+                for raw_path in receipt_paths:
+                    path = str(raw_path).strip().replace("\\", "/")
+                    while path.startswith("./"):
+                        path = path[2:]
+                    if (
+                        not path
+                        or path.startswith("/")
+                        or "\0" in path
+                        or ".." in PurePosixPath(path).parts
+                        or path in normalized_paths
+                    ):
+                        return {
+                            "ok": False,
+                            "reason": "database_retry_seed_paths_malformed",
+                            "authorized_paths": [],
+                        }
+                    normalized_paths.append(path)
+                declared_authorized_paths = tuple(
+                    path
+                    for path in normalized_paths
+                    if any(
+                        self._path_matches_scope(path, declared)
+                        for declared in declared_scope
+                    )
+                )
+                protected_paths = tuple(
+                    path
+                    for path in declared_authorized_paths
+                    if self._overlaps_implementation_protected_path(path)
+                )
+                authorized_paths = tuple(
+                    path
+                    for path in declared_authorized_paths
+                    if path not in protected_paths
+                )
+                return {
+                    "ok": bool(authorized_paths),
+                    "reason": (
+                        "database_retry_seed_paths_bound"
+                        if authorized_paths
+                        else "database_retry_seed_scope_empty"
+                    ),
+                    "task_id": task.task_id,
+                    "canonical_task_cid": expected_cid,
+                    "canonical_task_key": expected_key,
+                    "proposal_id": str(retry.get("proposal_id") or ""),
+                    "receipt_id": str(
+                        retry.get("proposal_receipt_id") or ""
+                    ),
+                    "event_id": str(event.get("event_id") or ""),
+                    "sequence": event.get("sequence"),
+                    "declared_scope_paths": list(declared_scope),
+                    "receipt_paths": normalized_paths,
+                    "authorized_paths": list(authorized_paths),
+                    "dropped_protected_paths": list(protected_paths),
+                    "dropped_receipt_paths": sorted(
+                        set(normalized_paths) - set(authorized_paths)
+                    ),
+                    "database_validation_retry_seed": True,
+                    "source_retry_receipt_id": str(retry_receipt_id or ""),
+                }
             if (
                 event.get("type") != "implementation_proposal_validated"
                 or str(event.get("task_id") or "").strip() != task.task_id
@@ -55294,19 +55620,21 @@ class PortalImplementationDaemon:
         metadata: dict[str, Any],
     ) -> bool:
         repository_id = str(metadata.get("repository_id") or "")
-        if repository_id:
-            if repository_id != self.merge_target_repository_id:
+        if repository_id and repository_id != self.merge_target_repository_id:
+            return False
+        worktree_root = str(
+            metadata.get("worktree_root") or metadata.get("repo_root") or ""
+        )
+        try:
+            if (
+                worktree_root
+                and Path(worktree_root).resolve() != self.repo_root.resolve()
+            ):
+                # Sibling worktrees share one git-common-dir lock folder; a
+                # live claim in another checkout must not serialize this board.
                 return False
-        else:
-            repo_root = str(metadata.get("repo_root") or "")
-            try:
-                if (
-                    repo_root
-                    and Path(repo_root).resolve() != self.repo_root.resolve()
-                ):
-                    return False
-            except OSError:
-                return False
+        except OSError:
+            return False
         resource_path = str(metadata.get("resource_path") or "")
         if not resource_path:
             return False
@@ -58353,7 +58681,10 @@ class PortalImplementationDaemon:
         has_pending = getattr(self.merge_queue, "has_pending_for_task", None)
         if not callable(has_pending):
             return False
-        if not has_pending(self._canonical_ref(task)):
+        if not (
+            has_pending(self._canonical_ref(task))
+            or has_pending(task.task_id)
+        ):
             return False
         queued_commits = {
             str(item.get("implementation_commit") or "")
@@ -58443,13 +58774,16 @@ class PortalImplementationDaemon:
             # first-parent is usually just the missing daemon status commit.
             # Only abandon merges that cannot land (wrong branch / off-history).
             if not (
-                not_ancestor or failure_reason == "merge_branch_candidate_mismatch"
+                not_ancestor
+                or failure_reason == "merge_branch_candidate_mismatch"
             ):
                 continue
             result = {
                 "task_id": task_id,
                 "attempt": int(event.get("attempt") or 0),
-                "branch": str(event.get("branch") or merge_result.get("branch") or ""),
+                "branch": str(
+                    event.get("branch") or merge_result.get("branch") or ""
+                ),
                 "implementation_commit": implementation_commit,
                 "request_id": request_id,
                 "request_status": request_status,
@@ -58707,6 +59041,41 @@ class PortalImplementationDaemon:
         outputs that no longer bind current operator receipts. Those tasks must
         not be force-recompleted after an operator reopen.
         """
+
+        if not task_ids.intersection(INVENTORY_TASK_IDS):
+            return task_ids
+        kept: set[str] = set()
+        for task_id in task_ids:
+            if task_id not in INVENTORY_TASK_IDS:
+                kept.add(task_id)
+                continue
+            if self._inventory_task_passes_published_gate(task_id):
+                kept.add(task_id)
+        return kept
+
+    def _inventory_task_passes_published_gate(self, task_id: str) -> bool:
+        """True when an inventory task still passes its published artifact gate."""
+
+        if task_id not in INVENTORY_TASK_IDS:
+            return True
+        try:
+            from scripts import validate_incremental_proof_sealer_board as ips_gate
+        except Exception:
+            return False
+        try:
+            result = ips_gate.validate_artifact(
+                task_id,
+                require_published=True,
+            )
+        except Exception:
+            return False
+        return isinstance(result, dict) and result.get("valid") is True
+
+    def _filter_inventory_merges_still_valid(
+        self,
+        task_ids: set[str],
+    ) -> set[str]:
+        """Drop inventory completions that no longer pass the published gate."""
 
         if not task_ids.intersection(INVENTORY_TASK_IDS):
             return task_ids
@@ -65198,14 +65567,79 @@ class PortalImplementationDaemon:
                         raw_preflight
                     )
                 )
+
+        raw_preflight = setup.get(
+            "validation_project_dependency_preflight"
+        )
+        if not isinstance(raw_preflight, Mapping):
+            projected["workspace_setup"] = setup
+            return projected
+        if (
+            raw_preflight.get("schema")
+            == PROJECT_DEPENDENCY_PREFLIGHT_EVENT_PROJECTION_SCHEMA
+        ):
+            projected["workspace_setup"] = setup
+            return projected
+
+        def bounded_count(field: str) -> int:
+            value = raw_preflight.get(field)
+            if isinstance(value, Sequence) and not isinstance(
+                value,
+                (str, bytes, bytearray),
+            ):
+                return len(value)
+            return 0
+
+        def bounded_int(field: str) -> int:
+            try:
+                return max(0, int(raw_preflight.get(field) or 0))
+            except (TypeError, ValueError):
+                return 0
+
+        setup["validation_project_dependency_preflight"] = {
+            "schema": str(raw_preflight.get("schema") or "")[:512],
+            "receipt_id": str(
+                raw_preflight.get("receipt_id") or ""
+            )[:1024],
+            "retry_fingerprint": str(
+                raw_preflight.get("retry_fingerprint") or ""
+            )[:1024],
+            "passed": raw_preflight.get("passed") is True,
+            "applicable": raw_preflight.get("applicable") is True,
+            "reason": str(raw_preflight.get("reason") or "")[:1000],
+            "automatic_install_attempted": (
+                raw_preflight.get("automatic_install_attempted") is True
+            ),
+            "probe_scope": str(
+                raw_preflight.get("probe_scope") or ""
+            )[:512],
+            "validation_command_count": bounded_int(
+                "validation_command_count"
+            ),
+            "project_count": bounded_count("projects"),
+            "project_root_count": bounded_count("project_roots"),
+            "missing_count": bounded_count("missing_requirements"),
+            "incompatible_count": bounded_count(
+                "incompatible_requirements"
+            ),
+            "invalid_requirement_count": bounded_count(
+                "invalid_requirements"
+            ),
+            "invalid_command_count": bounded_count("invalid_commands"),
+            "event_projection_compacted": True,
+            "full_receipt_event": "implementation_started",
+        }
         projected["workspace_setup"] = setup
         return projected
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
+        bounded_payload = self._project_dependency_preflights_for_event(
+            payload
+        )
         enriched = (
-            self._implementation_finished_event_payload(payload)
+            self._implementation_finished_event_payload(bounded_payload)
             if event_type == "implementation_finished"
-            else dict(payload)
+            else dict(bounded_payload)
         )
         task_source_identity = self._task_source_identity_record()
         if task_source_identity is not None:
@@ -67498,11 +67932,13 @@ class PortalImplementationDaemon:
 # Markdown taskboards and JSON queue/status/events/PID projections are optional
 # non-authoritative projections only.
 
-DATABASE_IMPLEMENTATION_DAEMON_INTERFACE = "DatabaseImplementationDaemon@1"
-DATABASE_TASK_ATTEMPT_INTERFACE = "DatabaseTaskAttempt@1"
-DATABASE_IMPLEMENTATION_DAEMON_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/database-implementation-daemon@1"
+from .database_execution_schema import (
+    DAEMON_EXECUTION_SQL as _DAEMON_EXECUTION_SQL,
+    DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
+    DATABASE_IMPLEMENTATION_DAEMON_SCHEMA,
 )
+
+DATABASE_TASK_ATTEMPT_INTERFACE = "DatabaseTaskAttempt@1"
 DATABASE_TASK_ATTEMPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-task-attempt@1"
 )
@@ -67631,6 +68067,18 @@ CREATE TABLE IF NOT EXISTS daemon_execution_events (
 );
 """
 
+
+_DATABASE_PORTAL_LEGACY_RETRY_BACKOFF_SECONDS = 300
+_MAX_DATABASE_PORTAL_RETRY_BACKOFF_SECONDS = 86_400
+_DATABASE_PORTAL_TYPED_DEFERRAL_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-portal-typed-deferral@1"
+)
+_DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-typed-deferral-budget@1"
+)
+_MAX_DATABASE_TASK_ATTEMPTS = 10_000
+_MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW = 16
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""
@@ -67936,6 +68384,7 @@ class DatabaseImplementationDaemon:
         pid_path: Path | str | None = None,
         queue_path: Path | str | None = None,
         lease_ms: int = 60_000,
+        max_task_attempts: int = 0,
         task_shard_count: int = 1,
         task_shard_index: int = 0,
         strict_task_sharding: bool = False,
@@ -68037,6 +68486,22 @@ class DatabaseImplementationDaemon:
         self.pid_path = Path(pid_path).absolute() if pid_path else None
         self.queue_path = Path(queue_path).absolute() if queue_path else None
         self.lease_ms = int(lease_ms)
+        if (
+            isinstance(max_task_attempts, bool)
+            or not isinstance(max_task_attempts, int)
+            or max_task_attempts < 0
+            or max_task_attempts > _MAX_DATABASE_TASK_ATTEMPTS
+        ):
+            raise ValueError(
+                "max_task_attempts must be an integer in "
+                f"[0, {_MAX_DATABASE_TASK_ATTEMPTS}]"
+            )
+        # This remains the ordinary implementation-attempt limit for the
+        # private Portal daemon.  Database authority additionally uses the
+        # same configured bound as a *separate* typed pre-dispatch deferral
+        # budget.  Those deferrals do not consume a provider/model attempt,
+        # but an exact task generation may not reconstruct them forever.
+        self.max_task_attempts = int(max_task_attempts)
         if (
             isinstance(task_shard_count, bool)
             or not isinstance(task_shard_count, int)
@@ -68227,6 +68692,7 @@ class DatabaseImplementationDaemon:
                             and self.state_schema_revision
                             != DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION
                         ),
+                        clock_ms=self._clock_ms,
                     )
                 if self._coordinator is None:
                     if self.authority_mode == "quack":
@@ -68338,6 +68804,7 @@ class DatabaseImplementationDaemon:
     ) -> None:
         """Bind one real executor before a production attempt is dispatched."""
 
+        self._require_execution_authority("bind execution callbacks")
         callbacks = (provider_fn, effect_fn, validation_fn)
         if not all(callable(callback) for callback in callbacks):
             raise TypeError("database execution callbacks must all be callable")
@@ -68359,6 +68826,50 @@ class DatabaseImplementationDaemon:
             self._provider_fn = provider_fn
             self._effect_fn = effect_fn
             self._validation_fn = validation_fn
+
+    def _require_execution_authority(self, operation: str) -> None:
+        """Require the explicit real-execution permit for a mutating phase.
+
+        DatabaseProgramConfig may arrive through the inherited environment so
+        store identity alone cannot authorize execution.  In particular, a
+        supervisor image replacement which loses ``--implement`` must not
+        resume an in-flight attempt or turn the testing no-op callbacks into
+        authoritative task completion evidence.
+        """
+
+        if not self.require_real_execution:
+            raise DatabaseImplementationAuthorityError(
+                f"database {operation} requires explicit real-execution "
+                "authority (--implement / require_real_execution=True)"
+            )
+
+    def _execution_disabled_observation(self) -> dict[str, Any]:
+        """Return one read-only pass result without reconciling or claiming.
+
+        Reconciliation methods can update task, claim, and attempt records.
+        They therefore cannot run merely because an inherited environment
+        identifies a database store.  An observer without the explicit
+        execution permit reports a stable idle result and leaves all task and
+        attempt revisions untouched.
+        """
+
+        return {
+            "unchanged": True,
+            "write_count": 0,
+            "active_task_id": "",
+            "selection_idle_reason": "database_execution_not_authorized",
+            "implementation_result": None,
+            "execution_authorized": False,
+            "authority_mode": self.authority_mode,
+            "task_source_kind": self.task_source_kind,
+            "markdown_status_writes": self._markdown_status_writes,
+            "projections_required": False,
+            "control_schema_evidence": dict(self.control_schema_evidence),
+            "completion_reconciliations": [],
+            "expired_attempt_reconciliations": [],
+            "terminal_retry_reconciliations": [],
+            "terminal_portal_reconciliations": [],
+        }
 
     def projections_required(self) -> bool:
         """JSON queue/status/events/PID projections are never required."""
@@ -68635,8 +69146,11 @@ class DatabaseImplementationDaemon:
         # Filter out tasks in cooldown from persistent queue
         cooled_ready = [t for t in ready if not self.task_queue.is_cooled_down(self._canonical_ref(t))]
         if not cooled_ready:
-            # All ready tasks are in cooldown - use the one with shortest remaining cooldown
-            cooled_ready = ready
+            # Cooldown is an admission boundary, not a ranking hint.  The
+            # caller may wake when the durable deadline expires, but it must
+            # never reconstruct an attempt early merely because every
+            # otherwise-ready task is cooling down.
+            return None
         ready = cooled_ready
         ready_task_ids = {task.task_id for task in ready}
         vector_context = self._todo_vector_selection_context(tasks, ready_task_ids)
@@ -68951,6 +69465,7 @@ class DatabaseImplementationDaemon:
             plan_root_cid=plan_root_cid,
         )
         registered: list[str] = []
+        bootstrap_completed: list[str] = []
         for task in self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT).tasks:
             deps = tuple(str(dep) for dep in task.dependencies)
             self.coordinator.register_task(
@@ -68964,10 +69479,24 @@ class DatabaseImplementationDaemon:
                 },
             )
             registered.append(task.task_cid)
+            status = str(task.status or "").strip().lower()
+            if status in {"completed", "complete", "done"}:
+                self.coordinator.mark_task_complete(
+                    task.task_cid,
+                    status="succeeded",
+                    body={
+                        "authority": "database_population",
+                        "source_status": status,
+                        "task_alias": task.task_alias,
+                        "task_revision": int(task.revision),
+                    },
+                )
+                bootstrap_completed.append(task.task_cid)
         return MappingProxyType(
             {
                 "task_source": dict(receipt) if isinstance(receipt, Mapping) else {},
                 "registered_task_cids": list(registered),
+                "bootstrap_completed_task_cids": list(bootstrap_completed),
             }
         )
 
@@ -69132,6 +69661,25 @@ class DatabaseImplementationDaemon:
             if self._automatic_claim_forbidden(task)
             or not self._task_belongs_to_strict_shard(task)
         }
+
+    def _task_home_shard_index(self, task_alias: str) -> int:
+        """Return the deterministic alias-hash home for a canonical task."""
+
+        return _task_alias_home_shard_index(task_alias, self.task_shard_count)
+
+    def _task_belongs_to_strict_shard(self, task: Any) -> bool:
+        """Return whether ``task`` is admitted to this strict database lane.
+
+        Routing uses the authoritative display alias.  A missing alias fails
+        closed instead of treating content identity as scheduling authority.
+        """
+
+        if not self.strict_task_sharding:
+            return True
+        task_alias = str(getattr(task, "task_alias", "") or "").strip()
+        if not task_alias:
+            return False
+        return self._task_home_shard_index(task_alias) == self.task_shard_index
 
     # -- claim / attempt ----------------------------------------------------
 
@@ -69514,9 +70062,14 @@ class DatabaseImplementationDaemon:
     ) -> DatabaseTaskAttempt | None:
         """Claim one task, resolving lane-local races through shared-board CAS."""
 
+        self._require_execution_authority("task claim")
         _ready_task_cids, authoritative_task_cids = (
             self._synchronize_authoritative_task_projection()
         )
+        canonical_ready_task_cids = tuple(
+            self.sync_ready_tasks_into_coordination()
+        )
+        canonical_ready_task_cid_set = set(canonical_ready_task_cids)
         excluded = {
             str(task_cid)
             for task_cid in exclude_task_cids
@@ -69534,6 +70087,7 @@ class DatabaseImplementationDaemon:
                 owner_session_id=self.owner_session_id,
                 lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
                 exclude_task_cids=excluded,
+                eligible_task_cids=canonical_ready_task_cids,
                 now_ms=self._now_ms(),
             )
             if claim is None:
@@ -69827,6 +70381,7 @@ class DatabaseImplementationDaemon:
     ) -> DatabaseTaskAttempt:
         """Commit an attempt phase durably (crash boundary)."""
 
+        self._require_execution_authority("attempt phase commit")
         phase_text = str(phase or "").strip().lower()
         if phase_text not in {
             *_ATTEMPT_PHASE_ORDER,
@@ -70268,6 +70823,7 @@ class DatabaseImplementationDaemon:
         when a prior committed provider invocation was replayed.
         """
 
+        self._require_execution_authority("provider phase")
         self._protect_attempt_write(attempt)
         key = str(idempotency_key or f"provider:{attempt.attempt_id}").strip()
         prior = self.provider_invocation_recorded(
@@ -70463,6 +71019,7 @@ class DatabaseImplementationDaemon:
     ) -> tuple[DatabaseTaskAttempt, Mapping[str, Any], bool]:
         """Apply effect work once per attempt idempotency key."""
 
+        self._require_execution_authority("effect phase")
         self._protect_attempt_write(attempt)
         key = str(idempotency_key or f"effect:{attempt.attempt_id}").strip()
         prior = self.effect_claim_recorded(attempt.attempt_id, idempotency_key=key)
@@ -70581,13 +71138,1326 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationDaemonError(
                 "task source does not support compare_and_set_status"
             )
+        receipt_payload = dict(receipt or {})
+        if (
+            new_status == "in_progress"
+            and receipt_payload.get("operation") == "database_claim"
+        ):
+            task = self.task_source.get(task_cid)
+            task_body = (
+                dict(getattr(task, "body", {}) or {})
+                if task is not None
+                else {}
+            )
+            prior_status_receipt = task_body.get("completion_receipt")
+            prior_status_receipt = (
+                prior_status_receipt
+                if isinstance(prior_status_receipt, Mapping)
+                else {}
+            )
+            seed = prior_status_receipt.get("validation_retry_seed")
+            if seed is not None:
+                if (
+                    str(getattr(task, "status", "") or "").lower()
+                    != "retrying"
+                    or prior_status_receipt.get("operation")
+                    not in {
+                        "database_portal_validation_retry",
+                        "database_portal_validation_retry_recovery",
+                    }
+                    or not isinstance(seed, Mapping)
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim found malformed validation retry seed"
+                    )
+                source_attempt_id = str(seed.get("attempt_id") or "")
+                source_attempt = self.get_attempt(source_attempt_id)
+                if source_attempt is None or source_attempt.status != "failed":
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim validation retry source attempt is unavailable"
+                    )
+                verified_seed = self._verified_validation_retry_receipt(
+                    source_attempt,
+                    seed,
+                )
+                coordination_attempt = self.coordinator.get_task_attempt(
+                    str(receipt_payload.get("attempt_id") or "")
+                )
+                if coordination_attempt is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim validation retry target attempt is unavailable"
+                    )
+                target_identity = coordination_attempt.to_dict()
+                coordination_claim = self.coordinator.get_task_claim(
+                    str(receipt_payload.get("claim_id") or "")
+                )
+                if coordination_claim is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim validation retry target claim is unavailable"
+                    )
+                target_claim_identity = coordination_claim.to_dict()
+                if (
+                    target_identity.get("task_cid") != task_cid
+                    or target_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("task_cid") != task_cid
+                    or target_claim_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("claim_id")
+                    != receipt_payload.get("claim_id")
+                    or target_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or target_claim_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or not isinstance(
+                        target_identity.get("attempt_number"), int
+                    )
+                    or isinstance(
+                        target_identity.get("attempt_number"), bool
+                    )
+                    or int(target_identity["attempt_number"])
+                    <= int(source_attempt.attempt_number)
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "database claim validation retry target is not an exact "
+                        "newer attempt"
+                    )
+                # Carry the exact target claim/fence identity alongside the
+                # source receipt.  The outer attempt number remains a monotone
+                # coordination identity only; Portal's typed retry generation
+                # is the bounded retry authority.
+                receipt_payload.update(
+                    {
+                        "attempt_number": int(
+                            target_identity["attempt_number"]
+                        ),
+                        "fencing_token": int(
+                            target_claim_identity.get("fencing_token") or 0
+                        ),
+                        "fence_epoch": int(
+                            target_claim_identity.get("fence_epoch") or 0
+                        ),
+                        "lease_id": str(
+                            target_claim_identity.get("lease_id") or ""
+                        ),
+                        "validation_retry_source_attempt_id": (
+                            source_attempt.attempt_id
+                        ),
+                    }
+                )
+                receipt_payload["validation_retry_seed"] = verified_seed
         return cas(
             task_cid,
             expected_revision=int(expected_revision),
             status=new_status,
-            receipt=receipt,
+            receipt=receipt_payload,
             evidence_digests=evidence_digests,
         )
+
+    @staticmethod
+    def _database_portal_backoff_seconds(value: Any) -> int:
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+            or value > _MAX_DATABASE_PORTAL_RETRY_BACKOFF_SECONDS
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "database Portal retry has an invalid backoff_seconds value"
+            )
+        return int(value)
+
+    @staticmethod
+    def _database_portal_backoff_ms(value: Any) -> int:
+        maximum = _MAX_DATABASE_PORTAL_RETRY_BACKOFF_SECONDS * 1000
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+            or value > maximum
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "database Portal retry has an invalid backoff_ms value"
+            )
+        return int(value)
+
+    @staticmethod
+    def _database_portal_reason(value: Any) -> str:
+        reason = str(value or "portal_execution_deferred").strip()
+        return (reason or "portal_execution_deferred")[:1024]
+
+    @staticmethod
+    def _database_portal_evidence_digest(value: Mapping[str, Any]) -> str:
+        encoded = _database_daemon_json(dict(value)).encode("utf-8")
+        return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+    def _typed_deferral_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Create identity evidence for one closed pre-dispatch deferral.
+
+        ``attempt_consumed`` remains false because no provider/model attempt
+        was admitted.  ``typed_deferral_slot_consumed`` is a separate
+        database-authoritative anti-spin budget and must not be interpreted as
+        model usage.
+        """
+
+        reason_text = self._database_portal_reason(reason)
+        generation = {
+            "schema": _DATABASE_PORTAL_TYPED_DEFERRAL_SCHEMA,
+            "task_cid": attempt.task_cid,
+            # This is a task-definition generation, not a repository-tree
+            # generation.  Mutable status revisions do not reset it.  A
+            # same-CID repository repair after exhaustion therefore requires
+            # a trusted replan/operator rearm; it must not silently revive a
+            # blocked task.
+            "task_generation": attempt.task_cid,
+            "state_schema_revision": self.state_schema_revision,
+        }
+        generation_fingerprint = self._database_portal_evidence_digest(
+            generation
+        )
+        disposition = {
+            **generation,
+            "reason": reason_text,
+            "attempt_consumed": False,
+            "provider_dispatched": False,
+            "typed_deferral_slot_consumed": True,
+            "generation_fingerprint": generation_fingerprint,
+        }
+        return {
+            **disposition,
+            "attempt_id": attempt.attempt_id,
+            "deferral_fingerprint": self._database_portal_evidence_digest(
+                disposition
+            ),
+        }
+
+    def _verified_typed_deferral_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        body: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Independently verify a patch-era typed deferral phase receipt."""
+
+        raw = body.get("typed_deferral")
+        explicitly_typed = body.get("deferred") is True
+        if raw is None:
+            if explicitly_typed:
+                raise DatabaseImplementationAuthorityError(
+                    "typed Portal deferral has no identity-bound evidence"
+                )
+            # Pre-fix receipts did not contain ``deferred=true`` or a closed
+            # fingerprint.  They retain cooldown recovery but intentionally
+            # do not consume the new anti-spin budget.
+            return None
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed Portal deferral evidence is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "task_cid",
+            "task_generation",
+            "state_schema_revision",
+            "reason",
+            "attempt_consumed",
+            "provider_dispatched",
+            "typed_deferral_slot_consumed",
+            "generation_fingerprint",
+            "attempt_id",
+            "deferral_fingerprint",
+        }
+        if set(raw) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "typed Portal deferral evidence has unknown or missing fields"
+            )
+        reason = self._database_portal_reason(raw.get("reason"))
+        if (
+            raw.get("schema") != _DATABASE_PORTAL_TYPED_DEFERRAL_SCHEMA
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_generation") != attempt.task_cid
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("reason") != reason
+            or raw.get("attempt_consumed") is not False
+            or raw.get("provider_dispatched") is not False
+            or raw.get("typed_deferral_slot_consumed") is not True
+            or body.get("portal_retryable_failure") is not True
+            or body.get("deferred") is not True
+            or body.get("attempt_consumed") is not False
+            or body.get("provider_dispatched") is not False
+            or body.get("typed_deferral_slot_consumed") is not True
+            or self._database_portal_reason(body.get("reason")) != reason
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Portal deferral evidence conflicts with its failed phase"
+            )
+        state_schema_revision = raw.get("state_schema_revision")
+        if type(state_schema_revision) is not str:
+            raise DatabaseImplementationAuthorityError(
+                "typed Portal deferral has no exact state-schema binding"
+            )
+        generation = {
+            "schema": _DATABASE_PORTAL_TYPED_DEFERRAL_SCHEMA,
+            "task_cid": attempt.task_cid,
+            "task_generation": attempt.task_cid,
+            "state_schema_revision": state_schema_revision,
+        }
+        generation_fingerprint = self._database_portal_evidence_digest(
+            generation
+        )
+        disposition = {
+            **generation,
+            "reason": reason,
+            "attempt_consumed": False,
+            "provider_dispatched": False,
+            "typed_deferral_slot_consumed": True,
+            "generation_fingerprint": generation_fingerprint,
+        }
+        if (
+            raw.get("generation_fingerprint") != generation_fingerprint
+            or raw.get("deferral_fingerprint")
+            != self._database_portal_evidence_digest(disposition)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Portal deferral evidence fingerprint is invalid"
+            )
+        return dict(raw)
+
+    def _verified_validation_retry_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Verify one bridge-produced, post-dispatch validation retry."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed validation retry evidence is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "portal_attempt",
+            "typed_retry_generation",
+            "retry_budget_basis",
+            "legacy_database_attempts_excluded",
+            "max_task_attempts",
+            "remaining_task_attempts",
+            "attempt_consumed",
+            "provider_dispatched",
+            "backoff_seconds",
+            "implementation_commit",
+            "rescue_branch",
+            "binding_id",
+            "events_digest",
+            "event_stream_id",
+            "expected_output_event_id",
+            "proposal_event_id",
+            "preservation_event_id",
+            "implementation_event_id",
+            "proposal_id",
+            "proposal_receipt_id",
+            "proposal_policy_id",
+            "validation_receipt_id",
+            "failure_review_receipt_id",
+            "changed_paths",
+            "authoritative_validation_executed",
+            "proposal_policy_accepted",
+            "output_policy_passed",
+            "denial_findings",
+            "receipt_id",
+        }
+        if set(raw) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "typed validation retry evidence has unknown or missing fields"
+            )
+        body = dict(raw)
+        receipt_id = body.pop("receipt_id", None)
+        changed_paths = raw.get("changed_paths")
+        portal_attempt = raw.get("portal_attempt")
+        typed_retry_generation = raw.get("typed_retry_generation")
+        event_ids = (
+            raw.get("expected_output_event_id"),
+            raw.get("proposal_event_id"),
+            raw.get("preservation_event_id"),
+            raw.get("implementation_event_id"),
+        )
+        if (
+            raw.get("schema") != DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA
+            or raw.get("disposition") != "retry"
+            or raw.get("reason") != "declared_validation_failed"
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_alias") != attempt.task_alias
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("lease_id") != attempt.lease_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("fencing_token") != int(attempt.fencing_token)
+            or raw.get("fence_epoch") != int(attempt.fence_epoch)
+            or isinstance(portal_attempt, bool)
+            or not isinstance(portal_attempt, int)
+            or portal_attempt < 1
+            or isinstance(typed_retry_generation, bool)
+            or not isinstance(typed_retry_generation, int)
+            or typed_retry_generation != portal_attempt
+            or self.max_task_attempts <= 0
+            or raw.get("max_task_attempts") != self.max_task_attempts
+            or portal_attempt >= self.max_task_attempts
+            or raw.get("retry_budget_basis") != "portal_attempt"
+            or raw.get("legacy_database_attempts_excluded") is not True
+            or raw.get("remaining_task_attempts")
+            != self.max_task_attempts - portal_attempt
+            or raw.get("attempt_consumed") is not True
+            or raw.get("provider_dispatched") is not True
+            or raw.get("backoff_seconds") != 0
+            or raw.get("authoritative_validation_executed") is not True
+            or raw.get("proposal_policy_accepted") is not True
+            or raw.get("output_policy_passed") is not True
+            or raw.get("denial_findings") != []
+            or not re.fullmatch(
+                r"[0-9a-f]{40}",
+                str(raw.get("implementation_commit") or ""),
+            )
+            or not str(raw.get("rescue_branch") or "").startswith("rescue/")
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(raw.get("binding_id") or ""),
+            )
+            or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(raw.get("events_digest") or ""),
+            )
+            or not all(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(value or ""))
+                for value in event_ids
+            )
+            or not isinstance(changed_paths, list)
+            or not changed_paths
+            or len(set(changed_paths)) != len(changed_paths)
+            or not all(
+                isinstance(path, str)
+                and bool(path)
+                and not PurePosixPath(path).is_absolute()
+                and ".." not in PurePosixPath(path).parts
+                for path in changed_paths
+            )
+            or not all(
+                bool(str(raw.get(field) or ""))
+                for field in (
+                    "event_stream_id",
+                    "proposal_id",
+                    "proposal_receipt_id",
+                    "proposal_policy_id",
+                    "validation_receipt_id",
+                    "failure_review_receipt_id",
+                )
+            )
+            or receipt_id != self._database_portal_evidence_digest(body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed validation retry evidence failed independent verification"
+            )
+        return dict(raw)
+
+    def _typed_deferral_budget_observation(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any] | None:
+        """Count only verified typed deferrals for this exact task generation."""
+
+        failed_phases = [
+            phase
+            for phase in self.phase_history(attempt.attempt_id)
+            if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        if not failed_phases:
+            raise DatabaseImplementationAuthorityError(
+                f"failed attempt {attempt.attempt_id} has no failed-phase receipt"
+            )
+        current_body = failed_phases[-1].get("body")
+        if not isinstance(current_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed deferral budget encountered malformed current evidence"
+            )
+        current = self._verified_typed_deferral_receipt(
+            attempt,
+            current_body,
+        )
+        if current is None:
+            return None
+        if current["state_schema_revision"] != self.state_schema_revision:
+            # A receipt emitted under an older daemon/schema remains eligible
+            # for its exact cooldown, but it cannot consume or establish the
+            # current schema generation's anti-spin budget.  The next new
+            # deferral will carry the current binding.
+            return None
+        if self.max_task_attempts <= 0:
+            return None
+
+        connection = self._require_connection()
+        generation_fingerprint = str(current["generation_fingerprint"])
+        fingerprint_marker = (
+            '%"generation_fingerprint":"'
+            + generation_fingerprint
+            + '"%'
+        )
+        count_row = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM database_task_attempts AS candidate
+            JOIN attempt_phases AS phase
+              ON phase.attempt_id = candidate.attempt_id
+             AND phase.phase = ?
+            WHERE candidate.task_cid = ?
+              AND candidate.status = 'failed'
+              AND phase.body_json LIKE ?
+            """,
+            [
+                ATTEMPT_PHASE_FAILED,
+                attempt.task_cid,
+                fingerprint_marker,
+            ],
+        ).fetchone()
+        candidate_count = int(count_row[0] if count_row is not None else 0)
+        cursor = connection.execute(
+            """
+            SELECT candidate.attempt_id, candidate.claim_id,
+                   candidate.task_cid, candidate.task_alias,
+                   candidate.attempt_number, candidate.owner_session_id,
+                   candidate.fencing_token, candidate.fence_epoch,
+                   candidate.lease_id, candidate.committed_phase,
+                   candidate.status, candidate.started_at_ms,
+                   candidate.finished_at_ms, candidate.revision,
+                   candidate.body_json, phase.body_json
+            FROM database_task_attempts AS candidate
+            JOIN attempt_phases AS phase
+              ON phase.attempt_id = candidate.attempt_id
+             AND phase.phase = ?
+            WHERE candidate.task_cid = ?
+              AND candidate.status = 'failed'
+              AND phase.body_json LIKE ?
+            ORDER BY candidate.attempt_number DESC,
+                     candidate.started_at_ms DESC, candidate.attempt_id DESC
+            LIMIT ?
+            """,
+            [
+                ATTEMPT_PHASE_FAILED,
+                attempt.task_cid,
+                fingerprint_marker,
+                self.max_task_attempts,
+            ],
+        )
+        matching: list[dict[str, Any]] = []
+        verified_count = 0
+        observed_current = False
+        matching_digest = hashlib.sha256()
+        # The query is scoped and limited before the DuckDB adapter
+        # materializes it.  Unlimited pre-patch history can therefore never
+        # be copied into an event/control receipt when a finite budget is
+        # enabled later.
+        for row in cursor.fetchall():
+            candidate = self._attempt_from_row(row)
+            phase_body = _database_daemon_load_json(row[15])
+            receipt = self._verified_typed_deferral_receipt(
+                candidate,
+                phase_body,
+            )
+            if receipt is None:
+                continue
+            if (
+                receipt["generation_fingerprint"]
+                != current["generation_fingerprint"]
+            ):
+                continue
+            observed_current = observed_current or (
+                candidate.attempt_id == attempt.attempt_id
+            )
+            verified_count += 1
+            identity = {
+                "attempt_id": candidate.attempt_id,
+                "attempt_number": int(candidate.attempt_number),
+                "reason": str(receipt["reason"]),
+                "deferral_fingerprint": str(
+                    receipt["deferral_fingerprint"]
+                ),
+            }
+            encoded_identity = _database_daemon_json(identity).encode("utf-8")
+            matching_digest.update(len(encoded_identity).to_bytes(8, "big"))
+            matching_digest.update(encoded_identity)
+            if len(matching) < _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW:
+                matching.append(identity)
+        if not observed_current:
+            raise DatabaseImplementationAuthorityError(
+                "current typed deferral is absent from durable attempt history"
+            )
+        if verified_count != min(candidate_count, self.max_task_attempts):
+            raise DatabaseImplementationAuthorityError(
+                "typed deferral candidate count did not reproduce"
+            )
+        observation = {
+            "schema": _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA,
+            "task_cid": attempt.task_cid,
+            "task_generation": str(current["task_generation"]),
+            "generation_fingerprint": generation_fingerprint,
+            "current_deferral_fingerprint": str(
+                current["deferral_fingerprint"]
+            ),
+            # The SQL marker count bounds the omitted population but grants
+            # no authority.  Only replayed receipts below contribute to the
+            # verified count used by the exhaustion decision.
+            "typed_deferral_candidate_count": candidate_count,
+            "typed_deferral_count": verified_count,
+            "typed_deferral_count_is_lower_bound": (
+                candidate_count > self.max_task_attempts
+            ),
+            "verified_typed_deferral_count": verified_count,
+            "verified_count_complete": (
+                candidate_count <= self.max_task_attempts
+            ),
+            "max_task_attempts": int(self.max_task_attempts),
+            "exhausted": verified_count >= self.max_task_attempts,
+            "attempt_consumed": False,
+            "typed_deferral_slot_consumed": True,
+            "matching_attempts": matching,
+            "matching_attempts_digest": (
+                "sha256:" + matching_digest.hexdigest()
+            ),
+            "matching_attempts_truncated": (
+                candidate_count > len(matching)
+            ),
+            "omitted_matching_attempt_count": max(
+                0,
+                candidate_count - len(matching),
+            ),
+        }
+        observation["observation_id"] = self._database_portal_evidence_digest(
+            observation
+        )
+        return observation
+
+    def _protect_retry_transition_authority(
+        self,
+        attempt: DatabaseTaskAttempt,
+        coordination_evidence: Mapping[str, Any] | None,
+    ) -> None:
+        """Recheck the exact live fence or exact latest expired fence."""
+
+        evidence = dict(coordination_evidence or {})
+        if evidence.get("claim_state") == "expired":
+            if (
+                str(evidence.get("claim_id") or "") != attempt.claim_id
+                or str(evidence.get("attempt_id") or "") != attempt.attempt_id
+                or int(evidence.get("attempt_number") or 0)
+                != int(attempt.attempt_number)
+            ):
+                raise DatabaseImplementationConflictError(
+                    "expired retry authority does not match the execution attempt"
+                )
+            claim = self.coordinator.get_task_claim(attempt.claim_id)
+            expire_claim = getattr(self.coordinator, "expire_task_claim", None)
+            if claim is None or not callable(expire_claim):
+                raise DatabaseImplementationAuthorityError(
+                    "expired retry authority cannot be revalidated"
+                )
+            # Idempotent only while this remains the task's latest fence.  A
+            # newer claim between queue and CAS therefore fails this check.
+            expire_claim(claim, now_ms=self._now_ms())
+            return
+        claim = self.coordinator.get_task_claim(attempt.claim_id)
+        if claim is None:
+            raise DatabaseImplementationAuthorityError(
+                f"retryable attempt {attempt.attempt_id} has no live claim"
+            )
+        self._protect_attempt_claim(attempt, claim)
+
+    def _verified_validation_retry_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_retry_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify the exact control projection that supersedes a legacy failure.
+
+        The failed execution attempt remains immutable and therefore still
+        carries ``portal_terminal_failure=true``.  Only the checked
+        blocked-to-retrying recovery receipt produced by
+        :meth:`recover_blocked_portal_validation_retry` may supersede that
+        projection.  A bare ``retrying`` status is deliberately insufficient.
+        """
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "validation retry recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        if not isinstance(task_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery task has no typed body"
+            )
+        receipt = task_body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery task has no control receipt"
+            )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "validation_retry_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery control receipt has unknown or "
+                "missing fields"
+            )
+        retry_seed = self._verified_validation_retry_receipt(
+            attempt,
+            receipt.get("validation_retry_seed"),
+        )
+        if (
+            expected_retry_evidence is not None
+            and dict(expected_retry_evidence) != retry_seed
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry recovery control receipt has a foreign seed"
+            )
+        task_revision = getattr(task, "revision", None)
+        if isinstance(task_revision, bool) or not isinstance(task_revision, int):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery task has no exact revision"
+            )
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:"
+            "declared_validation_failed"
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        identity_mismatch = (
+            receipt.get("operation")
+            != "database_portal_validation_retry_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("reason") != "declared_validation_failed"
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_validation_retry_recovery:"
+                + str(retry_seed["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != task_revision - 1
+        )
+        if identity_mismatch:
+            raise DatabaseImplementationConflictError(
+                "validation retry recovery control receipt does not match its "
+                "source attempt"
+            )
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery has an invalid queue deadline"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify validation retry recovery queue state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry recovery queue state does not match its receipt"
+            )
+        if self._terminal_portal_failure_reason(attempt) != "portal_provider_failed":
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery does not supersede this terminal failure"
+            )
+        return {
+            "receipt": dict(receipt),
+            "validation_retry_evidence": retry_seed,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
+    def _persist_task_retry_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        reason: str,
+        backoff_ms: int,
+        evidence_source: str,
+        coordination_evidence: Mapping[str, Any] | None = None,
+        validation_retry_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Project one exact failed attempt into canonical retry authority."""
+
+        delay_ms = self._database_portal_backoff_ms(backoff_ms)
+        delay_seconds = (delay_ms + 999) // 1000
+        reason_text = str(reason or "portal_retryable_failure").strip()
+        reason_text = (reason_text or "portal_retryable_failure")[:1024]
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:{reason_text}"
+        )[:2048]
+        task = self.task_source.get(attempt.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                f"retryable attempt {attempt.attempt_id} has no control task"
+            )
+        task_status = str(task.status or "").strip().lower()
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        record_queue_backoff = getattr(
+            self.task_source,
+            "record_queue_backoff",
+            None,
+        )
+        if not callable(get_queue_entry) or not callable(record_queue_backoff):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot persist typed retry cooldown state"
+            )
+
+        if task_status == "retrying":
+            if validation_retry_evidence is not None:
+                self._verified_validation_retry_recovery_state(
+                    attempt,
+                    task,
+                    expected_retry_evidence=validation_retry_evidence,
+                )
+            existing_entry = get_queue_entry(attempt.task_cid)
+            if (
+                validation_retry_evidence is not None
+                and existing_entry is not None
+                and str(getattr(existing_entry, "reason", "") or "")
+                != queue_reason
+            ):
+                raise DatabaseImplementationConflictError(
+                    "validation retry recovery found a foreign queue entry"
+                )
+            if existing_entry is None:
+                self._protect_retry_transition_authority(
+                    attempt,
+                    coordination_evidence,
+                )
+                queue_receipt = record_queue_backoff(
+                    task_cid=attempt.task_cid,
+                    delay_ms=delay_ms,
+                    reason=queue_reason,
+                )
+                existing_entry = get_queue_entry(attempt.task_cid)
+                if existing_entry is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "retry queue repair produced no canonical entry"
+                    )
+                queue_receipt_dict = queue_receipt.to_dict()
+            else:
+                queue_receipt_dict = {}
+            return {
+                "task_cid": attempt.task_cid,
+                "attempt_id": attempt.attempt_id,
+                "status": "retrying",
+                "changed": False,
+                "backoff_seconds": delay_seconds,
+                "backoff_ms": delay_ms,
+                "retry_not_before_ms": int(
+                    getattr(existing_entry, "retry_not_before_ms", 0) or 0
+                ),
+                "evidence_source": evidence_source,
+                "queue_receipt": queue_receipt_dict,
+            }
+        blocked_recovery = (
+            task_status == "blocked"
+            and validation_retry_evidence is not None
+        )
+        if task_status != "in_progress" and not blocked_recovery:
+            raise DatabaseImplementationConflictError(
+                f"retryable attempt {attempt.attempt_id} cannot move control "
+                f"task from {task_status!r} to 'retrying'"
+            )
+
+        # Persist the cooldown before exposing retrying as ready.  A crash
+        # between the two stores therefore fails closed as an in-progress but
+        # cooled task; restart reconciliation will finish the exact CAS.
+        queue_entry = get_queue_entry(attempt.task_cid)
+        queue_reused = (
+            queue_entry is not None
+            and str(getattr(queue_entry, "reason", "") or "") == queue_reason
+        )
+        if queue_reused:
+            queue_receipt_dict: dict[str, Any] = {}
+        else:
+            self._protect_retry_transition_authority(
+                attempt,
+                coordination_evidence,
+            )
+            queue_receipt = record_queue_backoff(
+                task_cid=attempt.task_cid,
+                delay_ms=delay_ms,
+                reason=queue_reason,
+            )
+            queue_receipt_dict = queue_receipt.to_dict()
+            queue_entry = get_queue_entry(attempt.task_cid)
+        if queue_entry is None:
+            raise DatabaseImplementationAuthorityError(
+                "task cooldown write produced no canonical queue entry"
+            )
+        self._protect_retry_transition_authority(
+            attempt,
+            coordination_evidence,
+        )
+        cas_result = self._cas_task_status_database(
+            attempt.task_cid,
+            expected_revision=int(task.revision),
+            new_status="retrying",
+            receipt={
+                "operation": (
+                    "database_portal_validation_retry_recovery"
+                    if blocked_recovery
+                    else "database_portal_validation_retry"
+                    if validation_retry_evidence is not None
+                    else "database_portal_retry"
+                ),
+                "attempt_id": attempt.attempt_id,
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "owner_session_id": attempt.owner_session_id,
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
+                "attempt_number": int(attempt.attempt_number),
+                "execution_phase": attempt.committed_phase,
+                "execution_revision": int(attempt.revision),
+                "execution_finished_at_ms": attempt.finished_at_ms,
+                "reason": reason_text,
+                "backoff_seconds": delay_seconds,
+                "backoff_ms": delay_ms,
+                "retry_not_before_ms": int(queue_entry.retry_not_before_ms),
+                "evidence_source": evidence_source,
+                "queue_reason": queue_reason,
+                "queue_reused": queue_reused,
+                "queue_receipt": queue_receipt_dict,
+                "coordination": dict(coordination_evidence or {}),
+                **(
+                    {
+                        "validation_retry_seed": dict(
+                            validation_retry_evidence
+                        )
+                    }
+                    if validation_retry_evidence is not None
+                    else {}
+                ),
+                "control_expected_status": task_status,
+                "control_expected_revision": int(task.revision),
+            },
+            evidence_digests=(
+                [str(validation_retry_evidence["events_digest"])]
+                if validation_retry_evidence is not None
+                else None
+            ),
+        )
+        to_dict = getattr(cas_result, "to_dict", None)
+        if not callable(to_dict):
+            raise DatabaseImplementationDaemonError(
+                "retry control CAS returned no durable receipt"
+            )
+        return {
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "status": "retrying",
+            "changed": True,
+            "backoff_seconds": delay_seconds,
+            "backoff_ms": delay_ms,
+            "retry_not_before_ms": int(queue_entry.retry_not_before_ms),
+            "evidence_source": evidence_source,
+            "queue_reused": queue_reused,
+            "queue_receipt": queue_receipt_dict,
+            "control_previous_status": task_status,
+            "control_previous_revision": int(task.revision),
+            "control_new_status": "retrying",
+            "control_new_revision": int(getattr(cas_result, "revision", 0) or 0),
+            "control_receipt": dict(to_dict()),
+        }
+
+    def _persist_terminal_portal_failure(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        reason: str,
+        coordination_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Fail closed for an untyped Portal error; never auto-retry it."""
+
+        task = self.task_source.get(attempt.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                f"terminal attempt {attempt.attempt_id} has no control task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status == "blocked":
+            return {
+                "task_cid": attempt.task_cid,
+                "attempt_id": attempt.attempt_id,
+                "status": "blocked",
+                "changed": False,
+            }
+        if status != "in_progress":
+            raise DatabaseImplementationConflictError(
+                f"terminal attempt {attempt.attempt_id} cannot block control "
+                f"task from {status!r}"
+            )
+        self._protect_retry_transition_authority(
+            attempt,
+            coordination_evidence,
+        )
+        cas_result = self._cas_task_status_database(
+            attempt.task_cid,
+            expected_revision=int(task.revision),
+            new_status="blocked",
+            receipt={
+                "operation": "database_portal_terminal_failure",
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "owner_session_id": attempt.owner_session_id,
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
+                "execution_phase": attempt.committed_phase,
+                "execution_revision": int(attempt.revision),
+                "execution_finished_at_ms": attempt.finished_at_ms,
+                "reason": str(reason or "portal_terminal_failure")[:1024],
+                "retryable": False,
+                "coordination": dict(coordination_evidence or {}),
+                "control_expected_status": status,
+                "control_expected_revision": int(task.revision),
+            },
+        )
+        to_dict = getattr(cas_result, "to_dict", None)
+        if not callable(to_dict):
+            raise DatabaseImplementationDaemonError(
+                "terminal control CAS returned no durable receipt"
+            )
+        return {
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "status": "blocked",
+            "changed": True,
+            "control_previous_status": status,
+            "control_previous_revision": int(task.revision),
+            "control_new_revision": int(getattr(cas_result, "revision", 0) or 0),
+            "control_receipt": dict(to_dict()),
+        }
+
+    def recover_blocked_portal_validation_retry(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        retry_evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm one legacy-blocked Portal validation failure by exact CAS.
+
+        The historical failed phase is immutable.  A caller must first use
+        ``DatabasePortalExecutionBridge.recover_validation_retry`` to
+        reproduce the attempt-local Portal evidence.  This method verifies
+        that closed receipt again, checks that the attempt is still the latest
+        fence for an automatic task, and records the queue/CAS transition.
+        Repeating the same call is idempotent; a foreign queue entry, newer
+        attempt, manual task, or exhausted budget fails closed.
+        """
+
+        self._require_execution_authority("validation retry recovery")
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry recovery requires an exact failed attempt"
+            )
+        current = persisted
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(current.task_cid)
+        if latest is None or latest.attempt_id != current.attempt_id:
+            raise DatabaseImplementationConflictError(
+                "validation retry recovery rejected a superseded attempt"
+            )
+        failed_phases = [
+            phase
+            for phase in self.phase_history(current.attempt_id)
+            if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        body = failed_phases[-1].get("body") if failed_phases else None
+        if (
+            not isinstance(body, Mapping)
+            or body.get("portal_terminal_failure") is not True
+            or body.get("portal_retryable_failure") is True
+            or body.get("reason") != "portal_provider_failed"
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery is limited to the legacy generic "
+                "portal_provider_failed classification"
+            )
+        verified = self._verified_validation_retry_receipt(
+            current,
+            retry_evidence,
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery task disappeared"
+            )
+        if self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry recovery rejected a manual/review-only task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "validation retry recovery requires blocked or exact retrying "
+                f"control state, observed {status!r}"
+            )
+        coordination = self._reconcile_failed_attempt_coordination(current)
+        result = self._persist_task_retry_state(
+            current,
+            reason="declared_validation_failed",
+            backoff_ms=0,
+            evidence_source=(
+                "typed_portal_validation_retry_recovery:"
+                + str(verified["receipt_id"])
+            ),
+            coordination_evidence=coordination,
+            validation_retry_evidence=verified,
+        )
+        result["coordination"] = coordination
+        result["validation_retry_evidence"] = verified
+        return result
+
+    def _persist_typed_deferral_budget_exhausted(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        budget: Mapping[str, Any],
+        coordination_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Block one exact task generation after its typed deferral cap.
+
+        No queue entry is created.  An entry from an earlier retry may remain
+        as historical evidence, but the blocked control status makes it
+        ineligible.  Clearing it before the blocking CAS would expose an
+        immediate retry if the process crashed between stores.
+        """
+
+        expected_fields = {
+            "schema",
+            "task_cid",
+            "task_generation",
+            "generation_fingerprint",
+            "current_deferral_fingerprint",
+            "typed_deferral_candidate_count",
+            "typed_deferral_count",
+            "typed_deferral_count_is_lower_bound",
+            "verified_typed_deferral_count",
+            "verified_count_complete",
+            "max_task_attempts",
+            "exhausted",
+            "attempt_consumed",
+            "typed_deferral_slot_consumed",
+            "matching_attempts",
+            "matching_attempts_digest",
+            "matching_attempts_truncated",
+            "omitted_matching_attempt_count",
+            "observation_id",
+        }
+        budget_dict = dict(budget)
+        observation_id = budget_dict.pop("observation_id", None)
+        if (
+            set(budget) != expected_fields
+            or budget.get("schema")
+            != _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA
+            or budget.get("task_cid") != attempt.task_cid
+            or budget.get("task_generation") != attempt.task_cid
+            or budget.get("exhausted") is not True
+            or budget.get("attempt_consumed") is not False
+            or budget.get("typed_deferral_slot_consumed") is not True
+            or budget.get("max_task_attempts") != self.max_task_attempts
+            or not isinstance(
+                budget.get("typed_deferral_candidate_count"), int
+            )
+            or isinstance(
+                budget.get("typed_deferral_candidate_count"), bool
+            )
+            or not isinstance(budget.get("typed_deferral_count"), int)
+            or isinstance(budget.get("typed_deferral_count"), bool)
+            or int(budget["typed_deferral_count"]) < self.max_task_attempts
+            or int(budget["typed_deferral_candidate_count"])
+            < int(budget["typed_deferral_count"])
+            or not isinstance(
+                budget.get("typed_deferral_count_is_lower_bound"), bool
+            )
+            or not isinstance(
+                budget.get("verified_typed_deferral_count"), int
+            )
+            or isinstance(
+                budget.get("verified_typed_deferral_count"), bool
+            )
+            or int(budget["verified_typed_deferral_count"])
+            < self.max_task_attempts
+            or observation_id
+            != self._database_portal_evidence_digest(budget_dict)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed Portal deferral budget evidence is invalid"
+            )
+        reproduced_budget = self._typed_deferral_budget_observation(attempt)
+        if reproduced_budget != dict(budget):
+            raise DatabaseImplementationAuthorityError(
+                "typed Portal deferral budget did not reproduce from durable "
+                "failed-phase evidence"
+            )
+        task = self.task_source.get(attempt.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                f"exhausted attempt {attempt.attempt_id} has no control task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status == "blocked":
+            return {
+                "task_cid": attempt.task_cid,
+                "attempt_id": attempt.attempt_id,
+                "status": "blocked",
+                "changed": False,
+                "reason": "typed_portal_deferral_budget_exhausted",
+                "retry_budget": dict(budget),
+            }
+        if status not in {"in_progress", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                f"exhausted attempt {attempt.attempt_id} cannot block control "
+                f"task from {status!r}"
+            )
+        self._protect_retry_transition_authority(
+            attempt,
+            coordination_evidence,
+        )
+        queue_entry = self.task_source.get_queue_entry(attempt.task_cid)
+        cas_result = self._cas_task_status_database(
+            attempt.task_cid,
+            expected_revision=int(task.revision),
+            new_status="blocked",
+            receipt={
+                "operation": (
+                    "database_portal_typed_deferral_budget_exhausted"
+                ),
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "owner_session_id": attempt.owner_session_id,
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
+                "execution_phase": attempt.committed_phase,
+                "execution_revision": int(attempt.revision),
+                "execution_finished_at_ms": attempt.finished_at_ms,
+                "reason": "typed_portal_deferral_budget_exhausted",
+                "retryable": False,
+                "attempt_consumed": False,
+                "typed_deferral_slot_consumed": True,
+                "retry_budget": dict(budget),
+                "prior_queue_entry_preserved_inactive": queue_entry is not None,
+                "coordination": dict(coordination_evidence or {}),
+                "control_expected_status": status,
+                "control_expected_revision": int(task.revision),
+            },
+        )
+        to_dict = getattr(cas_result, "to_dict", None)
+        if not callable(to_dict):
+            raise DatabaseImplementationDaemonError(
+                "typed deferral budget CAS returned no durable receipt"
+            )
+        return {
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "status": "blocked",
+            "changed": True,
+            "reason": "typed_portal_deferral_budget_exhausted",
+            "attempt_consumed": False,
+            "typed_deferral_slot_consumed": True,
+            "prior_queue_entry_preserved_inactive": queue_entry is not None,
+            "retry_budget": dict(budget),
+            "control_previous_status": status,
+            "control_previous_revision": int(task.revision),
+            "control_new_revision": int(getattr(cas_result, "revision", 0) or 0),
+            "control_receipt": dict(to_dict()),
+        }
 
     def complete_attempt(
         self,
@@ -70598,6 +72468,7 @@ class DatabaseImplementationDaemon:
     ) -> DatabaseTaskAttempt:
         """Record validation evidence and complete the task in the database."""
 
+        self._require_execution_authority("task completion")
         current = self.get_attempt(attempt.attempt_id) or attempt
         validation_payload = dict(validation_result or {})
         if self.require_real_execution and (
@@ -70901,6 +72772,7 @@ class DatabaseImplementationDaemon:
         immediately before ordinary claim settlement.
         """
 
+        self._require_execution_authority("prepared completion reconciliation")
         list_unsettled = getattr(
             self.coordinator,
             "list_unsettled_task_completions",
@@ -71006,6 +72878,12 @@ class DatabaseImplementationDaemon:
                         now_ms=now,
                     )
                 )
+                # The exact prepared barrier was aborted only after proving
+                # that its control CAS never landed.  Preserve that authority
+                # in the execution receipt so restart recovery can move the
+                # unchanged in-progress control task through retrying rather
+                # than strand it behind canonical-ready filtering.
+                outcome["retry_required"] = True
                 self._commit_reconciled_attempt_terminal(
                     prepared,
                     succeeded=False,
@@ -71672,6 +73550,7 @@ class DatabaseImplementationDaemon:
         new attempt number and fencing token.
         """
 
+        self._require_execution_authority("expired attempt reconciliation")
         expire_claim = getattr(self.coordinator, "expire_task_claim", None)
         if not callable(expire_claim):
             raise DatabaseImplementationAuthorityError(
@@ -71972,6 +73851,445 @@ class DatabaseImplementationDaemon:
             outcomes.append(outcome)
         return outcomes
 
+    def _latest_failed_attempts(self) -> list[DatabaseTaskAttempt]:
+        """Return only the latest terminal failed attempt for each task."""
+
+        connection = self._require_connection()
+        rows = connection.execute(
+            f"""
+            SELECT {self._ATTEMPT_SELECT}
+            FROM database_task_attempts AS candidate
+            WHERE candidate.status = 'failed'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM database_task_attempts AS newer
+                  WHERE newer.task_cid = candidate.task_cid
+                    AND (
+                        newer.attempt_number > candidate.attempt_number
+                        OR (
+                            newer.attempt_number = candidate.attempt_number
+                            AND newer.started_at_ms > candidate.started_at_ms
+                        )
+                    )
+              )
+            ORDER BY candidate.finished_at_ms, candidate.attempt_id
+            LIMIT ?
+            """,
+            [TASK_SOURCE_QUERY_LIMIT],
+        ).fetchall()
+        return [self._attempt_from_row(row) for row in rows]
+
+    def _terminal_retry_evidence(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any] | None:
+        """Read the closed retry disposition from one failed phase receipt."""
+
+        failed_phases = [
+            phase
+            for phase in self.phase_history(attempt.attempt_id)
+            if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        if not failed_phases:
+            raise DatabaseImplementationAuthorityError(
+                f"failed attempt {attempt.attempt_id} has no failed-phase receipt"
+            )
+        body = failed_phases[-1].get("body")
+        if not isinstance(body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                f"failed attempt {attempt.attempt_id} has malformed phase evidence"
+            )
+        if body.get("portal_retryable_failure") is True:
+            raw_validation_retry = body.get("typed_validation_retry")
+            if raw_validation_retry is not None:
+                verified_validation_retry = (
+                    self._verified_validation_retry_receipt(
+                        attempt,
+                        raw_validation_retry,
+                    )
+                )
+                if (
+                    body.get("portal_terminal_failure") is not False
+                    or body.get("deferred") is not False
+                    or body.get("attempt_consumed") is not True
+                    or body.get("provider_dispatched") is not True
+                    or body.get("typed_deferral_slot_consumed") is not False
+                    or body.get("reason") != "declared_validation_failed"
+                    or body.get("backoff_seconds") != 0
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "typed validation retry conflicts with its failed phase"
+                    )
+                return {
+                    "reason": "declared_validation_failed",
+                    "backoff_ms": 0,
+                    "evidence_source": (
+                        "typed_portal_validation_retry:"
+                        + str(verified_validation_retry["receipt_id"])
+                    ),
+                    "typed_deferral_budget": None,
+                    "typed_validation_retry": verified_validation_retry,
+                }
+
+            typed_deferral_budget = self._typed_deferral_budget_observation(attempt)
+            if "backoff_seconds" in body:
+                backoff_seconds = self._database_portal_backoff_seconds(
+                    body.get("backoff_seconds")
+                )
+                finished_at_ms = int(attempt.finished_at_ms or 0)
+                if finished_at_ms <= 0:
+                    raise DatabaseImplementationAuthorityError(
+                        "Portal retry receipt has no durable finish time"
+                    )
+                elapsed_ms = max(0, self._now_ms() - finished_at_ms)
+                backoff_ms = max(0, backoff_seconds * 1000 - elapsed_ms)
+                evidence_source = "portal_failed_phase"
+            else:
+                # Receipts written before typed backoff propagation are still
+                # retryable, but cannot reconstruct the attempt-local JSON
+                # deadline.  Reconstruct the *remaining* bounded policy window
+                # from the durable failed-phase finish time; never restart a
+                # fresh 300-second window after a long supervisor outage.
+                finished_at_ms = int(attempt.finished_at_ms or 0)
+                if finished_at_ms <= 0:
+                    raise DatabaseImplementationAuthorityError(
+                        "legacy Portal retry receipt has no durable finish time"
+                    )
+                elapsed_ms = max(0, self._now_ms() - finished_at_ms)
+                backoff_ms = max(
+                    0,
+                    _DATABASE_PORTAL_LEGACY_RETRY_BACKOFF_SECONDS * 1000
+                    - elapsed_ms,
+                )
+                evidence_source = "legacy_portal_failed_phase_safe_default"
+            return {
+                "reason": str(body.get("reason") or "portal_retryable_failure"),
+                "backoff_ms": backoff_ms,
+                "evidence_source": evidence_source,
+                "typed_deferral_budget": typed_deferral_budget,
+            }
+
+        reconciliation = body.get("reconciliation")
+        if (
+            body.get("cross_store_reconciled") is True
+            and isinstance(reconciliation, Mapping)
+            and reconciliation.get("retry_required") is True
+        ):
+            expected_identity = {
+                "task_cid": attempt.task_cid,
+                "attempt_id": attempt.attempt_id,
+                "claim_id": attempt.claim_id,
+            }
+            mismatched = [
+                key
+                for key, expected in expected_identity.items()
+                if str(reconciliation.get(key) or "") != expected
+            ]
+            if mismatched:
+                raise DatabaseImplementationConflictError(
+                    "expired-attempt retry evidence has mismatched identity: "
+                    + ", ".join(mismatched)
+                )
+            return {
+                "reason": str(
+                    reconciliation.get("reason")
+                    or "coordination_lease_expired_before_completion"
+                ),
+                # Preserve the established crash-recovery behavior: an
+                # ordinary expired claim may be re-fenced immediately.  If
+                # that retry reaches a typed Portal deferral, its exact
+                # durable cooldown is then applied.
+                "backoff_ms": 0,
+                "evidence_source": "expired_claim_reconciliation",
+            }
+        return None
+
+    def _terminal_portal_failure_reason(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> str | None:
+        failed_phases = [
+            phase
+            for phase in self.phase_history(attempt.attempt_id)
+            if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        if not failed_phases:
+            raise DatabaseImplementationAuthorityError(
+                f"failed attempt {attempt.attempt_id} has no failed-phase receipt"
+            )
+        body = failed_phases[-1].get("body")
+        if not isinstance(body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                f"failed attempt {attempt.attempt_id} has malformed phase evidence"
+            )
+        if (
+            body.get("portal_terminal_failure") is True
+            and body.get("portal_retryable_failure") is not True
+        ):
+            return str(body.get("reason") or "portal_terminal_failure")
+        return None
+
+    def _reconcile_failed_attempt_coordination(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any]:
+        """Validate and, when due, expire the failed attempt's exact fence."""
+
+        claim = self.coordinator.get_task_claim(attempt.claim_id)
+        if claim is None:
+            raise DatabaseImplementationAuthorityError(
+                f"failed attempt {attempt.attempt_id} has no coordination claim"
+            )
+        claim_identity = claim.to_dict()
+        expected_claim_identity = {
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": attempt.owner_session_id,
+            "lease_id": attempt.lease_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        mismatched = [
+            key
+            for key, expected in expected_claim_identity.items()
+            if claim_identity.get(key) != expected
+        ]
+        if mismatched:
+            raise DatabaseImplementationConflictError(
+                "failed execution attempt does not match coordination claim: "
+                + ", ".join(mismatched)
+            )
+        coordination_attempt = self.coordinator.get_task_attempt(
+            attempt.attempt_id
+        )
+        if coordination_attempt is None:
+            raise DatabaseImplementationAuthorityError(
+                f"failed attempt {attempt.attempt_id} has no coordination attempt"
+            )
+        attempt_identity = coordination_attempt.to_dict()
+        for key in (
+            "task_cid",
+            "attempt_id",
+            "attempt_number",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+        ):
+            expected = (
+                attempt.attempt_id
+                if key == "attempt_id"
+                else getattr(attempt, key)
+            )
+            if attempt_identity.get(key) != expected:
+                raise DatabaseImplementationConflictError(
+                    "failed execution attempt does not match coordination "
+                    f"attempt field {key!r}"
+                )
+        if self.coordinator.get_prepared_task_completion(attempt.task_cid) is not None:
+            raise DatabaseImplementationAuthorityError(
+                "retry reconciliation cannot cross a prepared completion barrier"
+            )
+
+        claim_state = str(
+            getattr(getattr(claim, "state", ""), "value", claim.state) or ""
+        )
+        expires_at_ms = int(getattr(claim, "expires_at_ms", 0) or 0)
+        now = self._now_ms()
+        if claim_state == "accepted" and expires_at_ms > now:
+            return {
+                "claim_id": attempt.claim_id,
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "lease_state": claim_state,
+                "claim_state": claim_state,
+                "claim_revision": int(getattr(claim, "revision", 0) or 0),
+                "coordination_attempt_status": str(
+                    attempt_identity.get("status") or ""
+                ),
+                "coordination_attempt_revision": int(
+                    attempt_identity.get("revision") or 0
+                ),
+                "expires_at_ms": expires_at_ms,
+                "observed_at_ms": now,
+                "expired_now": False,
+            }
+        if claim_state not in {"accepted", "expired"}:
+            raise DatabaseImplementationAuthorityError(
+                "retryable failed attempt has incompatible coordination state "
+                f"{claim_state!r}"
+            )
+        expire_claim = getattr(self.coordinator, "expire_task_claim", None)
+        if not callable(expire_claim):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator cannot expire an exact failed task claim"
+            )
+        lease = expire_claim(claim, now_ms=now)
+        lease_state = str(
+            getattr(getattr(lease, "state", ""), "value", lease.state) or ""
+        )
+        if lease_state != "expired":
+            raise DatabaseImplementationAuthorityError(
+                "failed task claim expiry returned a non-expired lease"
+            )
+        resulting_claim = self.coordinator.get_task_claim(attempt.claim_id)
+        resulting_attempt = self.coordinator.get_task_attempt(attempt.attempt_id)
+        if resulting_claim is None or resulting_attempt is None:
+            raise DatabaseImplementationAuthorityError(
+                "expired retry authority disappeared during reconciliation"
+            )
+        return {
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "lease_state": lease_state,
+            "claim_state": str(
+                getattr(
+                    getattr(resulting_claim, "state", ""),
+                    "value",
+                    resulting_claim.state,
+                )
+                or ""
+            ),
+            "claim_revision": int(
+                getattr(resulting_claim, "revision", 0) or 0
+            ),
+            "coordination_attempt_status": str(
+                getattr(
+                    getattr(resulting_attempt, "status", ""),
+                    "value",
+                    resulting_attempt.status,
+                )
+                or ""
+            ),
+            "coordination_attempt_revision": int(
+                getattr(resulting_attempt, "revision", 0) or 0
+            ),
+            "expires_at_ms": expires_at_ms,
+            "observed_at_ms": now,
+            "expired_now": claim_state == "accepted",
+        }
+
+    def reconcile_terminal_retry_states(self) -> list[dict[str, Any]]:
+        """Finish retry control transitions left incomplete by a crash.
+
+        This also upgrades pre-fix Portal failure receipts and the exact
+        expired-attempt receipt emitted earlier in the same restart pass.  It
+        never treats a generic failed attempt as retryable.
+        """
+
+        self._require_execution_authority("terminal retry reconciliation")
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            evidence = self._terminal_retry_evidence(attempt)
+            if evidence is None:
+                continue
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if self._automatic_claim_forbidden(task):
+                raise DatabaseImplementationAuthorityError(
+                    "automatic retry reconciliation rejected a manual/review-only task"
+                )
+            budget = evidence.get("typed_deferral_budget")
+            if isinstance(budget, Mapping) and budget.get("exhausted") is True:
+                if status == "blocked":
+                    continue
+                if status not in {"in_progress", "retrying"}:
+                    raise DatabaseImplementationConflictError(
+                        "exhausted typed deferral cannot reconcile control "
+                        f"status {status!r}"
+                    )
+                coordination = self._reconcile_failed_attempt_coordination(
+                    attempt
+                )
+                outcome = self._persist_typed_deferral_budget_exhausted(
+                    attempt,
+                    budget=budget,
+                    coordination_evidence=coordination,
+                )
+                outcome["coordination"] = coordination
+                outcomes.append(outcome)
+                continue
+            if status == "retrying":
+                get_queue_entry = getattr(
+                    self.task_source,
+                    "get_queue_entry",
+                    None,
+                )
+                if not callable(get_queue_entry):
+                    raise DatabaseImplementationAuthorityError(
+                        "task source cannot verify retry queue state"
+                    )
+                if get_queue_entry(attempt.task_cid) is None:
+                    coordination = self._reconcile_failed_attempt_coordination(
+                        attempt
+                    )
+                    outcome = self._persist_task_retry_state(
+                        attempt,
+                        reason=str(evidence["reason"]),
+                        backoff_ms=int(evidence["backoff_ms"]),
+                        evidence_source=str(evidence["evidence_source"]),
+                        coordination_evidence=coordination,
+                    )
+                    outcome["coordination"] = coordination
+                    outcomes.append(outcome)
+                continue
+            if status != "in_progress":
+                continue
+            coordination = self._reconcile_failed_attempt_coordination(attempt)
+            outcome = self._persist_task_retry_state(
+                attempt,
+                reason=str(evidence["reason"]),
+                backoff_ms=int(evidence["backoff_ms"]),
+                evidence_source=str(evidence["evidence_source"]),
+                coordination_evidence=coordination,
+            )
+            outcome["coordination"] = coordination
+            outcomes.append(outcome)
+        return outcomes
+
+    def reconcile_terminal_portal_failures(self) -> list[dict[str, Any]]:
+        """Finish fail-closed control transitions for untyped Portal errors."""
+
+        self._require_execution_authority("terminal failure reconciliation")
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            reason = self._terminal_portal_failure_reason(attempt)
+            if reason is None:
+                continue
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if status == "blocked":
+                continue
+            if status == "retrying":
+                # The immutable legacy attempt still says terminal failure.
+                # Suppress that old projection only when the exact typed
+                # blocked-to-retrying recovery and its latest fence reproduce.
+                self._verified_validation_retry_recovery_state(attempt, task)
+                self._reconcile_failed_attempt_coordination(attempt)
+                continue
+            if status != "in_progress":
+                raise DatabaseImplementationConflictError(
+                    f"terminal Portal failure cannot reconcile control status {status!r}"
+                )
+            coordination = self._reconcile_failed_attempt_coordination(attempt)
+            outcome = self._persist_terminal_portal_failure(
+                attempt,
+                reason=reason,
+                coordination_evidence=coordination,
+            )
+            outcome["coordination"] = coordination
+            outcomes.append(outcome)
+        return outcomes
+
     # -- resume / run_once --------------------------------------------------
 
     def resume_attempt(
@@ -71990,6 +74308,7 @@ class DatabaseImplementationDaemon:
     ) -> dict[str, Any]:
         """Resume from the last committed phase without duplicating work."""
 
+        self._require_execution_authority("attempt resume")
         attempt_id = str(
             attempt.attempt_id
             if isinstance(attempt, DatabaseTaskAttempt)
@@ -72556,6 +74875,7 @@ class DatabaseImplementationDaemon:
                 DatabasePortalBridgeConsumedNoProgressError,
                 DatabasePortalBridgeDeferred,
                 DatabasePortalBridgeError,
+                DatabasePortalValidationRetry,
             )
 
             from ..merge.database_coordination import (
@@ -72602,9 +74922,13 @@ class DatabaseImplementationDaemon:
                     "task_alias": attempt.task_alias,
                     "status": "failed",
                 }
-            if isinstance(exc, DatabasePortalBridgeError) and (
-                not isinstance(exc, DatabasePortalBridgeDeferred)
-                or self._is_protected_checkout_setup_block(str(exc))
+            if (
+                isinstance(exc, DatabasePortalBridgeError)
+                and not isinstance(exc, DatabasePortalValidationRetry)
+                and (
+                    not isinstance(exc, DatabasePortalBridgeDeferred)
+                    or self._is_protected_checkout_setup_block(str(exc))
+                )
             ):
                 # Typed Portal setup/recovery failures (for example
                 # external_protected_checkout_recovery_required) are raised
@@ -72627,13 +74951,39 @@ class DatabaseImplementationDaemon:
                     "task_alias": attempt.task_alias,
                     "status": "failed",
                 }
-            if not isinstance(exc, DatabasePortalBridgeDeferred):
+            if not isinstance(
+                exc,
+                (DatabasePortalBridgeDeferred, DatabasePortalValidationRetry),
+            ):
                 # Generic Portal/provider failures carry no retry authority.
                 # The durable callback-start intent prevents a cold restart
                 # from invoking the same unknown outcome again.
                 raise
+            deferred = isinstance(exc, DatabasePortalBridgeDeferred)
+            validation_retry = isinstance(
+                exc,
+                DatabasePortalValidationRetry,
+            )
+            retryable = deferred or validation_retry
+            backoff_seconds = (
+                self._database_portal_backoff_seconds(
+                    getattr(
+                        exc,
+                        "backoff_seconds",
+                        _DATABASE_PORTAL_LEGACY_RETRY_BACKOFF_SECONDS,
+                    )
+                )
+                if retryable
+                else 0
+            )
+            reason = self._database_portal_reason(str(exc))
             failed = None
             try:
+                # ``resume_attempt`` can durably advance one or more phases
+                # before the Portal callback raises.  The caller's attempt
+                # object is therefore only an identity handle here, not a CAS
+                # cursor: reload the current revision before terminalizing the
+                # failed attempt.
                 attempt_id = str(
                     getattr(attempt, "attempt_id", "") or attempt
                 )
@@ -72684,25 +75034,193 @@ class DatabaseImplementationDaemon:
                         expected_fence_epoch=int(current.fence_epoch),
                         now_ms=self._now_ms(),
                     )
+
+                    typed_deferral = (
+                        self._typed_deferral_receipt(
+                            current,
+                            reason=reason,
+                        )
+                        if deferred
+                        else None
+                    )
+                    typed_validation_retry = (
+                        self._verified_validation_retry_receipt(
+                            current,
+                            getattr(exc, "retry_receipt", None),
+                        )
+                        if validation_retry
+                        else None
+                    )
+                    failed = self.commit_phase(
+                        current,
+                        ATTEMPT_PHASE_FAILED,
+                        body={
+                            "reason": reason,
+                            "portal_retryable_failure": retryable,
+                            "portal_terminal_failure": not retryable,
+                            "deferred": deferred,
+                            "attempt_consumed": (
+                                getattr(exc, "attempt_consumed", False)
+                                if retryable
+                                else "unknown"
+                            ),
+                            "provider_dispatched": (
+                                getattr(exc, "provider_dispatched", False)
+                                if retryable
+                                else "unknown"
+                            ),
+                            "typed_deferral_slot_consumed": (
+                                True
+                                if deferred
+                                else False
+                                if validation_retry
+                                else "unknown"
+                            ),
+                            "backoff_seconds": backoff_seconds,
+                            **(
+                                {"typed_deferral": typed_deferral}
+                                if typed_deferral is not None
+                                else {}
+                            ),
+                            **(
+                                {
+                                    "typed_validation_retry": (
+                                        typed_validation_retry
+                                    )
+                                }
+                                if typed_validation_retry is not None
+                                else {}
+                            ),
+                        },
+                    )
+                terminal = failed or current
+                if terminal is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "Portal failure attempt disappeared before retry CAS"
+                    )
+                if deferred:
+                    budget = self._typed_deferral_budget_observation(terminal)
+                    if (
+                        isinstance(budget, Mapping)
+                        and budget.get("exhausted") is True
+                    ):
+                        control_state = (
+                            self._persist_typed_deferral_budget_exhausted(
+                                terminal,
+                                budget=budget,
+                            )
+                        )
+                    else:
+                        control_state = self._persist_task_retry_state(
+                            terminal,
+                            reason=reason,
+                            backoff_ms=backoff_seconds * 1000,
+                            evidence_source="typed_portal_deferral",
+                        )
+                elif validation_retry:
+                    verified_validation_retry = (
+                        self._verified_validation_retry_receipt(
+                            terminal,
+                            getattr(exc, "retry_receipt", None),
+                        )
+                    )
+                    control_state = self._persist_task_retry_state(
+                        terminal,
+                        reason=reason,
+                        backoff_ms=backoff_seconds * 1000,
+                        evidence_source=(
+                            "typed_portal_validation_retry:"
+                            + str(verified_validation_retry["receipt_id"])
+                        ),
+                        validation_retry_evidence=(
+                            verified_validation_retry
+                        ),
+                    )
+                else:
+                    control_state = self._persist_terminal_portal_failure(
+                        terminal,
+                        reason=reason,
+                    )
             except DatabaseImplementationConflictError:
                 raise
             except Exception as fail_exc:
                 return {
                     "resumed": True,
-                    "portal_retryable_failure": True,
-                    "reason": str(exc),
+                    "portal_retryable_failure": retryable,
+                    "portal_terminal_failure": not retryable,
+                    "deferred": deferred,
+                    "attempt_consumed": (
+                        getattr(exc, "attempt_consumed", False)
+                        if retryable
+                        else "unknown"
+                    ),
+                    "provider_dispatched": (
+                        getattr(exc, "provider_dispatched", False)
+                        if retryable
+                        else "unknown"
+                    ),
+                    "typed_deferral_slot_consumed": (
+                        True
+                        if deferred
+                        else False
+                        if validation_retry
+                        else "unknown"
+                    ),
+                    "backoff_seconds": backoff_seconds,
+                    "reason": reason,
                     "fail_error": str(fail_exc),
                     "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
                     "task_alias": str(getattr(attempt, "task_alias", "") or ""),
-                    "status": "retryable_portal_failure",
+                    "status": (
+                        "retryable_portal_failure"
+                        if retryable
+                        else "terminal_portal_failure"
+                    ),
                 }
             return {
                 "resumed": True,
-                "portal_retryable_failure": True,
-                "reason": str(exc),
+                "portal_retryable_failure": retryable,
+                "portal_terminal_failure": not retryable,
+                "deferred": deferred,
+                "attempt_consumed": (
+                    getattr(exc, "attempt_consumed", False)
+                    if retryable
+                    else "unknown"
+                ),
+                "provider_dispatched": (
+                    getattr(exc, "provider_dispatched", False)
+                    if retryable
+                    else "unknown"
+                ),
+                "typed_deferral_slot_consumed": (
+                    True
+                    if deferred
+                    else False
+                    if validation_retry
+                    else "unknown"
+                ),
+                "backoff_seconds": backoff_seconds,
+                "reason": reason,
                 "attempt_id": str(getattr(failed or attempt, "attempt_id", "") or ""),
                 "task_alias": str(getattr(failed or attempt, "task_alias", "") or ""),
                 "status": "failed",
+                "retry_budget_exhausted": bool(
+                    deferred
+                    and control_state.get("reason")
+                    == "typed_portal_deferral_budget_exhausted"
+                ),
+                "retry_state": (
+                    control_state
+                    if retryable
+                    and control_state.get("status") == "retrying"
+                    else None
+                ),
+                "terminal_state": (
+                    control_state
+                    if not retryable
+                    or control_state.get("status") == "blocked"
+                    else None
+                ),
             }
 
     @staticmethod
@@ -73077,15 +75595,26 @@ class DatabaseImplementationDaemon:
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
+        if not self.require_real_execution:
+            return self._execution_disabled_observation()
         completion_reconciliations = self.reconcile_prepared_task_completions()
         expired_attempt_reconciliations = self.reconcile_expired_running_attempts()
         landed_merge_reconciliations = self.reconcile_landed_merged_tasks()
         unknown_callback_reopens = (
             self.reconcile_unimplemented_unknown_callback_quarantines()
         )
-        reconciliation_write_count = len(completion_reconciliations) + len(
-            expired_attempt_reconciliations
-        ) + len(landed_merge_reconciliations) + len(unknown_callback_reopens)
+        terminal_portal_reconciliations = (
+            self.reconcile_terminal_portal_failures()
+        )
+        terminal_retry_reconciliations = self.reconcile_terminal_retry_states()
+        reconciliation_write_count = (
+            len(completion_reconciliations)
+            + len(expired_attempt_reconciliations)
+            + len(landed_merge_reconciliations)
+            + len(unknown_callback_reopens)
+            + len(terminal_portal_reconciliations)
+            + len(terminal_retry_reconciliations)
+        )
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
         if running:
@@ -73149,6 +75678,12 @@ class DatabaseImplementationDaemon:
                     ),
                     "landed_merge_reconciliations": landed_merge_reconciliations,
                     "unknown_callback_reopens": unknown_callback_reopens,
+                    "terminal_retry_reconciliations": (
+                        terminal_retry_reconciliations
+                    ),
+                    "terminal_portal_reconciliations": (
+                        terminal_portal_reconciliations
+                    ),
                 }
 
         attempt = self.claim_next()
@@ -73170,6 +75705,12 @@ class DatabaseImplementationDaemon:
                 ),
                 "landed_merge_reconciliations": landed_merge_reconciliations,
                 "unknown_callback_reopens": unknown_callback_reopens,
+                "terminal_retry_reconciliations": (
+                    terminal_retry_reconciliations
+                ),
+                "terminal_portal_reconciliations": (
+                    terminal_portal_reconciliations
+                ),
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -73187,6 +75728,8 @@ class DatabaseImplementationDaemon:
             "expired_attempt_reconciliations": expired_attempt_reconciliations,
             "landed_merge_reconciliations": landed_merge_reconciliations,
             "unknown_callback_reopens": unknown_callback_reopens,
+            "terminal_retry_reconciliations": terminal_retry_reconciliations,
+            "terminal_portal_reconciliations": terminal_portal_reconciliations,
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,
@@ -73901,6 +76444,7 @@ def main(argv: list[str] | None = None) -> None:
             events_path=None,
             pid_path=None,
             queue_path=None,
+            max_task_attempts=int(getattr(args, "max_task_attempts", 0) or 0),
             task_shard_count=args.task_shard_count,
             task_shard_index=args.task_shard_index,
             strict_task_sharding=args.strict_task_sharding,

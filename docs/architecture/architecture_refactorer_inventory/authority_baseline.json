@@ -1,0 +1,29 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.authority-bootstrap@1",
+  "authority": false,
+  "disposition": "planning_nominations_require_pcar_006_current_tree_resolution",
+  "storage_roles": {
+    "duckdb": "authoritative transactional task, goal, dependency, attempt, lease, fencing, CAS, receipt, and completion records",
+    "quack": "authenticated loopback transport and exclusive mutation/state-owner boundary",
+    "ducklake": "optional non-authoritative analytics/history projection; never gates scheduling, acceptance, completion, or release",
+    "markdown": "sealed bootstrap and human projection only"
+  },
+  "initial_concerns": [
+    "content identity",
+    "operation identity",
+    "provider capability",
+    "provider selection",
+    "execution result",
+    "task identity",
+    "objective identity",
+    "policy decision",
+    "authorization",
+    "confirmation",
+    "lease and fencing",
+    "state persistence",
+    "proof verification",
+    "test evidence",
+    "completion evidence",
+    "release qualification"
+  ]
+}

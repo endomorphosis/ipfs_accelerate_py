@@ -1,0 +1,30 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.state-store-bootstrap@1",
+  "authority": false,
+  "disposition": "planning_inventory_requires_pcar_001_and_pcar_014_resolution",
+  "required_kinds": [
+    "DuckDB tables",
+    "JSON files",
+    "Markdown task boards",
+    "in-memory registries",
+    "event logs",
+    "cache namespaces",
+    "worktree metadata",
+    "lease records",
+    "provider state",
+    "goal state",
+    "task state",
+    "completion state",
+    "receipt state"
+  ],
+  "closed_dispositions": [
+    "authoritative",
+    "materialized_projection",
+    "cache",
+    "historical_event",
+    "fixture",
+    "legacy",
+    "unknown"
+  ],
+  "invariant": "Every mutable semantic fact has exactly one authoritative store."
+}

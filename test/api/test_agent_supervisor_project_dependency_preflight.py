@@ -4,11 +4,15 @@ import importlib.metadata
 import inspect
 import json
 import os
+import subprocess
 import sys
 from copy import deepcopy
 from pathlib import Path
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import (
+    BoundedArtifactStore,
+)
 from ipfs_accelerate_py.agent_supervisor.validation import (
     project_dependency_preflight as preflight_module,
 )
@@ -17,15 +21,20 @@ from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight
     MAX_DEPENDENCY_PREFLIGHT_PROJECTION_BYTES,
     MAX_DEPENDENCY_PREFLIGHT_PROJECTION_ISSUES,
     MAX_INSTALLED_VERSION_BYTES,
+    MAX_PREFLIGHT_INLINE_RECEIPT_BYTES,
     MAX_PYPROJECT_BYTES,
+    PROJECT_DEPENDENCY_PREFLIGHT_EVENT_PROJECTION_SCHEMA,
     PROJECT_DEPENDENCY_PREFLIGHT_PROJECTION_SCHEMA,
     PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA,
     PROJECT_DEPENDENCY_PROBE_SCHEMA,
     _evaluate_dependency_payload,
     _run_bounded_probe_process,
+    canonical_project_dependency_preflight_receipt_bytes,
     compact_project_dependency_preflight_receipt,
     preflight_validation_project_dependencies,
     project_dependency_preflight_backoff_seconds,
+    project_dependency_preflight_error_receipt,
+    project_dependency_preflight_for_event,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     ValidationDependencyScope,
@@ -36,6 +45,16 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _reseal_dependency_preflight_receipt(
+    receipt: dict[str, object],
+) -> dict[str, object]:
+    receipt.pop("receipt_id", None)
+    receipt.pop("retry_fingerprint", None)
+    receipt["receipt_id"] = preflight_module._content_sha256(receipt)
+    receipt["retry_fingerprint"] = preflight_module._retry_fingerprint(receipt)
+    return receipt
 
 
 def _probe_payload(*requirements: str) -> dict[str, object]:
@@ -1484,3 +1503,144 @@ dependencies = ["packaging>=23.2"]
         == (receipt["probe"]["preflight_source_delivery"]["sha256"])
     )
     assert receipt["probe"]["projects"][0]["observed"][0]["name"] == ("packaging")
+
+
+def test_dependency_preflight_event_projection_binds_full_receipt_artifact(
+    tmp_path,
+) -> None:
+    receipt = project_dependency_preflight_error_receipt(
+        tmp_path,
+        ["python -m pytest -q"],
+        RuntimeError("fixture failure"),
+    )
+    canonical = canonical_project_dependency_preflight_receipt_bytes(receipt)
+
+    with BoundedArtifactStore(tmp_path / "artifacts") as store:
+        reference = store.put_blob(
+            canonical,
+            kind="validation_project_dependency_preflight_receipt",
+            retention_class="checkpoint",
+            media_type="application/json",
+        )
+        projection = project_dependency_preflight_for_event(
+            receipt,
+            full_receipt_reference=reference.to_dict(),
+        )
+
+        assert projection["schema"] == (
+            PROJECT_DEPENDENCY_PREFLIGHT_EVENT_PROJECTION_SCHEMA
+        )
+        assert projection["receipt_schema"] == (
+            PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA
+        )
+        assert projection["receipt_id"] == receipt["receipt_id"]
+        assert projection["retry_fingerprint"] == receipt["retry_fingerprint"]
+        assert projection["completion_authority"] is False
+        assert projection["full_receipt_artifact"] == reference.to_dict()
+        assert "inline_receipt" not in projection
+        assert store.read_blob(reference) == canonical
+
+
+def test_dependency_preflight_event_projection_rejects_forged_identity_or_reference(
+    tmp_path,
+) -> None:
+    receipt = project_dependency_preflight_error_receipt(
+        tmp_path,
+        ["python -m pytest -q"],
+        RuntimeError("fixture failure"),
+    )
+    forged = dict(receipt)
+    forged["receipt_id"] = "0" * 64
+
+    with pytest.raises(ValueError, match="receipt identity mismatch"):
+        canonical_project_dependency_preflight_receipt_bytes(forged)
+
+    canonical = canonical_project_dependency_preflight_receipt_bytes(receipt)
+    with BoundedArtifactStore(tmp_path / "artifacts") as store:
+        reference = store.put_blob(
+            canonical,
+            kind="validation_project_dependency_preflight_receipt",
+        ).to_dict()
+        reference["size_bytes"] += 1
+        with pytest.raises(ValueError, match="does not bind the receipt"):
+            project_dependency_preflight_for_event(
+                receipt,
+                full_receipt_reference=reference,
+            )
+
+
+def test_dependency_preflight_event_projection_requires_artifact_for_oversized_receipt(
+    tmp_path,
+) -> None:
+    receipt = project_dependency_preflight_error_receipt(
+        tmp_path,
+        ["python -m pytest -q"],
+        RuntimeError("fixture failure"),
+    )
+    receipt["probe"] = {
+        "projects": [
+            {
+                "marker_skipped": [
+                    {
+                        "name": f"distribution-{index}",
+                        "marker": "x" * 512,
+                    }
+                    for index in range(256)
+                ],
+                "observed": [],
+            }
+        ]
+    }
+    _reseal_dependency_preflight_receipt(receipt)
+    canonical = canonical_project_dependency_preflight_receipt_bytes(receipt)
+    assert len(canonical) > MAX_PREFLIGHT_INLINE_RECEIPT_BYTES
+
+    with pytest.raises(ValueError, match="requires an artifact reference"):
+        project_dependency_preflight_for_event(
+            receipt,
+            full_receipt_reference=None,
+        )
+
+    with BoundedArtifactStore(tmp_path / "artifacts") as store:
+        reference = store.put_blob(
+            canonical,
+            kind="validation_project_dependency_preflight_receipt",
+        )
+        projection = project_dependency_preflight_for_event(
+            receipt,
+            full_receipt_reference=reference.to_dict(),
+        )
+
+    assert projection["marker_skipped_count"] == 256
+    assert "inline_receipt" not in projection
+    assert len(
+        json.dumps(projection, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ) < MAX_PREFLIGHT_INLINE_RECEIPT_BYTES
+
+
+def test_dependency_preflight_module_cold_imports_without_artifact_or_provider_modules() -> None:
+    script = """
+import json
+import sys
+import ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight
+
+names = (
+    "openai",
+    "anthropic",
+    "transformers",
+    "ipfs_accelerate_py.agent_supervisor.runtime.artifact_store",
+    "ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_contracts",
+)
+print(json.dumps({name: name in sys.modules for name in names}, sort_keys=True))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert set(json.loads(completed.stdout).values()) == {False}

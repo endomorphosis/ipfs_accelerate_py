@@ -1151,10 +1151,10 @@ def resolve_database_implementation_paths(
     mode = str(authority_mode or getattr(parsed, "authority_mode", "") or "")
     mode = mode.strip().lower().replace("-", "_")
     if mode == "quack":
-        # The shared task database is reached only through Quack.  This path
-        # names lane-local execution/coordination sidecars and must therefore
-        # be derived from the expanded lane's state directory, never from the
-        # shared remote store identity.
+        # Quack owns the shared task-state boundary.  Lane-local
+        # execution/coordination sidecars must be derived from the expanded
+        # lane state directory, never from the shared remote store identity,
+        # or every lane would open the same DuckDB file as a writer.
         state_dir = Path(getattr(parsed, "state_dir", Path("state")))
         database_path: Path | None = state_dir / "quack-lane-control.duckdb"
     else:
@@ -1276,13 +1276,19 @@ def bind_database_portal_execution_from_args(
             maintenance_interval_seconds=getattr(
                 parsed, "maintenance_interval_seconds", None
             ),
+            dependency_preflight_artifact_store_path=(
+                attempt_root / "dependency-preflight-artifacts"
+            ),
         )
 
     bridge = DatabasePortalExecutionBridge(
         task_source=task_source,
         attempt_root=attempt_root,
         portal_factory=portal_factory,
+        repository_root=repo_root,
+        worktree_submodule_paths=tuple(worktree_submodule_paths or ()),
         task_header_prefix=parsed.task_prefix,
+        max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
     )
     binder(
         provider_fn=bridge.run_provider,
@@ -1362,6 +1368,9 @@ def build_portal_implementation_daemon_from_args(
             events_path=optional_events if use_projections else None,
             pid_path=None,
             queue_path=None,
+            max_task_attempts=int(
+                getattr(parsed, "max_task_attempts", 0) or 0
+            ),
             task_shard_count=getattr(parsed, "task_shard_count", 1),
             task_shard_index=getattr(parsed, "task_shard_index", 0),
             strict_task_sharding=getattr(
@@ -1517,6 +1526,7 @@ def build_database_implementation_daemon_from_args(
         events_path=None,
         pid_path=None,
         queue_path=None,
+        max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
         task_shard_count=getattr(parsed, "task_shard_count", 1),
         task_shard_index=getattr(parsed, "task_shard_index", 0),
         strict_task_sharding=getattr(parsed, "strict_task_sharding", False),

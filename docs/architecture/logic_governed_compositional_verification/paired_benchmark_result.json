@@ -1,0 +1,36 @@
+{
+  "baseline": {
+    "context_tokens": 387,
+    "model_calls": 0,
+    "raw_source_bytes": 1545,
+    "tests_selected": 3,
+    "verification_strategy": "raw-source-full-fixture"
+  },
+  "challenger": {
+    "abstract_state_reused": 1,
+    "capsule_reuse_count": 13,
+    "context_tokens": 549,
+    "deterministic_closures": 1,
+    "model_calls": 0,
+    "proof_test_reuse_bps": 10000,
+    "selected_tests": 2,
+    "solver_session_replay_manifests": 1,
+    "verification_strategy": "contracts-abstract-interpretation-incremental-smt-capsule-reuse"
+  },
+  "cohort": "hermetic_local_execution",
+  "comparison": {
+    "accepted_patch_quality_equal": true,
+    "context_reduction_bps": 0,
+    "critical_omissions_accepted": 0,
+    "model_call_reduction_bps": 0,
+    "safety_floor_violations": 0
+  },
+  "limitations": [
+    "single hermetic fixture is not a representative maintenance suite",
+    "both paired paths intentionally made zero model calls",
+    "no production or remote-model evidence is aggregated",
+    "wall-time/cost qualification remains a successor benchmark task"
+  ],
+  "production_authoritative": false,
+  "schema": "lgcvf-paired-benchmark@1"
+}

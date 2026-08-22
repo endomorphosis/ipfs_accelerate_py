@@ -1,0 +1,323 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.proof-carrying-architecture-refactorer.scheduler_config@1",
+  "program_identifier": "agent-supervisor-proof-carrying-architecture-refactorer-v1",
+  "taskboard_path": "docs/architecture/agent_supervisor_architecture_refactorer.todo.md",
+  "objectives_path": "docs/architecture/agent_supervisor_architecture_refactorer.objectives.md",
+  "plan_path": "docs/architecture/AGENT_SUPERVISOR_PROOF_CARRYING_ARCHITECTURE_REFACTORER_PLAN.md",
+  "validator_path": "scripts/validate_agent_supervisor_architecture_refactorer_board.py",
+  "task_prefix": "PCAR-",
+  "goal_prefix": "PCAR-G",
+  "board_namespace": "agent-supervisor-proof-carrying-architecture-refactorer-v1",
+  "accepted_plan_revision_alias": "PCAR-PLAN-R1",
+  "merge_target_branch": "codex/proof-carrying-architecture-refactorer-v1",
+  "source_binding": {
+    "accelerator_required_ancestor": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "accelerator_planning_revision": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "accelerator_planning_tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58",
+    "accelerator_required_branch": "codex/proof-carrying-architecture-refactorer-v1",
+    "bootstrap_task_source": "duckdb",
+    "require_clean_checkout_at_launch": true,
+    "record_repository_revision_at_launch": true,
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false,
+    "datasets_submodule_path": "ipfs_datasets_py",
+    "datasets_planning_revision": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+    "kit_submodule_path": "ipfs_kit_py",
+    "kit_planning_revision": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+    "mcp_plus_plus_submodule_path": "ipfs_accelerate_py/mcplusplus",
+    "mcp_plus_plus_planning_revision": "5ac0ab162f420264fd224073a5df3f2d7c054ae3"
+  },
+  "initial_projection": {
+    "task_count": 32,
+    "task_dependency_count": 119,
+    "task_dependency_root_cid": "sha256:9670f3b2ff880b197d2aea47ce341273778be6930f698a5fc9896901bb171ef5",
+    "completed_task_ids": [],
+    "ready_task_ids": [
+      "PCAR-000"
+    ],
+    "blocked_task_ids": [],
+    "terminal_task_id": "PCAR-031",
+    "goal_count": 14,
+    "root_goal_id": "PCAR-G000"
+  },
+  "database_program": {
+    "authority_mode": "quack",
+    "task_source_kind": "duckdb",
+    "endpoint_secret_handle": "handle:pcar-v1",
+    "quack_endpoint": "quack:127.0.0.1:41317",
+    "store_id": "data/agent_supervisor/proof_carrying_architecture_refactorer/control.duckdb",
+    "store_generation": "pcar-v1",
+    "schema_revision": "1",
+    "event_store_path": "data/agent_supervisor/proof_carrying_architecture_refactorer/events",
+    "runtime_registry_path": "data/agent_supervisor/proof_carrying_architecture_refactorer/registry",
+    "worktree_root": "data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees",
+    "export_profile": "pcar-v1",
+    "failover_policy": "fail_closed",
+    "explicit_legacy": false
+  },
+  "operational_control_plane": {
+    "name": "DuckDB + Quack",
+    "duckdb_role": "authoritative transactional goals, tasks, lifecycle, schema, CAS, fencing, receipts and projection cursor",
+    "quack_role": "mandatory multi-reader/multi-writer transport and exclusive fenced state-owner service boundary",
+    "canonical_gateway": "StateRepository/QuackStateRepository with StateCommand transactions",
+    "direct_multi_process_duckdb_file_open_permitted": false,
+    "automatic_file_fallback_permitted": false,
+    "outage_policy": "fail_closed",
+    "markdown_is_authority": false
+  },
+  "ducklake_projection_program": {
+    "mode": "enabled_non_authoritative",
+    "authority": false,
+    "scheduling_prerequisite": false,
+    "acceptance_prerequisite": false,
+    "completion_prerequisite": false,
+    "source_authority": "database_program DuckDB committed outbox cursor",
+    "catalog_path": "data/agent_supervisor/proof_carrying_architecture_refactorer/ducklake/catalog.duckdb",
+    "data_path": "data/agent_supervisor/proof_carrying_architecture_refactorer/ducklake/data",
+    "logical_datasets": [
+      "architecture_events",
+      "refactor_history",
+      "benchmark_observations"
+    ],
+    "permitted_purposes": [
+      "append-only history projection",
+      "analytics",
+      "benchmark comparison"
+    ],
+    "outage_policy": "record typed projection blocker and replay idempotently without blocking scheduling, validation, acceptance or completion",
+    "may_grant_authority": false
+  },
+  "max_lanes": 3,
+  "strict_task_sharding": true,
+  "idle_lane_work_stealing": "",
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "objective_goal_refinement_enabled": false,
+  "retry_budget_guardrail_enabled": true,
+  "dependency_guardrail_enabled": true,
+  "reconciliation_guardrail_enabled": true,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 20,
+  "check_interval_seconds": 10,
+  "stale_seconds": 1800,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 8,
+  "max_task_attempts": 4,
+  "implementation_retry_budget": 4,
+  "validation_retry_budget": 4,
+  "merge_retry_budget": 4,
+  "implementation_timeout_seconds": 14400,
+  "implementation_max_timeout_seconds": 21600,
+  "implementation_log_stall_seconds": 1200,
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py",
+    "ipfs_kit_py",
+    "ipfs_accelerate_py/mcplusplus"
+  ],
+  "protected_paths": [
+    "docs/architecture/AGENT_SUPERVISOR_PROOF_CARRYING_ARCHITECTURE_REFACTORER_PLAN.md",
+    "docs/architecture/agent_supervisor_architecture_refactorer.objectives.md",
+    "docs/architecture/agent_supervisor_architecture_refactorer.todo.md",
+    "config/agent_supervisor_architecture_refactorer_scheduler.json",
+    "scripts/validate_agent_supervisor_architecture_refactorer_board.py",
+    "scripts/run_agent_supervisor_architecture_refactorer.py",
+    "test/api/architecture_refactorer/test_board.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/proof_carrying_architecture_refactorer",
+    "state": "data/agent_supervisor/proof_carrying_architecture_refactorer/state",
+    "worktrees": "data/agent_supervisor/proof_carrying_architecture_refactorer/worktrees",
+    "merge_queue": "data/agent_supervisor/proof_carrying_architecture_refactorer/merge-queue",
+    "logs": "data/agent_supervisor/proof_carrying_architecture_refactorer/logs",
+    "evidence": "data/agent_supervisor/proof_carrying_architecture_refactorer/evidence",
+    "quack_owner": "data/agent_supervisor/proof_carrying_architecture_refactorer/quack-owner",
+    "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "pcar-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [
+        "PCAR-000"
+      ],
+      "initial_focus": "baseline-and-inventory"
+    },
+    {
+      "index": 1,
+      "name": "pcar-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_task_ids": [],
+      "initial_focus": "contracts-and-analysis"
+    },
+    {
+      "index": 2,
+      "name": "pcar-lane-2",
+      "strict_shard_remainder": 2,
+      "initial_task_ids": [],
+      "initial_focus": "validation-and-qualification"
+    }
+  ],
+  "goal_hierarchy": {
+    "PCAR-G000": [
+      "PCAR-G010",
+      "PCAR-G020",
+      "PCAR-G030",
+      "PCAR-G040"
+    ],
+    "PCAR-G010": [
+      "PCAR-G011",
+      "PCAR-G012",
+      "PCAR-G013"
+    ],
+    "PCAR-G020": [
+      "PCAR-G021",
+      "PCAR-G022"
+    ],
+    "PCAR-G030": [
+      "PCAR-G031",
+      "PCAR-G032"
+    ],
+    "PCAR-G040": [
+      "PCAR-G041",
+      "PCAR-G042"
+    ]
+  },
+  "task_groups": {
+    "PCAR-G011": [
+      "PCAR-000",
+      "PCAR-001"
+    ],
+    "PCAR-G012": [
+      "PCAR-002",
+      "PCAR-003",
+      "PCAR-004",
+      "PCAR-005"
+    ],
+    "PCAR-G013": [
+      "PCAR-006",
+      "PCAR-007"
+    ],
+    "PCAR-G021": [
+      "PCAR-008",
+      "PCAR-009",
+      "PCAR-010",
+      "PCAR-011",
+      "PCAR-012"
+    ],
+    "PCAR-G022": [
+      "PCAR-013",
+      "PCAR-014",
+      "PCAR-015",
+      "PCAR-016"
+    ],
+    "PCAR-G031": [
+      "PCAR-017",
+      "PCAR-018",
+      "PCAR-019",
+      "PCAR-020",
+      "PCAR-021"
+    ],
+    "PCAR-G032": [
+      "PCAR-022",
+      "PCAR-023",
+      "PCAR-024",
+      "PCAR-025"
+    ],
+    "PCAR-G041": [
+      "PCAR-026",
+      "PCAR-027"
+    ],
+    "PCAR-G042": [
+      "PCAR-028",
+      "PCAR-029",
+      "PCAR-030",
+      "PCAR-031"
+    ]
+  },
+  "waves": [
+    {"id": "W0", "task_ids": ["PCAR-000"]},
+    {"id": "W1", "task_ids": ["PCAR-001", "PCAR-002"]},
+    {"id": "W2", "task_ids": ["PCAR-003", "PCAR-004", "PCAR-025"]},
+    {"id": "W3", "task_ids": ["PCAR-005", "PCAR-006"]},
+    {"id": "W4", "task_ids": ["PCAR-007", "PCAR-013", "PCAR-014", "PCAR-015"]},
+    {"id": "W5", "task_ids": ["PCAR-008", "PCAR-010"]},
+    {"id": "W6", "task_ids": ["PCAR-009", "PCAR-011"]},
+    {"id": "W7", "task_ids": ["PCAR-012"]},
+    {"id": "W8", "task_ids": ["PCAR-016"]},
+    {"id": "W9", "task_ids": ["PCAR-017", "PCAR-024"]},
+    {"id": "W10", "task_ids": ["PCAR-018"]},
+    {"id": "W11", "task_ids": ["PCAR-019"]},
+    {"id": "W12", "task_ids": ["PCAR-020"]},
+    {"id": "W13", "task_ids": ["PCAR-021", "PCAR-022"]},
+    {"id": "W14", "task_ids": ["PCAR-023"]},
+    {"id": "W15", "task_ids": ["PCAR-026", "PCAR-027"]},
+    {"id": "W16", "task_ids": ["PCAR-028"]},
+    {"id": "W17", "task_ids": ["PCAR-029"]},
+    {"id": "W18", "task_ids": ["PCAR-030"]},
+    {"id": "W19", "task_ids": ["PCAR-031"]}
+  ],
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.6",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "high",
+    "max_concurrency": 3,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "authority_policy": {
+    "duckdb_transactional_authority": true,
+    "quack_exclusive_state_owner_transport": true,
+    "ducklake_projection_authority": false,
+    "ducklake_projection_is_scheduling_prerequisite": false,
+    "ducklake_projection_is_acceptance_prerequisite": false,
+    "markdown_is_completion_authority": false,
+    "task_board_status_is_completion_evidence": false,
+    "direct_multi_process_duckdb_file_open_permitted": false,
+    "automatic_quack_to_file_fallback": false,
+    "provider_or_model_claim_is_completion_authority": false,
+    "one_authoritative_store_per_mutable_semantic_fact": true,
+    "deterministic_current_tree_admission_required": true,
+    "exact_receipt_identity_required": true,
+    "unknown_ownership_disposition": "typed_blocker",
+    "sibling_repositories_are_read_only": true,
+    "architecture_candidate_self_promotion": false,
+    "procedure_self_authorization": false
+  },
+  "autonomy_ceiling": {
+    "candidate_may_raise_ceiling": false,
+    "high_risk_requires_human_approval": true,
+    "public_api_state_provider_receipt_or_cross_package_migration_mode": "proposal_only",
+    "automatic_operator_classes": [
+      "pure_module_extraction",
+      "generated_projection_regeneration",
+      "lazy_import_conversion",
+      "internal_adapter_generation",
+      "closed_result_type_migration",
+      "confirmed_dead_internal_code_removal",
+      "test_fixture_relocation",
+      "simulation_namespace_relocation"
+    ]
+  },
+  "completion_policy": {
+    "terminal_task_id": "PCAR-031",
+    "all_task_dependencies_terminal_required": true,
+    "goal_completion_contracts_required": true,
+    "current_tree_required": true,
+    "active_mutating_claims_empty_required": true,
+    "merge_queue_settled_required": true,
+    "blocking_obligations_empty_required": true,
+    "required_receipts_and_seals_verify": true,
+    "non_success_terminals_never_report_success": true,
+    "ducklake_outage_cannot_block_core_completion": true,
+    "final_report_required": true
+  }
+}

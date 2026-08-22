@@ -1,0 +1,9 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.provider-fixture@1",
+  "fixture_id": "local-deterministic-v1",
+  "live": false,
+  "network": "deny",
+  "paid_model": false,
+  "outcomes": ["Available", "Unavailable", "Denied", "TimedOut", "Cancelled", "Failed"],
+  "rule": "The fixture may validate routing/outcome semantics but never satisfy a production capability or execution-success predicate."
+}

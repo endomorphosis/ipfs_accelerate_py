@@ -46,6 +46,7 @@ def test_transient_preflight_retry_export_has_reviewed_signature() -> None:
     )
 
 
+
 def test_transient_preflight_retry_uses_current_validated_receipt() -> None:
     """The compatibility export admits only the exact Grok 4.6 artifact."""
 
@@ -90,8 +91,6 @@ def test_transient_preflight_retry_uses_current_validated_receipt() -> None:
         model="grok-4.6",
         probe_returncode=41,
     )
-
-
 def test_current_runner_typed_preflight_reaches_retry_without_a_model_call(
     tmp_path: Path,
 ) -> None:

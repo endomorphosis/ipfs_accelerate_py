@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     acquire_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
+    checkout_mutation_lease_state,
     checkout_mutation_lock_path,
     checkout_repository_id,
     release_checkout_mutation_lease,
@@ -414,6 +415,77 @@ def test_release_requires_acquired_inode_and_preserves_replacement(
 
     assert not release_checkout_mutation_lease(lease)
     assert json.loads(lock_path.read_text(encoding="utf-8")) == metadata
+
+
+def test_checkout_mutation_lease_state_classifies_current_absent_and_replaced(
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / "implementation-main-merge.lock"
+    metadata = _metadata(tmp_path, operation="state-classification")
+    lease, _reason, _incumbent, _waited = acquire_checkout_mutation_lease(
+        lock_path,
+        metadata,
+        owner_active=lambda _owner: True,
+    )
+    assert lease is not None
+    assert checkout_mutation_lease_state(lease) == "current"
+
+    replacement = tmp_path / "replacement.pending"
+    replacement.write_text(json.dumps(metadata), encoding="utf-8")
+    os.replace(replacement, lock_path)
+    assert checkout_mutation_lease_state(lease) == "replaced"
+
+    lock_path.unlink()
+    assert checkout_mutation_lease_state(lease) == "absent"
+
+
+def test_checkout_mutation_lease_state_preserves_malformed_lock_as_inconclusive(
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / "implementation-main-merge.lock"
+    metadata = _metadata(tmp_path, operation="malformed-state")
+    lease, _reason, _incumbent, _waited = acquire_checkout_mutation_lease(
+        lock_path,
+        metadata,
+        owner_active=lambda _owner: True,
+    )
+    assert lease is not None
+    lock_path.write_text("{not-json\n", encoding="utf-8")
+
+    assert checkout_mutation_lease_state(lease) == "inconclusive"
+    assert lock_path.read_text(encoding="utf-8") == "{not-json\n"
+
+
+def test_checkout_mutation_lease_state_timeout_is_inconclusive(
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / "implementation-main-merge.lock"
+    metadata = _metadata(tmp_path, operation="state-timeout")
+    lease, _reason, _incumbent, _waited = acquire_checkout_mutation_lease(
+        lock_path,
+        metadata,
+        owner_active=lambda _owner: True,
+    )
+    assert lease is not None
+    completed = threading.Event()
+    result: dict[str, object] = {}
+
+    def classify() -> None:
+        result["state"] = checkout_mutation_lease_state(
+            lease,
+            timeout_seconds=0.04,
+        )
+        completed.set()
+
+    with serialized_lock_update(lock_path):
+        worker = threading.Thread(target=classify)
+        worker.start()
+        assert completed.wait(timeout=0.5)
+
+    worker.join(timeout=1)
+    assert result["state"] == "inconclusive"
+    assert checkout_mutation_lease_state(lease) == "current"
+    assert release_checkout_mutation_lease(lease)
 
 
 def test_release_is_idempotent_when_exact_lease_is_already_absent(

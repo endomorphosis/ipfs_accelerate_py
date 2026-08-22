@@ -1,0 +1,70 @@
+{
+  "artifact_cid": "baguqeerazpi242wbviqoospasofhwkep4ki5nwlgr5tj2wp7cdy65qsjwfea",
+  "artifact_verification": {
+    "disposition": "validated",
+    "issues": [],
+    "replay_receipt_cid": "baguqeerawlmbddtcxi24q2fwxg44ef3fiaocjqptwz436b2puyuomxamqehq",
+    "valid": true
+  },
+  "dispositions": {
+    "baseline": "proved",
+    "fault": "disproved",
+    "final": "proved",
+    "fixed_point": "complete"
+  },
+  "evidence_cohort": "hermetic_local_execution",
+  "evidence_reuse": [
+    {
+      "binding_id": "abstract:A",
+      "disposition": "invalidated",
+      "reason_codes": [
+        "affected_semantic_frontier",
+        "changed_dependency",
+        "stale_contract_binding"
+      ]
+    },
+    {
+      "binding_id": "proof:unaffected",
+      "disposition": "reused",
+      "reason_codes": ["exact_cache_key_revalidated"]
+    }
+  ],
+  "fixture": {
+    "base_commit": "ba85c7a2a70c79e7d7a71e261a700be38220fd49",
+    "base_tree": "bdc04162de9ec638145bf3a0f68526ef9cffd5eb",
+    "fault_commit": "e02d00e82b76bfa0e0b0e9b48c9d76ee319c1bd3",
+    "fault_tree": "bd88b5076d6ebfcf5fd16b112ff1b8df5db39e22",
+    "initially_unselected_test": "tests/test_unselected.py",
+    "selected_test": "tests/test_selected.py",
+    "target_path": "pkg/module_a.py"
+  },
+  "localization": {
+    "core_validated": true,
+    "interpolant_receipt_cid": "bafkreihgoyq76uzpvesx367oldgkvp6rsht2ya3hw5crxste5rbtxdy4e4",
+    "interpolant_status": "validated",
+    "solver_receipt_id": "bafkreiadvgiqymo6lloxxmlndla4mo42k4bofiqqndodaz5ebzwkbqdduq",
+    "solver_status": "unsat",
+    "unsat_core": ["consumer-upper-bound", "producer-lower-bound"]
+  },
+  "model_invocation_count": 0,
+  "production_authorized": false,
+  "provider_modules_imported_during_route": [],
+  "release_qualified": false,
+  "result_cid": "baguqeeraqri3lovzgesdyyb22bx7rv3te5bqqp4pydxbfjqi5tb6jvsvhzyq",
+  "schema": "lgcvf-vertical-slice-summary@1",
+  "semantic_roots": {
+    "baseline_contract_root": "bafkreiftn4bfwpm3trqimycdivg27c7a64gsum3rzm3zfufscfxf557tva",
+    "baseline_state": "baguqeeraylzo5euwnxj6thvv3xzoo2sf4474bt36pmzxm3cfx2gsvta2qhoq",
+    "fault_contract_root": "bafkreibrinvpj2sstpc3jwpcfbokepc54m57zjon7g4ox3x5c7fbflvwmq",
+    "fault_state": "baguqeeral2vpftaxey65k74jk5ozkmoeb6sz7p7kvuahjxhzyqqgtbpqjefa",
+    "final_contract_root": "bafkreiftn4bfwpm3trqimycdivg27c7a64gsum3rzm3zfufscfxf557tva",
+    "final_semantic_root": "baguqeerajmau5fsvnvbexglpfwkjlkuetrep6c6zlvzmb5rpzdmwkttnffxq",
+    "final_state": "baguqeeragne3toey3kjcdlsahzoiyh2shgbiov5bkt7y25nm4xurwfas2d4a"
+  },
+  "test_status": {
+    "baseline": "passed",
+    "fault": "failed_as_expected",
+    "full": "passed",
+    "selected": "passed"
+  }
+}

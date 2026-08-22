@@ -926,6 +926,7 @@ class ControlPlaneMigrationRunner:
     application_version: str = field(default_factory=default_application_version)
     tool_version: str = field(default_factory=default_tool_version)
     owner_id: str = field(default_factory=lambda: f"migration-owner:{uuid.uuid4()}")
+    database_uuid: str | None = None
     ownership_lease_seconds: float = OWNERSHIP_LEASE_SECONDS
     _thread_guard: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
@@ -933,6 +934,8 @@ class ControlPlaneMigrationRunner:
         self.database_path = Path(self.database_path)
         if not isinstance(self.catalog, MigrationCatalog):
             raise TypeError("catalog must be a MigrationCatalog")
+        if self.database_uuid is not None:
+            self.database_uuid = str(uuid.UUID(str(self.database_uuid)))
 
     @classmethod
     def for_database(
@@ -944,6 +947,7 @@ class ControlPlaneMigrationRunner:
         application_version: str | None = None,
         tool_version: str | None = None,
         owner_id: str | None = None,
+        database_uuid: str | None = None,
     ) -> ControlPlaneMigrationRunner:
         resolved_catalog = catalog or MigrationCatalog.from_sql_directory(
             sql_directory
@@ -960,6 +964,7 @@ class ControlPlaneMigrationRunner:
                 tool_version if tool_version is not None else default_tool_version()
             ),
             owner_id=owner_id or f"migration-owner:{uuid.uuid4()}",
+            database_uuid=database_uuid,
         )
 
     def _lock_path(self) -> Path:
@@ -993,7 +998,11 @@ class ControlPlaneMigrationRunner:
             for statement in _split_sql_statements(_BOOKKEEPING_SQL):
                 connection.execute(statement)
         if _meta_get(connection, META_DATABASE_UUID) is None:
-            _meta_set(connection, META_DATABASE_UUID, str(uuid.uuid4()))
+            _meta_set(
+                connection,
+                META_DATABASE_UUID,
+                self.database_uuid or str(uuid.uuid4()),
+            )
         if _meta_get(connection, META_SCHEMA_VERSION) is None:
             _meta_set(connection, META_SCHEMA_VERSION, "0")
 

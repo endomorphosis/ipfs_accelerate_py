@@ -68,15 +68,11 @@ PORTFOLIO_RESULT_SCHEMA = (
 AUTHORITY_LATTICE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/authority-lattice@1"
 )
-HAMMER_TRACE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/hammer-trace@1"
-)
+HAMMER_TRACE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/hammer-trace@1"
 COUNTEREXAMPLE_TRACE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/counterexample-trace@1"
 )
-CHECKER_TRACE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/checker-trace@1"
-)
+CHECKER_TRACE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/checker-trace@1"
 AUTHORITATIVE_DISPOSITION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/authoritative-disposition@1"
 )

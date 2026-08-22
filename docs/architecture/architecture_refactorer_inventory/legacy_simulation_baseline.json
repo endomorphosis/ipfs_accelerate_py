@@ -1,0 +1,18 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.legacy-simulation-bootstrap@1",
+  "authority": false,
+  "disposition": "seed_categories_only_requires_pcar_015_current_tree_inventory",
+  "required_categories": [
+    "mock workers",
+    "mock inference handlers",
+    "simulated hardware",
+    "fake or compatibility CIDs",
+    "fixture providers",
+    "fallback success paths",
+    "deprecated coordinators",
+    "legacy endpoint registries",
+    "historical provider routers"
+  ],
+  "closed_reachability": ["production_reachable", "test_only", "compatibility_only", "dead", "unknown"],
+  "production_flow_invariant": "No compatibility, fixture, or simulation origin may satisfy a production capability, execution-success, proof, completion, or release predicate."
+}
