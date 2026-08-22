@@ -3,11 +3,11 @@
   "objective_complete": false,
   "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
   "production_authorized": false,
-  "qualification_cid": "baguqeeraspgepzggkrge5oldkbrfjp373awn7dcov277tiedxnetkmhx7vmq",
+  "qualification_cid": "baguqeeramnvghkxzfn7bbbj6xeoh2jq6xxxgklefpxqu24tus6lwbdpt373a",
   "release_qualified": false,
-  "release_report_sha256": "sha256:da35551d764dbd5ea49ef860b405f998cdc791c01fe87e050196f31e489371db",
+  "release_report_sha256": "sha256:66fcd2a4f70d2d14ac652038c722a13dc4944e279d5aeb504707bab3839207d7",
   "schema": "lgcvf-successor-tasks@1",
-  "successor_tasks_cid": "baguqeerasvdhm4jfllqq7k3bjkrdqdf47uvh4zm7c7wr7aijn47lwanlwr5q",
+  "successor_tasks_cid": "baguqeerazbzagyorkkbaiowjtwnliptmlzgim3snyc4zytm47nn3kgorz44q",
   "tasks": [
     {
       "acceptance": [

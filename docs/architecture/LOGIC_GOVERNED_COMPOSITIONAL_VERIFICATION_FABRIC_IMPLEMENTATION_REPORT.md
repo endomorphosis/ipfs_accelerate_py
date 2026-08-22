@@ -1,11 +1,11 @@
 # LGCVF implementation report
 
 - Formal plan CID: baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq
-- Qualification result CID: baguqeeraspgepzggkrge5oldkbrfjp373awn7dcov277tiedxnetkmhx7vmq
-- Qualification authority CID: baguqeerabesacj5ta45r7effwhw6rjzcqv5lbbez3xu4pocyrmv42bqgcmbq
+- Qualification result CID: baguqeeramnvghkxzfn7bbbj6xeoh2jq6xxxgklefpxqu24tus6lwbdpt373a
+- Qualification authority CID: baguqeera2ronkmcuvmt5g7iu2v5fwlnckothlfkxecr6fjzuuzgvnqiuxnza
 - Benchmark result CID: baguqeerah5rlyxahovwggpfv6hvukmleca5c3qrpukmswys6u63hvjpjghza
 - Benchmark authority CID: baguqeera6yzqqcs2dod46s7h5jnean7axorhbju34wamwksin5ez7nkoynra
-- Release report SHA256: sha256:da35551d764dbd5ea49ef860b405f998cdc791c01fe87e050196f31e489371db
+- Release report SHA256: sha256:66fcd2a4f70d2d14ac652038c722a13dc4944e279d5aeb504707bab3839207d7
 - Task implementation: incomplete
 - Test success: passed_hermetic
 - Objective completion: incomplete
@@ -15,7 +15,7 @@
 
 ## A. Exact source revisions and repository topology
 
-- Source revisions: {"ipfs_accelerate_py":{"head":"6ce8fc6e937b815a8285ac9a4d9a2092e8075a42","protected_input_cid":"baguqeerammf2wqnzod7clabqmdept3ss3qw5h6m5nnwxlaipptdafeiddx3q","tree":"5505489ab374f27c9533f760f867c74e99e373a4"},"ipfs_datasets_py":{"gitlink":"66a02063496fd200f2372b3083e376f1978c6be1","head":"66a02063496fd200f2372b3083e376f1978c6be1","protected_input_cid":"baguqeerammf2wqnzod7clabqmdept3ss3qw5h6m5nnwxlaipptdafeiddx3q","tree":"11d9c74504512e45c3ccc78d55e0e2f25d2a9a92"}}
+- Source revisions: {"ipfs_accelerate_py":{"head":"93127adc66dc78d8ee8fe7888deed1bea75420be","protected_input_cid":"baguqeeragrc5wegnexra37qijn7wrotkva2pzxk6snlax4azdazhyyolba4q","tree":"c38775e9bc5e0124983dd57b9231cfe0532814ea"},"ipfs_datasets_py":{"gitlink":"66a02063496fd200f2372b3083e376f1978c6be1","head":"66a02063496fd200f2372b3083e376f1978c6be1","protected_input_cid":"baguqeeragrc5wegnexra37qijn7wrotkva2pzxk6snlax4azdazhyyolba4q","tree":"11d9c74504512e45c3ccc78d55e0e2f25d2a9a92"}}
 - Repository topology: {"ipfs_accelerate_py":{"kind":"repository_root","path":"."},"ipfs_datasets_py":{"kind":"git_submodule","path":"ipfs_datasets_py"}}
 
 ## B. Pre-existing implemented capabilities
@@ -24,7 +24,7 @@
 
 ## C. Verified gaps
 
-- Verified gaps: ["External qualification remains unavailable for live or production cohorts","Operator production authorization remains unavailable and unissued","Warm-cache model-call displacement was not evaluated because both routes made zero calls"]
+- Verified gaps: ["External qualification remains unavailable for live or production cohorts","Operator production authorization remains unavailable and unissued","Warm-cache model-call displacement was not evaluated because both routes made zero calls","Fresh run-v17 recovery cannot launch: run-v16 donor is absent and datasets HEAD differs from the frozen planning revision"]
 
 ## D. Architecture decisions and authority boundaries
 
@@ -32,7 +32,7 @@
 
 ## E. Files changed by repository
 
-- Files changed by repository: {"ipfs_accelerate_py":["ipfs_accelerate_py/agent_supervisor/validation/lgcvf_task_class_coverage.py","ipfs_accelerate_py/agent_supervisor/validation/compositional_verification_vertical.py","scripts/benchmark_lgcvf_symbolic_displacement.py","test/api/test_agent_supervisor_lgcvf_symbolic_displacement_benchmark.py","test/fixtures/agent_supervisor/compositional_verification/pkg/codec.py","test/fixtures/agent_supervisor/compositional_verification/pkg/compat.py","test/fixtures/agent_supervisor/compositional_verification/pkg/lock.py","test/fixtures/agent_supervisor/compositional_verification/pkg/plugin.py","test/fixtures/agent_supervisor/compositional_verification/pkg/policy.py","test/fixtures/agent_supervisor/compositional_verification/pkg/proof.py","test/fixtures/agent_supervisor/compositional_verification/tests/test_class_edges.py","scripts/qualify_logic_governed_compositional_verification_fabric.py"],"ipfs_datasets_py":["ipfs_datasets_py/logic/software_verification/proof_carrying_artifact.py","tests/unit/logic/software_verification/test_proof_carrying_artifact.py"]}
+- Files changed by repository: {"ipfs_accelerate_py":["ipfs_accelerate_py/agent_supervisor/validation/lgcvf_task_class_coverage.py","scripts/benchmark_lgcvf_symbolic_displacement.py","test/api/test_agent_supervisor_lgcvf_symbolic_displacement_benchmark.py","docs/architecture/lgcvf_current_roots_packet.json","docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_AUTHORITY_CHECKLIST.md","scripts/qualify_logic_governed_compositional_verification_fabric.py"],"ipfs_datasets_py":["ipfs_datasets_py/logic/software_verification/proof_carrying_artifact.py","tests/unit/logic/software_verification/test_proof_carrying_artifact.py"]}
 
 ## F. Public interfaces added or extended
 
@@ -58,10 +58,10 @@
 
 ## K. Remaining risks and production blockers
 
-- Remaining risks: ["Hermetic fixture evidence is not representative of production maintenance","Nested Docker isolation is unavailable under the landlock/seccomp worker","Warm-cache model-call displacement still lacks a nonzero baseline","External and operator authority remain blocked and cannot be self-issued"]
+- Remaining risks: ["Hermetic fixture evidence is not representative of production maintenance","Nested Docker isolation is unavailable under the landlock/seccomp worker","Warm-cache model-call displacement still lacks a nonzero baseline","Fresh recovery cannot re-materialize without the run-v16 donor and planning-revision match","External and operator authority remain blocked and cannot be self-issued"]
 - Production blockers: ["blocked_external_authority","blocked_manual"]
 
 ## L. Next minimal machine-executable tasks
 
 - Successor task IDs: ["LGCVF-S001","LGCVF-S002","LGCVF-S003"]
-- Successor tasks CID: baguqeerasvdhm4jfllqq7k3bjkrdqdf47uvh4zm7c7wr7aijn47lwanlwr5q
+- Successor tasks CID: baguqeerazbzagyorkkbaiowjtwnliptmlzgim3snyc4zytm47nn3kgorz44q
