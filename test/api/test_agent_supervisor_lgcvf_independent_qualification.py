@@ -789,7 +789,7 @@ def test_recovery_observation_is_sealed_bounded_and_rejects_forgery(
     assert observation["self_authority"] is False
     assert observation["completion_authoritative"] is False
     assert observation["isolation"]["network_permitted"] is False
-    assert observation["isolation"]["resource_limits"]["processes"] == 4_096
+    assert observation["isolation"]["resource_limits"]["processes"] == 65_536
     projection = observation["readonly_projection"]
     assert projection["schema"] == "lgcvf-closed-recovery-test-projection@1"
     assert projection["contains_live_source_links"] is False

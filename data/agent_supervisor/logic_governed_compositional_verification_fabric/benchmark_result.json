@@ -7,10 +7,10 @@
     "production_authoritative_evidence"
   ],
   "execution_evidence": {
-    "artifact_cid": "baguqeerar5y7qwii6r2rooyrryewuadtim7bxkiiqtnzfd2dep6yp7pfcu4a",
-    "artifact_verification_receipt_cid": "baguqeeras6k4a4gn3fj57kqc4ndoslh4ese2x6g2oxjoywsmym5fk2hfjeqq",
+    "artifact_cid": "baguqeeraedyg4jbsoeqgof5vkownnixbhq6qwhivnwijufwdmm7d5munr2za",
+    "artifact_verification_receipt_cid": "baguqeera6tbtczwmjqe3h4bqnsrxif6txnrzylheo72wh32k3szqxw4lwsya",
     "fresh_execution_receipts_reproducible": false,
-    "vertical_result_cid": "baguqeeracqgqh5pyqb5aqsi6fgxzrqmfq2rptgjhpgcfw3ocgnbjh4kwaqkq"
+    "vertical_result_cid": "baguqeerauaqyu6jpplje7wypqtyvlblf65z4zrm3gv24bfzagitkqixiznsa"
   },
   "interface": "LgcvfSymbolicDisplacementBenchmark@1",
   "limitations": [
@@ -30,7 +30,7 @@
     "challenger": {
       "abstract_state_reused": 1,
       "capsule_reuse_count": 13,
-      "context_tokens": 549,
+      "context_tokens": 548,
       "deterministic_closures": 1,
       "model_calls": 0,
       "proof_test_reuse_bps": 10000,
@@ -66,8 +66,8 @@
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "report_cid": "baguqeera5eunnikkby5xg4kkkrwrwp7wmo4x26u6xvxerx4lp2lbzhkrdqma",
-  "reproducible_projection_cid": "baguqeeratddf3jpln5olhturxvhiqbk67foxoqiuq3rpnm23jxg2vocwcjqq",
+  "report_cid": "baguqeera2lz7qz5bjolufndbrayp7tz4p3hsx244zaqhksvcf5m3zezawlwa",
+  "reproducible_projection_cid": "baguqeeraiymgtt7ji4kkscvtp4mr42efbrlu575f2ijsryss4fjoyf5hdj6a",
   "schema": "lgcvf-symbolic-displacement-benchmark@1",
   "task_class_coverage": {
     "missing": [

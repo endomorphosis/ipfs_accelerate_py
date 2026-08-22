@@ -46,6 +46,11 @@ from ..proof.security_contract_analysis import (
     evaluate_fixed_point_security,
     extract_code_security_facts,
 )
+from ..planning.obligation_graph_compiler import (
+    PlannerDoctorSemanticDecision,
+    SemanticDischargeEvidence,
+    apply_semantic_discharge,
+)
 from .deterministic_doctor_fixed_point import (
     DEFAULT_FIXED_POINT_BOUND,
     MAX_ITERATIONS,
@@ -113,6 +118,9 @@ class LiveFixedPointAbortReason(str, Enum):
     SECURITY_FAILURE = "security_failure"
     ROOT_DRIFT = "root_drift"
     MALFORMED = "malformed_input"
+    MISSING_SEMANTIC_COVERAGE = "missing_semantic_coverage"
+    UNVALIDATED_INTERPOLANT = "interpolant_not_independently_validated"
+    SEMANTIC_OSCILLATION = "semantic_successor_oscillation"
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +352,9 @@ class LiveFixedPointRequest:
     prebuilt_complete: bool | None = None
     second_order_schedule: Mapping[int, Sequence[str]] = field(default_factory=dict)
     discharge_schedule: Mapping[int, Sequence[str]] = field(default_factory=dict)
+    semantic_discharge: SemanticDischargeEvidence | Mapping[str, Any] | None = None
+    required_obligation_ids: tuple[str, ...] = ()
+    plan_ancestry: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -403,6 +414,62 @@ class LiveFixedPointRequest:
             "failed_hyperproperty_ids",
             tuple(str(x) for x in self.failed_hyperproperty_ids if str(x).strip()),
         )
+        object.__setattr__(
+            self,
+            "required_obligation_ids",
+            tuple(str(x) for x in self.required_obligation_ids if str(x).strip()),
+        )
+        object.__setattr__(
+            self,
+            "plan_ancestry",
+            tuple(str(x) for x in self.plan_ancestry if str(x).strip()),
+        )
+        if self.semantic_discharge is not None and not isinstance(
+            self.semantic_discharge, SemanticDischargeEvidence
+        ):
+            if not isinstance(self.semantic_discharge, Mapping):
+                raise DeterministicDoctorLiveFixedPointError(
+                    "semantic_discharge must be SemanticDischargeEvidence or mapping"
+                )
+            object.__setattr__(
+                self,
+                "semantic_discharge",
+                SemanticDischargeEvidence(
+                    discharge_refs=tuple(
+                        self.semantic_discharge.get("discharge_refs") or ()
+                    ),
+                    invalidation_refs=tuple(
+                        self.semantic_discharge.get("invalidation_refs") or ()
+                    ),
+                    unsat_core_refs=tuple(
+                        self.semantic_discharge.get("unsat_core_refs") or ()
+                    ),
+                    counterexample_refs=tuple(
+                        self.semantic_discharge.get("counterexample_refs") or ()
+                    ),
+                    interpolant_refs=tuple(
+                        self.semantic_discharge.get("interpolant_refs") or ()
+                    ),
+                    interpolants_independently_validated=bool(
+                        self.semantic_discharge.get(
+                            "interpolants_independently_validated"
+                        )
+                    ),
+                    covered_obligation_ids=tuple(
+                        self.semantic_discharge.get("covered_obligation_ids") or ()
+                    ),
+                    current_tree_id=str(
+                        self.semantic_discharge.get("current_tree_id") or ""
+                    ),
+                    evidence_tree_id=str(
+                        self.semantic_discharge.get("evidence_tree_id") or ""
+                    ),
+                    prior_successor_fingerprint=str(
+                        self.semantic_discharge.get("prior_successor_fingerprint")
+                        or ""
+                    ),
+                ),
+            )
         bound = int(self.fixed_point_bound)
         if bound < 1 or bound > MAX_ITERATIONS:
             raise DeterministicDoctorLiveFixedPointError(
@@ -884,6 +951,21 @@ def reject_prebuilt_completion(
     return tuple(sorted(set(reasons)))
 
 
+def evaluate_live_semantic_discharge(
+    request: LiveFixedPointRequest,
+) -> PlannerDoctorSemanticDecision | None:
+    """Consume current discharge evidence; None means the gate is inactive."""
+
+    if request.semantic_discharge is None and not request.required_obligation_ids:
+        return None
+    evidence = request.semantic_discharge or SemanticDischargeEvidence()
+    return apply_semantic_discharge(
+        evidence,
+        required_obligation_ids=request.required_obligation_ids,
+        plan_ancestry=request.plan_ancestry,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
@@ -973,6 +1055,22 @@ class DeterministicDoctorLiveFixedPoint:
                     },
                     checkpoint=checkpoint or transaction_report.checkpoint,
                 )
+
+        semantic = evaluate_live_semantic_discharge(req)
+        if semantic is not None and semantic.blocked:
+            reasons = set(semantic.reason_codes)
+            if "missing_semantic_coverage" in reasons:
+                reasons.add(LiveFixedPointAbortReason.MISSING_SEMANTIC_COVERAGE.value)
+            if "interpolant_not_independently_validated" in reasons:
+                reasons.add(LiveFixedPointAbortReason.UNVALIDATED_INTERPOLANT.value)
+            if "semantic_successor_oscillation" in reasons:
+                reasons.add(LiveFixedPointAbortReason.SEMANTIC_OSCILLATION.value)
+            return self._abort(
+                plan,
+                transaction_report,
+                reasons=reasons,
+                checkpoint=checkpoint or transaction_report.checkpoint,
+            )
 
         bound = req.fixed_point_bound
         budget = LiveStageBudget(
@@ -1586,6 +1684,7 @@ __all__ = [
     "daemon_require_live_doctor_fixed_point",
     "default_cache_invalidation",
     "default_identity_replay",
+    "evaluate_live_semantic_discharge",
     "default_reclose",
     "default_redelta",
     "default_replan",

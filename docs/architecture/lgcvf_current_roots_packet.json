@@ -1,0 +1,55 @@
+{
+  "schema": "lgcvf-current-roots-packet@1",
+  "not_external_qualification_receipt": true,
+  "not_production_authorization_receipt": true,
+  "issuer": "checklist-only; not an independent verifier; not an operator grant",
+  "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
+  "predecessor_plan_cid": "baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q",
+  "qualification_result_cid": "baguqeeraf3z4orey2z4ziu2ova5qsuf2b5lgwti62pn5prj7u76bv3o4x5uq",
+  "qualification_authority_cid": "baguqeera27kvd2aqkl5jm4hgisisygd2jukokjvhbm3q4ovmubguuvm6pekq",
+  "checkout_fingerprint_cid": "baguqeeraxvbzhhhpmqukfwzntza2klxjirawoxer76vgeny7duln5ne65una",
+  "benchmark_report_cid": "baguqeera2lz7qz5bjolufndbrayp7tz4p3hsx244zaqhksvcf5m3zezawlwa",
+  "benchmark_authority_cid": "baguqeerajuq4m4rpsm55yhgzx22ikl2pnjazyvirbb5iiy4dw6lqoe5f2ixa",
+  "benchmark_projection_cid": "baguqeeraiymgtt7ji4kkscvtp4mr42efbrlu575f2ijsryss4fjoyf5hdj6a",
+  "benchmark_overall_disposition": "partial",
+  "release_report_sha256": "sha256:28a7222b9769832039f39678b6c41dedc74995cc89ca0dc792c29aab8da24616",
+  "evidence_cohort": "hermetic_local_execution",
+  "excluded_cohorts": [
+    "simulated",
+    "live_local_model_execution",
+    "live_remote_model_execution",
+    "production_authoritative_evidence"
+  ],
+  "task_implementation_complete": false,
+  "test_qualification_complete": true,
+  "objective_complete": false,
+  "release_qualified": false,
+  "production_authorized": false,
+  "last_committed_source": {
+    "branch": "agent/logic-governed-compositional-verification-fabric-v1",
+    "ipfs_accelerate_py": {
+      "head": "4ee047a46b59f94be4aa70de20f14effe7ddad60",
+      "tree": "663f2766c3f9ff70edb127f7e8d52f2c234d1635"
+    },
+    "ipfs_datasets_py": {
+      "gitlink": "af1d2d76d2cd6332baf8cea50df6b2eb4e988203",
+      "head": "af1d2d76d2cd6332baf8cea50df6b2eb4e988203",
+      "tree": "8f44e00a49d6f67c67ee6810e04e4aae4d869af5"
+    }
+  },
+  "file_sha256": {
+    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md": "sha256:8aa817f81347ca11b5ce987c35da5228850811e64f8f88c752725856c6132774",
+    "docs/architecture/logic_governed_compositional_verification_fabric.todo.md": "sha256:aadaebdb7f7e9292e08a2e2c26769c588e46168708591c265b07df5a22231873",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json": "sha256:ad780df4ef461e99635ba2b200bbd574077daef1e535fa73c2989b65a448e6dc",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json": "sha256:1ec9187e50181a7aadc7b82cc17c952837512475b6e685c802ca028e63fe8150",
+    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md": "sha256:28a7222b9769832039f39678b6c41dedc74995cc89ca0dc792c29aab8da24616",
+    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md": "sha256:a23e5b3cf3a88e545942f6975ac1ad7c0432e1dd670929ab872fefdae0cabdf0",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json": "sha256:556a756779011f46c5b717bbf804f57cfc0575c787580ab4a30bec3b00055a4a"
+  },
+  "uncommitted_remaining_auto_work": true,
+  "notes": [
+    "hermetic 113 and 120 did not judge live local, live remote, or production-authoritative cohorts",
+    "uncommitted 081-124 source was present when 113 was replayed; a verifier of the working tree must hash that forest or wait for a commit and reconstruction",
+    "this packet cannot be copied to the 121 or 123 output paths as issuance"
+  ]
+}

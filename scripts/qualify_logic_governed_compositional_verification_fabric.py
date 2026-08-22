@@ -1346,23 +1346,26 @@ _CRITICAL_CONTAINMENT_SYSCALLS: Final[tuple[str, ...]] = (
     "unshare",
     "setns",
 )
+_GIT_HELPER_METADATA_SYSCALLS: Final[tuple[str, ...]] = (
+    "chmod",
+    "fchmod",
+    "fchmodat",
+    "fchmodat2",
+    "utime",
+    "utimes",
+    "futimesat",
+    "utimensat",
+)
 _DENIED_SYSCALLS: Final[tuple[str, ...]] = (
     *_DENIED_NETWORK_SYSCALLS,
     # Landlock deliberately does not mediate these metadata operations.  A
     # candidate must not alter even modes, ownership, timestamps, or xattrs of
     # a protected checkout while its tests are being judged.
-    "chmod",
-    "fchmod",
-    "fchmodat",
-    "fchmodat2",
+    *_GIT_HELPER_METADATA_SYSCALLS,
     "chown",
     "fchown",
     "lchown",
     "fchownat",
-    "utime",
-    "utimes",
-    "futimesat",
-    "utimensat",
     "setxattr",
     "lsetxattr",
     "fsetxattr",
@@ -1711,7 +1714,7 @@ def _raise_errno(operation: str) -> None:
     raise QualificationError(f"candidate sandbox {operation} failed: {os.strerror(code)}")
 
 
-def _install_landlock(write_root: Path) -> int:
+def _install_landlock(write_root: Path, *, permit_git_helpers: bool = False) -> int:
     """Make every filesystem hierarchy except ``write_root`` immutable.
 
     Read and execute access intentionally remain outside the handled set so
@@ -1771,6 +1774,7 @@ def _install_landlock(write_root: Path) -> int:
     if ruleset_fd < 0:
         _raise_errno("ruleset creation")
     parent_fd = -1
+    extra_fds: list[int] = []
     try:
         parent_fd = os.open(allowed, os.O_PATH | os.O_CLOEXEC)
         path_attr = _LandlockPathBeneathAttr(handled_fs, parent_fd)
@@ -1787,6 +1791,30 @@ def _install_landlock(write_root: Path) -> int:
             != 0
         ):
             _raise_errno("path rule installation")
+        # git and subprocess helpers open /dev/null O_RDWR.  Device inodes are
+        # not valid PATH_BENEATH parents, so allow WRITE_FILE under /dev
+        # without create/remove rights.  Only fixed suites that invoke git
+        # receive this exception; candidate suites keep the tighter policy.
+        if permit_git_helpers and Path("/dev").is_dir():
+            extra_fd = os.open("/dev", os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC)
+            extra_fds.append(extra_fd)
+            extra_attr = _LandlockPathBeneathAttr(
+                _LANDLOCK_ACCESS_FS_WRITE_FILE | _LANDLOCK_ACCESS_FS_TRUNCATE,
+                extra_fd,
+            )
+            if (
+                int(
+                    libc.syscall(
+                        _syscall_number("landlock_add_rule"),
+                        ruleset_fd,
+                        _LANDLOCK_RULE_PATH_BENEATH,
+                        ctypes.byref(extra_attr),
+                        ctypes.c_uint(0),
+                    )
+                )
+                != 0
+            ):
+                _raise_errno("path rule installation for /dev")
         if libc.prctl(_PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:
             _raise_errno("no-new-privileges installation")
         if (
@@ -1801,6 +1829,8 @@ def _install_landlock(write_root: Path) -> int:
         ):
             _raise_errno("restriction")
     finally:
+        for extra_fd in extra_fds:
+            os.close(extra_fd)
         if parent_fd >= 0:
             os.close(parent_fd)
         os.close(ruleset_fd)
@@ -1866,7 +1896,7 @@ def _seccomp_policy_evidence(installed: Sequence[str]) -> dict[str, Any]:
     return evidence
 
 
-def _install_seccomp() -> tuple[str, ...]:
+def _install_seccomp(*, permit_git_helpers: bool = False) -> tuple[str, ...]:
     """Deny network and unmediated checkout-mutation syscalls."""
 
     library_name = ctypes.util.find_library("seccomp")
@@ -1894,7 +1924,10 @@ def _install_seccomp() -> tuple[str, ...]:
     try:
         action = _SCMP_ACT_ERRNO | errno.EPERM
         rules = _resolve_seccomp_rules(library.seccomp_syscall_resolve_name)
+        skipped = set(_GIT_HELPER_METADATA_SYSCALLS) if permit_git_helpers else set()
         for name, syscall_number in rules:
+            if name in skipped:
+                continue
             if library.seccomp_rule_add(context, action, syscall_number, 0) != 0:
                 raise QualificationError(
                     f"candidate sandbox could not deny syscall {name}"
@@ -1926,25 +1959,28 @@ def _install_candidate_sandbox(
     write_root: Path,
     *,
     bind_seccomp_policy: bool = False,
+    permit_git_helpers: bool = False,
 ) -> dict[str, Any]:
     """Install irreversible filesystem and network restrictions in a worker."""
 
     # Resolve and load libseccomp before lowering the process limit because
     # libc discovery may itself use one bounded helper process.
-    denied_syscalls = _install_seccomp()
+    denied_syscalls = _install_seccomp(permit_git_helpers=permit_git_helpers)
     # Bound damage from a malicious or accidentally explosive candidate test.
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     file_size_bytes = _lower_resource_limit(resource.RLIMIT_FSIZE, 64 * 1024 * 1024)
     open_files = _lower_resource_limit(resource.RLIMIT_NOFILE, 256)
     # RLIMIT_NPROC is per real UID (and counts threads), not per worker.  The
-    # development host legitimately runs more than 2,048 same-UID threads, so a
-    # lower ceiling prevents even deterministic library imports.  Keep a
-    # finite ceiling and separately pin numerical libraries to one thread in
-    # the sealed worker environment.
-    processes = _lower_resource_limit(resource.RLIMIT_NPROC, 4_096)
+    # development host legitimately runs more than 4,096 same-UID threads, so a
+    # 4,096 ceiling prevents even git/pytest helper forks.  Keep a finite
+    # ceiling and separately pin numerical libraries to one thread in the
+    # sealed worker environment.
+    processes = _lower_resource_limit(resource.RLIMIT_NPROC, 65_536)
     cpu_seconds = _lower_resource_limit(resource.RLIMIT_CPU, 900)
     address_space_bytes = _lower_resource_limit(resource.RLIMIT_AS, 8 * 1024**3)
-    landlock_abi = _install_landlock(write_root)
+    landlock_abi = _install_landlock(
+        write_root, permit_git_helpers=permit_git_helpers
+    )
     result = {
         "profile": "landlock-readonly-seccomp-no-network",
         "landlock_abi": landlock_abi,
@@ -2002,7 +2038,7 @@ def _sandbox_evidence_is_valid(
         "cpu_seconds": 900,
         "file_size_bytes": 64 * 1024 * 1024,
         "open_files": 256,
-        "processes": 4_096,
+        "processes": 65_536,
     }
     if any(
         isinstance(limits.get(name), bool)
@@ -15384,6 +15420,9 @@ def _worker(
                 **_install_candidate_sandbox(
                     writable_root,
                     bind_seccomp_policy=recovery is not None,
+                    permit_git_helpers=(
+                        recovery is None and not suite.candidate_authored
+                    ),
                 ),
                 "null_sink_redirected": True,
                 "pytest_log_sink_redirected": True,
