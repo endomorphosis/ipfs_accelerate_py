@@ -451,7 +451,67 @@ def test_authenticated_bootstrap_routes_to_real_pid_coordinator_and_stops_cleanl
             ),
             timeout_seconds=12.0,
         )
+
+        def lifecycle_events() -> dict[str, dict[str, Any]] | None:
+            selected: dict[str, dict[str, Any]] = {}
+            for command, manifest in observed_semantic_commits.get(
+                "supervisor.transition", ()
+            ):
+                state = str(command.parameters.get("requested_state") or "")
+                if state not in {
+                    FederationLifecycleState.STARTING.value,
+                    FederationLifecycleState.IDLE.value,
+                }:
+                    continue
+                event = next(
+                    (
+                        dict(bound)
+                        for name, bound in manifest
+                        if name == "casf_insert_domain_event"
+                    ),
+                    None,
+                )
+                if event is not None:
+                    selected[state] = event
+            return selected if len(selected) == 2 else None
+
+        transition_events = _eventually(
+            lifecycle_events,
+            timeout_seconds=3.0,
+            failure="coordinator did not commit both lifecycle events",
+        )
+        transition_event_ids = {
+            str(event["event_id"]) for event in transition_events.values()
+        }
+        transition_watermark = max(
+            int(event["global_sequence"]) for event in transition_events.values()
+        )
+
+        def child_event_ids(operation: str) -> set[str]:
+            return {
+                str(command.parameters.get("event_id") or "")
+                for command, _manifest in observed_semantic_commits.get(operation, ())
+            }
+
+        lifecycle_drained = _status_when(
+            status_path,
+            process,
+            lambda item: (
+                item.get("lifecycle_state")
+                == FederationLifecycleState.IDLE.value
+                and item.get("error_class") == ""
+                and int(item.get("event_cursor") or 0) >= transition_watermark
+                and transition_event_ids.issubset(
+                    child_event_ids("event.delivery.record")
+                )
+                and transition_event_ids.issubset(
+                    child_event_ids("event.acknowledge")
+                )
+            ),
+            timeout_seconds=12.0,
+        )
         assert processed["runtime_process_birth_id"] == birth_id
+        assert lifecycle_drained["events_processed"] >= processed["events_processed"]
         assert observed_ack_capacity_wakes
         assert all(
             sequence > 0 and after > before

@@ -516,3 +516,42 @@ def test_operator_uses_default_owner_transport_connection_and_blocking_event() -
         and node.func.attr == "wait"
         for node in ast.walk(state_owner)
     )
+    ready_call = next(
+        node
+        for node in ast.walk(state_owner)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "server"
+        and node.func.attr == "ready"
+    )
+    worker_call = next(
+        node
+        for node in ast.walk(state_owner)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "server"
+        and node.func.attr == "start_federation_outbox_worker"
+    )
+    spawn_call = next(
+        node
+        for node in ast.walk(state_owner)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_spawn_event_supervisor"
+    )
+    health_calls = sorted(
+        (
+            node
+            for node in ast.walk(state_owner)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_state_owner_outbox_health"
+        ),
+        key=lambda node: node.lineno,
+    )
+    assert len(health_calls) >= 3
+    assert ready_call.lineno < worker_call.lineno < spawn_call.lineno
+    assert worker_call.lineno < health_calls[0].lineno < spawn_call.lineno
+    assert spawn_call.lineno < health_calls[1].lineno

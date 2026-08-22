@@ -1302,6 +1302,12 @@ def state_owner(config_path: Path) -> int:
         authentication_key=secrets.token_bytes(32),
     )
     server.bind_typed_status_scope()
+    # Prove the loopback Quack transport before any owner worker or child can
+    # use the shared DuckDB connection.  ``ready()`` performs a live extension
+    # query on that connection; running it after concurrent admission would
+    # bypass the gateway transaction lock and corrupt an otherwise valid
+    # semantic-command observation.
+    ready = server.ready()
     outbox_runtime = server.start_federation_outbox_worker()
     if _state_owner_outbox_health(server)["healthy"] is not True:
         raise OperatorError("state-owner outbox worker failed startup health")
@@ -1318,7 +1324,16 @@ def state_owner(config_path: Path) -> int:
         admission=admission,
         task_projection=task_projection,
     )
-    ready = server.ready()
+    final_outbox_health = _state_owner_outbox_health(server)
+    if final_outbox_health["healthy"] is not True:
+        try:
+            _terminate_birth(supervisor_birth, grace_seconds=15.0)
+        finally:
+            owner_client.close()
+            server.stop()
+        raise OperatorError(
+            "state-owner outbox worker failed coordinator-admission health"
+        )
     print(
         json.dumps(
             {
@@ -1328,6 +1343,7 @@ def state_owner(config_path: Path) -> int:
                 "identity": identity.to_dict(),
                 "live": ready,
                 "outbox_runtime": dict(outbox_runtime),
+                "outbox_health": final_outbox_health,
                 "federation_admission": admission.public_dict(),
                 "supervisor_process_birth": supervisor_birth,
                 "task_execution_admitted": False,
