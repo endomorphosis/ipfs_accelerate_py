@@ -2228,6 +2228,64 @@ def test_cleanup_watchdog_cannot_extend_implementation_worker_lease() -> None:
     assert todo_supervisor._is_agent_worker_command(command) is False
 
 
+@pytest.mark.parametrize("mutation", ["reparent", "pid_reuse_after_argv"])
+def test_procfs_worker_census_rejects_ancestry_and_pid_races(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    proc_root = tmp_path / "proc"
+    root_pid = 4100
+    worker_pid = 4101
+
+    def stat_record(pid: int, parent: int, start_ticks: int) -> str:
+        fields = ["0"] * 50
+        fields[0] = "S"
+        fields[1] = str(parent)
+        fields[19] = str(start_ticks)
+        return f"{pid} (worker) {' '.join(fields)}\n"
+
+    for pid, parent, start_ticks in (
+        (root_pid, 1, 100),
+        (worker_pid, root_pid, 101),
+    ):
+        process_dir = proc_root / str(pid)
+        process_dir.mkdir(parents=True)
+        (process_dir / "stat").write_text(
+            stat_record(pid, parent, start_ticks),
+            encoding="utf-8",
+        )
+        (process_dir / "cmdline").write_bytes(
+            b"grok\x00--workspace\x00/tmp/task\x00"
+        )
+
+    original = todo_supervisor._strict_procfs_process_identity
+    worker_reads = 0
+
+    def raced_identity(path: Path):
+        nonlocal worker_reads
+        observed = original(path)
+        if path == proc_root / str(worker_pid) / "stat":
+            worker_reads += 1
+            if mutation == "reparent" and worker_reads == 2:
+                return (1, 101, "S")
+            if mutation == "pid_reuse_after_argv" and worker_reads == 3:
+                return (root_pid, 202, "S")
+        return observed
+
+    monkeypatch.setattr(
+        todo_supervisor,
+        "_strict_procfs_process_identity",
+        raced_identity,
+    )
+
+    with pytest.raises(OSError, match="ancestry or identity changed"):
+        todo_supervisor.procfs_descendant_processes(
+            root_pid,
+            proc_root=proc_root,
+        )
+
+
 def test_aseh_health_zero_frontier_dependency_deadlock_is_blocked_and_stuck(
     tmp_path: Path,
 ) -> None:

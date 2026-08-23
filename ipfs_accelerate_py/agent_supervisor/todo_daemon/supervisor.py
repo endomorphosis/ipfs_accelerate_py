@@ -345,15 +345,17 @@ def procfs_descendant_processes(
         snapshot_parent, snapshot_start, _snapshot_state = identities[pid]
         current = _strict_procfs_process_identity(proc_root / str(pid) / "stat")
         if current is None:
-            # The snapshot observed this process, but it completed before its
-            # command could be sampled. It is no longer an active descendant.
-            continue
-        if current[1] != snapshot_start:
-            raise OSError("descendant pid identity changed during census")
+            raise OSError("descendant disappeared during census")
+        if (
+            current[0] != snapshot_parent
+            or current[1] != snapshot_start
+            or current[2] == "Z"
+        ):
+            raise OSError("descendant ancestry or identity changed during census")
         try:
             raw_argv = (proc_root / str(pid) / "cmdline").read_bytes()
         except FileNotFoundError:
-            continue
+            raise OSError("descendant disappeared while reading argv") from None
         if not raw_argv or not raw_argv.endswith(b"\0"):
             raise OSError("descendant argv unavailable during census")
         try:
@@ -364,6 +366,15 @@ def procfs_descendant_processes(
             raise OSError("descendant argv is not valid UTF-8") from exc
         if not argv or any(not item or "\0" in item for item in argv):
             raise OSError("descendant argv is malformed")
+        final = _strict_procfs_process_identity(proc_root / str(pid) / "stat")
+        if final is None:
+            raise OSError("descendant disappeared after reading argv")
+        if (
+            final[0] != snapshot_parent
+            or final[1] != snapshot_start
+            or final[2] == "Z"
+        ):
+            raise OSError("descendant ancestry or identity changed after argv")
         found.append(
             {
                 "pid": pid,

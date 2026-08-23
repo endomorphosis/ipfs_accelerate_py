@@ -7877,6 +7877,7 @@ class PortalImplementationSupervisor:
         update_maintenance_phase,
         *,
         include_refill: bool = True,
+        worker_status: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         if self.config.manual_completion_authority_revalidation_only:
             return {
@@ -7891,6 +7892,7 @@ class PortalImplementationSupervisor:
                 update_maintenance_phase,
                 include_refill=include_refill,
                 implementation_maintenance_lease=None,
+                worker_status=worker_status,
             )
         lease, lease_guard = self._acquire_implementation_maintenance_lease()
         if lease is None:
@@ -7906,6 +7908,7 @@ class PortalImplementationSupervisor:
                 update_maintenance_phase,
                 include_refill=include_refill,
                 implementation_maintenance_lease=lease,
+                worker_status=worker_status,
             )
         finally:
             self._release_implementation_maintenance_lease(lease)
@@ -7916,6 +7919,7 @@ class PortalImplementationSupervisor:
         *,
         include_refill: bool = True,
         implementation_maintenance_lease: Mapping[str, Any] | None = None,
+        worker_status: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         # A producer can retain the checkout lease only when its protected
         # outputs could not be proven clean.  Resolve that state before any
@@ -7997,7 +8001,11 @@ class PortalImplementationSupervisor:
         )
         state = PortalTaskState.load(self.config.state_path)
         now_ts = time.time()
-        stuck, reason = self.is_stuck(state, now_ts=now_ts)
+        stuck, reason = self.is_stuck(
+            state,
+            now_ts=now_ts,
+            worker_status=worker_status,
+        )
         if stuck:
             update_maintenance_phase("stuck_recovery")
             try:
@@ -8985,7 +8993,12 @@ class PortalImplementationSupervisor:
             return SupervisorLoopDecision.keep_running()
 
         state = PortalTaskState.load(self.config.state_path)
-        stuck, reason = self.is_stuck(state, now_ts=time.time())
+        worker_status = dict(_loop._last_worker_status)
+        stuck, reason = self.is_stuck(
+            state,
+            now_ts=time.time(),
+            worker_status=worker_status,
+        )
         if state.active_task_id and not stuck:
             return SupervisorLoopDecision.keep_running()
         if (
@@ -9010,7 +9023,10 @@ class PortalImplementationSupervisor:
         )
         failed = False
         try:
-            result = self._run_once_with_maintenance(update_maintenance_phase)
+            result = self._run_once_with_maintenance(
+                update_maintenance_phase,
+                worker_status=worker_status,
+            )
         except Exception as exc:
             failed = True
             message = f"{type(exc).__name__}: {exc}"
@@ -18675,8 +18691,13 @@ class PortalImplementationSupervisor:
         *,
         now_ts: float,
         ignore_progress_until_ts: float | None = None,
+        worker_status: Mapping[str, Any] | None = None,
     ) -> tuple[bool, str]:
-        worktree_phase_stall_reason = self._worktree_phase_without_worker_reason(state, now_ts=now_ts)
+        worktree_phase_stall_reason = self._worktree_phase_without_worker_reason(
+            state,
+            now_ts=now_ts,
+            worker_status=worker_status,
+        )
         if worktree_phase_stall_reason:
             return True, worktree_phase_stall_reason
         log_stall_reason = self._implementation_log_stall_reason(state, now_ts=now_ts)
@@ -18710,21 +18731,38 @@ class PortalImplementationSupervisor:
             return True, f"unresolved merge failure on active task {state.active_task_id}: {detail}"
         return False, ""
 
-    def _worktree_phase_without_worker_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
+    def _worktree_phase_without_worker_reason(
+        self,
+        state: PortalTaskState,
+        *,
+        now_ts: float,
+        worker_status: Mapping[str, Any] | None = None,
+    ) -> str:
         if not state.active_task_id:
             return ""
         threshold = max(30.0, float(self.config.implementation_log_stall_seconds))
-        worker_status = worktree_phase_worker_status(
-            {
-                "active_phase": state.active_phase,
-                "active_phase_started_at": state.active_phase_started_at,
-            },
-            self._read_managed_daemon_pid(),
-            threshold,
-            now=datetime.fromtimestamp(now_ts, tz=timezone.utc),
+        observed_workers = (
+            dict(worker_status)
+            if worker_status is not None
+            else worktree_phase_worker_status(
+                {
+                    "active_phase": state.active_phase,
+                    "active_phase_started_at": state.active_phase_started_at,
+                },
+                self._read_managed_daemon_pid(),
+                threshold,
+                now=datetime.fromtimestamp(now_ts, tz=timezone.utc),
+            )
         )
-        phase = str(worker_status.get("phase") or "")
-        if not worker_status.get("required"):
+        if (
+            worker_status is not None
+            and observed_workers.get("worker_metrics_available") is not True
+        ):
+            return ""
+        phase = str(observed_workers.get("phase") or "")
+        if state.active_phase and phase != state.active_phase:
+            return ""
+        if not observed_workers.get("required"):
             self._worktree_worker_phase = ""
             self._last_worktree_worker_seen_monotonic = None
         elif phase != self._worktree_worker_phase:
@@ -18732,22 +18770,22 @@ class PortalImplementationSupervisor:
             self._last_worktree_worker_seen_monotonic = None
 
         now_monotonic = time.monotonic()
-        if int(worker_status.get("active_worker_count") or 0) > 0:
+        if int(observed_workers.get("active_worker_count") or 0) > 0:
             self._last_worktree_worker_seen_monotonic = now_monotonic
-            worker_status["worker_absence_age_seconds"] = 0.0
-            worker_status["stalled_without_active_worker"] = False
+            observed_workers["worker_absence_age_seconds"] = 0.0
+            observed_workers["stalled_without_active_worker"] = False
         elif self._last_worktree_worker_seen_monotonic is not None:
             absence_age = max(
                 0.0,
                 now_monotonic - self._last_worktree_worker_seen_monotonic,
             )
-            worker_status["worker_absence_age_seconds"] = round(absence_age, 3)
-            worker_status["stalled_without_active_worker"] = bool(
+            observed_workers["worker_absence_age_seconds"] = round(absence_age, 3)
+            observed_workers["stalled_without_active_worker"] = bool(
                 threshold > 0 and absence_age >= threshold
             )
         else:
-            worker_status["worker_absence_age_seconds"] = None
-        if not worker_status.get("stalled_without_active_worker"):
+            observed_workers["worker_absence_age_seconds"] = None
+        if observed_workers.get("stalled_without_active_worker") is not True:
             return ""
         self._record_event(
             "worktree_phase_without_worker",
@@ -18755,12 +18793,12 @@ class PortalImplementationSupervisor:
                 "active_task_id": state.active_task_id,
                 "active_phase": state.active_phase,
                 "active_phase_detail": state.active_phase_detail,
-                "worker_status": worker_status,
+                "worker_status": observed_workers,
             },
         )
-        stall_age = worker_status.get("worker_absence_age_seconds")
+        stall_age = observed_workers.get("worker_absence_age_seconds")
         if stall_age is None:
-            stall_age = worker_status.get("phase_age_seconds")
+            stall_age = observed_workers.get("phase_age_seconds")
         return (
             f"{state.active_phase} stalled for active task {state.active_task_id}: "
             f"no active worker for {stall_age}s"
