@@ -7,10 +7,10 @@
     "production_authoritative_evidence"
   ],
   "execution_evidence": {
-    "artifact_cid": "baguqeerar5y7qwii6r2rooyrryewuadtim7bxkiiqtnzfd2dep6yp7pfcu4a",
-    "artifact_verification_receipt_cid": "baguqeeras6k4a4gn3fj57kqc4ndoslh4ese2x6g2oxjoywsmym5fk2hfjeqq",
+    "artifact_cid": "baguqeera5tmvpco7epsgej7my6q77zc5vg2sximkyfjb7xwp2y57acppxova",
+    "artifact_verification_receipt_cid": "baguqeeracolkt44wpnhj5zyitw4b6gwptbishsuz3jnzzwr6pa3ixvrthg7q",
     "fresh_execution_receipts_reproducible": false,
-    "vertical_result_cid": "baguqeeracqgqh5pyqb5aqsi6fgxzrqmfq2rptgjhpgcfw3ocgnbjh4kwaqkq"
+    "vertical_result_cid": "baguqeerai3h3rld3rxepwf5wrpypguub5w6nxakatpvmpauolsufkmg42hja"
   },
   "interface": "LgcvfSymbolicDisplacementBenchmark@1",
   "limitations": [
@@ -21,16 +21,16 @@
   "overall_disposition": "partial",
   "paired_result": {
     "baseline": {
-      "context_tokens": 384,
+      "context_tokens": 587,
       "model_calls": 0,
-      "raw_source_bytes": 1534,
+      "raw_source_bytes": 2347,
       "tests_selected": 3,
       "verification_strategy": "raw-source-full-fixture"
     },
     "challenger": {
       "abstract_state_reused": 1,
       "capsule_reuse_count": 13,
-      "context_tokens": 549,
+      "context_tokens": 609,
       "deterministic_closures": 1,
       "model_calls": 0,
       "proof_test_reuse_bps": 10000,
@@ -59,15 +59,15 @@
     "model_invocation_count": 0,
     "note": "the raw-source baseline is a context/test-selection projection; separate baseline wall-time and resource execution is not measured",
     "policy_root": "policy:lgcvf-hermetic-deny-network@1",
-    "repository_base_commit": "6423b6a361e44288b35c71a5e376b534df2b8d9b",
-    "repository_base_tree": "d2cf28f048cc1875058ddadd91b31a7a849f416d",
+    "repository_base_commit": "bcf39f104b6a8982fcd44d4258ae87a0e40afbdf",
+    "repository_base_tree": "05c187d9139a456d538f3d2df7645a25f09f060a",
     "scope": "single_vertical_run_same_fixture_and_acceptance_oracle"
   },
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "report_cid": "baguqeera5eunnikkby5xg4kkkrwrwp7wmo4x26u6xvxerx4lp2lbzhkrdqma",
-  "reproducible_projection_cid": "baguqeeratddf3jpln5olhturxvhiqbk67foxoqiuq3rpnm23jxg2vocwcjqq",
+  "report_cid": "baguqeera4dqexqcuqu7lcx2vuhwp66gfnrhpt3fg2tiicx4tu2qevhcmmtyq",
+  "reproducible_projection_cid": "baguqeerabyhu42o4vnsyjbkux3sbgkg4k2qwadwheclvfusjy5j5nmrq3ptq",
   "schema": "lgcvf-symbolic-displacement-benchmark@1",
   "task_class_coverage": {
     "missing": [
