@@ -15,6 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     execute_quack_owner_command,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
     QUACK_OWNER_COMMAND_MAX_BYTES,
     QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
@@ -466,6 +467,93 @@ def test_owner_rearms_blocked_task_without_client_revision(tmp_path: Path) -> No
         )
         assert replay["changed"] is False
         assert replay["task"]["status"] == "retrying"
+        repository.close()
+    finally:
+        owner_connection.close()
+
+
+def test_owner_completes_goal_only_after_child_tasks_complete(tmp_path: Path) -> None:
+    path = tmp_path / "control.duckdb"
+    _materialize_one_task(path)
+    owner_connection = open_duckdb_connection(path)
+    try:
+        repository = IntentRepository(
+            path,
+            bound_connection=owner_connection,
+            install_schema=False,
+            owner_id="owner:typed-test",
+            session_id="session:goal-cas",
+        )
+        bindings = {
+            "store_id": "data/control.duckdb",
+            "store_generation": "generation-1",
+        }
+        with pytest.raises(TaskSourceCompletionError, match="children remain open"):
+            execute_quack_owner_command(
+                repository,
+                QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
+                {
+                    "goal_cid_or_alias": "goal:typed-owner-test",
+                    "expected_revision": 1,
+                    "status": "completed",
+                },
+                request_id="e" * 32,
+                **bindings,
+            )
+        execute_quack_owner_command(
+            repository,
+            QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+            {
+                "task_cid": "task:typed-owner-test",
+                "evidence_kind": "validation",
+                "digest": "sha256:" + ("8" * 64),
+            },
+            request_id="f" * 32,
+            **bindings,
+        )
+        execute_quack_owner_command(
+            repository,
+            QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+            {
+                "task_cid_or_alias": "task:typed-owner-test",
+                "expected_revision": 1,
+                "status": "completed",
+                "evidence_digests": ["sha256:" + ("8" * 64)],
+            },
+            request_id="1" * 32,
+            **bindings,
+        )
+        result = execute_quack_owner_command(
+            repository,
+            QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
+            {
+                "goal_cid_or_alias": "G1",
+                "expected_revision": 1,
+                "status": "completed",
+                "receipt": {"producer": "typed-owner-test"},
+            },
+            request_id="2" * 32,
+            **bindings,
+        )
+        assert result["changed"] is True
+        assert result["revision"] == 2
+        replay = execute_quack_owner_command(
+            repository,
+            QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
+            {
+                "goal_cid_or_alias": "G1",
+                "expected_revision": 2,
+                "status": "completed",
+            },
+            request_id="3" * 32,
+            **bindings,
+        )
+        assert replay["changed"] is False
+        assert replay["revision"] == 2
+        goal = repository.get_goal("G1")
+        assert goal is not None
+        assert goal["status"] == "completed"
+        assert goal["revision"] == 2
         repository.close()
     finally:
         owner_connection.close()
