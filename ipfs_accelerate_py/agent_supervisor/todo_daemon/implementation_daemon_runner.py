@@ -8,6 +8,7 @@ import math
 import os
 import re
 import signal
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -55,6 +56,8 @@ def compact_daemon_pass_result(result: Mapping[str, Any]) -> dict[str, Any]:
         "requirement_id",
         "control_plane_error",
         "declared_output_rearm",
+        "merge_quarantine_settlement",
+        "post_merge_recovery",
         "write_count",
         "backoff_seconds",
     )
@@ -1257,6 +1260,58 @@ def bind_database_portal_execution_from_args(
         or default_implementation_protected_paths
         or None
     )
+    configured_merge_queue_dir = getattr(parsed, "merge_queue_dir", None)
+    configured_merge_target_branch = str(
+        getattr(parsed, "merge_target_branch", "") or ""
+    ).strip()
+    recovery_queue: Any = None
+    if configured_merge_queue_dir is not None and configured_merge_target_branch:
+        try:
+            resolved_repo_root = Path(repo_root).resolve(strict=True)
+            repository_check = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=resolved_repo_root,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=10,
+            )
+            target_check = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"refs/heads/{configured_merge_target_branch}^{{commit}}",
+                ],
+                cwd=resolved_repo_root,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise RuntimeError(
+                "configured database post-merge recovery target is unavailable"
+            ) from exc
+        if (
+            repository_check.returncode != 0
+            or target_check.returncode != 0
+            or Path(repository_check.stdout.strip()).resolve()
+            != resolved_repo_root
+        ):
+            raise RuntimeError(
+                "configured database post-merge recovery target is not an "
+                "exact local branch"
+            )
+        from ..merge.checkout_lock import checkout_repository_id
+        from ..merge.merge_queue import MergeQueue
+
+        recovery_queue = MergeQueue(
+            Path(configured_merge_queue_dir),
+            target_repository_id=checkout_repository_id(resolved_repo_root),
+            target_branch=configured_merge_target_branch,
+            require_target_binding=True,
+        )
 
     def portal_factory(paths: Any, task_alias: str) -> object:
         return portal_daemon_class(
@@ -1278,6 +1333,7 @@ def bind_database_portal_execution_from_args(
             worktree_root=parsed.worktree_root,
             merge_target_branch=getattr(parsed, "merge_target_branch", "") or None,
             merge_queue_dir=getattr(parsed, "merge_queue_dir", None),
+            merge_queue=recovery_queue,
             worktree_submodule_paths=worktree_submodule_paths,
             implementation_protected_paths=implementation_protected_paths,
             manual_completion_authority_task_ids=getattr(
@@ -1337,6 +1393,10 @@ def bind_database_portal_execution_from_args(
         repository_root=repo_root,
         worktree_root=configured_worktree_root,
         implementation_protected_paths=implementation_protected_paths,
+        merge_queue=recovery_queue,
+        merge_target_branch=(
+            configured_merge_target_branch if recovery_queue is not None else ""
+        ),
         worktree_submodule_paths=tuple(worktree_submodule_paths or ()),
         task_header_prefix=parsed.task_prefix,
         max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
@@ -1355,6 +1415,25 @@ def bind_database_portal_execution_from_args(
         ),
         pooled_worktree_create_recovery_fn=bridge.recover_pooled_worktree_create,
     )
+    if recovery_queue is not None:
+        merge_train_binder = getattr(daemon, "bind_merge_train_recovery", None)
+        if not callable(merge_train_binder):
+            raise RuntimeError(
+                "production database daemon does not expose merge-train "
+                "recovery binding"
+            )
+        merge_train_binder(
+            merge_queue=recovery_queue,
+            repo_root=repo_root,
+            merge_target_branch=configured_merge_target_branch,
+        )
+        recovery_binder = getattr(daemon, "bind_post_merge_recovery", None)
+        if callable(recovery_binder) and callable(
+            getattr(daemon, "recover_blocked_post_merge_declared_outputs", None)
+        ):
+            recovery_binder(
+                lambda: bridge.recover_post_merge_declared_outputs(daemon)
+            )
     return bridge
 
 
