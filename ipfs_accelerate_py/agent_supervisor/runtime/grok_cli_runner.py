@@ -4059,13 +4059,15 @@ def _docker_start_attach_target(command: Sequence[str]) -> tuple[str, str] | Non
     return config, container_id
 
 
-def _docker_inspect_running(container_id: str, *, config: str = "") -> tuple[int, str]:
-    """Return ``(returncode, Running field)`` for one docker inspect."""
+def _docker_inspect_state(
+    container_id: str, *, config: str = ""
+) -> tuple[int, str, int]:
+    """Return ``(returncode, Running field, container pid)`` for one inspect."""
 
     command = ["/usr/bin/docker", f"--host={_DOCKER_LOCAL_HOST}"]
     if config:
         command.extend(["--config", config])
-    command.extend(["inspect", "-f", "{{.State.Running}}", container_id])
+    command.extend(["inspect", "-f", "{{.State.Running}} {{.State.Pid}}", container_id])
     try:
         inspected = subprocess.run(
             command,
@@ -4075,29 +4077,31 @@ def _docker_inspect_running(container_id: str, *, config: str = "") -> tuple[int
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return -1, ""
-    return (
-        int(inspected.returncode),
-        inspected.stdout.decode("utf-8", errors="replace").strip().lower(),
-    )
+        return -1, "", 0
+    parts = inspected.stdout.decode("utf-8", errors="replace").split()
+    running = parts[0].strip().lower() if parts else ""
+    try:
+        pid = int(parts[1]) if len(parts) > 1 else 0
+    except ValueError:
+        pid = 0
+    return int(inspected.returncode), running, pid
 
 
 def _docker_attach_target_missing(config: str, container_id: str) -> bool:
     """Return whether the attached container can no longer be inspected.
 
-    Isolated ``--config`` docker contexts can keep ``Running=true`` after
-    the host object is already gone. Host inspect is the vanish signal.
+    Isolated ``--config`` contexts can keep ``Running=true`` after the
+    container pid is already gone. A live pid in ``/proc`` is the stay
+    signal; host default-context inspect is ignored because it is blind
+    to the isolated docker config used by attach.
     """
 
-    host_code, host_running = _docker_inspect_running(container_id)
-    if host_code != 0 or host_running == "false":
+    code, running, pid = _docker_inspect_state(container_id, config=config)
+    if code != 0 or running == "false":
         return True
-    if not config:
-        return False
-    config_code, config_running = _docker_inspect_running(container_id, config=config)
-    if config_code != 0 or config_running == "false":
+    if pid <= 0:
         return True
-    return False
+    return not Path("/proc", str(pid)).exists()
 
 
 def _run_grok_with_typed_failure_capture(
