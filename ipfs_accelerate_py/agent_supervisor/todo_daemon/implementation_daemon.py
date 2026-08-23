@@ -77826,6 +77826,8 @@ class DatabaseImplementationDaemon:
                 # The immutable legacy attempt still says terminal failure.
                 # Suppress that old projection only when the exact typed
                 # blocked-to-retrying recovery and its latest fence reproduce.
+                # Board-unstall / owner retry can move control to retrying
+                # without that receipt; crashing here freezes claim_next.
                 task_body = getattr(task, "body", None)
                 receipt = (
                     task_body.get("completion_receipt")
@@ -77837,11 +77839,19 @@ class DatabaseImplementationDaemon:
                     if isinstance(receipt, Mapping)
                     else ""
                 )
+                recovery_operation = (
+                    str(receipt.get("operation") or "")
+                    if isinstance(receipt, Mapping)
+                    else ""
+                )
                 if evidence_source not in {
                     "portal_candidate_retry",
                     "portal_provider_failed_reclassified",
                     "portal_checkout_contention_reclassified",
-                }:
+                } and (
+                    recovery_operation
+                    == "database_portal_validation_retry_recovery"
+                ):
                     self._verified_validation_retry_recovery_state(attempt, task)
                 self._reconcile_failed_attempt_coordination(attempt)
                 continue

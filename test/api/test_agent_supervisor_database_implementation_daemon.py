@@ -5093,6 +5093,45 @@ def test_terminal_portal_reconciliation_skips_settled_control_status(
         daemon.close()
 
 
+def test_terminal_portal_reconciliation_accepts_board_unstall_retrying(
+    tmp_path: Path,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:board-unstall-retrying",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+        with daemon.task_source._intent._connection(write=True) as connection:
+            connection.execute(
+                "UPDATE tasks SET status = 'retrying', revision = revision + 1, "
+                "updated_at = '2026-08-22T22:00:00Z' WHERE task_cid = ?",
+                [attempt.task_cid],
+            )
+        retried = daemon.task_source.get(attempt.task_cid)
+        assert retried is not None
+        assert retried.status == "retrying"
+        receipt = (retried.body or {}).get("completion_receipt")
+        assert not isinstance(receipt, dict) or receipt.get("operation") != (
+            "database_portal_validation_retry_recovery"
+        )
+        assert daemon.reconcile_terminal_portal_failures() == []
+        still = daemon.task_source.get(attempt.task_cid)
+        assert still is not None
+        assert still.status == "retrying"
+    finally:
+        daemon.close()
+
+
 def test_proposal_gate_failure_retries_instead_of_blocking(
     tmp_path: Path,
 ) -> None:
@@ -5325,7 +5364,6 @@ def test_inflight_process_failure_retries_instead_of_blocking(
 @pytest.mark.parametrize(
     ("mutation", "error_type"),
     [
-        ("foreign_operation", DatabaseImplementationConflictError),
         ("missing_seed", DatabaseImplementationAuthorityError),
         ("wrong_seed_receipt", DatabaseImplementationAuthorityError),
     ],
@@ -5358,9 +5396,7 @@ def test_terminal_portal_reconciliation_rejects_foreign_retrying_projection(
         persisted = daemon.task_source.get(attempt.task_cid)
         assert persisted is not None
         receipt = dict(persisted.body["completion_receipt"])
-        if mutation == "foreign_operation":
-            receipt["operation"] = "database_portal_retry"
-        elif mutation == "missing_seed":
+        if mutation == "missing_seed":
             receipt.pop("validation_retry_seed")
         else:
             seed = dict(receipt["validation_retry_seed"])
