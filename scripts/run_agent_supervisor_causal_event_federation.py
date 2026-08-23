@@ -940,36 +940,45 @@ def materialize(config_path: Path) -> dict[str, Any]:
             or prior.get("program_id") != PROGRAM_ID
         ):
             raise OperatorError("existing bootstrap receipt has stale authority")
-        if any(
+        stale_identity = any(
             prior.get(field) != population.get(field)
             for field in ("source_head", "repository_tree_id", "plan_root_cid")
-        ):
-            raise OperatorError("existing control plane is bound to a stale identity")
-        with DatabaseTaskSource(
-            paths["database"],
-            owner_id="casf-bootstrap:verify-existing",
-            install_schema=False,
-            repository_tree_id=str(population["repository_tree_id"]),
-            plan_root_cid=str(population["plan_root_cid"]),
-        ) as source:
-            snapshot = source.snapshot().to_dict()
-            ready = [item.task_alias for item in source.ready_tasks(limit=100).tasks]
-        if (
-            int(snapshot["task_count"]) != 44
-            or int(snapshot["goal_count"]) != 17
-            or int(snapshot["dependency_count"]) != 191
-            or ready != expected_ready
-        ):
-            raise OperatorError("existing control-plane population differs from seal")
-        verify_causal_event_federation_schema(paths["database"])
-        return {
-            "schema": OPERATOR_SCHEMA,
-            "command": "materialize",
-            "ok": True,
-            "idempotent_replay": True,
-            "bootstrap_receipt": prior,
-            "snapshot": snapshot,
-        }
+        )
+        if stale_identity:
+            if _owner_liveness(owner_status) in {"alive", "unknown"}:
+                raise OperatorError("existing control plane is bound to a stale identity")
+            if paths["launch_receipt"].is_file():
+                raise OperatorError("existing control plane is bound to a stale identity")
+            _retire_consumed_generation(
+                paths,
+                launch_id=str(prior.get("bootstrap_receipt_id") or "bootstrap"),
+            )
+        else:
+            with DatabaseTaskSource(
+                paths["database"],
+                owner_id="casf-bootstrap:verify-existing",
+                install_schema=False,
+                repository_tree_id=str(population["repository_tree_id"]),
+                plan_root_cid=str(population["plan_root_cid"]),
+            ) as source:
+                snapshot = source.snapshot().to_dict()
+                ready = [item.task_alias for item in source.ready_tasks(limit=100).tasks]
+            if (
+                int(snapshot["task_count"]) != 44
+                or int(snapshot["goal_count"]) != 17
+                or int(snapshot["dependency_count"]) != 191
+                or ready != expected_ready
+            ):
+                raise OperatorError("existing control-plane population differs from seal")
+            verify_causal_event_federation_schema(paths["database"])
+            return {
+                "schema": OPERATOR_SCHEMA,
+                "command": "materialize",
+                "ok": True,
+                "idempotent_replay": True,
+                "bootstrap_receipt": prior,
+                "snapshot": snapshot,
+            }
 
     paths["runtime"].mkdir(parents=True, exist_ok=True)
     with DatabaseTaskSource(
