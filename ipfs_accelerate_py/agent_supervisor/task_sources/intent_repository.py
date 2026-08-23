@@ -3637,6 +3637,20 @@ class IntentRepository:
                 },
             )
 
+    def clear_active_task_blocks(self, task_cid: str) -> None:
+        """Clear leftover active blocks without changing task status."""
+
+        tcid = _identifier(task_cid, noun="task_cid")
+        now = _utc_iso()
+        with self._connection(write=True) as connection:
+            connection.execute(
+                """
+                UPDATE task_blocks SET state = 'cleared', cleared_at = ?
+                WHERE task_cid = ? AND state = 'active'
+                """,
+                [now, tcid],
+            )
+
     def unblock_task(
         self,
         *,
@@ -3777,7 +3791,7 @@ class IntentRepository:
             revision = int(row[5])
             if status not in _READY_STATUSES:
                 continue
-            if tcid in active_blocks:
+            if tcid in active_blocks and status != "retrying":
                 continue
             if cooldown.get(tcid, 0) > clock:
                 continue

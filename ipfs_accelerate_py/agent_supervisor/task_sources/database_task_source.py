@@ -1561,6 +1561,9 @@ class DatabaseTaskSource:
             raise KeyError(key)
         status = str(record.status or "").strip().lower()
         if status == "retrying":
+            clear = getattr(self._intent, "clear_active_task_blocks", None)
+            if callable(clear):
+                clear(record.task_cid)
             return CASResult(
                 task=record,
                 previous_status="retrying",
@@ -1572,12 +1575,16 @@ class DatabaseTaskSource:
             raise TaskSourceConflictError(
                 f"rearm requires blocked status, observed {status!r}"
             )
-        return self.compare_and_set_status(
+        result = self.compare_and_set_status(
             record.task_cid,
             int(record.revision),
             "retrying",
             compact,
         )
+        clear = getattr(self._intent, "clear_active_task_blocks", None)
+        if callable(clear):
+            clear(record.task_cid)
+        return result
 
     def record_queue_backoff(
         self,
