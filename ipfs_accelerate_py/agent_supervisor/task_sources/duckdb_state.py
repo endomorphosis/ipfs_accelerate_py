@@ -582,6 +582,10 @@ _QUACK_OWNER_DML_PREFIXES = (
 # Longer than implementation_max_timeout (14400s) so a live Grok run is not
 # stolen. Shorter than a multi-day freeze so a dead in_progress gate unblocks.
 STALE_IN_PROGRESS_UNSTALL_SECONDS = 16_200
+# claim_next can CAS in_progress and then die before an attempt row or Grok
+# child exists. 4.5h is too long for that leftover; 60s covers spawn races
+# without waiting out the live-attempt window.
+ABANDONED_IN_PROGRESS_UNSTALL_SECONDS = 60
 _QUACK_ATTACH_LOCK = threading.RLock()
 _QUACK_TRANSPORT_CACHE: dict[str, DuckDBConnection] = {}
 QUACK_ATTACH_ATTEMPTS = 12
@@ -880,6 +884,21 @@ def request_owner_board_unstall(
     import uuid
 
     target.mkdir(parents=True, exist_ok=True)
+    bounce = target / BOARD_UNSTALL_BOUNCE_NAME
+    pending = [
+        request
+        for request in target.glob("*.request.json")
+        if not request.with_name(
+            request.name.replace(".request.json", ".done.json")
+        ).is_file()
+    ]
+    if bounce.is_file() or pending:
+        return {
+            "ok": True,
+            "requested": False,
+            "skipped": "bounce_already_pending",
+            "waited": False,
+        }
     request_id = uuid.uuid4().hex
     request_path = target / f"{request_id}.request.json"
     done_path = target / f"{request_id}.done.json"

@@ -1371,6 +1371,12 @@ def test_quack_attach_contention_requests_owner_board_unstall(
         assert len(requests) == 1
         payload = json.loads(requests[0].read_text(encoding="utf-8"))
         assert payload["op"] == "board_unstall"
+        second = daemon.run_once()
+        assert second.get("board_unstall_request", {}).get("requested") is False
+        assert second.get("board_unstall_request", {}).get("skipped") == (
+            "bounce_already_pending"
+        )
+        assert list(inbox.glob("*.request.json")) == requests
     finally:
         daemon.close()
 
@@ -1425,7 +1431,7 @@ def test_stale_in_progress_unstall_leaves_live_attempts_alone(
     )
     try:
         daemon.materialize_population(_population(1))
-        recent = (datetime.now(timezone.utc) - timedelta(minutes=20)).strftime(
+        recent = (datetime.now(timezone.utc) - timedelta(seconds=10)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
         with daemon.task_source._intent._connection(write=True) as connection:
@@ -1439,6 +1445,40 @@ def test_stale_in_progress_unstall_leaves_live_attempts_alone(
         live = daemon.task_source.get("task:cid:001")
         assert live is not None
         assert live.status == "in_progress"
+    finally:
+        daemon.close()
+
+
+def test_abandoned_in_progress_gate_unstalls_without_running_attempt(
+    tmp_path: Path,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:unstall-abandoned",
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        abandoned = (datetime.now(timezone.utc) - timedelta(minutes=2)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        with daemon.task_source._intent._connection(write=True) as connection:
+            connection.execute(
+                "UPDATE tasks SET status = 'in_progress', updated_at = ? "
+                "WHERE task_cid = ?",
+                [abandoned, "task:cid:001"],
+            )
+        assert daemon.list_running_attempts() == []
+        unstalled = daemon.reconcile_stale_in_progress_gates()
+        assert [item["task_cid"] for item in unstalled] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert attempt.task_cid == "task:cid:001"
     finally:
         daemon.close()
 

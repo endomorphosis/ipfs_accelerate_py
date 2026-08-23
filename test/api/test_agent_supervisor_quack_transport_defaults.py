@@ -376,6 +376,14 @@ def test_request_owner_board_unstall_writes_inbox_without_waiting(
     assert len(requests) == 1
     payload = json.loads(requests[0].read_text(encoding="utf-8"))
     assert payload == {"op": "board_unstall", "stale_seconds": 16_200}
+    skipped = request_owner_board_unstall(wait=False)
+    assert skipped == {
+        "ok": True,
+        "requested": False,
+        "skipped": "bounce_already_pending",
+        "waited": False,
+    }
+    assert list(inbox.glob("*.request.json")) == requests
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         clear_owner_board_unstall_bounce,
         owner_should_recycle_for_board_unstall,

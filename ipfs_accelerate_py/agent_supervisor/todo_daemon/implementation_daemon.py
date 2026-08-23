@@ -70041,7 +70041,18 @@ class DatabaseImplementationDaemon:
         unstall = getattr(self.task_source, "unstall_stale_in_progress_tasks", None)
         if not callable(unstall):
             return []
-        result = unstall()
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            ABANDONED_IN_PROGRESS_UNSTALL_SECONDS,
+            STALE_IN_PROGRESS_UNSTALL_SECONDS,
+        )
+
+        stale_seconds = STALE_IN_PROGRESS_UNSTALL_SECONDS
+        if not self.list_running_attempts():
+            # No local attempt means claim_next cannot resume this session.
+            # A leftover in_progress CAS with no Grok child must not wait
+            # 4.5h before 024/025 can enter the ready frontier.
+            stale_seconds = ABANDONED_IN_PROGRESS_UNSTALL_SECONDS
+        result = unstall(stale_seconds=stale_seconds)
         if not isinstance(result, Mapping):
             raise DatabaseImplementationAuthorityError(
                 "task source returned a malformed board unstall receipt"
