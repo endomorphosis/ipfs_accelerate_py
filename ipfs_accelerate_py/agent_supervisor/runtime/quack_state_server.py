@@ -1952,7 +1952,7 @@ class TypedStateOwnerGrantBroker:
             ) from exc
         else:
             raise QuackStateServerControlError(
-                "typed grant broker socket already has a live listener"
+                "typed grant broker socket already serves a live listener"
             )
         finally:
             probe.close()

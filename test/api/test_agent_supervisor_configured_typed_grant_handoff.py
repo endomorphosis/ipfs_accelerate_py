@@ -27,7 +27,6 @@ from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     QuackStateServerControlError,
-    QuackStateServerMutationError,
     QuackStateServerReadyError,
     TypedStateOwnerGrantBroker,
     build_server,
@@ -39,7 +38,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
-    DuckDBConnectionPolicyError,
+    QuackOwnerCommandRemoteError,
     reset_quack_transport_cache,
     submit_quack_owner_command,
 )
@@ -756,8 +755,6 @@ def test_typed_owner_never_acknowledges_an_unpublished_mutation(
         secret_handle="handle:aseh-publication-failure-test",
     )
     identity = server.start()
-    client: threading.Thread | None = None
-    outcome: dict[str, BaseException] = {}
     try:
         handoff = dict(server.start_supervisor_grant_broker())
         monkeypatch.setenv(
@@ -785,47 +782,23 @@ def test_typed_owner_never_acknowledges_an_unpublished_mutation(
 
         monkeypatch.setattr(server, "_refresh_read_replica", fail_publication)
 
-        def submit() -> None:
-            try:
-                submit_quack_owner_command(
-                    QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
-                    {
-                        "task_cid_or_alias": "ASEH-000",
-                        "expected_revision": 1,
-                        "status": "in_progress",
-                        "receipt": {"operation": "database_claim"},
-                        "evidence_digests": None,
-                    },
-                    timeout_seconds=0.5,
-                )
-            except BaseException as exc:  # noqa: BLE001 - assert exact boundary
-                outcome["error"] = exc
-
-        client = threading.Thread(target=submit, daemon=True)
-        client.start()
-        request_deadline = time.monotonic() + 2.0
-        while (
-            not tuple((owner_dir / "mutations").glob("*.request.json"))
-            and time.monotonic() < request_deadline
-        ):
-            time.sleep(0.01)
-        requests = tuple((owner_dir / "mutations").glob("*.request.json"))
-        assert len(requests) == 1
-
-        with pytest.raises(
-            QuackStateServerMutationError,
-            match="read_replica_refresh_unknown_outcome",
-        ):
-            server.service_database_task_command_inbox(
-                expected_store_generation=str(identity.generation),
-                max_requests=1,
+        with pytest.raises(QuackOwnerCommandRemoteError) as unknown:
+            submit_quack_owner_command(
+                QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+                {
+                    "task_cid_or_alias": "ASEH-000",
+                    "expected_revision": 1,
+                    "status": "in_progress",
+                    "receipt": {"operation": "database_claim"},
+                    "evidence_digests": None,
+                },
+                timeout_seconds=0.5,
             )
-        client.join(timeout=2.0)
-        assert not client.is_alive()
-        assert isinstance(outcome.get("error"), DuckDBConnectionPolicyError)
-        assert "unknown outcome" in str(outcome["error"])
-        assert requests[0].is_file()
-        assert not tuple((owner_dir / "mutations").glob("*.done.json"))
+        assert unknown.value.code == "read_replica_refresh_unknown_outcome"
+        mutation_dir = owner_dir / "mutations"
+        assert not mutation_dir.exists() or not tuple(
+            mutation_dir.glob("*.json")
+        )
         assert server._connection is not None  # noqa: SLF001
         row = server._connection.execute(  # noqa: SLF001
             "SELECT status, revision FROM tasks WHERE task_alias = 'ASEH-000'"
@@ -837,9 +810,9 @@ def test_typed_owner_never_acknowledges_an_unpublished_mutation(
             "WHERE command_kind = 'compare_and_set_status'"
         ).fetchone()
         assert idempotency is not None and int(idempotency[0]) == 1
+        assert server.status()["lifecycle"] == "failed"
+        assert server.status()["read_replica"]["live"] is False
     finally:
-        if client is not None:
-            client.join(timeout=2.0)
         reset_quack_transport_cache()
         server.stop()
 
