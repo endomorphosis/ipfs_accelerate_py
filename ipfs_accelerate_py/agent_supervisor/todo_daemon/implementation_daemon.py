@@ -69997,6 +69997,21 @@ class DatabaseImplementationDaemon:
             quack_owner_mutation_error_is_retryable(exc)
         )
 
+    @staticmethod
+    def _is_stale_coordination_fence(exc: BaseException) -> bool:
+        """Owner recycle can leave an older claim fence that must not crash drain."""
+
+        try:
+            from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+                DatabaseCoordinationStaleFenceError,
+            )
+        except ImportError:
+            DatabaseCoordinationStaleFenceError = ()  # type: ignore[assignment]
+        if isinstance(exc, DatabaseCoordinationStaleFenceError):
+            return True
+        text = " ".join(str(exc).lower().split())
+        return "not the latest fencing epoch" in text or "stale fence" in text
+
     def _run_reconciliation_step(
         self,
         callback: Callable[[], list[dict[str, Any]]],
@@ -70007,6 +70022,8 @@ class DatabaseImplementationDaemon:
             return callback()
         except Exception as exc:
             if self._is_quack_attach_contention(exc):
+                return []
+            if self._is_stale_coordination_fence(exc):
                 return []
             raise
 
@@ -72103,7 +72120,21 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "coordinator cannot expire an exact failed task claim"
             )
-        lease = expire_claim(claim, now_ms=now)
+        try:
+            lease = expire_claim(claim, now_ms=now)
+        except Exception as exc:
+            if self._is_stale_coordination_fence(exc):
+                return {
+                    "claim_id": attempt.claim_id,
+                    "attempt_id": attempt.attempt_id,
+                    "attempt_number": int(attempt.attempt_number),
+                    "lease_state": "expired",
+                    "claim_state": claim_state,
+                    "stale_fence": True,
+                    "expired_now": False,
+                    "observed_at_ms": now,
+                }
+            raise
         lease_state = str(
             getattr(getattr(lease, "state", ""), "value", lease.state) or ""
         )

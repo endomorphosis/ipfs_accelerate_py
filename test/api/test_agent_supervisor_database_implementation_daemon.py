@@ -1656,6 +1656,37 @@ def test_reconcile_reopens_provider_failed_terminal_block(
         daemon.close()
 
 
+def test_stale_fence_expiry_does_not_crash_reconciliation(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+        DatabaseCoordinationStaleFenceError,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:stale-fence-reconcile",
+        max_task_attempts=3,
+    )
+    try:
+        assert daemon._is_stale_coordination_fence(
+            DatabaseCoordinationStaleFenceError(
+                "task claim is not the latest fencing epoch and token"
+            )
+        )
+        assert daemon._run_reconciliation_step(
+            lambda: (_ for _ in ()).throw(
+                DatabaseCoordinationStaleFenceError(
+                    "task claim is not the latest fencing epoch and token"
+                )
+            )
+        ) == []
+        result = daemon.run_once()
+        assert result.get("selection_idle_reason") == "no_ready_tasks"
+    finally:
+        daemon.close()
+
+
 def test_owner_mutation_reject_is_attach_contention(tmp_path: Path) -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         DuckDBConnectionPolicyError,
