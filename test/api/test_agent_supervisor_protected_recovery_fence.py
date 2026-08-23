@@ -43,6 +43,9 @@ def test_fence_contention_reasons_are_wait_states() -> None:
         "external_protected_checkout_recovery_required"
     )
     assert is_protected_recovery_fence_contention(
+        "external_protected_recovery_owner_active"
+    )
+    assert is_protected_recovery_fence_contention(
         "checkout_mutation_protected_recovery_required"
     )
     assert not is_protected_recovery_fence_contention(
