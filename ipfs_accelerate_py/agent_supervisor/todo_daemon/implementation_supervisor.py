@@ -20985,7 +20985,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging verbosity",
     )
-    return parser.parse_args(argv)
+    incoming = list(sys.argv[1:] if argv is None else argv)
+    expanded, _config_path = expand_supervisor_scheduler_config_args(incoming)
+    return parser.parse_args(expanded)
 
 
 def supervisor_config_from_args(
