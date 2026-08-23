@@ -315,6 +315,12 @@ def _fresh_revalidation_evidence(
     *,
     log_name: str,
 ) -> tuple[str, dict[str, object]]:
+    _install_successful_authority_validation_runner(
+        daemon,
+        SimpleNamespace(
+            setattr=lambda obj, name, value: setattr(obj, name, value)
+        ),
+    )
     guard = daemon._refresh_manual_completion_authority_guard()
     assert guard["available"] is True
     context_id = daemon._manual_completion_authority_policy_id()
@@ -882,6 +888,7 @@ def test_assumed_completed_goal_cannot_unlock_authority_affected_task(
 
 def test_pending_descendant_requires_fresh_revalidation_after_manual_activation(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     board = tmp_path / "tasks.md"
     board.write_text(
@@ -1008,6 +1015,7 @@ def test_pending_descendant_requires_fresh_revalidation_after_manual_activation(
     current_task = {
         task.task_id: task for task in daemon._load_tasks()
     }["TEST-002"]
+    _install_successful_authority_validation_runner(daemon, monkeypatch)
     validation_result = daemon._run_validation_commands(
         tmp_path,
         current_task,

@@ -1286,6 +1286,8 @@ _ACTIVE_QUALIFICATION_RUNTIME_DEPTH = 0
 DECLARED_GENERATED_EVIDENCE_PATHS: Final[tuple[str, ...]] = (
     "data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json",
     "data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/external_qualification_receipt.json",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/production_authorization_receipt.json",
     "data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json",
     "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md",
     "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md",
@@ -1975,7 +1977,7 @@ def _install_candidate_sandbox(
     # 4,096 ceiling prevents even git/pytest helper forks.  Keep a finite
     # ceiling and separately pin numerical libraries to one thread in the
     # sealed worker environment.
-    processes = _lower_resource_limit(resource.RLIMIT_NPROC, 65_536)
+    processes = _lower_resource_limit(resource.RLIMIT_NPROC, 1_048_576)
     cpu_seconds = _lower_resource_limit(resource.RLIMIT_CPU, 900)
     address_space_bytes = _lower_resource_limit(resource.RLIMIT_AS, 8 * 1024**3)
     landlock_abi = _install_landlock(
@@ -2038,7 +2040,7 @@ def _sandbox_evidence_is_valid(
         "cpu_seconds": 900,
         "file_size_bytes": 64 * 1024 * 1024,
         "open_files": 256,
-        "processes": 65_536,
+        "processes": 1_048_576,
     }
     if any(
         isinstance(limits.get(name), bool)
