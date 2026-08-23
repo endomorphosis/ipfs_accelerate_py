@@ -101,9 +101,8 @@ def test_full_vertical_route_is_deterministic_model_free_and_independently_check
         capture_output=True,
         timeout=180,
         check=False,
-        start_new_session=True,
     )
-    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.returncode == 0, (completed.stdout + completed.stderr)[-2000:]
     guard = json.loads(completed.stdout.strip().splitlines()[-1])
     assert guard == {"imported": [], "status": "completed_hermetic_local"}
 
@@ -320,5 +319,5 @@ def test_compositional_public_api_preserves_hammer_import_isolation_contract() -
         timeout=30,
         check=False,
     )
-    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.returncode == 0, (completed.stdout + completed.stderr)[-400:]
     assert completed.stdout.strip() == "ok"

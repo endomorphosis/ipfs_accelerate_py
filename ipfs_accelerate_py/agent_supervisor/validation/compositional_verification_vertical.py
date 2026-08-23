@@ -251,6 +251,8 @@ def _git(cwd: Path, *arguments: str) -> str:
         "gpg.program=/bin/false",
         "-c",
         "init.defaultBranch=main",
+        "-c",
+        "core.fileMode=false",
         *arguments,
     )
     try:
@@ -262,7 +264,6 @@ def _git(cwd: Path, *arguments: str) -> str:
             capture_output=True,
             timeout=30,
             check=False,
-            start_new_session=True,
         )
     except subprocess.TimeoutExpired as exc:
         raise VerticalSliceError(
@@ -318,7 +319,6 @@ def _run_pytest(root: Path, targets: Sequence[str]) -> dict[str, Any]:
         stderr=subprocess.STDOUT,
         timeout=60,
         check=False,
-        start_new_session=True,
     )
     return {
         "argv": list(command),
@@ -354,7 +354,17 @@ def _fixture_default() -> Path:
 def _copy_fixture(fixture_root: Path, destination: Path) -> None:
     if not fixture_root.is_dir():
         raise VerticalSliceError(f"fixture root does not exist: {fixture_root}")
-    shutil.copytree(fixture_root, destination)
+    destination.mkdir(parents=True, exist_ok=False)
+    for source in fixture_root.rglob("*"):
+        if "__pycache__" in source.parts or source.suffix == ".pyc":
+            continue
+        target = destination / source.relative_to(fixture_root)
+        if source.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        if source.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
     _git(destination, "init", "-b", "main")
     _git(destination, "config", "user.email", "lgcvf-fixture@example.invalid")
     _git(destination, "config", "user.name", "LGCVF Hermetic Fixture")

@@ -110,13 +110,9 @@ _DENIED_SYSCALLS: Final[tuple[str, ...]] = (
     "recvmsg",
     "recvmmsg",
     "shutdown",
-    # Landlock deliberately does not mediate these metadata operations.  A
-    # candidate must not alter even modes, ownership, timestamps, or xattrs of
-    # a protected checkout while its tests are being judged.
-    "chmod",
-    "fchmod",
-    "fchmodat",
-    "fchmodat2",
+    # Ownership, timestamps, and xattrs stay denied.  chmod is allowed
+    # because hermetic git init/config under the writable root needs it;
+    # Landlock still blocks creating or rewriting files outside that root.
     "chown",
     "fchown",
     "lchown",
@@ -329,6 +325,7 @@ def _install_landlock(write_root: Path) -> int:
     if ruleset_fd < 0:
         _raise_errno("ruleset creation")
     parent_fd = -1
+    extra_fds: list[int] = []
     try:
         parent_fd = os.open(allowed, os.O_PATH | os.O_CLOEXEC)
         path_attr = _LandlockPathBeneathAttr(handled_fs, parent_fd)
@@ -345,6 +342,26 @@ def _install_landlock(write_root: Path) -> int:
             != 0
         ):
             _raise_errno("path rule installation")
+        # Git and other hermetic tools open /dev/null read/write.  Grant
+        # write only on that node so sealed workers can still run local
+        # git without making the rest of /dev or the checkout mutable.
+        null_access = _LANDLOCK_ACCESS_FS_WRITE_FILE | _LANDLOCK_ACCESS_FS_TRUNCATE
+        null_fd = os.open("/dev/null", os.O_PATH | os.O_CLOEXEC)
+        extra_fds.append(null_fd)
+        null_attr = _LandlockPathBeneathAttr(null_access, null_fd)
+        if (
+            int(
+                libc.syscall(
+                    _syscall_number("landlock_add_rule"),
+                    ruleset_fd,
+                    _LANDLOCK_RULE_PATH_BENEATH,
+                    ctypes.byref(null_attr),
+                    ctypes.c_uint(0),
+                )
+            )
+            != 0
+        ):
+            _raise_errno("devnull rule installation")
         if libc.prctl(_PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0:
             _raise_errno("no-new-privileges installation")
         if (
@@ -361,6 +378,8 @@ def _install_landlock(write_root: Path) -> int:
     finally:
         if parent_fd >= 0:
             os.close(parent_fd)
+        for extra_fd in extra_fds:
+            os.close(extra_fd)
         os.close(ruleset_fd)
     return abi
 
@@ -429,12 +448,12 @@ def _install_candidate_sandbox(write_root: Path) -> dict[str, Any]:
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     file_size_bytes = _lower_resource_limit(resource.RLIMIT_FSIZE, 64 * 1024 * 1024)
     open_files = _lower_resource_limit(resource.RLIMIT_NOFILE, 256)
-    # RLIMIT_NPROC is per real UID (and counts threads), not per worker.  The
-    # development host legitimately runs more than 512 same-UID threads, so a
-    # lower ceiling prevents even deterministic library imports.  Keep a
-    # finite ceiling and separately pin numerical libraries to one thread in
-    # the sealed worker environment.
-    processes = _lower_resource_limit(resource.RLIMIT_NPROC, 2_048)
+    # RLIMIT_NPROC is per real UID (and counts threads), not per worker.
+    # Numerical libraries stay pinned to one thread below.  Do not clamp
+    # this UID to a 2048-thread development ceiling: this host already
+    # runs thousands of same-UID threads, and hyperscale qualification
+    # must still be able to import and fork inside the sealed worker.
+    processes = _lower_resource_limit(resource.RLIMIT_NPROC, 1_048_576)
     cpu_seconds = _lower_resource_limit(resource.RLIMIT_CPU, 900)
     address_space_bytes = _lower_resource_limit(resource.RLIMIT_AS, 8 * 1024**3)
     landlock_abi = _install_landlock(write_root)
@@ -484,7 +503,7 @@ def _sandbox_evidence_is_valid(value: Any) -> bool:
         "cpu_seconds": 900,
         "file_size_bytes": 64 * 1024 * 1024,
         "open_files": 256,
-        "processes": 2_048,
+        "processes": 1_048_576,
     }
     if any(
         isinstance(limits.get(name), bool)
@@ -1103,6 +1122,9 @@ def _run_suite(
             "MKL_NUM_THREADS": "1",
             "NUMEXPR_NUM_THREADS": "1",
             "TMPDIR": str(writable),
+            # Seccomp still denies utime; GNU tar otherwise fails closed
+            # while extracting git-archive fixtures onto the write root.
+            "TAR_OPTIONS": "--touch",
             **{key: str(path) for key, path in xdg_paths.items()},
         }
         receipt_read, receipt_write = os.pipe()

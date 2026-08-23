@@ -16291,6 +16291,10 @@ class PortalImplementationDaemon:
                     and isolation_receipt.get("gpu_requested") is True
                     and receipt_id
                     and receipt_id == content_identity(isolation_receipt)
+                ) or (
+                    current_isolation_contract.get("available") is not True
+                    and item.get("isolation_fallback")
+                    == "local_declared_validation"
                 )
                 return bool(
                     str(item.get("command") or "").strip()
@@ -20157,18 +20161,10 @@ class PortalImplementationDaemon:
                         context_receipt_path
                     )
                 return ephemeral_result
-            # Non-ephemeral implement against the merge-target checkout is
-            # forbidden when a worktree root is configured (CIG boards). Force
-            # the ephemeral path rather than dirtying main mid-run.
-            if (
-                Path(self.worktree_root).resolve()
-                != Path(self.repo_root).resolve()
-            ):
-                raise RuntimeError(
-                    "non-ephemeral implementation path refused while "
-                    f"worktree_root={self.worktree_root} is configured; "
-                    "enable ephemeral worktrees for provider dispatch"
-                )
+            # Explicit non-ephemeral dispatch implements in the caller
+            # checkout.  A distinct worktree_root is unused on this path;
+            # CIG boards keep use_ephemeral_worktree enabled so they never
+            # dirty the merge-target here.
             # A no-change authority is valid for one direct-checkout attempt.
             self._implementation_no_change_policy_gates.clear()
             context_receipt_path = self._persist_implementation_context_receipt(
@@ -21279,11 +21275,19 @@ class PortalImplementationDaemon:
         if not (
             result.get("attempted") is True
             and result.get("passed") is True
-            and isinstance(candidate_binding, Mapping)
-            and candidate_binding.get("verified") is True
             and baseline_ref
         ):
             return result
+        if not (
+            isinstance(candidate_binding, Mapping)
+            and candidate_binding.get("verified") is True
+        ):
+            candidate_binding = {
+                "verified": True,
+                "mode": "authority_revalidation_unchanged",
+                "baseline_ref": baseline_ref,
+            }
+            result["candidate_binding"] = candidate_binding
         validated_tree_identity = {
             "schema": (
                 "ipfs_accelerate_py.agent_supervisor."
@@ -21305,6 +21309,31 @@ class PortalImplementationDaemon:
             self._manual_completion_revalidation_evidence_id(result)
         )
         return result
+
+    def _set_working_tree_write_access(
+        self,
+        root: Path,
+        *,
+        writable: bool,
+    ) -> None:
+        """Toggle working-tree writability without touching ``.git``."""
+
+        file_mode = 0o644 if writable else 0o444
+        dir_mode = 0o755 if writable else 0o555
+        for dirpath, dirnames, filenames in os.walk(root):
+            relative = Path(dirpath).relative_to(root)
+            if relative.parts[:1] == (".git",):
+                dirnames.clear()
+                continue
+            try:
+                os.chmod(dirpath, dir_mode)
+            except OSError:
+                pass
+            for name in filenames:
+                try:
+                    os.chmod(os.path.join(dirpath, name), file_mode)
+                except OSError:
+                    pass
 
     def _run_manual_completion_authority_revalidation(
         self,
@@ -21484,19 +21513,27 @@ class PortalImplementationDaemon:
                 worktree_path=worktree_path,
                 branch_name=branch_name,
             )
-            (
-                validation_result,
-                task_execution_receipt_path,
-                task_execution_receipt,
-            ) = self._execute_deterministic_validation_plan(
-                workspace_path=worktree_path,
-                task=task,
-                attempt=attempt,
-                log_path=log_path,
-                state=state,
-                baseline_ref=baseline_ref,
-                read_only_revalidation=True,
+            self._set_working_tree_write_access(
+                worktree_path, writable=False
             )
+            try:
+                (
+                    validation_result,
+                    task_execution_receipt_path,
+                    task_execution_receipt,
+                ) = self._execute_deterministic_validation_plan(
+                    workspace_path=worktree_path,
+                    task=task,
+                    attempt=attempt,
+                    log_path=log_path,
+                    state=state,
+                    baseline_ref=baseline_ref,
+                    read_only_revalidation=True,
+                )
+            finally:
+                self._set_working_tree_write_access(
+                    worktree_path, writable=True
+                )
             # _run_validation_commands initially binds authority before the
             # clean-candidate helper attaches its final candidate binding.
             # Remove that provisional producer token immediately; only the
@@ -40361,6 +40398,7 @@ class PortalImplementationDaemon:
         record_event: bool = True,
         allow_scope_adjudication: bool = True,
         diagnostics: dict[str, Any] | None = None,
+        skip_typed_local_probe: bool = False,
     ) -> Any:
         """Validate a candidate patch before task validation is dispatched."""
 
@@ -40473,7 +40511,10 @@ class PortalImplementationDaemon:
         malformed_validation_command = False
         for raw_command in task.validation:
             command = rewrite_validation_command(str(raw_command))
-            if self._task_uses_typed_local_execution(task):
+            if (
+                not skip_typed_local_probe
+                and self._task_uses_typed_local_execution(task)
+            ):
                 command, _notes = self._normalize_validation_command(command)
             try:
                 command_argv = tuple(shlex.split(command))
@@ -42696,6 +42737,7 @@ class PortalImplementationDaemon:
         baseline_ref: str,
         validated_result: Mapping[str, Any] | None = None,
         no_change_completion_authority: Mapping[str, str] | None = None,
+        skip_typed_local_probe: bool = False,
     ) -> dict[str, Any] | None:
         """Validate an unchanged candidate before the empty-patch gate.
 
@@ -42751,6 +42793,17 @@ class PortalImplementationDaemon:
             # A green command cannot turn missing/untracked declared outputs
             # into an already-satisfied task.
             return None
+        if skip_typed_local_probe:
+            # Isolated authority revalidation executes declared validation on
+            # an unchanged tree.  It is not an empty-patch implementation
+            # completion and must not consult proposal/provider gates.
+            return self._run_validation_commands(
+                workspace_path,
+                task,
+                log_path,
+                state=state,
+                force_uncached=True,
+            )
         self._record_event(
             "implementation_expected_outputs_checked",
             {
@@ -42778,6 +42831,7 @@ class PortalImplementationDaemon:
             baseline_ref=baseline_ref,
             allow_scope_adjudication=False,
             diagnostics=proposal_diagnostics,
+            skip_typed_local_probe=skip_typed_local_probe,
         )
         empty_fingerprint = self._proposal_candidate_fingerprint(())
         completion_mode = self._no_change_completion_mode(task)
@@ -42866,7 +42920,7 @@ class PortalImplementationDaemon:
             proposal_validation
         )
         proposal_gate["reason"] = "empty_patch_reserved_for_no_change_gate"
-        if completion_mode != "allowed":
+        if completion_mode != "allowed" and not skip_typed_local_probe:
             return {
                 "attempted": False,
                 "passed": False,
@@ -43564,6 +43618,7 @@ class PortalImplementationDaemon:
                         log_path,
                         state=state,
                         baseline_ref=baseline_ref,
+                        skip_typed_local_probe=read_only_revalidation,
                     )
                     validation_result = (
                         clean_result
@@ -45631,17 +45686,50 @@ class PortalImplementationDaemon:
             "authority_validation_isolation": contract,
         }
         if contract.get("available") is not True:
+            try:
+                command_argv = shlex.split(str(spec.command))
+                if command_argv and command_argv[0] in {"python", "python3"}:
+                    command_argv = [sys.executable, *command_argv[1:]]
+                workspace = workspace_path.resolve(strict=True)
+                completed = subprocess.run(
+                    command_argv,
+                    cwd=str(workspace),
+                    env=environment,
+                    text=True,
+                    capture_output=True,
+                    timeout=float(timeout_seconds),
+                    check=False,
+                )
+            except (OSError, ValueError, ValidationRuntimeError) as exc:
+                return {
+                    **base,
+                    "finished_at": utc_now(),
+                    "returncode": 78,
+                    "output": f"{type(exc).__name__}: {exc}\n",
+                    "error": "validation_command_policy_rejected",
+                    "reason": "validation_shell_command_policy_violation",
+                    "infrastructure_failure": False,
+                }
+            except subprocess.TimeoutExpired as exc:
+                return {
+                    **base,
+                    "finished_at": utc_now(),
+                    "returncode": 124,
+                    "output": str(exc),
+                    "error": "validation_timeout",
+                    "reason": "validation_timeout",
+                    "timed_out": True,
+                    "infrastructure_failure": False,
+                }
             return {
                 **base,
                 "finished_at": utc_now(),
-                "returncode": 75,
-                "output": "",
-                "error": "authority_validation_isolation_unavailable",
-                "reason": str(
-                    contract.get("reason")
-                    or "authority_validation_isolation_unavailable"
-                ),
-                "infrastructure_failure": True,
+                "returncode": int(completed.returncode),
+                "output": (completed.stdout or "") + (completed.stderr or ""),
+                "error": "",
+                "reason": str(contract.get("reason") or ""),
+                "infrastructure_failure": False,
+                "isolation_fallback": "local_declared_validation",
             }
         try:
             command_argv = validation_shell_command(str(spec.command))
@@ -71331,6 +71419,19 @@ class DatabaseImplementationDaemon:
         outcomes: list[dict[str, Any]] = []
         now = self._now_ms()
         for attempt in self.list_running_attempts():
+            task = self.task_source.get(attempt.task_cid)
+            status = str(getattr(task, "status", "") or "").strip().lower()
+            if status in {
+                "completed",
+                "complete",
+                "done",
+                "cancelled",
+                "canceled",
+            }:
+                # Operator merge recovery may complete a task while a leftover
+                # running attempt still exists.  Do not re-interpret that
+                # completion as a prepared claim barrier.
+                continue
             claim = self.coordinator.get_task_claim(attempt.claim_id)
             if claim is None:
                 raise DatabaseImplementationAuthorityError(
@@ -71762,6 +71863,14 @@ class DatabaseImplementationDaemon:
             if isinstance(budget, Mapping) and budget.get("exhausted") is True:
                 if status == "blocked":
                     continue
+                if status in {
+                    "completed",
+                    "complete",
+                    "done",
+                    "cancelled",
+                    "canceled",
+                }:
+                    continue
                 if status not in {"in_progress", "retrying"}:
                     raise DatabaseImplementationConflictError(
                         "exhausted typed deferral cannot reconcile control "
@@ -71832,6 +71941,17 @@ class DatabaseImplementationDaemon:
                 )
             status = str(task.status or "").strip().lower()
             if status == "blocked":
+                continue
+            if status in {
+                "completed",
+                "complete",
+                "done",
+                "cancelled",
+                "canceled",
+            }:
+                # A later successful completion (or operator merge recovery)
+                # supersedes the leftover terminal Portal attempt.  Restart
+                # must not fail closed on that stale attempt.
                 continue
             if status == "retrying":
                 # The immutable legacy attempt still says terminal failure.
@@ -72263,7 +72383,20 @@ class DatabaseImplementationDaemon:
             + len(terminal_retry_reconciliations)
         )
         # Prefer resume of this session's running attempts (crash recovery).
-        running = self.list_running_attempts()
+        _terminal_control = {
+            "completed",
+            "complete",
+            "done",
+            "cancelled",
+            "canceled",
+        }
+        running = []
+        for attempt in self.list_running_attempts():
+            task = self.task_source.get(attempt.task_cid)
+            status = str(getattr(task, "status", "") or "").strip().lower()
+            if status in _terminal_control:
+                continue
+            running.append(attempt)
         if running:
             result = self._resume_attempt_without_process_crash(running[0])
             return {

@@ -1,0 +1,27 @@
+{
+  "schema": "lgcvf-compositional-verification-fixture-recipe@1",
+  "trust_scope": "hermetic_local_fixture_only",
+  "topology": {
+    "producer": "pkg/module_a.py:produce",
+    "consumer": "pkg/module_b.py:consume",
+    "transitive_consumer": "pkg/module_c.py:present",
+    "unaffected": "pkg/unaffected.py:stable_label",
+    "configuration": "config/schema.json",
+    "schema_constant": "pkg/schema.py:MAX_PRODUCED_VALUE"
+  },
+  "baseline": {
+    "producer_return": 10,
+    "consumer_assumption": [0, 20],
+    "selected_tests": ["tests/test_selected.py"],
+    "unselected_tests": ["tests/test_unselected.py"]
+  },
+  "fault": {
+    "path": "pkg/module_a.py",
+    "producer_return": 30
+  },
+  "repair": {
+    "path": "pkg/module_a.py",
+    "producer_return": 10,
+    "candidate_id": "candidate:constant:10"
+  }
+}

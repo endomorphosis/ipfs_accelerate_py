@@ -3644,6 +3644,19 @@ class DatabaseCoordinator:
             raise DatabaseCoordinationStaleFenceError(
                 "prepared completion body is not a mapping"
             )
+        if str(body.get("schema") or "") == (
+            "ipfs_accelerate_py/agent-supervisor/operator-merge-completion@1"
+        ):
+            if required:
+                raise DatabaseCoordinationNotReadyError(
+                    f"task {task_cid} completion is operator recovery, not prepared",
+                    evidence={
+                        "task_cid": task_cid,
+                        "completion_status": status,
+                        "reason": "operator_merge_completion",
+                    },
+                )
+            return None
         prepared = self._validate_preparation_mapping(body, task_cid=task_cid)
         identity = self._task_claim_identity(prepared)
         self._task_completion_for_identity_unlocked(
