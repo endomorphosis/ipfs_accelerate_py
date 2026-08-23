@@ -370,6 +370,18 @@ def test_open_questions_come_from_world_uncertainty_and_family_unknown_cases() -
     assert "world.unavailable.proof_status" in ids
     assert "world.status.incomplete" in ids
     assert "family.unknown.unknown-a" in ids
+    mapped = extract_uncertainty_questions(
+        questions=(
+            {
+                "question_id": "world.unavailable.proof_status",
+                "source": "world-unavailable-dimension",
+                "dimension": "proof_status",
+            },
+        )
+    )
+    assert mapped[0].question_id == "world.unavailable.proof_status"
+    with pytest.raises(ExperimentDeclarationError, match="UncertaintyQuestion"):
+        extract_uncertainty_questions(questions=("not-a-question",))  # type: ignore[arg-type]
 
     closed = _plan(questions=(), world=_world(unavailable_dimensions=()))
     assert closed.action is ExperimentAction.SKIP
@@ -658,3 +670,92 @@ def test_generic_experiment_plan_envelope_is_unchanged() -> None:
     decoded = parse_procedure_artifact(record.to_dict())
     assert decoded == record
     assert isinstance(decoded, contracts.BoundedArtifact)
+
+
+def test_missing_pending_decision_and_binding_mismatch_are_fail_closed() -> None:
+    skipped = ExperimentPlanner().plan(_experiment(), questions=_questions())
+    assert skipped.action is ExperimentAction.SKIP
+    assert skipped.reason_code is ExperimentReason.NO_PENDING_DECISION
+    assert skipped.value_of_experiment == 0
+    assert skipped.can_authorize is False
+
+    other_bindings = ArtifactBindings(
+        repository_id="other-repo",
+        repository_commit="commit-1",
+        tree_id="tree-1",
+        objective_id="PCPC-G000",
+        task_id="PCPC-024",
+        contract_revision="contract-1",
+        policy_revision="policy-1",
+        environment_id="environment-1",
+    )
+    mismatched_world = _world(bindings=other_bindings)
+    refused = _plan(world=mismatched_world)
+    assert refused.action is ExperimentAction.REFUSE
+    assert refused.reason_code is ExperimentReason.BINDING_MISMATCH
+
+    decision_mismatch = _plan(
+        _experiment(decision_id="other-decision"),
+        pending_decision=_pending(),
+    )
+    assert decision_mismatch.action is ExperimentAction.REFUSE
+    assert decision_mismatch.reason_code is ExperimentReason.BINDING_MISMATCH
+
+
+def test_fixture_risk_ceiling_inconclusive_facts_and_lease_mismatch() -> None:
+    risky_fixture = _plan(_experiment(risk_class=RiskClass.REVERSIBLE_LOCAL))
+    assert risky_fixture.action is ExperimentAction.REFUSE
+    assert risky_fixture.reason_code is ExperimentReason.RISK_CEILING
+
+    decision = _plan()
+    inconclusive = ShadowExperimentRunner().run_experiment(
+        decision,
+        _experiment(),
+        observed_facts={"proof_status_current": "unresolved"},
+    )
+    assert inconclusive.observation.outcome is ExperimentOutcome.INCONCLUSIVE
+    assert inconclusive.observation.selected_option_id == ""
+    assert inconclusive.observation.hypothesis_supported is False
+    assert inconclusive.evaluation_artifact.facts["changed_pending_decision"] is False
+
+    lease_mismatch = _plan(
+        _experiment(
+            isolation=_worktree_isolation(lease_id="lease-other"),
+            effects=(ExperimentEffectClass.OBSERVE_DISPOSABLE_WORKTREE,),
+            cost=_cost(worktree_count=1),
+            execution_bound=_bound(max_worktrees=1),
+            risk_class=RiskClass.REVERSIBLE_LOCAL,
+        ),
+        world=_world(),
+    )
+    assert lease_mismatch.action is ExperimentAction.REFUSE
+    assert lease_mismatch.reason_code is ExperimentReason.UNAUTHORIZED_WORKTREE
+
+
+def test_observations_may_only_discharge_planning_cost_or_priority() -> None:
+    assert observation_may_discharge(ObservationUse.COST) is True
+    assert observation_may_discharge(ObservationUse.PRIORITY) is True
+    assert observation_may_discharge("planning-observation") is True
+    assert observation_may_discharge("authority") is False
+
+    runner = ShadowExperimentRunner()
+    decision = _plan()
+    with pytest.raises(ExperimentError, match="identities differ"):
+        runner.run(
+            decision,
+            _experiment(experiment_id="other-shadow"),
+            observed_facts={"proof_status_current": True},
+        )
+
+    budgeted = ExperimentPlanner().plan(
+        _experiment(),
+        pending_decision=_pending(),
+        questions=_questions(),
+        remaining_budget={"tokens": 128, "duration_ms": 1_000},
+    )
+    assert budgeted.action is ExperimentAction.RUN
+    assert budgeted.can_grant_authority is False
+    assert budgeted.can_establish_proof is False
+    assert budgeted.can_establish_postcondition is False
+    assert budgeted.can_establish_completion is False
+    assert budgeted.can_promote is False

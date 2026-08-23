@@ -723,9 +723,14 @@ def extract_uncertainty_questions(
     *,
     world: RepositoryWorldState | None = None,
     family: TaskFamily | None = None,
-    questions: Sequence[UncertaintyQuestion] = (),
+    questions: Sequence[UncertaintyQuestion | Mapping[str, Any]] = (),
 ) -> tuple[UncertaintyQuestion, ...]:
     """Union explicit questions with world-unavailable and family-unknown cases."""
+
+    if isinstance(questions, (str, bytes, bytearray, memoryview)):
+        raise ExperimentDeclarationError(
+            "questions must be a sequence of UncertaintyQuestion records"
+        )
 
     extracted: list[UncertaintyQuestion] = []
     seen: set[str] = set()
@@ -737,7 +742,12 @@ def extract_uncertainty_questions(
         extracted.append(item)
 
     for item in questions:
-        _add(item if isinstance(item, UncertaintyQuestion) else UncertaintyQuestion(**item))
+        if isinstance(item, UncertaintyQuestion):
+            _add(item)
+        elif isinstance(item, Mapping):
+            _add(UncertaintyQuestion(**item))
+        else:
+            raise ExperimentDeclarationError("questions must be UncertaintyQuestion records")
     if world is not None:
         evidence = world.content_id
         for dimension in world.unavailable_dimensions:
@@ -820,6 +830,8 @@ def value_of_experiment(
 
 def observation_may_discharge(use: ObservationUse | str) -> bool:
     normalized = _enum(use, ObservationUse, "use")
+    if normalized.value in _AUTHORITY_USES:
+        return False
     return normalized in {
         ObservationUse.PLANNING_OBSERVATION,
         ObservationUse.COST,
@@ -958,7 +970,6 @@ class ExperimentDecision(CanonicalContract):
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": PROCEDURE_CONTRACT_VERSION,
-            "planner_revision": PLANNER_REVISION,
             "bindings": self.bindings,
             "experiment_id": self.experiment_id,
             "action": self.action.value,
@@ -1002,6 +1013,22 @@ class ExperimentDecision(CanonicalContract):
         values = _decode_fields(payload, cls.SCHEMA, fields, cls.__name__)
         if "bindings" in values:
             values["bindings"] = _bindings(values["bindings"])
+        if "isolation" in values:
+            values["isolation"] = _nested_record(
+                values["isolation"], IsolationTarget, "isolation"
+            )
+        if "estimated_cost" in values:
+            values["estimated_cost"] = _nested_record(
+                values["estimated_cost"], ExperimentCost, "cost"
+            )
+        if "execution_bound" in values:
+            values["execution_bound"] = _nested_record(
+                values["execution_bound"], ExecutionBound, "execution_bound"
+            )
+        if "decision_rule" in values:
+            values["decision_rule"] = _nested_record(
+                values["decision_rule"], DecisionRule, "decision_rule"
+            )
         if values.get("can_authorize"):
             raise ExperimentError("experiment decisions cannot authorize")
         record = cls(**values)
@@ -1167,10 +1194,10 @@ class ExperimentPlanner:
         experiment: ShadowExperiment,
         *,
         pending_decision: PendingDecision | None = None,
-        questions: Sequence[UncertaintyQuestion] = (),
+        questions: Sequence[UncertaintyQuestion | Mapping[str, Any]] = (),
         world: RepositoryWorldState | None = None,
         family: TaskFamily | None = None,
-        remaining_budget: ExperimentCost | None = None,
+        remaining_budget: ExperimentCost | Mapping[str, Any] | None = None,
         emitted_at_ms: int = 0,
     ) -> ExperimentDecision:
         return self.plan_experiment(
@@ -1188,14 +1215,17 @@ class ExperimentPlanner:
         experiment: ShadowExperiment,
         *,
         pending_decision: PendingDecision | None = None,
-        questions: Sequence[UncertaintyQuestion] = (),
+        questions: Sequence[UncertaintyQuestion | Mapping[str, Any]] = (),
         world: RepositoryWorldState | None = None,
         family: TaskFamily | None = None,
-        remaining_budget: ExperimentCost | None = None,
+        remaining_budget: ExperimentCost | Mapping[str, Any] | None = None,
         emitted_at_ms: int = 0,
     ) -> PlannedExperiment:
         if not isinstance(experiment, ShadowExperiment):
             raise ExperimentDeclarationError("experiment must be ShadowExperiment")
+        budget = remaining_budget
+        if budget is not None and not isinstance(budget, ExperimentCost):
+            budget = _nested_record(budget, ExperimentCost, "remaining_budget")
         action = ExperimentAction.REFUSE
         reason = ExperimentReason.MISSING_DECLARATION
         value = 0
@@ -1264,7 +1294,7 @@ class ExperimentPlanner:
                 reason = ExperimentReason.QUESTION_NOT_OPEN
             else:
                 value, reachable = value_of_experiment(experiment, pending_decision)
-                if remaining_budget is not None and experiment.cost.exceeds(remaining_budget):
+                if budget is not None and experiment.cost.exceeds(budget):
                     action = ExperimentAction.SKIP
                     reason = ExperimentReason.COST_EXCEEDS_BUDGET
                 elif value <= 0:
@@ -1324,6 +1354,16 @@ def _evaluate_rule(rule: DecisionRule, observed_facts: Mapping[str, Any]) -> tup
             raise ExperimentObservationError("integer-threshold rules require an integer observation")
         if isinstance(rule.hypothesis_operand, bool) or not isinstance(rule.hypothesis_operand, int):
             raise ExperimentDeclarationError("integer-threshold hypothesis operand must be an integer")
+        if (
+            rule.counterfactual_operand is not None
+            and (
+                isinstance(rule.counterfactual_operand, bool)
+                or not isinstance(rule.counterfactual_operand, int)
+            )
+        ):
+            raise ExperimentDeclarationError(
+                "integer-threshold counterfactual operand must be an integer"
+            )
         if observed >= rule.hypothesis_operand:
             return ExperimentOutcome.HYPOTHESIS, rule.hypothesis_option_id, True
         return ExperimentOutcome.COUNTERFACTUAL, rule.counterfactual_option_id, False
