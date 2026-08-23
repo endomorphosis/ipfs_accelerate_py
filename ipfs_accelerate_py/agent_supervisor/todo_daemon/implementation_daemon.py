@@ -29346,6 +29346,1260 @@ class PortalImplementationDaemon:
                 return False
         return True
 
+    @staticmethod
+    def _post_merge_repair_tree_entries(
+        repository: Path,
+        repository_ref: str,
+        declared_outputs: Sequence[str],
+    ) -> tuple[dict[str, dict[str, str]], str]:
+        """Return exact regular-file entries below declared outputs.
+
+        Recovery deliberately excludes symlinks and gitlinks.  Those shapes
+        require their existing specialised ownership and submodule handoff
+        protocols and must never be smuggled through a root-tree repair.
+        """
+
+        command = [
+            "git",
+            "ls-tree",
+            "-r",
+            "-z",
+            repository_ref,
+            "--",
+            *declared_outputs,
+        ]
+        result = subprocess.run(
+            command,
+            cwd=repository,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return {}, "declared_output_candidate_tree_unavailable"
+        entries: dict[str, dict[str, str]] = {}
+        for raw_record in result.stdout.split(b"\0"):
+            if not raw_record:
+                continue
+            try:
+                raw_identity, raw_path = raw_record.split(b"\t", 1)
+                mode, object_type, object_id = raw_identity.decode(
+                    "ascii"
+                ).split(" ", 2)
+                path = raw_path.decode("utf-8", errors="surrogateescape")
+            except (UnicodeDecodeError, ValueError):
+                return {}, "declared_output_candidate_tree_malformed"
+            if object_type != "blob" or mode not in {"100644", "100755"}:
+                return {}, "declared_output_candidate_entry_unsafe"
+            entries[path] = {
+                "mode": mode,
+                "object_type": object_type,
+                "object_id": object_id,
+            }
+        for output in declared_outputs:
+            if not any(
+                path == output or path.startswith(f"{output}/")
+                for path in entries
+            ):
+                return {}, "declared_output_absent_from_candidate"
+        return entries, ""
+
+    @staticmethod
+    def _post_merge_repair_validation_rejection_admitted(
+        repair_result: Mapping[str, Any],
+    ) -> bool:
+        """Distinguish a test rejection from unavailable validation.
+
+        Only an actually executed, non-timeout, non-infrastructure command
+        failure is terminal.  Scheduler/resource/capability failures remain
+        eligible for the merge train's bounded retry path.
+        """
+
+        validation_items = repair_result.get("validation")
+        if not isinstance(validation_items, list) or not validation_items:
+            return False
+        saw_command_failure = False
+        for validation_item in validation_items:
+            if not isinstance(validation_item, Mapping):
+                return False
+            validation = validation_item.get("result")
+            if (
+                not isinstance(validation, Mapping)
+                or validation.get("attempted") is not True
+            ):
+                return False
+            command_results = validation.get("results")
+            if not isinstance(command_results, list) or not command_results:
+                return False
+            for command_result in command_results:
+                if not isinstance(command_result, Mapping):
+                    return False
+                try:
+                    returncode = int(command_result.get("returncode", 1))
+                except (TypeError, ValueError):
+                    return False
+                if (
+                    command_result.get("timed_out") is True
+                    or command_result.get("infrastructure_failure") is True
+                    or returncode in {75, 124}
+                ):
+                    return False
+                if returncode != 0:
+                    saw_command_failure = True
+        return saw_command_failure
+
+    @staticmethod
+    def _post_merge_repair_commit_shape(
+        repository: Path,
+        commit: str,
+    ) -> tuple[list[str], str]:
+        parents = subprocess.run(
+            ["git", "rev-list", "--parents", "-n", "1", commit],
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if parents.returncode != 0:
+            return [], ""
+        values = parents.stdout.strip().split()
+        if not values or values[0].casefold() != commit.casefold():
+            return [], ""
+        tree = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{commit}^{{tree}}"],
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return (
+            values[1:],
+            tree.stdout.strip() if tree.returncode == 0 else "",
+        )
+
+    def _post_merge_null_integration_commit(
+        self,
+        *,
+        candidate_commit: str,
+        candidate_tree: str,
+        baseline_ref: str,
+        target_commit: str,
+        declared_outputs: Sequence[str],
+    ) -> tuple[str, dict[str, Any]]:
+        """Find one exact first-parent-tree merge that discarded a candidate.
+
+        The shape is intentionally narrow: the candidate must be a single
+        commit directly above its sealed baseline, the broken merge must have
+        exactly that baseline and candidate as parents, and its tree must be
+        byte-for-byte the baseline tree.  Later target commits may exist only
+        when none touched a declared-output path.
+        """
+
+        resolved_candidate = self._resolved_commit_ref(
+            self.repo_root,
+            candidate_commit,
+        )
+        resolved_baseline = self._resolved_commit_ref(
+            self.repo_root,
+            baseline_ref,
+        )
+        resolved_target = self._resolved_commit_ref(
+            self.repo_root,
+            target_commit,
+        )
+        proof: dict[str, Any] = {
+            "candidate_commit": resolved_candidate,
+            "baseline_commit": resolved_baseline,
+            "target_commit": resolved_target,
+            "candidate_tree": candidate_tree,
+        }
+        if not resolved_candidate or resolved_candidate != candidate_commit:
+            proof["reason"] = "repair_candidate_commit_unavailable"
+            return "", proof
+        if not resolved_baseline or resolved_baseline != baseline_ref:
+            proof["reason"] = "repair_baseline_commit_unavailable"
+            return "", proof
+        if not resolved_target or resolved_target != target_commit:
+            proof["reason"] = "repair_target_commit_unavailable"
+            return "", proof
+        candidate_parents, actual_candidate_tree = (
+            self._post_merge_repair_commit_shape(
+                self.repo_root,
+                resolved_candidate,
+            )
+        )
+        proof["actual_candidate_tree"] = actual_candidate_tree
+        proof["candidate_parents"] = candidate_parents
+        if candidate_parents != [resolved_baseline]:
+            proof["reason"] = "repair_candidate_baseline_mismatch"
+            return "", proof
+        if not candidate_tree or actual_candidate_tree != candidate_tree:
+            proof["reason"] = "repair_candidate_tree_mismatch"
+            return "", proof
+        baseline_parents, baseline_tree = self._post_merge_repair_commit_shape(
+            self.repo_root,
+            resolved_baseline,
+        )
+        del baseline_parents
+        proof["baseline_tree"] = baseline_tree
+        if not baseline_tree or baseline_tree == candidate_tree:
+            proof["reason"] = "repair_candidate_has_no_tree_delta"
+            return "", proof
+
+        history = subprocess.run(
+            [
+                "git",
+                "rev-list",
+                "--first-parent",
+                "--merges",
+                "--max-count=512",
+                resolved_target,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if history.returncode != 0:
+            proof["reason"] = "repair_target_history_unavailable"
+            return "", proof
+        matches: list[str] = []
+        for merge_commit in history.stdout.splitlines():
+            merge_commit = merge_commit.strip()
+            if not merge_commit:
+                continue
+            parents, merge_tree = self._post_merge_repair_commit_shape(
+                self.repo_root,
+                merge_commit,
+            )
+            if (
+                parents == [resolved_baseline, resolved_candidate]
+                and merge_tree == baseline_tree
+            ):
+                matches.append(merge_commit)
+        proof["matching_null_integrations"] = matches
+        if len(matches) != 1:
+            proof["reason"] = (
+                "repair_null_integration_missing"
+                if not matches
+                else "repair_null_integration_ambiguous"
+            )
+            return "", proof
+        failed_integration = matches[0]
+        later_path_history = subprocess.run(
+            [
+                "git",
+                "log",
+                "--format=%H",
+                f"{failed_integration}..{resolved_target}",
+                "--",
+                *declared_outputs,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        later_commits = [
+            line.strip()
+            for line in later_path_history.stdout.splitlines()
+            if line.strip()
+        ]
+        proof["failed_integration_commit"] = failed_integration
+        proof["later_declared_output_commits"] = later_commits
+        if later_path_history.returncode != 0:
+            proof["reason"] = "repair_declared_output_history_unavailable"
+            return "", proof
+        if later_commits:
+            proof["reason"] = "repair_declared_outputs_changed_after_failure"
+            return "", proof
+        proof["passed"] = True
+        proof["reason"] = "exact_null_integration_proved"
+        return failed_integration, proof
+
+    def _repair_post_merge_declared_outputs(
+        self,
+        tasks: Sequence[PortalTask],
+        *,
+        primary_task: PortalTask,
+        attempt: int,
+        candidate_commit: str,
+        candidate_tree: str,
+        baseline_ref: str,
+        target_branch: str,
+        target_commit: str,
+        changed_submodule_paths: Sequence[str] = (),
+    ) -> dict[str, Any]:
+        """Repair one proven null merge under the canonical checkout lease."""
+
+        return self._run_checkout_mutation_transaction(
+            task_id=primary_task.task_id,
+            attempt=attempt,
+            branch=target_branch,
+            operation="repair_post_merge_declared_outputs",
+            callback=lambda: self._repair_post_merge_declared_outputs_locked(
+                tasks,
+                primary_task=primary_task,
+                attempt=attempt,
+                candidate_commit=candidate_commit,
+                candidate_tree=candidate_tree,
+                baseline_ref=baseline_ref,
+                target_branch=target_branch,
+                target_commit=target_commit,
+                changed_submodule_paths=changed_submodule_paths,
+            ),
+            failure_fields={
+                "schema": POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+                "attempted": False,
+                "passed": False,
+                "candidate_commit": candidate_commit,
+                "target_commit": target_commit,
+            },
+            extra={
+                "candidate_commit": candidate_commit,
+                "target_commit": target_commit,
+            },
+        )
+
+    def _repair_post_merge_declared_outputs_locked(
+        self,
+        tasks: Sequence[PortalTask],
+        *,
+        primary_task: PortalTask,
+        attempt: int,
+        candidate_commit: str,
+        candidate_tree: str,
+        baseline_ref: str,
+        target_branch: str,
+        target_commit: str,
+        changed_submodule_paths: Sequence[str] = (),
+    ) -> dict[str, Any]:
+        """Create a follow-up commit containing only exact declared blobs."""
+
+        result: dict[str, Any] = {
+            "schema": POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+            "attempted": False,
+            "passed": False,
+            "task_id": primary_task.task_id,
+            "candidate_commit": candidate_commit,
+            "candidate_tree": candidate_tree,
+            "baseline_ref": baseline_ref,
+            "target_branch": target_branch,
+            "target_commit": target_commit,
+        }
+
+        def reject(reason: str, **extra: Any) -> dict[str, Any]:
+            result.update(reason=reason, **extra)
+            return result
+
+        raw_outputs = [
+            str(path or "").strip().rstrip("/")
+            for task in tasks
+            for path in task_declared_output_paths(task)
+        ]
+        declared_outputs = sorted(dict.fromkeys(raw_outputs))
+        result["declared_outputs"] = declared_outputs
+        if not declared_outputs or any(
+            output == "."
+            or not self._repo_relative_path_safe(output)
+            or any(ord(character) < 32 for character in output)
+            for output in declared_outputs
+        ):
+            return reject("repair_declared_output_paths_invalid")
+        normalized_submodules = sorted(
+            {
+                str(path or "").strip().strip("/")
+                for path in changed_submodule_paths
+                if str(path or "").strip().strip("/")
+            }
+        )
+        if normalized_submodules:
+            return reject(
+                "repair_changed_submodule_scope_forbidden",
+                changed_submodule_paths=normalized_submodules,
+            )
+        protected_overlaps = sorted(
+            {
+                output
+                for output in declared_outputs
+                for protected in self.implementation_protected_paths
+                if self._paths_overlap(output, str(protected))
+            }
+        )
+        if protected_overlaps:
+            return reject(
+                "repair_declared_output_protected",
+                protected_outputs=protected_overlaps,
+            )
+
+        live_target = self._resolved_commit_ref(
+            self.repo_root,
+            target_branch,
+        )
+        if not live_target or live_target != target_commit:
+            return reject(
+                "repair_target_advanced",
+                live_target_commit=live_target,
+            )
+        if self._git_merge_head_in_repo(self.repo_root) or (
+            self._unmerged_worktree_paths(self.repo_root)
+        ):
+            return reject("repair_merge_state_present")
+
+        failed_integration, null_merge_proof = (
+            self._post_merge_null_integration_commit(
+                candidate_commit=candidate_commit,
+                candidate_tree=candidate_tree,
+                baseline_ref=baseline_ref,
+                target_commit=target_commit,
+                declared_outputs=declared_outputs,
+            )
+        )
+        result["null_merge_proof"] = null_merge_proof
+        if not failed_integration:
+            return reject(
+                str(
+                    null_merge_proof.get("reason")
+                    or "repair_null_integration_unproven"
+                )
+            )
+        candidate_invariant = self._declared_output_tracking_invariant(
+            tasks,
+            repository_ref=candidate_commit,
+        )
+        result["candidate_declared_output_invariant"] = candidate_invariant
+        if candidate_invariant.get("passed") is not True:
+            return reject("repair_candidate_declared_outputs_unproven")
+        entries, entries_error = self._post_merge_repair_tree_entries(
+            self.repo_root,
+            candidate_commit,
+            declared_outputs,
+        )
+        if entries_error:
+            return reject(entries_error)
+        result["candidate_entries"] = [
+            {"path": path, **identity}
+            for path, identity in sorted(entries.items())
+        ]
+        candidate_delta = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--name-status",
+                "--no-renames",
+                "-z",
+                baseline_ref,
+                candidate_commit,
+                "--",
+            ],
+            cwd=self.repo_root,
+            capture_output=True,
+            check=False,
+        )
+        raw_delta_fields = [
+            field
+            for field in candidate_delta.stdout.split(b"\0")
+            if field
+        ]
+        if (
+            candidate_delta.returncode != 0
+            or len(raw_delta_fields) % 2 != 0
+        ):
+            return reject("repair_candidate_delta_unavailable")
+        candidate_delta_entries: list[dict[str, str]] = []
+        try:
+            for offset in range(0, len(raw_delta_fields), 2):
+                candidate_delta_entries.append(
+                    {
+                        "status": raw_delta_fields[offset].decode("ascii"),
+                        "path": raw_delta_fields[offset + 1].decode(
+                            "utf-8",
+                            errors="surrogateescape",
+                        ),
+                    }
+                )
+        except UnicodeDecodeError:
+            return reject("repair_candidate_delta_malformed")
+        result["candidate_delta"] = candidate_delta_entries
+        candidate_delta_paths = sorted(
+            item["path"] for item in candidate_delta_entries
+        )
+        if (
+            any(
+                item["status"] != "A"
+                for item in candidate_delta_entries
+            )
+            or len(set(candidate_delta_paths)) != len(candidate_delta_paths)
+            or candidate_delta_paths != sorted(entries)
+        ):
+            return reject(
+                "repair_candidate_delta_not_exact_declared_additions",
+                candidate_delta_paths=candidate_delta_paths,
+                expected_paths=sorted(entries),
+            )
+
+        workspace_result = self._prepare_main_merge_workspace(
+            target_branch,
+            f"repair/{primary_task.task_id}",
+        )
+        if workspace_result.get("available") is not True:
+            return reject(
+                str(
+                    workspace_result.get("reason")
+                    or "repair_target_workspace_unavailable"
+                ),
+                workspace=workspace_result,
+            )
+        workspace = Path(str(workspace_result["path"]))
+        ephemeral = bool(workspace_result.get("ephemeral", False))
+        result["workspace_path"] = str(workspace)
+        result["ephemeral_workspace"] = ephemeral
+        removed_untracked: dict[str, bytes] = {}
+        removed_untracked_modes: dict[str, int] = {}
+        repair_commit_created = False
+        validation_workspace: Path | None = None
+
+        def rollback() -> dict[str, Any]:
+            restore = subprocess.run(
+                [
+                    "git",
+                    "restore",
+                    "--source",
+                    target_commit,
+                    "--staged",
+                    "--worktree",
+                    "--",
+                    *declared_outputs,
+                ],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self._restore_removed_untracked_paths(
+                removed_untracked,
+                cwd=workspace,
+            )
+            mode_restore_failures: list[str] = []
+            for relative, mode in removed_untracked_modes.items():
+                restored_path = workspace / relative
+                try:
+                    restored_path.chmod(mode)
+                except OSError:
+                    mode_restore_failures.append(relative)
+            return {
+                "attempted": True,
+                "restored": (
+                    restore.returncode == 0
+                    and not mode_restore_failures
+                ),
+                "returncode": restore.returncode,
+                "stdout": restore.stdout[-2000:],
+                "stderr": restore.stderr[-2000:],
+                "mode_restore_failures": mode_restore_failures,
+            }
+
+        try:
+            workspace_head = self._resolved_commit_ref(workspace, "HEAD")
+            branch_head = self._resolved_commit_ref(
+                self.repo_root,
+                target_branch,
+            )
+            if workspace_head != target_commit or branch_head != target_commit:
+                return reject(
+                    "repair_target_advanced",
+                    workspace_head=workspace_head,
+                    live_target_commit=branch_head,
+                )
+            staged_before = subprocess.run(
+                ["git", "diff", "--cached", "--quiet"],
+                cwd=workspace,
+                capture_output=True,
+                check=False,
+            )
+            if staged_before.returncode != 0:
+                return reject("repair_target_index_not_clean")
+
+            existing_files: set[str] = set()
+            collisions: list[str] = []
+            for output in declared_outputs:
+                candidate_path = workspace / output
+                if candidate_path.is_symlink():
+                    collisions.append(output)
+                    continue
+                if candidate_path.is_file():
+                    existing_files.add(output)
+                    continue
+                if candidate_path.exists() and not candidate_path.is_dir():
+                    collisions.append(output)
+                    continue
+                if not candidate_path.is_dir():
+                    parent = candidate_path.parent
+                    while parent != workspace and parent != parent.parent:
+                        if parent.exists() and not parent.is_dir():
+                            collisions.append(output)
+                            break
+                        parent = parent.parent
+                    continue
+                for root, directories, files in os.walk(
+                    candidate_path,
+                    followlinks=False,
+                ):
+                    root_path = Path(root)
+                    for name in list(directories):
+                        nested = root_path / name
+                        if nested.is_symlink():
+                            collisions.append(
+                                nested.relative_to(workspace).as_posix()
+                            )
+                    for name in files:
+                        nested = root_path / name
+                        relative = nested.relative_to(workspace).as_posix()
+                        if nested.is_symlink() or not nested.is_file():
+                            collisions.append(relative)
+                        else:
+                            existing_files.add(relative)
+            unexpected_files = sorted(existing_files - set(entries))
+            if collisions or unexpected_files:
+                return reject(
+                    "repair_declared_output_path_collision",
+                    collisions=sorted(set(collisions)),
+                    unexpected_files=unexpected_files,
+                )
+
+            mismatched_files: list[dict[str, str]] = []
+            for relative in sorted(existing_files):
+                path = workspace / relative
+                hashed = subprocess.run(
+                    ["git", "hash-object", "--no-filters", "--stdin"],
+                    cwd=workspace,
+                    input=path.read_bytes(),
+                    capture_output=True,
+                    check=False,
+                )
+                actual_object = (
+                    hashed.stdout.decode("ascii", errors="replace").strip()
+                    if hashed.returncode == 0
+                    else ""
+                )
+                executable = bool(path.stat().st_mode & stat_module.S_IXUSR)
+                actual_mode = "100755" if executable else "100644"
+                expected = entries[relative]
+                if (
+                    actual_object != expected["object_id"]
+                    or actual_mode != expected["mode"]
+                ):
+                    mismatched_files.append(
+                        {
+                            "path": relative,
+                            "expected_object_id": expected["object_id"],
+                            "actual_object_id": actual_object,
+                            "expected_mode": expected["mode"],
+                            "actual_mode": actual_mode,
+                        }
+                    )
+            if mismatched_files:
+                return reject(
+                    "repair_declared_output_content_conflict",
+                    mismatched_files=mismatched_files,
+                )
+
+            status = subprocess.run(
+                [
+                    "git",
+                    "status",
+                    "--porcelain=v1",
+                    "-z",
+                    "--untracked-files=all",
+                ],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            status_records = [
+                record for record in status.stdout.split("\0") if record
+            ]
+            permitted_status = {f"?? {path}" for path in existing_files}
+            if (
+                status.returncode != 0
+                or any(record not in permitted_status for record in status_records)
+            ):
+                return reject(
+                    "repair_target_worktree_not_clean",
+                    dirty_records=status_records,
+                )
+
+            result["attempted"] = True
+            for relative in sorted(existing_files):
+                source = workspace / relative
+                removed_untracked[relative] = source.read_bytes()
+                removed_untracked_modes[relative] = stat_module.S_IMODE(
+                    source.stat().st_mode
+                )
+                source.unlink()
+            if set(removed_untracked) != existing_files:
+                rollback_result = rollback()
+                return reject(
+                    "repair_identical_untracked_capture_failed",
+                    rollback=rollback_result,
+                )
+            restore = subprocess.run(
+                [
+                    "git",
+                    "restore",
+                    "--source",
+                    candidate_commit,
+                    "--staged",
+                    "--worktree",
+                    "--",
+                    *declared_outputs,
+                ],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if restore.returncode != 0:
+                rollback_result = rollback()
+                return reject(
+                    "repair_candidate_restore_failed",
+                    restore_stderr=restore.stderr[-2000:],
+                    rollback=rollback_result,
+                )
+            staged_paths_result = subprocess.run(
+                ["git", "diff", "--cached", "--name-only", "-z"],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            staged_paths = sorted(
+                path
+                for path in staged_paths_result.stdout.split("\0")
+                if path
+            )
+            if (
+                staged_paths_result.returncode != 0
+                or staged_paths != sorted(entries)
+            ):
+                rollback_result = rollback()
+                return reject(
+                    "repair_staged_path_set_mismatch",
+                    staged_paths=staged_paths,
+                    expected_paths=sorted(entries),
+                    rollback=rollback_result,
+                )
+            staged_invariant = self._declared_output_tracking_invariant(
+                tasks,
+                workspace_path=workspace,
+            )
+            result["staged_declared_output_invariant"] = staged_invariant
+            if staged_invariant.get("passed") is not True:
+                rollback_result = rollback()
+                return reject(
+                    "repair_staged_declared_outputs_unproven",
+                    rollback=rollback_result,
+                )
+
+            validation_tree_result = subprocess.run(
+                ["git", "write-tree"],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            validation_tree = (
+                validation_tree_result.stdout.strip()
+                if validation_tree_result.returncode == 0
+                else ""
+            )
+            validation_tree_entries, validation_tree_entries_error = (
+                self._post_merge_repair_tree_entries(
+                    workspace,
+                    validation_tree,
+                    declared_outputs,
+                )
+                if validation_tree
+                else ({}, "repair_validation_tree_unavailable")
+            )
+            if (
+                not validation_tree
+                or validation_tree_entries_error
+                or validation_tree_entries != entries
+            ):
+                rollback_result = rollback()
+                return reject(
+                    "repair_validation_tree_identity_mismatch",
+                    validation_tree=validation_tree,
+                    validation_tree_entries_error=(
+                        validation_tree_entries_error
+                    ),
+                    rollback=rollback_result,
+                )
+            validation_commit_result = subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Implementation Daemon",
+                    "-c",
+                    "user.email=implementation-daemon@example.invalid",
+                    "commit-tree",
+                    validation_tree,
+                    "-p",
+                    target_commit,
+                    "-m",
+                    (
+                        f"{primary_task.task_id}: disposable declared-output "
+                        "repair validation"
+                    ),
+                ],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            validation_commit = (
+                validation_commit_result.stdout.strip()
+                if validation_commit_result.returncode == 0
+                else ""
+            )
+            if not validation_commit:
+                rollback_result = rollback()
+                return reject(
+                    "repair_validation_commit_unavailable",
+                    validation_commit_stderr=(
+                        validation_commit_result.stderr[-2000:]
+                    ),
+                    rollback=rollback_result,
+                )
+            validation_root = self._main_merge_worktree_root()
+            validation_root.mkdir(parents=True, exist_ok=True)
+            validation_workspace = validation_root / (
+                f"repair-validation-"
+                f"{self._safe_ref_path_fragment(primary_task.task_id)}-"
+                f"{os.getpid()}-{time.time_ns()}"
+            )
+            validation_worktree_add = subprocess.run(
+                [
+                    "git",
+                    "worktree",
+                    "add",
+                    "--detach",
+                    str(validation_workspace),
+                    validation_commit,
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if validation_worktree_add.returncode != 0:
+                rollback_result = rollback()
+                return reject(
+                    "repair_validation_worktree_unavailable",
+                    validation_worktree_stderr=(
+                        validation_worktree_add.stderr[-2000:]
+                    ),
+                    rollback=rollback_result,
+                )
+
+            validation_results: list[dict[str, Any]] = []
+            validation_log_root = (
+                self.state_path.parent
+                / "post-merge-declared-output-repair"
+            )
+            validation_log_root.mkdir(parents=True, exist_ok=True)
+            for validation_task in tasks:
+                validation_log = validation_log_root / (
+                    f"{validation_task.task_id}-attempt-{attempt}.log"
+                )
+                validation = self._run_validation_commands(
+                    validation_workspace,
+                    validation_task,
+                    validation_log,
+                    force_uncached=True,
+                )
+                validation_results.append(
+                    {
+                        "task_id": validation_task.task_id,
+                        "log_path": str(validation_log),
+                        "result": validation,
+                    }
+                )
+                if validation.get("passed") is not True:
+                    result["validation"] = validation_results
+                    rollback_result = rollback()
+                    return reject(
+                        "repair_validation_failed",
+                        rollback=rollback_result,
+                    )
+            result["validation"] = validation_results
+            validation_workspace_head = self._resolved_commit_ref(
+                validation_workspace,
+                "HEAD",
+            )
+            validation_workspace_status = subprocess.run(
+                [
+                    "git",
+                    "status",
+                    "--porcelain=v1",
+                    "-z",
+                    "--untracked-files=all",
+                ],
+                cwd=validation_workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            validation_workspace_dirty = sorted(
+                record
+                for record in validation_workspace_status.stdout.split("\0")
+                if record
+            )
+            if (
+                validation_workspace_head != validation_commit
+                or validation_workspace_status.returncode != 0
+                or validation_workspace_dirty
+            ):
+                rollback_result = rollback()
+                return reject(
+                    "repair_validation_mutated_disposable_tree",
+                    validation_workspace_head=validation_workspace_head,
+                    validation_commit=validation_commit,
+                    validation_workspace_dirty=(
+                        validation_workspace_dirty
+                    ),
+                    rollback=rollback_result,
+                )
+            validation_cleanup = self._cleanup_main_merge_workspace(
+                validation_workspace,
+                ephemeral=True,
+            )
+            result["validation_workspace_cleanup"] = validation_cleanup
+            if validation_cleanup.get("cleaned") is not True:
+                rollback_result = rollback()
+                return reject(
+                    "repair_validation_workspace_cleanup_failed",
+                    rollback=rollback_result,
+                )
+            validation_workspace = None
+
+            current_target = self._resolved_commit_ref(
+                self.repo_root,
+                target_branch,
+            )
+            if current_target != target_commit:
+                rollback_result = rollback()
+                return reject(
+                    "repair_target_advanced",
+                    live_target_commit=current_target,
+                    rollback=rollback_result,
+                )
+            staged_after_validation = subprocess.run(
+                ["git", "diff", "--cached", "--name-only", "-z"],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            staged_paths_after_validation = sorted(
+                path
+                for path in staged_after_validation.stdout.split("\0")
+                if path
+            )
+            if (
+                staged_after_validation.returncode != 0
+                or staged_paths_after_validation != sorted(entries)
+            ):
+                rollback_result = rollback()
+                return reject(
+                    "repair_validation_changed_staged_paths",
+                    staged_paths=staged_paths_after_validation,
+                    expected_paths=sorted(entries),
+                    rollback=rollback_result,
+                )
+            status_after_validation = subprocess.run(
+                [
+                    "git",
+                    "status",
+                    "--porcelain=v1",
+                    "-z",
+                    "--untracked-files=all",
+                ],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            status_records_after_validation = sorted(
+                record
+                for record in status_after_validation.stdout.split("\0")
+                if record
+            )
+            expected_staged_status = sorted(
+                f"A  {path}" for path in entries
+            )
+            if (
+                status_after_validation.returncode != 0
+                or status_records_after_validation
+                != expected_staged_status
+            ):
+                rollback_result = rollback()
+                return reject(
+                    "repair_validation_changed_worktree",
+                    status_records=status_records_after_validation,
+                    expected_status_records=expected_staged_status,
+                    rollback=rollback_result,
+                )
+            write_tree = subprocess.run(
+                ["git", "write-tree"],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            staged_tree = (
+                write_tree.stdout.strip()
+                if write_tree.returncode == 0
+                else ""
+            )
+            result["staged_tree"] = staged_tree
+            if not staged_tree or staged_tree == (
+                self._candidate_repository_tree(target_commit)
+            ):
+                rollback_result = rollback()
+                return reject(
+                    "repair_staged_tree_has_no_delta",
+                    rollback=rollback_result,
+                )
+            staged_entries, staged_entries_error = (
+                self._post_merge_repair_tree_entries(
+                    workspace,
+                    staged_tree,
+                    declared_outputs,
+                )
+            )
+            if staged_entries_error or staged_entries != entries:
+                rollback_result = rollback()
+                return reject(
+                    "repair_validation_changed_staged_content",
+                    staged_entries_error=staged_entries_error,
+                    staged_entries=[
+                        {"path": path, **identity}
+                        for path, identity in sorted(
+                            staged_entries.items()
+                        )
+                    ],
+                    expected_entries=result["candidate_entries"],
+                    rollback=rollback_result,
+                )
+            commit = subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Implementation Daemon",
+                    "-c",
+                    "user.email=implementation-daemon@example.invalid",
+                    "commit",
+                    "-m",
+                    (
+                        f"{primary_task.task_id}: restore declared outputs "
+                        "after null merge\n\n"
+                        f"Repair-Schema: {POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA}\n"
+                        f"Candidate-Commit: {candidate_commit}\n"
+                        f"Failed-Integration: {failed_integration}"
+                    ),
+                ],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if commit.returncode != 0:
+                rollback_result = rollback()
+                return reject(
+                    "repair_commit_failed",
+                    commit_stdout=commit.stdout[-2000:],
+                    commit_stderr=commit.stderr[-2000:],
+                    rollback=rollback_result,
+                )
+            repair_commit_created = True
+            repair_commit = self._resolved_commit_ref(workspace, "HEAD")
+            repair_parents, repair_tree = self._post_merge_repair_commit_shape(
+                workspace,
+                repair_commit,
+            )
+            repaired_entries, repaired_entries_error = (
+                self._post_merge_repair_tree_entries(
+                    workspace,
+                    repair_commit,
+                    declared_outputs,
+                )
+            )
+            live_after = self._resolved_commit_ref(
+                self.repo_root,
+                target_branch,
+            )
+            repair_invariant = self._declared_output_tracking_invariant(
+                tasks,
+                repository_ref=repair_commit,
+            )
+            if (
+                repair_parents != [target_commit]
+                or not repair_tree
+                or repair_tree != staged_tree
+                or repaired_entries_error
+                or repaired_entries != entries
+                or live_after != repair_commit
+                or repair_invariant.get("passed") is not True
+            ):
+                return reject(
+                    "repair_commit_postcondition_failed",
+                    repair_commit=repair_commit,
+                    repair_parents=repair_parents,
+                    repair_tree=repair_tree,
+                    repaired_entries_error=repaired_entries_error,
+                    live_target_commit=live_after,
+                    repaired_declared_output_invariant=repair_invariant,
+                    integration_occurred=True,
+                )
+            post_commit_status = subprocess.run(
+                [
+                    "git",
+                    "status",
+                    "--porcelain=v1",
+                    "-z",
+                    "--untracked-files=all",
+                ],
+                cwd=workspace,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            post_commit_status_records = sorted(
+                record
+                for record in post_commit_status.stdout.split("\0")
+                if record
+            )
+            if (
+                post_commit_status.returncode != 0
+                or post_commit_status_records
+            ):
+                return reject(
+                    "repair_commit_left_worktree_dirty",
+                    repair_commit=repair_commit,
+                    dirty_records=post_commit_status_records,
+                    integration_occurred=True,
+                )
+            receipt_validation: list[dict[str, Any]] = []
+            for validation_item in validation_results:
+                validation_result = validation_item.get("result")
+                command_results = (
+                    validation_result.get("results", [])
+                    if isinstance(validation_result, Mapping)
+                    else []
+                )
+                result_digests = [
+                    str(command_result.get("validation_result_digest") or "")
+                    for command_result in command_results
+                    if isinstance(command_result, Mapping)
+                    and str(
+                        command_result.get("validation_result_digest") or ""
+                    )
+                ]
+                validation_log_path = Path(
+                    str(validation_item.get("log_path") or "")
+                )
+                log_sha256 = ""
+                if validation_log_path.is_file():
+                    log_sha256 = hashlib.sha256(
+                        validation_log_path.read_bytes()
+                    ).hexdigest()
+                receipt_validation.append(
+                    {
+                        "task_id": str(
+                            validation_item.get("task_id") or ""
+                        ),
+                        "passed": bool(
+                            isinstance(validation_result, Mapping)
+                            and validation_result.get("passed") is True
+                        ),
+                        "returncode": int(
+                            validation_result.get("returncode", 1)
+                            if isinstance(validation_result, Mapping)
+                            else 1
+                        ),
+                        "validation_result_digests": result_digests,
+                        "command_count": len(command_results),
+                        "log_sha256": log_sha256,
+                    }
+                )
+            receipt: dict[str, Any] = {
+                "schema": POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+                "task_ids": [task.task_id for task in tasks],
+                "candidate_commit": candidate_commit,
+                "candidate_tree": candidate_tree,
+                "baseline_commit": baseline_ref,
+                "failed_integration_commit": failed_integration,
+                "repair_parent_commit": target_commit,
+                "repair_commit": repair_commit,
+                "repair_tree": repair_tree,
+                "entries": [
+                    {"path": path, **identity}
+                    for path, identity in sorted(entries.items())
+                ],
+                "validation": receipt_validation,
+                "rollback_target": target_commit,
+            }
+            receipt["receipt_id"] = content_identity(receipt)
+            result.update(
+                {
+                    "passed": True,
+                    "reason": "post_merge_declared_outputs_repaired",
+                    "failed_integration_commit": failed_integration,
+                    "repair_commit": repair_commit,
+                    "repair_tree": repair_tree,
+                    "repaired_declared_output_invariant": repair_invariant,
+                    "receipt": receipt,
+                }
+            )
+            self._record_event(
+                "post_merge_declared_outputs_repaired",
+                result,
+            )
+            return result
+        except Exception as exc:
+            rollback_result: dict[str, Any] = {}
+            if result.get("attempted") and not repair_commit_created:
+                try:
+                    rollback_result = rollback()
+                except Exception as rollback_exc:
+                    rollback_result = {
+                        "attempted": True,
+                        "restored": False,
+                        "error_class": type(rollback_exc).__name__,
+                    }
+            return reject(
+                "repair_internal_error",
+                error_class=type(exc).__name__,
+                rollback=rollback_result,
+                integration_occurred=repair_commit_created,
+            )
+        finally:
+            if validation_workspace is not None:
+                result.setdefault(
+                    "validation_workspace_cleanup",
+                    self._cleanup_main_merge_workspace(
+                        validation_workspace,
+                        ephemeral=True,
+                    ),
+                )
+            cleanup = self._cleanup_main_merge_workspace(
+                workspace,
+                ephemeral=ephemeral,
+            )
+            result["workspace_cleanup"] = cleanup
+
     def _completion_daemon_for_merge_request(
         self,
         metadata: Mapping[str, Any],
@@ -31408,18 +32662,140 @@ class PortalImplementationDaemon:
                 declared_output_invariant
             )
             if declared_output_invariant.get("passed") is not True:
-                result.update(
-                    {
-                        "merged": False,
-                        "already_merged": False,
-                        "returncode": 2,
-                        "reason": "post_merge_declared_outputs_missing",
-                        "integration_occurred": True,
-                        "completion_skipped": True,
-                        "target_commit": target_commit,
-                    }
+                declared_output_repair = (
+                    completion_daemon._repair_post_merge_declared_outputs(
+                        completion_tasks,
+                        primary_task=task,
+                        attempt=int(request.attempt or 0),
+                        candidate_commit=implementation_commit,
+                        candidate_tree=str(
+                            metadata.get("candidate_tree") or ""
+                        ),
+                        baseline_ref=str(
+                            metadata.get("baseline_ref") or ""
+                        ),
+                        target_branch=target_branch,
+                        target_commit=target_commit,
+                        changed_submodule_paths=sorted(
+                            changed_submodule_paths or ()
+                        ),
+                    )
                 )
-                return result
+                result["post_merge_declared_output_repair"] = (
+                    declared_output_repair
+                )
+                if declared_output_repair.get("passed") is True:
+                    repaired_commit = str(
+                        declared_output_repair.get("repair_commit") or ""
+                    )
+                    repaired_integration_proof = (
+                        completion_daemon._immutable_integration_commit(
+                            {"merge_commit": repaired_commit},
+                            implementation_commit=implementation_commit,
+                            target_branch=target_branch,
+                        )
+                    )
+                    repaired_invariant = (
+                        completion_daemon._declared_output_tracking_invariant(
+                            completion_tasks,
+                            repository_ref=repaired_commit,
+                        )
+                    )
+                    result[
+                        "post_merge_declared_output_invariant"
+                    ] = repaired_invariant
+                    result["integration_commit_proof"] = (
+                        repaired_integration_proof
+                    )
+                    if (
+                        repaired_integration_proof.get("passed") is not True
+                        or repaired_invariant.get("passed") is not True
+                    ):
+                        result.update(
+                            {
+                                "merged": False,
+                                "already_merged": False,
+                                "returncode": 2,
+                                "reason": (
+                                    "post_merge_declared_outputs_repair_"
+                                    "postcondition_failed"
+                                ),
+                                "integration_occurred": True,
+                                "completion_skipped": True,
+                                "target_commit": repaired_commit,
+                            }
+                        )
+                        return result
+                    result.update(
+                        {
+                            "attempted": True,
+                            "merged": True,
+                            "already_merged": False,
+                            "returncode": 0,
+                            "reason": (
+                                "post_merge_declared_outputs_repaired"
+                            ),
+                            "original_integration_commit": target_commit,
+                            "merge_commit": repaired_commit,
+                            "target_commit": repaired_commit,
+                            "integration_occurred": True,
+                            "completion_skipped": False,
+                        }
+                    )
+                    immutable_integration_commit = repaired_commit
+                else:
+                    repair_reason = str(
+                        declared_output_repair.get("reason") or ""
+                    )
+                    contention_reason = (
+                        repair_reason
+                        if repair_reason
+                        in {
+                            "checkout_mutation_lock_exists",
+                            "lock_exists",
+                        }
+                        else ""
+                    )
+                    repair_terminal = repair_reason in (
+                        POST_MERGE_DECLARED_OUTPUT_REPAIR_TERMINAL_REASONS
+                    ) or (
+                        repair_reason == "repair_validation_failed"
+                        and completion_daemon._post_merge_repair_validation_rejection_admitted(
+                            declared_output_repair
+                        )
+                    )
+                    result.update(
+                        {
+                            "merged": False,
+                            "already_merged": False,
+                            "attempted": bool(
+                                declared_output_repair.get("attempted")
+                            ),
+                            "returncode": 2,
+                            "reason": (
+                                contention_reason
+                                or "post_merge_declared_outputs_missing"
+                            ),
+                            "repair_failure_reason": repair_reason,
+                            "automatic_repair_attempted": bool(
+                                declared_output_repair.get("attempted")
+                            ),
+                            "automatic_repair_terminal": repair_terminal,
+                            "integration_occurred": True,
+                            "completion_skipped": True,
+                            "target_commit": target_commit,
+                        }
+                    )
+                    for key in (
+                        "lock_path",
+                        "lock_owner_pid",
+                        "lock_owner_lease_id",
+                        "lock_owner_task_id",
+                        "lock_owner_branch",
+                    ):
+                        if key in declared_output_repair:
+                            result[key] = declared_output_repair[key]
+                    return result
         if (
             (
                 result.get("merged")
@@ -72402,6 +73778,35 @@ POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA = (
 POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
     "post-merge-declared-output-requalification@1"
+)
+POST_MERGE_DECLARED_OUTPUT_REPAIR_TERMINAL_REASONS = frozenset(
+    {
+        "repair_declared_output_paths_invalid",
+        "repair_changed_submodule_scope_forbidden",
+        "repair_declared_output_protected",
+        "repair_candidate_baseline_mismatch",
+        "repair_candidate_tree_mismatch",
+        "repair_candidate_has_no_tree_delta",
+        "repair_null_integration_missing",
+        "repair_null_integration_ambiguous",
+        "repair_declared_outputs_changed_after_failure",
+        "repair_candidate_declared_outputs_unproven",
+        "declared_output_candidate_tree_malformed",
+        "declared_output_candidate_entry_unsafe",
+        "declared_output_absent_from_candidate",
+        "repair_candidate_delta_malformed",
+        "repair_candidate_delta_not_exact_declared_additions",
+        "repair_declared_output_path_collision",
+        "repair_declared_output_content_conflict",
+        "repair_target_worktree_not_clean",
+        "repair_staged_path_set_mismatch",
+        "repair_staged_declared_outputs_unproven",
+        "repair_validation_changed_staged_paths",
+        "repair_validation_changed_worktree",
+        "repair_validation_changed_staged_content",
+        "repair_commit_postcondition_failed",
+        "repair_commit_left_worktree_dirty",
+    }
 )
 DATABASE_INVALID_METADATA_MERGE_SETTLEMENT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
