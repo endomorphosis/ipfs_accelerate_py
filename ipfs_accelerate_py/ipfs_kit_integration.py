@@ -49,12 +49,52 @@ except (ImportError, ValueError):
 logger = logging.getLogger(__name__)
 
 
+def _initialized_ipfs_kit_root(candidate: Path) -> Optional[Path]:
+    """Return a checkout that actually contains ``ipfs_kit_py.backends``."""
+
+    if not candidate.is_dir():
+        return None
+    inner = candidate / "ipfs_kit_py"
+    adapter = inner / "backends" / "base_adapter.py"
+    if inner.is_dir() and (inner / "__init__.py").is_file() and adapter.is_file():
+        return candidate.resolve()
+    # The path may already be the inner package directory.
+    if (
+        candidate.name == "ipfs_kit_py"
+        and (candidate / "__init__.py").is_file()
+        and (candidate / "backends" / "base_adapter.py").is_file()
+    ):
+        return candidate.parent.resolve()
+    return None
+
+
+def _editable_ipfs_kit_source_path() -> Optional[Path]:
+    """Read an editable install origin when the gitlink checkout is empty."""
+
+    try:
+        from importlib.metadata import distribution
+
+        payload = distribution("ipfs_kit_py").read_text("direct_url.json")
+    except Exception:
+        return None
+    if not payload:
+        return None
+    try:
+        url = str(json.loads(payload).get("url") or "")
+    except (TypeError, ValueError):
+        return None
+    if not url.startswith("file://"):
+        return None
+    return _initialized_ipfs_kit_root(Path(url[7:]))
+
+
 def _resolve_ipfs_kit_source_path(repo_root: Path) -> Optional[Path]:
     """Find an initialized ``ipfs_kit_py`` source checkout.
 
     The package is a root-level submodule in standalone accelerator checkouts
     and a sibling named ``ipfs_kit`` in the umbrella workspace. Empty gitlink
-    directories are skipped so they cannot mask the initialized sibling.
+    directories are skipped so they cannot mask the initialized sibling or an
+    editable install of the same package.
     """
 
     candidates = (
@@ -64,12 +104,10 @@ def _resolve_ipfs_kit_source_path(repo_root: Path) -> Optional[Path]:
         repo_root.parent / "ipfs_kit_py",
     )
     for candidate in candidates:
-        if (
-            candidate.is_dir()
-            and (candidate / "ipfs_kit_py" / "__init__.py").is_file()
-        ):
-            return candidate.resolve()
-    return None
+        resolved = _initialized_ipfs_kit_root(candidate)
+        if resolved is not None:
+            return resolved
+    return _editable_ipfs_kit_source_path()
 
 
 def _deps_get(deps: object | None, key: str) -> Any | None:
@@ -265,10 +303,19 @@ class IPFSKitStorage:
         try:
             repo_root = Path(__file__).resolve().parents[1]
             ipfs_kit_path = _resolve_ipfs_kit_source_path(repo_root)
-            if ipfs_kit_path is not None and str(ipfs_kit_path) not in sys.path:
-                sys.path.insert(0, str(ipfs_kit_path))
+            if ipfs_kit_path is not None:
+                kit_root = str(ipfs_kit_path)
+                if kit_root in sys.path:
+                    sys.path.remove(kit_root)
+                sys.path.insert(0, kit_root)
                 logger.debug(f"Added ipfs_kit_py path: {ipfs_kit_path}")
-            
+            loaded = sys.modules.get("ipfs_kit_py")
+            if loaded is not None and getattr(loaded, "__file__", None) is None:
+                del sys.modules["ipfs_kit_py"]
+                for name in list(sys.modules):
+                    if name.startswith("ipfs_kit_py."):
+                        del sys.modules[name]
+
             # Try to import ipfs_kit_py modules directly (avoid backends/__init__.py due to missing synapse_storage)
             from ipfs_kit_py.backends.base_adapter import BackendAdapter
             from ipfs_kit_py.backends.filesystem_backend import FilesystemBackendAdapter

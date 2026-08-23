@@ -3781,6 +3781,11 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             expected_branch: str,
             current_branch: str,
             validation_result: Mapping[str, Any],
+            require_no_change_policy_gate: bool = True,
+            expected_task_id: str = "",
+            expected_task_cid: str = "",
+            authoritative_no_change_policy_gate: Mapping[str, Any]
+            | None = None,
         ) -> dict[str, Any]:
             """Publish no-change only after the canonical final guard allows it."""
 
@@ -3790,6 +3795,12 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 expected_branch=expected_branch,
                 current_branch=current_branch,
                 validation_result=validation_result,
+                require_no_change_policy_gate=require_no_change_policy_gate,
+                expected_task_id=expected_task_id,
+                expected_task_cid=expected_task_cid,
+                authoritative_no_change_policy_gate=(
+                    authoritative_no_change_policy_gate
+                ),
             )
             pending = getattr(self, "_plan_bound_pending_no_change", None)
             self._plan_bound_pending_no_change = None

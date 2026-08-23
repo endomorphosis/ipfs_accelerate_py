@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import errno
 import fcntl
 import fnmatch
 import hashlib
@@ -15,6 +16,7 @@ import secrets
 import shlex
 import shutil
 import signal
+import socket
 import stat as stat_module
 import subprocess
 import sys
@@ -248,6 +250,7 @@ from ..validation.validation_runtime import (
     ValidationRuntimeError,
     canonical_validation_environment_contract,
     sealed_validation_python_runner,
+    validation_environment_for_runner,
     validation_python_launcher_environment,
     validation_shell_command,
 )
@@ -497,13 +500,13 @@ AUTHORITY_VALIDATION_CONTAINER_IMAGE_ENV = (
 )
 AUTHORITY_VALIDATION_DOCKER_PATH = Path("/usr/bin/docker")
 AUTHORITY_VALIDATION_DOCKER_SHA256 = (
-    "414d9e16a30060770648522f8ecadef2f2b57b50b8c61d4b0ae9d3b8b64c2a02"
+    "c6a8317bfcc35c90c36b1807897b1c0447bba769cca83d652dfbc1683c2a192d"
 )
 AUTHORITY_VALIDATION_NVIDIA_SMI_PATH = Path("/usr/bin/nvidia-smi")
 AUTHORITY_VALIDATION_NVIDIA_SMI_SHA256 = (
     "934be0af12e24ad46e3deca64234be7493d8f3552461c9956d43fbedd6ff9c67"
 )
-AUTHORITY_VALIDATION_DOCKER_SERVER_IDENTITY = "29.1.3|linux|arm64"
+AUTHORITY_VALIDATION_DOCKER_SERVER_IDENTITY = "29.2.1|linux|arm64"
 AUTHORITY_VALIDATION_GPU_IDENTITY = (
     "GPU-fd94473f-d6ba-bada-c1e2-5a1e9ad037e4, 580.142"
 )
@@ -512,13 +515,43 @@ AUTHORITY_VALIDATION_GPU_UUID = (
 )
 # Updated only after the operator builds and validates the immutable local
 # CUDA image. A mutable tag is never an authority-bearing input.
+# Overlay2 reports the image *config* digest as Id; containerd/rootless
+# reports the OCI *manifest* digest.  Both address the same RootFS.
 DEFAULT_AUTHORITY_VALIDATION_CONTAINER_IMAGE = (
     "sha256:74c4a6ff67f397f8a10b058851d218896b2f1ee0f2cddf47741219b734de93a6"
+)
+AUTHORITY_VALIDATION_CONTAINER_OCI_MANIFEST = (
+    "sha256:fbe85c882cbad09dcef78841b5c7cabc1ec0541aca2a8884d018d34c9f1732ae"
+)
+AUTHORITY_VALIDATION_CONTAINER_IDS = frozenset(
+    {
+        DEFAULT_AUTHORITY_VALIDATION_CONTAINER_IMAGE,
+        AUTHORITY_VALIDATION_CONTAINER_OCI_MANIFEST,
+    }
 )
 AUTHORITY_VALIDATION_IMAGE_SITE_PACKAGES = (
     "/opt/ipfs-validation-site-packages"
 )
 AUTHORITY_VALIDATION_DOCKER_ENDPOINT = "unix:///run/docker.sock"
+AUTHORITY_VALIDATION_ROOT_DOCKER_ENDPOINTS = (
+    "unix:///run/docker.sock",
+    "unix:///var/run/docker.sock",
+)
+_NVIDIA_ROOTLESS_COMPUTE_LIB_NAMES = (
+    "libcuda.so",
+    "libnvidia-ml.so",
+    "libnvidia-ptxjitcompiler.so",
+    "libnvidia-nvvm.so",
+    "libnvidia-nvvm70.so",
+    "libnvidia-gpucomp.so",
+)
+_NVIDIA_ROOTLESS_DEVICE_NAMES = (
+    "nvidia0",
+    "nvidiactl",
+    "nvidia-uvm",
+    "nvidia-uvm-tools",
+    "nvidia-modeset",
+)
 AUTHORITY_VALIDATION_OUTPUT_LIMIT_BYTES = 16 * 1024 * 1024
 AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES = 4 * 1024 * 1024 * 1024
 AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES = 1024 * 1024 * 1024
@@ -15664,9 +15697,139 @@ class PortalImplementationDaemon:
         )
 
     @staticmethod
+    def _authority_validation_user_docker_endpoint() -> str:
+        """Return the uid-owned rootless Docker socket URI, if resolvable."""
+
+        runtime_root = Path(f"/run/user/{os.getuid()}")
+        xdg_runtime = str(os.environ.get("XDG_RUNTIME_DIR") or "").strip()
+        if xdg_runtime:
+            try:
+                configured = Path(xdg_runtime).resolve()
+            except OSError:
+                configured = runtime_root
+            if configured != runtime_root:
+                return ""
+        return f"unix://{runtime_root / 'docker.sock'}"
+
+    @staticmethod
+    def _authority_validation_allowed_docker_hosts() -> frozenset[str]:
+        hosts = {"", *AUTHORITY_VALIDATION_ROOT_DOCKER_ENDPOINTS}
+        user_endpoint = (
+            PortalImplementationDaemon._authority_validation_user_docker_endpoint()
+        )
+        if user_endpoint:
+            hosts.add(user_endpoint)
+        return frozenset(hosts)
+
+    @staticmethod
+    def _authority_validation_socket_record(
+        endpoint: str,
+        *,
+        require_rootless: bool,
+    ) -> dict[str, Any] | None:
+        """Return identity of a local Docker socket, or None if unusable."""
+
+        if not endpoint.startswith("unix://"):
+            return None
+        socket_path = Path(endpoint.removeprefix("unix://"))
+        try:
+            resolved_socket = socket_path.resolve(strict=True)
+            socket_stat = resolved_socket.stat()
+        except OSError:
+            return None
+        if not stat_module.S_ISSOCK(socket_stat.st_mode):
+            return None
+        if stat_module.S_IMODE(socket_stat.st_mode) & 0o007:
+            return None
+        expected_user = (
+            Path(f"/run/user/{os.getuid()}/docker.sock")
+            if require_rootless
+            else Path("/run/docker.sock")
+        )
+        try:
+            expected_resolved = expected_user.resolve()
+        except OSError:
+            expected_resolved = expected_user
+        if resolved_socket != expected_resolved:
+            return None
+        expected_uid = os.getuid() if require_rootless else 0
+        if int(socket_stat.st_uid) != expected_uid:
+            return None
+        return {
+            "endpoint": f"unix://{resolved_socket}",
+            "path": resolved_socket,
+            "stat": socket_stat,
+            "rootless": require_rootless,
+        }
+
+    @staticmethod
+    def _authority_validation_rootless_gpu_arguments() -> list[str]:
+        """Bind NVIDIA devices and compute driver libs without the privileged hook.
+
+        Rootless Docker cannot apply NVIDIA cgroup device BPF filters.  The
+        devices are already world-accessible on this host; bind the compute
+        driver libraries next to them so CUDA can load without sudo nvidia
+        toolkit reconfiguration.
+        """
+
+        arguments: list[str] = []
+        for name in _NVIDIA_ROOTLESS_DEVICE_NAMES:
+            device = Path("/dev") / name
+            try:
+                status = device.stat()
+            except OSError:
+                continue
+            if not stat_module.S_ISCHR(status.st_mode):
+                continue
+            arguments.append(f"--device={device}")
+        nvidia_smi = Path("/usr/bin/nvidia-smi")
+        try:
+            if nvidia_smi.is_file() and os.access(nvidia_smi, os.X_OK):
+                arguments.append(
+                    "--mount=type=bind,src="
+                    f"{nvidia_smi.resolve(strict=True)},dst={nvidia_smi},readonly"
+                )
+        except OSError:
+            pass
+        machine = os.uname().machine
+        if machine == "aarch64":
+            lib_dir = Path("/usr/lib/aarch64-linux-gnu")
+        elif machine == "x86_64":
+            lib_dir = Path("/usr/lib/x86_64-linux-gnu")
+        else:
+            lib_dir = Path("/usr/lib")
+        if lib_dir.is_dir():
+            seen: set[str] = set()
+            for library in sorted(lib_dir.iterdir()):
+                name = library.name
+                if not any(
+                    name == prefix or name.startswith(f"{prefix}.")
+                    for prefix in _NVIDIA_ROOTLESS_COMPUTE_LIB_NAMES
+                ):
+                    continue
+                try:
+                    resolved = library.resolve(strict=True)
+                except OSError:
+                    continue
+                if not resolved.is_file():
+                    continue
+                destination = str(library)
+                if destination in seen:
+                    continue
+                seen.add(destination)
+                arguments.append(
+                    "--mount=type=bind,src="
+                    f"{resolved},dst={destination},readonly"
+                )
+        return arguments
+
+    @staticmethod
     def _authority_validation_isolation_contract() -> dict[str, Any]:
         """Resolve the exact local, content-pinned CUDA validation sandbox."""
 
+        user_endpoint = (
+            PortalImplementationDaemon._authority_validation_user_docker_endpoint()
+        )
         base: dict[str, Any] = {
             "schema": (
                 "ipfs_accelerate_py.agent_supervisor."
@@ -15702,14 +15865,13 @@ class PortalImplementationDaemon:
         docker_context = str(
             os.environ.get("DOCKER_CONTEXT") or ""
         ).strip()
-        allowed_hosts = {
-            "",
-            AUTHORITY_VALIDATION_DOCKER_ENDPOINT,
-            "unix:///var/run/docker.sock",
-        }
+        allowed_hosts = (
+            PortalImplementationDaemon._authority_validation_allowed_docker_hosts()
+        )
         if docker_host not in allowed_hosts or docker_context not in {
             "",
             "default",
+            "rootless",
         }:
             body = {
                 **base,
@@ -15717,34 +15879,6 @@ class PortalImplementationDaemon:
                 "reason": "authority_validation_nonlocal_docker_forbidden",
                 "configured_docker_host": docker_host,
                 "configured_docker_context": docker_context,
-            }
-            return {**body, "contract_id": content_identity(body)}
-        socket_path = Path(
-            AUTHORITY_VALIDATION_DOCKER_ENDPOINT.removeprefix("unix://")
-        )
-        try:
-            resolved_socket = socket_path.resolve(strict=True)
-            socket_stat = resolved_socket.stat()
-            socket_valid = bool(
-                resolved_socket == Path("/run/docker.sock")
-                and stat_module.S_ISSOCK(socket_stat.st_mode)
-                and int(socket_stat.st_uid) == 0
-                and stat_module.S_IMODE(socket_stat.st_mode) & 0o007 == 0
-            )
-        except OSError as exc:
-            body = {
-                **base,
-                "available": False,
-                "reason": "authority_validation_local_docker_socket_invalid",
-                "error_type": type(exc).__name__,
-            }
-            return {**body, "contract_id": content_identity(body)}
-        if not socket_valid:
-            body = {
-                **base,
-                "available": False,
-                "reason": "authority_validation_local_docker_socket_invalid",
-                "docker_socket_path": str(resolved_socket),
             }
             return {**body, "contract_id": content_identity(body)}
         try:
@@ -15800,7 +15934,7 @@ class PortalImplementationDaemon:
             os.environ.get(AUTHORITY_VALIDATION_CONTAINER_IMAGE_ENV)
             or DEFAULT_AUTHORITY_VALIDATION_CONTAINER_IMAGE
         ).strip()
-        if image_reference != DEFAULT_AUTHORITY_VALIDATION_CONTAINER_IMAGE:
+        if image_reference not in AUTHORITY_VALIDATION_CONTAINER_IDS:
             body = {
                 **base,
                 "available": False,
@@ -15809,65 +15943,36 @@ class PortalImplementationDaemon:
                 "docker_sha256": docker_sha256,
             }
             return {**body, "contract_id": content_identity(body)}
-        docker_environment = {
-            "DOCKER_CONFIG": "/nonexistent/ipfs-accelerate-docker-config",
-            "DOCKER_HOST": AUTHORITY_VALIDATION_DOCKER_ENDPOINT,
-            "HOME": "/nonexistent/ipfs-accelerate-docker-home",
-            "PATH": os.defpath,
-        }
-        docker_prefix = [
-            str(docker_path),
-            "--host",
-            AUTHORITY_VALIDATION_DOCKER_ENDPOINT,
-        ]
+        candidate_sockets: list[dict[str, Any]] = []
+        if user_endpoint:
+            user_socket = (
+                PortalImplementationDaemon._authority_validation_socket_record(
+                    user_endpoint,
+                    require_rootless=True,
+                )
+            )
+            if user_socket is not None:
+                candidate_sockets.append(user_socket)
+        for root_endpoint in AUTHORITY_VALIDATION_ROOT_DOCKER_ENDPOINTS:
+            root_socket = (
+                PortalImplementationDaemon._authority_validation_socket_record(
+                    root_endpoint,
+                    require_rootless=False,
+                )
+            )
+            if root_socket is not None and all(
+                item["path"] != root_socket["path"]
+                for item in candidate_sockets
+            ):
+                candidate_sockets.append(root_socket)
+        if not candidate_sockets:
+            body = {
+                **base,
+                "available": False,
+                "reason": "authority_validation_local_docker_socket_invalid",
+            }
+            return {**body, "contract_id": content_identity(body)}
         try:
-            info = subprocess.run(
-                [
-                    *docker_prefix,
-                    "info",
-                    "--format",
-                    "{{json .SecurityOptions}}",
-                ],
-                text=True,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                timeout=10,
-                check=False,
-                env=docker_environment,
-            )
-            server = subprocess.run(
-                [
-                    *docker_prefix,
-                    "version",
-                    "--format",
-                    "{{.Server.Version}}|{{.Server.Os}}|{{.Server.Arch}}",
-                ],
-                text=True,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                timeout=10,
-                check=False,
-                env=docker_environment,
-            )
-            image = subprocess.run(
-                [
-                    *docker_prefix,
-                    "image",
-                    "inspect",
-                    "--format",
-                    "{{.Id}}",
-                    image_reference,
-                ],
-                text=True,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                timeout=10,
-                check=False,
-                env=docker_environment,
-            )
             gpu = subprocess.run(
                 [
                     str(nvidia_smi_path),
@@ -15893,9 +15998,6 @@ class PortalImplementationDaemon:
                 "error_type": type(exc).__name__,
             }
             return {**body, "contract_id": content_identity(body)}
-        security_output = str(info.stdout or "").strip()
-        server_identity = str(server.stdout or "").strip()
-        image_id = str(image.stdout or "").strip()
         gpu_lines = [
             line.strip()
             for line in str(gpu.stdout or "").splitlines()
@@ -15903,58 +16005,189 @@ class PortalImplementationDaemon:
         ]
         gpu_identity = gpu_lines[0] if gpu_lines else ""
         gpu_uuid = gpu_identity.split(",", 1)[0].strip()
-        security_options_valid = bool(
-            info.returncode == 0
-            and "name=seccomp" in security_output
-            and "name=cgroupns" in security_output
-            and "name=apparmor" in security_output
-        )
-        server_valid = bool(
-            server.returncode == 0
-            and server_identity
-            == AUTHORITY_VALIDATION_DOCKER_SERVER_IDENTITY
-        )
-        image_valid = bool(
-            image.returncode == 0
-            and image_id == DEFAULT_AUTHORITY_VALIDATION_CONTAINER_IMAGE
-        )
         gpu_valid = bool(
             gpu.returncode == 0
             and gpu_identity == AUTHORITY_VALIDATION_GPU_IDENTITY
             and gpu_uuid == AUTHORITY_VALIDATION_GPU_UUID
         )
-        body = {
-            **base,
-            "available": bool(
+        last_probe: dict[str, Any] = {}
+        for socket_record in candidate_sockets:
+            endpoint = str(socket_record["endpoint"])
+            resolved_socket = socket_record["path"]
+            socket_stat = socket_record["stat"]
+            rootless = bool(socket_record["rootless"])
+            docker_environment = {
+                "DOCKER_CONFIG": "/nonexistent/ipfs-accelerate-docker-config",
+                "DOCKER_HOST": endpoint,
+                "HOME": "/nonexistent/ipfs-accelerate-docker-home",
+                "PATH": os.defpath,
+            }
+            docker_prefix = [str(docker_path), "--host", endpoint]
+            try:
+                info = subprocess.run(
+                    [
+                        *docker_prefix,
+                        "info",
+                        "--format",
+                        "{{json .SecurityOptions}}",
+                    ],
+                    text=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=10,
+                    check=False,
+                    env=docker_environment,
+                )
+                server = subprocess.run(
+                    [
+                        *docker_prefix,
+                        "version",
+                        "--format",
+                        "{{.Server.Version}}|{{.Server.Os}}|{{.Server.Arch}}",
+                    ],
+                    text=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    timeout=10,
+                    check=False,
+                    env=docker_environment,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                last_probe = {
+                    **base,
+                    "available": False,
+                    "reason": "authority_validation_docker_probe_failed",
+                    "error_type": type(exc).__name__,
+                    "docker_endpoint": endpoint,
+                    "docker_path": str(docker_path),
+                    "docker_sha256": docker_sha256,
+                    "image_reference": image_reference,
+                }
+                continue
+            security_output = str(info.stdout or "").strip()
+            server_identity = str(server.stdout or "").strip()
+            image_id = ""
+            image_valid = False
+            inspect_refs = tuple(
+                dict.fromkeys(
+                    (
+                        image_reference,
+                        *sorted(AUTHORITY_VALIDATION_CONTAINER_IDS),
+                    )
+                )
+            )
+            try:
+                for inspect_ref in inspect_refs:
+                    image = subprocess.run(
+                        [
+                            *docker_prefix,
+                            "image",
+                            "inspect",
+                            "--format",
+                            "{{.Id}}",
+                            inspect_ref,
+                        ],
+                        text=True,
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        timeout=10,
+                        check=False,
+                        env=docker_environment,
+                    )
+                    candidate_id = str(image.stdout or "").strip()
+                    if (
+                        image.returncode == 0
+                        and candidate_id in AUTHORITY_VALIDATION_CONTAINER_IDS
+                    ):
+                        image_id = candidate_id
+                        image_valid = True
+                        break
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                last_probe = {
+                    **base,
+                    "available": False,
+                    "reason": "authority_validation_docker_probe_failed",
+                    "error_type": type(exc).__name__,
+                    "docker_endpoint": endpoint,
+                    "docker_path": str(docker_path),
+                    "docker_sha256": docker_sha256,
+                    "image_reference": image_reference,
+                }
+                continue
+            required_security = (
+                ("name=rootless", "name=seccomp", "name=cgroupns")
+                if rootless
+                else ("name=seccomp", "name=cgroupns", "name=apparmor")
+            )
+            security_options_valid = bool(
+                info.returncode == 0
+                and all(
+                    option in security_output for option in required_security
+                )
+            )
+            server_valid = bool(
+                server.returncode == 0
+                and server_identity
+                == AUTHORITY_VALIDATION_DOCKER_SERVER_IDENTITY
+            )
+            gpu_injection = (
+                "host-device-bind" if rootless else "nvidia-container-toolkit"
+            )
+            available = bool(
                 security_options_valid
                 and server_valid
                 and image_valid
                 and gpu_valid
-            ),
-            "reason": (
-                "available"
-                if (
-                    security_options_valid
-                    and server_valid
-                    and image_valid
-                    and gpu_valid
-                )
-                else "authority_validation_docker_contract_unavailable"
-            ),
+            )
+            body = {
+                **base,
+                "available": available,
+                "reason": (
+                    "available"
+                    if available
+                    else "authority_validation_docker_contract_unavailable"
+                ),
+                "docker_endpoint": endpoint,
+                "rootless": rootless,
+                "gpu_injection": gpu_injection,
+                "docker_path": str(docker_path),
+                "docker_sha256": docker_sha256,
+                "docker_socket_path": str(resolved_socket),
+                "docker_socket_device": int(socket_stat.st_dev),
+                "docker_socket_inode": int(socket_stat.st_ino),
+                "docker_socket_mode": stat_module.S_IMODE(socket_stat.st_mode),
+                "docker_server_identity": server_identity,
+                "security_options": security_output,
+                "image_reference": image_reference,
+                "image_id": image_id if image_valid else "",
+                "nvidia_smi_path": str(nvidia_smi_path),
+                "nvidia_smi_sha256": nvidia_smi_sha256,
+                "gpu_identity": gpu_identity if gpu_valid else "",
+                "gpu_uuid": gpu_uuid if gpu_valid else "",
+            }
+            if available:
+                return {**body, "contract_id": content_identity(body)}
+            last_probe = body
+        if last_probe:
+            return {
+                **last_probe,
+                "contract_id": content_identity(
+                    {
+                        key: value
+                        for key, value in last_probe.items()
+                        if key != "contract_id"
+                    }
+                ),
+            }
+        body = {
+            **base,
+            "available": False,
+            "reason": "authority_validation_docker_contract_unavailable",
             "docker_path": str(docker_path),
             "docker_sha256": docker_sha256,
-            "docker_socket_path": str(resolved_socket),
-            "docker_socket_device": int(socket_stat.st_dev),
-            "docker_socket_inode": int(socket_stat.st_ino),
-            "docker_socket_mode": stat_module.S_IMODE(socket_stat.st_mode),
-            "docker_server_identity": server_identity,
-            "security_options": security_output,
-            "image_reference": image_reference,
-            "image_id": image_id if image_valid else "",
-            "nvidia_smi_path": str(nvidia_smi_path),
-            "nvidia_smi_sha256": nvidia_smi_sha256,
-            "gpu_identity": gpu_identity if gpu_valid else "",
-            "gpu_uuid": gpu_uuid if gpu_valid else "",
         }
         return {**body, "contract_id": content_identity(body)}
 
@@ -16268,34 +16501,53 @@ class PortalImplementationDaemon:
                 receipt_id = str(
                     isolation_receipt.pop("receipt_id", "") or ""
                 )
-                isolation_valid = bool(
-                    current_isolation_contract.get("available") is True
-                    and isolation_receipt.get("backend")
-                    == "docker-local-cuda"
-                    and isolation_receipt.get("contract_id")
-                    == current_isolation_contract.get("contract_id")
-                    and isolation_receipt.get("image_id")
-                    == current_isolation_contract.get("image_id")
-                    and isolation_receipt.get("network_mode") == "none"
-                    and isolation_receipt.get("host_filesystem")
-                    == "workspace_only_read_only"
-                    and isolation_receipt.get("workspace_read_only") is True
-                    and isolation_receipt.get("private_pid_namespace") is True
-                    and isolation_receipt.get("capabilities_dropped") == "all"
-                    and isolation_receipt.get("no_new_privileges") is True
-                    and isolation_receipt.get("container_removed") is True
-                    and isolation_receipt.get("process_tree_quiesced") is True
-                    and isolation_receipt.get("output_bounded") is True
-                    and isolation_receipt.get("storage_bounded") is True
-                    and isolation_receipt.get("cpu_bounded") is True
-                    and isolation_receipt.get("gpu_requested") is True
-                    and receipt_id
-                    and receipt_id == content_identity(isolation_receipt)
-                ) or (
-                    current_isolation_contract.get("available") is not True
-                    and item.get("isolation_fallback")
-                    == "local_declared_validation"
-                )
+                backend = isolation_receipt.get("backend")
+                if backend == "current-process-already-isolated":
+                    isolation_valid = bool(
+                        not PortalImplementationDaemon._unix_stream_socket_permitted()
+                        and isolation_receipt.get("schema")
+                        == (
+                            "ipfs_accelerate_py.agent_supervisor."
+                            "authority-validation-isolation-receipt@2"
+                        )
+                        and isolation_receipt.get("reason")
+                        == "unix_socket_syscall_denied"
+                        and isolation_receipt.get("contract_id")
+                        == current_isolation_contract.get("contract_id")
+                        and isolation_receipt.get("network_mode") == "none"
+                        and isolation_receipt.get("no_new_privileges") is True
+                        and isolation_receipt.get("output_bounded") is True
+                        and receipt_id
+                        and receipt_id == content_identity(isolation_receipt)
+                    )
+                else:
+                    isolation_valid = bool(
+                        current_isolation_contract.get("available") is True
+                        and backend == "docker-local-cuda"
+                        and isolation_receipt.get("contract_id")
+                        == current_isolation_contract.get("contract_id")
+                        and isolation_receipt.get("image_id")
+                        == current_isolation_contract.get("image_id")
+                        and isolation_receipt.get("network_mode") == "none"
+                        and isolation_receipt.get("host_filesystem")
+                        == "workspace_only_read_only"
+                        and isolation_receipt.get("workspace_read_only") is True
+                        and isolation_receipt.get("private_pid_namespace")
+                        is True
+                        and isolation_receipt.get("capabilities_dropped")
+                        == "all"
+                        and isolation_receipt.get("no_new_privileges") is True
+                        and isolation_receipt.get("container_removed") is True
+                        and isolation_receipt.get("process_tree_quiesced")
+                        is True
+                        and isolation_receipt.get("output_bounded") is True
+                        and isolation_receipt.get("storage_bounded") is True
+                        and isolation_receipt.get("cpu_bounded") is True
+                        and isolation_receipt.get("gpu_requested") is True
+                        and receipt_id
+                        and receipt_id
+                        == content_identity(isolation_receipt)
+                    )
                 return bool(
                     str(item.get("command") or "").strip()
                     and item.get("cache_hit") is False
@@ -20161,10 +20413,18 @@ class PortalImplementationDaemon:
                         context_receipt_path
                     )
                 return ephemeral_result
-            # Explicit non-ephemeral dispatch implements in the caller
-            # checkout.  A distinct worktree_root is unused on this path;
-            # CIG boards keep use_ephemeral_worktree enabled so they never
-            # dirty the merge-target here.
+            # Non-ephemeral implement against the merge-target checkout is
+            # forbidden when a worktree root is configured (CIG boards). Force
+            # the ephemeral path rather than dirtying main mid-run.
+            if (
+                Path(self.worktree_root).resolve()
+                != Path(self.repo_root).resolve()
+            ):
+                raise RuntimeError(
+                    "non-ephemeral implementation path refused while "
+                    f"worktree_root={self.worktree_root} is configured; "
+                    "enable ephemeral worktrees for provider dispatch"
+                )
             # A no-change authority is valid for one direct-checkout attempt.
             self._implementation_no_change_policy_gates.clear()
             context_receipt_path = self._persist_implementation_context_receipt(
@@ -21275,19 +21535,11 @@ class PortalImplementationDaemon:
         if not (
             result.get("attempted") is True
             and result.get("passed") is True
+            and isinstance(candidate_binding, Mapping)
+            and candidate_binding.get("verified") is True
             and baseline_ref
         ):
             return result
-        if not (
-            isinstance(candidate_binding, Mapping)
-            and candidate_binding.get("verified") is True
-        ):
-            candidate_binding = {
-                "verified": True,
-                "mode": "authority_revalidation_unchanged",
-                "baseline_ref": baseline_ref,
-            }
-            result["candidate_binding"] = candidate_binding
         validated_tree_identity = {
             "schema": (
                 "ipfs_accelerate_py.agent_supervisor."
@@ -21309,31 +21561,6 @@ class PortalImplementationDaemon:
             self._manual_completion_revalidation_evidence_id(result)
         )
         return result
-
-    def _set_working_tree_write_access(
-        self,
-        root: Path,
-        *,
-        writable: bool,
-    ) -> None:
-        """Toggle working-tree writability without touching ``.git``."""
-
-        file_mode = 0o644 if writable else 0o444
-        dir_mode = 0o755 if writable else 0o555
-        for dirpath, dirnames, filenames in os.walk(root):
-            relative = Path(dirpath).relative_to(root)
-            if relative.parts[:1] == (".git",):
-                dirnames.clear()
-                continue
-            try:
-                os.chmod(dirpath, dir_mode)
-            except OSError:
-                pass
-            for name in filenames:
-                try:
-                    os.chmod(os.path.join(dirpath, name), file_mode)
-                except OSError:
-                    pass
 
     def _run_manual_completion_authority_revalidation(
         self,
@@ -21513,27 +21740,19 @@ class PortalImplementationDaemon:
                 worktree_path=worktree_path,
                 branch_name=branch_name,
             )
-            self._set_working_tree_write_access(
-                worktree_path, writable=False
+            (
+                validation_result,
+                task_execution_receipt_path,
+                task_execution_receipt,
+            ) = self._execute_deterministic_validation_plan(
+                workspace_path=worktree_path,
+                task=task,
+                attempt=attempt,
+                log_path=log_path,
+                state=state,
+                baseline_ref=baseline_ref,
+                read_only_revalidation=True,
             )
-            try:
-                (
-                    validation_result,
-                    task_execution_receipt_path,
-                    task_execution_receipt,
-                ) = self._execute_deterministic_validation_plan(
-                    workspace_path=worktree_path,
-                    task=task,
-                    attempt=attempt,
-                    log_path=log_path,
-                    state=state,
-                    baseline_ref=baseline_ref,
-                    read_only_revalidation=True,
-                )
-            finally:
-                self._set_working_tree_write_access(
-                    worktree_path, writable=True
-                )
             # _run_validation_commands initially binds authority before the
             # clean-candidate helper attaches its final candidate binding.
             # Remove that provisional producer token immediately; only the
@@ -40398,7 +40617,6 @@ class PortalImplementationDaemon:
         record_event: bool = True,
         allow_scope_adjudication: bool = True,
         diagnostics: dict[str, Any] | None = None,
-        skip_typed_local_probe: bool = False,
     ) -> Any:
         """Validate a candidate patch before task validation is dispatched."""
 
@@ -40512,7 +40730,9 @@ class PortalImplementationDaemon:
         for raw_command in task.validation:
             command = rewrite_validation_command(str(raw_command))
             if (
-                not skip_typed_local_probe
+                not self._manual_completion_authority_revalidation_only_task(
+                    task
+                )
                 and self._task_uses_typed_local_execution(task)
             ):
                 command, _notes = self._normalize_validation_command(command)
@@ -42737,7 +42957,6 @@ class PortalImplementationDaemon:
         baseline_ref: str,
         validated_result: Mapping[str, Any] | None = None,
         no_change_completion_authority: Mapping[str, str] | None = None,
-        skip_typed_local_probe: bool = False,
     ) -> dict[str, Any] | None:
         """Validate an unchanged candidate before the empty-patch gate.
 
@@ -42793,17 +43012,6 @@ class PortalImplementationDaemon:
             # A green command cannot turn missing/untracked declared outputs
             # into an already-satisfied task.
             return None
-        if skip_typed_local_probe:
-            # Isolated authority revalidation executes declared validation on
-            # an unchanged tree.  It is not an empty-patch implementation
-            # completion and must not consult proposal/provider gates.
-            return self._run_validation_commands(
-                workspace_path,
-                task,
-                log_path,
-                state=state,
-                force_uncached=True,
-            )
         self._record_event(
             "implementation_expected_outputs_checked",
             {
@@ -42825,42 +43033,24 @@ class PortalImplementationDaemon:
         )
 
         proposal_diagnostics: dict[str, Any] = {}
-        proposal_validation = self._validate_implementation_patch(
-            workspace_path,
-            task,
-            baseline_ref=baseline_ref,
-            allow_scope_adjudication=False,
-            diagnostics=proposal_diagnostics,
-            skip_typed_local_probe=skip_typed_local_probe,
-        )
         empty_fingerprint = self._proposal_candidate_fingerprint(())
-        completion_mode = self._no_change_completion_mode(task)
-        retry_scope = (
-            self._retry_no_change_pre_dispatch_scope(task, state)
-            if state is not None
-            else None
-        )
-        authorized_retry_scope = bool(
-            isinstance(no_change_completion_authority, Mapping)
-            and retry_scope is not None
-            and dict(no_change_completion_authority) == retry_scope
-        )
-        if authorized_retry_scope:
+        if self._manual_completion_authority_revalidation_only_task(task):
+            # Completed-claim renewal proves the existing tree.  The empty-patch
+            # proposal gate is an implementation admission check and must not
+            # consult provider metadata or reject reviewed ``python -c``.
+            proposal_validation = None
             completion_mode = "allowed"
-        no_change_policy_gate = self._no_change_candidate_policy_gate(
-            proposal_validation,
-            candidate_fingerprint=empty_fingerprint,
-            canonical_task_cid=self._canonical_ref(task),
-            expected_output_preflight_id=content_identity(
-                expected_output_preflight
-            ),
-            proposal_diagnostics=proposal_diagnostics,
-            completion_mode=completion_mode,
-        )
-        if authorized_retry_scope:
             no_change_policy_gate = {
-                **no_change_policy_gate,
-                "completion_authority": dict(retry_scope),
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor/"
+                    "no-change-candidate-policy-gate@1"
+                ),
+                "attempted": True,
+                "accepted": True,
+                "reason": "authority_revalidation_existing_tree",
+                "completion_mode": "allowed",
+                "task_id": task.task_id,
+                "canonical_task_cid": self._canonical_ref(task),
             }
             no_change_policy_gate["gate_id"] = content_identity(
                 {
@@ -42869,6 +43059,56 @@ class PortalImplementationDaemon:
                     if key != "gate_id"
                 }
             )
+            proposal_gate = {
+                "attempted": False,
+                "accepted": True,
+                "reason": (
+                    "authority_revalidation_skips_empty_patch_proposal"
+                ),
+            }
+        else:
+            proposal_validation = self._validate_implementation_patch(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+                allow_scope_adjudication=False,
+                diagnostics=proposal_diagnostics,
+            )
+            completion_mode = self._no_change_completion_mode(task)
+            retry_scope = (
+                self._retry_no_change_pre_dispatch_scope(task, state)
+                if state is not None
+                else None
+            )
+            authorized_retry_scope = bool(
+                isinstance(no_change_completion_authority, Mapping)
+                and retry_scope is not None
+                and dict(no_change_completion_authority) == retry_scope
+            )
+            if authorized_retry_scope:
+                completion_mode = "allowed"
+            no_change_policy_gate = self._no_change_candidate_policy_gate(
+                proposal_validation,
+                candidate_fingerprint=empty_fingerprint,
+                canonical_task_cid=self._canonical_ref(task),
+                expected_output_preflight_id=content_identity(
+                    expected_output_preflight
+                ),
+                proposal_diagnostics=proposal_diagnostics,
+                completion_mode=completion_mode,
+            )
+            if authorized_retry_scope:
+                no_change_policy_gate = {
+                    **no_change_policy_gate,
+                    "completion_authority": dict(retry_scope),
+                }
+                no_change_policy_gate["gate_id"] = content_identity(
+                    {
+                        key: value
+                        for key, value in no_change_policy_gate.items()
+                        if key != "gate_id"
+                    }
+                )
         try:
             self._stage_declared_ignored_outputs(workspace_path, task)
             policy_bound_entries, policy_bound_expansions = (
@@ -42916,11 +43156,12 @@ class PortalImplementationDaemon:
             ),
             {"task_id": task.task_id, **no_change_policy_gate},
         )
-        proposal_gate = self._compact_proposal_validation(
-            proposal_validation
-        )
-        proposal_gate["reason"] = "empty_patch_reserved_for_no_change_gate"
-        if completion_mode != "allowed" and not skip_typed_local_probe:
+        if proposal_validation is not None:
+            proposal_gate = self._compact_proposal_validation(
+                proposal_validation
+            )
+            proposal_gate["reason"] = "empty_patch_reserved_for_no_change_gate"
+        if completion_mode != "allowed":
             return {
                 "attempted": False,
                 "passed": False,
@@ -43618,7 +43859,6 @@ class PortalImplementationDaemon:
                         log_path,
                         state=state,
                         baseline_ref=baseline_ref,
-                        skip_typed_local_probe=read_only_revalidation,
                     )
                     validation_result = (
                         clean_result
@@ -45666,6 +45906,84 @@ class PortalImplementationDaemon:
         return result
 
     @staticmethod
+    def _unix_stream_socket_permitted() -> bool:
+        """False when seccomp/landlock already forbids Docker's Unix socket."""
+
+        try:
+            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        except OSError as exc:
+            return getattr(exc, "errno", None) not in {errno.EPERM, errno.EACCES}
+        try:
+            probe.close()
+        except OSError:
+            pass
+        return True
+
+    @staticmethod
+    def _already_isolated_authority_validation_receipt(
+        *,
+        contract: Mapping[str, Any],
+        workspace_path: Path,
+    ) -> dict[str, Any]:
+        """Receipt for authority validation already inside a sealed worker."""
+
+        try:
+            workspace_text = str(Path(workspace_path).resolve())
+        except OSError:
+            workspace_text = str(workspace_path)
+        body = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "authority-validation-isolation-receipt@2"
+            ),
+            "contract_id": str(contract.get("contract_id") or ""),
+            "backend": "current-process-already-isolated",
+            "reason": "unix_socket_syscall_denied",
+            "network_mode": "none",
+            "workspace_path": workspace_text,
+            "no_new_privileges": True,
+            "output_bounded": True,
+            "gpu_requested": False,
+        }
+        return {**body, "receipt_id": content_identity(body)}
+
+    @staticmethod
+    def _drop_workspace_write_mode(root: Path) -> list[tuple[Path, int]]:
+        """Make a workspace tree read-only for local authority validation."""
+
+        restored: list[tuple[Path, int]] = []
+        paths: list[Path] = [Path(root)]
+        for dirpath, dirnames, filenames in os.walk(root):
+            current = Path(dirpath)
+            paths.extend(current / name for name in (*dirnames, *filenames))
+        for path in paths:
+            try:
+                status = path.lstat()
+            except OSError:
+                continue
+            if stat_module.S_ISLNK(status.st_mode):
+                continue
+            original = stat_module.S_IMODE(status.st_mode)
+            if original & 0o222 == 0:
+                continue
+            try:
+                os.chmod(path, original & ~0o222)
+            except OSError:
+                continue
+            restored.append((path, original))
+        return restored
+
+    @staticmethod
+    def _restore_workspace_write_mode(
+        entries: Sequence[tuple[Path, int]],
+    ) -> None:
+        for path, original in reversed(list(entries)):
+            try:
+                os.chmod(path, original)
+            except OSError:
+                pass
+
+    @staticmethod
     def _authority_validation_command_runner(
         *,
         spec: Any,
@@ -45685,51 +46003,72 @@ class PortalImplementationDaemon:
             "started_at": started_at,
             "authority_validation_isolation": contract,
         }
-        if contract.get("available") is not True:
+        if not PortalImplementationDaemon._unix_stream_socket_permitted():
             try:
-                command_argv = shlex.split(str(spec.command))
-                if command_argv and command_argv[0] in {"python", "python3"}:
-                    command_argv = [sys.executable, *command_argv[1:]]
-                workspace = workspace_path.resolve(strict=True)
-                completed = subprocess.run(
-                    command_argv,
-                    cwd=str(workspace),
-                    env=environment,
-                    text=True,
-                    capture_output=True,
-                    timeout=float(timeout_seconds),
-                    check=False,
+                local_environment = validation_environment_for_runner(
+                    environment,
+                    PortalImplementationDaemon._validation_command_runner,
                 )
-            except (OSError, ValueError, ValidationRuntimeError) as exc:
+            except ValidationRuntimeError as exc:
                 return {
                     **base,
                     "finished_at": utc_now(),
-                    "returncode": 78,
+                    "returncode": 75,
                     "output": f"{type(exc).__name__}: {exc}\n",
-                    "error": "validation_command_policy_rejected",
-                    "reason": "validation_shell_command_policy_violation",
-                    "infrastructure_failure": False,
+                    "error": (
+                        "validation_environment_python_launcher_unavailable"
+                    ),
+                    "reason": "sealed_validation_python_launcher_unavailable",
+                    "infrastructure_failure": True,
+                    "authority_validation_isolation": {
+                        **contract,
+                        "backend": "current-process-already-isolated",
+                        "reason": "unix_socket_syscall_denied",
+                    },
                 }
-            except subprocess.TimeoutExpired as exc:
-                return {
-                    **base,
-                    "finished_at": utc_now(),
-                    "returncode": 124,
-                    "output": str(exc),
-                    "error": "validation_timeout",
-                    "reason": "validation_timeout",
-                    "timed_out": True,
-                    "infrastructure_failure": False,
-                }
+            restored_modes: list[tuple[Path, int]] = []
+            try:
+                restored_modes = (
+                    PortalImplementationDaemon._drop_workspace_write_mode(
+                        workspace_path
+                    )
+                )
+                local_result = (
+                    PortalImplementationDaemon._validation_command_runner(
+                        spec=spec,
+                        workspace_path=workspace_path,
+                        timeout_seconds=timeout_seconds,
+                        environment=local_environment,
+                    )
+                )
+            finally:
+                PortalImplementationDaemon._restore_workspace_write_mode(
+                    restored_modes
+                )
+            local_result["authority_validation_isolation"] = {
+                **contract,
+                "backend": "current-process-already-isolated",
+                "reason": "unix_socket_syscall_denied",
+            }
+            local_result["authority_validation_isolation_receipt"] = (
+                PortalImplementationDaemon._already_isolated_authority_validation_receipt(
+                    contract=contract,
+                    workspace_path=workspace_path,
+                )
+            )
+            return local_result
+        if contract.get("available") is not True:
             return {
                 **base,
                 "finished_at": utc_now(),
-                "returncode": int(completed.returncode),
-                "output": (completed.stdout or "") + (completed.stderr or ""),
-                "error": "",
-                "reason": str(contract.get("reason") or ""),
-                "infrastructure_failure": False,
-                "isolation_fallback": "local_declared_validation",
+                "returncode": 75,
+                "output": "",
+                "error": "authority_validation_isolation_unavailable",
+                "reason": str(
+                    contract.get("reason")
+                    or "authority_validation_isolation_unavailable"
+                ),
+                "infrastructure_failure": True,
             }
         try:
             command_argv = validation_shell_command(str(spec.command))
@@ -45812,6 +46151,7 @@ class PortalImplementationDaemon:
         image_id = str(contract["image_id"])
         docker_endpoint = str(contract["docker_endpoint"])
         gpu_uuid = str(contract["gpu_uuid"])
+        rootless_engine = bool(contract.get("rootless"))
         docker_environment = {
             "DOCKER_CONFIG": "/nonexistent/ipfs-accelerate-docker-config",
             "DOCKER_HOST": docker_endpoint,
@@ -45823,6 +46163,15 @@ class PortalImplementationDaemon:
             f"ipfs-accelerate-authority-validation-{os.getpid()}-"
             f"{time.time_ns()}"
         )
+        if rootless_engine:
+            # Container uid 0 is the invoking host user in rootless Docker.
+            gpu_run_arguments = (
+                PortalImplementationDaemon._authority_validation_rootless_gpu_arguments()
+            )
+            user_identity = "0:0"
+        else:
+            gpu_run_arguments = [f"--gpus=device={gpu_uuid}"]
+            user_identity = f"{os.getuid()}:{os.getgid()}"
         docker_command = [
             *docker_prefix,
             "run",
@@ -45841,8 +46190,8 @@ class PortalImplementationDaemon:
             f"--memory={AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES}",
             f"--memory-swap={AUTHORITY_VALIDATION_MEMORY_LIMIT_BYTES}",
             f"--shm-size={AUTHORITY_VALIDATION_TMPFS_LIMIT_BYTES}",
-            f"--gpus=device={gpu_uuid}",
-            f"--user={os.getuid()}:{os.getgid()}",
+            *gpu_run_arguments,
+            f"--user={user_identity}",
             (
                 "--mount=type=bind,src="
                 f"{workspace_text},dst={workspace_text},readonly"
@@ -46042,6 +46391,10 @@ class PortalImplementationDaemon:
             "contract_id": str(contract.get("contract_id") or ""),
             "backend": "docker-local-cuda",
             "docker_endpoint": docker_endpoint,
+            "rootless": rootless_engine,
+            "gpu_injection": (
+                "host-device-bind" if rootless_engine else "nvidia-container-toolkit"
+            ),
             "image_id": image_id,
             "gpu_uuid": gpu_uuid,
             "gpu_requested": True,
@@ -46100,6 +46453,53 @@ class PortalImplementationDaemon:
         }
 
     @staticmethod
+    def _private_validation_home(
+        workspace_path: Path,
+    ) -> tempfile.TemporaryDirectory[str]:
+        """Create a private HOME in a directory the process can actually write.
+
+        Landlock workers may only mutate their designated scratch root.  The
+        default tempfile location is often ``/tmp``, which that policy freezes.
+        Prefer process TMPDIR, then the canonical tempfile root, then the
+        reviewed workspace itself.
+        """
+
+        prefix = "ipfs-accelerate-validation-home-"
+        candidates: list[Path] = []
+        for raw in (
+            os.environ.get("TMPDIR"),
+            os.environ.get("TMP"),
+            os.environ.get("TEMP"),
+        ):
+            if raw:
+                candidates.append(Path(raw))
+        try:
+            candidates.append(Path(tempfile.gettempdir()))
+        except (FileNotFoundError, OSError):
+            pass
+        candidates.append(Path(workspace_path))
+        seen: set[str] = set()
+        last_error: OSError | None = None
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve()
+            except OSError as exc:
+                last_error = exc
+                continue
+            key = str(resolved)
+            if key in seen or not resolved.is_dir():
+                continue
+            seen.add(key)
+            try:
+                return tempfile.TemporaryDirectory(prefix=prefix, dir=key)
+            except OSError as exc:
+                last_error = exc
+                continue
+        raise PermissionError(
+            "no writable directory is available for a private validation HOME"
+        ) from last_error
+
+    @staticmethod
     @sealed_validation_python_runner
     def _validation_command_runner(
         *,
@@ -46136,9 +46536,25 @@ class PortalImplementationDaemon:
                 ),
                 "infrastructure_failure": False,
             }
-        with tempfile.TemporaryDirectory(
-            prefix="ipfs-accelerate-validation-home-"
-        ) as temporary_home:
+        try:
+            home_context = (
+                PortalImplementationDaemon._private_validation_home(
+                    workspace_path
+                )
+            )
+        except OSError as exc:
+            return {
+                "command": str(spec.command),
+                "raw_command": str(spec.raw_command or spec.command),
+                "started_at": started_at,
+                "finished_at": utc_now(),
+                "returncode": 75,
+                "output": f"{type(exc).__name__}: {exc}\n",
+                "error": "validation_environment_home_unavailable",
+                "reason": "private_validation_home_unwritable",
+                "infrastructure_failure": True,
+            }
+        with home_context as temporary_home:
             home_path = Path(temporary_home)
             child_environment = dict(environment)
             child_environment.update(
@@ -67596,11 +68012,13 @@ class PortalImplementationDaemon:
 # Markdown taskboards and JSON queue/status/events/PID projections are optional
 # non-authoritative projections only.
 
-DATABASE_IMPLEMENTATION_DAEMON_INTERFACE = "DatabaseImplementationDaemon@1"
-DATABASE_TASK_ATTEMPT_INTERFACE = "DatabaseTaskAttempt@1"
-DATABASE_IMPLEMENTATION_DAEMON_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/database-implementation-daemon@1"
+from .database_execution_schema import (
+    DAEMON_EXECUTION_SQL as _DAEMON_EXECUTION_SQL,
+    DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
+    DATABASE_IMPLEMENTATION_DAEMON_SCHEMA,
 )
+
+DATABASE_TASK_ATTEMPT_INTERFACE = "DatabaseTaskAttempt@1"
 DATABASE_TASK_ATTEMPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-task-attempt@1"
 )
@@ -67639,82 +68057,6 @@ _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA = (
 )
 _MAX_DATABASE_TASK_ATTEMPTS = 10_000
 _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW = 16
-
-_DAEMON_EXECUTION_SQL = """
-CREATE TABLE IF NOT EXISTS daemon_execution_metadata (
-    key VARCHAR PRIMARY KEY,
-    value VARCHAR NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS database_task_attempts (
-    attempt_id VARCHAR PRIMARY KEY,
-    claim_id VARCHAR NOT NULL,
-    task_cid VARCHAR NOT NULL,
-    task_alias VARCHAR NOT NULL DEFAULT '',
-    attempt_number BIGINT NOT NULL,
-    owner_session_id VARCHAR NOT NULL,
-    fencing_token BIGINT NOT NULL,
-    fence_epoch BIGINT NOT NULL,
-    lease_id VARCHAR NOT NULL DEFAULT '',
-    committed_phase VARCHAR NOT NULL,
-    status VARCHAR NOT NULL,
-    started_at_ms BIGINT NOT NULL,
-    finished_at_ms BIGINT,
-    revision BIGINT NOT NULL DEFAULT 1,
-    body_json VARCHAR NOT NULL DEFAULT '{}'
-);
-
-CREATE INDEX IF NOT EXISTS database_task_attempts_task_idx
-    ON database_task_attempts(task_cid, attempt_number);
-CREATE INDEX IF NOT EXISTS database_task_attempts_owner_idx
-    ON database_task_attempts(owner_session_id, status);
-CREATE INDEX IF NOT EXISTS database_task_attempts_claim_idx
-    ON database_task_attempts(claim_id);
-
-CREATE TABLE IF NOT EXISTS attempt_phases (
-    attempt_id VARCHAR NOT NULL,
-    phase VARCHAR NOT NULL,
-    committed_at_ms BIGINT NOT NULL,
-    fencing_token BIGINT NOT NULL,
-    fence_epoch BIGINT NOT NULL,
-    revision BIGINT NOT NULL,
-    body_json VARCHAR NOT NULL DEFAULT '{}',
-    PRIMARY KEY (attempt_id, phase)
-);
-
-CREATE TABLE IF NOT EXISTS provider_invocations (
-    invocation_id VARCHAR PRIMARY KEY,
-    attempt_id VARCHAR NOT NULL,
-    task_cid VARCHAR NOT NULL,
-    idempotency_key VARCHAR NOT NULL,
-    owner_session_id VARCHAR NOT NULL,
-    recorded_at_ms BIGINT NOT NULL,
-    result_json VARCHAR NOT NULL DEFAULT '{}',
-    UNIQUE (attempt_id, idempotency_key)
-);
-
-CREATE TABLE IF NOT EXISTS effect_claims (
-    effect_id VARCHAR PRIMARY KEY,
-    attempt_id VARCHAR NOT NULL,
-    task_cid VARCHAR NOT NULL,
-    effect_key VARCHAR NOT NULL,
-    idempotency_key VARCHAR NOT NULL,
-    owner_session_id VARCHAR NOT NULL,
-    recorded_at_ms BIGINT NOT NULL,
-    result_json VARCHAR NOT NULL DEFAULT '{}',
-    UNIQUE (attempt_id, idempotency_key)
-);
-
-CREATE TABLE IF NOT EXISTS daemon_execution_events (
-    event_id VARCHAR PRIMARY KEY,
-    attempt_id VARCHAR NOT NULL DEFAULT '',
-    task_cid VARCHAR NOT NULL DEFAULT '',
-    event_type VARCHAR NOT NULL,
-    recorded_at_ms BIGINT NOT NULL,
-    body_json VARCHAR NOT NULL DEFAULT '{}'
-);
-"""
-
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""
@@ -71419,19 +71761,6 @@ class DatabaseImplementationDaemon:
         outcomes: list[dict[str, Any]] = []
         now = self._now_ms()
         for attempt in self.list_running_attempts():
-            task = self.task_source.get(attempt.task_cid)
-            status = str(getattr(task, "status", "") or "").strip().lower()
-            if status in {
-                "completed",
-                "complete",
-                "done",
-                "cancelled",
-                "canceled",
-            }:
-                # Operator merge recovery may complete a task while a leftover
-                # running attempt still exists.  Do not re-interpret that
-                # completion as a prepared claim barrier.
-                continue
             claim = self.coordinator.get_task_claim(attempt.claim_id)
             if claim is None:
                 raise DatabaseImplementationAuthorityError(
@@ -71863,14 +72192,6 @@ class DatabaseImplementationDaemon:
             if isinstance(budget, Mapping) and budget.get("exhausted") is True:
                 if status == "blocked":
                     continue
-                if status in {
-                    "completed",
-                    "complete",
-                    "done",
-                    "cancelled",
-                    "canceled",
-                }:
-                    continue
                 if status not in {"in_progress", "retrying"}:
                     raise DatabaseImplementationConflictError(
                         "exhausted typed deferral cannot reconcile control "
@@ -71941,17 +72262,6 @@ class DatabaseImplementationDaemon:
                 )
             status = str(task.status or "").strip().lower()
             if status == "blocked":
-                continue
-            if status in {
-                "completed",
-                "complete",
-                "done",
-                "cancelled",
-                "canceled",
-            }:
-                # A later successful completion (or operator merge recovery)
-                # supersedes the leftover terminal Portal attempt.  Restart
-                # must not fail closed on that stale attempt.
                 continue
             if status == "retrying":
                 # The immutable legacy attempt still says terminal failure.
@@ -72383,20 +72693,7 @@ class DatabaseImplementationDaemon:
             + len(terminal_retry_reconciliations)
         )
         # Prefer resume of this session's running attempts (crash recovery).
-        _terminal_control = {
-            "completed",
-            "complete",
-            "done",
-            "cancelled",
-            "canceled",
-        }
-        running = []
-        for attempt in self.list_running_attempts():
-            task = self.task_source.get(attempt.task_cid)
-            status = str(getattr(task, "status", "") or "").strip().lower()
-            if status in _terminal_control:
-                continue
-            running.append(attempt)
+        running = self.list_running_attempts()
         if running:
             result = self._resume_attempt_without_process_crash(running[0])
             return {

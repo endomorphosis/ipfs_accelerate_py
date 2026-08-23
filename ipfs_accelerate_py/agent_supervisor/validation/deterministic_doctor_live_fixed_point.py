@@ -51,6 +51,11 @@ from ..proof.security_contract_analysis import (
     evaluate_fixed_point_security,
     extract_code_security_facts,
 )
+from ..planning.obligation_graph_compiler import (
+    PlannerDoctorSemanticDecision,
+    SemanticDischargeEvidence,
+    apply_semantic_discharge,
+)
 from .deterministic_doctor_fixed_point import (
     DEFAULT_FIXED_POINT_BOUND,
     MAX_ITERATIONS,
@@ -1684,6 +1689,7 @@ __all__ = [
     "daemon_require_live_doctor_fixed_point",
     "default_cache_invalidation",
     "default_identity_replay",
+    "evaluate_live_semantic_discharge",
     "default_reclose",
     "default_redelta",
     "default_replan",

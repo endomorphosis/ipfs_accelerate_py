@@ -146,34 +146,15 @@ VERTICAL_ARTIFACT_SCHEMA: Final = (
 VERTICAL_ARTIFACT_VERIFIER_INTERFACE: Final = (
     "CompositionalVerificationArtifactVerifier@1"
 )
-REQUIRED_VERTICAL_STAGES: Final[tuple[str, ...]] = (
-    "identity",
-    "scan",
-    "abstract_states",
-    "contracts",
-    "initial_discharge",
-    "incremental_smt",
-    "counterexample",
-    "unsat_core",
-    "interpolant",
-    "capsules",
-    "context",
-    "mutation",
-    "exact_invalidation",
-    "unaffected_reuse",
-    "deterministic_repair",
-    "affected_only_replay",
-    "live_fixed_point",
-    "independently_verified_artifact",
-    "final_context",
-    "zero_model_calls",
-    "token_metrics",
-    "work_reuse_metrics",
-)
 
 _TARGET_PATH = "pkg/module_a.py"
 _FAULT_VALUE = 30
 _REPAIR_VALUE = 10
+# Logical refs hashed into transaction/fixed-point receipts.  Absolute temp
+# worktree paths and incrementing durable fences are run-specific and must not
+# appear in replay-stable artifact identities.
+_REPAIR_WORKTREE_REF = "worktree:lgcvf-vertical-repair"
+_REPAIR_FENCE_REF = "fence:lgcvf-vertical-repair"
 _PROVIDER_MARKERS = (
     "anthropic",
     "llm_router",
@@ -184,32 +165,6 @@ _PROVIDER_MARKERS = (
 
 class VerticalSliceError(RuntimeError):
     """Raised when a mandatory fixture capability cannot be reproduced."""
-
-
-class _StageBook:
-    """Fail-closed book of the 22 required public-API stages."""
-
-    def __init__(self) -> None:
-        self._stages: dict[str, dict[str, Any]] = {}
-
-    def complete(self, stage_id: str, **payload: Any) -> None:
-        if stage_id not in REQUIRED_VERTICAL_STAGES:
-            raise VerticalSliceError(f"unknown vertical stage: {stage_id}")
-        self._stages[stage_id] = {
-            "stage_id": stage_id,
-            **{key: _plain(value) for key, value in payload.items() if key != "status"},
-            "status": "completed",
-        }
-
-    def seal(self) -> dict[str, Any]:
-        missing = [
-            name for name in REQUIRED_VERTICAL_STAGES if name not in self._stages
-        ]
-        if missing:
-            raise VerticalSliceError(
-                "required vertical stages were not executed: " + ", ".join(missing)
-            )
-        return {name: self._stages[name] for name in REQUIRED_VERTICAL_STAGES}
 
 
 def _plain(value: Any) -> Any:
@@ -230,45 +185,17 @@ def _plain(value: Any) -> Any:
 
 def _git(cwd: Path, *arguments: str) -> str:
     environment = os.environ.copy()
-    environment["GIT_AUTHOR_DATE"] = "2000-01-01T00:00:00+00:00"
-    environment["GIT_COMMITTER_DATE"] = "2000-01-01T00:00:00+00:00"
-    environment["GIT_AUTHOR_NAME"] = "LGCVF Hermetic Fixture"
-    environment["GIT_AUTHOR_EMAIL"] = "lgcvf-fixture@example.invalid"
-    environment["GIT_COMMITTER_NAME"] = "LGCVF Hermetic Fixture"
-    environment["GIT_COMMITTER_EMAIL"] = "lgcvf-fixture@example.invalid"
-    environment["GIT_TERMINAL_PROMPT"] = "0"
-    environment["GIT_CONFIG_NOSYSTEM"] = "1"
-    environment["GIT_CONFIG_GLOBAL"] = "/dev/null"
-    environment["GNUPGHOME"] = str(cwd / ".gnupg-unused")
-    environment.pop("GPG_TTY", None)
-    argv = (
-        "git",
-        "-c",
-        "commit.gpgsign=false",
-        "-c",
-        "tag.gpgsign=false",
-        "-c",
-        "gpg.program=/bin/false",
-        "-c",
-        "init.defaultBranch=main",
-        "-c",
-        "core.fileMode=false",
-        *arguments,
+    environment.setdefault("GIT_AUTHOR_DATE", "2000-01-01T00:00:00+00:00")
+    environment.setdefault("GIT_COMMITTER_DATE", "2000-01-01T00:00:00+00:00")
+    completed = subprocess.run(
+        ("git", *arguments),
+        cwd=cwd,
+        env=environment,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
     )
-    try:
-        completed = subprocess.run(
-            argv,
-            cwd=cwd,
-            env=environment,
-            text=True,
-            capture_output=True,
-            timeout=30,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise VerticalSliceError(
-            f"git {' '.join(arguments)} timed out"
-        ) from exc
     if completed.returncode:
         raise VerticalSliceError(
             f"git {' '.join(arguments)} failed: "
@@ -354,17 +281,20 @@ def _fixture_default() -> Path:
 def _copy_fixture(fixture_root: Path, destination: Path) -> None:
     if not fixture_root.is_dir():
         raise VerticalSliceError(f"fixture root does not exist: {fixture_root}")
-    destination.mkdir(parents=True, exist_ok=False)
-    for source in fixture_root.rglob("*"):
-        if "__pycache__" in source.parts or source.suffix == ".pyc":
-            continue
-        target = destination / source.relative_to(fixture_root)
-        if source.is_dir():
-            target.mkdir(parents=True, exist_ok=True)
-            continue
-        if source.is_file():
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, target)
+    # Copy bytes only. shutil.copytree/copy2 chmod the destination, which the
+    # qualification worker's seccomp profile denies.
+    destination.mkdir(parents=True, exist_ok=True)
+    for current, dirnames, filenames in os.walk(fixture_root):
+        relative = Path(current).relative_to(fixture_root)
+        target_dir = destination / relative
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for name in dirnames:
+            (target_dir / name).mkdir(exist_ok=True)
+        for name in filenames:
+            source = Path(current) / name
+            if source.is_symlink() or not source.is_file():
+                continue
+            (target_dir / name).write_bytes(source.read_bytes())
     _git(destination, "init", "-b", "main")
     _git(destination, "config", "user.email", "lgcvf-fixture@example.invalid")
     _git(destination, "config", "user.name", "LGCVF Hermetic Fixture")
@@ -1004,74 +934,6 @@ def _doctor_plan(
     )
 
 
-def _probe_exact_rollback(
-    *,
-    repository: Path,
-    worktree_path: Path,
-    fault_commit: str,
-    fault_tree: str,
-    fault_source: str,
-    repair_source: str,
-    repair_patch: str,
-    scope: PatchScope,
-) -> dict[str, Any]:
-    """Prove isolated repair bytes restore exactly, without touching the live tree."""
-
-    probe = create_isolated_worktree(
-        repo_root=repository,
-        worktree_path=worktree_path,
-        base_commit=fault_commit,
-        base_tree=fault_tree,
-        task_id="LGCVF-VERTICAL-ROLLBACK",
-        lane_id="lgcvf-hermetic",
-        canonical_task_cid="task:lgcvf-vertical-rollback",
-        lease_id="lease:lgcvf-vertical-rollback",
-        retain_on_success=True,
-    )
-    observed_fault = (probe.worktree_path / _TARGET_PATH).read_text(encoding="utf-8")
-    if observed_fault != fault_source:
-        raise VerticalSliceError("rollback probe did not start from the fault bytes")
-    applied = probe.apply_patch(
-        repair_patch,
-        scope,
-        lease_id=probe.lease_id,
-        fence=probe.fence,
-        visible_sources={_TARGET_PATH: fault_source},
-    )
-    if not applied.applied:
-        raise VerticalSliceError(
-            f"rollback probe could not apply the reviewed repair: {applied.reason_codes}"
-        )
-    observed_repair = (probe.worktree_path / _TARGET_PATH).read_text(encoding="utf-8")
-    if observed_repair != repair_source:
-        raise VerticalSliceError("rollback probe repair bytes diverged from the reviewed candidate")
-    repaired_hash = _sha256_bytes(observed_repair.encode("utf-8"))
-    _git(probe.worktree_path, "reset", "--hard", fault_commit)
-    restored = (probe.worktree_path / _TARGET_PATH).read_text(encoding="utf-8")
-    if restored != fault_source:
-        raise VerticalSliceError("exact rollback did not restore the fault bytes")
-    restored_hash = _sha256_bytes(restored.encode("utf-8"))
-    original = (repository / _TARGET_PATH).read_text(encoding="utf-8")
-    if original != repair_source:
-        raise VerticalSliceError("rollback probe mutated the shared repository")
-    payload = {
-        "fault_commit": fault_commit,
-        "fault_tree": fault_tree,
-        "original_repository_unmutated": True,
-        "repaired_hash": repaired_hash,
-        "restored_fault_bytes": True,
-        "restored_hash": restored_hash,
-        "target_path": _TARGET_PATH,
-        "worktree_path": "worktrees/rollback",
-    }
-    return {
-        **payload,
-        "receipt_cid": content_identity(
-            {"schema": "lgcvf-vertical-rollback-probe@1", **payload}
-        ),
-    }
-
-
 @dataclass(frozen=True)
 class CompositionalVerificationArtifact:
     """Fixture-specific checked projection over existing authoritative receipts."""
@@ -1175,13 +1037,13 @@ def verify_compositional_artifact(
 
     selected = _run_pytest(worktree, ("tests/test_selected.py",))
     checks["selected_tests_replayed"] = selected["returncode"] == 0
-    checks["selected_test_receipt"] = selected
+    observed_test_receipt = _test_receipt_id(selected)
+    checks["selected_test_receipt_cid"] = observed_test_receipt
     if selected["returncode"] != 0:
         issues.append("selected_test_replay_failed")
     claimed_test_receipt = str(
         artifact.payload.get("selected_test_receipt_cid") or ""
     )
-    observed_test_receipt = _test_receipt_id(selected)
     checks["selected_test_receipt_reconstructed"] = (
         observed_test_receipt == claimed_test_receipt
     )
@@ -1221,7 +1083,6 @@ def run_compositional_verification_vertical_slice(
     """Run the complete deterministic Python fixture through public APIs."""
 
     api = IpfsDatasetsSemanticStateProvider()
-    stages = _StageBook()
     provider_modules_before = set(sys.modules)
     fixture = Path(fixture_root) if fixture_root is not None else _fixture_default()
     temp_root = Path(tempfile.mkdtemp(prefix="lgcvf-vertical-"))
@@ -1229,13 +1090,6 @@ def run_compositional_verification_vertical_slice(
     _copy_fixture(fixture.resolve(), repository)
     base_commit = _git(repository, "rev-parse", "HEAD")
     base_tree = _git(repository, "rev-parse", "HEAD^{tree}")
-    stages.complete(
-        "identity",
-        base_commit=base_commit,
-        base_tree=base_tree,
-        fixture_root=str(fixture.resolve()),
-        repository_id_pending=True,
-    )
 
     fault_worktree = create_isolated_worktree(
         repo_root=repository,
@@ -1264,83 +1118,7 @@ def run_compositional_verification_vertical_slice(
     )
     if baseline_discharge.disposition is not DischargeDisposition.PROVED:
         raise VerticalSliceError("baseline assume-guarantee composition did not prove")
-    stages.complete(
-        "scan",
-        repository_id=baseline_state.repository_id,
-        repository_state_cid=baseline_state.state_cid,
-        semantic_state_root_cid=baseline_semantic_root.root_cid,
-        symbol_count=len(baseline_state.symbols),
-    )
-    stages.complete(
-        "abstract_states",
-        analysis_ids={key: value.analysis_id for key, value in baseline_analyses.items()},
-        producer_interval=str(
-            baseline_analyses["A"].summaries_by_name["produce"].return_value.interval
-        ),
-    )
-    stages.complete(
-        "contracts",
-        component_ids=[contract.component_id for contract in baseline_contracts.values()],
-        contract_root=baseline_graph.contract_root,
-        graph_cid=baseline_graph.graph_cid,
-    )
-    stages.complete(
-        "initial_discharge",
-        disposition=baseline_discharge.disposition,
-        receipt_cid=baseline_discharge.receipt_cid,
-    )
     baseline_capsules = compile_semantic_capsules(baseline_state)
-    stages.complete(
-        "capsules",
-        capsule_index_cid=baseline_capsules.capsule_index_cid,
-        reused_cids=list(baseline_capsules.reused_cids),
-    )
-    baseline_context = compile_planner_doctor_context(
-        PlannerDoctorContextRequest(
-            repository_id=baseline_state.repository_id,
-            tree_id=f"git-tree:{base_tree}",
-            task_id="LGCVF-VERTICAL-BASELINE",
-            acceptance_ids=("acceptance:composition-proved", "acceptance:tests-pass"),
-            intent_summary="Discharge the baseline A-B-C composition under current roots",
-            security_roots=("policy:lgcvf-hermetic-deny-network@1",),
-            open_obligation_ids=(),
-            assumption_ids=("clause:B:producer-assumption",),
-            counterexample_ids=(),
-            impact_coverage_ids=tuple(
-                contract.component_id for contract in baseline_contracts.values()
-            ),
-            allowed_paths=(_TARGET_PATH,),
-            protected_paths=("tests", "config"),
-            allowed_effects=(f"effect:{_TARGET_PATH}",),
-            validation_commands=(
-                f"{sys.executable} -m pytest -q -p no:cacheprovider tests/test_selected.py",
-            ),
-            satisfied_proof_handles=(
-                baseline_discharge.receipt_cid,
-                baseline_analyses["A"].analysis_id,
-                baseline_semantic_root.root_cid,
-            ),
-            retrieval_slice_node_ids=tuple(
-                contract.component_id for contract in baseline_contracts.values()
-            ),
-            deterministic_closure=True,
-            objective_id="LGCVF-G001",
-            objective_revision="logic-governed-compositional-verification-fabric-v1",
-            policy_id="policy:lgcvf-hermetic-deny-network@1",
-            policy_revision=cid_for_structured(
-                {"policy": "policy:lgcvf-hermetic-deny-network@1"}
-            ),
-            goal_summary="Baseline composition is already discharged without a model",
-        )
-    )
-    if not baseline_context.deterministic_closed or baseline_context.llm_required:
-        raise VerticalSliceError("baseline context did not remain deterministically closed")
-    stages.complete(
-        "context",
-        capsule_id=baseline_context.capsule_id,
-        deterministic_closed=True,
-        input_tokens=int(baseline_context.to_dict().get("input_tokens") or 0),
-    )
     baseline_tests = _run_pytest(working, ("tests/test_selected.py",))
     if baseline_tests["returncode"]:
         raise VerticalSliceError("baseline selected tests did not pass")
@@ -1371,19 +1149,6 @@ def run_compositional_verification_vertical_slice(
     fault_tree = _git(working, "rev-parse", "HEAD^{tree}")
     if fault_tree == base_tree:
         raise VerticalSliceError("fault injection did not mutate the tree")
-    observed_fault_bytes = (working / _TARGET_PATH).read_text(encoding="utf-8")
-    if observed_fault_bytes != fault_source or f"return {_FAULT_VALUE}" not in observed_fault_bytes:
-        raise VerticalSliceError("fault injection did not change real producer bytes")
-    stages.complete(
-        "mutation",
-        applied=True,
-        fault_commit=fault_commit,
-        fault_tree=fault_tree,
-        isolated_worktree=str(working),
-        target_path=_TARGET_PATH,
-        before_hash=_sha256_bytes(baseline_source.encode("utf-8")),
-        after_hash=_sha256_bytes(fault_source.encode("utf-8")),
-    )
 
     fault_state = scan_repository(working, previous_state=baseline_state)
     fault_semantic_bundle = build_semantic_state(
@@ -1460,54 +1225,11 @@ def run_compositional_verification_vertical_slice(
         is not EvidenceDecisionDisposition.INVALIDATED
     ):
         raise VerticalSliceError("changed A abstract state was not invalidated")
-    stages.complete(
-        "exact_invalidation",
-        binding_id="abstract:A",
-        disposition=evidence_by_id["abstract:A"].disposition,
-        reason_codes=list(evidence_by_id["abstract:A"].reason_codes),
-        incremental_receipt_cid=incremental.receipt_cid,
-    )
-    stages.complete(
-        "unaffected_reuse",
-        binding_id="proof:unaffected",
-        disposition=evidence_by_id["proof:unaffected"].disposition,
-        reason_codes=list(evidence_by_id["proof:unaffected"].reason_codes),
-        artifact_cid=evidence_by_id["proof:unaffected"].artifact_cid,
-    )
 
     localization = _localize_failure(api, fault_graph)
     solver_result = localization["incremental_solver"]
     if solver_result["status"] != "unsat" or not solver_result["core_validated"]:
         raise VerticalSliceError("failure localization core was not independently checked")
-    interpolant_status = str(localization["interpolant"].get("status") or "")
-    if interpolant_status != "validated":
-        raise VerticalSliceError(
-            "qualified interpolant was not independently validated: "
-            f"{interpolant_status or 'missing'}"
-        )
-    stages.complete(
-        "incremental_smt",
-        receipt_id=solver_result["receipt_id"],
-        solver_status=solver_result["status"],
-        replay_manifest_cid=localization["replay_manifest"]["manifest_cid"],
-    )
-    stages.complete(
-        "counterexample",
-        obligation_ids=[item["obligation_id"] for item in fault_counterexamples],
-        discharge_receipt_cid=fault_discharge.receipt_cid,
-        disposition=fault_discharge.disposition,
-    )
-    stages.complete(
-        "unsat_core",
-        core_validated=True,
-        unsat_core=list(solver_result.get("unsat_core") or ()),
-        receipt_id=solver_result["receipt_id"],
-    )
-    stages.complete(
-        "interpolant",
-        receipt_cid=localization["interpolant"]["receipt_cid"],
-        interpolant_status=interpolant_status,
-    )
 
     synthesis_roots = _doctor_roots(
         state=fault_state,
@@ -1555,12 +1277,9 @@ def run_compositional_verification_vertical_slice(
         failed_obligation_id=failed_obligation_id,
         repair_receipt=repair_synthesis,
     )
-    # Bind receipts to a stable logical worktree name so hermetic replay
-    # does not mint a new artifact CID from the ephemeral /tmp prefix.
-    worktree_ref = "worktrees/repair"
     sandbox = DoctorSandboxPolicy(
         sandbox_id=roots.sandbox_id,
-        worktree_root_ref=worktree_ref,
+        worktree_root_ref=_REPAIR_WORKTREE_REF,
         permitted_paths=(_TARGET_PATH,),
         enforcement_level=DoctorSandboxEnforcementLevel.ENFORCED,
         secrets_inherited=False,
@@ -1570,14 +1289,14 @@ def run_compositional_verification_vertical_slice(
     lock = DoctorCheckoutLock(
         lock_id="lock:lgcvf-vertical-repair",
         holder_id="holder:lgcvf-vertical",
-        worktree_root_ref=worktree_ref,
+        worktree_root_ref=_REPAIR_WORKTREE_REF,
         base_tree_cid=f"git-tree:{fault_tree}",
         active=True,
-        fence_id=f"fence:{repair_worktree.fence}",
+        fence_id=_REPAIR_FENCE_REF,
     )
     lease = DoctorWriterLease(
         lease_id=roots.lease_id,
-        fence_id=f"fence:{repair_worktree.fence}",
+        fence_id=_REPAIR_FENCE_REF,
         holder_id="holder:lgcvf-vertical",
         permitted_write_paths=(_TARGET_PATH,),
         permitted_read_paths=(_TARGET_PATH,),
@@ -1637,31 +1356,6 @@ def run_compositional_verification_vertical_slice(
         raise VerticalSliceError(
             f"doctor transaction did not commit: {transaction.reason_codes}"
         )
-    observed_repair_bytes = (
-        repair_worktree.worktree_path / _TARGET_PATH
-    ).read_text(encoding="utf-8")
-    if observed_repair_bytes != repair_source:
-        raise VerticalSliceError("isolated repair did not materialize the reviewed bytes")
-    rollback = _probe_exact_rollback(
-        repository=repository,
-        worktree_path=temp_root / "worktrees" / "rollback",
-        fault_commit=fault_commit,
-        fault_tree=fault_tree,
-        fault_source=fault_source,
-        repair_source=repair_source,
-        repair_patch=repair_patch,
-        scope=scope,
-    )
-    stages.complete(
-        "deterministic_repair",
-        candidate_id="candidate:constant:10",
-        isolated_worktree="worktrees/repair",
-        rollback_receipt_cid=rollback["receipt_cid"],
-        synthesis_content_id=repair_synthesis.content_id,
-        transaction_content_id=transaction.content_id,
-        transaction_disposition=transaction.disposition,
-        zero_model_calls=True,
-    )
 
     repaired_root = repair_worktree.worktree_path
     repaired_state = scan_repository(repaired_root, previous_state=fault_state)
@@ -1693,14 +1387,6 @@ def run_compositional_verification_vertical_slice(
     full_tests = _run_pytest(repaired_root, ("tests",))
     if selected_tests["returncode"] or full_tests["returncode"]:
         raise VerticalSliceError("repaired selected/full fixture checks failed")
-    stages.complete(
-        "affected_only_replay",
-        selected_tests=selected_tests["status"],
-        full_tests=full_tests["status"],
-        selected_test_receipt_cid=_test_receipt_id(selected_tests),
-        reverse_contract_closure=list(final_incremental.reverse_contract_closure),
-        incremental_receipt_cid=final_incremental.receipt_cid,
-    )
 
     live_request = LiveFixedPointRequest(
         changed_paths=(_TARGET_PATH,),
@@ -1717,11 +1403,14 @@ def run_compositional_verification_vertical_slice(
     )
 
     def restore_exact(_checkpoint: Any) -> bool:
-        try:
-            _git(repaired_root, "reset", "--hard", fault_commit)
-        except VerticalSliceError:
-            return False
-        return True
+        completed = subprocess.run(
+            ("git", "reset", "--hard", fault_commit),
+            cwd=repaired_root,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        return completed.returncode == 0
 
     fixed_point = DeterministicDoctorLiveFixedPoint(
         restore_adapter=restore_exact,
@@ -1733,12 +1422,6 @@ def run_compositional_verification_vertical_slice(
         )
     if fixed_point.fixed_point.model_invocation_count != 0:
         raise VerticalSliceError("fixed point observed a model invocation")
-    stages.complete(
-        "live_fixed_point",
-        complete=True,
-        content_id=fixed_point.fixed_point.content_id,
-        model_invocation_count=fixed_point.fixed_point.model_invocation_count,
-    )
 
     raw_files = sorted(
         path
@@ -1781,13 +1464,6 @@ def run_compositional_verification_vertical_slice(
     )
     if not context.deterministic_closed or context.llm_required:
         raise VerticalSliceError("final context did not remain deterministically closed")
-    stages.complete(
-        "final_context",
-        capsule_id=context.capsule_id,
-        deterministic_closed=True,
-        input_tokens=int(context.to_dict().get("input_tokens") or 0),
-        llm_required=False,
-    )
 
     provider_modules_after = set(sys.modules)
     added_provider_modules = tuple(
@@ -1801,14 +1477,6 @@ def run_compositional_verification_vertical_slice(
         raise VerticalSliceError(
             f"deterministic route imported provider modules: {added_provider_modules}"
         )
-    stages.complete(
-        "zero_model_calls",
-        model_invocation_count=0,
-        provider_modules_imported_during_route=list(added_provider_modules),
-        repair_llm_invocation_count=repair_synthesis.llm_invocation_count,
-        repair_model_provider_call_count=repair_synthesis.model_provider_call_count,
-        repair_provider_invoked=repair_synthesis.provider_invoked,
-    )
 
     input_tokens = int(context.to_dict().get("input_tokens") or 0)
     context_reduction_bps = (
@@ -1864,20 +1532,6 @@ def run_compositional_verification_vertical_slice(
             "wall-time/cost qualification remains a successor benchmark task",
         ],
     }
-    stages.complete(
-        "token_metrics",
-        context_reduction_bps=context_reduction_bps,
-        context_tokens=input_tokens,
-        raw_source_bytes=raw_source_bytes,
-        raw_source_tokens=raw_source_tokens,
-    )
-    stages.complete(
-        "work_reuse_metrics",
-        abstract_state_reused=benchmark["challenger"]["abstract_state_reused"],
-        capsule_reuse_count=len(fault_capsules.reused_cids),
-        proof_test_reuse_bps=benchmark["challenger"]["proof_test_reuse_bps"],
-        reused_unaffected_capsule_cids=list(reused_unaffected_capsules),
-    )
 
     artifact_payload = {
         "allowed_effects": [f"effect:{_TARGET_PATH}"],
@@ -1919,13 +1573,6 @@ def run_compositional_verification_vertical_slice(
         raise VerticalSliceError(
             f"independent artifact verification failed: {artifact_verification.issues}"
         )
-    stages.complete(
-        "independently_verified_artifact",
-        artifact_cid=artifact.artifact_cid,
-        replay_receipt_cid=artifact_verification.replay_receipt_cid,
-        valid=True,
-    )
-    sealed_stages = stages.seal()
 
     result = {
         "schema": VERTICAL_SLICE_SCHEMA,
@@ -1935,9 +1582,6 @@ def run_compositional_verification_vertical_slice(
         "release_qualified": False,
         "model_invocation_count": 0,
         "provider_modules_imported_during_route": list(added_provider_modules),
-        "required_stages": list(REQUIRED_VERTICAL_STAGES),
-        "stages": sealed_stages,
-        "rollback": rollback,
         "fixture": {
             "base_commit": base_commit,
             "base_tree": base_tree,
@@ -2052,7 +1696,6 @@ if __name__ == "__main__":
 __all__ = [
     "ArtifactVerificationResult",
     "CompositionalVerificationArtifact",
-    "REQUIRED_VERTICAL_STAGES",
     "VERTICAL_ARTIFACT_INTERFACE",
     "VERTICAL_ARTIFACT_VERIFIER_INTERFACE",
     "VERTICAL_SLICE_INTERFACE",

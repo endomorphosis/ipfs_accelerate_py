@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import os
+import py_compile
 import shutil
 import signal
 import stat
@@ -69,6 +70,13 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+FRESH_RECOVERY_TEST_DUCKDB_RUNTIME_CID = (
+    "baguqeera6qddq7z7wmygdeohvgyareg4pivlffvcum5t3kkzma4l75qp5h7a"
+)
+FRESH_RECOVERY_TEST_PYTHON = "/usr/bin/python3.12"
+FRESH_RECOVERY_TEST_PYTHON_SHA256 = (
+    "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f"
+)
 KITA_CONFIG = (
     REPO_ROOT
     / "config/agent_supervisor_ipfs_kit_runtime_readiness_scheduler.json"
@@ -409,6 +417,291 @@ def _seed_configured_repo(tmp_path: Path) -> tuple[Path, Path]:
     )
     _git(repo, "commit", "-m", "add configured board")
     return repo, config_path
+
+
+def _seed_fresh_recovery_board(
+    tmp_path: Path,
+) -> tuple[Path, scheduler_module.ConfiguredBoard]:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    canonical_config_path = repo / scheduler_module.FRESH_RECOVERY_CONFIG_PATH
+    materializer_path = scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH
+    _write(repo / materializer_path, "raise SystemExit(99)\n")
+    _write(repo / "ipfs_accelerate_py/__init__.py", "\n")
+    _write(repo / "test/conftest.py", "\n")
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    payload["materializer_path"] = materializer_path
+    payload["fresh_generation_recovery"] = {
+        "schema": scheduler_module.FRESH_RECOVERY_POLICY_SCHEMA,
+        "source_generation": "lgcvf-run-v16",
+        "target_generation": scheduler_module.FRESH_RECOVERY_TARGET_GENERATION,
+        "duckdb_runtime_cid": FRESH_RECOVERY_TEST_DUCKDB_RUNTIME_CID,
+        "verification_python_executable": FRESH_RECOVERY_TEST_PYTHON,
+        "verification_python_executable_sha256": (
+            FRESH_RECOVERY_TEST_PYTHON_SHA256
+        ),
+    }
+    payload["runtime_paths"] = {
+        "root": "data/lgcvf/run-v17",
+        "state": "data/lgcvf/run-v17/state",
+        "worktrees": "data/lgcvf/run-v17/worktrees",
+        "merge_queue": "data/lgcvf/run-v17/merge-queue",
+        "logs": "data/lgcvf/run-v17/logs",
+    }
+    payload["protected_paths"] = [
+        scheduler_module.FRESH_RECOVERY_CONFIG_PATH
+        if item == "config/scheduler.json"
+        else item
+        for item in payload["protected_paths"]
+    ]
+    payload["protected_paths"].append(materializer_path)
+    _write(
+        canonical_config_path,
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+    )
+    _git(
+        repo,
+        "add",
+        scheduler_module.FRESH_RECOVERY_CONFIG_PATH,
+        materializer_path,
+        "ipfs_accelerate_py/__init__.py",
+        "test/conftest.py",
+    )
+    _git(repo, "commit", "-m", "declare initial recovery admission")
+    return repo, load_configured_board(canonical_config_path, repo_root=repo)
+
+
+def _commit_fresh_recovery_python_source(
+    repo: Path,
+    *,
+    repository_kind: str,
+) -> tuple[Path, Path, str]:
+    """Add one exact tracked Python source to the selected repository."""
+
+    if repository_kind == "accelerator":
+        target = repo
+        relative = "ipfs_accelerate_py/recovery_blob_guard.py"
+    else:
+        target = repo / "dependency"
+        relative = "recovery_blob_guard.py"
+    source = target / relative
+    _write(source, "SAFE = 1\n")
+    _git(target, "add", relative)
+    _git(target, "commit", "-m", "add recovery blob guard source")
+    if repository_kind == "nested":
+        _git(repo, "add", "dependency")
+        _git(repo, "commit", "-m", "advance recovery dependency source")
+    return target, source, relative
+
+
+def _seed_stripped_fresh_recovery_alias_board(
+    tmp_path: Path,
+) -> tuple[Path, scheduler_module.ConfiguredBoard, Path]:
+    """Build a marker-free profile whose paths resolve into protected run-v17."""
+
+    repo, protected_board = _seed_fresh_recovery_board(tmp_path)
+    payload = dict(protected_board.payload)
+    payload.pop("fresh_generation_recovery")
+    payload.pop("materializer_path")
+
+    protected_root = (
+        repo / scheduler_module.FRESH_RECOVERY_TARGET_RELATIVE_ROOT
+    )
+    alias_relative = Path("data/ignored-run-v18-alias")
+    alias_path = repo / alias_relative
+    alias_path.parent.mkdir(parents=True, exist_ok=True)
+    alias_path.symlink_to(os.path.relpath(protected_root, alias_path.parent))
+
+    runtime = dict(payload["runtime_paths"])
+    runtime.update(
+        {
+            "root": alias_relative.as_posix(),
+            "state": (alias_relative / "state").as_posix(),
+            "worktrees": (alias_relative / "worktrees").as_posix(),
+            "merge_queue": (alias_relative / "merge-queue").as_posix(),
+            "logs": (alias_relative / "logs").as_posix(),
+            "evidence": (alias_relative / "evidence").as_posix(),
+        }
+    )
+    payload["runtime_paths"] = runtime
+    program = {
+        "authority_mode": "embedded",
+        "task_source_kind": "duckdb",
+        "store_generation": "lgcvf-run-v18",
+        "export_profile": "lgcvf-run-v18",
+        "schema_revision": "test-operational-v1",
+        "failover_policy": "fail_closed",
+        "store_id": (alias_relative / "control.duckdb").as_posix(),
+        "event_store_path": (alias_relative / "events").as_posix(),
+        "runtime_registry_path": (alias_relative / "registry").as_posix(),
+        "worktree_root": (alias_relative / "worktrees").as_posix(),
+    }
+    payload["database_program"] = program
+
+    alternate_relative = Path("config/ignored-run-v18-scheduler.json")
+    payload["protected_paths"] = [
+        *payload["protected_paths"],
+        alternate_relative.as_posix(),
+    ]
+    alternate_config = repo / alternate_relative
+    _write(alternate_config, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _git(repo, "add", alias_relative.as_posix(), alternate_relative.as_posix())
+    _git(repo, "commit", "-m", "add stripped resolved-alias exploit fixture")
+    return (
+        repo,
+        load_configured_board(alternate_config, repo_root=repo),
+        protected_root,
+    )
+
+
+def _fresh_recovery_verification_report(
+    board: scheduler_module.ConfiguredBoard,
+) -> dict[str, Any]:
+    source_omission = scheduler_module._fresh_recovery_clean_source_identity(
+        board
+    )[4]
+    task_ids = (
+        "LGCVF-051",
+        "LGCVF-060",
+        "LGCVF-061",
+        "LGCVF-070",
+        "LGCVF-071",
+        "LGCVF-080",
+    )
+    evidence: dict[str, Any] = {
+        "schema": scheduler_module.FRESH_RECOVERY_PROJECTION_EVIDENCE_SCHEMA,
+        "source_binding_cid": scheduler_module._identity(
+            {"fixture": "recovery-source-binding"}
+        ),
+        "omission_root": source_omission["commitment_cid"],
+        "ordered_suites": [
+            {
+                "suite_id": "recovery_" + task_id.casefold().replace("-", "_"),
+                "task_id": task_id,
+                "task_cid": scheduler_module._identity(
+                    {"fixture_task": task_id}
+                ),
+                "projection_cid": scheduler_module._identity(
+                    {"fixture_projection": task_id}
+                ),
+                "copied_source_manifest_root": scheduler_module._identity(
+                    {"fixture_manifest": task_id}
+                ),
+            }
+            for task_id in task_ids
+        ],
+    }
+    evidence["commitment_cid"] = scheduler_module._identity(evidence)
+    report: dict[str, Any] = {
+        "schema": scheduler_module.FRESH_RECOVERY_VERIFICATION_SCHEMA,
+        "valid": True,
+        "verification_mode": "read_only",
+        "source_generation": "lgcvf-run-v16",
+        "target_generation": scheduler_module.FRESH_RECOVERY_TARGET_GENERATION,
+        "manifest_cid": "cid:recovery-manifest",
+        "receipt_cid": "cid:recovery-receipt",
+        "source_evidence_cid": "cid:source-evidence",
+        "duckdb_runtime_cid": FRESH_RECOVERY_TEST_DUCKDB_RUNTIME_CID,
+        "qualification_runtime_cid": "cid:qualification-runtime",
+        "qualification_runtime_evidence": {
+            "fixture": "qualification-runtime-evidence"
+        },
+        "qualification_runtime_evidence_cid": (
+            "cid:qualification-runtime-evidence"
+        ),
+        "materializer_zero_wx_policy": {"fixture": "zero-wx-policy"},
+        "materializer_zero_wx_policy_cid": "cid:zero-wx-policy",
+        "materializer_zero_wx_qualification_lifecycle": {
+            "fixture": "zero-wx-qualification"
+        },
+        "materializer_zero_wx_qualification_lifecycle_cid": (
+            "cid:zero-wx-qualification"
+        ),
+        "materializer_zero_wx_prepublication_lifecycle": {
+            "fixture": "zero-wx-prepublication"
+        },
+        "materializer_zero_wx_prepublication_lifecycle_cid": (
+            "cid:zero-wx-prepublication"
+        ),
+        "materializer_zero_wx_verification_lifecycle": {
+            "fixture": "zero-wx-verification"
+        },
+        "materializer_zero_wx_verification_lifecycle_cid": (
+            "cid:zero-wx-verification"
+        ),
+        "historical_postpublish_zero_wx_evidence": (
+            "not_persisted_not_reconstructed"
+        ),
+        "completed_task_ids": [
+            "LGCVF-001",
+            "LGCVF-002",
+            "LGCVF-010",
+            "LGCVF-020",
+            "LGCVF-030",
+            "LGCVF-040",
+            "LGCVF-050",
+            "LGCVF-051",
+            "LGCVF-060",
+            "LGCVF-061",
+            "LGCVF-070",
+            "LGCVF-071",
+            "LGCVF-080",
+        ],
+        "todo_task_ids": [
+            "LGCVF-081",
+            "LGCVF-090",
+            "LGCVF-091",
+            "LGCVF-100",
+            "LGCVF-101",
+            "LGCVF-102",
+            "LGCVF-110",
+            "LGCVF-111",
+            "LGCVF-112",
+            "LGCVF-113",
+            "LGCVF-120",
+            "LGCVF-122",
+            "LGCVF-124",
+        ],
+        "blocked_task_ids": ["LGCVF-121", "LGCVF-123"],
+        "completed_count": 13,
+        "todo_count": 13,
+        "blocked_count": 2,
+        "ready_task_ids": ["LGCVF-081"],
+        "validation_qualification_cid": "cid:validation-qualification",
+        "validation_projection_omission_commitment": source_omission,
+        "validation_projection_omission_root": source_omission[
+            "commitment_cid"
+        ],
+        "validation_projection_evidence_commitment": evidence,
+        "validation_projection_evidence_root": evidence["commitment_cid"],
+        "model_provider_route": "none",
+        "network_isolation_enforced": True,
+        "candidate_authored_validation": True,
+        "validation_completion_authoritative": False,
+        "task_implementation_complete": False,
+        "test_qualification_complete": False,
+        "objective_complete": False,
+        "release_qualified": False,
+        "production_authorized": False,
+        "source_database_statuses_read": False,
+        "synthetic_source_disposition": "quarantined_not_imported",
+        "operational_verification_root": "cid:operational-verification",
+        "stores_unchanged": True,
+    }
+    report["verification_root"] = scheduler_module._identity(report)
+    return report
+
+
+def _recovery_verifier_result(
+    report: dict[str, Any],
+    *,
+    returncode: int = 0,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        [sys.executable, "materializer.py", "verify"],
+        returncode,
+        json.dumps(report, sort_keys=True),
+        "",
+    )
 
 
 def _commit_v3_route_authorization(
@@ -1714,7 +2007,7 @@ def test_ordered_provider_contract_accepts_only_supported_reasoning_efforts(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.5",
+        "primary_model_id": "grok-4.6",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_exhausted",
@@ -2503,9 +2796,15 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
     monkeypatch: pytest.MonkeyPatch,
     bridge_scenario: str,
 ) -> None:
+    task_block = _task_block("TEST-A")
+    if bridge_scenario in {"no_change", "no_change_guard_denied"}:
+        task_block = task_block.replace(
+            "- Resource class: cpu-small",
+            "- No-change completion: allowed\n- Resource class: cpu-small",
+        )
     repo, _config_path, board = _seed_v3_task_repo(
         tmp_path,
-        (_task_block("TEST-A"),),
+        (task_block,),
     )
     if bridge_scenario in {"no_change", "no_change_guard_denied"}:
         _write(repo / "src/test-a.py", "VALUE = 'already-present'\n")
@@ -2779,6 +3078,108 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
             )
             assert commit_result["reason"] == "no_changes", commit_result
             branch = self._git_current_branch(workspace)
+            expected_findings = sorted(
+                [
+                    [
+                        "empty_patch",
+                        "patch",
+                        "candidate diff contains no file changes",
+                        "",
+                    ],
+                    [
+                        "missing_required_field",
+                        "structure",
+                        "structured proposal requires operations",
+                        "",
+                    ],
+                    [
+                        "missing_required_field",
+                        "structure",
+                        "structured proposal requires patch_text",
+                        "",
+                    ],
+                ]
+            )
+            empty_fingerprint = "sha256:" + hashlib.sha256(b"[]").hexdigest()
+            no_change_policy_gate = {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor/"
+                    "no-change-candidate-policy-gate@1"
+                ),
+                "attempted": True,
+                "accepted": True,
+                "reason": "empty_candidate_policy_admitted",
+                "completion_mode": "allowed",
+                "task_id": tasks[0].task_id,
+                "canonical_task_cid": self._canonical_ref(tasks[0]),
+                "proposal_id": "proposal:test-no-change",
+                "policy_id": "policy:test-no-change",
+                "proposal_receipt_id": "receipt:test-no-change",
+                "repository_tree_id": baseline,
+                "repository_id": "repository:test-no-change",
+                "baseline_id": baseline,
+                "context_id": "context:test-no-change",
+                "accepted_plan_id": "plan:test-no-change",
+                "objective_id": "objective:test-no-change",
+                "replay_nonce": "nonce:test-no-change",
+                "diff_digest": empty_fingerprint,
+                "candidate_fingerprint": empty_fingerprint,
+                "validation_plan_id": daemon_module.content_identity(
+                    [{"command": ["python", "-m", "pytest", "-q"]}]
+                ),
+                "expected_output_preflight_id": daemon_module.content_identity(
+                    {"expected_outputs": tasks[0].outputs}
+                ),
+                "proposal_collection_error": "",
+                "changed_paths": [],
+                "proposal_accepted": False,
+                "expected_findings": expected_findings,
+                "actual_findings": expected_findings,
+                "proof_authoritative": False,
+                "completion_authoritative": False,
+            }
+            no_change_policy_gate["gate_id"] = daemon_module.content_identity(
+                no_change_policy_gate
+            )
+            validation_result = {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+                "results": [],
+                "selection": {
+                    "scope": "pre_merge",
+                    "changed_files": [],
+                },
+                "no_change_policy_gate": no_change_policy_gate,
+                "proposal_gate": {
+                    "accepted": False,
+                    "changed_paths": [],
+                    "reason_codes": [
+                        "empty_patch",
+                        "missing_required_field",
+                    ],
+                    "proposal_id": no_change_policy_gate["proposal_id"],
+                    "policy_id": no_change_policy_gate["policy_id"],
+                    "receipt_id": no_change_policy_gate[
+                        "proposal_receipt_id"
+                    ],
+                    "repository_tree_id": baseline,
+                },
+                "candidate_binding": {
+                    "verified": True,
+                    "expected_fingerprint": empty_fingerprint,
+                    "current_fingerprint": empty_fingerprint,
+                },
+            }
+            gate_id = str(no_change_policy_gate["gate_id"])
+            self._implementation_no_change_policy_gates[gate_id] = dict(
+                no_change_policy_gate
+            )
+            authoritative_gate = self._take_issued_no_change_policy_gate(
+                validation_result
+            )
+            assert authoritative_gate == no_change_policy_gate
+            assert gate_id not in self._implementation_no_change_policy_gates
             captured["no_change_guard"] = (
                 self._validated_no_change_completion_guard(
                     baseline_ref=baseline,
@@ -2789,16 +3190,11 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
                     ),
                     expected_branch=branch,
                     current_branch=branch,
-                    validation_result={
-                        "attempted": True,
-                        "passed": True,
-                        "returncode": 0,
-                        "results": [],
-                        "selection": {
-                            "scope": "pre_merge",
-                            "changed_files": [],
-                        },
-                    },
+                    validation_result=validation_result,
+                    require_no_change_policy_gate=True,
+                    expected_task_id=tasks[0].task_id,
+                    expected_task_cid=self._canonical_ref(tasks[0]),
+                    authoritative_no_change_policy_gate=authoritative_gate,
                 )
             )
         assert self._release_implementation_task_claim(
@@ -2992,6 +3388,26 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         assert "provider_result" not in captured
     else:
         assert captured["provider_result"] == "provider-effect-called"
+    if bridge_scenario == "no_change":
+        assert captured["no_change_guard"] == {
+            "allowed": True,
+            "reasons": [],
+            "baseline_ref": receipt.slice_manifest.source_head,
+            "current_head": receipt.slice_manifest.source_head,
+            "expected_branch": "implementation/execution-lease-bridge",
+            "current_branch": "implementation/execution-lease-bridge",
+            "validated_changed_files": [],
+            "no_change_policy_gate_id": str(
+                captured["no_change_guard"]["no_change_policy_gate_id"]
+            ),
+            "proposal_receipt_id": "receipt:test-no-change",
+        }
+        assert captured["no_change_guard"]["no_change_policy_gate_id"]
+    elif bridge_scenario == "no_change_guard_denied":
+        denied_guard = captured["no_change_guard"]
+        assert isinstance(denied_guard, dict)
+        assert denied_guard["allowed"] is False
+        assert denied_guard["reasons"] == ["head_changed_before_commit"]
     execution_store = PlanRevisionStore(store_path)
     with execution_store._thread_lock:
         with execution_store._guard():
@@ -7201,6 +7617,1589 @@ def test_v3_coordinator_replans_second_wave_from_new_head_and_revision(
     assert launched[0]["revision_cid"] == launched[1]["revision_cid"]
     assert launched[1]["source_head"] != launched[2]["source_head"]
     assert launched[1]["revision_cid"] != launched[2]["revision_cid"]
+
+
+def test_fresh_recovery_policy_schema_matches_canonical_scheduler() -> None:
+    """Supervisor admission must accept the frozen run-v17 recovery policy."""
+
+    root = Path(__file__).resolve().parents[2]
+    payload = json.loads(
+        (
+            root
+            / "config/agent_supervisor_logic_governed_compositional_verification_fabric_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    policy = payload["fresh_generation_recovery"]
+    assert policy["schema"] == scheduler_module.FRESH_RECOVERY_POLICY_SCHEMA
+    assert (
+        policy["target_generation"]
+        == scheduler_module.FRESH_RECOVERY_TARGET_GENERATION
+    )
+
+
+def test_fresh_recovery_initial_admission_precedes_launch_rendering(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    report = _fresh_recovery_verification_report(board)
+    calls: list[tuple[Path, Path]] = []
+
+    def admit(
+        observed_board: scheduler_module.ConfiguredBoard,
+        materializer_path: Path,
+        materializer_bytes: bytes,
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append((observed_board.repo_root, materializer_path))
+        assert materializer_bytes == materializer_path.read_bytes()
+        return _recovery_verifier_result(report)
+
+    monkeypatch.setattr(scheduler_module, "_run_fresh_recovery_verifier", admit)
+    launch = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=False,
+        stamp="20260819T-initial-recovery",
+    )
+
+    assert calls == [
+        (repo, repo / scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH)
+    ]
+    assert launch["fresh_generation_recovery_admission"] == {
+        "schema": scheduler_module.FRESH_RECOVERY_VERIFICATION_SCHEMA,
+        "target_generation": scheduler_module.FRESH_RECOVERY_TARGET_GENERATION,
+        "duckdb_runtime_cid": report["duckdb_runtime_cid"],
+        "ready_task_ids": ["LGCVF-081"],
+        "model_provider_route": "none",
+        "validation_completion_authoritative": False,
+        "validation_projection_omission_root": report[
+            "validation_projection_omission_root"
+        ],
+        "validation_projection_evidence_root": report[
+            "validation_projection_evidence_root"
+        ],
+        "manifest_cid": report["manifest_cid"],
+        "receipt_cid": report["receipt_cid"],
+        "operational_verification_root": report["operational_verification_root"],
+        "verification_root": report["verification_root"],
+        "stores_unchanged": True,
+    }
+    assert not board.path(board.runtime_paths["root"]).exists()
+
+
+def test_fresh_recovery_private_primary_gid_requires_one_principal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    account = SimpleNamespace(pw_uid=1200, pw_gid=1300, pw_name="recovery")
+    group = SimpleNamespace(gr_gid=1300, gr_mem=[])
+    monkeypatch.setattr(scheduler_module.os, "geteuid", lambda: 1200)
+    monkeypatch.setattr(scheduler_module.os, "getegid", lambda: 1300)
+    monkeypatch.setattr(scheduler_module.pwd, "getpwuid", lambda _uid: account)
+    monkeypatch.setattr(scheduler_module.pwd, "getpwall", lambda: [account])
+    monkeypatch.setattr(scheduler_module.grp, "getgrgid", lambda _gid: group)
+
+    assert scheduler_module._fresh_recovery_private_primary_gid() == 1300
+
+    monkeypatch.setattr(
+        scheduler_module.grp,
+        "getgrgid",
+        lambda _gid: SimpleNamespace(gr_gid=1300, gr_mem=["second-writer"]),
+    )
+    with pytest.raises(ConfiguredBoardError, match="not provably private"):
+        scheduler_module._fresh_recovery_private_primary_gid()
+
+    monkeypatch.setattr(scheduler_module.grp, "getgrgid", lambda _gid: group)
+    monkeypatch.setattr(
+        scheduler_module.pwd,
+        "getpwall",
+        lambda: [
+            account,
+            SimpleNamespace(pw_uid=1400, pw_gid=1300, pw_name="other"),
+        ],
+    )
+    with pytest.raises(ConfiguredBoardError, match="not provably private"):
+        scheduler_module._fresh_recovery_private_primary_gid()
+
+
+def test_fresh_recovery_verifier_uses_isolated_python_and_closed_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    materializer = repo / scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH
+    report = _fresh_recovery_verification_report(board)
+    observed: dict[str, Any] = {}
+    monkeypatch.setattr(
+        scheduler_module,
+        "_sanitized_git_environment",
+        lambda: {"PATH": "/usr/bin:/bin", "LANG": "C"},
+    )
+
+    def run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        observed["argv"] = argv
+        observed["kwargs"] = kwargs
+        pycache_root = Path(argv[8])
+        pycache_status = os.lstat(pycache_root)
+        assert stat.S_ISDIR(pycache_status.st_mode)
+        assert pycache_status.st_uid == os.geteuid()
+        assert stat.S_IMODE(pycache_status.st_mode) == 0o700
+        assert not any(pycache_root.iterdir())
+        observed["pycache_root"] = pycache_root
+        interpreter_fd, materializer_fd = kwargs["pass_fds"]
+        interpreter = os.fstat(interpreter_fd)
+        assert stat.S_ISREG(interpreter.st_mode)
+        assert interpreter.st_uid == 0
+        assert interpreter.st_nlink == 1
+        assert stat.S_IMODE(interpreter.st_mode) == 0o755
+        sealed = os.fstat(materializer_fd)
+        assert stat.S_ISREG(sealed.st_mode)
+        assert stat.S_IMODE(sealed.st_mode) == 0o400
+        assert os.pread(materializer_fd, sealed.st_size, 0) == materializer.read_bytes()
+        expected_seals = (
+            scheduler_module.fcntl.F_SEAL_SEAL
+            | scheduler_module.fcntl.F_SEAL_SHRINK
+            | scheduler_module.fcntl.F_SEAL_GROW
+            | scheduler_module.fcntl.F_SEAL_WRITE
+        )
+        assert (
+            scheduler_module.fcntl.fcntl(
+                materializer_fd,
+                scheduler_module.fcntl.F_GET_SEALS,
+            )
+            == expected_seals
+        )
+        return _recovery_verifier_result(report)
+
+    monkeypatch.setattr(scheduler_module.subprocess, "run", run)
+
+    completed = scheduler_module._run_fresh_recovery_verifier(
+        board,
+        materializer,
+        materializer.read_bytes(),
+    )
+
+    assert completed.returncode == 0
+    assert observed["argv"] == [
+        FRESH_RECOVERY_TEST_PYTHON,
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        scheduler_module.FRESH_RECOVERY_MATERIALIZER_BOOTSTRAP,
+        str(materializer),
+        str(observed["kwargs"]["pass_fds"][1]),
+        str(observed["pycache_root"]),
+        "verify",
+    ]
+    interpreter_fd, materializer_fd = observed["kwargs"]["pass_fds"]
+    assert observed["kwargs"]["executable"] == f"/proc/self/fd/{interpreter_fd}"
+    assert observed["kwargs"]["pass_fds"] == (
+        interpreter_fd,
+        materializer_fd,
+    )
+    assert observed["kwargs"]["cwd"] == repo
+    assert observed["kwargs"]["env"] == {
+        "PATH": "/usr/bin:/bin",
+        "LANG": "C",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONHASHSEED": "0",
+        "PYTHONNOUSERSITE": "1",
+    }
+    assert observed["kwargs"]["stdin"] is subprocess.DEVNULL
+    assert observed["kwargs"]["capture_output"] is True
+    assert not observed["pycache_root"].exists()
+
+
+@pytest.mark.parametrize("failure", ("temporary_directory", "pycache_lstat"))
+def test_fresh_recovery_private_pycache_setup_failure_is_typed_rejection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    _repo, board = _seed_fresh_recovery_board(tmp_path)
+    real_lstat = scheduler_module.os.lstat
+
+    if failure == "temporary_directory":
+
+        def unavailable_tempdir(*_args: Any, **_kwargs: Any) -> None:
+            raise OSError("private cache unavailable")
+
+        monkeypatch.setattr(
+            scheduler_module.tempfile,
+            "TemporaryDirectory",
+            unavailable_tempdir,
+        )
+    else:
+        failed = False
+
+        def unavailable_cache_lstat(
+            path: os.PathLike[str] | str,
+            *args: Any,
+            **kwargs: Any,
+        ) -> os.stat_result:
+            nonlocal failed
+            if (
+                not failed
+                and Path(path).name.startswith("lgcvf-recovery-pycache-")
+            ):
+                failed = True
+                raise OSError("private cache identity unavailable")
+            return real_lstat(path, *args, **kwargs)
+
+        monkeypatch.setattr(scheduler_module.os, "lstat", unavailable_cache_lstat)
+
+    result = preflight_configured_board(board)
+    admission = next(
+        item
+        for item in result["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+
+    assert result["valid"] is False
+    assert admission["passed"] is False
+    assert "initial launch admission failed" in admission["detail"]
+    assert "did not emit exactly one JSON object" in admission["detail"]
+    assert not board.path(board.runtime_paths["root"]).exists()
+
+
+def test_fresh_recovery_launch_ignores_hostile_user_site_startup_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    materializer = repo / scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH
+    _write(
+        materializer,
+        "import json\n"
+        "import os\n"
+        "import sys\n"
+        f"assert sys.executable == {FRESH_RECOVERY_TEST_PYTHON!r}\n"
+        "assert sys.flags.isolated == 1\n"
+        "assert sys.flags.no_site == 1\n"
+        "assert sys.flags.dont_write_bytecode == 1\n"
+        "assert sys.flags.safe_path is True\n"
+        "assert sys.pycache_prefix is not None\n"
+        f"assert not sys.pycache_prefix.startswith({str(repo)!r})\n"
+        "assert 'sitecustomize' not in sys.modules\n"
+        "assert 'usercustomize' not in sys.modules\n"
+        "assert 'duckdb' not in sys.modules\n"
+        "print(os.environ['RECOVERY_TEST_REPORT'])\n",
+    )
+    _git(repo, "add", scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH)
+    _git(repo, "commit", "-m", "install strict verifier fixture")
+    report = _fresh_recovery_verification_report(board)
+
+    marker = tmp_path / "hostile-startup-executed"
+    user_site = (
+        tmp_path
+        / "hostile-user-base"
+        / "lib"
+        / f"python{sys.version_info.major}.{sys.version_info.minor}"
+        / "site-packages"
+    )
+    _write(
+        user_site / "sitecustomize.py",
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
+    )
+    _write(
+        user_site / "usercustomize.py",
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('usercustomize', encoding='utf-8')\n",
+    )
+    _write(
+        user_site / "hostile.pth",
+        "import pathlib; "
+        f"pathlib.Path({str(marker)!r}).write_text('pth', encoding='utf-8')\n",
+    )
+    _write(
+        user_site / "duckdb.py",
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('shadow', encoding='utf-8')\n",
+    )
+    startup = tmp_path / "hostile-startup.py"
+    _write(
+        startup,
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('startup', encoding='utf-8')\n",
+    )
+    base_environment = scheduler_module._sanitized_git_environment()
+    monkeypatch.setattr(
+        scheduler_module,
+        "_sanitized_git_environment",
+        lambda: {
+            **base_environment,
+            "PYTHONUSERBASE": str(user_site.parents[2]),
+            "PYTHONPATH": str(user_site),
+            "PYTHONSTARTUP": str(startup),
+            "RECOVERY_TEST_REPORT": json.dumps(report, sort_keys=True),
+        },
+    )
+
+    launch = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=False,
+        stamp="20260820T-isolated-recovery-verifier",
+    )
+
+    assert launch["fresh_generation_recovery_admission"]["verification_root"] == (
+        report["verification_root"]
+    )
+    assert not marker.exists()
+
+
+def test_fresh_recovery_verifier_executes_sealed_snapshot_after_path_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    materializer = repo / scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH
+    report = _fresh_recovery_verification_report(board)
+    marker = tmp_path / "replacement-materializer-executed"
+    _write(
+        materializer,
+        "import json\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        f"assert Path(__file__).resolve() == Path({str(materializer)!r}).resolve()\n"
+        "assert sys.argv[1:] == ['verify']\n"
+        f"print(json.dumps({report!r}, sort_keys=True))\n",
+    )
+    snapshot = materializer.read_bytes()
+    real_run = subprocess.run
+
+    def swap_then_run(
+        argv: list[str],
+        **kwargs: Any,
+    ) -> subprocess.CompletedProcess[str]:
+        _write(
+            materializer,
+            "from pathlib import Path\n"
+            f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
+        )
+        return real_run(argv, **kwargs)
+
+    monkeypatch.setattr(scheduler_module.subprocess, "run", swap_then_run)
+    completed = scheduler_module._run_fresh_recovery_verifier(
+        board,
+        materializer,
+        snapshot,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == report
+    assert not marker.exists()
+
+
+def test_fresh_recovery_launch_rejects_source_drift_after_verification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, board = _seed_fresh_recovery_board(tmp_path)
+    materializer = board.path(scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH)
+    report = _fresh_recovery_verification_report(board)
+    rendered = False
+
+    def drift(
+        _board: scheduler_module.ConfiguredBoard,
+        observed_path: Path,
+        _materializer_bytes: bytes,
+    ) -> subprocess.CompletedProcess[str]:
+        assert observed_path == materializer
+        _write(observed_path, "raise SystemExit('replacement')\n")
+        return _recovery_verifier_result(report)
+
+    def rendering_tripwire(*_args: Any, **_kwargs: Any) -> tuple[str, ...]:
+        nonlocal rendered
+        rendered = True
+        raise AssertionError("source drift reached daemon rendering")
+
+    monkeypatch.setattr(scheduler_module, "_run_fresh_recovery_verifier", drift)
+    monkeypatch.setattr(
+        scheduler_module,
+        "configured_board_common_args",
+        rendering_tripwire,
+    )
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="source changed during public verification",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260820T-recovery-source-drift",
+        )
+    assert rendered is False
+
+
+@pytest.mark.parametrize("entrypoint", ("preflight", "launch"))
+@pytest.mark.parametrize("dirty_repository", ("accelerator", "nested"))
+def test_fresh_recovery_rejects_dirty_outer_or_nested_source_before_verifier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+    dirty_repository: str,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    dependency = repo / "ipfs_accelerate_py/recovery_verifier_dependency.py"
+    _write(dependency, "VALUE = 'tracked'\n")
+    materializer = repo / scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH
+    _write(
+        materializer,
+        "from ipfs_accelerate_py import recovery_verifier_dependency\n"
+        "raise SystemExit(recovery_verifier_dependency.VALUE != 'tracked')\n",
+    )
+    _git(
+        repo,
+        "add",
+        dependency.relative_to(repo).as_posix(),
+        materializer.relative_to(repo).as_posix(),
+    )
+    _git(repo, "commit", "-m", "add transitive recovery verifier source")
+    if dirty_repository == "accelerator":
+        _write(dependency, "VALUE = 'dirty'\n")
+    else:
+        _write(repo / "dependency/dependency.txt", "dirty nested source\n")
+
+    invoked = False
+
+    def verifier_tripwire(*_args: Any) -> subprocess.CompletedProcess[str]:
+        nonlocal invoked
+        invoked = True
+        raise AssertionError("dirty source reached recovery verifier")
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        verifier_tripwire,
+    )
+    if entrypoint == "preflight":
+        result = preflight_configured_board(board)
+        admission = next(
+            item
+            for item in result["checks"]
+            if item["name"] == "fresh_generation_recovery_admission"
+        )
+        assert result["valid"] is False
+        assert admission["passed"] is False
+        assert "clean, current tracked outer/nested source forest" in admission[
+            "detail"
+        ]
+    else:
+        monkeypatch.setattr(
+            scheduler_module,
+            "configured_board_common_args",
+            lambda *_args, **_kwargs: pytest.fail(
+                "dirty source reached daemon rendering"
+            ),
+        )
+        with pytest.raises(
+            ConfiguredBoardError,
+            match="clean, current tracked outer/nested source forest",
+        ):
+            configured_board_launch_plan(
+                board,
+                implement=True,
+                detach=False,
+                stamp="20260820T-dirty-recovery-source",
+            )
+    assert invoked is False
+    assert not board.path(board.runtime_paths["root"]).exists()
+
+
+@pytest.mark.parametrize("repository_kind", ("accelerator", "nested"))
+@pytest.mark.parametrize("substitution_kind", ("replacement_ref", "graft"))
+def test_fresh_recovery_preflight_rejects_git_object_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repository_kind: str,
+    substitution_kind: str,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    target = repo if repository_kind == "accelerator" else repo / "dependency"
+    head = _git(target, "rev-parse", "HEAD").stdout.strip()
+    common_dir = Path(
+        _git(
+            target,
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ).stdout.strip()
+    )
+    if substitution_kind == "replacement_ref":
+        tree = _git(target, "rev-parse", "HEAD^{tree}").stdout.strip()
+        replacement = _git(
+            target,
+            "commit-tree",
+            tree,
+            "-m",
+            "untrusted replacement commit",
+        ).stdout.strip()
+        _git(target, "replace", head, replacement)
+        _git(target, "pack-refs", "--all", "--prune")
+        assert _git(target, "replace", "-l").stdout.strip() == head
+        loose_replacement_directory = common_dir / "refs/replace"
+        if loose_replacement_directory.exists():
+            assert not tuple(loose_replacement_directory.iterdir())
+            loose_replacement_directory.rmdir()
+        assert not loose_replacement_directory.exists()
+    else:
+        _write(common_dir / "info/grafts", f"{head}\n")
+
+    invoked = False
+
+    def verifier_tripwire(*_args: Any) -> subprocess.CompletedProcess[str]:
+        nonlocal invoked
+        invoked = True
+        raise AssertionError("Git object substitution reached recovery verifier")
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        verifier_tripwire,
+    )
+    result = preflight_configured_board(board)
+    admission = next(
+        item
+        for item in result["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+
+    assert result["valid"] is False
+    assert admission["passed"] is False
+    assert "Git object substitution metadata is present" in admission["detail"]
+    assert invoked is False
+    assert not board.path(board.runtime_paths["root"]).exists()
+    assert scheduler_module._sanitized_git_environment()[
+        "GIT_NO_REPLACE_OBJECTS"
+    ] == "1"
+
+
+@pytest.mark.parametrize("repository_kind", ("accelerator", "nested"))
+def test_fresh_recovery_rejects_lying_fsmonitor_before_verifier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repository_kind: str,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    target, source, _relative = _commit_fresh_recovery_python_source(
+        repo,
+        repository_kind=repository_kind,
+    )
+    common_dir = Path(
+        _git(
+            target,
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ).stdout.strip()
+    )
+    hook = common_dir / "lying-fsmonitor"
+    _write(
+        hook,
+        "#!/bin/sh\n"
+        "if [ \"$1\" = \"2\" ]; then\n"
+        "  /usr/bin/printf 'unchanged-token\\000'\n"
+        "else\n"
+        "  /usr/bin/printf 'unchanged-token\\n'\n"
+        "fi\n",
+    )
+    hook.chmod(0o700)
+    _git(target, "config", "core.fsmonitor", str(hook))
+    _git(target, "update-index", "--fsmonitor")
+    assert _git(target, "status", "--porcelain=v1").stdout == ""
+
+    before = source.stat()
+    _write(source, "EVIL = 1\n")
+    os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert source.stat().st_size == before.st_size
+    assert source.stat().st_mtime_ns == before.st_mtime_ns
+    assert _git(target, "status", "--porcelain=v1").stdout == ""
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("lying fsmonitor reached recovery verifier"),
+    )
+    result = preflight_configured_board(board)
+    admission = next(
+        item
+        for item in result["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+    assert result["valid"] is False
+    assert admission["passed"] is False
+    assert (
+        "checkout is not clean" in admission["detail"]
+        or "raw Git blob differs" in admission["detail"]
+    )
+    assert not board.path(board.runtime_paths["root"]).exists()
+
+
+@pytest.mark.parametrize("repository_kind", ("accelerator", "nested"))
+def test_fresh_recovery_rejects_info_attributes_filter_without_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repository_kind: str,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    target, source, relative = _commit_fresh_recovery_python_source(
+        repo,
+        repository_kind=repository_kind,
+    )
+    common_dir = Path(
+        _git(
+            target,
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ).stdout.strip()
+    )
+    clean_filter = common_dir / "recovery-clean-filter"
+    execution_marker = tmp_path / f"{repository_kind}-clean-filter-executed"
+    _write(
+        clean_filter,
+        "#!/bin/sh\n"
+        "/bin/cat >/dev/null\n"
+        f"/usr/bin/touch {execution_marker}\n"
+        "/usr/bin/printf 'SAFE = 1\\n'\n",
+    )
+    clean_filter.chmod(0o700)
+    _write(
+        common_dir / "info/attributes",
+        f"{relative} filter=recovery-clean\n",
+    )
+    _git(target, "config", "filter.recovery-clean.clean", str(clean_filter))
+    _git(target, "config", "filter.recovery-clean.smudge", "cat")
+    _git(target, "config", "filter.recovery-clean.required", "true")
+
+    before = source.stat()
+    _write(source, "EVIL = 1\n")
+    os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+    after = source.stat()
+    assert after.st_size == before.st_size
+    assert after.st_mtime_ns == before.st_mtime_ns
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("clean-filter source reached recovery verifier"),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_git",
+        lambda *_args, **_kwargs: pytest.fail(
+            "generic Git probe ran after protected admission failed"
+        ),
+    )
+    assert not execution_marker.exists()
+    result = preflight_configured_board(board)
+    admission = next(
+        item
+        for item in result["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+    assert result["valid"] is False
+    assert admission["passed"] is False
+    assert "Git filter execution metadata is present" in admission["detail"]
+    assert [item["name"] for item in result["checks"]] == [
+        "fresh_generation_recovery_admission"
+    ]
+    assert not execution_marker.exists()
+    assert not board.path(board.runtime_paths["root"]).exists()
+
+
+@pytest.mark.parametrize("repository_kind", ("accelerator", "nested"))
+def test_fresh_recovery_rejects_same_stat_raw_blob_when_status_lies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repository_kind: str,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    _target, source, _relative = _commit_fresh_recovery_python_source(
+        repo,
+        repository_kind=repository_kind,
+    )
+    before = source.stat()
+    _write(source, "EVIL = 1\n")
+    os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+    after = source.stat()
+    assert after.st_size == before.st_size
+    assert after.st_mtime_ns == before.st_mtime_ns
+
+    real_git_run = scheduler_module._git_run
+
+    def status_lies(
+        argv: Any,
+        *,
+        cwd: Path,
+        timeout: float = 120.0,
+    ) -> subprocess.CompletedProcess[str]:
+        if argv and argv[0] == "status":
+            return subprocess.CompletedProcess(
+                ["/usr/bin/git", *argv],
+                0,
+                "",
+                "",
+            )
+        return real_git_run(argv, cwd=cwd, timeout=timeout)
+
+    monkeypatch.setattr(scheduler_module, "_git_run", status_lies)
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("same-stat source reached recovery verifier"),
+    )
+    result = preflight_configured_board(board)
+    admission = next(
+        item
+        for item in result["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+    assert result["valid"] is False
+    assert admission["passed"] is False
+    assert "raw Git blob differs" in admission["detail"]
+    assert not board.path(board.runtime_paths["root"]).exists()
+
+
+def test_fresh_recovery_launch_rejects_nested_source_drift_after_verification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    report = _fresh_recovery_verification_report(board)
+    rendered = False
+
+    def drift(
+        _board: scheduler_module.ConfiguredBoard,
+        _observed_path: Path,
+        _materializer_bytes: bytes,
+    ) -> subprocess.CompletedProcess[str]:
+        _write(repo / "dependency/dependency.txt", "changed by verifier\n")
+        return _recovery_verifier_result(report)
+
+    def rendering_tripwire(*_args: Any, **_kwargs: Any) -> tuple[str, ...]:
+        nonlocal rendered
+        rendered = True
+        raise AssertionError("nested source drift reached daemon rendering")
+
+    monkeypatch.setattr(scheduler_module, "_run_fresh_recovery_verifier", drift)
+    monkeypatch.setattr(
+        scheduler_module,
+        "configured_board_common_args",
+        rendering_tripwire,
+    )
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="source changed during public verification",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260820T-nested-recovery-source-drift",
+        )
+    assert rendered is False
+
+
+def test_fresh_recovery_rejects_unsafe_or_changed_import_source_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    source = repo / "ipfs_accelerate_py/__init__.py"
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("unsafe source mode reached verifier"),
+    )
+    source.chmod(0o666)
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="unsafe writable mode",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260820T-unsafe-recovery-source-mode",
+        )
+
+    source.chmod(0o644)
+    report = _fresh_recovery_verification_report(board)
+
+    def change_metadata(
+        *_args: Any,
+    ) -> subprocess.CompletedProcess[str]:
+        source.chmod(0o600)
+        return _recovery_verifier_result(report)
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        change_metadata,
+    )
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="source changed during public verification",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260820T-recovery-source-metadata-drift",
+        )
+
+
+@pytest.mark.parametrize("index_flag", ("--assume-unchanged", "--skip-worktree"))
+def test_fresh_recovery_rejects_hidden_nested_index_state_before_verifier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    index_flag: str,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    nested = repo / "dependency"
+    _git(nested, "update-index", index_flag, "dependency.txt")
+    _write(nested / "dependency.txt", "hidden nested source mutation\n")
+    assert not _git(
+        nested,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+    ).stdout
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("hidden nested mutation reached verifier"),
+    )
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="Git index contains an exceptional tracked entry",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260820T-hidden-nested-index-state",
+        )
+
+
+@pytest.mark.parametrize("suffix", (".pyc", ".so"))
+def test_fresh_recovery_rejects_ignored_nested_import_shadow_before_verifier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    suffix: str,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    nested = repo / "dependency"
+    _write(nested / ".gitignore", "*.pyc\n*.so\n")
+    _git(nested, "add", ".gitignore")
+    _git(nested, "commit", "-m", "ignore nested adversarial shadows")
+    _git(repo, "add", "dependency")
+    _git(repo, "commit", "-m", "advance nested shadow fixture gitlink")
+    (nested / f"ignored_nested_shadow{suffix}").write_bytes(b"shadow\n")
+    assert not _git(
+        nested,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+    ).stdout
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("ignored nested shadow reached verifier"),
+    )
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match=(
+            "recovery import inventory contains (?:adjacent bytecode|"
+            "an untracked native extension)"
+        ),
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260820T-ignored-nested-import-shadow",
+        )
+
+
+@pytest.mark.parametrize(
+    "relative",
+    (
+        "test/ignored_recovery_helper.py",
+        "test/ignored_recovery_helper.so",
+        "conftest.py",
+    ),
+)
+def test_fresh_recovery_rejects_ignored_test_or_root_import_shadow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relative: str,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    _write(
+        repo / ".gitignore",
+        "test/ignored_recovery_helper.py\n"
+        "test/ignored_recovery_helper.so\n"
+        "conftest.py\n",
+    )
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "ignore adversarial test import shadows")
+    (repo / relative).write_bytes(b"adversarial ignored test import shadow\n")
+    assert not _git(
+        repo,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+    ).stdout
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("ignored test shadow reached verifier"),
+    )
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match=(
+            "recovery (?:root )?import inventory contains "
+            "(?:untracked Python source|an untracked native extension)"
+        ),
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260820T-ignored-test-import-shadow",
+        )
+
+
+def test_fresh_recovery_admits_head_bound_nested_nonimport_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    nested = repo / "dependency"
+    (nested / "dataset-fixture-link").symlink_to("dependency.txt")
+    _git(nested, "add", "dataset-fixture-link")
+    _git(nested, "commit", "-m", "add nested non-import symlink")
+    _git(repo, "add", "dependency")
+    _git(repo, "commit", "-m", "advance nested symlink fixture gitlink")
+    report = _fresh_recovery_verification_report(board)
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: _recovery_verifier_result(report),
+    )
+
+    launch = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=False,
+        stamp="20260820T-head-bound-nested-symlink",
+    )
+
+    assert launch["fresh_generation_recovery_admission"]["verification_root"] == (
+        report["verification_root"]
+    )
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    (
+        ".py",
+        ".pyc",
+        ".pyo",
+        ".so",
+        ".cpython-312-x86_64-linux-gnu.so",
+    ),
+)
+def test_fresh_recovery_rejects_ignored_import_shadow_before_verifier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    suffix: str,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    _write(repo / ".gitignore", "*.py\n*.pyc\n*.pyo\n*.so\n")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "ignore adversarial import shadows")
+    shadow = repo / "ipfs_accelerate_py" / f"ignored_shadow{suffix}"
+    shadow.write_bytes(b"adversarial ignored import shadow\n")
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("ignored import shadow reached verifier"),
+    )
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match=(
+            "recovery import inventory contains (?:untracked Python source|"
+            "adjacent bytecode|an untracked native extension)"
+        ),
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260820T-ignored-import-shadow",
+        )
+
+
+def test_fresh_recovery_private_pycache_makes_valid_ignored_bytecode_inert(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    marker = tmp_path / "ignored-bytecode-executed"
+    dependency = repo / "ipfs_accelerate_py/recovery_cached_dependency.py"
+    malicious = (
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n"
+        "VALUE = 'malicious'\n"
+    )
+    benign_prefix = "VALUE = 'benign'\n"
+    assert len(benign_prefix.encode()) + 2 <= len(malicious.encode())
+    benign = (
+        benign_prefix
+        + "#"
+        + " " * (len(malicious.encode()) - len(benign_prefix.encode()) - 2)
+        + "\n"
+    )
+    assert len(benign.encode()) == len(malicious.encode())
+    _write(dependency, malicious)
+    fixed_timestamp = 1_700_000_000
+    os.utime(dependency, (fixed_timestamp, fixed_timestamp))
+    compiled_bytecode = Path(
+        py_compile.compile(
+            str(dependency),
+            doraise=True,
+            invalidation_mode=py_compile.PycInvalidationMode.TIMESTAMP,
+        )
+    )
+    assert compiled_bytecode.is_file()
+    _write(dependency, benign)
+    os.utime(dependency, (fixed_timestamp, fixed_timestamp))
+
+    materializer = repo / scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH
+    _write(
+        materializer,
+        "import json\n"
+        "import os\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "sys.path.insert(0, str(Path(__file__).resolve().parents[1]))\n"
+        "from ipfs_accelerate_py import recovery_cached_dependency\n"
+        "assert recovery_cached_dependency.VALUE == 'benign'\n"
+        "print(os.environ['RECOVERY_TEST_REPORT'])\n",
+    )
+    _write(repo / ".gitignore", "__pycache__/\n*.pyc\n")
+    _git(
+        repo,
+        "add",
+        ".gitignore",
+        dependency.relative_to(repo).as_posix(),
+        materializer.relative_to(repo).as_posix(),
+    )
+    _git(repo, "commit", "-m", "add ignored-bytecode recovery fixture")
+    assert not _git(
+        repo,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+    ).stdout
+    report = _fresh_recovery_verification_report(board)
+    base_environment = scheduler_module._sanitized_git_environment()
+    monkeypatch.setattr(
+        scheduler_module,
+        "_sanitized_git_environment",
+        lambda: {
+            **base_environment,
+            "RECOVERY_TEST_REPORT": json.dumps(report, sort_keys=True),
+        },
+    )
+
+    launch = configured_board_launch_plan(
+        board,
+        implement=True,
+        detach=False,
+        stamp="20260820T-private-recovery-pycache",
+    )
+
+    assert launch["fresh_generation_recovery_admission"]["verification_root"] == (
+        report["verification_root"]
+    )
+    assert not marker.exists()
+
+
+def test_fresh_recovery_verifier_rejects_wrong_interpreter_before_subprocess(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    materializer = repo / scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH
+    invoked = False
+
+    def run(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        nonlocal invoked
+        invoked = True
+        raise AssertionError("invalid interpreter reached subprocess")
+
+    monkeypatch.setattr(scheduler_module.subprocess, "run", run)
+    missing_policy = dict(board.payload["fresh_generation_recovery"])
+    missing_policy["verification_python_executable"] = str(
+        tmp_path / "absent-python"
+    )
+    bad_hash_policy = dict(board.payload["fresh_generation_recovery"])
+    bad_hash_policy["verification_python_executable_sha256"] = (
+        "sha256:" + "0" * 64
+    )
+    alias = tmp_path / "python-alias"
+    alias.symlink_to(FRESH_RECOVERY_TEST_PYTHON)
+    alias_policy = dict(board.payload["fresh_generation_recovery"])
+    alias_policy["verification_python_executable"] = str(alias)
+
+    for policy in (missing_policy, bad_hash_policy, alias_policy):
+        candidate = replace(
+            board,
+            payload={**board.payload, "fresh_generation_recovery": policy},
+        )
+        with pytest.raises(
+            ConfiguredBoardError,
+            match="verification interpreter",
+        ):
+            scheduler_module._run_fresh_recovery_verifier(
+                candidate,
+                materializer,
+                materializer.read_bytes(),
+            )
+    assert invoked is False
+
+
+@pytest.mark.parametrize(
+    "reason",
+    (
+        "run-v17 target is absent",
+        "fresh recovery manifest is absent",
+        "fresh recovery control content identity differs",
+        "fresh recovery control status partition differs",
+    ),
+)
+def test_fresh_recovery_launch_rejects_absent_canonical_tampered_or_progressed_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reason: str,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    rejected = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/lgcvf-duckdb-materialization@1",
+        "valid": False,
+        "error": reason,
+    }
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: _recovery_verifier_result(rejected, returncode=2),
+    )
+    rendered = False
+
+    def rendering_tripwire(*_args: Any, **_kwargs: Any) -> tuple[str, ...]:
+        nonlocal rendered
+        rendered = True
+        raise AssertionError("daemon command rendering must remain unreachable")
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "configured_board_common_args",
+        rendering_tripwire,
+    )
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="typed live-continuity verifier is required",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260819T-rejected-recovery",
+        )
+
+    assert rendered is False
+    assert not board.path(board.runtime_paths["root"]).exists()
+
+
+@pytest.mark.parametrize(
+    "policy",
+    (
+        None,
+        {"schema": scheduler_module.FRESH_RECOVERY_POLICY_SCHEMA},
+        {
+            "schema": scheduler_module.FRESH_RECOVERY_POLICY_SCHEMA,
+            "source_generation": "lgcvf-run-v16",
+            "target_generation": scheduler_module.FRESH_RECOVERY_TARGET_GENERATION,
+        },
+    ),
+)
+def test_fresh_recovery_launch_rejects_stripped_or_partial_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    policy: dict[str, Any] | None,
+) -> None:
+    _repo, board = _seed_fresh_recovery_board(tmp_path)
+    payload = dict(board.payload)
+    if policy is None:
+        payload.pop("fresh_generation_recovery")
+    else:
+        payload["fresh_generation_recovery"] = policy
+    board = replace(board, payload=payload)
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("invalid policy reached public verifier"),
+    )
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="fresh-generation recovery initial launch admission failed",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260819T-stripped-recovery-policy",
+        )
+
+    assert not board.path(board.runtime_paths["root"]).exists()
+
+
+def test_fresh_recovery_launch_rejects_alternate_config_or_materializer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("foreign recovery authority reached verifier"),
+    )
+
+    alternate_config = repo / "config/alternate-run-v17-scheduler.json"
+    alternate_payload = dict(board.payload)
+    alternate_payload["protected_paths"] = [
+        alternate_config.relative_to(repo).as_posix()
+        if item == scheduler_module.FRESH_RECOVERY_CONFIG_PATH
+        else item
+        for item in board.protected_paths
+    ]
+    _write(
+        alternate_config,
+        json.dumps(alternate_payload, indent=2, sort_keys=True) + "\n",
+    )
+    _git(repo, "add", alternate_config.relative_to(repo).as_posix())
+    _git(repo, "commit", "-m", "add alternate run-v17 config exploit fixture")
+    alternate_board = load_configured_board(alternate_config, repo_root=repo)
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="exact canonical scheduler config",
+    ):
+        configured_board_launch_plan(
+            alternate_board,
+            implement=True,
+            detach=False,
+            stamp="20260819T-alternate-recovery-config",
+        )
+
+    alternate_materializer = "scripts/alternate_recovery_verifier.py"
+    _write(repo / alternate_materializer, "raise SystemExit(0)\n")
+    payload = dict(board.payload)
+    payload["materializer_path"] = alternate_materializer
+    protected = [
+        *board.protected_paths,
+        alternate_materializer,
+    ]
+    foreign_verifier_board = replace(
+        board,
+        payload=payload,
+        protected_paths=tuple(protected),
+    )
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="exact canonical recovery verifier",
+    ):
+        configured_board_launch_plan(
+            foreign_verifier_board,
+            implement=True,
+            detach=False,
+            stamp="20260819T-alternate-recovery-verifier",
+        )
+
+    _write(
+        repo / scheduler_module.FRESH_RECOVERY_MATERIALIZER_PATH,
+        "raise SystemExit('fabricated admission')\n",
+    )
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="clean, current tracked outer/nested source forest",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260819T-dirty-recovery-verifier",
+        )
+
+    assert not board.path(board.runtime_paths["root"]).exists()
+
+
+def test_fresh_recovery_preflight_rejects_marker_free_resolved_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, board, protected_root = _seed_stripped_fresh_recovery_alias_board(
+        tmp_path
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("stripped alias reached public verifier"),
+    )
+
+    report = preflight_configured_board(board)
+
+    admission = next(
+        item
+        for item in report["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+    assert report["valid"] is False
+    assert admission["passed"] is False
+    assert "lacks its full recovery policy" in admission["detail"]
+    assert not (protected_root / "state").exists()
+
+
+def test_fresh_recovery_launch_rejects_marker_free_resolved_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, board, protected_root = _seed_stripped_fresh_recovery_alias_board(
+        tmp_path
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("stripped alias reached public verifier"),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "configured_board_common_args",
+        lambda *_args, **_kwargs: pytest.fail("stripped alias reached rendering"),
+    )
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="protected run-v17 target lacks its full recovery policy",
+    ):
+        configured_board_launch_plan(
+            board,
+            implement=True,
+            detach=False,
+            stamp="20260819T-resolved-alias-rejected",
+        )
+
+    assert not (protected_root / "state").exists()
+
+
+def test_fresh_recovery_preflight_requires_closed_content_addressed_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, board = _seed_fresh_recovery_board(tmp_path)
+    report = _fresh_recovery_verification_report(board)
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: _recovery_verifier_result(report),
+    )
+    admitted = preflight_configured_board(board)
+    admission = next(
+        item
+        for item in admitted["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+    assert admission["passed"] is True
+    assert admission["detail"]["verification_root"] == report["verification_root"]
+    assert admission["detail"]["duckdb_runtime_cid"] == report[
+        "duckdb_runtime_cid"
+    ]
+    assert admission["detail"]["ready_task_ids"] == ["LGCVF-081"]
+    assert admission["detail"]["model_provider_route"] == "none"
+    assert admission["detail"]["validation_completion_authoritative"] is False
+
+    wrong_runtime = dict(report)
+    wrong_runtime["duckdb_runtime_cid"] = "baguqeera-wrong-runtime"
+    wrong_runtime.pop("verification_root")
+    wrong_runtime["verification_root"] = scheduler_module._identity(wrong_runtime)
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: _recovery_verifier_result(wrong_runtime),
+    )
+    runtime_rejected = preflight_configured_board(board)
+    runtime_admission = next(
+        item
+        for item in runtime_rejected["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+    assert runtime_admission["passed"] is False
+    assert "authority disposition differs" in runtime_admission["detail"]
+
+    forged = dict(report)
+    forged["unexpected_authority"] = True
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: _recovery_verifier_result(forged),
+    )
+    rejected = preflight_configured_board(board)
+    admission = next(
+        item
+        for item in rejected["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+    assert admission["passed"] is False
+    assert "report shape differs" in admission["detail"]
+
+
+@pytest.mark.parametrize(
+    ("tamper", "expected_detail"),
+    (
+        ("source_omission", "source-derived projection omission binding differs"),
+        ("evidence_omission", "projection evidence binding differs"),
+        ("evidence_order", "projection evidence suite order differs"),
+        ("evidence_fields", "projection evidence binding differs"),
+    ),
+)
+def test_fresh_recovery_preflight_rejects_projection_commitment_tampering(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+    expected_detail: str,
+) -> None:
+    _repo, board = _seed_fresh_recovery_board(tmp_path)
+    report = json.loads(json.dumps(_fresh_recovery_verification_report(board)))
+    omission = report["validation_projection_omission_commitment"]
+    evidence = report["validation_projection_evidence_commitment"]
+
+    if tamper == "source_omission":
+        omission["accelerator_head"] = "0" * 40
+        omission["commitment_cid"] = scheduler_module._identity(
+            {
+                key: value
+                for key, value in omission.items()
+                if key != "commitment_cid"
+            }
+        )
+        report["validation_projection_omission_root"] = omission[
+            "commitment_cid"
+        ]
+        evidence["omission_root"] = omission["commitment_cid"]
+    elif tamper == "evidence_omission":
+        evidence["omission_root"] = scheduler_module._identity(
+            {"tampered": "omission-root"}
+        )
+    elif tamper == "evidence_order":
+        evidence["ordered_suites"][0], evidence["ordered_suites"][1] = (
+            evidence["ordered_suites"][1],
+            evidence["ordered_suites"][0],
+        )
+    else:
+        evidence["unexpected_authority"] = True
+
+    evidence["commitment_cid"] = scheduler_module._identity(
+        {
+            key: value
+            for key, value in evidence.items()
+            if key != "commitment_cid"
+        }
+    )
+    report["validation_projection_evidence_root"] = evidence["commitment_cid"]
+    report.pop("verification_root")
+    report["verification_root"] = scheduler_module._identity(report)
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: _recovery_verifier_result(report),
+    )
+
+    rejected = preflight_configured_board(board)
+    admission = next(
+        item
+        for item in rejected["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+    assert rejected["valid"] is False
+    assert admission["passed"] is False
+    assert expected_detail in admission["detail"]
+
+
+def test_fresh_recovery_preflight_rejects_new_symlink_absent_from_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, board = _seed_fresh_recovery_board(tmp_path)
+    stale_report = _fresh_recovery_verification_report(board)
+    (repo / "test/new_recovery_projection_link.py").symlink_to("conftest.py")
+    _git(repo, "add", "test/new_recovery_projection_link.py")
+    _git(repo, "commit", "-m", "add recovery projection link")
+    calls = 0
+
+    def stale_verifier(*_args: Any) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        return _recovery_verifier_result(stale_report)
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        stale_verifier,
+    )
+    rejected = preflight_configured_board(board)
+    admission = next(
+        item
+        for item in rejected["checks"]
+        if item["name"] == "fresh_generation_recovery_admission"
+    )
+    assert calls == 1
+    assert rejected["valid"] is False
+    assert admission["passed"] is False
+    assert "source-derived projection omission binding differs" in admission[
+        "detail"
+    ]
+
+
+def test_ordinary_board_launch_does_not_invoke_recovery_verifier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, config_path = _seed_configured_repo(tmp_path)
+    board = load_configured_board(config_path, repo_root=config_path.parents[1])
+    monkeypatch.setattr(
+        scheduler_module,
+        "_run_fresh_recovery_verifier",
+        lambda *_args: pytest.fail("ordinary board invoked recovery verifier"),
+    )
+
+    launch = configured_board_launch_plan(
+        board,
+        implement=False,
+        detach=False,
+        stamp="20260819T-ordinary-board",
+    )
+    assert "fresh_generation_recovery_admission" not in launch
 
 
 def test_preflight_accepts_exact_committed_binding_then_rejects_drift(

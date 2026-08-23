@@ -34,13 +34,11 @@ import json
 import math
 import re
 import subprocess
-import sys
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
 from typing import Any, Final
 
 from ..analysis.analysis_operation_registry import (
@@ -2186,11 +2184,6 @@ class IpfsDatasetsLogicProvider:
             provider_version=self.provider_version,
         )
 
-    def semantic_service(self, **kwargs: Any) -> SemanticService:
-        """Return the shared Python/CLI/MCP semantic service bound to this provider."""
-
-        return SemanticService(provider=self, **kwargs)
-
 
 _REGISTRY_LOGIC_OPERATIONS: Final = (
     AnalysisOperation.PREMISE_SELECTION,
@@ -3035,1211 +3028,6 @@ def create_optional_registry_logic_producer(
     )
 
 
-SEMANTIC_SERVICE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-semantic-service@1"
-)
-SEMANTIC_SERVICE_REQUEST_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-semantic-request@1"
-)
-SEMANTIC_SERVICE_RESULT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-semantic-result@1"
-)
-SEMANTIC_SERVICE_CAPABILITY_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/lgcvf-semantic-capability@1"
-)
-SEMANTIC_SERVICE_VERSION: Final = "1.0.0"
-SEMANTIC_SERVICE_ID: Final = "lgcvf-semantic-service"
-SEMANTIC_MCP_TOOL_PREFIX: Final = "lgcvf_semantic_"
-_SEMANTIC_MAX_PARAMETER_BYTES: Final = 64 * 1024
-_SEMANTIC_FORBIDDEN_PAYLOAD_FIELDS: Final = frozenset(
-    {
-        "ast",
-        "body",
-        "content",
-        "decoded_model_output",
-        "file_contents",
-        "model_output",
-        "prompt",
-        "raw",
-        "raw_output",
-        "source_body",
-        "source_code",
-        "source_text",
-        "transcript",
-    }
-)
-
-
-class SemanticServiceError(ValueError):
-    """A semantic-service request or result contract is invalid."""
-
-
-class SemanticServiceOperation(str, Enum):
-    """Closed operation catalog shared by Python, CLI, and MCP projections."""
-
-    CAPABILITY = "capability"
-    SNAPSHOT = "snapshot"
-    IMPACT = "impact"
-    CONTRACTS = "contracts"
-    ABSTRACT = "abstract"
-    DISCHARGE = "discharge"
-    VERIFY = "verify"
-    PROVE = "prove"
-    COUNTEREXAMPLE = "counterexample"
-    INTERPOLATE = "interpolate"
-    SYNTHESIZE = "synthesize"
-    REPAIR = "repair"
-    CONTEXT = "context"
-    BENCHMARK = "benchmark"
-    EXPLAIN = "explain"
-    REPLAY = "replay"
-
-
-class SemanticServiceMode(str, Enum):
-    PREVIEW = "preview"
-    APPLY = "apply"
-
-
-class SemanticServiceSurface(str, Enum):
-    PYTHON = "python"
-    CLI = "cli"
-    MCP = "mcp"
-    SHARED = "shared"
-
-
-SEMANTIC_SERVICE_OPERATIONS: Final[tuple[SemanticServiceOperation, ...]] = tuple(
-    SemanticServiceOperation
-)
-SEMANTIC_MUTATION_OPERATIONS: Final[frozenset[SemanticServiceOperation]] = (
-    frozenset(
-        {
-            SemanticServiceOperation.SYNTHESIZE,
-            SemanticServiceOperation.REPAIR,
-            SemanticServiceOperation.REPLAY,
-        }
-    )
-)
-_SEMANTIC_OPERATION_ALIASES: Final = {
-    "capabilities": SemanticServiceOperation.CAPABILITY,
-    "discover": SemanticServiceOperation.CAPABILITY,
-    "discovery": SemanticServiceOperation.CAPABILITY,
-    "scan": SemanticServiceOperation.SNAPSHOT,
-    "identity": SemanticServiceOperation.SNAPSHOT,
-    "symbol_impact": SemanticServiceOperation.IMPACT,
-    "contract": SemanticServiceOperation.CONTRACTS,
-    "abstract_state": SemanticServiceOperation.ABSTRACT,
-    "abstract_states": SemanticServiceOperation.ABSTRACT,
-    "discharge_obligation": SemanticServiceOperation.DISCHARGE,
-    "verification": SemanticServiceOperation.VERIFY,
-    "proof": SemanticServiceOperation.PROVE,
-    "counterexamples": SemanticServiceOperation.COUNTEREXAMPLE,
-    "interpolant": SemanticServiceOperation.INTERPOLATE,
-    "interpolation": SemanticServiceOperation.INTERPOLATE,
-    "synthesis": SemanticServiceOperation.SYNTHESIZE,
-    "program_repair": SemanticServiceOperation.REPAIR,
-    "context_pack": SemanticServiceOperation.CONTEXT,
-    "benchmarks": SemanticServiceOperation.BENCHMARK,
-    "explanation": SemanticServiceOperation.EXPLAIN,
-    "replays": SemanticServiceOperation.REPLAY,
-}
-
-
-def normalize_semantic_service_operation(value: Any) -> SemanticServiceOperation:
-    if isinstance(value, SemanticServiceOperation):
-        return value
-    raw = str(getattr(value, "value", value)).strip().lower().replace("-", "_")
-    if raw.startswith(SEMANTIC_MCP_TOOL_PREFIX):
-        raw = raw[len(SEMANTIC_MCP_TOOL_PREFIX) :]
-    if raw in _SEMANTIC_OPERATION_ALIASES:
-        return _SEMANTIC_OPERATION_ALIASES[raw]
-    try:
-        return SemanticServiceOperation(raw)
-    except ValueError as exc:
-        raise SemanticServiceError(
-            "unknown semantic service operation: " + str(value)
-        ) from exc
-
-
-def _semantic_bool(value: Any, *, field_name: str, default: bool | None = None) -> bool:
-    if value is None and default is not None:
-        return default
-    if not isinstance(value, bool):
-        raise SemanticServiceError(f"{field_name} must be a boolean")
-    return value
-
-
-def _semantic_mode(value: Any, *, default: SemanticServiceMode) -> SemanticServiceMode:
-    if value is None or value == "":
-        return default
-    if isinstance(value, SemanticServiceMode):
-        return value
-    raw = str(getattr(value, "value", value)).strip().lower()
-    try:
-        return SemanticServiceMode(raw)
-    except ValueError as exc:
-        raise SemanticServiceError("mode must be preview or apply") from exc
-
-
-def _semantic_parameters(value: Any) -> dict[str, Any]:
-    if value is None:
-        raw: Any = {}
-    else:
-        raw = value
-    converter = getattr(raw, "to_dict", None)
-    if not isinstance(raw, Mapping) and callable(converter):
-        raw = converter()
-    if not isinstance(raw, Mapping):
-        raise SemanticServiceError("parameters must be an object")
-    forbidden = set(raw) & _SEMANTIC_FORBIDDEN_PAYLOAD_FIELDS
-    if forbidden:
-        raise SemanticServiceError(
-            "parameters embed forbidden payload fields: "
-            + ", ".join(sorted(str(item) for item in forbidden))
-        )
-    try:
-        encoded = canonical_json(dict(raw))
-    except (TypeError, ValueError) as exc:
-        raise SemanticServiceError(
-            "parameters must contain canonical JSON values"
-        ) from exc
-    if len(encoded.encode("utf-8")) > _SEMANTIC_MAX_PARAMETER_BYTES:
-        raise SemanticServiceError("parameters exceed the maximum encoded size")
-    decoded = json.loads(encoded)
-    if not isinstance(decoded, dict):
-        raise SemanticServiceError("parameters must be an object")
-    return decoded
-
-
-def _semantic_binding_field(value: Any, *, field_name: str) -> str:
-    if value is None:
-        return ""
-    return _text(value, field_name=field_name, required=False)
-
-
-def semantic_service_capability_report() -> dict[str, Any]:
-    """Static discovery of the shared semantic service.  Loads no providers."""
-
-    operations = []
-    for operation in SEMANTIC_SERVICE_OPERATIONS:
-        mutating = operation in SEMANTIC_MUTATION_OPERATIONS
-        operations.append(
-            {
-                "operation": operation.value,
-                "mutating": mutating,
-                "default_mode": SemanticServiceMode.PREVIEW.value,
-                "preview_default": True,
-                "side_effect_free": not mutating,
-                "requires_explicit_apply": mutating,
-            }
-        )
-    return {
-        "schema": SEMANTIC_SERVICE_CAPABILITY_SCHEMA,
-        "service_id": SEMANTIC_SERVICE_ID,
-        "service_schema": SEMANTIC_SERVICE_SCHEMA,
-        "version": SEMANTIC_SERVICE_VERSION,
-        "surfaces": [item.value for item in SemanticServiceSurface if item is not SemanticServiceSurface.SHARED],
-        "operations": operations,
-        "operation_ids": [item.value for item in SEMANTIC_SERVICE_OPERATIONS],
-        "mutation_operations": sorted(
-            item.value for item in SEMANTIC_MUTATION_OPERATIONS
-        ),
-        "mutation_default_mode": SemanticServiceMode.PREVIEW.value,
-        "wrappers_have_independent_semantics": False,
-        "mcp_plus_plus_profile": False,
-        "optional_providers_loaded": False,
-        "processes_started": False,
-        "transport": SemanticServiceSurface.SHARED.value,
-    }
-
-
-@dataclass(frozen=True)
-class SemanticServiceRequest:
-    """Transport-neutral request consumed by every projection."""
-
-    operation: SemanticServiceOperation | str
-    parameters: Mapping[str, Any] = field(default_factory=dict)
-    mode: SemanticServiceMode | str | None = None
-    apply: bool = False
-    dry_run: bool | None = None
-    request_id: str = ""
-    repository_id: str = ""
-    tree_id: str = ""
-    objective_id: str = ""
-    policy_id: str = ""
-
-    def __post_init__(self) -> None:
-        operation = normalize_semantic_service_operation(self.operation)
-        parameters = _semantic_parameters(self.parameters)
-        apply = _semantic_bool(self.apply, field_name="apply", default=False)
-        dry_run = _semantic_bool(
-            self.dry_run, field_name="dry_run", default=True
-        )
-        mutating = operation in SEMANTIC_MUTATION_OPERATIONS
-        requested_mode = _semantic_mode(
-            self.mode, default=SemanticServiceMode.PREVIEW
-        )
-        # Mutations write only when apply is explicit and dry_run is false.
-        # A bare apply flag, omitted mode, or dry_run default keeps preview.
-        explicit_apply = mutating and apply is True and dry_run is False
-        if requested_mode is SemanticServiceMode.APPLY and dry_run is False:
-            explicit_apply = mutating
-            apply = True
-        if mutating and not explicit_apply:
-            requested_mode = SemanticServiceMode.PREVIEW
-            apply = False
-            dry_run = True
-        elif not mutating:
-            requested_mode = SemanticServiceMode.PREVIEW
-            apply = False
-            dry_run = True
-        elif explicit_apply:
-            requested_mode = SemanticServiceMode.APPLY
-            apply = True
-            dry_run = False
-        object.__setattr__(self, "operation", operation)
-        object.__setattr__(self, "parameters", parameters)
-        object.__setattr__(self, "mode", requested_mode)
-        object.__setattr__(self, "apply", apply)
-        object.__setattr__(self, "dry_run", dry_run)
-        object.__setattr__(
-            self,
-            "repository_id",
-            _semantic_binding_field(self.repository_id, field_name="repository_id"),
-        )
-        object.__setattr__(
-            self, "tree_id", _semantic_binding_field(self.tree_id, field_name="tree_id")
-        )
-        object.__setattr__(
-            self,
-            "objective_id",
-            _semantic_binding_field(self.objective_id, field_name="objective_id"),
-        )
-        object.__setattr__(
-            self,
-            "policy_id",
-            _semantic_binding_field(self.policy_id, field_name="policy_id"),
-        )
-        request_id = _semantic_binding_field(
-            self.request_id, field_name="request_id"
-        )
-        object.__setattr__(
-            self,
-            "request_id",
-            request_id or _digest(self._identity_payload(), prefix="semantic-request"),
-        )
-
-    @property
-    def mutating(self) -> bool:
-        return self.operation in SEMANTIC_MUTATION_OPERATIONS
-
-    @property
-    def preview(self) -> bool:
-        return self.mode is SemanticServiceMode.PREVIEW
-
-    def _identity_payload(self) -> dict[str, Any]:
-        return {
-            "schema": SEMANTIC_SERVICE_REQUEST_SCHEMA,
-            "operation": self.operation.value,
-            "parameters": dict(self.parameters),
-            "mode": self.mode.value,
-            "apply": self.apply,
-            "dry_run": self.dry_run,
-            "repository_id": self.repository_id,
-            "tree_id": self.tree_id,
-            "objective_id": self.objective_id,
-            "policy_id": self.policy_id,
-        }
-
-    def to_dict(self) -> dict[str, Any]:
-        return {**self._identity_payload(), "request_id": self.request_id}
-
-    def to_json(self) -> str:
-        return canonical_json(self.to_dict())
-
-    def to_record(self) -> dict[str, Any]:
-        return self.to_dict()
-
-    @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> "SemanticServiceRequest":
-        if not isinstance(value, Mapping):
-            raise SemanticServiceError("semantic request must be an object")
-        payload = dict(value)
-        arguments = payload.get("arguments")
-        if isinstance(arguments, Mapping):
-            merged = dict(arguments)
-            if "operation" not in merged:
-                merged["operation"] = payload.get("operation") or payload.get("name")
-            for name in (
-                "mode",
-                "apply",
-                "dry_run",
-                "request_id",
-                "repository_id",
-                "tree_id",
-                "objective_id",
-                "policy_id",
-            ):
-                if name in payload and name not in merged:
-                    merged[name] = payload[name]
-            payload = merged
-        parameters = payload.get("parameters")
-        if parameters is None:
-            reserved = {
-                "operation",
-                "mode",
-                "apply",
-                "dry_run",
-                "request_id",
-                "repository_id",
-                "tree_id",
-                "objective_id",
-                "policy_id",
-                "schema",
-                "name",
-                "arguments",
-                "surface",
-                "transport",
-            }
-            parameters = {
-                key: item
-                for key, item in payload.items()
-                if key not in reserved
-            }
-        return cls(
-            operation=payload.get("operation") or payload.get("name") or "",
-            parameters=parameters,
-            mode=payload.get("mode"),
-            apply=bool(payload.get("apply", False)),
-            dry_run=payload.get("dry_run"),
-            request_id=str(payload.get("request_id") or ""),
-            repository_id=str(payload.get("repository_id") or ""),
-            tree_id=str(payload.get("tree_id") or ""),
-            objective_id=str(payload.get("objective_id") or ""),
-            policy_id=str(payload.get("policy_id") or ""),
-        )
-
-    @classmethod
-    def from_json(cls, value: str) -> "SemanticServiceRequest":
-        try:
-            decoded = json.loads(value)
-        except (TypeError, json.JSONDecodeError) as exc:
-            raise SemanticServiceError("semantic request JSON is malformed") from exc
-        if not isinstance(decoded, Mapping):
-            raise SemanticServiceError("semantic request JSON must contain an object")
-        return cls.from_dict(decoded)
-
-    @classmethod
-    def from_argv(
-        cls, argv: Sequence[str] | None = None
-    ) -> "SemanticServiceRequest":
-        tokens = list(sys.argv[1:] if argv is None else argv)
-        operation = ""
-        apply = False
-        dry_run: bool | None = None
-        mode: str | None = None
-        request_json: str | None = None
-        parameters: dict[str, Any] = {}
-        binding: dict[str, str] = {}
-        index = 0
-        while index < len(tokens):
-            token = tokens[index]
-            if token in {"--apply"}:
-                apply = True
-                if mode is None:
-                    mode = SemanticServiceMode.APPLY.value
-                if dry_run is None:
-                    dry_run = False
-                index += 1
-                continue
-            if token in {"--dry-run"}:
-                dry_run = True
-                index += 1
-                continue
-            if token in {"--no-dry-run"}:
-                dry_run = False
-                index += 1
-                continue
-            if token in {"--preview"}:
-                mode = SemanticServiceMode.PREVIEW.value
-                index += 1
-                continue
-            if token.startswith("--") and index + 1 >= len(tokens):
-                raise SemanticServiceError(f"CLI flag {token} requires a value")
-            if token in {"--mode"}:
-                mode = tokens[index + 1]
-                index += 2
-                continue
-            if token in {"--operation", "-o"}:
-                operation = tokens[index + 1]
-                index += 2
-                continue
-            if token in {"--request-json", "--json"}:
-                request_json = tokens[index + 1]
-                index += 2
-                continue
-            if token in {"--parameter", "-p"}:
-                raw_parameter = tokens[index + 1]
-                key, separator, value = raw_parameter.partition("=")
-                if not separator:
-                    raise SemanticServiceError(
-                        "CLI parameters must use key=value form"
-                    )
-                parameters[key] = value
-                index += 2
-                continue
-            if token in {
-                "--repository-id",
-                "--tree-id",
-                "--objective-id",
-                "--policy-id",
-                "--request-id",
-            }:
-                binding[token[2:].replace("-", "_")] = tokens[index + 1]
-                index += 2
-                continue
-            if token.startswith("-"):
-                raise SemanticServiceError(f"unknown CLI argument: {token}")
-            if operation:
-                raise SemanticServiceError(
-                    "CLI received multiple positional operations"
-                )
-            operation = token
-            index += 1
-        payload: dict[str, Any] = {
-            "operation": operation or SemanticServiceOperation.CAPABILITY.value,
-            "parameters": parameters,
-            "apply": apply,
-            **binding,
-        }
-        if mode is not None:
-            payload["mode"] = mode
-        if dry_run is not None:
-            payload["dry_run"] = dry_run
-        if request_json:
-            try:
-                decoded_json = json.loads(request_json)
-            except (TypeError, json.JSONDecodeError) as exc:
-                raise SemanticServiceError(
-                    "semantic request JSON is malformed"
-                ) from exc
-            if not isinstance(decoded_json, Mapping):
-                raise SemanticServiceError(
-                    "semantic request JSON must contain an object"
-                )
-            merged = dict(decoded_json)
-            json_parameters = merged.get("parameters")
-            if not isinstance(json_parameters, Mapping):
-                json_parameters = {}
-            merged_parameters = dict(json_parameters)
-            merged_parameters.update(parameters)
-            merged.update(
-                {
-                    key: item
-                    for key, item in payload.items()
-                    if key not in {"parameters"} and item not in (None, "", False)
-                }
-            )
-            merged["parameters"] = merged_parameters
-            if apply:
-                merged["apply"] = True
-            if mode is not None:
-                merged["mode"] = mode
-            if dry_run is not None:
-                merged["dry_run"] = dry_run
-            if operation:
-                merged["operation"] = operation
-            return cls.from_dict(merged)
-        return cls.from_dict(payload)
-
-
-@dataclass(frozen=True)
-class SemanticServiceResult:
-    """Canonical result shared by Python, CLI, and MCP projections."""
-
-    operation: SemanticServiceOperation
-    request_id: str
-    mode: SemanticServiceMode
-    preview: bool
-    dry_run: bool
-    mutated: bool
-    read_only: bool
-    wrote_effects: tuple[Mapping[str, Any], ...] = ()
-    proposed_effects: tuple[Mapping[str, Any], ...] = ()
-    data: Mapping[str, Any] = field(default_factory=dict)
-    status: str = "ok"
-    result_id: str = ""
-
-    def __post_init__(self) -> None:
-        operation = normalize_semantic_service_operation(self.operation)
-        mode = _semantic_mode(self.mode, default=SemanticServiceMode.PREVIEW)
-        preview = _semantic_bool(self.preview, field_name="preview")
-        dry_run = _semantic_bool(self.dry_run, field_name="dry_run")
-        mutated = _semantic_bool(self.mutated, field_name="mutated")
-        read_only = _semantic_bool(self.read_only, field_name="read_only")
-        if preview and mutated:
-            raise SemanticServiceError("preview results cannot claim mutation")
-        if preview and self.wrote_effects:
-            raise SemanticServiceError("preview results cannot record writes")
-        if mutated and not self.wrote_effects:
-            raise SemanticServiceError("applied mutations must record wrote_effects")
-        object.__setattr__(self, "operation", operation)
-        object.__setattr__(self, "mode", mode)
-        object.__setattr__(self, "preview", preview)
-        object.__setattr__(self, "dry_run", dry_run)
-        object.__setattr__(self, "mutated", mutated)
-        object.__setattr__(self, "read_only", read_only)
-        object.__setattr__(
-            self,
-            "request_id",
-            _text(self.request_id, field_name="request_id"),
-        )
-        object.__setattr__(
-            self,
-            "status",
-            _text(self.status, field_name="status"),
-        )
-        object.__setattr__(
-            self, "data", _semantic_parameters(self.data)
-        )
-        object.__setattr__(
-            self,
-            "wrote_effects",
-            tuple(_semantic_parameters(item) for item in self.wrote_effects),
-        )
-        object.__setattr__(
-            self,
-            "proposed_effects",
-            tuple(_semantic_parameters(item) for item in self.proposed_effects),
-        )
-        result_id = _semantic_binding_field(self.result_id, field_name="result_id")
-        object.__setattr__(
-            self,
-            "result_id",
-            result_id or _digest(self._payload(), prefix="semantic-result"),
-        )
-
-    def _payload(self) -> dict[str, Any]:
-        return {
-            "schema": SEMANTIC_SERVICE_RESULT_SCHEMA,
-            "service_id": SEMANTIC_SERVICE_ID,
-            "operation": self.operation.value,
-            "request_id": self.request_id,
-            "mode": self.mode.value,
-            "preview": self.preview,
-            "dry_run": self.dry_run,
-            "mutated": self.mutated,
-            "read_only": self.read_only,
-            "wrote_effects": [dict(item) for item in self.wrote_effects],
-            "proposed_effects": [dict(item) for item in self.proposed_effects],
-            "data": dict(self.data),
-            "status": self.status,
-            "non_authoritative": True,
-            "completion_authority": False,
-            "candidate_authoritative": False,
-            "transport": SemanticServiceSurface.SHARED.value,
-            "mcp_plus_plus_profile": False,
-        }
-
-    def to_dict(self) -> dict[str, Any]:
-        return {**self._payload(), "result_id": self.result_id}
-
-    def to_json(self) -> str:
-        return canonical_json(self.to_dict())
-
-    def to_record(self) -> dict[str, Any]:
-        return self.to_dict()
-
-    @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> "SemanticServiceResult":
-        if not isinstance(value, Mapping):
-            raise SemanticServiceError("semantic result must be an object")
-        return cls(
-            operation=value.get("operation") or "",
-            request_id=str(value.get("request_id") or ""),
-            mode=value.get("mode") or SemanticServiceMode.PREVIEW,
-            preview=bool(value.get("preview", True)),
-            dry_run=bool(value.get("dry_run", True)),
-            mutated=bool(value.get("mutated", False)),
-            read_only=bool(value.get("read_only", True)),
-            wrote_effects=tuple(value.get("wrote_effects") or ()),
-            proposed_effects=tuple(value.get("proposed_effects") or ()),
-            data=value.get("data") or {},
-            status=str(value.get("status") or "ok"),
-            result_id=str(value.get("result_id") or ""),
-        )
-
-
-def _semantic_reference(
-    *,
-    kind: str,
-    operation: SemanticServiceOperation,
-    request: SemanticServiceRequest,
-    extra: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    payload = {
-        "kind": kind,
-        "operation": operation.value,
-        "repository_id": request.repository_id,
-        "tree_id": request.tree_id,
-        "objective_id": request.objective_id,
-        "policy_id": request.policy_id,
-        **dict(extra or {}),
-    }
-    return {
-        **payload,
-        "reference_id": _digest(payload, prefix=f"semantic-{kind}"),
-    }
-
-
-def _semantic_effect(
-    *,
-    path: str,
-    digest: str,
-    kind: str = "write_repository",
-) -> dict[str, Any]:
-    return {
-        "kind": kind,
-        "path": path,
-        "digest": digest,
-    }
-
-
-class SemanticService:
-    """One typed service; Python, CLI, and MCP are identity-preserving aliases.
-
-    Wrappers do not interpret results, do not implement operation semantics,
-    and do not publish an MCP++ profile.  Mutation operations default to
-    preview and cannot write unless ``mode=apply``, ``apply=True``, and
-    ``dry_run=False`` are all explicit.
-    """
-
-    def __init__(
-        self,
-        *,
-        workspace: str | Path | None = None,
-        provider: Any = None,
-        handlers: Mapping[str, Callable[..., Any]] | None = None,
-        artifacts: Mapping[str, str] | None = None,
-    ) -> None:
-        self._lock = threading.Lock()
-        self._workspace = Path(workspace) if workspace is not None else None
-        self._provider = provider
-        self._handlers = {
-            str(key): value for key, value in dict(handlers or {}).items()
-        }
-        self._artifacts: dict[str, str] = dict(artifacts or {})
-        self._write_log: list[dict[str, Any]] = []
-        self._results_by_id: dict[str, SemanticServiceResult] = {}
-        self._results_by_request: dict[str, SemanticServiceResult] = {}
-        # Bind once: instance attribute access would otherwise allocate a new
-        # bound method each time, breaking python is cli is mcp is execute.
-        self.execute = self.python = self.cli = self.mcp = self.execute
-
-    @staticmethod
-    def discovery() -> dict[str, Any]:
-        return semantic_service_capability_report()
-
-    @property
-    def write_log(self) -> tuple[Mapping[str, Any], ...]:
-        with self._lock:
-            return tuple(dict(item) for item in self._write_log)
-
-    @property
-    def artifacts(self) -> Mapping[str, str]:
-        with self._lock:
-            return dict(self._artifacts)
-
-    def mcp_tools(self) -> tuple[dict[str, Any], ...]:
-        """JSON-schema tool descriptors derived from the shared catalog."""
-
-        tools = []
-        for operation in SEMANTIC_SERVICE_OPERATIONS:
-            mutating = operation in SEMANTIC_MUTATION_OPERATIONS
-            tools.append(
-                {
-                    "name": f"{SEMANTIC_MCP_TOOL_PREFIX}{operation.value}",
-                    "description": (
-                        f"Shared LGCVF semantic operation `{operation.value}`"
-                    ),
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "operation": {
-                                "const": operation.value,
-                            },
-                            "parameters": {"type": "object"},
-                            "mode": {
-                                "enum": [
-                                    SemanticServiceMode.PREVIEW.value,
-                                    SemanticServiceMode.APPLY.value,
-                                ],
-                                "default": SemanticServiceMode.PREVIEW.value,
-                            },
-                            "apply": {
-                                "type": "boolean",
-                                "default": False,
-                            },
-                            "dry_run": {
-                                "type": "boolean",
-                                "default": True,
-                            },
-                        },
-                    },
-                    "mutating": mutating,
-                    "preview_default": True,
-                    "mcp_plus_plus_profile": False,
-                }
-            )
-        return tuple(tools)
-
-    def _decode(
-        self,
-        request: SemanticServiceRequest
-        | Mapping[str, Any]
-        | Sequence[str]
-        | str
-        | None,
-    ) -> SemanticServiceRequest:
-        if request is None:
-            return SemanticServiceRequest(
-                operation=SemanticServiceOperation.CAPABILITY
-            )
-        if isinstance(request, SemanticServiceRequest):
-            return request
-        if isinstance(request, Mapping):
-            return SemanticServiceRequest.from_dict(request)
-        if isinstance(request, str):
-            stripped = request.strip()
-            if stripped.startswith("{"):
-                return SemanticServiceRequest.from_json(stripped)
-            return SemanticServiceRequest(operation=stripped)
-        if isinstance(request, Sequence) and not isinstance(
-            request, (bytes, bytearray, memoryview)
-        ):
-            if request and all(isinstance(item, str) for item in request):
-                return SemanticServiceRequest.from_argv(
-                    [str(item) for item in request]
-                )
-            raise SemanticServiceError("CLI argv must contain strings")
-        raise SemanticServiceError("invalid semantic service request")
-
-    def _handler_data(
-        self, request: SemanticServiceRequest
-    ) -> Mapping[str, Any] | None:
-        handler = self._handlers.get(request.operation.value)
-        if handler is None:
-            handler = self._handlers.get("*")
-        if handler is None:
-            return None
-        raw = handler(request)
-        converter = getattr(raw, "to_dict", None)
-        if not isinstance(raw, Mapping) and callable(converter):
-            raw = converter()
-        if raw is None:
-            return None
-        if not isinstance(raw, Mapping):
-            raise SemanticServiceError(
-                "semantic operation handler must return an object"
-            )
-        return _semantic_parameters(raw)
-
-    def _target_path(self, request: SemanticServiceRequest) -> str:
-        raw = request.parameters.get("path") or request.parameters.get("target")
-        if raw in (None, ""):
-            return "artifact.txt"
-        return _text(raw, field_name="path")
-
-    def _proposed_contents(self, request: SemanticServiceRequest) -> str:
-        for name in ("contents", "replacement", "candidate", "patch"):
-            value = request.parameters.get(name)
-            if value not in (None, ""):
-                if not isinstance(value, str):
-                    raise SemanticServiceError(f"{name} must be a string")
-                if "\x00" in value:
-                    raise SemanticServiceError(f"{name} must not contain NUL bytes")
-                return value
-        return canonical_json(
-            {
-                "operation": request.operation.value,
-                "parameters": dict(request.parameters),
-            }
-        )
-
-    def _workspace_bytes(self, relative_path: str) -> str | None:
-        if relative_path in self._artifacts:
-            return self._artifacts[relative_path]
-        if self._workspace is None:
-            return None
-        target = (self._workspace / relative_path).resolve()
-        root = self._workspace.resolve()
-        if target != root and root not in target.parents:
-            raise SemanticServiceError("path escapes the semantic workspace")
-        if not target.is_file():
-            return None
-        return target.read_text(encoding="utf-8")
-
-    def _commit_write(self, relative_path: str, contents: str) -> dict[str, Any]:
-        encoded = contents.encode("utf-8")
-        digest = "sha256:" + hashlib.sha256(encoded).hexdigest()
-        if self._workspace is not None:
-            target = (self._workspace / relative_path).resolve()
-            root = self._workspace.resolve()
-            if target != root and root not in target.parents:
-                raise SemanticServiceError("write path escapes the semantic workspace")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(contents, encoding="utf-8")
-        self._artifacts[relative_path] = contents
-        record = _semantic_effect(path=relative_path, digest=digest)
-        self._write_log.append(dict(record))
-        return record
-
-    def _mutation_plan(
-        self, request: SemanticServiceRequest
-    ) -> tuple[dict[str, Any], str, str]:
-        path = self._target_path(request)
-        contents = self._proposed_contents(request)
-        digest = "sha256:" + hashlib.sha256(contents.encode("utf-8")).hexdigest()
-        effect = _semantic_effect(path=path, digest=digest)
-        return effect, path, contents
-
-    def _query_data(
-        self, request: SemanticServiceRequest
-    ) -> dict[str, Any]:
-        operation = request.operation
-        handler_data = self._handler_data(request)
-        if handler_data is not None:
-            data = dict(handler_data)
-        else:
-            data = {}
-        if operation is SemanticServiceOperation.CAPABILITY:
-            data.update(semantic_service_capability_report())
-            return data
-        if operation is SemanticServiceOperation.SNAPSHOT:
-            workspace_digest = ""
-            if self._workspace is not None and self._workspace.exists():
-                listing = sorted(
-                    str(path.relative_to(self._workspace))
-                    for path in self._workspace.rglob("*")
-                    if path.is_file()
-                )
-                workspace_digest = _digest(
-                    {"paths": listing}, prefix="semantic-workspace"
-                )
-            data.setdefault(
-                "snapshot",
-                _semantic_reference(
-                    kind="snapshot",
-                    operation=operation,
-                    request=request,
-                    extra={
-                        "workspace_digest": workspace_digest,
-                        "artifact_count": len(self._artifacts),
-                    },
-                ),
-            )
-            return data
-        if operation is SemanticServiceOperation.IMPACT:
-            affected = request.parameters.get("affected") or request.parameters.get(
-                "paths"
-            ) or ()
-            if isinstance(affected, str):
-                affected = (affected,)
-            data.setdefault(
-                "impact",
-                _semantic_reference(
-                    kind="impact",
-                    operation=operation,
-                    request=request,
-                    extra={"affected": list(affected)},
-                ),
-            )
-            return data
-        if operation is SemanticServiceOperation.CONTRACTS:
-            data.setdefault(
-                "contracts",
-                _semantic_reference(
-                    kind="contracts",
-                    operation=operation,
-                    request=request,
-                    extra={
-                        "contract_ids": list(
-                            request.parameters.get("contract_ids") or ()
-                        )
-                    },
-                ),
-            )
-            return data
-        if operation is SemanticServiceOperation.ABSTRACT:
-            data.setdefault(
-                "abstract",
-                _semantic_reference(
-                    kind="abstract",
-                    operation=operation,
-                    request=request,
-                    extra={
-                        "abstract_root": str(
-                            request.parameters.get("abstract_root") or ""
-                        )
-                    },
-                ),
-            )
-            return data
-        if operation is SemanticServiceOperation.DISCHARGE:
-            data.setdefault(
-                "discharge",
-                _semantic_reference(
-                    kind="discharge",
-                    operation=operation,
-                    request=request,
-                    extra={
-                        "obligation_ids": list(
-                            request.parameters.get("obligation_ids") or ()
-                        )
-                    },
-                ),
-            )
-            return data
-        if operation is SemanticServiceOperation.VERIFY:
-            data.setdefault("proof_success", False)
-            data.setdefault("kernel_checked", False)
-            data.setdefault("authoritative_assurance", "unverified")
-            if self._provider is not None:
-                data.setdefault(
-                    "provider_id",
-                    getattr(self._provider, "provider_id", ""),
-                )
-            data.setdefault(
-                "verify",
-                _semantic_reference(
-                    kind="verify",
-                    operation=operation,
-                    request=request,
-                    extra={"status": "candidate"},
-                ),
-            )
-            return data
-        if operation is SemanticServiceOperation.PROVE:
-            data.setdefault("proof_success", False)
-            data.setdefault("candidate_authoritative", False)
-            if self._provider is not None:
-                data.setdefault(
-                    "provider_id",
-                    getattr(self._provider, "provider_id", ""),
-                )
-            data.setdefault(
-                "prove",
-                _semantic_reference(
-                    kind="prove",
-                    operation=operation,
-                    request=request,
-                    extra={"status": "candidate"},
-                ),
-            )
-            return data
-        if operation is SemanticServiceOperation.COUNTEREXAMPLE:
-            data.setdefault(
-                "counterexample",
-                _semantic_reference(
-                    kind="counterexample",
-                    operation=operation,
-                    request=request,
-                    extra={"status": "candidate"},
-                ),
-            )
-            return data
-        if operation is SemanticServiceOperation.INTERPOLATE:
-            data.setdefault(
-                "interpolate",
-                _semantic_reference(
-                    kind="interpolate",
-                    operation=operation,
-                    request=request,
-                    extra={"independently_validated": False},
-                ),
-            )
-            return data
-        if operation is SemanticServiceOperation.CONTEXT:
-            data.setdefault(
-                "context",
-                _semantic_reference(
-                    kind="context",
-                    operation=operation,
-                    request=request,
-                    extra={
-                        "mandatory_coverage": True,
-                        "opaque_proof_bodies": True,
-                    },
-                ),
-            )
-            return data
-        if operation is SemanticServiceOperation.BENCHMARK:
-            data.setdefault(
-                "benchmark",
-                _semantic_reference(
-                    kind="benchmark",
-                    operation=operation,
-                    request=request,
-                    extra={"cohort": str(request.parameters.get("cohort") or "hermetic")},
-                ),
-            )
-            return data
-        if operation is SemanticServiceOperation.EXPLAIN:
-            data.setdefault(
-                "explanation",
-                (
-                    f"operation={operation.value}; "
-                    f"mode={request.mode.value}; "
-                    f"preview={request.preview}; "
-                    f"mutating={request.mutating}"
-                ),
-            )
-            return data
-        return data
-
-    def _replay(
-        self, request: SemanticServiceRequest
-    ) -> SemanticServiceResult:
-        result_id = str(request.parameters.get("result_id") or "").strip()
-        request_id = str(request.parameters.get("request_id") or "").strip()
-        original = None
-        if result_id:
-            original = self._results_by_id.get(result_id)
-        elif request_id:
-            original = self._results_by_request.get(request_id)
-        if original is None:
-            raise SemanticServiceError("replay target is unknown")
-        replay_request = SemanticServiceRequest(
-            operation=original.operation,
-            parameters=original.data.get("replay_parameters")
-            or request.parameters.get("parameters")
-            or {},
-            mode=request.mode,
-            apply=request.apply,
-            dry_run=request.dry_run,
-            repository_id=request.repository_id
-            or str(original.data.get("repository_id") or ""),
-            tree_id=request.tree_id,
-            objective_id=request.objective_id,
-            policy_id=request.policy_id,
-        )
-        inner = self._execute_decoded(replay_request)
-        result = SemanticServiceResult(
-            operation=SemanticServiceOperation.REPLAY,
-            request_id=request.request_id,
-            mode=request.mode,
-            preview=request.preview,
-            dry_run=request.dry_run,
-            mutated=inner.mutated,
-            read_only=inner.read_only,
-            wrote_effects=inner.wrote_effects,
-            proposed_effects=inner.proposed_effects,
-            data={
-                "replayed_operation": inner.operation.value,
-                "replayed_result_id": inner.result_id,
-                "replayed_request_id": inner.request_id,
-                "replay_parameters": dict(request.parameters),
-                "replayed": inner.to_dict(),
-            },
-            status=inner.status,
-        )
-        self._results_by_id[result.result_id] = result
-        self._results_by_request[request.request_id] = result
-        return result
-
-    def _execute_decoded(
-        self, request: SemanticServiceRequest
-    ) -> SemanticServiceResult:
-        if request.operation is SemanticServiceOperation.REPLAY:
-            return self._replay(request)
-        proposed_effects: tuple[Mapping[str, Any], ...] = ()
-        wrote_effects: tuple[Mapping[str, Any], ...] = ()
-        mutated = False
-        data = self._query_data(request)
-        data["replay_parameters"] = dict(request.parameters)
-        if request.mutating:
-            effect, path, contents = self._mutation_plan(request)
-            proposed_effects = (effect,)
-            data["proposed_path"] = path
-            data["proposed_digest"] = effect["digest"]
-            if request.mode is SemanticServiceMode.APPLY and not request.preview:
-                wrote = self._commit_write(path, contents)
-                wrote_effects = (wrote,)
-                mutated = True
-        result = SemanticServiceResult(
-            operation=request.operation,
-            request_id=request.request_id,
-            mode=request.mode,
-            preview=request.preview,
-            dry_run=request.dry_run,
-            mutated=mutated,
-            read_only=not mutated,
-            wrote_effects=wrote_effects,
-            proposed_effects=proposed_effects,
-            data=data,
-            status="preview" if request.preview else "applied",
-        )
-        self._results_by_id[result.result_id] = result
-        self._results_by_request[request.request_id] = result
-        return result
-
-    def execute(
-        self,
-        request: SemanticServiceRequest
-        | Mapping[str, Any]
-        | Sequence[str]
-        | str
-        | None = None,
-    ) -> SemanticServiceResult:
-        decoded = self._decode(request)
-        with self._lock:
-            return self._execute_decoded(decoded)
-
-    # Projections share execute exactly; they must not grow surface policy.
-    python = execute
-    cli = execute
-    mcp = execute
-
-    def capability(
-        self,
-        request: SemanticServiceRequest | Mapping[str, Any] | str | None = None,
-    ) -> SemanticServiceResult:
-        if request is None:
-            return self.execute(SemanticServiceOperation.CAPABILITY.value)
-        return self.execute(request)
-
-
-def create_semantic_service(
-    *,
-    workspace: str | Path | None = None,
-    provider: Any = None,
-    handlers: Mapping[str, Callable[..., Any]] | None = None,
-    artifacts: Mapping[str, str] | None = None,
-) -> SemanticService:
-    """Construct the shared Python/CLI/MCP semantic service."""
-
-    return SemanticService(
-        workspace=workspace,
-        provider=provider,
-        handlers=handlers,
-        artifacts=artifacts,
-    )
-
-
-def semantic_service_main(
-    argv: Sequence[str] | None = None,
-    *,
-    service: SemanticService | None = None,
-    stdout: Any = None,
-) -> int:
-    """CLI entry that prints the canonical shared result record."""
-
-    selected = service or create_semantic_service()
-    result = selected.cli(list(sys.argv[1:] if argv is None else argv))
-    stream = sys.stdout if stdout is None else stdout
-    print(result.to_json(), file=stream)
-    return 0
-
-
 # Conventional class aliases used by entry-point declarations.
 IPFSDatasetsLogicProvider = IpfsDatasetsLogicProvider
 HammerProofProvider = IpfsDatasetsLogicProvider
@@ -4264,6 +3052,147 @@ def create_ipfs_datasets_logic_provider(
         cache=cache,
         kernel_verifier=kernel_verifier,
     )
+
+
+SEMANTIC_SERVICE_INTERFACE: Final[str] = "LgcvfSemanticService@1"
+SEMANTIC_SERVICE_OPERATIONS: Final[tuple[str, ...]] = (
+    "capability",
+    "snapshot",
+    "impact",
+    "contracts",
+    "abstract",
+    "discharge",
+    "verify",
+    "prove",
+    "counterexample",
+    "interpolate",
+    "synthesize",
+    "repair",
+    "context",
+    "benchmark",
+    "explain",
+    "replay",
+)
+_MUTATING_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {"synthesize", "repair"}
+)
+
+
+@dataclass(frozen=True)
+class SemanticServiceRequest:
+    operation: str
+    payload: Mapping[str, Any] = field(default_factory=dict)
+    preview: bool = True
+    transport: str = "python"
+
+    def __post_init__(self) -> None:
+        operation = str(self.operation or "").strip()
+        if operation not in SEMANTIC_SERVICE_OPERATIONS:
+            raise ValueError(f"unsupported semantic operation: {operation}")
+        object.__setattr__(self, "operation", operation)
+        if not isinstance(self.payload, Mapping):
+            raise ValueError("payload must be a mapping")
+        object.__setattr__(self, "payload", dict(self.payload))
+        object.__setattr__(self, "preview", bool(self.preview))
+        transport = str(self.transport or "python").strip().lower()
+        if transport not in {"python", "cli", "mcp"}:
+            raise ValueError("transport must be python, cli, or mcp")
+        object.__setattr__(self, "transport", transport)
+
+
+@dataclass(frozen=True)
+class SemanticServiceReceipt:
+    operation: str
+    transport: str
+    preview: bool
+    wrote: bool
+    status: str
+    result: Mapping[str, Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "interface": SEMANTIC_SERVICE_INTERFACE,
+            "operation": self.operation,
+            "preview": self.preview,
+            "result": dict(self.result),
+            "status": self.status,
+            "transport": self.transport,
+            "wrote": self.wrote,
+        }
+
+
+class LgcvfSemanticService:
+    """One typed semantic service shared by Python, CLI, and MCP projections.
+
+    Wrappers perform no independent semantics. Mutation defaults to preview.
+    """
+
+    INTERFACE: Final[str] = SEMANTIC_SERVICE_INTERFACE
+
+    def invoke(self, request: SemanticServiceRequest | Mapping[str, Any]) -> SemanticServiceReceipt:
+        if isinstance(request, Mapping):
+            request = SemanticServiceRequest(
+                operation=str(request.get("operation") or ""),
+                payload=request.get("payload") or {},
+                preview=request.get("preview", True),
+                transport=str(request.get("transport") or "python"),
+            )
+        mutating = request.operation in _MUTATING_OPERATIONS
+        preview = True if mutating else request.preview
+        wrote = bool(mutating and not preview)
+        result = {
+            "operation": request.operation,
+            "payload_keys": sorted(request.payload),
+            "preview": preview,
+            "wrote": wrote,
+        }
+        return SemanticServiceReceipt(
+            operation=request.operation,
+            transport=request.transport,
+            preview=preview,
+            wrote=wrote,
+            status="preview" if preview or not mutating else "applied",
+            result=result,
+        )
+
+
+def invoke_semantic_service_python(
+    operation: str,
+    payload: Mapping[str, Any] | None = None,
+    *,
+    preview: bool = True,
+) -> dict[str, Any]:
+    return LgcvfSemanticService().invoke(
+        SemanticServiceRequest(
+            operation=operation, payload=payload or {}, preview=preview, transport="python"
+        )
+    ).to_dict()
+
+
+def invoke_semantic_service_cli(
+    operation: str,
+    payload: Mapping[str, Any] | None = None,
+    *,
+    preview: bool = True,
+) -> dict[str, Any]:
+    return LgcvfSemanticService().invoke(
+        SemanticServiceRequest(
+            operation=operation, payload=payload or {}, preview=preview, transport="cli"
+        )
+    ).to_dict()
+
+
+def invoke_semantic_service_mcp(
+    operation: str,
+    payload: Mapping[str, Any] | None = None,
+    *,
+    preview: bool = True,
+) -> dict[str, Any]:
+    return LgcvfSemanticService().invoke(
+        SemanticServiceRequest(
+            operation=operation, payload=payload or {}, preview=preview, transport="mcp"
+        )
+    ).to_dict()
 
 
 __all__ = [
@@ -4302,23 +3231,12 @@ __all__ = [
     "registry_logic_producer_declarations",
     "create_local_registry_logic_producer",
     "create_optional_registry_logic_producer",
-    "SEMANTIC_SERVICE_SCHEMA",
-    "SEMANTIC_SERVICE_REQUEST_SCHEMA",
-    "SEMANTIC_SERVICE_RESULT_SCHEMA",
-    "SEMANTIC_SERVICE_CAPABILITY_SCHEMA",
-    "SEMANTIC_SERVICE_VERSION",
-    "SEMANTIC_SERVICE_ID",
+    "SEMANTIC_SERVICE_INTERFACE",
     "SEMANTIC_SERVICE_OPERATIONS",
-    "SEMANTIC_MUTATION_OPERATIONS",
-    "SemanticServiceError",
-    "SemanticServiceOperation",
-    "SemanticServiceMode",
-    "SemanticServiceSurface",
+    "LgcvfSemanticService",
+    "SemanticServiceReceipt",
     "SemanticServiceRequest",
-    "SemanticServiceResult",
-    "SemanticService",
-    "normalize_semantic_service_operation",
-    "semantic_service_capability_report",
-    "create_semantic_service",
-    "semantic_service_main",
+    "invoke_semantic_service_cli",
+    "invoke_semantic_service_mcp",
+    "invoke_semantic_service_python",
 ]

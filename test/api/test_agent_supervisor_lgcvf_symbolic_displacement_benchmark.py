@@ -168,6 +168,22 @@ def test_threshold_miss_is_truthful_valid_partial_result() -> None:
     assert benchmark.validate_report(report) == ()
 
 
+def test_full_observed_classes_still_partial_without_model_displacement() -> None:
+    benchmark = _load_script()
+    report = benchmark.build_report(
+        _vertical_result(context_reduction_bps=5_452),
+        observed_classes=benchmark.REQUIRED_TASK_CLASSES,
+    )
+
+    assert report["overall_disposition"] == "partial"
+    thresholds = {item["threshold_id"]: item for item in report["thresholds"]}
+    assert thresholds["representative_task_class_coverage"]["disposition"] == "met"
+    assert thresholds["median_context_reduction_bps"]["disposition"] == "met"
+    assert thresholds["warm_cache_model_call_reduction_bps"]["disposition"] == "not_evaluated"
+    assert report["task_class_coverage"]["missing"] == []
+    assert benchmark.validate_report(report) == ()
+
+
 def test_command_writes_and_checks_identical_machine_result(tmp_path: Path) -> None:
     benchmark = _load_script()
     output = tmp_path / "benchmark.json"

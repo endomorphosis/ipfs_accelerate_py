@@ -3229,13 +3229,9 @@ class SemanticDischargeEvidence:
             "interpolant_refs",
             "covered_obligation_ids",
         ):
-            object.__setattr__(
-                self, name, _ids(getattr(self, name), name, required=False)
-            )
+            object.__setattr__(self, name, _ids(getattr(self, name), name, required=False))
         object.__setattr__(
-            self,
-            "current_tree_id",
-            _identifier(self.current_tree_id, "current_tree_id", required=False),
+            self, "current_tree_id", _identifier(self.current_tree_id, "current_tree_id", required=False)
         )
         object.__setattr__(
             self,
@@ -3301,25 +3297,21 @@ class PlannerDoctorSemanticDecision:
         return ObligationGraphDecision.READY
 
 
-def _minimal_successors(
-    evidence: SemanticDischargeEvidence,
-) -> tuple[SemanticSuccessor, ...]:
+def _minimal_successors(evidence: SemanticDischargeEvidence) -> tuple[SemanticSuccessor, ...]:
     successors: list[SemanticSuccessor] = []
-    interpolant_refs = (
-        evidence.interpolant_refs if evidence.interpolants_independently_validated else ()
-    )
     for kind, refs in (
         ("unsat_core", evidence.unsat_core_refs),
         ("counterexample", evidence.counterexample_refs),
-        ("interpolant", interpolant_refs),
+        ("interpolant", evidence.interpolant_refs if evidence.interpolants_independently_validated else ()),
     ):
         for ref in refs:
+            obligation_id = f"obligation:successor:{kind}:{ref}"
             successors.append(
                 SemanticSuccessor(
                     successor_id=f"successor:{kind}:{ref}",
                     kind=kind,
                     source_ref=ref,
-                    obligation_id=f"obligation:successor:{kind}:{ref}",
+                    obligation_id=obligation_id,
                     minimal=True,
                 )
             )

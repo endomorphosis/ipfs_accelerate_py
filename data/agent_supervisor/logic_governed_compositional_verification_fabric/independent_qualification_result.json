@@ -1,6 +1,6 @@
 {
   "candidate_suites_are_self_authority": false,
-  "checkout_fingerprint_cid": "baguqeeradl24tgy2i6vk27pztlghyxrpt5qjm5iv43gsfxmzt4rwrhuayovq",
+  "checkout_fingerprint_cid": "baguqeeragrc5wegnexra37qijn7wrotkva2pzxk6snlax4azdazhyyolba4q",
   "checkout_unchanged": true,
   "cohort": "hermetic_local_execution",
   "independent_fixed_manifest_executed": true,
@@ -18,12 +18,12 @@
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "result_cid": "baguqeerashmxcp5v2tqxptgplatswidcv4535ezzjjtntsc2dtzd3fbd4ota",
+  "result_cid": "baguqeeramnvghkxzfn7bbbj6xeoh2jq6xxxgklefpxqu24tus6lwbdpt373a",
   "schema": "lgcvf-independent-hermetic-qualification@1",
   "suites": [
     {
       "collected": 9,
-      "duration_ms": 1650,
+      "duration_ms": 3119,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -42,13 +42,13 @@
           "cpu_seconds": 900,
           "file_size_bytes": 67108864,
           "open_files": 256,
-          "processes": 511830
+          "processes": 65536
         },
-        "seccomp_denied_syscall_count": 41
+        "seccomp_denied_syscall_count": 44
       },
       "manifest": {
         "candidate_authored": true,
-        "manifest_cid": "baguqeera4oc3qpwwqq3h3o66o6ifawji5k2htkaoe42asx5yd52mpznqaq3q",
+        "manifest_cid": "baguqeeranm6idzqcu3nosukntea3mkrcpnialriybu2blwvbphkyghadsu3a",
         "owner_root": ".",
         "paths": [
           "test/api/test_agent_supervisor_lgcvf_focused_qualification.py"
@@ -56,26 +56,26 @@
         "sources": [
           {
             "path": "test/api/test_agent_supervisor_lgcvf_focused_qualification.py",
-            "sha256": "sha256:1e9eab3d8a9957a6167937be62c0b0f822680090024f61484c858d096540e65f",
-            "size_bytes": 7710
+            "sha256": "sha256:8c1650e685b45b79f7175a260da6f5c8445366f6cff16fe933f4aee5033b2eda",
+            "size_bytes": 8838
           }
         ],
         "suite_id": "candidate_focused"
       },
       "nodeids_cid": "baguqeera3zvgtvi5l3llqyyo7wr2nzz5cx2zuovoduqrza77vyzgoxy57ksq",
-      "observation_cid": "baguqeera5ij55kcoo3yzluu24q47mwzvpbkrvhirdopme4dkrzigyhhlrzoq",
+      "observation_cid": "baguqeerai726nstoktk3aszbhoyagyvg2awaj7kv4pkucm2ensjfe5hd37rq",
       "passed": true,
       "passed_count": 9,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "candidate_focused",
-      "transcript_sha256": "sha256:b5d895fc10132cd5ec1e42c70b3008b73f95c822b0df338987db1f67c8477b56",
+      "transcript_sha256": "sha256:07f85e92ffac363fa1d223064dfcf6aeea36ea9d7529a5f7da9b751e79508afd",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
       "collected": 10,
-      "duration_ms": 1325,
+      "duration_ms": 2678,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -94,13 +94,13 @@
           "cpu_seconds": 900,
           "file_size_bytes": 67108864,
           "open_files": 256,
-          "processes": 511830
+          "processes": 65536
         },
-        "seccomp_denied_syscall_count": 41
+        "seccomp_denied_syscall_count": 44
       },
       "manifest": {
         "candidate_authored": true,
-        "manifest_cid": "baguqeeraann2xnwl3jqbkedwfmpdobgfmj773scdqulz3qucfrl4fuunlkfa",
+        "manifest_cid": "baguqeerarygh66ycp6uq22cy2g57q6tt2dyyzmif3wapcmf3w7kjgbeuksba",
         "owner_root": ".",
         "paths": [
           "test/api/test_agent_supervisor_lgcvf_adversarial.py"
@@ -108,26 +108,26 @@
         "sources": [
           {
             "path": "test/api/test_agent_supervisor_lgcvf_adversarial.py",
-            "sha256": "sha256:7c6d841233de4a70ebc9bf586275a014a166290ecae441d38db1b80e563b0a10",
-            "size_bytes": 10108
+            "sha256": "sha256:55bb713634d717f1874aa1c44405c58b25a3d56263a5f1ff69655ff2961bfae0",
+            "size_bytes": 8407
           }
         ],
         "suite_id": "candidate_adversarial"
       },
       "nodeids_cid": "baguqeerawyxjp67p656suousq2s2yoqpnagcljminuhw6ooto6mz23zec7ma",
-      "observation_cid": "baguqeeraae3wjgoxk52aax6kn2t2eozejozf34a47kpx5toe2vbfe4lfyntq",
+      "observation_cid": "baguqeeraif4gtlqmapkhy7pk4rf7gkrbbf7qbjgfbel32pynnukcgkb5io7q",
       "passed": true,
       "passed_count": 10,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "candidate_adversarial",
-      "transcript_sha256": "sha256:0a1141bb3274a3ac137bc8060b57e8904cca125ebb3800f1393868c7dc908bde",
+      "transcript_sha256": "sha256:c10af29455273ee403a35cab58aa0193fd2d47613d8f31e7f362820d668dc80f",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
-      "collected": 154,
-      "duration_ms": 1849,
+      "collected": 143,
+      "duration_ms": 2632,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -146,13 +146,13 @@
           "cpu_seconds": 900,
           "file_size_bytes": 67108864,
           "open_files": 256,
-          "processes": 511830
+          "processes": 65536
         },
-        "seccomp_denied_syscall_count": 41
+        "seccomp_denied_syscall_count": 40
       },
       "manifest": {
         "candidate_authored": false,
-        "manifest_cid": "baguqeerajfjehfmaeqlpnlpno4ks7onmq3ftrcihqlkulcukm7fe5tegmcgq",
+        "manifest_cid": "baguqeerakuzdgyylajfcx6tlqpuc2xvapr667ovk5qhopdkyhnhxg6hwerga",
         "owner_root": "ipfs_datasets_py",
         "paths": [
           "tests/unit/logic/software_contracts/test_compositional_contract.py",
@@ -198,13 +198,13 @@
           },
           {
             "path": "tests/unit/logic/formalization/test_translation_receipts.py",
-            "sha256": "sha256:0d76e970f7a53a13000ec5fd13df85234822b1a69655d4a7eb302e710263cae8",
-            "size_bytes": 32380
+            "sha256": "sha256:1a321b9bced0237ee9dd28b796947d6a5e68ca419dad8e81a934b380f06e7548",
+            "size_bytes": 30085
           },
           {
             "path": "tests/unit/logic/software_verification/test_obligation_slicing.py",
-            "sha256": "sha256:23ec2b9c6a9a1ebb551d06765b460946b699b89753c7dd98a9c4aae06b5d1b13",
-            "size_bytes": 42374
+            "sha256": "sha256:487194ddf108167e647f5fe2cdce624854a7162f45d46b6a88f28395a608d65e",
+            "size_bytes": 32425
           },
           {
             "path": "tests/unit/logic/test_compositional_verification_public_api.py",
@@ -214,20 +214,20 @@
         ],
         "suite_id": "fixed_datasets_semantics"
       },
-      "nodeids_cid": "baguqeerafdikkkuaz6yyge4ei3zjt7pfoirtmimxfsk4lmc2gea7vrcsgcba",
-      "observation_cid": "baguqeeravswsjmcp4jkfajy4aos2v2f6s4n4vkmvwilzkl2r3i27cu6zxifa",
+      "nodeids_cid": "baguqeeraynd5gnhnlb7gfytao7zvmjsaxqk3zt3bbpx5ma7e3mzgv6wdohya",
+      "observation_cid": "baguqeerahu4ssr6h6qjf5ysioylhbbnwqyymgieikslmyh3kgolbkot4aeia",
       "passed": true,
-      "passed_count": 154,
+      "passed_count": 143,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "fixed_datasets_semantics",
-      "transcript_sha256": "sha256:090db0ed52776e408f213a37d689416d65706be16a515ac53ddd03f5ed87cfcc",
+      "transcript_sha256": "sha256:e7ae96aba02f1b46d8e6944f0ba3438784913f6338ec5e6743d02302db5499d5",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
-      "collected": 195,
-      "duration_ms": 104758,
+      "collected": 199,
+      "duration_ms": 162633,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -246,13 +246,13 @@
           "cpu_seconds": 900,
           "file_size_bytes": 67108864,
           "open_files": 256,
-          "processes": 511830
+          "processes": 65536
         },
-        "seccomp_denied_syscall_count": 41
+        "seccomp_denied_syscall_count": 40
       },
       "manifest": {
         "candidate_authored": false,
-        "manifest_cid": "baguqeeraqc35z2jhityxbhfaqma7mif5regndwvq725y2udcqn3sw7fvuahq",
+        "manifest_cid": "baguqeerajirhkry3d6qzoq232hczigsvmwgox2uxf553owlm4fdj44dr6hea",
         "owner_root": ".",
         "paths": [
           "test/api/test_agent_supervisor_compositional_verification_vertical.py",
@@ -267,13 +267,13 @@
         "sources": [
           {
             "path": "test/api/test_agent_supervisor_compositional_verification_vertical.py",
-            "sha256": "sha256:999a9c4e00fd7aa6356295e3184285565fb1c64ed8341fa9afb45b8460ce2b78",
-            "size_bytes": 12834
+            "sha256": "sha256:2fd61ec5585b8bcae4936019bbfb03b2f804c0afee6e83a61c5fdbb13df95a21",
+            "size_bytes": 9593
           },
           {
             "path": "test/api/test_agent_supervisor_database_implementation_daemon.py",
-            "sha256": "sha256:018e3dfbea54b972162e4823765ed524212aa710bb9360abbbea7bd22ae6afe9",
-            "size_bytes": 99142
+            "sha256": "sha256:327b6ea511102c4444629194de5b5107a4741c77447bcf008b18d85032c0270a",
+            "size_bytes": 102012
           },
           {
             "path": "test/api/test_agent_supervisor_database_portal_bridge.py",
@@ -282,8 +282,8 @@
           },
           {
             "path": "test/api/test_agent_supervisor_manual_completion_authority_runtime.py",
-            "sha256": "sha256:90d3d6f8bdbdf29ff2a3b04ba00accf652f84cc998a28ebe19deeec740aff0d9",
-            "size_bytes": 109192
+            "sha256": "sha256:27c10878eec049bee91f70817a930ecd3757a243d720363b7133654152127d70",
+            "size_bytes": 111570
           },
           {
             "path": "test/api/test_agent_supervisor_expected_output_submodule_preflight.py",
@@ -308,14 +308,14 @@
         ],
         "suite_id": "fixed_accelerator_authority"
       },
-      "nodeids_cid": "baguqeeraw7v3d56q4wh47a6dmotgeduzqd7wngfxbzjnc5ma3haetbbrvpta",
-      "observation_cid": "baguqeerag6y54hkowqumio5gmu4a4k2s32xvetfgqgv5z4g75laomsw6jpma",
+      "nodeids_cid": "baguqeerar533oighzztc5b5bazgduez2ksn66mzh2vu6c6a6gchquvkqlf2a",
+      "observation_cid": "baguqeerasg3vmlx3vad5f4fzioyqqmxb3qo3hgdr327j63wtise5fkilprfq",
       "passed": true,
-      "passed_count": 195,
+      "passed_count": 199,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "fixed_accelerator_authority",
-      "transcript_sha256": "sha256:4057dd353dbebde220c9cf6323062e7f1a366b981cd5c2808e68d6344ea69d5e",
+      "transcript_sha256": "sha256:901c3d907f4bd768980781026206147484eb5352a517c9422738727b038d2f9c",
       "xfailed_count": 0,
       "xpassed_count": 0
     }
@@ -323,10 +323,10 @@
   "task_implementation_complete": false,
   "test_qualification_complete": true,
   "totals": {
-    "collected": 368,
+    "collected": 361,
     "error_count": 0,
     "failed_count": 0,
-    "passed_count": 368,
+    "passed_count": 361,
     "skipped_count": 0,
     "xfailed_count": 0,
     "xpassed_count": 0

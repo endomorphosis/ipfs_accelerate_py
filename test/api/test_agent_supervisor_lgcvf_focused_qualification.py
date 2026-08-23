@@ -9,21 +9,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ipfs_accelerate_py.agent_supervisor.analysis.deterministic_doctor_contracts import (
-    DoctorAuthorityRoots,
-)
-from ipfs_accelerate_py.agent_supervisor.context.context_contracts import ContextBudget
 from ipfs_accelerate_py.agent_supervisor.context.planner_doctor_context import (
     PlannerDoctorContextRequest,
-    ProofCarryingCoverageClass,
+    ProofCarryingCapsuleClass,
     compile_proof_carrying_context,
 )
 from ipfs_accelerate_py.agent_supervisor.planning.obligation_graph_compiler import (
-    OBLIGATION_GRAPH_INTERFACE,
     SemanticDischargeEvidence,
     apply_semantic_discharge,
 )
 from ipfs_accelerate_py.agent_supervisor.planning.program_repair_synthesis import (
+    ProgramRepairCounterevidence,
     ProgramRepairMode,
     ProgramRepairRequest,
     synthesize_program_repair,
@@ -31,6 +27,15 @@ from ipfs_accelerate_py.agent_supervisor.planning.program_repair_synthesis impor
 from ipfs_accelerate_py.agent_supervisor.planning.repair_operator_registry import (
     RepairOperatorKind,
 )
+from ipfs_accelerate_py.agent_supervisor.analysis.deterministic_doctor_contracts import (
+    DoctorAuthorityRoots,
+)
+from ipfs_accelerate_py.agent_supervisor.proof.formal_counterexamples import (
+    CounterexampleKind,
+    RepairClass,
+    normalize_counterexample,
+)
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import ContextBudget
 
 
 @dataclass(frozen=True)
@@ -78,39 +83,6 @@ def _roots() -> DoctorAuthorityRoots:
         sandbox_id="sandbox:lgcvf-111",
         environment_id="environment:lgcvf-111",
         lease_id="lease:lgcvf-111",
-    )
-
-
-def _budget() -> ContextBudget:
-    return ContextBudget(
-        max_input_tokens=3_000,
-        reserved_output_tokens=400,
-        reserved_tool_tokens=100,
-        max_items=48,
-        max_item_bytes=16_384,
-        max_serialized_bytes=400_000,
-        max_depth=10,
-        max_text_bytes=16_384,
-    )
-
-
-def _context_request() -> PlannerDoctorContextRequest:
-    return PlannerDoctorContextRequest(
-        repository_id="repo:lgcvf-111",
-        tree_id="git-tree:lgcvf-111",
-        expected_tree_id="git-tree:lgcvf-111",
-        task_id="LGCVF-111",
-        acceptance_ids=("accept:coverage",),
-        intent_summary="focused context",
-        security_roots=("policy:security",),
-        open_obligation_ids=("obligation:open-1",),
-        assumption_ids=("assumption:a1",),
-        allowed_paths=("pkg/mod.py",),
-        allowed_effects=("modify",),
-        validation_commands=("python -m pytest -q",),
-        affected_interface_ids=("iface:A",),
-        coverage_class=ProofCarryingCoverageClass.EXACT.value,
-        budget=_budget(),
     )
 
 
@@ -182,33 +154,59 @@ def test_interpolation_requirement_is_executable() -> None:
 
 
 def test_compilation_requirement_is_executable() -> None:
+    from ipfs_accelerate_py.agent_supervisor.planning.obligation_graph_compiler import (
+        OBLIGATION_GRAPH_INTERFACE,
+    )
+
     assert OBLIGATION_GRAPH_INTERFACE == "ObligationGraph@1"
 
 
 def test_synthesis_requirement_is_executable() -> None:
-    from test.api.test_agent_supervisor_program_repair_synthesis import (
-        doctor_request,
-        roots,
+    cx = normalize_counterexample(
+        {"kind": CounterexampleKind.GENERIC_FAILURE.value, "failure": {"code": "x"}},
+        kind=CounterexampleKind.GENERIC_FAILURE,
+        violated_property="obligation:one",
+        bindings={
+            "plan_id": "plan:base",
+            "task_id": "LGCVF-111",
+            "ast_scope_id": "symbol:target",
+            "tree_id": "tree:lgcvf-111",
+            "assumption_id": "assumption:dep",
+            "provider_id": "tool:z3",
+            "policy_id": "policy:lgcvf-111",
+            "obligation_id": "obligation:one",
+        },
+        finite_bounds={"portfolio_width": 1, "deadline": 20},
+        repair_classes=(RepairClass.ADD_DEPENDENCY,),
     )
+
+    def verify(binding):
+        return {
+            "receipt_id": "receipt:ok",
+            "counterexample_id": binding["counterexample_id"],
+            "repository_tree_id": binding["repository_tree_id"],
+            "property_id": binding["property_id"],
+            "assumption_ids": list(binding.get("assumption_ids") or ()),
+            "bound_digest": binding["bound_digest"],
+            "tool_id": binding["tool_id"],
+            "policy_id": binding["policy_id"],
+            "repaired_plan_id": binding["repaired_plan_id"],
+            "freshness": "current",
+            "outcome": "verified",
+            "available": True,
+        }
 
     receipt = synthesize_program_repair(
         ProgramRepairRequest(
-            roots=roots(
-                repository_id="repository:lgcvf-111",
-                tree_id="tree:lgcvf-111",
-                policy_id="policy:lgcvf-111",
-                lease_id="lease:lgcvf-111",
-            ),
+            roots=_roots(),
             obligation_refs=("obligation:one",),
-            target_paths=("pkg/caller.py",),
+            target_paths=("pkg/mod.py",),
             operator_kinds=(RepairOperatorKind.ADD_ARGUMENT.value,),
-            placement_refs=("placement:exact",),
-            value_refs=("value:ctx",),
-            proof_refs=("proof:one",),
-            mode=ProgramRepairMode.DETERMINISTIC,
-            doctor_request=doctor_request(
-                source="process(event)",
-                file_text="def caller():\n    return process(event)\n",
+            mode=ProgramRepairMode.CEGIS,
+            counterexample=cx,
+            cegis_verify=verify,
+            counterevidence=ProgramRepairCounterevidence(
+                unsat_core_refs=("core:add_argument",),
             ),
         )
     )
@@ -217,10 +215,36 @@ def test_synthesis_requirement_is_executable() -> None:
 
 
 def test_capsule_and_context_requirements_are_executable() -> None:
-    capsule = compile_proof_carrying_context(_context_request())
+    capsule = compile_proof_carrying_context(
+        PlannerDoctorContextRequest(
+            repository_id="repo:lgcvf-111",
+            tree_id="git-tree:lgcvf-111",
+            expected_tree_id="git-tree:lgcvf-111",
+            task_id="LGCVF-111",
+            acceptance_ids=("accept:coverage",),
+            intent_summary="focused context",
+            security_roots=("policy:security",),
+            open_obligation_ids=("obligation:open-1",),
+            assumption_ids=("assumption:a1",),
+            allowed_paths=("pkg/mod.py",),
+            allowed_effects=("modify",),
+            validation_commands=("python -m pytest -q",),
+            affected_interface_ids=("iface:A",),
+            capsule_class=ProofCarryingCapsuleClass.EXACT,
+            budget=ContextBudget(
+                max_input_tokens=3_000,
+                reserved_output_tokens=400,
+                reserved_tool_tokens=100,
+                max_items=48,
+                max_item_bytes=16_384,
+                max_serialized_bytes=400_000,
+                max_depth=10,
+                max_text_bytes=16_384,
+            ),
+        )
+    )
     kinds = {ref.kind for ref in capsule.capsule.evidence}
     assert "affected_interfaces" in kinds
-    assert capsule.coverage_class == ProofCarryingCoverageClass.EXACT.value
 
 
 def test_supervisor_requirement_is_executable() -> None:

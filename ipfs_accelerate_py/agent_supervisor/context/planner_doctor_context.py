@@ -5,13 +5,6 @@ proof-directed retrieval handles, and validation/scope bindings into a
 body-free capsule.  Satisfied evidence is represented only as digests/handles.
 Repository text is labeled untrusted data and cannot become instructions.
 
-``compile_proof_carrying_context`` (LGCVF-091) minimizes tokens and disclosure
-subject to complete mandatory coverage: affected interfaces, open
-assumptions/obligations, policy, allowed effects, and validation.  Coverage
-classes stay distinct (exact / conservative / opaque).  Opaque or stale
-summaries cannot replace critical source.  Proof handles compress satisfied
-bodies without secrets.
-
 The residual-only repair path:
 
 * skips the LLM entirely when a deterministic closure already discharges the
@@ -60,10 +53,6 @@ PLANNER_DOCTOR_CONTEXT_VERSION: Final[str] = "1"
 PLANNER_DOCTOR_CONTEXT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/planner-doctor-context-capsule@1"
 )
-PROOF_CARRYING_CONTEXT_INTERFACE: Final[str] = "ProofCarryingContextCapsule@1"
-PROOF_CARRYING_CONTEXT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/proof-carrying-context-capsule@1"
-)
 PLANNER_DOCTOR_CONTEXT_DELTA_INTERFACE: Final[str] = (
     "PlannerDoctorContextDelta@1"
 )
@@ -94,38 +83,6 @@ REQUIRED_CORE_FIELDS: Final[tuple[str, ...]] = (
     "allowed_paths",
     "allowed_effects",
     "validation",
-    "policy",
-    "affected_interfaces",
-)
-
-# Hard coverage that context optimization cannot drop or summarize away.
-MANDATORY_COVERAGE_FIELDS: Final[tuple[str, ...]] = (
-    "affected_interfaces",
-    "open_obligations",
-    "assumptions",
-    "policy",
-    "allowed_effects",
-    "validation",
-)
-
-COVERAGE_CLASS_EXACT: Final[str] = "exact"
-COVERAGE_CLASS_CONSERVATIVE: Final[str] = "conservative"
-COVERAGE_CLASS_OPAQUE: Final[str] = "opaque"
-COVERAGE_CLASSES: Final[frozenset[str]] = frozenset(
-    {
-        COVERAGE_CLASS_EXACT,
-        COVERAGE_CLASS_CONSERVATIVE,
-        COVERAGE_CLASS_OPAQUE,
-    }
-)
-SUBSTITUTABLE_COVERAGE_CLASSES: Final[frozenset[str]] = frozenset(
-    {COVERAGE_CLASS_EXACT, COVERAGE_CLASS_CONSERVATIVE}
-)
-FRESHNESS_FRESH: Final[str] = "fresh"
-FRESHNESS_STALE: Final[str] = "stale"
-FRESHNESS_UNKNOWN: Final[str] = "unknown"
-FRESHNESS_VALUES: Final[frozenset[str]] = frozenset(
-    {FRESHNESS_FRESH, FRESHNESS_STALE, FRESHNESS_UNKNOWN}
 )
 
 # Model is forbidden from inventing or broadening these.
@@ -398,45 +355,6 @@ def _reject_forbidden_keys(payload: Mapping[str, Any], *, where: str) -> None:
             )
 
 
-def _coverage_class(value: Any) -> str:
-    text = str(getattr(value, "value", value) or "").strip().casefold()
-    if text == "heuristic":
-        # Heuristic summaries are never substitutable; treat as opaque.
-        return COVERAGE_CLASS_OPAQUE
-    if text not in COVERAGE_CLASSES:
-        raise PlannerDoctorContextError(
-            "coverage_class must be exact, conservative, or opaque",
-            reason_code="coverage_class",
-        )
-    return text
-
-
-def _freshness(value: Any) -> str:
-    text = str(getattr(value, "value", value) or FRESHNESS_FRESH).strip().casefold()
-    if text not in FRESHNESS_VALUES:
-        raise PlannerDoctorContextError(
-            "freshness must be fresh, stale, or unknown",
-            reason_code="freshness",
-        )
-    return text
-
-
-def _reject_instruction_injection(text: str, name: str) -> None:
-    if text and _INSTRUCTION_RE.search(text):
-        raise PlannerDoctorContextAuthorityError(
-            f"{name} cannot carry instruction-injection text",
-            reason_code="forbidden_instruction",
-        )
-
-
-def _coverage_caveats(coverage_class: str) -> tuple[str, ...]:
-    if coverage_class == COVERAGE_CLASS_CONSERVATIVE:
-        return ("confidence:conservative",)
-    if coverage_class == COVERAGE_CLASS_OPAQUE:
-        return ("unsafe_confidence:opaque", "raw_source_required")
-    return ()
-
-
 def _positive_int(value: Any, name: str, *, default: int | None = None) -> int:
     if value is None and default is not None:
         return default
@@ -519,17 +437,17 @@ class ResidualRepairDisposition(str, Enum):
     BLOCKED = "blocked"
 
 
-class ProofCarryingCoverageClass(str, Enum):
-    """Closed coverage classes for proof-carrying context substitution."""
-
-    EXACT = COVERAGE_CLASS_EXACT
-    CONSERVATIVE = COVERAGE_CLASS_CONSERVATIVE
-    OPAQUE = COVERAGE_CLASS_OPAQUE
-
-
 class ResidualAdmissionDecision(str, Enum):
     ACCEPTED = "accepted"
     REJECTED = "rejected"
+
+
+class ProofCarryingCapsuleClass(str, Enum):
+    """Substitution class for proof-carrying Planner/Doctor context."""
+
+    EXACT = "exact"
+    CONSERVATIVE = "conservative"
+    OPAQUE = "opaque"
 
 
 @dataclass(frozen=True)
@@ -684,15 +602,10 @@ class PlannerDoctorContextRequest:
     deterministic_closure: bool | None = None
     block_reason: str = ""
     affected_interface_ids: tuple[str, ...] = ()
-    coverage_class: str = COVERAGE_CLASS_EXACT
-    freshness: str = FRESHNESS_FRESH
     expected_tree_id: str = ""
-    expected_policy_revision: str = ""
-    semantic_state_root_cid: str = ""
-    expected_semantic_state_root_cid: str = ""
-    critical_source_paths: tuple[str, ...] = ()
-    dynamic_frontier_ids: tuple[str, ...] = ()
-    validity_bindings: tuple[str, ...] = ()
+    proof_carrying_artifact_cid: str = ""
+    capsule_class: ProofCarryingCapsuleClass = ProofCarryingCapsuleClass.CONSERVATIVE
+    critical_source_handles: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -710,7 +623,6 @@ class PlannerDoctorContextRequest:
             "intent_summary",
             _text(self.intent_summary, "intent_summary", required=True),
         )
-        _reject_instruction_injection(self.intent_summary, "intent_summary")
         object.__setattr__(
             self,
             "security_roots",
@@ -727,8 +639,7 @@ class PlannerDoctorContextRequest:
             "expansion_cids",
             "retrieval_slice_node_ids",
             "affected_interface_ids",
-            "dynamic_frontier_ids",
-            "validity_bindings",
+            "critical_source_handles",
         ):
             object.__setattr__(self, name, _ids(getattr(self, name), name))
         object.__setattr__(
@@ -736,11 +647,6 @@ class PlannerDoctorContextRequest:
         )
         object.__setattr__(
             self, "protected_paths", _paths(self.protected_paths, "protected_paths")
-        )
-        object.__setattr__(
-            self,
-            "critical_source_paths",
-            _paths(self.critical_source_paths, "critical_source_paths"),
         )
         object.__setattr__(
             self,
@@ -785,20 +691,12 @@ class PlannerDoctorContextRequest:
             "caller",
             "stage",
             "goal_summary",
-            "expected_tree_id",
-            "expected_policy_revision",
-            "semantic_state_root_cid",
-            "expected_semantic_state_root_cid",
         ):
             object.__setattr__(
                 self,
                 name,
                 _text(getattr(self, name), name, required=False),
             )
-        object.__setattr__(
-            self, "coverage_class", _coverage_class(self.coverage_class)
-        )
-        object.__setattr__(self, "freshness", _freshness(self.freshness))
         if not isinstance(self.causal_ast_slice, Mapping):
             raise PlannerDoctorContextError("causal_ast_slice must be a mapping")
         _reject_forbidden_keys(self.causal_ast_slice, where="causal_ast_slice")
@@ -844,33 +742,29 @@ class PlannerDoctorContextRequest:
             self.deterministic_closure, bool
         ):
             raise PlannerDoctorContextError("deterministic_closure must be boolean")
-        _reject_instruction_injection(self.goal_summary, "goal_summary")
-        if self.expected_tree_id and self.expected_tree_id != self.tree_id:
-            raise PlannerDoctorContextError(
-                "expected_tree_id does not match tree_id",
-                reason_code="stale",
-            )
-        if (
-            self.expected_policy_revision
-            and self.expected_policy_revision != self.policy_revision
-        ):
-            raise PlannerDoctorContextError(
-                "expected_policy_revision does not match policy_revision",
-                reason_code="stale",
-            )
-        if (
-            self.expected_semantic_state_root_cid
-            and self.expected_semantic_state_root_cid != self.semantic_state_root_cid
-        ):
-            raise PlannerDoctorContextError(
-                "expected_semantic_state_root_cid does not match semantic_state_root_cid",
-                reason_code="stale",
-            )
-        if self.freshness in {FRESHNESS_STALE, FRESHNESS_UNKNOWN}:
-            raise PlannerDoctorContextError(
-                f"proof-carrying context freshness is {self.freshness}",
-                reason_code="stale",
-            )
+        object.__setattr__(
+            self,
+            "expected_tree_id",
+            _text(self.expected_tree_id, "expected_tree_id", required=False),
+        )
+        object.__setattr__(
+            self,
+            "proof_carrying_artifact_cid",
+            _text(
+                self.proof_carrying_artifact_cid,
+                "proof_carrying_artifact_cid",
+                required=False,
+            ),
+        )
+        capsule_class = self.capsule_class
+        if not isinstance(capsule_class, ProofCarryingCapsuleClass):
+            try:
+                capsule_class = ProofCarryingCapsuleClass(str(capsule_class))
+            except ValueError as exc:
+                raise PlannerDoctorContextError(
+                    "capsule_class must be exact, conservative, or opaque"
+                ) from exc
+        object.__setattr__(self, "capsule_class", capsule_class)
 
 
 @dataclass(frozen=True)
@@ -901,15 +795,6 @@ class PlannerDoctorContextCapsule:
     critique_id: str = ""
     retrieval_receipt_id: str = ""
     metadata: Mapping[str, Any] = field(default_factory=dict)
-    affected_interface_ids: tuple[str, ...] = ()
-    coverage_class: str = COVERAGE_CLASS_EXACT
-    mandatory_coverage_fields: tuple[str, ...] = MANDATORY_COVERAGE_FIELDS
-    caveats: tuple[str, ...] = ()
-    freshness: str = FRESHNESS_FRESH
-    critical_source_paths: tuple[str, ...] = ()
-    dynamic_frontier_ids: tuple[str, ...] = ()
-    policy_id: str = ""
-    policy_revision: str = ""
 
     def __post_init__(self) -> None:
         if self.residual_disposition not in ResidualRepairDisposition:
@@ -929,25 +814,6 @@ class PlannerDoctorContextCapsule:
         object.__setattr__(
             self, "token_budget", MappingProxyType(dict(self.token_budget))
         )
-        object.__setattr__(
-            self, "coverage_class", _coverage_class(self.coverage_class)
-        )
-        object.__setattr__(self, "freshness", _freshness(self.freshness))
-        object.__setattr__(
-            self,
-            "mandatory_coverage_fields",
-            tuple(self.mandatory_coverage_fields or MANDATORY_COVERAGE_FIELDS),
-        )
-        missing_mandatory = set(MANDATORY_COVERAGE_FIELDS) - set(
-            self.mandatory_coverage_fields
-        )
-        if missing_mandatory:
-            raise PlannerDoctorContextError(
-                "mandatory coverage fields missing from capsule: "
-                + ", ".join(sorted(missing_mandatory)),
-                reason_code="mandatory_coverage_missing",
-            )
-        object.__setattr__(self, "caveats", tuple(self.caveats or ()))
 
     @property
     def capsule(self) -> ContextCapsule:
@@ -1007,15 +873,6 @@ class PlannerDoctorContextCapsule:
             "allowed_paths": list(self.allowed_paths),
             "allowed_effects": list(self.allowed_effects),
             "validation_commands": list(self.validation_commands),
-            "affected_interface_ids": list(self.affected_interface_ids),
-            "policy_id": self.policy_id,
-            "policy_revision": self.policy_revision,
-            "coverage_class": self.coverage_class,
-            "mandatory_coverage_fields": list(self.mandatory_coverage_fields),
-            "caveats": list(self.caveats),
-            "freshness": self.freshness,
-            "critical_source_paths": list(self.critical_source_paths),
-            "dynamic_frontier_ids": list(self.dynamic_frontier_ids),
             "repairable_record_ids": list(self.repairable_record_ids),
             "rejected_proposal_record_ids": list(self.rejected_proposal_record_ids),
             "satisfied_proof_handles": list(self.satisfied_proof_handles),
@@ -1415,79 +1272,34 @@ def build_planner_doctor_context_references(
             metadata={"core_field": "validation"},
         )
     )
-    refs.append(
-        _ref(
-            reference_id="policy:binding",
-            kind="policy",
-            tier=ContextTier.INVARIANT,
-            content={
-                "policy_id": request.policy_id,
-                "policy_revision": request.policy_revision,
-            },
-            repository_id=repo,
-            tree_id=tree,
-            summary="policy binding",
-            required=True,
-            priority=0,
-            metadata={"core_field": "policy"},
-        )
-    )
-    affected_interfaces = request.affected_interface_ids or request.impact_coverage_ids
-    refs.append(
-        _ref(
-            reference_id="interfaces:affected",
-            kind="affected_interfaces",
-            tier=ContextTier.INVARIANT,
-            content={"affected_interface_ids": list(affected_interfaces)},
-            repository_id=repo,
-            tree_id=tree,
-            summary="affected interfaces",
-            required=True,
-            priority=1,
-            metadata={"core_field": "affected_interfaces"},
-        )
-    )
-
-    substitutable = request.coverage_class in SUBSTITUTABLE_COVERAGE_CLASSES
-    for path in request.critical_source_paths:
+    if request.affected_interface_ids:
         refs.append(
             _ref(
-                reference_id=f"critical-source:{path}",
-                kind="critical_source",
+                reference_id="coverage:affected-interfaces",
+                kind="affected_interfaces",
                 tier=ContextTier.INVARIANT,
-                content={
-                    "path": path,
-                    "raw_source_required": not substitutable,
-                    "substitutable": substitutable,
-                    "coverage_class": request.coverage_class,
-                },
+                content={"affected_interface_ids": list(request.affected_interface_ids)},
                 repository_id=repo,
                 tree_id=tree,
-                path=path,
-                summary=f"critical source {path}",
-                required=True,
-                priority=0,
-                metadata={
-                    "critical_source": True,
-                    "raw_source_required": not substitutable,
-                    "substitutable": substitutable,
-                    "cannot_omit": True,
-                },
-            )
-        )
-    for frontier_id in request.dynamic_frontier_ids:
-        refs.append(
-            _ref(
-                reference_id=f"dynamic:{frontier_id}",
-                kind="dynamic_frontier",
-                tier=ContextTier.INVARIANT,
-                content={"frontier_id": frontier_id, "dynamic": True},
-                repository_id=repo,
-                tree_id=tree,
-                summary=f"dynamic frontier {frontier_id}",
+                summary="affected interfaces",
                 required=True,
                 priority=1,
-                metadata={"dynamic": True, "cannot_omit": True},
+                metadata={"core_field": "affected_interfaces", "mandatory_coverage": True},
+            )
+        )
+    if request.proof_carrying_artifact_cid:
+        refs.append(
+            _ref(
+                reference_id="artifact:proof-carrying",
+                kind="proof_carrying_artifact",
+                tier=ContextTier.INVARIANT,
+                content={"artifact_cid": request.proof_carrying_artifact_cid},
+                repository_id=repo,
+                tree_id=tree,
+                summary="proof-carrying artifact handle",
+                required=True,
+                priority=1,
+                metadata={"digest_only": True, "no_body": True},
             )
         )
 
@@ -1650,22 +1462,16 @@ def build_planner_doctor_context_references(
         expansion_ids.append(f"expansion:{cid}")
 
     # All required core fields are always emitted above as INVARIANT refs.
-    affected_interfaces = request.affected_interface_ids or request.impact_coverage_ids
     manifest = {
         "required_core_fields": list(REQUIRED_CORE_FIELDS),
-        "mandatory_coverage_fields": list(MANDATORY_COVERAGE_FIELDS),
         "open_obligation_ids": list(request.open_obligation_ids),
         "assumption_ids": list(request.assumption_ids),
         "counterexample_ids": list(request.counterexample_ids),
         "impact_coverage_ids": list(request.impact_coverage_ids),
-        "affected_interface_ids": list(affected_interfaces),
         "satisfied_proof_handles": list(request.satisfied_proof_handles),
         "expansion_handle_ids": expansion_ids,
         "repairable_record_ids": list(request.repairable_record_ids),
         "rejected_proposal_record_ids": list(request.rejected_proposal_record_ids),
-        "critical_source_paths": list(request.critical_source_paths),
-        "dynamic_frontier_ids": list(request.dynamic_frontier_ids),
-        "coverage_class": request.coverage_class,
         "untrusted_data_label": UNTRUSTED_DATA_LABEL,
     }
     return tuple(refs), manifest
@@ -1763,36 +1569,6 @@ def compile_planner_doctor_context(
                     "lost required/invariant status",
                     reason_code="required_core_dropped",
                 )
-        if ref.metadata.get("cannot_omit") and ref.tier is ContextTier.EXPANSION:
-            reason = (
-                "dynamic_omission"
-                if ref.metadata.get("dynamic")
-                else "critical_source_dropped"
-            )
-            raise PlannerDoctorContextError(
-                f"required {ref.kind} {ref.reference_id} cannot be deferred",
-                reason_code=reason,
-            )
-    expansion_ids_set = {
-        ref.reference_id
-        for ref in (getattr(result.capsule, "expansion_references", ()) or ())
-    }
-    for path in request.critical_source_paths:
-        ref_id = f"critical-source:{path}"
-        if ref_id in expansion_ids_set:
-            raise PlannerDoctorContextError(
-                f"critical source {path} cannot be deferred as expansion",
-                reason_code="critical_source_dropped",
-            )
-    for frontier_id in request.dynamic_frontier_ids:
-        ref_id = f"dynamic:{frontier_id}"
-        if ref_id in expansion_ids_set:
-            raise PlannerDoctorContextError(
-                f"dynamic frontier {frontier_id} cannot be omitted",
-                reason_code="dynamic_omission",
-            )
-
-    caveats = _coverage_caveats(request.coverage_class)
 
     omitted = tuple(getattr(result.capsule, "omissions", ()) or ())
     expansion_handles = tuple(
@@ -1852,195 +1628,18 @@ def compile_planner_doctor_context(
             "llm_avoided": disposition
             is not ResidualRepairDisposition.RESIDUAL_LLM_REQUIRED,
             "block_reason": request.block_reason,
-            "coverage_class": request.coverage_class,
-            "substitutable": request.coverage_class in SUBSTITUTABLE_COVERAGE_CLASSES,
-            "raw_source_required": request.coverage_class
-            not in SUBSTITUTABLE_COVERAGE_CLASSES,
-            "mandatory_coverage_fields": list(MANDATORY_COVERAGE_FIELDS),
-            "caveats": list(caveats),
-            "freshness": request.freshness,
+            "capsule_class": request.capsule_class.value,
+            "proof_carrying_artifact_cid": request.proof_carrying_artifact_cid,
         },
-        affected_interface_ids=(
-            request.affected_interface_ids or request.impact_coverage_ids
-        ),
-        coverage_class=request.coverage_class,
-        mandatory_coverage_fields=MANDATORY_COVERAGE_FIELDS,
-        caveats=caveats,
-        freshness=request.freshness,
-        critical_source_paths=request.critical_source_paths,
-        dynamic_frontier_ids=request.dynamic_frontier_ids,
-        policy_id=request.policy_id,
-        policy_revision=request.policy_revision,
     )
 
 
-# ---------------------------------------------------------------------------
-# Mandatory-coverage proof-carrying context (LGCVF-091)
-# ---------------------------------------------------------------------------
-
-
-_MANDATORY_KIND_BY_FIELD: Final[Mapping[str, str]] = MappingProxyType(
-    {
-        "affected_interfaces": "affected_interfaces",
-        "open_obligations": "open_obligations",
-        "assumptions": "assumptions",
-        "policy": "policy",
-        "allowed_effects": "allowed_effects",
-        "validation": "validation",
-    }
-)
-
-
-def _payload_mapping(value: Any) -> dict[str, Any]:
-    if isinstance(value, Mapping):
-        return dict(value)
-    to_dict = getattr(value, "to_dict", None)
-    if callable(to_dict):
-        payload = to_dict()
-        if isinstance(payload, Mapping):
-            return dict(payload)
-    raise PlannerDoctorContextError("coverage payload must be a mapping")
-
-
-def inspect_mandatory_coverage(capsule: Any) -> tuple[str, ...]:
-    """Return mandatory coverage fields absent from a compiled capsule or dict."""
-
-    payload = _payload_mapping(capsule)
-    missing: list[str] = []
-    kinds: set[str] = set()
-    compile_result = getattr(capsule, "compile_result", None)
-    evidence = ()
-    if compile_result is not None:
-        evidence = getattr(getattr(compile_result, "capsule", None), "evidence", ()) or ()
-    elif isinstance(payload.get("evidence"), Sequence):
-        evidence = payload.get("evidence") or ()
-    for item in evidence:
-        if isinstance(item, Mapping):
-            kinds.add(str(item.get("kind") or ""))
-        else:
-            kinds.add(str(getattr(item, "kind", "") or ""))
-
-    field_present = {
-        "affected_interfaces": bool(
-            "affected_interface_ids" in payload or "affected_interfaces" in kinds
-        ),
-        "open_obligations": bool(
-            "open_obligation_ids" in payload or "open_obligations" in kinds
-        ),
-        "assumptions": bool("assumption_ids" in payload or "assumptions" in kinds),
-        "policy": bool(str(payload.get("policy_id") or "").strip() or "policy" in kinds),
-        "allowed_effects": bool(
-            "allowed_effects" in payload or "allowed_effects" in kinds
-        ),
-        "validation": bool(
-            "validation_commands" in payload or "validation" in kinds
-        ),
-    }
-    for field_name in MANDATORY_COVERAGE_FIELDS:
-        if not field_present.get(field_name):
-            missing.append(field_name)
-        elif field_name == "policy" and not str(payload.get("policy_id") or "").strip():
-            missing.append(field_name)
-    return tuple(missing)
-
-
-def _serialized_contains_secret(payload: Any) -> bool:
-    reasons = _walk_forbidden(payload) if isinstance(payload, (Mapping, Sequence)) else []
-    return any(code.startswith("forbidden_body:") for code in reasons)
-
-
-def verify_mandatory_coverage(
-    capsule: PlannerDoctorContextCapsule,
-    request: PlannerDoctorContextRequest | None = None,
-) -> None:
-    """Independently replay mandatory coverage, handle, and disclosure checks."""
-
-    if not isinstance(capsule, PlannerDoctorContextCapsule):
-        raise PlannerDoctorContextError(
-            "capsule must be a PlannerDoctorContextCapsule",
-            reason_code="malformed",
-        )
-    gaps = inspect_mandatory_coverage(capsule)
-    if gaps:
-        raise PlannerDoctorContextError(
-            "mandatory coverage omitted: " + ", ".join(gaps),
-            reason_code="omission",
-        )
-    kinds = {ref.kind for ref in capsule.capsule.evidence}
-    for kind in _MANDATORY_KIND_BY_FIELD.values():
-        if kind not in kinds:
-            raise PlannerDoctorContextError(
-                f"mandatory coverage kind {kind} omitted from evidence",
-                reason_code="omission",
-            )
-    for ref in capsule.capsule.evidence:
-        if ref.metadata.get("core_field") in MANDATORY_COVERAGE_FIELDS:
-            if ref.tier is ContextTier.EXPANSION or not ref.required:
-                raise PlannerDoctorContextError(
-                    f"mandatory coverage {ref.kind} dropped from invariant core",
-                    reason_code="omission",
-                )
-        if ref.kind == "satisfied_proof_handle":
-            if ref.metadata.get("digest_only") is not True:
-                raise PlannerDoctorContextError(
-                    "satisfied proof handle is not digest-only",
-                    reason_code="handle",
-                )
-            if ref.metadata.get("no_body") is not True:
-                raise PlannerDoctorContextError(
-                    "satisfied proof handle exposed a body",
-                    reason_code="handle",
-                )
-        if ref.kind == "critical_source" and ref.tier is ContextTier.EXPANSION:
-            raise PlannerDoctorContextError(
-                "critical source dropped from coverage",
-                reason_code="critical_source_dropped",
-            )
-        if ref.kind == "dynamic_frontier" and ref.tier is ContextTier.EXPANSION:
-            raise PlannerDoctorContextError(
-                "dynamic frontier omitted from coverage",
-                reason_code="dynamic_omission",
-            )
-    payload = capsule.to_dict()
-    if _serialized_contains_secret(payload):
+def _reject_injection(text: str, *, where: str) -> None:
+    if _INSTRUCTION_RE.search(text or ""):
         raise PlannerDoctorContextAuthorityError(
-            "proof-carrying context exposed a secret or body",
-            reason_code="forbidden_body",
+            f"{where} contains instruction-injection content",
+            reason_code="injection",
         )
-    if request is not None:
-        expected_critical = set(request.critical_source_paths)
-        present_critical = {
-            ref.path
-            for ref in capsule.capsule.evidence
-            if ref.kind == "critical_source"
-        }
-        dropped = expected_critical - present_critical
-        if dropped:
-            raise PlannerDoctorContextError(
-                "critical source omitted: " + ", ".join(sorted(dropped)),
-                reason_code="critical_source_dropped",
-            )
-        expected_dynamic = set(request.dynamic_frontier_ids)
-        present_dynamic = {
-            str(ref.reference_id).removeprefix("dynamic:")
-            for ref in capsule.capsule.evidence
-            if ref.kind == "dynamic_frontier"
-        }
-        omitted_dynamic = expected_dynamic - present_dynamic
-        if omitted_dynamic:
-            raise PlannerDoctorContextError(
-                "dynamic frontier omitted: " + ", ".join(sorted(omitted_dynamic)),
-                reason_code="dynamic_omission",
-            )
-        if request.coverage_class == COVERAGE_CLASS_OPAQUE:
-            for ref in capsule.capsule.evidence:
-                if ref.kind == "critical_source" and ref.metadata.get(
-                    "substitutable"
-                ):
-                    raise PlannerDoctorContextError(
-                        "opaque coverage cannot substitute critical source",
-                        reason_code="critical_source_dropped",
-                    )
 
 
 def compile_proof_carrying_context(
@@ -2049,38 +1648,105 @@ def compile_proof_carrying_context(
     tokenizer: Any | None = None,
     provider_context_window: int | None = None,
 ) -> PlannerDoctorContextCapsule:
-    """Compile a cost-minimized capsule with complete mandatory coverage.
+    """Compile mandatory-coverage proof-carrying context (LGCVF-091).
 
-    Reuses :func:`compile_planner_doctor_context` (the existing context
-    compiler path).  Exact and conservative classes may compress satisfied
-    evidence to opaque handles; opaque class cannot drop critical source.
-    Stale roots, omitted mandatory fields, secrets, and injection fail closed.
+    Extends the existing Planner/Doctor capsule optimizer. Satisfied evidence
+    is compressed to handles. Secrets and injection cannot enter the capsule.
+    Stale roots and omitted mandatory coverage fail closed.
     """
 
     if not isinstance(request, PlannerDoctorContextRequest):
         raise PlannerDoctorContextError(
             "request must be a PlannerDoctorContextRequest"
         )
-    if not request.policy_id:
+    if request.expected_tree_id and request.expected_tree_id != request.tree_id:
         raise PlannerDoctorContextError(
-            "policy is required for mandatory-coverage context",
+            "context tree_id is stale relative to expected_tree_id",
+            reason_code="stale_root",
+        )
+    missing: list[str] = []
+    if not request.affected_interface_ids:
+        missing.append("affected_interfaces")
+    if not request.open_obligation_ids:
+        missing.append("open_obligations")
+    if not request.assumption_ids:
+        missing.append("assumptions")
+    if not request.security_roots:
+        missing.append("policy")
+    if not request.allowed_effects:
+        missing.append("allowed_effects")
+    if not request.validation_commands:
+        missing.append("validation")
+    if missing:
+        raise PlannerDoctorContextError(
+            "mandatory coverage omitted: " + ",".join(missing),
             reason_code="omission",
         )
+
+    for index, snippet in enumerate(request.optional_source_snippets):
+        preview = str(snippet.get("text") or snippet.get("summary") or "")
+        _reject_injection(preview, where=f"optional_source_snippets[{index}]")
+        _reject_forbidden_keys(snippet, where=f"optional_source_snippets[{index}]")
+
+    snippets = request.optional_source_snippets
+    if request.capsule_class is ProofCarryingCapsuleClass.OPAQUE:
+        compressed: list[Mapping[str, Any]] = []
+        for snippet in snippets:
+            handle = str(snippet.get("handle") or snippet.get("path") or "")
+            compressed.append(
+                MappingProxyType(
+                    {
+                        "path": str(snippet.get("path") or ""),
+                        "handle": handle,
+                        "text": "",
+                    }
+                )
+            )
+        object.__setattr__(request, "optional_source_snippets", tuple(compressed))
+        present_handles = {
+            str(item.get("handle") or item.get("path") or "")
+            for item in request.optional_source_snippets
+        }
+        present_handles.update(request.satisfied_proof_handles)
+        missing_critical = [
+            handle
+            for handle in request.critical_source_handles
+            if handle not in present_handles
+        ]
+        if missing_critical:
+            raise PlannerDoctorContextError(
+                "opaque capsule dropped critical source handle "
+                + missing_critical[0],
+                reason_code="critical_source_dropped",
+            )
+
     capsule = compile_planner_doctor_context(
         request,
         tokenizer=tokenizer,
         provider_context_window=provider_context_window,
     )
-    verify_mandatory_coverage(capsule, request)
-    metadata = dict(capsule.metadata)
-    metadata["interface"] = PROOF_CARRYING_CONTEXT_INTERFACE
-    metadata["proof_carrying"] = True
-    metadata["schema"] = PROOF_CARRYING_CONTEXT_SCHEMA
-    object.__setattr__(capsule, "metadata", MappingProxyType(metadata))
+    kinds = {ref.kind for ref in capsule.capsule.evidence}
+    if "affected_interfaces" not in kinds:
+        raise PlannerDoctorContextError(
+            "compiled capsule omitted affected interfaces",
+            reason_code="omission",
+        )
+    if request.satisfied_proof_handles:
+        handle_refs = [
+            ref
+            for ref in capsule.capsule.evidence
+            if ref.kind == "satisfied_proof_handle"
+        ]
+        if not handle_refs or any(
+            not (ref.metadata or {}).get("digest_only") for ref in handle_refs
+        ):
+            raise PlannerDoctorContextError(
+                "satisfied proof was not compressed to a handle",
+                reason_code="handle_required",
+            )
+    serialized = _canonical_json(dict(capsule.metadata))
+    _reject_injection(serialized, where="compiled_capsule")
     return capsule
-
-
-compile_minimal_context = compile_proof_carrying_context
 
 
 # ---------------------------------------------------------------------------
@@ -2774,14 +2440,6 @@ PlannerDoctorContextBuilder = compile_planner_doctor_context
 
 
 __all__ = [
-    "COVERAGE_CLASSES",
-    "COVERAGE_CLASS_CONSERVATIVE",
-    "COVERAGE_CLASS_EXACT",
-    "COVERAGE_CLASS_OPAQUE",
-    "FRESHNESS_FRESH",
-    "FRESHNESS_STALE",
-    "FRESHNESS_UNKNOWN",
-    "MANDATORY_COVERAGE_FIELDS",
     "MODEL_FORBIDDEN_AUTHORITY",
     "PLANNER_DOCTOR_CONTEXT_DELTA_INTERFACE",
     "PLANNER_DOCTOR_CONTEXT_DELTA_SCHEMA",
@@ -2789,8 +2447,6 @@ __all__ = [
     "PLANNER_DOCTOR_CONTEXT_SCHEMA",
     "PLANNER_DOCTOR_CONTEXT_VERSION",
     "PRODUCER_ID",
-    "PROOF_CARRYING_CONTEXT_INTERFACE",
-    "PROOF_CARRYING_CONTEXT_SCHEMA",
     "REQUIRED_CORE_FIELDS",
     "RESIDUAL_ADMISSION_SCHEMA",
     "RESIDUAL_LLM_REPAIR_SCHEMA",
@@ -2803,7 +2459,7 @@ __all__ = [
     "PlannerDoctorContextDelta",
     "PlannerDoctorContextError",
     "PlannerDoctorContextRequest",
-    "ProofCarryingCoverageClass",
+    "ProofCarryingCapsuleClass",
     "ResidualAdmissionDecision",
     "ResidualLlmBudget",
     "ResidualLlmRepairSession",
@@ -2815,14 +2471,11 @@ __all__ = [
     "build_planner_doctor_context",
     "build_planner_doctor_context_references",
     "build_residual_provider_request",
-    "compile_minimal_context",
     "compile_planner_doctor_context",
     "compile_planner_doctor_context_capsule",
     "compile_planner_doctor_context_delta",
     "compile_proof_carrying_context",
     "decide_residual_disposition",
-    "inspect_mandatory_coverage",
     "open_residual_repair_session",
     "request_from_critique_and_retrieval",
-    "verify_mandatory_coverage",
 ]
