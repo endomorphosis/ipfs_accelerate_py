@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from ipfs_accelerate_py.agent_supervisor.validation.compositional_verification_vertical import (
     CompositionalVerificationArtifact,
+    REQUIRED_VERTICAL_STAGES,
     VerticalSliceError,
     _analyze_components,
     _build_contract_graph,
@@ -98,8 +99,9 @@ def test_full_vertical_route_is_deterministic_model_free_and_independently_check
         env=environment,
         text=True,
         capture_output=True,
-        timeout=120,
+        timeout=180,
         check=False,
+        start_new_session=True,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     guard = json.loads(completed.stdout.strip().splitlines()[-1])
@@ -111,6 +113,37 @@ def test_full_vertical_route_is_deterministic_model_free_and_independently_check
     assert result["provider_modules_imported_during_route"] == []
     assert result["release_qualified"] is False
     assert result["production_authorized"] is False
+    assert tuple(REQUIRED_VERTICAL_STAGES) == (
+        "identity",
+        "scan",
+        "abstract_states",
+        "contracts",
+        "initial_discharge",
+        "incremental_smt",
+        "counterexample",
+        "unsat_core",
+        "interpolant",
+        "capsules",
+        "context",
+        "mutation",
+        "exact_invalidation",
+        "unaffected_reuse",
+        "deterministic_repair",
+        "affected_only_replay",
+        "live_fixed_point",
+        "independently_verified_artifact",
+        "final_context",
+        "zero_model_calls",
+        "token_metrics",
+        "work_reuse_metrics",
+    )
+    assert len(REQUIRED_VERTICAL_STAGES) == 22
+    assert result["required_stages"] == list(REQUIRED_VERTICAL_STAGES)
+    assert set(result["stages"]) == set(REQUIRED_VERTICAL_STAGES)
+    for stage_id in REQUIRED_VERTICAL_STAGES:
+        stage = result["stages"][stage_id]
+        assert stage["stage_id"] == stage_id
+        assert stage["status"] == "completed", stage_id
 
     assert result["baseline"]["discharge"]["disposition"] == "proved"
     assert result["fault"]["discharge"]["disposition"] == "disproved"
@@ -142,16 +175,54 @@ def test_full_vertical_route_is_deterministic_model_free_and_independently_check
     assert synthesis["selected_candidate"]["candidate_id"] == "candidate:constant:10"
     assert result["repair"]["transaction"]["disposition"] == "committed"
     assert result["repair"]["fixed_point"]["complete"] is True
+    assert result["rollback"]["restored_fault_bytes"] is True
+    assert result["rollback"]["original_repository_unmutated"] is True
+    assert result["rollback"]["receipt_cid"]
+    assert result["stages"]["mutation"]["after_hash"] != result["stages"]["mutation"]["before_hash"]
+    assert result["stages"]["deterministic_repair"]["rollback_receipt_cid"] == (
+        result["rollback"]["receipt_cid"]
+    )
 
     assert result["final"]["discharge"]["disposition"] == "proved"
     assert result["final"]["selected_tests"]["status"] == "passed"
     assert result["final"]["full_tests"]["status"] == "passed"
+    assert result["final"]["context"]["residual_disposition"] == "deterministic_closed"
+    assert result["final"]["context"]["input_tokens"] > 0
     assert result["artifact_verification"]["valid"] is True
     assert result["artifact_verification"]["issues"] == []
     assert result["artifact_verification"]["checks"]["selected_tests_replayed"] is True
     assert result["benchmark"]["challenger"]["abstract_state_reused"] == 1
     assert result["benchmark"]["challenger"]["proof_test_reuse_bps"] == 10_000
+    assert result["benchmark"]["challenger"]["context_tokens"] == result["final"]["context"]["input_tokens"]
     assert result["benchmark"]["comparison"]["safety_floor_violations"] == 0
+    assert result["stages"]["token_metrics"]["context_tokens"] == (
+        result["final"]["context"]["input_tokens"]
+    )
+    assert result["stages"]["work_reuse_metrics"]["proof_test_reuse_bps"] == 10_000
+    assert result["stages"]["zero_model_calls"]["model_invocation_count"] == 0
+
+
+def test_fixture_recipe_is_compact_and_matches_source_bytes() -> None:
+    """The hermetic fixture is a recipe, not a golden envelope dump."""
+
+    root = _fixture_default()
+    recipe_path = root / "recipe.json"
+    recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
+    assert recipe["schema"] == "lgcvf-compositional-verification-fixture-recipe@1"
+    producer = (root / "pkg/module_a.py").read_text(encoding="utf-8")
+    consumer = (root / "pkg/module_b.py").read_text(encoding="utf-8")
+    present = (root / "pkg/module_c.py").read_text(encoding="utf-8")
+    unaffected = (root / "pkg/unaffected.py").read_text(encoding="utf-8")
+    assert f"return {recipe['baseline']['producer_return']}" in producer
+    assert "MAX_PRODUCED_VALUE" in consumer
+    assert "from .module_b import consume" in present
+    assert 'return "unaffected"' in unaffected
+    selected = (root / "tests/test_selected.py").read_text(encoding="utf-8")
+    unselected = (root / "tests/test_unselected.py").read_text(encoding="utf-8")
+    assert "test_selected_contract_path" in selected
+    assert "stable_label" in unselected
+    assert recipe["fault"]["path"] == "pkg/module_a.py"
+    assert recipe["repair"]["candidate_id"] == "candidate:constant:10"
 
 
 def test_self_consistent_forged_artifact_is_rejected_by_independent_replay(
