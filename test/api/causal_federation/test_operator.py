@@ -1222,6 +1222,8 @@ def test_plan_executor_command_stays_isolated_from_coordinator_status() -> None:
     assert "--implement" in argv
     assert "--authority-mode" in argv
     assert argv[argv.index("--authority-mode") + 1] == "quack"
+    assert argv[argv.index("--task-prefix") + 1] == operator.TASK_PREFIX
+    assert "##" not in argv[argv.index("--task-prefix") + 1]
 
 
 def test_plan_executor_bootstrap_argv_excludes_raw_credentials(

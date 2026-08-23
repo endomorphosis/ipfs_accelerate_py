@@ -1257,6 +1257,7 @@ def _plan_executor_command(board: Any, config: Mapping[str, Any], paths: Mapping
     argv = [
         sys.executable,
         "-P",
+        "-u",
         "-m",
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
         "--interval",
@@ -1266,7 +1267,7 @@ def _plan_executor_command(board: Any, config: Mapping[str, Any], paths: Mapping
         "--state-dir",
         str(paths["executor_state"]),
         "--task-prefix",
-        str(board.task_header_prefix),
+        TASK_PREFIX,
         "--state-prefix",
         "casf_exec",
         "--board-namespace",
@@ -1329,6 +1330,7 @@ def _plan_executor_environment() -> dict[str, str]:
         if part and part != root
     ]
     environment["PYTHONPATH"] = os.pathsep.join([root, *existing])
+    environment["PYTHONUNBUFFERED"] = "1"
     environment.pop(STATE_TOKEN_ENV, None)
     return environment
 
