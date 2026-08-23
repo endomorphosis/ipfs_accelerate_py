@@ -785,7 +785,7 @@ This board is a sealed bootstrap and human export. After materialization, DuckDB
 
 ## PCPC-021 Implement residual-hole distillation corpus
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
