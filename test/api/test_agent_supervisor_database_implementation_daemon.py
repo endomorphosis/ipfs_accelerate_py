@@ -5363,6 +5363,82 @@ def test_inflight_process_failure_retries_instead_of_blocking(
         daemon.close()
 
 
+def test_inflight_process_deferral_does_not_exhaust_typed_budget(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DatabasePortalBridgeDeferred,
+    )
+
+    now = {"ms": 1_000}
+    calls: list[str] = []
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeDeferred("inflight_process", backoff_seconds=30)
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:inflight-deferral-budget",
+        provider_fn=provider,
+        max_task_attempts=3,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        for _ in range(12):
+            daemon.run_once()
+            now["ms"] += 31_000
+            task = daemon.task_source.get("task:cid:001")
+            assert task is not None
+            assert task.status != "blocked"
+        assert len(calls) >= 4
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        assert task.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_reconcile_reopens_inflight_deferral_budget_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:inflight-deferral-unstall",
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            status="blocked",
+            receipt={
+                "operation": "database_portal_typed_deferral_budget_exhausted",
+                "retry_budget": {
+                    "matching_attempts": [
+                        {"reason": "inflight_process"},
+                        {"reason": "inflight_process"},
+                        {"reason": "inflight_process"},
+                    ]
+                },
+            },
+        )
+        blocked = daemon.task_source.get("task:cid:001")
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        outcomes = daemon.reconcile_inflight_deferral_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+
 @pytest.mark.parametrize(
     ("mutation", "error_type"),
     [
