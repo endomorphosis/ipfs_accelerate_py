@@ -74014,15 +74014,47 @@ class DatabaseImplementationDaemon:
             + qualification_receipt_id
         )[:2048]
         get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        record_task_retry_cooldown = getattr(
+            self.task_source,
+            "record_task_retry_cooldown",
+            None,
+        )
         record_queue_backoff = getattr(
             self.task_source,
             "record_queue_backoff",
             None,
         )
-        if not callable(get_queue_entry) or not callable(record_queue_backoff):
+        if not callable(get_queue_entry) or not (
+            callable(record_task_retry_cooldown)
+            or callable(record_queue_backoff)
+        ):
             raise DatabaseImplementationAuthorityError(
                 "post-merge recovery task source has no retry queue authority"
             )
+        if callable(record_task_retry_cooldown):
+            task_body = getattr(task, "body", None)
+            terminal_receipt = (
+                task_body.get("completion_receipt")
+                if isinstance(task_body, Mapping)
+                else None
+            )
+            typed_identity = {
+                "attempt_id": latest.attempt_id,
+                "attempt_number": int(latest.attempt_number),
+                "claim_id": latest.claim_id,
+                "lease_id": latest.lease_id,
+                "owner_session_id": latest.owner_session_id,
+                "fencing_token": int(latest.fencing_token),
+                "fence_epoch": int(latest.fence_epoch),
+            }
+            if not isinstance(terminal_receipt, Mapping) or any(
+                terminal_receipt.get(name) != expected
+                for name, expected in typed_identity.items()
+            ):
+                raise DatabaseImplementationConflictError(
+                    "typed post-merge cooldown requires the latest failed "
+                    "attempt to match the terminal control receipt"
+                )
         if status == "retrying":
             self._verified_post_merge_declared_output_recovery_state(
                 latest,
@@ -74069,11 +74101,28 @@ class DatabaseImplementationDaemon:
         if queue_reused:
             queue_receipt_dict: dict[str, Any] = {}
         else:
-            queue_receipt = record_queue_backoff(
-                task_cid=task_cid,
-                delay_ms=0,
-                reason=queue_reason,
-            )
+            if callable(record_task_retry_cooldown):
+                queue_receipt = record_task_retry_cooldown(
+                    task_cid=task_cid,
+                    expected_task_revision=int(task.revision),
+                    expected_task_status="blocked",
+                    attempt_id=latest.attempt_id,
+                    claim_id=latest.claim_id,
+                    lease_id=latest.lease_id,
+                    owner_session_id=latest.owner_session_id,
+                    attempt_number=int(latest.attempt_number),
+                    fencing_token=int(latest.fencing_token),
+                    fence_epoch=int(latest.fence_epoch),
+                    delay_ms=0,
+                    reason=queue_reason,
+                    now_ms=self._now_ms(),
+                )
+            else:
+                queue_receipt = record_queue_backoff(
+                    task_cid=task_cid,
+                    delay_ms=0,
+                    reason=queue_reason,
+                )
             queue_receipt_dict = queue_receipt.to_dict()
             queue_entry = get_queue_entry(task_cid)
         if (
@@ -74084,21 +74133,60 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery queue write did not reproduce"
             )
         self._protect_retry_transition_authority(latest, coordination)
+        control_receipt = {
+            "operation": (
+                "database_post_merge_declared_outputs_"
+                + qualification_kind
+                + "_recovery"
+            ),
+            "attempt_id": latest.attempt_id,
+            "attempt_number": int(latest.attempt_number),
+            "claim_id": latest.claim_id,
+            "lease_id": latest.lease_id,
+            "owner_session_id": latest.owner_session_id,
+            "fencing_token": int(latest.fencing_token),
+            "fence_epoch": int(latest.fence_epoch),
+            "execution_phase": latest.committed_phase,
+            "execution_revision": int(latest.revision),
+            "execution_finished_at_ms": latest.finished_at_ms,
+            "request_id": str(raw["request_id"]),
+            "candidate_commit": str(raw["candidate_commit"]),
+            "source_binding_id": str(raw["source_binding_id"]),
+            "source_projection_immutable_digest": str(
+                raw["source_projection_immutable_digest"]
+            ),
+            "queue_reason": queue_reason,
+            "backoff_ms": 0,
+            "retry_not_before_ms": int(queue_entry.retry_not_before_ms),
+            "queue_receipt": queue_receipt_dict,
+            "coordination": coordination,
+            "control_expected_status": "blocked",
+            "control_expected_revision": int(task.revision),
+            **(
+                {
+                    "repair_commit": qualified_target_commit,
+                    "repair_receipt_id": qualification_receipt_id,
+                    "repair_evidence_id": evidence_id,
+                }
+                if qualification_kind == "repair"
+                else {
+                    "source_repair_commit": str(
+                        qualification_receipt["source_repair_commit"]
+                    ),
+                    "source_repair_receipt_id": str(
+                        qualification_receipt["source_repair_receipt_id"]
+                    ),
+                    "qualified_target_commit": qualified_target_commit,
+                    "requalification_receipt_id": qualification_receipt_id,
+                    "requalification_evidence_id": evidence_id,
+                }
+            ),
+        }
         cas_result = self._cas_task_status_database(
             task_cid,
             expected_revision=int(task.revision),
             new_status="retrying",
-            receipt={
-                "operation": (
-                    "database_post_merge_declared_outputs_"
-                    + qualification_kind
-                    + "_recovery"
-                ),
-                "attempt_id": latest.attempt_id,
-                "request_id": str(raw["request_id"]),
-                "qualified_target_commit": qualified_target_commit,
-                "qualification_receipt_id": qualification_receipt_id,
-            },
+            receipt=control_receipt,
             evidence_digests=[
                 qualification_receipt_id,
                 evidence_id,
@@ -74174,6 +74262,8 @@ class DatabaseImplementationDaemon:
             "source_binding_id",
             "source_projection_immutable_digest",
             "queue_reason",
+            "backoff_ms",
+            "retry_not_before_ms",
             "queue_receipt",
             "coordination",
             "control_expected_status",
@@ -74295,6 +74385,10 @@ class DatabaseImplementationDaemon:
             )
             is None
             or receipt.get("queue_reason") != queue_reason
+            or receipt.get("backoff_ms") != 0
+            or not isinstance(receipt.get("retry_not_before_ms"), int)
+            or isinstance(receipt.get("retry_not_before_ms"), bool)
+            or int(receipt["retry_not_before_ms"]) < 0
             or not isinstance(queue_receipt, Mapping)
             or not isinstance(coordination, Mapping)
             or coordination.get("attempt_id") != attempt.attempt_id
@@ -75817,6 +75911,22 @@ class DatabaseImplementationDaemon:
             self.sync_ready_tasks_into_coordination()
         )
         canonical_ready_task_cid_set = set(canonical_ready_task_cids)
+        synchronized_projection = (
+            self.coordinator.coordination_registry_projection()
+        )
+        canonical_ready_task_cid_set.update(
+            str(row.get("task_cid") or "")
+            for row in synchronized_projection.get("tasks", ())
+            if isinstance(row, Mapping)
+            and isinstance(row.get("body"), Mapping)
+            and row["body"].get("restart_recovery_ready") is True
+            and row["body"].get("restart_recovery_owner_session_id")
+            == self.owner_session_id
+            and str(row.get("task_cid") or "")
+        )
+        canonical_claimable_task_cids = tuple(
+            sorted(canonical_ready_task_cid_set)
+        )
         excluded = {
             str(task_cid)
             for task_cid in exclude_task_cids
@@ -75835,7 +75945,7 @@ class DatabaseImplementationDaemon:
                 owner_session_id=self.owner_session_id,
                 lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
                 exclude_task_cids=excluded,
-                eligible_task_cids=canonical_ready_task_cids,
+                eligible_task_cids=canonical_claimable_task_cids,
                 now_ms=self._now_ms(),
             )
             if claim is None:
@@ -75949,7 +76059,13 @@ class DatabaseImplementationDaemon:
             try:
                 # The owner-side status CAS is the shared exclusion point for
                 # daemons whose fenced coordination stores are lane-local.
-                if ready:
+                if ready or fenced_retry:
+                    # A lane-local fenced retry inherits admission from the
+                    # prior shared claim, but it still mints a new exact
+                    # claim/attempt/lease/fence tuple.  Rotate the durable
+                    # receipt through the same shared revision CAS before
+                    # exposing that attempt so downstream typed mutations
+                    # can bind to the live fence instead of the expired one.
                     self._cas_task_status_database(
                         task.task_cid,
                         expected_revision=int(task.revision),
@@ -75958,6 +76074,7 @@ class DatabaseImplementationDaemon:
                             "operation": "database_claim",
                             "claim_id": claim.claim_id,
                             "attempt_id": claim.attempt_id,
+                            "attempt_number": int(claim.attempt_number),
                             "owner_session_id": self.owner_session_id,
                             "lease_id": claim.lease_id,
                             "fencing_token": int(claim.fencing_token),
@@ -77623,6 +77740,9 @@ class DatabaseImplementationDaemon:
 
         self._require_execution_authority("inflight deferral block unstall")
         page = self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        latest_attempts = {
+            attempt.task_cid: attempt for attempt in self._latest_failed_attempts()
+        }
         outcomes: list[dict[str, Any]] = []
         for task in page.tasks:
             if str(getattr(task, "status", "") or "").strip().lower() != "blocked":
@@ -77653,16 +77773,64 @@ class DatabaseImplementationDaemon:
             } if isinstance(matching, list) else set()
             if not reasons or not reasons <= _PROCESS_TRANSIENT_PORTAL_REASONS:
                 continue
+            attempt = latest_attempts.get(str(task.task_cid))
+            exact_identity = {
+                "attempt_id": getattr(attempt, "attempt_id", None),
+                "attempt_number": (
+                    int(attempt.attempt_number) if attempt is not None else None
+                ),
+                "claim_id": getattr(attempt, "claim_id", None),
+                "lease_id": getattr(attempt, "lease_id", None),
+                "owner_session_id": getattr(attempt, "owner_session_id", None),
+                "fencing_token": (
+                    int(attempt.fencing_token) if attempt is not None else None
+                ),
+                "fence_epoch": (
+                    int(attempt.fence_epoch) if attempt is not None else None
+                ),
+            }
+            if attempt is None or any(
+                receipt.get(name) != expected
+                for name, expected in exact_identity.items()
+            ):
+                outcomes.append(
+                    {
+                        "task_cid": str(task.task_cid),
+                        "task_alias": str(task.task_alias or ""),
+                        "previous_status": "blocked",
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "inflight_deferral_exact_attempt_unavailable",
+                    }
+                )
+                continue
+            unstall_seed = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "inflight-deferral-unstall@1"
+                ),
+                "task_cid": str(task.task_cid),
+                "attempt_id": attempt.attempt_id,
+                "source_operation": str(receipt["operation"]),
+                "retry_budget_observation_id": str(
+                    budget.get("observation_id") or ""
+                ),
+                "reasons": sorted(reasons),
+            }
+            unstall_seed["receipt_id"] = self._database_portal_evidence_digest(
+                unstall_seed
+            )
             try:
-                self._cas_task_status_database(
-                    task.task_cid,
-                    expected_revision=int(task.revision),
-                    new_status="retrying",
-                    receipt={
-                        "operation": "database_portal_inflight_deferral_unstall",
-                        "reason": "inflight_process_deferral_budget_unstall",
-                        "previous_operation": receipt.get("operation"),
-                    },
+                coordination = self._reconcile_failed_attempt_coordination(
+                    attempt
+                )
+                outcome = self._persist_task_retry_state(
+                    attempt,
+                    reason="inflight_process_deferral_budget_unstall",
+                    backoff_ms=0,
+                    evidence_source="inflight_deferral_budget_unstall",
+                    coordination_evidence=coordination,
+                    inflight_deferral_unstall_evidence=unstall_seed,
                 )
             except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
                 continue
@@ -77673,6 +77841,7 @@ class DatabaseImplementationDaemon:
                     "previous_status": "blocked",
                     "status": "retrying",
                     "reason": "inflight_process_deferral_budget_unstall",
+                    "queue_receipt": dict(outcome.get("queue_receipt") or {}),
                 }
             )
         return outcomes
@@ -79563,6 +79732,7 @@ class DatabaseImplementationDaemon:
         | None = None,
         pooled_worktree_create_recovery_evidence: Mapping[str, Any]
         | None = None,
+        inflight_deferral_unstall_evidence: Mapping[str, Any] | None = None,
         allow_blocked_recovery: bool = False,
     ) -> dict[str, Any]:
         """Project one exact failed attempt into canonical retry authority."""
@@ -79575,6 +79745,7 @@ class DatabaseImplementationDaemon:
             validation_retry_seed_conflict_recovery_evidence is not None,
             leftover_wait_deferral_budget_recovery_evidence is not None,
             pooled_worktree_create_recovery_evidence is not None,
+            inflight_deferral_unstall_evidence is not None,
         ]
         if sum(recovery_authorities) > 1:
             raise DatabaseImplementationAuthorityError(
@@ -79589,11 +79760,21 @@ class DatabaseImplementationDaemon:
 
         delay_ms = self._database_portal_backoff_ms(backoff_ms)
         delay_seconds = (delay_ms + 999) // 1000
-        reason_text = str(reason or "portal_retryable_failure").strip()
-        reason_text = (reason_text or "portal_retryable_failure")[:1024]
+        reason_text = re.sub(
+            r"[\x00\r\n]+",
+            " ",
+            str(reason or "portal_retryable_failure"),
+        ).strip()
+        reason_text = (
+            reason_text.encode("utf-8")[:1024].decode("utf-8", errors="ignore").strip()
+            or "portal_retryable_failure"
+        )
         queue_reason = (
             f"database_portal_retry:{attempt.attempt_id}:{reason_text}"
-        )[:2048]
+            .encode("utf-8")[:2048]
+            .decode("utf-8", errors="ignore")
+            .strip()
+        )
         task = self.task_source.get(attempt.task_cid)
         if task is None:
             raise DatabaseImplementationAuthorityError(
@@ -79606,9 +79787,85 @@ class DatabaseImplementationDaemon:
             "record_queue_backoff",
             None,
         )
-        if not callable(get_queue_entry) or not callable(record_queue_backoff):
+        record_task_retry_cooldown = getattr(
+            self.task_source,
+            "record_task_retry_cooldown",
+            None,
+        )
+        if not callable(get_queue_entry) or not (
+            callable(record_task_retry_cooldown)
+            or callable(record_queue_backoff)
+        ):
             raise DatabaseImplementationAuthorityError(
                 "task source cannot persist typed retry cooldown state"
+            )
+
+        blocked_recovery = (
+            task_status == "blocked"
+            and (
+                validation_retry_evidence is not None
+                or protected_path_recovery_evidence is not None
+                or external_protected_checkout_recovery_evidence is not None
+                or inflight_process_recovery_evidence is not None
+                or validation_retry_seed_conflict_recovery_evidence is not None
+                or leftover_wait_deferral_budget_recovery_evidence is not None
+                or pooled_worktree_create_recovery_evidence is not None
+                or inflight_deferral_unstall_evidence is not None
+                or allow_blocked_recovery
+            )
+        )
+
+        def persist_retry_cooldown() -> Any:
+            if callable(record_task_retry_cooldown):
+                if task_status not in {"in_progress", "retrying"} and not (
+                    task_status == "blocked" and blocked_recovery
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "typed retry cooldown requires an exact current claim "
+                        "or admitted recovery receipt"
+                    )
+                cooldown_started_at_ms = self._now_ms()
+                if task_status == "retrying":
+                    task_body = getattr(task, "body", None)
+                    prior_receipt = (
+                        task_body.get("completion_receipt")
+                        if isinstance(task_body, Mapping)
+                        else None
+                    )
+                    prior_deadline = (
+                        prior_receipt.get("retry_not_before_ms")
+                        if isinstance(prior_receipt, Mapping)
+                        else None
+                    )
+                    if (
+                        isinstance(prior_deadline, bool)
+                        or not isinstance(prior_deadline, int)
+                        or prior_deadline < delay_ms
+                    ):
+                        raise DatabaseImplementationAuthorityError(
+                            "retrying task has no reproducible typed cooldown "
+                            "deadline"
+                        )
+                    cooldown_started_at_ms = prior_deadline - delay_ms
+                return record_task_retry_cooldown(
+                    task_cid=attempt.task_cid,
+                    expected_task_revision=int(task.revision),
+                    expected_task_status=task_status,
+                    attempt_id=attempt.attempt_id,
+                    claim_id=attempt.claim_id,
+                    lease_id=attempt.lease_id,
+                    owner_session_id=attempt.owner_session_id,
+                    attempt_number=int(attempt.attempt_number),
+                    fencing_token=int(attempt.fencing_token),
+                    fence_epoch=int(attempt.fence_epoch),
+                    delay_ms=delay_ms,
+                    reason=queue_reason,
+                    now_ms=cooldown_started_at_ms,
+                )
+            return record_queue_backoff(
+                task_cid=attempt.task_cid,
+                delay_ms=delay_ms,
+                reason=queue_reason,
             )
 
         if task_status == "retrying":
@@ -79692,11 +79949,7 @@ class DatabaseImplementationDaemon:
                     attempt,
                     coordination_evidence,
                 )
-                queue_receipt = record_queue_backoff(
-                    task_cid=attempt.task_cid,
-                    delay_ms=delay_ms,
-                    reason=queue_reason,
-                )
+                queue_receipt = persist_retry_cooldown()
                 existing_entry = get_queue_entry(attempt.task_cid)
                 if existing_entry is None:
                     raise DatabaseImplementationAuthorityError(
@@ -79718,19 +79971,6 @@ class DatabaseImplementationDaemon:
                 "evidence_source": evidence_source,
                 "queue_receipt": queue_receipt_dict,
             }
-        blocked_recovery = (
-            task_status == "blocked"
-            and (
-                validation_retry_evidence is not None
-                or protected_path_recovery_evidence is not None
-                or external_protected_checkout_recovery_evidence is not None
-                or inflight_process_recovery_evidence is not None
-                or validation_retry_seed_conflict_recovery_evidence is not None
-                or leftover_wait_deferral_budget_recovery_evidence is not None
-                or pooled_worktree_create_recovery_evidence is not None
-                or allow_blocked_recovery
-            )
-        )
         if task_status != "in_progress" and not blocked_recovery:
             raise DatabaseImplementationConflictError(
                 f"retryable attempt {attempt.attempt_id} cannot move control "
@@ -79761,11 +80001,7 @@ class DatabaseImplementationDaemon:
                 attempt,
                 coordination_evidence,
             )
-            queue_receipt = record_queue_backoff(
-                task_cid=attempt.task_cid,
-                delay_ms=delay_ms,
-                reason=queue_reason,
-            )
+            queue_receipt = persist_retry_cooldown()
             queue_receipt_dict = queue_receipt.to_dict()
             queue_entry = get_queue_entry(attempt.task_cid)
         if queue_entry is None:
@@ -79794,6 +80030,8 @@ class DatabaseImplementationDaemon:
                     if leftover_wait_deferral_budget_recovery_evidence is not None
                     else "database_portal_pooled_worktree_create_retry_recovery"
                     if pooled_worktree_create_recovery_evidence is not None
+                    else "database_portal_inflight_deferral_unstall"
+                    if inflight_deferral_unstall_evidence is not None
                     else "database_portal_validation_retry_recovery"
                     if blocked_recovery
                     else "database_portal_validation_retry"
@@ -79885,6 +80123,15 @@ class DatabaseImplementationDaemon:
                     if pooled_worktree_create_recovery_evidence is not None
                     else {}
                 ),
+                **(
+                    {
+                        "inflight_deferral_unstall_seed": dict(
+                            inflight_deferral_unstall_evidence
+                        )
+                    }
+                    if inflight_deferral_unstall_evidence is not None
+                    else {}
+                ),
                 "control_expected_status": task_status,
                 "control_expected_revision": int(task.revision),
             },
@@ -79930,6 +80177,8 @@ class DatabaseImplementationDaemon:
                     str(pooled_worktree_create_recovery_evidence["receipt_id"])
                 ]
                 if pooled_worktree_create_recovery_evidence is not None
+                else [str(inflight_deferral_unstall_evidence["receipt_id"])]
+                if inflight_deferral_unstall_evidence is not None
                 else None
             ),
         )
@@ -85426,6 +85675,23 @@ class DatabaseImplementationDaemon:
             "write_count": 0,
         }
         if not callable(rearm_fn):
+            if callable(
+                getattr(self.task_source, "record_task_retry_cooldown", None)
+            ):
+                # Typed CASF deliberately does not expose the legacy blind
+                # blocked->retrying mutation.  The same run_once pass invokes
+                # the bound post-merge reconciler immediately after this
+                # observation; that path verifies repair evidence and writes
+                # the attempt-bound cooldown before its control CAS.
+                return {
+                    **empty,
+                    "attempted": True,
+                    "delegated": True,
+                    "reason": "typed_post_merge_recovery_supersedes_legacy_rearm",
+                    "post_merge_recovery_configured": callable(
+                        self._post_merge_recovery_fn
+                    ),
+                }
             return empty
         results: list[dict[str, Any]] = []
         rearmed = 0

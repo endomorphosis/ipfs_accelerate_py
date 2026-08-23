@@ -109,12 +109,15 @@ EXECUTOR_OWNER_READ_OPERATIONS: Final = frozenset(
         "executor_task_projection_page",
         "executor_control_snapshot",
         "executor_task_projection_by_identity",
+        "executor_retry_cooldown_by_task",
+        "executor_retry_cooldown_page",
     }
 )
 EXECUTOR_OWNER_COMMAND_OPERATIONS: Final = frozenset(
     {
         "task.status.cas",
         "task.status.cas.receipt",
+        "task.retry.cooldown.record",
         "task.validation.record.passed",
         "task.validation.record.nonpassing",
     }
@@ -127,6 +130,8 @@ EXECUTOR_OWNER_TRANSACTION_OPERATIONS: Final = frozenset(
         "txn_record_idempotency",
         "txn_cas_task_status",
         "executor_cas_task_status_receipt",
+        "executor_insert_retry_cooldown",
+        "executor_update_retry_cooldown",
         "executor_insert_validation_run",
         "executor_insert_validation_result",
         "executor_insert_validation_evidence",

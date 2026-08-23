@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -27,7 +28,12 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     FakeQuackTransport,
     build_server,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+    canonical_json_bytes,
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import (
+    RetryPolicy,
     TransactionError,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
@@ -51,6 +57,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source
     TypedDatabaseTaskSource,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
     TypedStateOwnerAuthorizationError,
@@ -59,6 +66,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     build_control_plane_operation_catalog,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    ATTEMPT_PHASE_FAILED,
+    DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+    POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
     DatabaseImplementationDaemon,
 )
 from test.api.causal_federation.test_bootstrap_runtime import (
@@ -594,6 +604,650 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
         connection.close()
 
 
+def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "typed-retry-cooldown.duckdb"
+    clock = {"now_ms": 1_000}
+    retry_claim = {
+        "attempt_id": "attempt:typed-retry-recovery",
+        "claim_id": "claim:typed-retry-recovery",
+        "lease_id": "lease:typed-retry-recovery",
+        "owner_session_id": "session:typed-retry-recovery",
+        "attempt_number": 1,
+        "fencing_token": 19,
+        "fence_epoch": 7,
+    }
+    retry_reason = (
+        "database_portal_retry:attempt:typed-retry-recovery:typed_deferral"
+    )
+    blocked_claim = {
+        "attempt_id": "attempt:typed-blocked-recovery",
+        "claim_id": "claim:typed-blocked-recovery",
+        "lease_id": "lease:typed-blocked-recovery",
+        "owner_session_id": "session:typed-blocked-recovery",
+        "attempt_number": 1,
+        "fencing_token": 29,
+        "fence_epoch": 13,
+    }
+    post_merge_claim = {
+        "attempt_id": "attempt:typed-post-merge-recovery",
+        "claim_id": "claim:typed-post-merge-recovery",
+        "lease_id": "lease:typed-post-merge-recovery",
+        "owner_session_id": "session:typed-post-merge-recovery",
+        "attempt_number": 2,
+        "fencing_token": 37,
+        "fence_epoch": 17,
+    }
+    source = DatabaseTaskSource(database)
+    source.materialize(
+        {
+            "repository_tree_id": "tree:typed-retry-cooldown",
+            "plan_root_cid": "plan:typed-retry-cooldown",
+            "goals": [
+                {
+                    "goal_cid": "goal:typed-retry-cooldown",
+                    "goal_alias": "CASF-G-TYPED-RETRY",
+                    "title": "Typed retry cooldown",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": "task:typed-retry-cooldown",
+                    "task_id": "CASF-TYPED-RETRY",
+                    "goal_cid": "goal:typed-retry-cooldown",
+                    "status": "ready",
+                },
+                {
+                    "task_cid": "task:typed-retry-recovery",
+                    "task_id": "CASF-TYPED-RETRY-RECOVERY",
+                    "goal_cid": "goal:typed-retry-cooldown",
+                    "status": "retrying",
+                    "completion_receipt": {
+                        "operation": "database_portal_retry",
+                        **retry_claim,
+                        "queue_reason": retry_reason,
+                        "backoff_ms": 6_000,
+                        "retry_not_before_ms": 7_000,
+                        "control_expected_revision": 0,
+                    },
+                },
+                {
+                    "task_cid": "task:typed-blocked-recovery",
+                    "task_id": "CASF-TYPED-BLOCKED-RECOVERY",
+                    "goal_cid": "goal:typed-retry-cooldown",
+                    "status": "blocked",
+                    "completion_receipt": {
+                        "operation": "database_portal_terminal_failure",
+                        **blocked_claim,
+                        "reason": "portal_provider_failed",
+                        "retryable": False,
+                        "control_expected_status": "in_progress",
+                        "control_expected_revision": 0,
+                    },
+                },
+                {
+                    "task_cid": "task:typed-post-merge-recovery",
+                    "task_id": "CASF-TYPED-POST-MERGE-RECOVERY",
+                    "goal_cid": "goal:typed-retry-cooldown",
+                    "status": "blocked",
+                    "completion_receipt": {
+                        "operation": "database_portal_terminal_failure",
+                        **post_merge_claim,
+                        "reason": "post_merge_declared_outputs_missing",
+                        "retryable": False,
+                        "control_expected_status": "in_progress",
+                        "control_expected_revision": 0,
+                    },
+                },
+            ],
+        }
+    )
+    source.close()
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-retry-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-typed-retry-cooldown-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    operator = _operator()
+    client_id = "database-implementation-daemon:typed-retry-test"
+    token, grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=tuple(
+            sorted(operator.EXECUTOR_OWNER_ALLOWED_OPERATIONS)
+        ),
+        allowed_command_operations=tuple(
+            sorted(operator.EXECUTOR_OWNER_COMMAND_OPERATIONS)
+        ),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV, str(server.typed_command_socket_path())
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id=identity.store_id,
+        process_birth_id=identity.process_birth_id,
+        retry_policy=RetryPolicy(
+            max_attempts=1,
+            base_delay_seconds=0.0,
+            max_delay_seconds=0.0,
+            jitter_ratio=0.0,
+        ),
+    )
+    adapter: TypedDatabaseTaskSource | None = None
+    try:
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        adapter = TypedDatabaseTaskSource(
+            client,
+            clock_ms=lambda: clock["now_ms"],
+        )
+
+        recovery = adapter.get("CASF-TYPED-RETRY-RECOVERY")
+        assert recovery is not None
+        assert recovery.status == "retrying"
+        generation_before_rejection = client.load_generation()
+        gateway = server._command_gateway
+        assert gateway is not None
+        validate_manifest = gateway._validate_semantic_manifest
+
+        def reject_cooldown_post_state(
+            command: Any,
+            manifest: Any,
+            authority: Any,
+        ) -> None:
+            if command.parameters.get("operation") == (
+                "task.retry.cooldown.record"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "forced retry cooldown post-state rejection"
+                )
+            validate_manifest(command, manifest, authority)
+
+        with monkeypatch.context() as rejection:
+            rejection.setattr(
+                gateway,
+                "_validate_semantic_manifest",
+                reject_cooldown_post_state,
+            )
+            with pytest.raises(TransactionError, match="authorization_denied"):
+                adapter.record_task_retry_cooldown(
+                    task_cid=recovery.task_cid,
+                    expected_task_revision=recovery.revision,
+                    expected_task_status="retrying",
+                    delay_ms=6_000,
+                    reason=retry_reason,
+                    now_ms=clock["now_ms"],
+                    **retry_claim,
+                )
+        generation_after_rejection = client.load_generation()
+        assert generation_after_rejection.revision == (
+            generation_before_rejection.revision
+        )
+        assert adapter.get_queue_entry(recovery.task_cid) is None
+
+        recovery_receipt = adapter.record_task_retry_cooldown(
+            task_cid=recovery.task_cid,
+            expected_task_revision=recovery.revision,
+            expected_task_status="retrying",
+            delay_ms=6_000,
+            reason=retry_reason,
+            now_ms=clock["now_ms"],
+            **retry_claim,
+        )
+        assert recovery_receipt.changed is True
+        recovery_entry = adapter.get_queue_entry(recovery.task_cid)
+        assert recovery_entry is not None
+        assert recovery_entry.retry_not_before_ms == 7_000
+
+        blocked = adapter.get("CASF-TYPED-BLOCKED-RECOVERY")
+        assert blocked is not None and blocked.status == "blocked"
+        blocked_reason = (
+            "database_portal_retry:attempt:typed-blocked-recovery:"
+            "portal_candidate_retry"
+        )
+        blocked_receipt = adapter.record_task_retry_cooldown(
+            task_cid=blocked.task_cid,
+            expected_task_revision=blocked.revision,
+            expected_task_status="blocked",
+            delay_ms=0,
+            reason=blocked_reason,
+            now_ms=clock["now_ms"],
+            **blocked_claim,
+        )
+        assert blocked_receipt.changed is True
+        blocked_entry = adapter.get_queue_entry(blocked.task_cid)
+        assert blocked_entry is not None
+        assert blocked_entry.reason == blocked_reason
+
+        ready = adapter.get("CASF-TYPED-RETRY")
+        assert ready is not None
+        claim = {
+            "operation": "database_claim",
+            "attempt_id": "attempt:typed-retry-cooldown",
+            "claim_id": "claim:typed-retry-cooldown",
+            "lease_id": "lease:typed-retry-cooldown",
+            "owner_session_id": "session:typed-retry-cooldown",
+            "attempt_number": 1,
+            "fencing_token": 17,
+            "fence_epoch": 5,
+            "claimed_from_revision": ready.revision,
+        }
+        claimed = adapter.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim,
+        )
+        cooldown = {
+            name: claim[name]
+            for name in (
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+            )
+        }
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            adapter.record_task_retry_cooldown(
+                task_cid=claimed.task.task_cid,
+                expected_task_revision=claimed.task.revision + 1,
+                expected_task_status="in_progress",
+                delay_ms=5_000,
+                reason=(
+                    "database_portal_retry:attempt:typed-retry-cooldown:"
+                    "worktree_lifecycle_claim_exists"
+                ),
+                now_ms=clock["now_ms"],
+                **cooldown,
+            )
+        assert adapter.get_queue_entry(claimed.task.task_cid) is None
+
+        captured: dict[str, Any] = {}
+        submit = client.submit_command
+
+        def capture_submit(
+            command: Any,
+            *,
+            apply: Any = None,
+            refresh_on_conflict: bool = True,
+        ) -> Any:
+            captured["command"] = command
+            captured["apply"] = apply
+            return submit(
+                command,
+                apply=apply,
+                refresh_on_conflict=refresh_on_conflict,
+            )
+
+        monkeypatch.setattr(client, "submit_command", capture_submit)
+        queue_reason = (
+            "database_portal_retry:attempt:typed-retry-cooldown:"
+            "worktree_lifecycle_claim_exists"
+        )
+        first = adapter.record_task_retry_cooldown(
+            task_cid=claimed.task.task_cid,
+            expected_task_revision=claimed.task.revision,
+            expected_task_status="in_progress",
+            delay_ms=5_000,
+            reason=queue_reason,
+            now_ms=clock["now_ms"],
+            **cooldown,
+        )
+        assert first.changed is True
+        first_command = captured["command"]
+        first_apply = captured["apply"]
+        replay = adapter.record_task_retry_cooldown(
+            task_cid=claimed.task.task_cid,
+            expected_task_revision=claimed.task.revision,
+            expected_task_status="in_progress",
+            delay_ms=5_000,
+            reason=queue_reason,
+            now_ms=5_999,
+            **cooldown,
+        )
+        assert replay.changed is False
+        assert replay.event_id == first.event_id
+        assert captured["command"].command_id == first_command.command_id
+        assert captured["command"].idempotency_key == first_command.idempotency_key
+
+        altered_parameters = dict(first_command.parameters)
+        altered_extension = json.loads(altered_parameters["extension_json"])
+        altered_extension["selection_penalty"] = 1
+        altered_parameters["selection_penalty"] = 1
+        altered_parameters["extension_json"] = canonical_json_bytes(
+            altered_extension
+        ).decode("utf-8")
+        altered_parameters["resolution_cid"] = content_identity(
+            {
+                "typed_retry_cooldown": altered_extension,
+                "started_at_ms": altered_extension["started_at_ms"],
+            }
+        )
+        altered = replace(first_command, parameters=altered_parameters)
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            submit(altered, apply=first_apply, refresh_on_conflict=False)
+
+        entry = adapter.get_queue_entry(claimed.task.task_cid)
+        assert entry is not None
+        assert entry.attempt == 1
+        assert entry.retry_not_before_ms == 6_000
+        retrying = adapter.compare_and_set_status(
+            claimed.task.task_cid,
+            claimed.task.revision,
+            "retrying",
+            {
+                "operation": "database_portal_retry",
+                **cooldown,
+                "queue_reason": queue_reason,
+                "backoff_ms": 5_000,
+                "retry_not_before_ms": entry.retry_not_before_ms,
+                "control_expected_revision": claimed.task.revision,
+            },
+        )
+        assert retrying.task.status == "retrying"
+        assert adapter.ready_tasks().tasks == ()
+        clock["now_ms"] = 5_999
+        assert adapter.ready_tasks().tasks == ()
+        clock["now_ms"] = 6_000
+        assert tuple(task.task_alias for task in adapter.ready_tasks().tasks) == (
+            "CASF-TYPED-RETRY",
+        )
+        clock["now_ms"] = 7_000
+        assert tuple(task.task_alias for task in adapter.ready_tasks().tasks) == (
+            "CASF-TYPED-RETRY",
+            "CASF-TYPED-RETRY-RECOVERY",
+        )
+
+        retrying = adapter.get(claimed.task.task_cid)
+        assert retrying is not None and retrying.status == "retrying"
+        second_claim = {
+            "operation": "database_claim",
+            "attempt_id": "attempt:typed-retry-cooldown:2",
+            "claim_id": "claim:typed-retry-cooldown:2",
+            "lease_id": "lease:typed-retry-cooldown:2",
+            "owner_session_id": "session:typed-retry-cooldown:2",
+            "attempt_number": 2,
+            "fencing_token": 23,
+            "fence_epoch": 11,
+            "claimed_from_revision": retrying.revision,
+        }
+        claimed_again = adapter.compare_and_set_status(
+            retrying.task_cid,
+            retrying.revision,
+            "in_progress",
+            second_claim,
+        )
+        second_cooldown = {
+            name: second_claim[name]
+            for name in (
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+            )
+        }
+        second_reason = (
+            "database_portal_retry:attempt:typed-retry-cooldown:2:"
+            "worktree_lifecycle_claim_exists"
+        )
+        second = adapter.record_task_retry_cooldown(
+            task_cid=claimed_again.task.task_cid,
+            expected_task_revision=claimed_again.task.revision,
+            expected_task_status="in_progress",
+            delay_ms=2_000,
+            reason=second_reason,
+            now_ms=clock["now_ms"],
+            **second_cooldown,
+        )
+        second_command = captured["command"]
+        second_apply = captured["apply"]
+        second_row = adapter._retry_cooldown_row(claimed_again.task.task_cid)
+        assert second.changed is True
+        assert second.revision == 2
+        assert second_row is not None
+        assert {
+            "task_cid": second_row["task_cid"],
+            "claim_cid": second_row["claim_cid"],
+            "claimant_did": second_row["claimant_did"],
+            "logical_epoch": second_row["logical_epoch"],
+            "fencing_token": second_row["fencing_token"],
+            "attempt": second_row["attempt"],
+            "owner_session_id": second_row["owner_session_id"],
+            "fence_epoch": second_row["fence_epoch"],
+            "revision": second_row["revision"],
+        } == {
+            "task_cid": claimed_again.task.task_cid,
+            "claim_cid": second_claim["claim_id"],
+            "claimant_did": second_claim["owner_session_id"],
+            "logical_epoch": second_claim["fence_epoch"],
+            "fencing_token": second_claim["fencing_token"],
+            "attempt": 2,
+            "owner_session_id": second_claim["owner_session_id"],
+            "fence_epoch": second_claim["fence_epoch"],
+            "revision": 2,
+        }
+        assert second_row["extension"]["expected_queue_revision"] == 1
+        assert second_row["extension"]["expected_queue_attempt"] == 1
+
+        clock["now_ms"] = 8_000
+        second_replay = adapter.record_task_retry_cooldown(
+            task_cid=claimed_again.task.task_cid,
+            expected_task_revision=claimed_again.task.revision,
+            expected_task_status="in_progress",
+            delay_ms=2_000,
+            reason=second_reason,
+            **second_cooldown,
+        )
+        assert second_replay.changed is False
+        assert second_replay.revision == 2
+
+        with pytest.raises(ValueError, match="same-attempt replay identity"):
+            adapter.record_task_retry_cooldown(
+                task_cid=claimed_again.task.task_cid,
+                expected_task_revision=claimed_again.task.revision,
+                expected_task_status="in_progress",
+                delay_ms=2_000,
+                reason=second_reason + ":altered",
+                **second_cooldown,
+            )
+        with pytest.raises(ValueError, match="newer queue row"):
+            adapter.record_task_retry_cooldown(
+                task_cid=claimed_again.task.task_cid,
+                expected_task_revision=claimed_again.task.revision,
+                expected_task_status="in_progress",
+                delay_ms=2_000,
+                reason=queue_reason,
+                **cooldown,
+            )
+
+        stale_parameters = dict(second_command.parameters)
+        stale_extension = json.loads(stale_parameters["extension_json"])
+        stale_reason = second_reason + ":stale-queue-revision"
+        stale_extension["reason"] = stale_reason
+        stale_parameters["reason"] = stale_reason
+        stale_parameters["extension_json"] = canonical_json_bytes(
+            stale_extension
+        ).decode("utf-8")
+        stale_parameters["resolution_cid"] = content_identity(
+            {
+                "typed_retry_cooldown": stale_extension,
+                "started_at_ms": stale_extension["started_at_ms"],
+            }
+        )
+        stale_material = {
+            name: value
+            for name, value in stale_parameters.items()
+            if name not in {"extension_schema", "extension_json"}
+        }
+        stale_digest = hashlib.sha256(
+            canonical_json_bytes(stale_material)
+        ).hexdigest()
+        stale_command = replace(
+            second_command,
+            command_id=f"cmd:retry-cooldown:{stale_digest}",
+            idempotency_key=f"executor-retry-cooldown:{stale_digest}",
+            expected_revision=client.load_generation().revision,
+            parameters=stale_parameters,
+        )
+        stale_result = submit(
+            stale_command,
+            apply=second_apply,
+            refresh_on_conflict=False,
+        )
+        assert stale_result.accepted is False
+        assert stale_result.changed is False
+        after_stale = adapter._retry_cooldown_row(claimed_again.task.task_cid)
+        assert after_stale is not None
+        assert dict(after_stale) == dict(second_row)
+
+        post_merge_task = adapter.get("CASF-TYPED-POST-MERGE-RECOVERY")
+        assert post_merge_task is not None and post_merge_task.status == "blocked"
+        post_merge_attempt = SimpleNamespace(
+            task_cid=post_merge_task.task_cid,
+            task_alias=post_merge_task.task_alias,
+            committed_phase=ATTEMPT_PHASE_FAILED,
+            status="failed",
+            started_at_ms=500,
+            finished_at_ms=900,
+            revision=4,
+            **post_merge_claim,
+        )
+        repair_receipt_body = {
+            "schema": POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+            "candidate_commit": "a" * 40,
+            "repair_commit": "b" * 40,
+            "task_ids": [post_merge_task.task_alias],
+        }
+        repair_receipt_id = content_identity(repair_receipt_body)
+        repair_receipt = {
+            **repair_receipt_body,
+            "receipt_id": repair_receipt_id,
+        }
+        post_merge_evidence_body = {
+            "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+            "request_id": "request:typed-post-merge-recovery",
+            "task_cid": post_merge_task.task_cid,
+            "task_alias": post_merge_task.task_alias,
+            "candidate_commit": "a" * 40,
+            "source_attempt_id": post_merge_attempt.attempt_id,
+            "source_claim_id": post_merge_attempt.claim_id,
+            "source_lease_id": post_merge_attempt.lease_id,
+            "source_fencing_token": post_merge_attempt.fencing_token,
+            "source_fence_epoch": post_merge_attempt.fence_epoch,
+            "source_binding_id": "sha256:" + "c" * 64,
+            "source_projection_immutable_digest": "sha256:" + "d" * 64,
+            "repair_commit": "b" * 40,
+            "repair_receipt_id": repair_receipt_id,
+            "repair_receipt": repair_receipt,
+        }
+        post_merge_evidence = {
+            **post_merge_evidence_body,
+            "evidence_id": (
+                DatabaseImplementationDaemon._database_portal_evidence_digest(
+                    post_merge_evidence_body
+                )
+            ),
+        }
+
+        def post_merge_control_cas(
+            task_cid: str,
+            *,
+            expected_revision: int,
+            new_status: str,
+            receipt: Mapping[str, Any],
+            evidence_digests: Any = None,
+        ) -> Any:
+            return adapter.compare_and_set_status(
+                task_cid,
+                expected_revision,
+                new_status,
+                receipt,
+                evidence_digests=evidence_digests,
+            )
+
+        post_merge_daemon = SimpleNamespace(
+            task_source=adapter,
+            _require_execution_authority=lambda _operation: None,
+            _verified_post_merge_declared_output_repair_receipt=(
+                lambda value: dict(value)
+            ),
+            _database_portal_evidence_digest=(
+                lambda value: DatabaseImplementationDaemon._database_portal_evidence_digest(
+                    value
+                )
+            ),
+            _automatic_claim_forbidden=lambda _task: False,
+            _latest_failed_attempts=lambda: [post_merge_attempt],
+            _post_merge_source_admitted=(
+                lambda _raw, _attempt, _task: True
+            ),
+            _is_post_merge_declared_outputs_missing_terminal=(
+                lambda _attempt, _task: True
+            ),
+            _reconcile_failed_attempt_coordination=(
+                lambda _attempt: {
+                    "attempt_id": post_merge_attempt.attempt_id,
+                    "claim_id": post_merge_attempt.claim_id,
+                    "attempt_number": post_merge_attempt.attempt_number,
+                }
+            ),
+            _protect_retry_transition_authority=(
+                lambda _attempt, _coordination: None
+            ),
+            _cas_task_status_database=post_merge_control_cas,
+            _now_ms=lambda: clock["now_ms"],
+        )
+        post_merge_result = (
+            DatabaseImplementationDaemon.recover_blocked_post_merge_declared_outputs(
+                post_merge_daemon,
+                post_merge_evidence,
+            )
+        )
+        assert post_merge_result["changed"] is True
+        post_merge_entry = adapter.get_queue_entry(post_merge_task.task_cid)
+        assert post_merge_entry is not None
+        post_merge_updated = adapter.get(post_merge_task.task_cid)
+        assert post_merge_updated is not None
+        assert post_merge_updated.status == "retrying"
+        post_merge_control_receipt = post_merge_updated.body["completion_receipt"]
+        assert post_merge_control_receipt["operation"] == (
+            "database_post_merge_declared_outputs_repair_recovery"
+        )
+        assert post_merge_control_receipt["attempt_id"] == (
+            post_merge_attempt.attempt_id
+        )
+        assert post_merge_control_receipt["queue_reason"] == (
+            post_merge_entry.reason
+        )
+        assert post_merge_control_receipt["retry_not_before_ms"] == (
+            post_merge_entry.retry_not_before_ms
+        )
+    finally:
+        if adapter is not None:
+            adapter.close()
+        else:
+            client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+        server.stop()
+
+
 def test_typed_database_task_source_pages_transport_for_public_maximum() -> None:
     task_count = 501
     rows = [
@@ -665,6 +1319,114 @@ def test_typed_database_task_source_pages_transport_for_public_maximum() -> None
     ]
 
 
+@pytest.mark.parametrize("lease_kind", ("legacy", "malformed_typed"))
+def test_typed_ready_projection_rejects_a_foreign_lease_row(
+    lease_kind: str,
+) -> None:
+    task_row = {
+        "task_cid": "task:foreign-lease",
+        "task_alias": "CASF-FOREIGN-LEASE",
+        "goal_cid": "goal:foreign-lease",
+        "plan_cid": "plan:foreign-lease",
+        "objective_id": "objective:foreign-lease",
+        "ordinal": 1,
+        "status": "retrying",
+        "revision": 3,
+        "priority": "normal",
+        "identity_json": json.dumps(
+            {"repository_tree_id": "tree:foreign-lease"}
+        ),
+        "body_json": "{}",
+        "dependencies_json": "[]",
+        "outputs_json": "[]",
+        "acceptance_json": "[]",
+        "validations_json": "[]",
+    }
+    extension_schema = (
+        TYPED_RETRY_COOLDOWN_SCHEMA
+        if lease_kind == "malformed_typed"
+        else "ipfs_accelerate_py/agent-supervisor/queue-entry@1"
+    )
+    extension = (
+        {
+            "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "task_cid": task_row["task_cid"],
+            "claim_id": "claim:legacy-queue",
+            "attempt_number": 1,
+            "retry_not_before_ms": 99_000,
+        }
+        if lease_kind == "malformed_typed"
+        else {
+            "selection_penalty": 0,
+            "consecutive_failures": 1,
+            "reason": "legacy-backoff",
+        }
+    )
+    foreign_page_row = {
+        "task_cid": task_row["task_cid"],
+        "claim_cid": "claim:legacy-queue",
+        "resolution_cid": "resolution:legacy-queue",
+        "claimant_did": "owner:legacy-queue",
+        "logical_epoch": 1,
+        "fencing_token": 1,
+        "expires_at_ms": 0,
+        "attempt": 1,
+        "state": "released",
+        "started_at_ms": 1_000,
+        "release_reason": "legacy-backoff",
+        "retry_not_before_ms": 99_000,
+        "owner_session_id": "owner:legacy-queue",
+        "fence_epoch": 1,
+        "revision": 1,
+        "extension_schema": extension_schema,
+        "extension_json": json.dumps(extension),
+    }
+
+    class _ForeignLeaseClient:
+        @staticmethod
+        def load_generation() -> SimpleNamespace:
+            return SimpleNamespace(content_id="generation:foreign", revision=9)
+
+        @staticmethod
+        def execute(
+            operation: str,
+            _parameters: Mapping[str, Any] | None = None,
+        ) -> tuple[Mapping[str, Any], ...]:
+            if operation == "executor_control_snapshot":
+                return (
+                    {
+                        "objective_count": 1,
+                        "goal_count": 1,
+                        "plan_count": 1,
+                        "task_count": 1,
+                        "dependency_count": 0,
+                        "event_watermark": 0,
+                        "goals_json": "[]",
+                        "plans_json": "[]",
+                        "tasks_json": "[]",
+                    },
+                )
+            if operation == "executor_task_projection_page":
+                return (task_row,)
+            if operation == "executor_retry_cooldown_page":
+                return (foreign_page_row,)
+            if operation == "executor_retry_cooldown_by_task":
+                return (foreign_page_row,)
+            raise AssertionError(operation)
+
+    adapter = object.__new__(TypedDatabaseTaskSource)
+    adapter._client = _ForeignLeaseClient()  # type: ignore[attr-defined]
+    adapter._clock_ms = lambda: 1_000  # type: ignore[attr-defined]
+    adapter._closed = False  # type: ignore[attr-defined]
+    adapter.path = Path("typed-state-owner")
+    adapter.database_path = adapter.path
+
+    with pytest.raises(TaskSourceIntegrityError, match="foreign|differs"):
+        adapter.ready_tasks()
+    with pytest.raises(TaskSourceIntegrityError, match="foreign"):
+        adapter.get_queue_entry(task_row["task_cid"])
+
+
 def test_executor_typed_operation_catalog_is_closed_and_full_fidelity() -> None:
     catalog = build_control_plane_operation_catalog()
 
@@ -679,6 +1441,15 @@ def test_executor_typed_operation_catalog_is_closed_and_full_fidelity() -> None:
     )
     assert catalog["executor_control_snapshot"].parameter_names == ()
     assert catalog["executor_control_snapshot"].mutation is False
+    assert catalog["executor_retry_cooldown_by_task"].parameter_names == (
+        "task_cid",
+    )
+    assert catalog["executor_retry_cooldown_page"].parameter_names == (
+        "limit",
+        "offset",
+    )
+    assert catalog["executor_insert_retry_cooldown"].mutation is True
+    assert catalog["executor_update_retry_cooldown"].mutation is True
 
 
 @pytest.mark.timeout(10)
