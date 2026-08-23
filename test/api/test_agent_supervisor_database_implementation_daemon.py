@@ -243,6 +243,7 @@ def _open_daemon(
         coordination_path=coordination_path,
         execution_path=execution_path,
         owner_session_id=session,
+        process_instance_id=process_instance_id,
         authority_mode="embedded",
         task_source_kind="duckdb",
         markdown_path=markdown_path,

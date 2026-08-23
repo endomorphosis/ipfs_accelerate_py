@@ -21,10 +21,9 @@ import shutil
 import socket
 import subprocess
 import sys
-from typing import Optional
 
 
-def _detect_lan_ip() -> Optional[str]:
+def _detect_lan_ip() -> str | None:
     """Best-effort: pick the source IP used to reach the internet.
 
     This does not send packets, but it does require the routing table.
@@ -98,7 +97,7 @@ def _is_auto_managed_path(cert_path: pathlib.Path, key_path: pathlib.Path) -> bo
     return _managed(cert_path) and _managed(key_path)
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate self-signed TLS cert/key if missing")
     parser.add_argument("--certfile", required=True, help="Path to write the certificate (PEM)")
     parser.add_argument("--keyfile", required=True, help="Path to write the private key (PEM)")
@@ -203,11 +202,12 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     _run(cmd)
 
-    # Permissions: key should not be world-readable.
+    # Fail closed if the private key cannot be restricted before publication.
     try:
-        os.chmod(tmp_key, 0o640)
-    except Exception:
-        pass
+        os.chmod(tmp_key, 0o600)
+        os.chmod(tmp_crt, 0o644)
+    except OSError as exc:
+        raise RuntimeError("Cannot secure generated TLS artifact permissions") from exc
 
     tmp_key.replace(key_path)
     tmp_crt.replace(cert_path)

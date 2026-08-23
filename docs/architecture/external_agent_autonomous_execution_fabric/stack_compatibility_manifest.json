@@ -1,0 +1,335 @@
+{
+  "schema": "StackCompatibilityManifest@1",
+  "campaign": "ExternalAgentAutonomousExecutionFabric",
+  "manifest_revision": 2,
+  "supersedes_manifest_cid": "sha256:b79f49c80c50086ee8929f56008b4b20263a710cea0cf916904bc9d1fe540eb7",
+  "amendment_status": "pre_admission_fail_closed_bootstrap_contract_revision",
+  "change_reason": "Bind scheduler/materialization and operational-profile v2, the exact signed-command-fabric board/shard identity, Promotion@2, the versioned Grok worker/profile schemas, the exact 31-operation borrowed-transaction owner path, the source-verified R1 native/V2-lane/runtime factory and per-birth wiring, and the distinct source-complete R2 process-remote owner seam. Actual independently signed artifacts, deployed endpoints, qualified extensions and admitted container/provider/network authority remain absent; this revision grants no live runtime authority and requires a fresh board identity.",
+  "integration_roots": {
+    "ipfs_accelerate_py": {
+      "package_version": "0.0.45",
+      "commit": "0085dc719686bf4cd077c8099170bdd55fa2cf99",
+      "tree": "4298f4b06fa753a60ff8f95ffead39be9a83092c",
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1"
+    },
+    "ipfs_datasets_py": {
+      "package_version": "0.2.0",
+      "commit": "41533721c5559ad68cecfe226fa6ba5f76f8a15d",
+      "tree": "d88b10b706d91c37e4be346366ff06bb58d1e8a3",
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1"
+    },
+    "ipfs_kit_py": {
+      "package_version": "0.3.0",
+      "commit": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+      "tree": "98ab8d00f79ec542032dbbb21a1ea416b983a845",
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1"
+    },
+    "Mcp-Plus-Plus": {
+      "package_version": "1.0.0",
+      "commit": "5bf87beba3acf18d705c5c8ee3174e5e16ab5e04",
+      "tree": "9459e5a6695771e284142577da00aac07370fde8",
+      "integration_branch": "integration/external-agent-autonomous-execution-fabric-v1",
+      "use_limit": "existing shared protocol contracts only"
+    }
+  },
+  "package_compatibility": {
+    "python": {"minimum": "3.12", "maximum_exclusive": "3.14"},
+    "ipfs_accelerate_py": {"minimum": "0.0.45", "maximum_exclusive": "0.1.0"},
+    "ipfs_datasets_py": {"minimum": "0.2.0", "maximum_exclusive": "0.3.0"},
+    "ipfs_kit_py": {"minimum": "0.3.0", "maximum_exclusive": "0.4.0"},
+    "Mcp-Plus-Plus": {"minimum": "1.0.0", "maximum_exclusive": "2.0.0"}
+  },
+  "frozen_contracts": {
+    "logic_platform": {
+      "policy": "reuse the accepted FormalWorkPlan, compiler, validator, prover, proof-cache and plan-revision surfaces; no new logic family",
+      "manifest_interface": "LogicPlatformManifest@1",
+      "manifest_schema": "logic-platform-manifest/v1",
+      "manifest_content_sha256": "5e02c8c7039f3381225742d6daeb6d98c813f47a46c0b74bc9943c8eb474f45a",
+      "source_commit": "41533721c5559ad68cecfe226fa6ba5f76f8a15d",
+      "compatibility": {"minimum": "1.0.0", "maximum_exclusive": "2.0.0"}
+    },
+    "semantic_state": {
+      "schema": "ipfs-datasets.software-contracts.semantic-state@1",
+      "api": "ipfs-datasets.software-contracts.semantic-state-api@1",
+      "accelerator_root_manifest": "ipfs-accelerate.semantic-state-root-manifest@1",
+      "context_pack": "ContextPack@1"
+    },
+    "handoff": {
+      "request": "ExternalAgentHandoffRequest@1",
+      "session": "ExternalAgentSession@1",
+      "conversation_event": "ConversationEvent@1",
+      "tool_invocation_event": "ToolInvocationEvent@1",
+      "tool_result_event": "ToolResultEvent@1",
+      "patch_event": "PatchEvent@1",
+      "approval_event": "ApprovalEvent@1",
+      "checkpoint": "AgentCheckpoint@1",
+      "context_artifact": "AgentContextArtifact@1",
+      "normalization_report": "HandoffNormalizationReport@1",
+      "admission_receipt": "HandoffAdmissionReceipt@1",
+      "status": "planned; no origin/main implementation symbol was found"
+    },
+    "repository_transfer": {
+      "bundle": "RepositoryHandoffBundle@1",
+      "snapshot": "RepositorySnapshotManifest@1",
+      "overlay": "DirtyOverlayManifest@1",
+      "receipt": "RepositoryTransferReceipt@1",
+      "status": "planned after DCR authority-git reconciliation"
+    },
+    "run_registry": {
+      "schema": "ipfs_accelerate_py/agent-supervisor/entrypoints/run-registry@1",
+      "transaction_schema": "ipfs_accelerate_py/agent-supervisor/entrypoints/run-registry-tx@1",
+      "policy": "extend the existing registry; no parallel registry"
+    },
+    "control_plane": {
+      "bootstrap_schema_revision": "datasets-authoritative-eaaef-operational-control-plane@2",
+      "database_program": "DatabaseProgramConfig@1",
+      "task_source": "DatabaseTaskSource@1",
+      "coordination": "DatabaseCoordinator plus QuackStateClient@1/QuackStateServer@1",
+      "state_server_identity": "StateServerIdentity@1",
+      "external_agent_fabric_contracts": {
+        "scheduler_config": "ipfs_accelerate_py.agent_supervisor.external_agent_autonomous_execution_fabric.scheduler_config@2",
+        "namespace_claim": "ipfs_accelerate_py/agent-supervisor/external-agent-autonomous-execution-fabric-namespace-claim@2",
+        "materialization_receipt": "ipfs_accelerate_py/agent-supervisor/external-agent-autonomous-execution-fabric-materialization@2",
+        "bootstrap_admission": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-admission@1",
+        "configured_board_launch_capsule": "ipfs_accelerate_py/agent-supervisor/eaaef-configured-board-launch-capsule@1",
+        "configured_board_live_seal": "ipfs_accelerate_py/agent-supervisor/eaaef-configured-board-live-seal@2",
+        "worker_image_qualification": "ipfs_accelerate_py/agent-supervisor/external-agent-worker-image-qualification@1",
+        "worker_container_profile": "ipfs_accelerate_py/agent-supervisor/external-agent-worker-container-profile@1",
+        "worker_container_profile_v2": "ipfs_accelerate_py/agent-supervisor/external-agent-worker-container-profile@2",
+        "worker_container_execution_profile_launch": "ipfs_accelerate_py/agent-supervisor/source-addressed-container-execution-profile-launch@1",
+        "worker_container_execution_profile_launch_v2": "ipfs_accelerate_py/agent-supervisor/source-addressed-container-execution-profile-launch@2",
+        "provider_container_qualification": "ipfs_accelerate_py/agent-supervisor/eaaef-provider-container-qualification@1",
+        "worker_network_authorization": "ipfs_accelerate_py/eaaef-worker-network-authorization@1",
+        "authorized_state_command": "ipfs_accelerate_py/agent-supervisor/authorized-state-command@1",
+        "quack_command_fabric": "ipfs_accelerate_py/agent-supervisor/quack-command-fabric@1",
+        "plan_r2_transition_authorization": "ipfs_accelerate_py/agent-supervisor/eaaef-plan-r2-transition-authorization@1",
+        "plan_r2_operational_capability": "ipfs_accelerate_py/agent-supervisor/eaaef-plan-r2-operational-capability@1",
+        "plan_r2_owner_gateway": "AuthorizedStateCommandPlanR2OwnerGateway@1",
+        "agent_supervisor_native_dependency_admission": {
+          "interface": "AgentSupervisorNativeDependencyAdmission@1",
+          "schema": "ipfs_accelerate_py/agent-supervisor/native-dependency-admission@1"
+        },
+        "eaaef_bootstrap_lane_authority_v2": {
+          "interface": "EAAEFBootstrapLaneAuthority@2",
+          "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-lane-authority@2"
+        },
+        "eaaef_bootstrap_lane_verifier_receipt_v2": {
+          "interface": "EAAEFBootstrapLaneVerifierReceipt@2",
+          "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-lane-verifier-receipt@2"
+        },
+        "eaaef_bootstrap_lane_merge_admission_v2": {
+          "interface": "EAAEFBootstrapLaneMergeAdmission@2",
+          "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-lane-merge-admission@2"
+        },
+        "eaaef_quack_client_factory_qualification": {
+          "interface": "EAAEFQuackClientFactoryQualification@1",
+          "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-quack-client-factory-qualification@1"
+        },
+        "eaaef_container_dispatcher_factory_qualification": {
+          "interface": "EAAEFContainerDispatcherFactoryQualification@1",
+          "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-container-dispatcher-factory-qualification@1"
+        },
+        "eaaef_container_dynamic_service": "EAAEFContainerDynamicService@1",
+        "eaaef_exact_envelope_journal": {
+          "interface": "EAAEFExactEnvelopeJournal@1",
+          "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-exact-envelope-journal@1"
+        },
+        "eaaef_bootstrap_authorized_command_transport": "EAAEFBootstrapAuthorizedCommandTransport@1",
+        "eaaef_bootstrap_command_gateway": "EAAEFBootstrapCommandGateway@1",
+        "eaaef_container_dispatcher_factory": "EAAEFContainerDispatcherFactory@1",
+        "plan_r2_process_remote_owner": {
+          "capability_interface": "PlanR2ProcessRemoteOwnerCapability@1",
+          "wire_channel_interface": "PlanR2CanonicalWireChannel@1",
+          "owner_service_interface": "PlanR2RemoteOwnerService@1",
+          "client_gateway_interface": "PlanR2ProcessRemoteOwnerGateway@1",
+          "journal_interface": "PlanR2RemoteExactEnvelopeJournal@1",
+          "qualification_status": "source_complete_external_signed_channel_required",
+          "production_admitted": false,
+          "production_blockers": [
+            "external_plan_r2_remote_owner_capability_absent",
+            "qualified_process_remote_wire_channel_factory_absent",
+            "supervisor_plan_r2_remote_repository_wiring_absent"
+          ]
+        },
+      "control_plane_promotion": "ipfs_accelerate_py/agent-supervisor/eaaef-control-plane-promotion@2",
+        "historical_owner_qualification": "ipfs_accelerate_py/agent-supervisor/eaaef-quack-owner-qualification@1",
+        "eaaef_signed_command_fabric_profile": "ipfs_accelerate_py/agent-supervisor/eaaef-signed-command-fabric-profile@2",
+        "eaaef_signed_command_fabric_profile_identity": {
+          "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+          "shard_id": "control-shard-0",
+          "schema_revision": "datasets-authoritative-eaaef-operational-control-plane@2",
+          "child_adapter_status": "implemented_unqualified_fail_closed",
+          "production_admitted": false
+        },
+        "eaaef_operational_profile": {
+          "interface": "DatasetsAuthoritativeEAAEFOperationalProfile@2",
+          "schema": "ipfs_accelerate_py/agent-supervisor/datasets-authoritative-eaaef-operational-control-plane@2",
+          "migration_id": "0002_eaaef_owner_transaction_operational_extension",
+          "production_admitted": false
+        },
+        "eaaef_board_scheduler_lease": {
+          "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-board-shard-scheduler-lease@1",
+          "kind": "board_shard_scheduler",
+          "mode": "shared_scheduler"
+        },
+        "daemon_gateway": "QuackDaemonCommandGateway@1",
+      "daemon_operational_capability": "QuackDaemonOperationalCapability@1",
+      "daemon_owner_operation_handler": "QuackDaemonCanonicalOwnerOperationHandler@1",
+      "eaaef_bootstrap_daemon_capability": {
+        "interface": "EAAEFBootstrapDaemonCapability@1",
+        "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-daemon-capability@1"
+      },
+      "eaaef_bootstrap_daemon_gateway": {
+        "interface": "EAAEFBootstrapDaemonGateway@1",
+        "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-daemon-gateway@1"
+      },
+        "eaaef_bootstrap_daemon_operation_disposition": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-daemon-operation-disposition@1",
+        "eaaef_bootstrap_daemon_operational_capability": {
+          "interface": "EAAEFBootstrapDaemonOperationalCapability@2",
+          "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-daemon-operational-capability@2"
+        },
+        "eaaef_bootstrap_gateway_binding": {
+          "interface": "EAAEFBootstrapGatewayBinding@1",
+          "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-gateway-binding@1"
+        },
+        "eaaef_command_authorization_service": {
+          "interface": "EAAEFCommandAuthorizationService@1",
+          "capability_schema": "ipfs_accelerate_py/agent-supervisor/eaaef-command-authorization-service-capability@1",
+          "request_schema": "ipfs_accelerate_py/agent-supervisor/eaaef-command-authorization-request@1"
+        },
+        "eaaef_bootstrap_gateway_launch_authority": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-gateway-launch-authority@1",
+        "eaaef_borrowed_transaction_adapter": {
+          "interface": "EAAEFBootstrapBorrowedTransactionAdapter@1",
+          "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-borrowed-transaction-adapter@1",
+          "qualification_status": "implemented_unqualified_fail_closed"
+        },
+        "eaaef_bootstrap_borrowed_transaction_handler": {
+          "interface": "EAAEFBootstrapBorrowedTransactionOperationHandler@1",
+          "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-borrowed-transaction-handler@1",
+          "qualification_status": "implemented_unqualified_fail_closed"
+        },
+        "eaaef_task_operation_authority": "ipfs_accelerate_py/agent-supervisor/eaaef-task-operation-authority@2",
+        "eaaef_daemon_lane_binding": "ipfs_accelerate_py/agent-supervisor/eaaef-daemon-lane-binding@1",
+        "eaaef_dead_lane_recovery_authority": "ipfs_accelerate_py/agent-supervisor/eaaef-dead-lane-recovery-authority@1",
+        "eaaef_bootstrap_execution_repository_proxy": {
+          "interface": "EAAEFBootstrapExecutionRepositoryProxy@2",
+          "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-execution-repository-proxy@2",
+          "qualification_status": "r1_source_verified_runtime_factory_implemented",
+          "source_factory_implemented": true,
+          "source_dispatch_path_implemented": true,
+          "direct_construction_allowed": false,
+          "production_admitted": false,
+          "production_blockers": [
+            "signed_quack_client_factory_qualification_artifact_absent",
+            "signed_dynamic_dispatcher_service_qualification_artifact_absent",
+            "independently_signed_per_birth_lane_runtime_artifact_absent"
+          ]
+        },
+        "container_worker_dispatcher": "ExternalAgentContainerWorkerDispatcher@1",
+      "container_work_packet": "ipfs_accelerate_py/agent-supervisor/external-agent-container-work-packet@1",
+        "container_effect_receipt": "ipfs_accelerate_py/agent-supervisor/external-agent-container-effect-receipt@1",
+        "host_merge_admission": "ipfs_accelerate_py/agent-supervisor/external-agent-host-merge-admission@1",
+        "host_merge_admission_qualification": "unsigned_content_addressed_v1_no_go_pending_independently_signed_trust_rooted_contract",
+        "independent_validation_receipt_qualification": "unsigned_self_addressed_v1_no_go_pending_independently_signed_trust_rooted_contract",
+        "compatibility_rule": "Historical owner qualification admits only R1 bootstrap; Promotion@2 admits only the exact three-operation Plan-R2 dispatcher. The canonical generic handler retains its frozen 39-operation vocabulary and production=false ceiling. The structural EAAEFBootstrapDaemonCapability@1 remains source evidence for the exact 31-operation trace and preserves its two-read-plus-29-no-go projection. The mutually exclusive EAAEFBootstrapDaemonOperationalCapability@2 path binds the EAAEF operational profile, stable gateway identity and borrowed-transaction handler for all 31 operations. Reviewed source now implements the exact R1 native admission, V2 lane chain, ambiguity journal, lazy Quack/dispatcher runtime factory and supervisor per-birth wiring, plus a distinct source-complete R2 process-remote owner seam. Direct proxy construction remains prohibited and production_admitted remains false. Live use still requires actual independently signed native/lane/Quack/dispatcher/Plan-R2 artifacts, deployed signed service endpoints, a qualified extension, host-merge evidence and admitted Docker/container/provider/network authority. No source symbol, test fixture, temporary extension, CID, callback, token or local path promotes runtime authority or widens either gateway."
+      },
+      "mutable_authority": "DuckDB transactional database plus exactly one fenced authenticated Quack file-opening owner per shard",
+      "client_rule": "all other readers and writers use bounded typed authenticated Quack methods with epoch, lease, fence, idempotency, deadline and CAS",
+      "direct_remote_file_open": "prohibited"
+    },
+    "ducklake": {
+      "role": "immutable versioned post-commit history, snapshots, audit, lineage, analytics and recovery manifests",
+      "prohibited_authority": ["current claims", "current leases", "fencing epochs", "write ownership", "resume rights", "merge authority", "finalization authority", "recovery authority"],
+      "catalog_version": "not_admitted_until_EAAEF-094",
+      "replication_rule": "lag or outage never grants, revokes or corrupts current authority"
+    },
+    "mcplusplus": {
+      "profiles": ["Profile A", "Profile B", "Profile C", "Profile D", "Profile F", "Profile G"],
+      "contracts": ["ExecutionEnvelope@1", "ExecutionResult@1", "ExecutionReceipt@1", "EncryptedArtifactRef@1", "ObligationEvent@1", "DurableExecutor@1", "StateRef@1"],
+      "forbidden": ["new profile", "Profile H", "new A2A profile", "backend-role inference from transport identity"]
+    },
+    "receipts": {
+      "admitted": ["TestReceipt@1", "ProofReceipt@1", "CounterexampleReceipt@1", "SettlementReceipt@1", "SemanticVerificationReceipt@1", "ExecutionReceipt@1"],
+      "minimum_major": 1,
+      "maximum_major_inclusive": 1,
+      "unknown_version_policy": "reject"
+    },
+    "proofs": {
+      "admitted": ["IncrementalProofSealer@1", "ExistingProofAssistantAdapter@1", "GoalDirectedProofTactician@1", "CounterexampleGuidedProofDevelopment@1", "CodeProofContext@1"],
+      "minimum_major": 1,
+      "maximum_major_inclusive": 1,
+      "unknown_version_policy": "reject"
+    }
+  },
+  "database_extension_profile": {
+    "required_for_continuous_quack": {
+      "duckdb": "1.5.5",
+      "quack": "1.5.5+core",
+      "lock_sha256": "c13d55fda5236686a02fdcfe782639c09395300d51ac5acf9effa0a4297d7a48"
+    },
+    "required_for_live_ducklake": {
+      "duckdb": "1.5.5",
+      "ducklake": "1.5.5+core",
+      "httpfs": "1.5.5+core",
+      "lock_sha256": "e511a7141d69df8490ab70eccfdc09b3f1c58140cb0711c97f3ab6b0050bf03e"
+    },
+    "observed_planning_environment": {
+      "duckdb_python": "1.5.2",
+      "duckdb_library": "v1.5.2",
+      "quack": {"installed": true, "loaded": false},
+      "ducklake": {"installed": true, "loaded": false},
+      "httpfs": {"installed": true, "loaded": false},
+      "authority": "diagnostic only; does not satisfy the exact 1.5.5 promotion gates"
+    }
+  },
+  "oci_images": {
+    "bootstrap_reconciliation_worker": {
+      "status": "not_yet_admitted",
+      "digest": "",
+      "sbom_digest": "",
+      "blocking_task": "EAAEF-000",
+      "rule": "No supervisor may dispatch an implementation task until EAAEF-000 independently binds signed image and SBOM identities, the exact engine mode (rootless where supported, otherwise a separately approved rootful-host-daemon/nonroot-worker fallback), a no-socket/default-deny policy, signed provider authorization, the materialization receipt and a Quack authority decision."
+    },
+  "implementation_worker_minimal_candidate": {
+      "status": "unsigned_no_go_candidate",
+      "digest": "sha256:50bb50ce32cfe2287683e2ab68f761890eaeef58a033835e0f847c198a802fb0",
+      "sbom_digest": "sha256:4f696aac7aa1eda61919276f42f793261a19ddd3a665adb78ab0ac26f16f2bee",
+    "validation_toolchain_cid": "sha256:77aaf62266a0a59936adfe3a9a6ddcc68fb9a1b1e0acb3c37c1f9274060a9b32",
+    "input_manifest_cid": "sha256:dc52fc47db3a0550a753c60074fc27be99950df1af24af9a4b91d139f8fd962e",
+    "rootfs_cid": "sha256:d859b9457b22da5ee8eb701b90bf70be377895755eccec39eb4adf76903a919a",
+      "report_cid": "sha256:17dede3c081cc8a7127948234cbe57e8f39359fabd2d9bbe9df83ae5d96a8d00",
+      "task_dispatch_admitted": false,
+      "maximum_parallel_workers": 0,
+      "blocking_evidence": ["independent image and SBOM review", "effect-bound provider authorization", "per-attempt network authorization", "rootless or independently approved rootful-host-daemon policy"]
+    },
+    "qualified_python_worker": {"status": "planned", "digest": "", "blocking_task": "EAAEF-052"},
+    "prover": {"status": "planned", "digest": "", "blocking_task": "EAAEF-052"}
+  },
+  "qualification_state": {
+    "source_reconciliation": "closed_planning_manifest_pending_EAAEF-001_independent_reverification",
+    "bootstrap_admission": "manual_fail_closed_EAAEF-000_only_initial_ready_task",
+    "semantic_state_transition": "pending_EAAEF-007_exact_multi_repository_root",
+    "quack_capsule_promotion": "pending_EAAEF-008",
+    "plan_population_transition": "pending_EAAEF-009_immutable_Plan_R2_CAS",
+    "embedded_one_writer_duckdb": "candidate_after_board_materialization_and_seal",
+    "direct_single_supervisor_duckdb": "authority_propagation_repaired_but_live_provider_no_go_pending_exact_route_and_container_policy",
+    "configured_multi_supervisor": "no_go_pending_immutable_accepted_control_plane_capsule",
+    "continuous_duckdb_quack": "no_go_source_r1_runtime_factory_implemented_pending_actual_signed_native_v2_lane_quack_dispatcher_artifacts_deployed_endpoints_and_qualified_extension",
+  "generic_daemon_operations": "three_transaction_safe_task_reads_implemented; thirty_six_operations_typed_no_go",
+    "container_worker_dispatch": "no_go_source_dispatch_factory_implemented_pending_signed_lane_quack_dispatcher_artifacts_real_container_engine_image_profile_sbom_provider_network_and_admitted_capacity",
+    "provider_effect_launch": "no_go_source_addressed_worker_profile_and_launcher_v2_implemented_fail_closed_pending_external_signed_v2_artifact_admitted_engine_provider_neutral_effect_cas_and_containerized_grok_preflight",
+    "bootstrap_daemon_operations": "no_go_operational_profile_v2_signed_capability_verifier_all_31_borrowed_transaction_handlers_and_source_runtime_factory_implemented; structural_v1_retains_two_admitted_plus_twenty_nine_typed_no_go; direct_proxy_construction_prohibited; production_admitted_false",
+    "bootstrap_runtime_gateway": "no_go_r1_source_verified_runtime_factory_implemented_pending_actual_signed_native_v2_lane_quack_dispatcher_and_per_birth_artifacts_deployed_signed_services_qualified_extension_host_merge_evidence_and_real_container_authority",
+    "plan_r2_remote_owner": "no_go_source_complete_external_signed_channel_required_pending_external_plan_r2_capability_qualified_wire_channel_factory_and_supervisor_repository_wiring",
+    "host_merge_admission": "no_go_content_addressed_v1_is_not_independently_signed",
+    "independent_verification": "no_go_self_addressed_result_does_not_prove_independent_verifier_participation",
+    "live_ducklake": "no_go_pending_catalog_profile_security_parity_and_recovery_receipts",
+    "supervised_external_pilot": "not_yet_qualified"
+  },
+  "change_policy": {
+    "silent_contract_change": false,
+    "required_action": "superseding StackCompatibilityManifest and immutable PlanRevision with affected tests and migration evidence",
+    "worker_can_weaken": false,
+    "model_can_select_trust_keys": false
+  }
+}

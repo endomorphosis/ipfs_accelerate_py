@@ -117,6 +117,7 @@ MAX_COMPLETION_PROJECTION_BYTES: Final[int] = 16_777_216
 DEFAULT_EVIDENCE_FRESHNESS_SECONDS: Final[int] = 3_600
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,511}$")
+_SAFE_PATH_PART = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._:@+-]{0,255}$")
 
 _READY_STATUSES: Final[frozenset[str]] = frozenset(
     {
@@ -308,6 +309,26 @@ def _optional_identifier(value: Any, *, noun: str) -> str:
     if value is None or value == "":
         return ""
     return _identifier(value, noun=noun)
+
+
+def _output_path(value: Any, *, noun: str) -> str:
+    """Accept a repo-relative output path, including dotfiles such as ``.gitignore``."""
+
+    if not isinstance(value, str):
+        raise ControlPlaneIdentityError(f"{noun} must be a string")
+    text = value.strip()
+    if not text:
+        raise ControlPlaneIdentityError(f"{noun} must not be empty")
+    if len(text.encode("utf-8")) > MAX_ID_BYTES:
+        raise ControlPlaneBoundsError(f"{noun} exceeds its byte bound")
+    if "\x00" in text or text.startswith("/") or "\\" in text:
+        raise ControlPlaneIdentityError(f"{noun} is not a safe identifier")
+    parts = text.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ControlPlaneIdentityError(f"{noun} is not a safe identifier")
+    if not all(_SAFE_PATH_PART.match(part) for part in parts):
+        raise ControlPlaneIdentityError(f"{noun} is not a safe identifier")
+    return text
 
 
 def _status(value: Any, *, allowed: frozenset[str], noun: str) -> str:
@@ -2366,7 +2387,7 @@ class IntentRepository:
         connection.execute("DELETE FROM task_outputs WHERE task_cid = ?", [task_cid])
         for ordinal, item in enumerate(outputs):
             mapping = _mapping(item, noun="task output")
-            path = _identifier(
+            path = _output_path(
                 mapping.get("path") or mapping.get("effect_id") or f"output:{ordinal}",
                 noun="output path",
             )

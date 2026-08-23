@@ -743,6 +743,20 @@ class DatabaseTaskSource:
         if isinstance(taskboard, Mapping):
             taskboard = (taskboard,)
         task_cids: list[str] = []
+        declared_task_cids: dict[str, str] = {}
+        for index, item in enumerate(taskboard):
+            if not isinstance(item, Mapping):
+                continue
+            declared_cid = str(
+                item.get("task_cid")
+                or item.get("cid")
+                or f"task:cid:{index + 1}"
+            )
+            declared_task_cids[declared_cid] = declared_cid
+            for key in ("task_id", "task_alias", "alias", "cid", "task_cid"):
+                alias = str(item.get(key) or "").strip()
+                if alias:
+                    declared_task_cids[alias] = declared_cid
         for index, item in enumerate(taskboard):
             if not isinstance(item, Mapping):
                 continue
@@ -771,11 +785,17 @@ class DatabaseTaskSource:
             else:
                 dependencies = []
             # Resolve dependency aliases to durable CIDs before task insert so
-            # readiness joins never depend on mutable display aliases.
+            # readiness joins never depend on mutable display aliases. The
+            # declared population map is consulted first so a later task alias
+            # (for example EAAEF-191 after EAAEF-000) still remaps.
             resolved_deps: list[str] = []
             for dep in dependencies:
                 dep_text = str(dep or "").strip()
                 if not dep_text:
+                    continue
+                declared = declared_task_cids.get(dep_text)
+                if declared:
+                    resolved_deps.append(declared)
                     continue
                 prior = self._intent.get_task(dep_text)
                 resolved_deps.append(str(prior["task_cid"]) if prior is not None else dep_text)

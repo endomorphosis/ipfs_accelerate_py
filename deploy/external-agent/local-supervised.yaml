@@ -1,0 +1,6 @@
+# EAAEF-162 local supervised profile. Remote multi-host stays disabled.
+profile: local-supervised
+quack: loopback-only
+remote_multi_host: disabled
+rootless: preferred
+docker_socket: false

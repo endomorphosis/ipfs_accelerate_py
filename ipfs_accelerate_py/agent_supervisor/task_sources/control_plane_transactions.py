@@ -799,6 +799,403 @@ class StateTransaction:
             )
         return live
 
+    @staticmethod
+    def _authorized_command_suppression_id(kind: str, value: str) -> tuple[str, str]:
+        """Return fixed, global replay identities for an authorized command.
+
+        ``replay_suppressions`` is part of the canonical control-plane schema.
+        The primary key, rather than the task-scoped secondary index, makes a
+        request or nonce one-use across the complete authority shard.
+        """
+
+        normalized_kind = str(kind or "").strip()
+        normalized_value = str(value or "").strip()
+        if normalized_kind not in {"request", "nonce"} or not normalized_value:
+            raise ControlPlaneContractError(
+                "authorized command replay identity is invalid"
+            )
+        digest = hashlib.sha256(
+            canonical_json_bytes(
+                {
+                    "schema": "AuthorizedStateCommandReplayIdentity@1",
+                    "kind": normalized_kind,
+                    "value": normalized_value,
+                }
+            )
+        ).hexdigest()
+        return f"authorized-command-{normalized_kind}:sha256:{digest}", f"sha256:{digest}"
+
+    def assert_live_authorized_command_lease(
+        self,
+        *,
+        lease_id: str,
+        scope_id: str,
+        principal_did: str,
+        effect: str,
+        command_kind: CommandKind,
+        fence_epoch: int,
+        now_ms: int,
+    ) -> Mapping[str, Any]:
+        """Verify the exact live lease bound by a signed command envelope.
+
+        This fixed query runs inside the same private-owner transaction as the
+        task CAS, idempotency record, replay claims, and receipt.  No caller SQL
+        or identifiers enter the statement.
+        """
+
+        if not self.active:
+            raise TransactionError(
+                "authorized command lease verification requires an active transaction",
+                kind=TransactionConflictKind.UNKNOWN,
+                retryable=False,
+            )
+        normalized_lease = str(lease_id or "").strip()
+        normalized_scope = str(scope_id or "").strip()
+        normalized_principal = str(principal_did or "").strip()
+        normalized_effect = str(effect or "").strip()
+        expected_effect = f"control-plane/{command_kind.value}"
+        if (
+            not normalized_lease
+            or not normalized_scope
+            or not normalized_principal
+            or normalized_effect != expected_effect
+        ):
+            raise ControlPlaneContractError(
+                "authorized command lease/effect binding is invalid"
+            )
+        if isinstance(fence_epoch, bool) or not isinstance(fence_epoch, int) or fence_epoch < 1:
+            raise ControlPlaneContractError("authorized command fence_epoch is invalid")
+        if isinstance(now_ms, bool) or not isinstance(now_ms, int) or now_ms < 1:
+            raise ControlPlaneContractError("authorized command observation time is invalid")
+        row = _fetch_one(
+            self._connection.execute(
+                """
+                SELECT claim_cid, claimant_did, fencing_token, expires_at_ms,
+                       state, fence_epoch, revision
+                FROM leases
+                WHERE task_cid = ?
+                LIMIT 1
+                """,
+                [normalized_scope],
+            )
+        )
+        if row is None:
+            raise ControlPlaneContractError("authorized command lease is absent")
+        observed = {
+            "lease_id": str(_row_value(row, 0, "claim_cid") or ""),
+            "principal_did": str(_row_value(row, 1, "claimant_did") or ""),
+            "fencing_token": int(_row_value(row, 2, "fencing_token") or 0),
+            "expires_at_ms": int(_row_value(row, 3, "expires_at_ms") or 0),
+            "state": str(_row_value(row, 4, "state") or ""),
+            "fence_epoch": int(_row_value(row, 5, "fence_epoch") or 0),
+            "revision": int(_row_value(row, 6, "revision") or 0),
+        }
+        if observed["lease_id"] != normalized_lease:
+            raise ControlPlaneContractError("authorized command lease identity mismatch")
+        if observed["principal_did"] != normalized_principal:
+            raise ControlPlaneContractError("authorized command lease principal mismatch")
+        if observed["state"] != "accepted":
+            raise ControlPlaneContractError("authorized command lease is revoked")
+        if observed["expires_at_ms"] <= now_ms:
+            raise ControlPlaneContractError("authorized command lease is expired")
+        if observed["fence_epoch"] != fence_epoch:
+            raise FenceMismatchError(
+                "authorized command lease fence is stale",
+                details={
+                    "lease_fence_epoch": observed["fence_epoch"],
+                    "command_fence_epoch": fence_epoch,
+                },
+            )
+        if observed["fencing_token"] < 1:
+            raise FenceMismatchError("authorized command lease fencing token is invalid")
+        return MappingProxyType(observed)
+
+    def consume_authorized_command_replay_claims(
+        self,
+        *,
+        request_id: str,
+        one_use_nonce: str,
+        scope_id: str,
+        effect: str,
+    ) -> None:
+        """Consume request and nonce identities in the active mutation txn."""
+
+        if not self.active:
+            raise TransactionError(
+                "authorized command replay consumption requires an active transaction",
+                kind=TransactionConflictKind.UNKNOWN,
+                retryable=False,
+            )
+        normalized_scope = str(scope_id or "").strip()
+        normalized_effect = str(effect or "").strip()
+        if not normalized_scope or not normalized_effect:
+            raise ControlPlaneContractError("authorized command scope/effect is invalid")
+        identities = (
+            self._authorized_command_suppression_id("request", request_id),
+            self._authorized_command_suppression_id("nonce", one_use_nonce),
+        )
+        for suppression_id, input_digest in identities:
+            existing = _fetch_one(
+                self._connection.execute(
+                    "SELECT suppression_id FROM replay_suppressions "
+                    "WHERE suppression_id = ? LIMIT 1",
+                    [suppression_id],
+                )
+            )
+            if existing is not None:
+                raise ControlPlaneContractError(
+                    "authorized command request or nonce was already consumed"
+                )
+            self._connection.execute(
+                """
+                INSERT INTO replay_suppressions (
+                    suppression_id, task_cid, input_digest, reason,
+                    created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, NULL)
+                """,
+                [
+                    suppression_id,
+                    normalized_scope,
+                    input_digest,
+                    f"authorized-state-command:{normalized_effect}",
+                    self._now_iso(),
+                ],
+            )
+
+    def lookup_authorized_command_receipt(
+        self,
+        *,
+        receipt_event_id: str,
+    ) -> Mapping[str, Any] | None:
+        """Load one private committed command receipt by its fixed event id."""
+
+        event_id = str(receipt_event_id or "").strip()
+        if not event_id:
+            raise ControlPlaneContractError("authorized command receipt event id is required")
+        row = _fetch_one(
+            self._connection.execute(
+                "SELECT body_json FROM domain_events WHERE event_id = ? "
+                "AND event_type = 'authorized_state_command_receipt' LIMIT 1",
+                [event_id],
+            )
+        )
+        if row is None:
+            return None
+        raw = _row_value(row, 0, "body_json")
+        try:
+            payload = json.loads(str(raw))
+        except (TypeError, ValueError) as exc:
+            raise TransactionError(
+                "authorized command receipt body is corrupt",
+                kind=TransactionConflictKind.UNKNOWN,
+                retryable=False,
+            ) from exc
+        if not isinstance(payload, Mapping):
+            raise TransactionError(
+                "authorized command receipt body is not an object",
+                kind=TransactionConflictKind.UNKNOWN,
+                retryable=False,
+            )
+        return MappingProxyType(dict(payload))
+
+    def list_authorized_command_receipts(
+        self,
+        *,
+        limit: int,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """List a bounded private receipt population for projection rebuild."""
+
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 10_000:
+            raise ControlPlaneContractError(
+                "authorized command receipt limit must be between 1 and 10000"
+            )
+        count_row = _fetch_one(
+            self._connection.execute(
+                "SELECT COUNT(*) FROM domain_events "
+                "WHERE event_type = 'authorized_state_command_receipt'"
+            )
+        )
+        count = int(_row_value(count_row, 0, "count") or 0)
+        if count > limit:
+            raise ControlPlaneContractError(
+                "authorized command receipt projection bound exceeded"
+            )
+        result = self._connection.execute(
+            "SELECT body_json FROM domain_events "
+            "WHERE event_type = 'authorized_state_command_receipt' "
+            "ORDER BY global_sequence ASC LIMIT ?",
+            [limit],
+        )
+        fetchall = getattr(result, "fetchall", None)
+        rows = list(fetchall() or ()) if callable(fetchall) else []
+        receipts: list[Mapping[str, Any]] = []
+        for row in rows:
+            raw = _row_value(row, 0, "body_json")
+            try:
+                payload = json.loads(str(raw))
+            except (TypeError, ValueError) as exc:
+                raise TransactionError(
+                    "authorized command receipt body is corrupt",
+                    kind=TransactionConflictKind.UNKNOWN,
+                    retryable=False,
+                ) from exc
+            if not isinstance(payload, Mapping):
+                raise TransactionError(
+                    "authorized command receipt body is not an object",
+                    kind=TransactionConflictKind.UNKNOWN,
+                    retryable=False,
+                )
+            receipts.append(MappingProxyType(dict(payload)))
+        return tuple(receipts)
+
+    def record_authorized_command_receipt(
+        self,
+        *,
+        receipt_event_id: str,
+        stream_id: str,
+        task_cid: str,
+        session_id: str,
+        receipt: Mapping[str, Any],
+    ) -> None:
+        """Persist the private receipt in the active authority transaction."""
+
+        if not self.active:
+            raise TransactionError(
+                "authorized command receipt requires an active transaction",
+                kind=TransactionConflictKind.UNKNOWN,
+                retryable=False,
+            )
+        event_id = str(receipt_event_id or "").strip()
+        stream = str(stream_id or "").strip()
+        if not event_id or not stream or not isinstance(receipt, Mapping):
+            raise ControlPlaneContractError("authorized command receipt identity is invalid")
+        sequence_row = _fetch_one(
+            self._connection.execute(
+                "SELECT COALESCE(MAX(sequence), 0) FROM domain_events WHERE stream_id = ?",
+                [stream],
+            )
+        )
+        global_row = _fetch_one(
+            self._connection.execute(
+                "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+            )
+        )
+        sequence = int(_row_value(sequence_row, 0, "sequence") or 0) + 1
+        global_sequence = int(_row_value(global_row, 0, "global_sequence") or 0) + 1
+        body_json = canonical_json_bytes(dict(receipt)).decode("utf-8")
+        self._connection.execute(
+            """
+            INSERT INTO domain_events (
+                event_id, stream_id, sequence, global_sequence, event_type,
+                task_cid, attempt_id, session_id, recorded_at, body_json
+            ) VALUES (?, ?, ?, ?, 'authorized_state_command_receipt',
+                      ?, '', ?, ?, ?)
+            """,
+            [
+                event_id,
+                stream,
+                sequence,
+                global_sequence,
+                str(task_cid or ""),
+                str(session_id or ""),
+                self._now_iso(),
+                body_json,
+            ],
+        )
+
+    def lookup_authorized_command_ingress_quarantine(
+        self,
+        *,
+        quarantine_event_id: str,
+    ) -> Mapping[str, Any] | None:
+        """Load one durable divergent-ingress quarantine by its event id."""
+
+        event_id = str(quarantine_event_id or "").strip()
+        if not event_id:
+            raise ControlPlaneContractError(
+                "authorized command ingress quarantine event id is required"
+            )
+        row = _fetch_one(
+            self._connection.execute(
+                "SELECT body_json FROM domain_events WHERE event_id = ? "
+                "AND event_type = 'authorized_state_command_ingress_quarantine' "
+                "LIMIT 1",
+                [event_id],
+            )
+        )
+        if row is None:
+            return None
+        try:
+            payload = json.loads(str(_row_value(row, 0, "body_json")))
+        except (TypeError, ValueError) as exc:
+            raise TransactionError(
+                "authorized command ingress quarantine body is corrupt",
+                kind=TransactionConflictKind.UNKNOWN,
+                retryable=False,
+            ) from exc
+        if not isinstance(payload, Mapping):
+            raise TransactionError(
+                "authorized command ingress quarantine body is not an object",
+                kind=TransactionConflictKind.UNKNOWN,
+                retryable=False,
+            )
+        return MappingProxyType(dict(payload))
+
+    def record_authorized_command_ingress_quarantine(
+        self,
+        *,
+        quarantine_event_id: str,
+        stream_id: str,
+        quarantine: Mapping[str, Any],
+    ) -> None:
+        """Persist one quarantine outside the command-receipt identity space."""
+
+        if not self.active:
+            raise TransactionError(
+                "authorized command ingress quarantine requires an active transaction",
+                kind=TransactionConflictKind.UNKNOWN,
+                retryable=False,
+            )
+        event_id = str(quarantine_event_id or "").strip()
+        stream = str(stream_id or "").strip()
+        if not event_id or not stream or not isinstance(quarantine, Mapping):
+            raise ControlPlaneContractError(
+                "authorized command ingress quarantine identity is invalid"
+            )
+        sequence_row = _fetch_one(
+            self._connection.execute(
+                "SELECT COALESCE(MAX(sequence), 0) FROM domain_events "
+                "WHERE stream_id = ?",
+                [stream],
+            )
+        )
+        global_row = _fetch_one(
+            self._connection.execute(
+                "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+            )
+        )
+        sequence = int(_row_value(sequence_row, 0, "sequence") or 0) + 1
+        global_sequence = int(_row_value(global_row, 0, "global_sequence") or 0) + 1
+        body_json = canonical_json_bytes(dict(quarantine)).decode("utf-8")
+        self._connection.execute(
+            """
+            INSERT INTO domain_events (
+                event_id, stream_id, sequence, global_sequence, event_type,
+                task_cid, attempt_id, session_id, recorded_at, body_json
+            ) VALUES (?, ?, ?, ?,
+                      'authorized_state_command_ingress_quarantine',
+                      '', '', '', ?, ?)
+            """,
+            [
+                event_id,
+                stream,
+                sequence,
+                global_sequence,
+                self._now_iso(),
+                body_json,
+            ],
+        )
+
     def lookup_idempotency(
         self,
         idempotency_key: str,

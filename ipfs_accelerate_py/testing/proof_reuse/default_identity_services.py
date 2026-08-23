@@ -426,7 +426,7 @@ class ProofReuseSessionIdentity:
             return self._forest_unlocked(seed_path=seed_path)
 
     def _forest_unlocked(self, *, seed_path: Path | None = None) -> Any:
-        from ...agent_supervisor.repository_forest import (
+        from ...agent_supervisor.analysis.repository_forest import (
             ForestPolicy,
             ForestRootSpec,
             RepositoryAuthority,
@@ -493,7 +493,7 @@ class ProofReuseSessionIdentity:
     def _resolve_forest_roots(
         self, *, seed_path: Path | None = None
     ) -> tuple[Any, ...]:
-        from ...agent_supervisor.repository_forest import ForestRootSpec, RepositoryAuthority
+        from ...agent_supervisor.analysis.repository_forest import ForestRootSpec, RepositoryAuthority
 
         if self.forest_roots:
             return tuple(self.forest_roots)
@@ -556,7 +556,7 @@ class ProofReuseSessionIdentity:
 
     def _forest_still_valid(self, forest: Any) -> bool:
         try:
-            from ...agent_supervisor.repository_forest import (
+            from ...agent_supervisor.analysis.repository_forest import (
                 compute_dirty_overlay_digest,
             )
 
@@ -1059,7 +1059,7 @@ class DefaultIdentityServiceFactory:
                 exception_type=type(exc).__name__,
             )
 
-        from ...agent_supervisor.repository_forest import (
+        from ...agent_supervisor.analysis.repository_forest import (
             RepositoryForest,
             descriptor_satisfies_repository_descriptor,
         )

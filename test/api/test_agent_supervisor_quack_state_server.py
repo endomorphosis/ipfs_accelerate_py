@@ -36,6 +36,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     STATE_SERVER_IDENTITY_INTERFACE,
     ExclusiveOwnerLease,
     FakeQuackTransport,
+    InProcessQuackTransport,
     OwnerMarker,
     QuackStateServer,
     QuackStateServerBindError,

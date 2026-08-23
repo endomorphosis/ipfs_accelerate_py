@@ -1,0 +1,39 @@
+{
+  "board_cid": "sha256:878c50a0859dccd5facefca94f3f5cdebe60f828b44ad20a356ca5c01ddd9c86",
+  "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+  "decision": "admitted",
+  "evidence": {
+    "decision": "admitted",
+    "docker_host": "unix:///run/user/1000/docker.sock",
+    "docker_info_returncode": 0,
+    "docker_socket_mounted": false,
+    "fallback_package": null,
+    "host_docker_socket_used": false,
+    "mode": "verified_rootless",
+    "probes": [
+      {
+        "docker_host": "unix:///run/user/1000/docker.sock",
+        "returncode": 0,
+        "root_dir": "/home/barberb/.local/share/docker",
+        "rootless": true,
+        "security_options": [
+          "name=seccomp,profile=builtin",
+          "name=rootless",
+          "name=cgroupns"
+        ]
+      }
+    ],
+    "rootless": true,
+    "supervisor_started": false
+  },
+  "independent_signatures": [],
+  "process_started": false,
+  "receipt_cid": "sha256:3ea61d0c79f0f9375f6be45ddf11cc66e41a9f484940a37bae5f2cb85456ff46",
+  "receipt_name": "engine_mode.json",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
+  "self_signed": false,
+  "source_head": "e8d4b1e3ccf68c284f65bb6595b24c402cf82565",
+  "source_tree": "0e8fa360e0fef8d0d5f71d74c213354f61fe9824",
+  "supervisor_process_started": false,
+  "task_id": "EAAEF-183"
+}

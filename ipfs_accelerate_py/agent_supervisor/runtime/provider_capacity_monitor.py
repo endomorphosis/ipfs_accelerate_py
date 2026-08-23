@@ -121,7 +121,20 @@ def _command_provider(command: Sequence[str]) -> str:
     return ""
 
 
-def _count_with_psutil() -> dict[str, int] | None:
+def _command_matches_markers(
+    command: Sequence[str],
+    markers: Sequence[str],
+) -> bool:
+    if not markers:
+        return True
+    blob = "\0".join(str(item) for item in command)
+    return any(marker in blob for marker in markers if marker)
+
+
+def _count_with_psutil(
+    *,
+    cmdline_markers: Sequence[str] = (),
+) -> dict[str, int] | None:
     try:
         import psutil
     except ImportError:
@@ -156,8 +169,9 @@ def _count_with_psutil() -> dict[str, int] | None:
             raise RuntimeError(
                 "process identity is invalid; capacity is unknown"
             ) from exc
-        provider = _command_provider(tuple(str(item) for item in command))
-        if provider:
+        command_tokens = tuple(str(item) for item in command)
+        provider = _command_provider(command_tokens)
+        if provider and _command_matches_markers(command_tokens, cmdline_markers):
             classified.append(
                 (int(process.pid), int(info.get("ppid") or 0), provider)
             )
@@ -198,6 +212,7 @@ def _count_with_proc(
     *,
     maximum_processes: int = 8_192,
     proc_root: Path = Path("/proc"),
+    cmdline_markers: Sequence[str] = (),
 ) -> dict[str, int]:
     counts = {name: 0 for name in _PROVIDER_NAMES}
     _positive_integer("maximum_processes", maximum_processes)
@@ -237,7 +252,7 @@ def _count_with_proc(
             if token
         )
         provider = _command_provider(command)
-        if provider:
+        if provider and _command_matches_markers(command, cmdline_markers):
             classified.append((int(process_dir.name), parent_pid, provider))
     provider_by_pid = {pid: provider for pid, _ppid, provider in classified}
     for _pid, parent_pid, provider in classified:
@@ -246,16 +261,26 @@ def _count_with_proc(
     return counts
 
 
-def count_active_cli_processes() -> dict[str, int]:
+def count_active_cli_processes(
+    *,
+    cmdline_markers: Sequence[str] = (),
+) -> dict[str, int]:
     """Count current-user non-interactive invocation roots conservatively.
 
     Interactive ``codex``, ``codex resume``, and bare Grok control sessions do
     not consume this reviewed-route budget. Node launchers and their native
-    children are de-duplicated into one invocation root.
+    children are de-duplicated into one invocation root.  Optional
+    ``cmdline_markers`` restrict the count to processes whose argv contains
+    one of those strings, so one board does not inherit another board's
+    occupancy.
     """
 
-    measured = _count_with_psutil()
-    return measured if measured is not None else _count_with_proc()
+    measured = _count_with_psutil(cmdline_markers=cmdline_markers)
+    return (
+        measured
+        if measured is not None
+        else _count_with_proc(cmdline_markers=cmdline_markers)
+    )
 
 
 class ProviderCapacityMonitor:

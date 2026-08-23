@@ -20,7 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.proof.test_execution_contracts import (
     TestPassReceipt,
     TestProofCertificate,
 )
-from ipfs_accelerate_py.agent_supervisor.repository_forest import (
+from ipfs_accelerate_py.agent_supervisor.analysis.repository_forest import (
     AuthorityMode,
     RepositoryAuthority,
     RepositoryDescriptor,

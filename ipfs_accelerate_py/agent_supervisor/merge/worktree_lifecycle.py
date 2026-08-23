@@ -1857,7 +1857,9 @@ class WorktreeLifecycleStore:
             # workspace differs from the stable pooled path supplied by the
             # caller. Reclaim the authoritative record, never the lookup hint.
             reclaim_workspace = (
-                decision.record.workspace_path if decision.record is not None else workspace_path
+                decision.record.workspace_path
+                if decision.record is not None
+                else workspace_path
             )
             reclaimer = caller_lease_id or new_lease_id(seed="reclaim")
             reclaimed: WorkspaceLifecycleRecord | None = None

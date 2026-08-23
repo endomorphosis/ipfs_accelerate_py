@@ -96,6 +96,7 @@ class SupervisedChildSpec:
     env: Mapping[str, str] = field(default_factory=dict)
     stdin_devnull: bool = True
     start_new_session: bool = True
+    pass_fds: tuple[int, ...] = ()
 
     def resolve(self, path: Path) -> Path:
         return path if path.is_absolute() else self.repo_root / path
@@ -1824,6 +1825,7 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
             stdout=out_handle,
             stderr=subprocess.STDOUT,
             start_new_session=spec.start_new_session,
+            pass_fds=spec.pass_fds,
         )
     finally:
         out_handle.close()

@@ -886,6 +886,7 @@ class _ClientBackedStateRepository:
             process_birth_id=self._process_birth_id,
             clock=self._clock,
             connection_factory=connection_factory,
+            secret_resolver=getattr(self, "_secret_resolver", None),
         )
         _register_repository_templates(client)
         return client
@@ -1118,6 +1119,7 @@ class QuackStateRepository(_ClientBackedStateRepository):
         process_birth_id: str | None = None,
         clock: Callable[[], str] | None = None,
         connection_factory: Callable[[QuackEndpoint], Any] | None = None,
+        secret_resolver: Callable[[str], str] | None = None,
         seed_generation: bool = False,
         allow_embedded_fallback: bool = False,
     ) -> None:
@@ -1156,6 +1158,7 @@ class QuackStateRepository(_ClientBackedStateRepository):
         self._secret_handle = secret_handle
         self._server_id = server_id
         self._connection_factory = connection_factory
+        self._secret_resolver = secret_resolver
         self._seed_generation = bool(seed_generation)
         self._resolved_endpoint: QuackEndpoint | None = None
 

@@ -1537,7 +1537,7 @@ class QuackTransport(Protocol):
         """Return live identity observation used for readiness."""
 
     def stop(self, connection: Any | None = None) -> None:
-        """Stop serving (best effort)."""
+        """Stop serving or raise when the thread/listener survives."""
 
 
 class InProcessQuackTransport:
@@ -1547,11 +1547,123 @@ class InProcessQuackTransport:
     default refuses to claim readiness without a successful serve + live query.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        extension_path: str | Path | None = None,
+        startup_timeout_seconds: float = 10.0,
+        authorization_function: str = "",
+        probe_connection_factory: Callable[[], Any] | None = None,
+    ) -> None:
         self._started = False
         self._serve_uri = ""
         self._listen_uri = ""
         self._server_identity: dict[str, Any] = {}
+        self._extension_path = (
+            None if extension_path is None else Path(extension_path).resolve()
+        )
+        self._startup_timeout_seconds = float(startup_timeout_seconds)
+        self._authorization_function = str(authorization_function or "").strip()
+        self._probe_connection_factory = probe_connection_factory
+        self._serve_thread: threading.Thread | None = None
+        self._serve_cursor: Any | None = None
+        self._serve_error: BaseException | None = None
+
+    def _load_quack(self, connection: Any) -> None:
+        try:
+            if self._extension_path is None:
+                # LOAD only: production startup must provision the pinned
+                # extension in advance and never performs an implicit INSTALL.
+                connection.execute("LOAD quack")
+            else:
+                if not self._extension_path.is_file():
+                    raise FileNotFoundError(self._extension_path)
+                path = str(self._extension_path).replace("'", "''")
+                connection.execute(f"LOAD '{path}'")
+        except Exception as exc:
+            raise QuackStateServerCapabilityError(
+                f"failed to LOAD pinned quack for state-owner: {type(exc).__name__}"
+            ) from exc
+
+    def _install_authorization_callback(self, connection: Any) -> None:
+        """Select a pre-provisioned exact-query authorization callback.
+
+        Prefix/regular-expression SQL filtering is not a security boundary:
+        Quack supplies the complete server-side SQL string, but no typed
+        operation identity.  Consequently this transport refuses its former
+        broad regex macro and requires trusted startup code to provision a
+        callback that exact-matches the finite statements for its endpoint.
+        """
+
+        name = self._authorization_function
+        if not name or not name.replace("_", "a").isalnum():
+            raise QuackStateServerCapabilityError(
+                "Quack serving requires a pre-provisioned exact-query "
+                "authorization function"
+            )
+        try:
+            row = connection.execute(
+                "SELECT macro_definition FROM duckdb_functions() "
+                "WHERE function_name = ? LIMIT 1",
+                [name],
+            ).fetchone()
+            definition = "" if row is None else str(row[0] or "")
+            lowered = definition.casefold()
+            if (
+                not definition
+                or "query" not in lowered
+                or "=" not in definition
+                or lowered.strip("() ") in {"true", "1"}
+                or any(
+                    marker in lowered
+                    for marker in (
+                        "regexp_matches",
+                        "regexp_full_match",
+                        " like ",
+                        "starts_with",
+                        "contains(",
+                    )
+                )
+            ):
+                raise QuackStateServerCapabilityError(
+                    "authorization function must exact-match finite SQL strings"
+                )
+            connection.execute(
+                f"SET GLOBAL quack_authorization_function = '{name}'"
+            )
+            # Preserve Quack's constant-time built-in token comparison.
+            connection.execute(
+                "SET GLOBAL quack_authentication_function = 'quack_check_token'"
+            )
+        except Exception as exc:
+            if isinstance(exc, QuackStateServerCapabilityError):
+                raise
+            raise QuackStateServerCapabilityError(
+                "failed to install Quack authentication/authorization callbacks"
+            ) from exc
+
+    def _open_probe_connection(self) -> Any:
+        if self._probe_connection_factory is not None:
+            return self._probe_connection_factory()
+        try:
+            import duckdb
+
+            probe = duckdb.connect(database=":memory:")
+            self._load_quack(probe)
+            return probe
+        except Exception as exc:
+            raise QuackStateServerReadyError(
+                "could not open distinct Quack readiness client"
+            ) from exc
+
+    @staticmethod
+    def _listener_ready(host: str, port: int) -> bool:
+        target = host if _is_loopback_host(host) else DEFAULT_LOOPBACK_HOST
+        try:
+            with socket.create_connection((target, int(port)), timeout=0.1):
+                return True
+        except OSError:
+            return False
 
     def start(
         self,
@@ -1569,11 +1681,14 @@ class InProcessQuackTransport:
         # arguments are required after the address; the token stays bound and
         # never enters SQL text or the returned public observation.
         try:
-            connection.execute("LOAD quack")
+            cursor_factory = getattr(connection, "cursor", None)
+            serve_cursor = cursor_factory() if callable(cursor_factory) else connection
         except Exception as exc:
             raise QuackStateServerCapabilityError(
-                f"failed to LOAD quack for state-owner: {type(exc).__name__}"
+                "could not allocate a dedicated Quack serve cursor"
             ) from exc
+        self._serve_cursor = serve_cursor
+        self._serve_error = None
 
         disable_ssl = _is_loopback_host(host)
         # Quack's current table function uses named optional parameters.
@@ -1605,16 +1720,39 @@ class InProcessQuackTransport:
         last_error: Exception | None = None
         for sql, params in serve_attempts:
             try:
-                connection.execute(sql, params)
-                last_error = None
+                serve_cursor.execute(
+                    "CALL quack_serve(?, token := ?, disable_ssl := true)",
+                    [uri, token],
+                )
+            except BaseException as exc:  # pragma: no cover - native extension
+                self._serve_error = exc
+
+        thread = threading.Thread(
+            target=serve,
+            name=f"quack-state-serve-{int(port)}",
+            daemon=True,
+        )
+        self._serve_thread = thread
+        thread.start()
+        deadline = time.monotonic() + max(0.1, self._startup_timeout_seconds)
+        while time.monotonic() < deadline:
+            if self._serve_error is not None:
                 break
-            except Exception as exc:  # pragma: no cover - depends on extension
-                last_error = exc
-                continue
-        if last_error is not None:
+            if self._listener_ready(host, port):
+                break
+            time.sleep(0.01)
+        else:
+            self._serve_error = QuackStateServerReadyError(
+                "Quack listener did not become reachable before startup timeout"
+            )
+        if self._serve_error is not None:
             raise QuackStateServerCapabilityError(
-                f"quack_serve failed: {type(last_error).__name__}"
-            ) from last_error
+                f"quack_serve failed: {type(self._serve_error).__name__}"
+            ) from self._serve_error
+        if not self._listener_ready(host, port):
+            raise QuackStateServerCapabilityError(
+                "quack_serve returned without a reachable listener"
+            )
 
         self._started = True
         self._serve_uri = serve_uri
@@ -1739,6 +1877,14 @@ class InProcessQuackTransport:
         self._serve_uri = ""
         self._listen_uri = ""
         self._server_identity = {}
+        self._serve_thread = None
+        self._serve_cursor = None
+        self._serve_error = None
+        self._listen_uri = ""
+        if errors:
+            raise QuackStateServerControlError(
+                f"Quack transport did not stop cleanly: {type(errors[0]).__name__}"
+            ) from errors[0]
 
 
 class FakeQuackTransport:
@@ -5141,6 +5287,7 @@ class QuackStateServer:
                         "stop control server_id does not match live owner"
                     )
 
+            transport_stop_error: Exception | None = None
             try:
                 if self._command_gateway is not None:
                     self._command_gateway.stop()
@@ -5155,7 +5302,8 @@ class QuackStateServer:
             try:
                 self._stop_transport_connection(observe_closed=True)
             except Exception as exc:
-                self._log(f"transport stop warning: {type(exc).__name__}")
+                transport_stop_error = exc
+                self._log(f"transport stop failed: {type(exc).__name__}")
 
             try:
                 if self._connection is not None and identity is not None:
@@ -5194,6 +5342,10 @@ class QuackStateServer:
                 "server_id": identity.server_id if identity else "",
                 "at": _utc_iso(),
             }
+            if transport_stop_error is not None:
+                raise QuackStateServerControlError(
+                    "Quack transport stop did not prove listener termination"
+                ) from transport_stop_error
             return sanitize_for_export(receipt)
 
     def request_stop(self, *, fence_token: str | None = None) -> dict[str, Any]:

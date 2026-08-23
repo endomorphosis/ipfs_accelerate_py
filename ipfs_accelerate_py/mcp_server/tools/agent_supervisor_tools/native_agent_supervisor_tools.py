@@ -55,6 +55,7 @@ from ....agent_supervisor.control.control_plane import (
     validate_control_surface_publication,
 )
 from ....agent_supervisor.formal_verification_contracts import content_identity
+from .external_handoff import HANDOFF_TOOL_NAMES, register_external_handoff_tools
 
 
 AGENT_SUPERVISOR_MCP_CATEGORY = "agent_supervisor"
@@ -687,12 +688,19 @@ agent_supervisor_v2_discovery_manifest = agent_supervisor_discovery_manifest
 mcp_v2_control_surface_publication = mcp_control_surface_publication
 
 
+def register_native_agent_supervisor_handoff_tools(manager: Any) -> None:
+    """Register external-handoff MCP tools without widening the control catalog."""
+
+    register_external_handoff_tools(manager)
+
+
 __all__ = [
     "AGENT_SUPERVISOR_MCP_CATEGORY",
     "AGENT_SUPERVISOR_MCP_DISPATCH_MODE",
     "AGENT_SUPERVISOR_OPERATION_TOOLS",
     "AGENT_SUPERVISOR_REPOSITORY_ALLOWLIST_ENV",
     "AGENT_SUPERVISOR_STATE_ALLOWLIST_ENV",
+    "HANDOFF_TOOL_NAMES",
     "AgentSupervisorMCPConfigurationError",
     "agent_supervisor_discovery_manifest",
     "agent_supervisor_v2_discovery_manifest",
@@ -706,6 +714,8 @@ __all__ = [
     "get_provider_usage_control_service",
     "mcp_control_surface_publication",
     "mcp_v2_control_surface_publication",
+    "register_external_handoff_tools",
+    "register_native_agent_supervisor_handoff_tools",
     "register_native_agent_supervisor_tools",
     "register_native_agent_supervisor_usage_tools",
     "set_provider_usage_control_service",

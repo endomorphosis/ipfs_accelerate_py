@@ -635,9 +635,25 @@ def test_daemon_explicit_merge_resolver_overrides_default(tmp_path: Path, monkey
 
 
 def test_daemon_resolves_relative_worktree_root_for_runner_workspace(tmp_path: Path, monkeypatch):
+    from ipfs_accelerate_py import llm_router
+    from ipfs_accelerate_py.common import meta_model_api
+
+    def unexpected_secret_store_access(*_args, **_kwargs):
+        pytest.fail("forced Codex command inspected an unrelated Meta secret")
+
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
         "codex",
+    )
+    monkeypatch.setattr(
+        llm_router,
+        "meta_model_api_key_fingerprint",
+        unexpected_secret_store_access,
+    )
+    monkeypatch.setattr(
+        meta_model_api,
+        "resolve_meta_model_api_key",
+        unexpected_secret_store_access,
     )
     monkeypatch.setattr(
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon.shutil.which",

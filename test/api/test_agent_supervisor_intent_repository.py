@@ -163,6 +163,42 @@ def _seed_graph(repo: IntentRepository) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+def test_task_outputs_accept_dotfile_repo_paths_and_reject_escape(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    _seed_graph(repo)
+    repo.upsert_task(
+        task_cid="task:cid:gitignore",
+        task_alias="EAAEF-002-gitignore",
+        goal_cid="goal:cid:root",
+        plan_cid="plan:cid:v1",
+        objective_id="objective:dqp-012",
+        ordinal=3,
+        status="ready",
+        outputs=[
+            {"path": ".gitignore", "effect_id": "effect:gitignore"},
+            {"path": "ipfs_accelerate_py/llm_router.py", "effect_id": "effect:router"},
+        ],
+    )
+    stored = repo.get_task("task:cid:gitignore")
+    assert stored is not None
+    paths = [item["path"] for item in stored["outputs"]]
+    assert paths == [".gitignore", "ipfs_accelerate_py/llm_router.py"]
+    for unsafe in ("../secret", "/etc/passwd", "foo/../bar"):
+        with pytest.raises(ControlPlaneIdentityError, match="output path"):
+            repo.upsert_task(
+                task_cid="task:cid:unsafe-output",
+                task_alias="EAAEF-unsafe-output",
+                goal_cid="goal:cid:root",
+                plan_cid="plan:cid:v1",
+                objective_id="objective:dqp-012",
+                ordinal=4,
+                status="ready",
+                outputs=[{"path": unsafe}],
+            )
+
+
 def test_interface_identities() -> None:
     assert INTENT_REPOSITORY_INTERFACE == "IntentRepository@1"
     assert PLAN_REVISION_REPOSITORY_INTERFACE == "PlanRevisionRepository@1"

@@ -1,0 +1,161 @@
+{
+  "board_cid": "sha256:878c50a0859dccd5facefca94f3f5cdebe60f828b44ad20a356ca5c01ddd9c86",
+  "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+  "decision": "admitted",
+  "evidence": {
+    "decision": "admitted",
+    "network_install_attempted": false,
+    "observed_duckdb": "1.5.5",
+    "observed_module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+    "quack_probe": {
+      "available": true,
+      "beta_limitations": [
+        "quack_is_beta_in_duckdb_1_5_x",
+        "protocol_names_and_defaults_may_change_before_duckdb_2_0",
+        "server_and_clients_must_use_identical_pinned_build",
+        "default_authorization_callback_permits_every_authenticated_query",
+        "no_server_push_clients_must_poll",
+        "one_quack_server_is_one_failure_domain",
+        "loopback_bind_required_unless_separately_reviewed",
+        "unsigned_or_community_extension_path_is_not_attested_integrity"
+      ],
+      "details": {
+        "duckdb_version_raw": "1.5.5",
+        "extension": {
+          "description": "The DuckDB 'Quack' Client/Server Protocol",
+          "extension_version": "c154811",
+          "install_mode": "REPOSITORY",
+          "install_path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+          "installed": true,
+          "installed_from": "core",
+          "loaded": false,
+          "name": "quack"
+        },
+        "install_load_policy": {
+          "import_alone_insufficient": true,
+          "local_load_allowed": true,
+          "network_install_allowed": false,
+          "network_install_default": false
+        }
+      },
+      "diagnostics": [
+        {
+          "code": "import_only_insufficient",
+          "exception_type": "",
+          "message": "duckdb import succeeded but is insufficient without Quack surfaces",
+          "subject": "duckdb"
+        },
+        {
+          "code": "beta_limitations_recorded",
+          "exception_type": "",
+          "message": "Quack beta limitations recorded on the pinned compatible profile",
+          "subject": "quack"
+        }
+      ],
+      "duckdb_importable": true,
+      "duckdb_version": "1.5.5",
+      "duckdb_version_parsed": {
+        "label": "",
+        "major": 1,
+        "minor": 5,
+        "patch": 5,
+        "raw": "1.5.5",
+        "text": "1.5.5"
+      },
+      "duration_seconds": 0.09391372298705392,
+      "experimental_usable": false,
+      "extension": {
+        "description": "The DuckDB 'Quack' Client/Server Protocol",
+        "extension_version": "c154811",
+        "install_mode": "REPOSITORY",
+        "install_path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+        "installed": true,
+        "installed_from": "core",
+        "loaded": true,
+        "name": "quack"
+      },
+      "extension_fingerprint": "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b",
+      "generated_at_monotonic": 189258.407963589,
+      "local_load_allowed": true,
+      "local_load_attempted": true,
+      "missing_functions": [],
+      "missing_surfaces": [],
+      "network_install_allowed": false,
+      "network_install_attempted": false,
+      "observed_functions": [
+        "quack_serve",
+        "quack_query"
+      ],
+      "observed_surfaces": [
+        "install_load_policy",
+        "extension_fingerprint",
+        "quack_serve",
+        "quack_query",
+        "attach",
+        "whoami",
+        "auth_settings",
+        "logging"
+      ],
+      "passes_health_check": true,
+      "platform_machine": "aarch64",
+      "platform_name": "linux",
+      "profile": {
+        "allow_experimental_within_minor": true,
+        "beta_limitations": [
+          "quack_is_beta_in_duckdb_1_5_x",
+          "protocol_names_and_defaults_may_change_before_duckdb_2_0",
+          "server_and_clients_must_use_identical_pinned_build",
+          "default_authorization_callback_permits_every_authenticated_query",
+          "no_server_push_clients_must_poll",
+          "one_quack_server_is_one_failure_domain",
+          "loopback_bind_required_unless_separately_reviewed",
+          "unsigned_or_community_extension_path_is_not_attested_integrity"
+        ],
+        "duckdb_major": 1,
+        "duckdb_minor": 5,
+        "duckdb_version_prefix": "1.5",
+        "extension_api": "quack@1",
+        "extension_name": "quack",
+        "is_beta_profile": true,
+        "pinned_duckdb_version": "",
+        "pinned_extension_fingerprint": "",
+        "pinned_platform": "",
+        "profile_id": "agent-supervisor-duckdb-quack-1.5",
+        "profile_version": 1,
+        "required_functions": [
+          "quack_serve",
+          "quack_query"
+        ],
+        "required_surfaces": [
+          "install_load_policy",
+          "quack_serve",
+          "quack_query",
+          "attach",
+          "whoami",
+          "auth_settings",
+          "logging",
+          "extension_fingerprint"
+        ],
+        "schema_version": "ipfs_accelerate_py/agent-supervisor/quack-compatibility-profile@1"
+      },
+      "reason_code": "import_only_insufficient",
+      "report_version": 1,
+      "schema_version": "ipfs_accelerate_py/agent-supervisor/quack-capability-report@1",
+      "status": "compatible"
+    },
+    "required_duckdb": "1.5.5",
+    "required_quack": "1.5.5+core",
+    "silent_substitution_refused": false,
+    "under_approved_import_root": true
+  },
+  "independent_signatures": [],
+  "process_started": false,
+  "receipt_cid": "sha256:7c0d0085e5ac2463f8d235544d4954ff28e8d48d8cc37a5893e581162a7531eb",
+  "receipt_name": "duckdb_quack_155.json",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
+  "self_signed": false,
+  "source_head": "e8d4b1e3ccf68c284f65bb6595b24c402cf82565",
+  "source_tree": "0e8fa360e0fef8d0d5f71d74c213354f61fe9824",
+  "supervisor_process_started": false,
+  "task_id": "EAAEF-182"
+}

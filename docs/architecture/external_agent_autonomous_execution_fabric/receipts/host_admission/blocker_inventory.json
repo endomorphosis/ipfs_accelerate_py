@@ -1,0 +1,77 @@
+{
+  "board_cid": "sha256:878c50a0859dccd5facefca94f3f5cdebe60f828b44ad20a356ca5c01ddd9c86",
+  "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+  "decision": "inventory",
+  "evidence": {
+    "auto_recoverable_action": "host_bootstrap_recovery",
+    "bootstrap_admission_decision": null,
+    "items": [
+      {
+        "blocker": "typed authenticated Quack ingress, private-owner atomic CAS and read-only egress are implemented but unqualified; signed lane admission, a durable ambiguity journal, signed verifier and merge evidence, and a qualified dispatcher factory are absent",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-188",
+          "EAAEF-189"
+        ]
+      },
+      {
+        "blocker": "external source-addressed EAAEF-000 operational capability and per-lane launch-admission artifacts are absent",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-191"
+        ]
+      },
+      {
+        "blocker": "ipfs_accelerate_py nested checkout is dirty",
+        "class": "host_source_commit_required",
+        "closing_task_ids": [
+          "EAAEF-191"
+        ]
+      },
+      {
+        "blocker": "signed_command_fabric_child_adapter_unavailable",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-188"
+        ]
+      },
+      {
+        "blocker": "board validation has not admitted live launch",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-191"
+        ]
+      },
+      {
+        "blocker": "container_policy.live_dispatch_allowed is not true",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-185",
+          "EAAEF-186",
+          "EAAEF-191",
+          "EAAEF-183"
+        ]
+      },
+      {
+        "blocker": "configured-board launch admission rejected: bootstrap admission receipt is unavailable",
+        "class": "host_gated_external_authority",
+        "closing_task_ids": [
+          "EAAEF-191"
+        ]
+      }
+    ],
+    "launch_plan_allowed": false,
+    "launch_plan_schema": "ipfs_accelerate_py/agent-supervisor/eaaef-launch-plan@2",
+    "materialization_receipt_cid": ""
+  },
+  "independent_signatures": [],
+  "process_started": false,
+  "receipt_cid": "sha256:457d41bd8ed9aa1c8cfd442d0e7db632d0412841842d5be7719f50a4176b4c62",
+  "receipt_name": "blocker_inventory.json",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
+  "self_signed": false,
+  "source_head": "e8d4b1e3ccf68c284f65bb6595b24c402cf82565",
+  "source_tree": "0e8fa360e0fef8d0d5f71d74c213354f61fe9824",
+  "supervisor_process_started": false,
+  "task_id": "EAAEF-180"
+}

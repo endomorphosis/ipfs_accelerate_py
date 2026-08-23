@@ -804,7 +804,7 @@ def _commit_v3_route_authorization(
     route = {
         "route_id": V3_ROUTE_ID,
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
+        "primary_model_id": "grok-4.5",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_reasoning_effort": "high",
@@ -935,7 +935,7 @@ def _seed_v3_task_repo(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
+        "primary_model_id": "grok-4.5",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_or_auth_unavailable",
@@ -1602,8 +1602,12 @@ def test_accepted_tree_entries_ignore_hostile_python_import_authority(
             check=False,
             timeout=30,
         )
-        assert sealed_result.returncode == 0, sealed_result.stderr
-        assert "usage:" in sealed_result.stdout
+        if sealed_module.endswith(".implementation_supervisor"):
+            assert sealed_result.returncode == 78
+            assert sealed_result.stdout == ""
+        else:
+            assert sealed_result.returncode == 0, sealed_result.stderr
+            assert "usage:" in sealed_result.stdout
         assert not sentinel.exists()
     entries = (
         REPO_ROOT
@@ -1626,13 +1630,6 @@ def test_accepted_tree_entries_ignore_hostile_python_import_authority(
         assert not sentinel.exists()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "ASE3-031 must require an independently accepted sealed native "
-        "DuckDB launch before importing the implementation supervisor"
-    ),
-)
 def test_sealed_bootstrap_denies_missing_native_dependency_pin(
     tmp_path: Path,
 ) -> None:
@@ -1655,14 +1652,25 @@ def test_sealed_bootstrap_denies_missing_native_dependency_pin(
         ),
         argv=("--help",),
     )
+    assert command[9] == (
+        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_NO_GO_CONTRACT
+    )
+    denial = (
+        "if module=='ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_supervisor': raise SystemExit(78)"
+    )
+    assert multi_runner_module.SEALED_CONTROL_PLANE_BOOTSTRAP.index(
+        denial
+    ) < multi_runner_module.SEALED_CONTROL_PLANE_BOOTSTRAP.index(
+        "sys.path.insert(0,archive)"
+    )
     result = subprocess.run(
         command,
         cwd=tmp_path,
         env={"PATH": os.environ.get("PATH", "")},
         pass_fds=(control_plane_launch.descriptor,),
         stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
         check=False,
         timeout=30,
@@ -1670,14 +1678,63 @@ def test_sealed_bootstrap_denies_missing_native_dependency_pin(
     assert result.returncode == 78
 
 
+def test_sealed_bootstrap_admits_implementation_supervisor_when_eaaef_191_is_admitted(
+    tmp_path: Path,
+) -> None:
+    """Independently signed EAAEF-191 selects the admitted native-authority gate."""
+
+    receipt_dir = (
+        tmp_path
+        / "docs/architecture/external_agent_autonomous_execution_fabric"
+        / "receipts/host_admission"
+    )
+    receipt_dir.mkdir(parents=True)
+    (receipt_dir / "admission_bundle.json").write_text(
+        json.dumps({"decision": "admitted", "task_id": "EAAEF-191"}),
+        encoding="utf-8",
+    )
+    source_head = _git(REPO_ROOT, "rev-parse", "HEAD").stdout.strip()
+    source_tree = _git(REPO_ROOT, "rev-parse", "HEAD^{tree}").stdout.strip()
+    control_plane_pin, control_plane_launch = _test_sealed_control_plane(
+        tmp_path,
+        source_head=source_head,
+        source_tree=source_tree,
+    )
+    command = multi_runner_module.build_sealed_control_plane_module_command(
+        python_executable=sys.executable,
+        pin=control_plane_pin,
+        descriptor=control_plane_launch.descriptor,
+        module_name=(
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_supervisor"
+        ),
+        argv=("--help",),
+        repo_root=tmp_path,
+    )
+    assert command[9] == (
+        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_ADMITTED_CONTRACT
+    )
+    denied = multi_runner_module.build_sealed_control_plane_module_command(
+        python_executable=sys.executable,
+        pin=control_plane_pin,
+        descriptor=control_plane_launch.descriptor,
+        module_name=(
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_supervisor"
+        ),
+        argv=("--help",),
+    )
+    assert denied[9] == (
+        multi_runner_module.SEALED_IMPLEMENTATION_NATIVE_AUTHORITY_NO_GO_CONTRACT
+    )
+
+
 def test_detached_coordinator_pid_projection_rejects_symlink_and_hardlink(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    repo, _config_path, board = _seed_v3_task_repo(
-        tmp_path,
-        (_task_block("TEST-A"),),
-    )
+    repo, config_path = _seed_configured_repo(tmp_path)
+    board = load_configured_board(config_path, repo_root=repo)
     state_dir = board.path(board.runtime_paths["state"])
     log_dir = board.path(board.runtime_paths["logs"])
     state_dir.mkdir(parents=True)
@@ -1753,6 +1810,427 @@ def test_detached_coordinator_pid_projection_rejects_symlink_and_hardlink(
     os.chmod(pid_path, 0o600)
     assert scheduler_module._remove_owned_coordinator_pid(board) is True
     assert not pid_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    (
+        ("board_namespace", "downgraded-generic-board"),
+        ("taskboard_path", "docs/architecture/other/TASK_BOARD.md"),
+        ("taskboard_json_path", "docs/architecture/other/task_board.json"),
+    ),
+)
+def test_eaaef_scheduler_identity_markers_cannot_be_downgraded(
+    tmp_path: Path,
+    field: str,
+    replacement: str,
+) -> None:
+    payload = json.loads(
+        (
+            REPO_ROOT
+            / "config/external_agent_autonomous_execution_fabric_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    payload[field] = replacement
+    repo = (tmp_path / "identity-downgrade").resolve()
+    config_path = repo / scheduler_module.EAAEF_CONFIG_PATH
+    _write(config_path, json.dumps(payload))
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match=(
+            "EAAEF scheduler identity markers cannot be downgraded.*"
+            + field
+        ),
+    ):
+        load_configured_board(config_path, repo_root=repo)
+
+
+def test_real_eaaef_config_loads_as_live_admitted_board() -> None:
+    config_path = REPO_ROOT / scheduler_module.EAAEF_CONFIG_PATH
+    board = load_configured_board(config_path, repo_root=REPO_ROOT)
+    assert board.board_namespace == scheduler_module.EAAEF_BOARD_NAMESPACE
+    assert board.taskboard_path == scheduler_module.EAAEF_TASKBOARD_PATH
+    assert (
+        board.payload["taskboard_json_path"]
+        == scheduler_module.EAAEF_TASKBOARD_JSON_PATH
+    )
+    assert board.payload["launch_policy"]["live_multi_supervisor_allowed"] is True
+    assert board.payload["launch_policy"]["blockers"] == []
+    assert board.payload["container_policy"]["live_dispatch_allowed"] is True
+    assert board.payload["container_policy"]["bootstrap_image_status"] == "admitted"
+    cursor_path = scheduler_module._eaaef_generation_cursor_path(REPO_ROOT)
+    if cursor_path.is_file():
+        cursor = json.loads(cursor_path.read_text(encoding="utf-8"))
+        active = str(cursor.get("active_generation") or "")
+        if active:
+            assert (
+                board.payload["database_program"]["store_generation"] == active
+            )
+
+
+def test_plan_bound_policy_no_go_rejects_before_any_coordinator_effect(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    board = load_configured_board(config_path, repo_root=repo)
+    payload = dict(board.payload)
+    payload["launch_policy"] = {
+        "live_multi_supervisor_allowed": False,
+        "blockers": ["independent authority is absent"],
+        "bypass_prohibited": True,
+    }
+    blocked = replace(board, payload=payload)
+    calls: list[object] = []
+    monkeypatch.setattr(
+        scheduler_module.subprocess,
+        "Popen",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    with pytest.raises(ConfiguredBoardError, match="prohibited by policy"):
+        scheduler_module._launch_foreground_plan_bound_coordinator(
+            blocked,
+            implement=True,
+            duration_seconds=1.0,
+        )
+    with pytest.raises(ConfiguredBoardError, match="prohibited by policy"):
+        scheduler_module._launch_detached_plan_bound_coordinator(
+            blocked,
+            implement=True,
+            duration_seconds=1.0,
+        )
+    assert calls == []
+    assert not board.path(board.runtime_paths["state"]).exists()
+
+
+def test_eaaef_launch_policy_omission_rejects_before_any_coordinator_effect(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    board = load_configured_board(config_path, repo_root=repo)
+    payload = dict(board.payload)
+    payload.pop("launch_policy", None)
+    payload["schema"] = scheduler_module.EAAEF_SCHEDULER_SCHEMA
+    missing_policy = replace(
+        board,
+        board_namespace=scheduler_module.EAAEF_BOARD_NAMESPACE,
+        payload=payload,
+    )
+    calls: list[object] = []
+    monkeypatch.setattr(
+        scheduler_module,
+        "_materialize_plan_bound_control_plane",
+        lambda *_args, **_kwargs: calls.append("materialize"),
+    )
+    monkeypatch.setattr(
+        scheduler_module.subprocess,
+        "Popen",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="requires an explicit launch_policy authority boundary",
+    ):
+        scheduler_module._launch_foreground_plan_bound_coordinator(
+            missing_policy,
+            implement=True,
+            duration_seconds=1.0,
+        )
+    with pytest.raises(
+        ConfiguredBoardError,
+        match="requires an explicit launch_policy authority boundary",
+    ):
+        scheduler_module._launch_detached_plan_bound_coordinator(
+            missing_policy,
+            implement=True,
+            duration_seconds=1.0,
+        )
+    assert calls == []
+    assert not board.path(board.runtime_paths["state"]).exists()
+
+
+def test_foreground_coordinator_wait_failure_terminates_and_reaps_process_group(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    board = load_configured_board(config_path, repo_root=repo)
+    descriptor = os.open(os.devnull, os.O_RDONLY)
+    sealed = SimpleNamespace(descriptor=descriptor)
+    pin = SimpleNamespace()
+    capsule_parent = tmp_path / "capsule-parent"
+    capsule_parent.mkdir()
+    monkeypatch.setattr(
+        scheduler_module,
+        "_materialize_plan_bound_control_plane",
+        lambda _board: (pin, sealed, capsule_parent),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "build_sealed_control_plane_module_command",
+        lambda **_kwargs: ["sealed-coordinator"],
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_plan_bound_coordinator_module_argv",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_cleanup_plan_bound_control_plane",
+        lambda *_args, **_kwargs: None,
+    )
+
+    class FailedWaitProcess:
+        pid = 424242
+
+        def __init__(self) -> None:
+            self.wait_calls = 0
+
+        def poll(self) -> None:
+            return None
+
+        def wait(self, timeout: float | None = None) -> int:
+            self.wait_calls += 1
+            if self.wait_calls == 1 and timeout is None:
+                raise RuntimeError("wait failed")
+            return 0
+
+    process = FailedWaitProcess()
+    popen_kwargs: dict[str, Any] = {}
+
+    def fake_popen(*_args: object, **kwargs: Any) -> FailedWaitProcess:
+        popen_kwargs.update(kwargs)
+        return process
+
+    signals: list[tuple[int, int]] = []
+    monkeypatch.setattr(scheduler_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(
+        scheduler_module.os,
+        "killpg",
+        lambda pid, sent_signal: signals.append((pid, sent_signal)),
+    )
+
+    with pytest.raises(RuntimeError, match="wait failed"):
+        scheduler_module._launch_foreground_plan_bound_coordinator(
+            board,
+            implement=True,
+            duration_seconds=1.0,
+        )
+    assert popen_kwargs["start_new_session"] is True
+    assert signals == [(process.pid, signal.SIGTERM)]
+    assert process.wait_calls == 2
+
+
+def test_foreground_unreaped_coordinator_preserves_pid_and_capsule(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    board = load_configured_board(config_path, repo_root=repo)
+    descriptor = os.open(os.devnull, os.O_RDONLY)
+    sealed = SimpleNamespace(descriptor=descriptor)
+    pin = SimpleNamespace(capsule_root=str(tmp_path / "capsule-parent" / "capsule"))
+    capsule_parent = tmp_path / "capsule-parent"
+    capsule_parent.mkdir()
+    monkeypatch.setattr(
+        scheduler_module,
+        "_materialize_plan_bound_control_plane",
+        lambda _board: (pin, sealed, capsule_parent),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "build_sealed_control_plane_module_command",
+        lambda **_kwargs: ["sealed-coordinator"],
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_plan_bound_coordinator_module_argv",
+        lambda *_args, **_kwargs: [],
+    )
+    cleanup_calls: list[object] = []
+    monkeypatch.setattr(
+        scheduler_module,
+        "_cleanup_plan_bound_control_plane",
+        lambda *_args, **_kwargs: cleanup_calls.append((_args, _kwargs)),
+    )
+
+    class UnreapedForegroundProcess:
+        pid = 454545
+
+        def wait(self, timeout: float | None = None) -> int:
+            raise RuntimeError("foreground wait failed")
+
+    monkeypatch.setattr(
+        scheduler_module.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: UnreapedForegroundProcess(),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_terminate_plan_bound_coordinator",
+        lambda _process: (_ for _ in ()).throw(
+            ConfiguredBoardError(
+                "coordinator process-group 454545 remained live after SIGKILL"
+            )
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="foreground wait failed") as captured:
+        scheduler_module._launch_foreground_plan_bound_coordinator(
+            board,
+            implement=False,
+            duration_seconds=1.0,
+        )
+    recovery_path = (
+        board.path(board.runtime_paths["state"])
+        / "configured-board-unreaped-454545.pid"
+    )
+    assert recovery_path.read_bytes() == b"454545\n"
+    assert any(str(recovery_path) in note for note in captured.value.__notes__)
+    assert any(str(capsule_parent) in note for note in captured.value.__notes__)
+    assert cleanup_calls == []
+    recovery_path.unlink()
+
+
+def test_coordinator_termination_reports_unreaped_process_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class UnreapableProcess:
+        pid = 434343
+
+        def poll(self) -> None:
+            return None
+
+        def wait(self, timeout: float | None = None) -> int:
+            raise subprocess.TimeoutExpired("configured-board", timeout)
+
+    signals: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        scheduler_module.os,
+        "killpg",
+        lambda pid, sent_signal: signals.append((pid, sent_signal)),
+    )
+
+    with pytest.raises(
+        ConfiguredBoardError,
+        match=(
+            "coordinator process-group 434343 remained live after SIGKILL "
+            "and could not be reaped"
+        ),
+    ):
+        scheduler_module._terminate_plan_bound_coordinator(UnreapableProcess())
+    assert signals == [
+        (UnreapableProcess.pid, signal.SIGTERM),
+        (UnreapableProcess.pid, signal.SIGKILL),
+    ]
+
+
+def test_detached_unreaped_coordinator_preserves_pid_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    board = load_configured_board(config_path, repo_root=repo)
+    payload = dict(board.payload)
+    payload["launch_policy"] = {
+        "blockers": [],
+        "bypass_prohibited": True,
+        "dry_run_allowed": True,
+        "live_multi_supervisor_allowed": True,
+        "live_single_supervisor_allowed": False,
+        "materialize_allowed": True,
+        "verify_allowed": True,
+    }
+    board = replace(board, payload=payload)
+    module_path = (
+        repo
+        / "ipfs_accelerate_py/agent_supervisor/runtime/"
+        "configured_board_scheduler.py"
+    )
+    monkeypatch.setattr(scheduler_module, "__file__", str(module_path))
+    monkeypatch.setattr(
+        scheduler_module,
+        "_git_identity",
+        lambda _root: ("a" * 40, "b" * 40),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_tracked_head_snapshot",
+        lambda **_kwargs: (b"tracked", "sha256:tracked"),
+    )
+    sealed_descriptor = os.open(os.devnull, os.O_RDONLY)
+    pin = SimpleNamespace(capsule_root=str(tmp_path / "authority" / "capsule"))
+    sealed = SimpleNamespace(descriptor=sealed_descriptor)
+    monkeypatch.setattr(
+        scheduler_module,
+        "_materialize_plan_bound_control_plane",
+        lambda _board: (pin, sealed, tmp_path / "authority"),
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "build_sealed_control_plane_module_command",
+        lambda **_kwargs: ["sealed-coordinator"],
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_plan_bound_coordinator_module_argv",
+        lambda *_args, **_kwargs: [],
+    )
+    cleanup_calls: list[object] = []
+    monkeypatch.setattr(
+        scheduler_module,
+        "_cleanup_plan_bound_control_plane",
+        lambda *_args, **_kwargs: cleanup_calls.append((_args, _kwargs)),
+    )
+
+    class StartedProcess:
+        pid = 444444
+
+    monkeypatch.setattr(
+        scheduler_module.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: StartedProcess(),
+    )
+    original_publish_pid = scheduler_module._publish_reserved_coordinator_pid
+    publication_calls = 0
+
+    def fail_first_pid_publication(*args: object, **kwargs: object) -> None:
+        nonlocal publication_calls
+        publication_calls += 1
+        if publication_calls == 1:
+            raise RuntimeError("PID publication failed")
+        original_publish_pid(*args, **kwargs)
+
+    monkeypatch.setattr(
+        scheduler_module,
+        "_publish_reserved_coordinator_pid",
+        fail_first_pid_publication,
+    )
+    monkeypatch.setattr(
+        scheduler_module,
+        "_terminate_plan_bound_coordinator",
+        lambda _process: (_ for _ in ()).throw(
+            ConfiguredBoardError("coordinator remained unreaped")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="PID publication failed") as captured:
+        scheduler_module._launch_detached_plan_bound_coordinator(
+            board,
+            implement=False,
+            duration_seconds=1.0,
+        )
+    assert any("coordinator remained unreaped" in note for note in captured.value.__notes__)
+    pid_path = board.path(board.runtime_paths["state"]) / "configured-board-master.pid"
+    assert pid_path.exists()
+    assert pid_path.read_bytes() == b"444444\n"
+    assert cleanup_calls == []
+    pid_path.unlink()
 
 
 def test_plan_bound_wave_and_supervisor_pid_projections_reject_links(
@@ -1992,7 +2470,7 @@ def test_ordered_provider_contract_requires_complete_unambiguous_fields(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
+        "primary_model_id": "grok-4.5",
         "fallback_provider_id": "codex",
         "max_concurrency": 2,
     }
@@ -2036,7 +2514,7 @@ def test_ordered_provider_contract_seals_fallback_authority(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
+        "primary_model_id": "grok-4.5",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_or_auth_unavailable",
@@ -2255,7 +2733,7 @@ def test_launch_config_overrides_ambient_provider_environment(
     payload = json.loads(config_path.read_text(encoding="utf-8"))
     payload["provider"] = {
         "primary_provider_id": "grok_cli",
-        "primary_model_id": "grok-4.6",
+        "primary_model_id": "grok-4.5",
         "fallback_provider_id": "codex",
         "fallback_model_id": "gpt-5.6-terra",
         "fallback_trigger": "primary_quota_or_auth_unavailable",
@@ -4552,7 +5030,6 @@ def test_plan_bound_child_bootstraps_existing_daemon_preclaim_gate(
         "crash_after_enqueue_mismatch",
     ),
 )
-@pytest.mark.skip(reason="LGSWF-062: two-lane fork barrier/crash hooks are host-unreliable")
 def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4560,32 +5037,94 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
 ) -> None:
     """Every genuine daemon lane publishes before whole-wave enqueue release."""
 
-    repo, config_path, board = _seed_v3_task_repo(
-        tmp_path,
-        (_task_block("TEST-A"), _task_block("TEST-B")),
-    )
-    if wave_scenario == "crash_serialized_merge_confirmed":
-        _write(repo / ".gitignore", "*.json\n*.log\n*.duckdb\n")
-        _git(repo, "add", ".gitignore")
-        _git(repo, "commit", "-m", "seed ignored runtime artifact patterns")
-    plan_common_args = scheduler_module.configured_board_common_args(
-        board,
-        implement=True,
-    )
-    if wave_scenario in {
+    invalid_lifecycle_handoff_scenarios = {
+        "crash_after_enqueue_missing_handoff_receipt",
+        "crash_after_enqueue_divergent_handoff_receipt",
+    }
+    same_process_retry_scenarios = {
+        "crash_proposal_ready_same_process_confirmed_retry",
+    }
+    same_process_prepared_retry_scenarios = {
+        "same_process_prepared_response_loss_retry",
+    }
+    no_change_scenarios = {
         "changed_no_change",
+        "repeated_no_change_cleanup",
         "crash_proposal_ready",
         "crash_before_enqueue",
         "crash_after_enqueue",
         "crash_confirmed",
         "crash_confirmed_retry",
         "crash_completed_before_finalize",
+        "crash_completed_after_publish",
+        "crash_completed_poisoned_sidecar",
+        "crash_changed_integration_before_cleanup",
         "crash_no_change",
         "crash_after_enqueue_mismatch",
-    }:
+        *invalid_lifecycle_handoff_scenarios,
+        *same_process_retry_scenarios,
+        *same_process_prepared_retry_scenarios,
+    }
+    repo, config_path, board = _seed_v3_task_repo(
+        tmp_path,
+        (
+            _task_block(
+                "TEST-A",
+                no_change_completion=(
+                    "allowed"
+                    if wave_scenario == "repeated_no_change_cleanup"
+                    else None
+                ),
+            ),
+            _task_block(
+                "TEST-B",
+                no_change_completion=(
+                    "allowed" if wave_scenario in no_change_scenarios else None
+                ),
+            ),
+        ),
+    )
+    if wave_scenario == "crash_serialized_merge_confirmed":
+        _write(repo / ".gitignore", "*.json\n*.log\n*.duckdb\n*.lock\n")
+        _git(repo, "add", ".gitignore")
+        _git(repo, "commit", "-m", "seed ignored runtime artifact patterns")
+    plan_common_args = scheduler_module.configured_board_common_args(
+        board,
+        implement=True,
+    )
+    if wave_scenario in no_change_scenarios:
         _write(repo / "src/test-b.py", "VALUE = 'already-present'\n")
+        if wave_scenario == "repeated_no_change_cleanup":
+            _write(repo / "src/test-a.py", "VALUE = 'already-present'\n")
         _git(repo, "add", "src/test-b.py")
+        if wave_scenario == "repeated_no_change_cleanup":
+            _git(repo, "add", "src/test-a.py")
         _git(repo, "commit", "-m", "seed no-change sibling output")
+    poison_repo: Path | None = None
+    poison_original_head = ""
+    poison_current_head = ""
+    if wave_scenario == "crash_completed_poisoned_sidecar":
+        poison_repo = tmp_path / "foreign-dependency-repository"
+        poison_repo.mkdir()
+        _git(poison_repo, "init", "-b", "main")
+        _configure_git(poison_repo)
+        _write(poison_repo / "payload.txt", "original\n")
+        _git(poison_repo, "add", "payload.txt")
+        _git(poison_repo, "commit", "-m", "foreign original")
+        poison_original_head = _git(
+            poison_repo,
+            "rev-parse",
+            "HEAD",
+        ).stdout.strip()
+        _write(poison_repo / "payload.txt", "must remain current\n")
+        _git(poison_repo, "add", "payload.txt")
+        _git(poison_repo, "commit", "-m", "foreign current")
+        poison_current_head = _git(
+            poison_repo,
+            "rev-parse",
+            "HEAD",
+        ).stdout.strip()
+        assert poison_current_head != poison_original_head
     receipt = materialize_configured_board_execution_plan(
         board,
         now_ms=PLAN_NOW,
@@ -4620,12 +5159,18 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
     crash_task_id = (
         "TEST-B"
         if wave_scenario
-        in {"crash_no_change", "crash_serialized_merge_confirmed"}
+        in {
+            "crash_no_change",
+            "crash_completed_after_publish",
+            "crash_completed_poisoned_sidecar",
+            "crash_serialized_merge_confirmed",
+        }
         else "TEST-A"
     )
 
     helpers: list[tuple[multi_runner_module.PlanBoundSupervisorChild, list[str]]] = []
     supervisors: list[subprocess.Popen[bytes]] = []
+    supervisor_profiles: dict[str, Any] = {}
     for child in children:
         state_dir = repo / child.state_dir
         config = supervisor_module.PortalSupervisorConfig(
@@ -4723,6 +5268,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             repo_root=repo,
         )
         supervisors.append(process)
+        supervisor_profiles[child.lane_id] = profile
         helpers.append((child, helper_argv))
 
     original_capacity_observation = (
@@ -4776,17 +5322,30 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             )
         finally:
             os.close(descriptor)
-        if wave_scenario in {
-            "changed_no_change",
-            "crash_proposal_ready",
-            "crash_before_enqueue",
-            "crash_after_enqueue",
-            "crash_confirmed",
-            "crash_confirmed_retry",
-            "crash_completed_before_finalize",
-            "crash_no_change",
-            "crash_after_enqueue_mismatch",
-        } and task.task_id == "TEST-B":
+        if (
+            wave_scenario == "repeated_no_change_cleanup"
+            or (
+                wave_scenario
+                in {
+                    "changed_no_change",
+                    "crash_proposal_ready",
+                    "crash_before_enqueue",
+                    "crash_after_enqueue",
+                    "crash_confirmed",
+                    "crash_confirmed_retry",
+                    "crash_completed_before_finalize",
+                    "crash_completed_after_publish",
+                    "crash_completed_poisoned_sidecar",
+                    "crash_changed_integration_before_cleanup",
+                    "crash_no_change",
+                    "crash_after_enqueue_mismatch",
+                    *invalid_lifecycle_handoff_scenarios,
+                    *same_process_retry_scenarios,
+                    *same_process_prepared_retry_scenarios,
+                }
+                and task.task_id == "TEST-B"
+            )
+        ):
             command = "pass"
             if wave_scenario == "crash_proposal_ready":
                 # Keep the no-change sibling behind TEST-A long enough for
@@ -4830,46 +5389,90 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         baseline_ref,
         **_kwargs,
     ):
+        def bind_current_candidate(
+            result: dict[str, Any],
+            *,
+            proposal_validation: Any = None,
+            accept_current_projection: bool = False,
+        ) -> dict[str, Any]:
+            """Mirror the production candidate-to-workspace handoff proof.
+
+            This fixture replaces the validation command runner so the forked
+            lanes stay deterministic.  It must still emit the exact candidate
+            binding now required by the production pre-commit guard.
+            """
+
+            binding, _entries = self._inspect_post_validation_candidate_binding(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+                proposal_validation=proposal_validation,
+            )
+            if accept_current_projection:
+                # This scenario deliberately simulates a compact upstream
+                # projection that omits one real effect.  Bind the scoped
+                # candidate so the independent full-diff barrier remains the
+                # layer under qualification.
+                binding = {
+                    **binding,
+                    "verified": True,
+                    "expected_fingerprint": binding["current_fingerprint"],
+                    "proposal_id": str(
+                        result.get("proposal_gate", {}).get("proposal_id")
+                        or ""
+                    ),
+                }
+            return {**result, "candidate_binding": binding}
+
         if not self._run_git(
             ["status", "--porcelain"],
             cwd=workspace_path,
         ).stdout.strip():
-            return {
-                "attempted": True,
-                "passed": True,
-                "returncode": 0,
-                "results": [],
-                "selection": {"scope": "pre_merge", "changed_files": []},
-                "proposal_gate": {
-                    "attempted": False,
-                    "accepted": True,
-                    "reason": "no_candidate_changes",
-                    "changed_paths": [],
-                },
-            }
-        if wave_scenario == "compact_hidden_drift" and task.task_id == "TEST-A":
-            return {
-                "attempted": True,
-                "passed": True,
-                "returncode": 0,
-                "results": [],
-                "selection": {
-                    "scope": "pre_merge",
-                    "changed_files": ["src/test-a.py"],
-                },
-                "proposal_gate": {
+            clean_result = self._run_clean_candidate_validation(
+                workspace_path,
+                task,
+                _log_path,
+                state=_kwargs.get("state"),
+                baseline_ref=baseline_ref,
+                validated_result={
                     "attempted": True,
-                    "accepted": True,
-                    "reason_codes": [],
-                    "proposal_id": "proposal:test:compact-hidden",
-                    "policy_id": "policy:test:compact-hidden",
-                    "receipt_id": "receipt:test:compact-hidden",
-                    "repository_tree_id": baseline_ref,
-                    "changed_paths": ["src/test-a.py"],
-                    "proof_authoritative": False,
-                    "completion_authoritative": False,
+                    "passed": True,
+                    "returncode": 0,
+                    "results": [],
+                    "selection": {
+                        "scope": "pre_merge",
+                        "changed_files": [],
+                    },
                 },
-            }
+            )
+            assert clean_result is not None
+            return clean_result
+        if wave_scenario == "compact_hidden_drift" and task.task_id == "TEST-A":
+            return bind_current_candidate(
+                {
+                    "attempted": True,
+                    "passed": True,
+                    "returncode": 0,
+                    "results": [],
+                    "selection": {
+                        "scope": "pre_merge",
+                        "changed_files": ["src/test-a.py"],
+                    },
+                    "proposal_gate": {
+                        "attempted": True,
+                        "accepted": True,
+                        "reason_codes": [],
+                        "proposal_id": "proposal:test:compact-hidden",
+                        "policy_id": "policy:test:compact-hidden",
+                        "receipt_id": "receipt:test:compact-hidden",
+                        "repository_tree_id": baseline_ref,
+                        "changed_paths": ["src/test-a.py"],
+                        "proof_authoritative": False,
+                        "completion_authoritative": False,
+                    },
+                },
+                accept_current_projection=True,
+            )
         proposal = self._validate_implementation_patch(
             workspace_path,
             task,
@@ -4877,29 +5480,70 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             allow_scope_adjudication=False,
         )
         compact = self._compact_proposal_validation(proposal)
-        return {
-            "attempted": True,
-            "passed": bool(proposal.accepted),
-            "returncode": 0 if proposal.accepted else 2,
-            "results": [],
-            "selection": {
-                "scope": "pre_merge",
-                "changed_files": list(compact["changed_paths"]),
+        return bind_current_candidate(
+            {
+                "attempted": True,
+                "passed": bool(proposal.accepted),
+                "returncode": 0 if proposal.accepted else 2,
+                "results": [],
+                "selection": {
+                    "scope": "pre_merge",
+                    "changed_files": list(compact["changed_paths"]),
+                },
+                "proposal_gate": compact,
             },
-            "proposal_gate": compact,
-        }
+            proposal_validation=proposal,
+        )
 
     enqueue_receipt_path = tmp_path / "canonical-enqueue-reached.jsonl"
     crash_receipt_path = tmp_path / "canonical-enqueue-crash.json"
+    prepared_response_loss_path = (
+        tmp_path / "same-process-prepared-response-loss.json"
+    )
+    retained_claim_path = tmp_path / "same-process-prepared-retained-claim.json"
     store = PlanRevisionStore(repo / children[0].plan_revision_store_path)
     original_queue_enqueue = daemon_module.MergeQueue.enqueue
     original_queue_get = daemon_module.MergeQueue.get
     original_consume_merge = (
         daemon_module.PortalImplementationDaemon._consume_one_merge_candidate
     )
+    original_cleanup_merged_worktree = (
+        daemon_module.PortalImplementationDaemon._cleanup_merged_worktree
+    )
     original_await_barrier = (
         execution_plan_module.ProductionParallelPlanAdapter.await_wave_diff_barrier
     )
+    original_publish_execution = (
+        supervisor_module._publish_plan_bound_execution_lease_locked
+    )
+
+    def crash_after_completed_publication(
+        plan_store,
+        execution_lease,
+        *,
+        expected_current_cid,
+    ):
+        execution_cid = original_publish_execution(
+            plan_store,
+            execution_lease,
+            expected_current_cid=expected_current_cid,
+        )
+        if (
+            wave_scenario
+            in {
+                "crash_completed_after_publish",
+                "crash_completed_poisoned_sidecar",
+            }
+            and execution_lease.phase == "merge_completed"
+            and execution_lease.active_task_id == crash_task_id
+            and not crash_receipt_path.exists()
+        ):
+            crash_receipt_path.write_text(
+                "merge_completed_after_publish\n",
+                encoding="utf-8",
+            )
+            os._exit(86)
+        return execution_cid
 
     def record_canonical_enqueue(self, **kwargs):
         barrier = ProductionParallelPlanAdapter(store).load_wave_diff_barrier(
@@ -4931,8 +5575,31 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         finally:
             os.close(descriptor)
         if (
+            wave_scenario in same_process_prepared_retry_scenarios
+            and kwargs["task_id"] == "TEST-A"
+            and not prepared_response_loss_path.exists()
+        ):
+            prepared_response_loss_path.write_text(
+                json.dumps(
+                    {
+                        "request_id": str(request.request_id),
+                        "status": str(request.status),
+                    },
+                    sort_keys=True,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            raise RuntimeError(
+                "test lost the enqueue response after the canonical effect"
+            )
+        if (
             wave_scenario
-            in {"crash_after_enqueue", "crash_after_enqueue_mismatch"}
+            in {
+                "crash_after_enqueue",
+                "crash_after_enqueue_mismatch",
+                *invalid_lifecycle_handoff_scenarios,
+            }
             and kwargs["task_id"] == "TEST-A"
             and not crash_receipt_path.exists()
         ):
@@ -4959,7 +5626,11 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         return "", ""
 
     def crash_after_proposal_barrier(self, **kwargs):
-        if wave_scenario in {"crash_proposal_ready", "crash_no_change"}:
+        if wave_scenario in {
+            "crash_proposal_ready",
+            "crash_no_change",
+            *same_process_retry_scenarios,
+        }:
             task_id, phase = current_plan_attempt()
             if (
                 task_id == crash_task_id
@@ -5010,6 +5681,32 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                 os._exit(86)
         return request
 
+    def crash_after_changed_integration(
+        self,
+        worktree_path,
+        branch_name,
+        **kwargs,
+    ):
+        if (
+            wave_scenario == "crash_changed_integration_before_cleanup"
+            and "test-a" in str(branch_name)
+            and (repo / "src/test-a.py").is_file()
+            and not crash_receipt_path.exists()
+        ):
+            task_id, phase = current_plan_attempt()
+            if task_id == "TEST-A" and phase == "merge_enqueue_confirmed":
+                crash_receipt_path.write_text(
+                    "changed_integration_before_cleanup\n",
+                    encoding="utf-8",
+                )
+                os._exit(86)
+        return original_cleanup_merged_worktree(
+            self,
+            worktree_path,
+            branch_name,
+            **kwargs,
+        )
+
     monkeypatch.setattr(
         daemon_module.PortalImplementationDaemon,
         "_evaluate_pre_implementation_provider_gate",
@@ -5029,6 +5726,11 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         daemon_module.PortalImplementationDaemon,
         "_apply_implementation_failure_review",
         lambda _self, **kwargs: dict(kwargs["validation_result"]),
+    )
+    monkeypatch.setattr(
+        daemon_module.PortalImplementationDaemon,
+        "_cleanup_merged_worktree",
+        crash_after_changed_integration,
     )
     canonical_board_completion = (
         daemon_module.PortalImplementationDaemon._board_completion_decision
@@ -5077,6 +5779,59 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         "await_wave_diff_barrier",
         crash_after_proposal_barrier,
     )
+    monkeypatch.setattr(
+        supervisor_module,
+        "_publish_plan_bound_execution_lease_locked",
+        crash_after_completed_publication,
+    )
+
+    if wave_scenario in same_process_prepared_retry_scenarios:
+        # This focused path needs the helper process to be the exact child of
+        # the accepted live supervisor birth.  The broad matrix uses inert
+        # sibling processes as launch gates; replace only TEST-A's gate with
+        # this pytest process before forking its daemon helper.
+        prepared_child_index = next(
+            index
+            for index, (child, _helper) in enumerate(helpers)
+            if child.task_ids == ("TEST-A",)
+        )
+        old_gate = supervisors[prepared_child_index]
+        old_gate.terminate()
+        old_gate.wait(timeout=5)
+        prepared_child = helpers[prepared_child_index][0]
+        prepared_profile = supervisor_profiles[prepared_child.lane_id]
+        process_adapter = multi_runner_module.LinuxProcessAdapter()
+        parent_pid, process_group, session_id, start_ticks = (
+            process_adapter._stat(os.getpid())
+        )
+        current_supervisor_identity = multi_runner_module.ProcessIdentity(
+            pid=os.getpid(),
+            start_time_ticks=start_ticks,
+            parent_pid=parent_pid,
+            process_group_id=process_group,
+            session_id=session_id,
+            boot_id=(
+                Path("/proc/sys/kernel/random/boot_id")
+                .read_text(encoding="ascii")
+                .strip()
+            ),
+            argv=process_adapter._argv(os.getpid()),
+            cwd=str(repo.resolve()),
+            executable=os.readlink("/proc/self/exe"),
+            run_id=prepared_profile.run_id,
+            profile_id=prepared_profile.profile_id,
+            target_id=prepared_profile.target_id,
+            repository_root=prepared_profile.repository_root,
+            state_root=prepared_profile.state_root,
+            run_root=prepared_profile.run_root,
+            fencing_epoch=0,
+            configuration_root=prepared_profile.configuration_root,
+        )
+        multi_runner_module._persist_plan_bound_process_birth(
+            profile=prepared_profile,
+            process_identity=current_supervisor_identity,
+            repo_root=repo,
+        )
 
     child_pids: dict[int, str] = {}
     error_paths: dict[int, Path] = {}
@@ -5088,6 +5843,44 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     child_rc = supervisor_module._run_plan_bound_daemon_child(
                         helper_argv
                     )
+                    if (
+                        wave_scenario in same_process_prepared_retry_scenarios
+                        and child.task_ids == ("TEST-A",)
+                    ):
+                        assert child_rc == (
+                            supervisor_module.PLAN_BOUND_REPLAN_RETURN_CODE
+                        )
+                        with store._thread_lock:
+                            with store._guard():
+                                retained = execution_plan_module._load_plan_bound_execution_lease_locked(
+                                    store,
+                                    revision_cid=receipt.binding.revision_cid,
+                                    slice_id=child.slice_id,
+                                    lane_id=child.lane_id,
+                                )
+                        assert retained is not None
+                        assert retained[1].phase == "merge_enqueue_prepared"
+                        claim_path = Path(retained[1].canonical_claim_path)
+                        claim = json.loads(claim_path.read_text(encoding="utf-8"))
+                        assert execution_plan_module.content_identity(claim) == (
+                            retained[1].canonical_claim_cid
+                        )
+                        assert int(claim["pid"]) == os.getpid()
+                        retained_claim_path.write_text(
+                            json.dumps(
+                                {
+                                    "claim_path": str(claim_path),
+                                    "claim_cid": retained[1].canonical_claim_cid,
+                                    "execution_lease_cid": retained[0],
+                                },
+                                sort_keys=True,
+                            )
+                            + "\n",
+                            encoding="utf-8",
+                        )
+                        child_rc = supervisor_module._run_plan_bound_daemon_child(
+                            helper_argv
+                        )
                 except BaseException as exc:  # noqa: BLE001
                     error_path = tmp_path / f"child-{child.lane_id}.error"
                     error_path.write_text(
@@ -5149,6 +5942,59 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     if path.exists()
                 },
             }
+            if wave_scenario in same_process_prepared_retry_scenarios:
+                assert prepared_response_loss_path.is_file()
+                assert retained_claim_path.is_file()
+                retained_claim = json.loads(
+                    retained_claim_path.read_text(encoding="utf-8")
+                )
+                assert retained_claim["execution_lease_cid"]
+                assert retained_claim["claim_cid"]
+                assert not Path(retained_claim["claim_path"]).exists(), (
+                    "successful prepared recovery retained the canonical task claim"
+                )
+                queue = daemon_module.MergeQueue(
+                    board.path(board.runtime_paths["merge_queue"])
+                )
+                with queue._connect() as connection:
+                    assert connection.execute(
+                        "SELECT COUNT(*) AS count FROM merge_requests "
+                        "WHERE task_id='TEST-A'"
+                    ).fetchone()["count"] == 1
+            if wave_scenario == "repeated_no_change_cleanup":
+                pool_state_root = (
+                    board.path(board.runtime_paths["worktrees"])
+                    / ".pool-state"
+                )
+                pool_states = [
+                    json.loads(path.read_text(encoding="utf-8"))
+                    for path in sorted(pool_state_root.glob("*.json"))
+                ]
+                # Plan-bound completion keeps its canonical claim as the
+                # cleanup marker.  Returning a checkout to the warm pool
+                # before branch/claim closure would permit a peer to borrow it
+                # across a crash window, so completed plan-bound workspaces
+                # are deliberately discarded rather than left idle.
+                assert pool_states == []
+                assert not tuple(
+                    path
+                    for path in pool_state_root.glob("*.lock")
+                    if not path.name.startswith(".")
+                )
+                assert not tuple(
+                    board.path(board.runtime_paths["worktrees"]).glob(
+                        "workspace_*"
+                    )
+                )
+                implementation_branches = _git(
+                    repo,
+                    "branch",
+                    "--format=%(refname:short)",
+                ).stdout.splitlines()
+                assert all(
+                    not branch.startswith("implementation/")
+                    for branch in implementation_branches
+                )
             if wave_scenario == "mixed":
                 # Feed one genuine rejected child outcome through the outer
                 # production runner.  A terminal rejected barrier is STEER
@@ -5247,19 +6093,83 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                 "crash_completed_before_finalize": (
                     "merge_enqueue_confirmed"
                 ),
+                "crash_completed_after_publish": "merge_completed",
+                "crash_completed_poisoned_sidecar": "merge_completed",
+                "crash_changed_integration_before_cleanup": (
+                    "merge_enqueue_confirmed"
+                ),
                 "crash_serialized_merge_confirmed": (
                     "merge_enqueue_confirmed"
                 ),
                 "crash_no_change": "proposal_ready",
                 "crash_after_enqueue_mismatch": "merge_enqueue_prepared",
+                "crash_after_enqueue_missing_handoff_receipt": (
+                    "merge_enqueue_prepared"
+                ),
+                "crash_after_enqueue_divergent_handoff_receipt": (
+                    "merge_enqueue_prepared"
+                ),
+                "crash_proposal_ready_same_process_confirmed_retry": (
+                    "proposal_ready"
+                ),
             }[wave_scenario]
             assert prepared[1].phase == expected_crash_phase
             assert prepared[1].merge_enqueue_reached is (
                 expected_crash_phase != "proposal_ready"
             )
             assert bool(prepared[1].merge_request_id) is (
-                expected_crash_phase == "merge_enqueue_confirmed"
+                expected_crash_phase
+                in {"merge_enqueue_confirmed", "merge_completed"}
             )
+
+            if wave_scenario == "crash_completed_poisoned_sidecar":
+                assert poison_repo is not None
+                workspace = Path(prepared[1].workspace_path)
+                entry_match = re.fullmatch(
+                    r"workspace_([0-9a-f]{12})_([0-9a-f]{12})",
+                    workspace.name,
+                )
+                assert entry_match is not None
+                entry_id = (
+                    f"{entry_match.group(1)}-{entry_match.group(2)}"
+                )
+                state_path = (
+                    board.path(board.runtime_paths["worktrees"])
+                    / ".pool-state"
+                    / f"{entry_id}.json"
+                )
+                poisoned = json.loads(
+                    state_path.read_text(encoding="utf-8")
+                )
+                poison_path = str(poison_repo.resolve())
+                poisoned.update(
+                    {
+                        "cache_key": "poisoned-foreign-cache-key",
+                        "base_commit": "0" * 40,
+                        "dependency_paths": [poison_path],
+                        "dependency_heads": {
+                            poison_path: poison_original_head,
+                        },
+                    }
+                )
+                state_path.write_text(
+                    json.dumps(poisoned, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                state_path.chmod(0o600)
+                lock_path = state_path.with_suffix(".lock")
+                lock_path.write_text(
+                    json.dumps(
+                        {
+                            "pid": 2**30,
+                            "created_at_epoch": time.time(),
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                lock_path.chmod(0o600)
 
             if wave_scenario == "crash_after_enqueue_mismatch":
                 queue = daemon_module.MergeQueue(
@@ -5284,6 +6194,36 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                             ),
                             row["request_id"],
                         ),
+                    )
+
+            if wave_scenario in invalid_lifecycle_handoff_scenarios:
+                matches: list[tuple[Path, dict[str, Any]]] = []
+                for path in store.continuations_dir.glob("*.json"):
+                    record = json.loads(path.read_text(encoding="utf-8"))
+                    payload = record.get("payload")
+                    if (
+                        isinstance(payload, dict)
+                        and payload.get("operation")
+                        == "plan_bound_worktree_lifecycle_handoff"
+                        and payload.get("prepared_execution_lease_cid")
+                        == prepared[0]
+                    ):
+                        matches.append((path, record))
+                assert len(matches) == 1
+                handoff_path, handoff_record = matches[0]
+                handoff_key = str(handoff_record["idempotency_key"])
+                handoff_payload = dict(handoff_record["payload"])
+                assert handoff_payload["handoff_receipt_cid"]
+                if wave_scenario.endswith("missing_handoff_receipt"):
+                    store.clear_continuation(handoff_key)
+                    assert not handoff_path.exists()
+                else:
+                    handoff_payload["handoff_receipt_cid"] = (
+                        handoff_payload["prepublication_cid"]
+                    )
+                    store.put_continuation(handoff_key, handoff_payload)
+                    assert dict(store.load_continuation(handoff_key) or {}) == (
+                        handoff_payload
                     )
 
             retry_transition: dict[str, Any] = {}
@@ -5394,7 +6334,11 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     ),
                     output=lambda _message: None,
                 )
-                assert sealed_probe.wait(timeout=30) == 0
+                # Recovery authority is scoped to the plan revision and does
+                # not authenticate the separately required native launch.
+                # The sealed implementation bootstrap must therefore remain
+                # closed before importing the recovered supervisor too.
+                assert sealed_probe.wait(timeout=30) == 78
                 assert not hostile_recovery_import.exists()
                 assert not fsmonitor_sentinel.exists()
                 assert multi_runner_module._remove_owned_pid_projection(
@@ -5771,6 +6715,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
             gate_read, gate_write = os.pipe()
             recovery_error_path = tmp_path / "merge-recovery.error"
             replay_path = tmp_path / "merge-recovery-provider-replay"
+            transient_path = tmp_path / "same-process-confirmed-transient.json"
             recovery_code = "\n".join(
                 (
                     "import json, os, sys",
@@ -5804,15 +6749,41 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     "    return [sys.executable, '-c', 'raise SystemExit(99)']",
                     "daemon_module.PortalImplementationDaemon."
                     "_build_implementation_command = replay_tripwire",
+                    "scenario = os.environ['_ASE3_TEST_SCENARIO']",
+                    "if scenario == "
+                    "'crash_proposal_ready_same_process_confirmed_retry':",
+                    "    canonical_get = daemon_module.MergeQueue.get",
+                    "    get_calls = [0]",
+                    "    transient_path = Path("
+                    "os.environ['_ASE3_TEST_TRANSIENT_PATH'])",
+                    "    def transient_confirmed_get(self, request_id):",
+                    "        get_calls[0] += 1",
+                    "        request = canonical_get(self, request_id)",
+                    "        if get_calls[0] == 2:",
+                    "            transient_path.write_text("
+                    "json.dumps({'request_id': request_id, "
+                    "'status': '' if request is None else request.status}) "
+                    "+ '\\n', encoding='utf-8')",
+                    "            return None",
+                    "        return request",
+                    "    daemon_module.MergeQueue.get = transient_confirmed_get",
                     "gate_fd = int(os.environ['_ASE3_TEST_GATE_FD'])",
                     "os.read(gate_fd, 1)",
                     "os.close(gate_fd)",
                     "pid = os.fork()",
                     "if pid == 0:",
                     "    try:",
+                    "        helper_argv = json.loads("
+                    "os.environ['_ASE3_TEST_HELPER_ARGV'])",
                     "        rc = supervisor_module."
-                    "_run_plan_bound_daemon_child(json.loads("
-                    "os.environ['_ASE3_TEST_HELPER_ARGV']))",
+                    "_run_plan_bound_daemon_child(helper_argv)",
+                    "        if scenario == "
+                    "'crash_proposal_ready_same_process_confirmed_retry':",
+                    "            if rc != supervisor_module."
+                    "PLAN_BOUND_REPLAN_RETURN_CODE:",
+                    "                os._exit(96)",
+                    "            rc = supervisor_module."
+                    "_run_plan_bound_daemon_child(helper_argv)",
                     "    except BaseException as exc:",
                     "        Path(os.environ['_ASE3_TEST_RECOVERY_ERROR'])."
                     "write_text(f'{type(exc).__name__}: {exc}\\n', "
@@ -5875,6 +6846,8 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     "_ASE3_TEST_HELPER_ARGV": json.dumps(crashed_helper),
                     "_ASE3_TEST_RECOVERY_ERROR": str(recovery_error_path),
                     "_ASE3_TEST_REPLAY_PATH": str(replay_path),
+                    "_ASE3_TEST_SCENARIO": wave_scenario,
+                    "_ASE3_TEST_TRANSIENT_PATH": str(transient_path),
                 }
             )
             class CompletedOriginalTrack:
@@ -5903,7 +6876,25 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                 start_calls += 1
                 if start_calls == 1:
                     return completed_original
-                assert start_calls == 2, "runner restarted provider-bearing work"
+                if start_calls != 2:
+                    diagnostics = []
+                    for process in recovery_processes:
+                        stdout, stderr = process.communicate(timeout=5)
+                        diagnostics.append(
+                            {
+                                "returncode": process.returncode,
+                                "stdout": stdout.decode(
+                                    "utf-8", errors="replace"
+                                ),
+                                "stderr": stderr.decode(
+                                    "utf-8", errors="replace"
+                                ),
+                            }
+                        )
+                    raise AssertionError(
+                        "runner restarted provider-bearing work: "
+                        + json.dumps(diagnostics, sort_keys=True)
+                    )
                 recovery_process = _spawn_test_process(
                     recovery_argv,
                     cwd=repo,
@@ -5984,7 +6975,11 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     time.sleep(0.02)
             expected_recovery_returncode = (
                 supervisor_module.PLAN_BOUND_REPLAN_RETURN_CODE
-                if wave_scenario == "crash_after_enqueue_mismatch"
+                if wave_scenario
+                in {
+                    "crash_after_enqueue_mismatch",
+                    *invalid_lifecycle_handoff_scenarios,
+                }
                 else 0
             )
             assert recovery_process.returncode == expected_recovery_returncode, {
@@ -5997,10 +6992,18 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                 ),
             }
             assert runner_result["replan_required"] is (
-                wave_scenario == "crash_after_enqueue_mismatch"
+                wave_scenario
+                in {
+                    "crash_after_enqueue_mismatch",
+                    *invalid_lifecycle_handoff_scenarios,
+                }
             )
             assert runner_result["terminal_quiescent"] is (
-                wave_scenario != "crash_after_enqueue_mismatch"
+                wave_scenario
+                not in {
+                    "crash_after_enqueue_mismatch",
+                    *invalid_lifecycle_handoff_scenarios,
+                }
             ), json.dumps(runner_result, sort_keys=True, default=str)
             assert not child_pids, (
                 "surviving lane did not observe recovered predecessor terminality"
@@ -6011,13 +7014,24 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     if child.task_ids == (crash_task_id,)
                     else (
                         supervisor_module.PLAN_BOUND_REPLAN_RETURN_CODE
-                        if wave_scenario == "crash_after_enqueue_mismatch"
+                        if wave_scenario
+                        in {
+                            "crash_after_enqueue_mismatch",
+                            *invalid_lifecycle_handoff_scenarios,
+                        }
                         else 0
                     )
                 )
                 for child, _helper in helpers
             }
             assert not replay_path.exists()
+            if wave_scenario in same_process_retry_scenarios:
+                assert transient_path.is_file()
+                transient = json.loads(
+                    transient_path.read_text(encoding="utf-8")
+                )
+                assert transient["request_id"]
+                assert transient["status"] in {"pending", "processing"}
             with store._thread_lock:
                 with store._guard():
                     recovered_lease = execution_plan_module._load_plan_bound_execution_lease_locked(
@@ -6043,14 +7057,22 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                     "WHERE task_id=?",
                     (crash_task_id,),
                 ).fetchone()["count"] == 1
-            if wave_scenario == "crash_after_enqueue_mismatch":
+            if wave_scenario in {
+                "crash_after_enqueue_mismatch",
+                *invalid_lifecycle_handoff_scenarios,
+            }:
                 assert recovered_lease[1].phase == "merge_enqueue_prepared"
                 assert recovered_lease[1].merge_request_id == ""
                 assert queue_row["status"] == "quarantined"
                 assert queue_row["failure_count"] == 1
-                assert queue_row["failure_reason"] == (
+                expected_failure_reason = (
                     "plan_bound_merge_enqueue_mismatch"
+                    if wave_scenario == "crash_after_enqueue_mismatch"
+                    else (
+                        "plan_bound_lifecycle_handoff_authority_invalid"
+                    )
                 )
+                assert queue_row["failure_reason"] == expected_failure_reason
                 assert not (repo / "src/test-a.py").exists()
                 with store._thread_lock:
                     with store._guard():
@@ -6064,7 +7086,12 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                 assert terminal_failure[1]["request_id"] == queue_row[
                     "request_id"
                 ]
-                assert "merge_queue_intent_mismatch" in terminal_failure[1][
+                expected_reason_code = (
+                    "merge_queue_intent_mismatch"
+                    if wave_scenario == "crash_after_enqueue_mismatch"
+                    else "lifecycle_handoff_authority_invalid"
+                )
+                assert expected_reason_code in terminal_failure[1][
                     "reason_codes"
                 ]
             else:
@@ -6097,6 +7124,13 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                         "enqueued_at"
                     ]
                     assert queue_row["updated_at"] >= queue_row["finished_at"]
+                elif wave_scenario == "crash_changed_integration_before_cleanup":
+                    # The first consumer durably integrated the candidate, then
+                    # exited before workspace cleanup.  Recovery records that
+                    # exact lost consumer claim before completing cleanup; it
+                    # must not manufacture a second provider or queue effect.
+                    assert durable_request.attempt == 2
+                    assert durable_request.failure_count == 1
                 else:
                     assert durable_request.failure_count == 0
                 if crash_task_id == "TEST-A":
@@ -6165,6 +7199,56 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
                 if line
             ]
             assert provider_invocations.count(crash_task_id) == 1
+            if wave_scenario in {
+                "crash_completed_after_publish",
+                "crash_completed_poisoned_sidecar",
+                "crash_changed_integration_before_cleanup",
+            }:
+                assert (
+                    multi_runner_module._plan_bound_child_execution_phase(
+                        crashed_child
+                    )
+                    == "merge_completed"
+                ), "completed cleanup must become terminal after claim release"
+                assert not Path(
+                    recovered_lease[1].canonical_claim_path
+                ).exists()
+                workspace = Path(recovered_lease[1].workspace_path)
+                entry_match = re.fullmatch(
+                    r"workspace_([0-9a-f]{12})_([0-9a-f]{12})",
+                    workspace.name,
+                )
+                assert entry_match is not None
+                entry_id = (
+                    f"{entry_match.group(1)}-{entry_match.group(2)}"
+                )
+                pool_state_root = (
+                    board.path(board.runtime_paths["worktrees"])
+                    / ".pool-state"
+                )
+                assert not (
+                    pool_state_root / f"{entry_id}.json"
+                ).exists()
+                assert not (pool_state_root / f"{entry_id}.lock").exists()
+                implementation_branches = _git(
+                    repo,
+                    "branch",
+                    "--format=%(refname:short)",
+                ).stdout.splitlines()
+                assert all(
+                    not branch.startswith("implementation/")
+                    for branch in implementation_branches
+                )
+                if wave_scenario == "crash_completed_poisoned_sidecar":
+                    assert poison_repo is not None
+                    assert _git(
+                        poison_repo,
+                        "rev-parse",
+                        "HEAD",
+                    ).stdout.strip() == poison_current_head
+                    assert (
+                        poison_repo / "payload.txt"
+                    ).read_text(encoding="utf-8") == "must remain current\n"
     finally:
         for pid in child_pids:
             try:
@@ -6197,6 +7281,7 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         "mixed": 0,
         "disjoint": 2,
         "changed_no_change": 2,
+        "repeated_no_change_cleanup": 2,
         "compact_hidden_drift": 0,
         # The recovery process is a fresh interpreter, so this parent-local
         # enqueue probe records the surviving sibling plus only the original
@@ -6207,9 +7292,22 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         "crash_confirmed": 2,
         "crash_confirmed_retry": 2,
         "crash_completed_before_finalize": 2,
+        "crash_completed_after_publish": 2,
+        "crash_completed_poisoned_sidecar": 2,
+        "crash_changed_integration_before_cleanup": 2,
         "crash_serialized_merge_confirmed": 2,
         "crash_no_change": 1,
         "crash_after_enqueue_mismatch": 1,
+        # The response-loss row is the only consumable projection.  Exact
+        # lifecycle authority failure terminalizes the wave before the
+        # surviving sibling can publish its own request.
+        "crash_after_enqueue_missing_handoff_receipt": 1,
+        "crash_after_enqueue_divergent_handoff_receipt": 1,
+        "crash_proposal_ready_same_process_confirmed_retry": 1,
+        # TEST-A's first row is committed before the response is lost.  Its
+        # same-PID retry observes that row through the dedupe boundary, while
+        # TEST-B publishes the other canonical request.
+        "same_process_prepared_response_loss_retry": 3,
     }[wave_scenario]
     assert len(enqueue_rows) == expected_enqueues
     assert all(
@@ -6283,11 +7381,113 @@ def test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
         assert _git(repo, "show", "main:src/test-b.py").stdout == (
             "VALUE = 'TEST-B'\n"
         )
+    elif wave_scenario == "repeated_no_change_cleanup":
+        assert {record.outcome for record in records.values()} == {"no_change"}
+        assert all(not record.actual_changed_paths for record in records.values())
     else:
         assert records["TEST-A"].outcome == "changed"
         assert records["TEST-A"].actual_changed_paths == ("src/test-a.py",)
         assert records["TEST-B"].outcome == "no_change"
         assert records["TEST-B"].actual_changed_paths == ()
+
+
+@pytest.mark.parametrize(
+    "wave_scenario",
+    (
+        "crash_after_enqueue_missing_handoff_receipt",
+        "crash_after_enqueue_divergent_handoff_receipt",
+    ),
+)
+def test_response_loss_requires_exact_lifecycle_handoff_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    wave_scenario: str,
+) -> None:
+    """A published row without exact lifecycle custody is quarantined once."""
+
+    test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
+        tmp_path,
+        monkeypatch,
+        wave_scenario,
+    )
+
+
+def test_same_process_recovery_traverses_proposal_to_confirmed_lineage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A same-birth retry adopts one exact proposal-to-queue descendant."""
+
+    test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
+        tmp_path,
+        monkeypatch,
+        "crash_proposal_ready_same_process_confirmed_retry",
+    )
+
+
+def test_same_process_prepared_response_loss_retains_and_releases_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prepared response loss retains one claim until exact recovery closes."""
+
+    test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
+        tmp_path,
+        monkeypatch,
+        "same_process_prepared_response_loss_retry",
+    )
+
+
+def test_repeated_no_change_releases_every_worktree_pool_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two no-change lanes return their pool entries and task branches."""
+
+    test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
+        tmp_path,
+        monkeypatch,
+        "repeated_no_change_cleanup",
+    )
+
+
+def test_completed_publication_response_loss_recovers_cleanup_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-CAS crash restarts cleanup once without provider/enqueue replay."""
+
+    test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
+        tmp_path,
+        monkeypatch,
+        "crash_completed_after_publish",
+    )
+
+
+def test_completed_cleanup_ignores_poisoned_pool_restore_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cleanup discard never executes sidecar-directed Git restore effects."""
+
+    test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
+        tmp_path,
+        monkeypatch,
+        "crash_completed_poisoned_sidecar",
+    )
+
+
+def test_changed_integration_response_loss_recovers_workspace_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An integrated retry closes workspace custody without replaying work."""
+
+    test_genuine_two_lane_diff_barrier_precedes_every_enqueue(
+        tmp_path,
+        monkeypatch,
+        "crash_changed_integration_before_cleanup",
+    )
 
 
 def test_fenced_slice_reassignment_has_one_cas_winner_and_recipient_adopts(
@@ -7964,6 +9164,58 @@ def test_recovery_artifact_binding_uses_exact_reassigned_lane_name(
         state_dir / "implementation_logs/right-task-attempt-1.log",
         **common,
     ) == "file"
+
+
+@pytest.mark.parametrize(
+    ("workspace_name", "entry_id"),
+    (
+        ("workspace_012345abcdef_fedcba654321", "012345abcdef-fedcba654321"),
+        ("workspace-012345abcdef-fedcba654321", "012345abcdef-fedcba654321"),
+    ),
+)
+def test_recovery_artifact_binding_accepts_only_the_bound_pool_entry(
+    tmp_path: Path,
+    workspace_name: str,
+    entry_id: str,
+) -> None:
+    """Current and legacy pool names bind to one exact state record."""
+
+    root = tmp_path / "repo"
+    state_root = root / "state"
+    worktree_root = root / "worktrees"
+    state_dir = state_root / "lane-0"
+    common = {
+        "directory_projection": False,
+        "runtime_roots": (
+            state_root,
+            worktree_root,
+            root / "merge-queue",
+        ),
+        "owner_bound_artifacts": (),
+        "runtime_bindings": (
+            {
+                "lane_index": 0,
+                "lane_id": "lane-0",
+                "workspace_path": str(worktree_root / workspace_name),
+            },
+        ),
+        "state_dir": state_dir,
+        "state_prefix": "fixture_lane_0",
+    }
+    assert multi_runner_module._plan_bound_recovery_runtime_kind(
+        worktree_root / ".pool-state" / f"{entry_id}.json",
+        **common,
+    ) == "file"
+    assert multi_runner_module._plan_bound_recovery_runtime_kind(
+        worktree_root / ".pool-state" / f"{entry_id}.lock",
+        **common,
+    ) == "file"
+    assert not multi_runner_module._plan_bound_recovery_runtime_kind(
+        worktree_root
+        / ".pool-state"
+        / ("f" * 12 + "-" + "e" * 12 + ".json"),
+        **common,
+    )
 
 
 def test_reassignment_rejects_dangling_hardlink_and_swapped_claim_artifacts(
@@ -10514,11 +11766,6 @@ def test_configured_board_live_seal_start_and_detach_are_zero_effect_no_go(
     def unexpected_effect(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("live NO-GO reached a runtime path")
 
-    monkeypatch.setattr(
-        multi_runner_module.SupervisorTrack,
-        "resolve",
-        unexpected_effect,
-    )
     monkeypatch.setattr(
         multi_runner_module,
         "_master_paths",

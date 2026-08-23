@@ -1,0 +1,47 @@
+{
+  "board_cid": "sha256:878c50a0859dccd5facefca94f3f5cdebe60f828b44ad20a356ca5c01ddd9c86",
+  "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+  "decision": "admitted",
+  "evidence": {
+    "bootstrap_admission_statement_cid": null,
+    "child_receipt_cids": {
+      "EAAEF-180": "sha256:457d41bd8ed9aa1c8cfd442d0e7db632d0412841842d5be7719f50a4176b4c62",
+      "EAAEF-181": "sha256:07e80dd4bada61723a13d20c29a12efd4db834f5060f03fc4cbda583ad53f3c5",
+      "EAAEF-182": "sha256:7c0d0085e5ac2463f8d235544d4954ff28e8d48d8cc37a5893e581162a7531eb",
+      "EAAEF-183": "sha256:3ea61d0c79f0f9375f6be45ddf11cc66e41a9f484940a37bae5f2cb85456ff46",
+      "EAAEF-184": "sha256:ec7efa99290fb17c69c6e8175a5612e4d7724c1bb871f192d2348c6d953022d6",
+      "EAAEF-185": "sha256:335a447e0586762681c95c1d305ca0618ebf680d200eeb31f99ff6cf1f36bf04",
+      "EAAEF-186": "sha256:337738438f35136ba8e27391c3b21311f7c076577e4ed32f8565ce3a8cb4aa07",
+      "EAAEF-187": "sha256:b5ca1a24274b48c112088dcb0eb3379cb2b0f6f088ff8109efb04575add214c6",
+      "EAAEF-188": "sha256:927abb02804005019ba0f2133ed9dcfee133ad0abae61e69e1f0c5896fbb5fe0",
+      "EAAEF-189": "sha256:248de2e3acdc195afba9672cdace7b8536d9a694ce9d7ddb7a2e23b3deedaec5",
+      "EAAEF-190": "sha256:900dd2e35563e24deb5e6ef9f25ed8f449fac30d186cb851a9e3b442f97cf2ba"
+    },
+    "independent_operator_signature": "RB101m0yqH+rYct0CLZKxzRVKMDIMcl4+guX1/CD44Xvmc39jTE9vNAfwAlasz1jIUwaGIEiiYm5coR3bX55AQ==",
+    "independent_security_reviewer_signature": "HFaoO3lfE0nd1AM6OObIYbz7YcORUVDTe+sYn+xe6CzESqEijeb6Dq38CQEx4w62JoT1btxx+zVGp5Lg3rOdCw==",
+    "independent_signature_present": true,
+    "inventory_open_host_gated": [
+      "typed authenticated Quack ingress, private-owner atomic CAS and read-only egress are implemented but unqualified; signed lane admission, a durable ambiguity journal, signed verifier and merge evidence, and a qualified dispatcher factory are absent",
+      "external source-addressed EAAEF-000 operational capability and per-lane launch-admission artifacts are absent",
+      "signed_command_fabric_child_adapter_unavailable",
+      "board validation has not admitted live launch",
+      "container_policy.live_dispatch_allowed is not true",
+      "configured-board launch admission rejected: bootstrap admission receipt is unavailable"
+    ],
+    "launch_plan_allowed": false,
+    "materialization_receipt_cid": "",
+    "operator_did": "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
+    "prospective_supervisor_signature_rejected": true,
+    "security_reviewer_did": "did:key:z6Mktp3ogPs9QwXBnKEQrdMThdbuPPNKQXiAP7X7JwXVq1G7"
+  },
+  "independent_signatures": [],
+  "process_started": false,
+  "receipt_cid": "sha256:1faa325727cb2d61a5a2579bf9cfcaea6904ee5a1cf5e153b26edc23fc5bf462",
+  "receipt_name": "admission_bundle.json",
+  "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-bundle@1",
+  "self_signed": false,
+  "source_head": "e8d4b1e3ccf68c284f65bb6595b24c402cf82565",
+  "source_tree": "0e8fa360e0fef8d0d5f71d74c213354f61fe9824",
+  "supervisor_process_started": false,
+  "task_id": "EAAEF-191"
+}

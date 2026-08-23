@@ -10,6 +10,18 @@ from pathlib import Path
 
 import ipfs_accelerate_py.agent_supervisor.worktree_lifecycle as lifecycle_module
 import pytest
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import EventCursor
+from ipfs_accelerate_py.agent_supervisor.merge.campaign_leases import (
+    CampaignLeaseCoordinator,
+)
+from ipfs_accelerate_py.agent_supervisor.rescue.learning_recovery import (
+    LearningCheckpointAdapter,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.learning_checkpoint import (
+    L3ResourceKind,
+    LearningCheckpointBinding,
+    StaleFenceError,
+)
 from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
     DEFAULT_LEASE_SECONDS,
     FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
@@ -289,6 +301,55 @@ def test_controlled_restart_reclaims_only_dead_same_lane_owner(
     assert terminal.terminal_reason == "controlled_restart_dead_owner"
     assert store.load_workspace(other_workspace).is_nonterminal
     assert store.load_workspace(live_workspace).is_nonterminal
+
+
+def test_same_lane_cleanup_reclaims_dead_owner_before_lease_expiry(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=21_600.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    lane_state = tmp_path / "state" / "lane-1"
+    peer_state = tmp_path / "state" / "lane-2"
+    workspace = tmp_path / "dead-same-lane-cleanup"
+    original = store.begin_preparing(
+        task_id="RESTART-CLEANUP",
+        canonical_task_cid="cid:restart-cleanup",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=workspace,
+        branch="implementation/restart-cleanup",
+        merge_target="main",
+        state_dir=str(lane_state),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 13,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+
+    peer = store.authorize_cleanup(
+        workspace_path=workspace,
+        expected_state_dir=peer_state,
+    )
+    assert not peer.allowed
+    assert peer.reason == "owner_dead_lease_unexpired"
+
+    decision = store.authorize_cleanup(
+        workspace_path=workspace,
+        expected_state_dir=lane_state,
+        caller_lease_id="lane-reclaimer",
+    )
+    assert decision.allowed
+    assert decision.reason == "reclaimed_dead_same_lane_owner"
+    assert decision.record is not None
+    assert decision.record.state is WorkspaceLifecycleState.TERMINAL
+    assert decision.record.fence == original.fence + 1
+    assert decision.record.terminal_reason == "owner_dead_same_lane_reclaim"
 
 
 def test_exact_dead_owner_adoption_does_not_wait_for_lease_expiry(
