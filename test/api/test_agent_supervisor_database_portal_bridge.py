@@ -15,6 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
+    DATABASE_PORTAL_SKIP_CONTENTION_REASONS,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
@@ -545,6 +546,102 @@ def test_bridge_keeps_invalid_protected_recovery_journal_terminal(
 
     assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
     assert str(caught.value) == "protected_recovery_journal_invalid"
+
+
+@pytest.mark.parametrize("reason", sorted(DATABASE_PORTAL_SKIP_CONTENTION_REASONS))
+def test_bridge_defers_skipped_inflight_and_lock_contention(
+    tmp_path: Path,
+    reason: str,
+) -> None:
+    class SkipContentionPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "skipped": True,
+                    "reason": reason,
+                    "task_id": "PCPC-024",
+                    "attempt": 1,
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: SkipContentionPortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.reason == reason
+    assert caught.value.backoff_seconds == (
+        DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS
+    )
+    assert caught.value.attempt_consumed is False
+    assert caught.value.provider_dispatched is False
+
+
+def test_bridge_keeps_generic_skip_terminal(
+    tmp_path: Path,
+) -> None:
+    class GenericSkipPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "skipped": True,
+                    "reason": "completion_gap_missing_precise_edit_targets",
+                }
+            }
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: GenericSkipPortal(),
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+    assert str(caught.value) == "completion_gap_missing_precise_edit_targets"
+
+
+def test_missing_worktree_is_not_kept_inflight_by_recent_log(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "state").mkdir(parents=True)
+    missing_worktree = repo / "worktrees" / "pcpc-024-attempt-1"
+    log_path = repo / "pcpc-024-attempt-1.log"
+    log_path.write_text("still writing\n", encoding="utf-8")
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "worktree_path": str(missing_worktree),
+        "log_path": str(log_path),
+        "command": [
+            "python",
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        ],
+    }
+    monkeypatch.setattr(daemon, "_list_process_commands", lambda: [])
+    monkeypatch.setattr(
+        daemon, "_docker_isolation_active_for_worktree", lambda _path: False
+    )
+
+    assert daemon._implementation_process_active(event) is False
+
+    missing_worktree.mkdir(parents=True)
+    assert daemon._implementation_process_active(event) is True
 
 
 @pytest.mark.parametrize(

@@ -61325,8 +61325,12 @@ class PortalImplementationDaemon:
             if self._docker_isolation_active_for_worktree(worktree_path):
                 return True
             # Brief docker restarts drop process visibility while the agent is
-            # still writing the attempt log. Treat recent log activity as live.
-            if self._implementation_log_recently_active(event):
+            # still writing the attempt log. Treat recent log activity as live
+            # only while the attempt worktree still exists; a missing
+            # ephemeral workspace is crash-reconciled, not a restart.
+            if Path(worktree_path).exists() and self._implementation_log_recently_active(
+                event
+            ):
                 return True
             return False
         # Shared-checkout implementations deliberately do not have a task

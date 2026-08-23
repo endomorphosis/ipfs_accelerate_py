@@ -86,6 +86,15 @@ DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
         "checkout_mutation_lock_exists",
     }
 )
+# Skip reasons that mean another owner is still working. Database Portal
+# must defer these instead of consuming the claim as a terminal failure.
+DATABASE_PORTAL_SKIP_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "inflight_process",
+        "provider_capacity_backoff",
+        "task_claim_lock_exists",
+    }
+)
 DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS: Final[int] = 15
 
 
@@ -953,7 +962,10 @@ class DatabasePortalExecutionBridge:
         if isinstance(returncode, int) and not isinstance(returncode, bool) and returncode != 0:
             return str(implementation.get("reason") or "portal_provider_failed")
         if implementation.get("skipped") is True:
-            return str(implementation.get("reason") or "portal_execution_skipped")
+            reason = str(implementation.get("reason") or "portal_execution_skipped")
+            if reason in DATABASE_PORTAL_SKIP_CONTENTION_REASONS:
+                return ""
+            return reason
         return ""
 
     @staticmethod
@@ -975,6 +987,15 @@ class DatabasePortalExecutionBridge:
         implementation = result.get("implementation_result")
         if not isinstance(implementation, Mapping):
             return None
+        skip_reason = str(implementation.get("reason") or "").strip()
+        if (
+            implementation.get("skipped") is True
+            and skip_reason in DATABASE_PORTAL_SKIP_CONTENTION_REASONS
+        ):
+            return (
+                skip_reason,
+                DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS,
+            )
         # ``attempt_consumed=false``/``provider_dispatched=false`` also
         # describe a successful deterministic zero-provider closure.  Only
         # the explicit closed deferral signal grants retry semantics.
@@ -1940,6 +1961,7 @@ __all__ = (
     "DATABASE_PORTAL_CANDIDATE_RETRY_REASONS",
     "DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS",
     "DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS",
+    "DATABASE_PORTAL_SKIP_CONTENTION_REASONS",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeError",
     "DatabasePortalCandidateRetry",
