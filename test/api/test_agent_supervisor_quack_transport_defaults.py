@@ -13,6 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBConnectionPolicyError,
     QuackTransportContentionError,
+    _qualify_quack_statement,
     is_quack_transport_target,
     open_quack_transport_connection,
     persist_quack_attach_token_vault,
@@ -29,6 +30,24 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
 )
+
+
+def test_qualify_quack_statement_prefixes_unqualified_tables() -> None:
+    assert _qualify_quack_statement(
+        "SELECT task_cid FROM tasks WHERE task_cid = ?",
+        "control_plane",
+    ) == "SELECT task_cid FROM control_plane.tasks WHERE task_cid = ?"
+    assert _qualify_quack_statement(
+        "SELECT count(*) FROM control_plane.tasks",
+        "control_plane",
+    ) == "SELECT count(*) FROM control_plane.tasks"
+    assert _qualify_quack_statement(
+        "SELECT d.task_cid FROM task_dependencies d JOIN tasks t ON t.task_cid = d.task_cid",
+        "control_plane",
+    ) == (
+        "SELECT d.task_cid FROM control_plane.task_dependencies d "
+        "JOIN control_plane.tasks t ON t.task_cid = d.task_cid"
+    )
 
 
 def test_loopback_quack_uri_is_accepted() -> None:

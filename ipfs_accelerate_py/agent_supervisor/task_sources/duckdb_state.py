@@ -674,6 +674,7 @@ class DuckDBConnection:
             )
             return _empty_duckdb_cursor()
         if catalog and not normalized.startswith("USE "):
+            statement = _qualify_quack_statement(statement, catalog)
             self._connection.execute(f"USE {catalog}")
             _consume_duckdb_result(self._connection)
         if parameters is None:
@@ -836,6 +837,26 @@ _QUACK_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,}$")
 _QUACK_TOKEN_FILE_SUFFIX = ".quack-token"
 _QUACK_STATUS_FILENAME = "quack-state-server.status.json"
 _QUACK_CONTROL_CATALOG = "control_plane"
+_QUACK_RELATION_RE = re.compile(
+    r"\b(FROM|JOIN)\s+(?![\w]+\.)([A-Za-z_][A-Za-z0-9_]*)",
+    re.IGNORECASE,
+)
+
+
+def _qualify_quack_statement(sql: str, catalog: str) -> str:
+    """Prefix unqualified FROM/JOIN tables with the attached Quack catalog.
+
+    TOKEN sessions accept ``control_plane.tasks`` at ATTACH probe time but
+    reject later unqualified ``FROM tasks`` with Authorization failed even
+    after USE. Qualification keeps the attached catalog explicit.
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        return f"{match.group(1)} {catalog}.{match.group(2)}"
+
+    return _QUACK_RELATION_RE.sub(_replace, str(sql))
+
+
 _QUACK_OWNER_DML_PREFIXES = (
     "UPDATE ",
     "DELETE ",
