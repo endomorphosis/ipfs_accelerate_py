@@ -1501,7 +1501,9 @@ def plan_executor(config_path: Path, credential_fd: int) -> int:
     environment[STATE_TOKEN_ENV] = token
     environment[STATE_OWNER_SOCKET_ENV] = socket_path
     program = board.resolved_database_program()
-    environment["IPFS_ACCELERATE_AGENT_STATE_STORE_ID"] = str(program.store_id)
+    environment["IPFS_ACCELERATE_AGENT_STATE_STORE_ID"] = _control_plane_store_id(
+        program
+    )
     environment["IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION"] = str(
         program.store_generation
     )
@@ -1837,7 +1839,7 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
                 owner_repository,
                 command_dir,
                 token=owner_token,
-                expected_store_id=str(program.store_id),
+                expected_store_id=_control_plane_store_id(program),
                 expected_store_generation=str(program.store_generation),
             )
             if _state_owner_outbox_health(server)["healthy"] is not True:
