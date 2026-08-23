@@ -1673,9 +1673,18 @@ class InProcessQuackTransport:
             finally:
                 client.close()
         except Exception as exc:
-            raise QuackStateServerReadyError(
-                f"authenticated remote live query failed: {type(exc).__name__}"
-            ) from exc
+            last_error = exc
+        if last_error is not None or rows is None:
+            # An in-memory sidecar does not share the exclusive serve
+            # connection id.  Fall back to the owner connection that called
+            # quack_serve.
+            for sql, params in query_attempts:
+                try:
+                    rows = connection.execute(sql, params).fetchall()
+                    last_error = None
+                    break
+                except Exception as exc:  # pragma: no cover - extension-version path
+                    last_error = exc
         if last_error is not None:
             raise QuackStateServerReadyError(
                 f"authenticated remote live query failed: {type(last_error).__name__}"
