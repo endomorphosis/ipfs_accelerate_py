@@ -542,6 +542,7 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
     payload = dict(board.payload)
     payload.update(
         {
+            "runtime_paths": runtime_paths,
             "daemon_interval_seconds": 0.25,
             "check_interval_seconds": 0.25,
             "max_restarts": 2,
