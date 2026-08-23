@@ -892,6 +892,18 @@ def test_live_broker_status_replays_only_an_exact_disposable_replica(
             board, paths, owner_status=owner_status
         )
         assert report["available"] is True
+        owner_binding_fields = (
+            "server_id", "store_id", "database_uuid", "schema_revision",
+            "schema_fingerprint", "generation", "process_birth_id",
+            "listen_uri", "extension_fingerprint",
+        )
+        assert owner_status["storage_schema_fingerprint"] != (
+            owner_status["identity"]["schema_fingerprint"]
+        )
+        assert report["owner_binding"] == {
+            field: owner_status["identity"][field]
+            for field in owner_binding_fields
+        }
         assert report["ready_task_ids"] == ["ASEH-000"]
         assert report["event_cursor"] == event_cursor_before
         assert report["projection_matches_events"] is True
@@ -905,6 +917,25 @@ def test_live_broker_status_replays_only_an_exact_disposable_replica(
                 "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
             ).fetchone()[0]
         ) == event_cursor_before
+
+        mismatched_identity = json.loads(json.dumps(owner_status))
+        mismatched_identity["identity"]["generation"] += 1
+        with pytest.raises(
+            aseh_operator.OperatorError,
+            match="owner binding differs from published owner",
+        ):
+            aseh_operator._broker_status_query(
+                board, paths, owner_status=mismatched_identity
+            )
+        mismatched_storage = json.loads(json.dumps(owner_status))
+        mismatched_storage["storage_schema_fingerprint"] = "storage:stale"
+        with pytest.raises(
+            aseh_operator.OperatorError,
+            match="storage schema differs from published owner",
+        ):
+            aseh_operator._broker_status_query(
+                board, paths, owner_status=mismatched_storage
+            )
 
         # An exact cache hit still reopens and re-hashes the owner-published
         # bytes.  Same-sized path tampering cannot reuse the prior witness.

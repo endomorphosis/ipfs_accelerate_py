@@ -2369,17 +2369,63 @@ def _broker_status_query(
         )
         task_authority_spec_cids = _task_authority_spec_cids(plan_projection)
         objective_record = _objective_record_from_projection(plan_projection)
+        binding_fields = (
+            "server_id", "store_id", "database_uuid", "schema_revision",
+            "schema_fingerprint", "generation", "process_birth_id",
+            "listen_uri", "extension_fingerprint",
+        )
+        owner_identity = owner_status.get("identity")
+        owner_identity = (
+            owner_identity if isinstance(owner_identity, Mapping) else {}
+        )
+        storage_schema_fingerprint = owner_status.get(
+            "storage_schema_fingerprint"
+        )
+        integer_binding_fields = {"schema_revision", "generation"}
+        if (
+            any(owner_identity.get(field) in (None, "") for field in binding_fields)
+            or any(
+                type(owner_identity.get(field)) is not int
+                for field in integer_binding_fields
+            )
+            or any(
+                not isinstance(owner_identity.get(field), str)
+                for field in set(binding_fields) - integer_binding_fields
+            )
+            or storage_schema_fingerprint in (None, "")
+            or not isinstance(storage_schema_fingerprint, str)
+        ):
+            raise OperatorError("published owner identity binding is incomplete")
         with source.intent._connection(write=False) as connection:  # noqa: SLF001
             raw_binding = getattr(connection, "_quack_mutation_binding", None)
             if not isinstance(raw_binding, Mapping):
                 raise OperatorError("Quack status query lacks a live owner binding")
-            owner_binding = {
-                field: raw_binding.get(field)
-                for field in (
-                    "server_id", "store_id", "database_uuid", "schema_revision",
-                    "schema_fingerprint", "generation", "process_birth_id",
-                    "listen_uri", "extension_fingerprint",
+            identity_fields = tuple(
+                field for field in binding_fields if field != "schema_fingerprint"
+            )
+            if any(
+                type(raw_binding.get(field)) is not type(owner_identity.get(field))
+                or raw_binding.get(field) != owner_identity.get(field)
+                for field in identity_fields
+            ):
+                raise OperatorError(
+                    "Quack status query owner binding differs from published owner"
                 )
+            # The transport binding names the physical DuckDB schema.  The
+            # public owner identity names the StateServerIdentity contract.
+            # Admit the former only against its dedicated owner-status field,
+            # then publish the latter so every receipt has one canonical
+            # incarnation identity.
+            if (
+                not isinstance(raw_binding.get("schema_fingerprint"), str)
+                or raw_binding.get("schema_fingerprint")
+                != storage_schema_fingerprint
+            ):
+                raise OperatorError(
+                    "Quack status query storage schema differs from published owner"
+                )
+            owner_binding = {
+                field: owner_identity.get(field) for field in binding_fields
             }
         if any(value in (None, "") for value in owner_binding.values()):
             raise OperatorError("Quack status query owner binding is incomplete")
