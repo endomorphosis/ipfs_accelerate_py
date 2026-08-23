@@ -1,39 +1,396 @@
 {
   "artifact_type": "casf_starting_tree_inventory",
   "artifact_version": 1,
+  "schema": "ipfs_accelerate_py.agent_supervisor.causal-event-federation.starting-tree-inventory@1",
   "program_id": "agent-supervisor-causal-event-federation-v1",
   "root_objective_id": "CASF-G000",
+  "task_id": "CASF-000",
   "task_prefix": "CASF-",
+  "plan_revision": "CASF-PLAN-R1",
+  "evidence_schema": "casf/baseline-seal@1",
+  "authority": false,
+  "completion_authority": false,
   "inventory_tasks": [
     "CASF-000",
     "CASF-001"
   ],
   "repository": {
     "identity": "endomorphosis/ipfs_accelerate_py",
+    "origin": "https://github.com/endomorphosis/ipfs_accelerate_py",
     "branch": "codex/causal-event-supervisor-federation-v1",
     "starting_commit": "84a056e41e48a81d4484be43840196578d6c87da",
     "starting_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
+    "rollback_target": "84a056e41e48a81d4484be43840196578d6c87da",
     "baseline_kind": "committed_git_tree",
     "starting_worktree_was_clean": true,
-    "observation_time_utc": "2026-08-21T21:08:48Z",
-    "write_time_note": "Concurrent bounded implementation work may add uncommitted paths after the starting tree was sealed; those paths are not part of this baseline."
+    "descendant_source_is_starting_tree_qualification": false,
+    "observation_time_utc": "2026-08-23T00:00:00Z",
+    "write_time_note": "This artifact seals the program starting commit/tree. Concurrent or later descendant source is not starting-tree authority, promotion, or task completion."
+  },
+  "environment": {
+    "canonical_python_interpreter": "/usr/bin/python3.12",
+    "canonical_python_major_minor": [
+      3,
+      12
+    ],
+    "validation_path_policy": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin",
+    "package_version": "0.0.45",
+    "package_version_source": "pyproject.toml",
+    "network": "deny",
+    "quack": {
+      "role": "authenticated_loopback_transport_and_exclusive_mutation_state_owner_boundary",
+      "probe": "ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities.probe_quack_capabilities",
+      "allow_network_install": false,
+      "claimed_without_probe": false,
+      "planning_compatible_claim_is_not_authority": true
+    },
+    "ducklake": {
+      "role": "optional_non_authoritative_history_projection",
+      "gates_readiness_acceptance_completion_or_release": false
+    }
+  },
+  "operation_catalog": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/control-operation-catalog@2",
+    "requirement_id": "294719425747343997526263348545558645762",
+    "operation_count": 35,
+    "source": "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py",
+    "catalog_symbol": "OPERATION_CATALOG_V2",
+    "federation_star_operations_present": false,
+    "catalog_is_completion_authority": false
   },
   "control_plane_baseline": {
     "migration_catalog": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+    "migration_catalog_symbol": "MigrationCatalog:524",
+    "migration_runner_symbol": "ControlPlaneMigrationRunner:921",
+    "default_catalog_loader": "load_default_catalog:1558",
     "base_migration": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
     "base_migration_version": 1,
     "normalized_domain_table_count": 110,
     "schema_authority": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py",
+    "schema_contract": "ControlPlaneSchema@1",
     "state_repository_authority": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
-    "transaction_authority": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py"
+    "transaction_authority": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py",
+    "exclusive_state_owner": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+    "runtime_ddl_permitted": false,
+    "additive_federation_migration_is_starting_tree_authority": false
+  },
+  "gitlinks": {
+    "observation_method": "gitmodules_paths_and_checkout_presence",
+    "exact_sha_source": "gitlink entries of starting_tree 40f0771e77d394ac91d92cc1edb02f7860f6131b",
+    "live_git_ls_tree_claimed": false,
+    "sibling_mutation_permitted": false,
+    "sibling_contracts_are_read_only": true,
+    "missing_sibling_capability_disposition": "typed_blocker",
+    "require_initialized_gitlinks_at_casf_000": false,
+    "paths": {
+      "ipfs_datasets_py": {
+        "required_pin": true,
+        "initialized_at_this_observation": false,
+        "role": "semantic meaning and immutable semantic contracts"
+      },
+      "ipfs_kit_py": {
+        "required_pin": true,
+        "initialized_at_this_observation": false,
+        "role": "published durable artifact and content-storage interfaces"
+      },
+      "ipfs_accelerate_py/mcplusplus": {
+        "required_pin": true,
+        "initialized_at_this_observation": false,
+        "role": "existing shared MCP++ wire and profile contracts"
+      },
+      "ipfs_transformers_py": {
+        "required_pin": false,
+        "initialized_at_this_observation": false,
+        "role": "optional sibling; not a CASF authority"
+      },
+      "ipfs_model_manager_py": {
+        "required_pin": false,
+        "initialized_at_this_observation": false,
+        "role": "optional sibling; not a CASF authority"
+      },
+      "docs/fastmcp": {
+        "required_pin": false,
+        "initialized_at_this_observation": false,
+        "role": "documentation gitlink; not a CASF authority"
+      },
+      "docs/mcp-python-sdk": {
+        "required_pin": false,
+        "initialized_at_this_observation": false,
+        "role": "documentation gitlink; not a CASF authority"
+      },
+      "test/huggingface_transformers": {
+        "required_pin": false,
+        "initialized_at_this_observation": false,
+        "role": "test fixture gitlink; not a CASF authority"
+      },
+      "test/doc-builder": {
+        "required_pin": false,
+        "initialized_at_this_observation": false,
+        "role": "test fixture gitlink; not a CASF authority"
+      },
+      "test/huggingface_doc_builder": {
+        "required_pin": false,
+        "initialized_at_this_observation": false,
+        "role": "test fixture gitlink; not a CASF authority"
+      }
+    }
+  },
+  "mandated_surfaces": [
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+      "status": "available",
+      "test": "test/api/test_agent_supervisor_control_plane_contracts.py",
+      "narrow_extension": "Reuse closed store identities, generations, commands, snapshots, and export receipts."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+      "status": "available",
+      "test": "test/api/test_agent_supervisor_control_plane_migrations.py",
+      "narrow_extension": "Extend the existing migration catalog; runtime DDL is prohibited."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py",
+      "status": "available_with_caveats",
+      "test": "test/api/test_agent_supervisor_control_plane_schema.py",
+      "narrow_extension": "Reuse ControlPlaneSchema@1; add missing CASF populations only through migrations."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_repository",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
+      "status": "available_with_caveats",
+      "test": "test/api/test_agent_supervisor_control_plane_repository.py",
+      "narrow_extension": "Reuse the repository boundary and explicit Quack/no-fallback selection."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py",
+      "status": "available_with_caveats",
+      "test": "test/api/test_agent_supervisor_control_transactions.py",
+      "narrow_extension": "Reuse transaction, CAS, and idempotency primitives; atomic mutation/event/outbox is a later producer."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/quack_capabilities.py",
+      "status": "available_with_caveats",
+      "test": "test/api/test_agent_supervisor_quack_capabilities.py",
+      "narrow_extension": "Runtime compatibility is not event-driven or multi-supervisor qualification."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
+      "status": "available_with_caveats",
+      "test": "test/api/test_agent_supervisor_quack_owner_mutation.py",
+      "narrow_extension": "Reuse registered statements and raw-SQL rejection; do not accept agent SQL or database paths."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "status": "available_with_caveats",
+      "test": "test/api/test_agent_supervisor_quack_owner_mutation.py",
+      "narrow_extension": "This server remains the only authoritative DuckDB state owner in Quack mode."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "status": "available_with_caveats",
+      "test": "test/api/test_agent_supervisor_multi_supervisor_generation_status.py",
+      "narrow_extension": "Reuse bounded process-management pieces only; live multi-supervisor launch remains NO-GO."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.semantic_state.world_snapshot_builder",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_builder.py",
+      "status": "available_with_caveats",
+      "test": "test/api/semantic_state/test_world_snapshot_builder.py",
+      "narrow_extension": "Reuse observed state inputs; DuckLake observations are not FederationWorldSnapshot."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.analysis.doctor_causal_localization",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/doctor_causal_localization.py",
+      "status": "available_with_caveats",
+      "test": "test/api/test_agent_supervisor_doctor_causal_localization.py",
+      "narrow_extension": "Report-only localization may nominate; it does not establish causal authority."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.integrations.ducklake_history_projection",
+      "path": "ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py",
+      "status": "stale",
+      "test": "test/api/test_agent_supervisor_ducklake_history_projection.py",
+      "narrow_extension": "Starting-tree project_history is observational and non-authoritative; LOAD success is not a projection pipeline."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.control",
+      "path": "ipfs_accelerate_py/agent_supervisor/control",
+      "status": "available_with_caveats",
+      "test": "test/api/test_agent_supervisor_control_conformance_v2.py",
+      "narrow_extension": "Extend SupervisorControlService; do not create a second control plane."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.runtime",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime",
+      "status": "available_with_caveats",
+      "test": "test/api/test_agent_supervisor_configured_board_scheduler.py",
+      "narrow_extension": "Reuse bounded runtime pieces only through the exclusive state owner."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.planning",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning",
+      "status": "available_with_caveats",
+      "test": "test/api/test_agent_supervisor_conflict_free_frontier.py",
+      "narrow_extension": "Unknown conflicts reduce concurrency; model independence remains nomination-only."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.proof",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof",
+      "status": "available_with_caveats",
+      "test": "test/api/test_agent_supervisor_formal_verification_contracts.py",
+      "narrow_extension": "Proof storage must respect the state-owner boundary."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.verification",
+      "path": "ipfs_accelerate_py/agent_supervisor/verification",
+      "status": "available_with_caveats",
+      "test": "test/api/test_agent_supervisor_incremental_verification_planner.py",
+      "narrow_extension": "Task-board status cannot replace current-tree verification evidence."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.semantic_governor",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_governor",
+      "status": "available_with_caveats",
+      "test": "test/api/semantic_governor/test_public_api.py",
+      "narrow_extension": "ipfs_datasets_py retains semantic meaning."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.adversarial_assurance",
+      "path": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance",
+      "status": "available_with_caveats",
+      "test": "test/api/adversarial_assurance/test_current_tree_conformance.py",
+      "narrow_extension": "Adversarial observations are evidence inputs, not policy or completion."
+    }
+  ],
+  "incompatible_related_surfaces": [
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.runtime.database_event_log",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/database_event_log.py",
+      "status": "incompatible",
+      "reason": "Direct DuckDB file open with runtime DDL cannot be the canonical multi-process CASF event authority."
+    }
+  ],
+  "missing_starting_tree_targets": [
+    "ipfs_accelerate_py.agent_supervisor.federation",
+    "CausalAbstractionSupervisorFederation",
+    "closed_federation_contracts",
+    "transactional_outbox",
+    "server_owned_wait_for_events",
+    "causal_abstraction_network",
+    "shard_rebalance_planner"
+  ],
+  "canonical_ownership": [
+    {
+      "owner": "ipfs_datasets_py",
+      "owns": "semantic meaning and immutable semantic data contracts",
+      "prohibited_casf_reinterpretation": "Accelerator may persist and query identities but may not redefine their meaning."
+    },
+    {
+      "owner": "ipfs_accelerate_py",
+      "owns": "federations, supervisors, agents, plans, tasks, claims, leases, fences, budgets, attempts, effects, validation, merge, events, causal propagation, recovery",
+      "prohibited_casf_reinterpretation": "No competing operational authority."
+    },
+    {
+      "owner": "DuckDB",
+      "owns": "authoritative normalized transactional operational records",
+      "prohibited_casf_reinterpretation": "One exclusive state-owner boundary only."
+    },
+    {
+      "owner": "Quack",
+      "owns": "qualified multi-client transport and exclusive state-owner service",
+      "prohibited_casf_reinterpretation": "No direct file access or implicit fallback."
+    },
+    {
+      "owner": "DuckLake",
+      "owns": "rebuildable append-only history, analytics, benchmark, and training projections",
+      "prohibited_casf_reinterpretation": "Never a scheduling, lease, policy, acceptance, or completion prerequisite."
+    },
+    {
+      "owner": "ipfs_kit_py",
+      "owns": "durable artifact and content storage through published interfaces",
+      "prohibited_casf_reinterpretation": "No duplicate VFS, WAL, proof-seal, or current-pointer authority."
+    },
+    {
+      "owner": "MCP++",
+      "owns": "existing shared wire and profile contracts",
+      "prohibited_casf_reinterpretation": "No new MCP++ profile for this program."
+    }
+  ],
+  "non_compensable_constraints": [
+    "zero unauthorized supervisor, subagent, or mutation creation",
+    "zero duplicate committed effects, stale-fence completion, or lost authoritative transitions",
+    "zero simulated-as-live evidence, model-created authority, model-created policy permission, model-created completion, or false completion",
+    "zero DuckLake-derived scheduling, lease, policy, or completion authority",
+    "zero direct multi-process DuckDB file mutation and zero implicit Quack to embedded/file fallback",
+    "zero arbitrary SQL from an agent, unbounded event fanout, hidden validation reduction, cross-tenant leakage, or raw credential propagation"
+  ],
+  "missing_capability_policy": {
+    "mode": "fail_closed",
+    "compatibility_adapter_allowed_only_when": "semantics and effect ceiling are exact",
+    "otherwise": "emit a typed capability blocker and continue independent work",
+    "missing_never_reported_as": "available",
+    "name_import_table_markdown_receipt_fixture_or_projection_is_authority": false
+  },
+  "negative_paths": [
+    "unknown normative status is rejected; only available, available_with_caveats, stale, incompatible, or missing are admitted",
+    "a module name, import, Markdown board state, generated report, historical receipt, fixture, embedded test, Quack import, DuckLake import, or similarly named table is not authority",
+    "Quack LOAD success and health-check pass do not qualify wait_for_events, no-lost-wakeup, or multi-supervisor promotion",
+    "DuckLake or httpfs LOAD success does not qualify a typed projection pipeline or promotion gate",
+    "embedded-mode and in-process tests do not qualify multi-process Quack authority",
+    "descendant federation source does not complete CASF-000 or convert a pending final-result identity",
+    "process exit, board status, quiet queue, or model claim cannot complete this task"
+  ],
+  "entrypoints": {
+    "operator_bootstrap": "scripts/run_agent_supervisor_causal_event_federation.py",
+    "board_validator": "scripts/validate_agent_supervisor_causal_event_federation_board.py",
+    "inventory_validation": "python3 scripts/validate_agent_supervisor_causal_event_federation_board.py --inventory-only",
+    "cli_and_mcp_federation_adapters": "missing_at_starting_tree",
+    "entrypoint_is_completion_authority": false
+  },
+  "tests": {
+    "board_contract": "test/api/causal_federation/test_board.py",
+    "operator_contract": "test/api/causal_federation/test_operator.py",
+    "execution_status": "not-run_as_qualification",
+    "reason": "command identity is bound; execution is not claimed as current-tree qualification or completion"
   },
   "evidence_basis": {
-    "source": "exact committed current tree plus explicitly bounded current-environment extension probes",
+    "source": "exact committed starting tree plus explicitly bounded current-environment extension probes",
     "markdown_board_is_authority": false,
     "historical_receipt_is_current_qualification": false,
     "generated_report_is_completion_authority": false,
-    "module_or_table_name_is_capability_authority": false
+    "module_or_table_name_is_capability_authority": false,
+    "descendant_implementation_is_starting_tree_authority": false
   },
+  "typed_blocker_ids": [
+    "CASF-BLOCKER-FEDERATION-SURFACE-MISSING",
+    "CASF-BLOCKER-OUTBOX-MISSING",
+    "CASF-BLOCKER-EVENT-WAIT-MISSING",
+    "CASF-BLOCKER-QUACK-EVENT-QUALIFICATION",
+    "CASF-BLOCKER-LIFECYCLE-VOCABULARY",
+    "CASF-BLOCKER-DUCKLAKE-PROJECTION-MISSING",
+    "CASF-BLOCKER-MULTI-SUPERVISOR-QUALIFICATION",
+    "CASF-BLOCKER-SCHEMA-COVERAGE",
+    "CASF-BLOCKER-CURRENT-TREE-QUALIFICATION"
+  ],
+  "nonclaims": [
+    "event_driven",
+    "causally_coordinated",
+    "multi_supervisor_qualified",
+    "parallel_qualified",
+    "token_efficient",
+    "production_ready",
+    "exactly_once_network_delivery",
+    "quack_event_wait_qualified",
+    "ducklake_promotion_qualified"
+  ],
   "inventory_refs": {
     "human_readable": "docs/architecture/causal_event_federation_inventory/README.md",
     "authorities": "docs/architecture/causal_event_federation_inventory/authorities.json",

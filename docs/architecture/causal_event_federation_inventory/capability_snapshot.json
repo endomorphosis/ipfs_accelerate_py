@@ -1,11 +1,16 @@
 {
   "artifact_type": "casf_capability_snapshot",
   "artifact_version": 1,
+  "schema": "ipfs_accelerate_py.agent_supervisor.causal-event-federation.capability-snapshot@1",
   "program_id": "agent-supervisor-causal-event-federation-v1",
   "root_objective_id": "CASF-G000",
+  "task_id": "CASF-000",
+  "plan_revision": "CASF-PLAN-R1",
+  "authority": false,
+  "completion_authority": false,
   "starting_commit": "84a056e41e48a81d4484be43840196578d6c87da",
   "starting_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
-  "observed_at_utc": "2026-08-21T21:08:48Z",
+  "observed_at_utc": "2026-08-23T00:00:00Z",
   "status_vocabulary": [
     "available",
     "available_with_caveats",
@@ -13,18 +18,41 @@
     "incompatible",
     "missing"
   ],
+  "environment": {
+    "canonical_python_interpreter": "/usr/bin/python3.12",
+    "canonical_python_major_minor": [
+      3,
+      12
+    ],
+    "validation_path_policy": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin",
+    "network": "deny",
+    "xdg_paths_are_validation_home_local": true
+  },
   "probe_policy": {
     "network_install_allowed": false,
     "extension_install_attempted": false,
     "probe_scope": "current local runtime and extension catalog",
+    "probe_function": "ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities.probe_quack_capabilities",
+    "allow_network_install": false,
+    "use_cache": false,
+    "claimed_without_probe": false,
+    "fail_closed_when_missing": true,
+    "missing_never_reported_as_available": true,
+    "compatibility_adapter_requires_exact_semantics_and_effect_ceiling": true,
     "authority_limit": "Runtime presence and LOAD success do not qualify a federation, event-wait implementation, projection pipeline, or promotion gate."
   },
   "capabilities": {
     "duckdb": {
       "status": "available",
       "version": "1.5.5",
+      "pinned_major_minor": [
+        1,
+        5
+      ],
       "authoritative_role": "transactional operational records behind one exclusive state-owner boundary",
-      "direct_multi_process_file_mutation_permitted": false
+      "direct_multi_process_file_mutation_permitted": false,
+      "implicit_quack_to_file_fallback_permitted": false,
+      "arbitrary_sql_from_agents_permitted": false
     },
     "quack": {
       "status": "available_with_caveats",
@@ -40,11 +68,19 @@
       "passes_health_check": true,
       "experimental_usable": false,
       "beta_limitations": [
-        "no_server_push_clients_must_poll"
+        "quack_is_beta_in_duckdb_1_5_x",
+        "protocol_names_and_defaults_may_change_before_duckdb_2_0",
+        "server_and_clients_must_use_identical_pinned_build",
+        "default_authorization_callback_permits_every_authenticated_query",
+        "no_server_push_clients_must_poll",
+        "one_quack_server_is_one_failure_domain",
+        "loopback_bind_required_unless_separately_reviewed",
+        "unsigned_or_community_extension_path_is_not_attested_integrity"
       ],
+      "event_wait_relevant_limitation": "no_server_push_clients_must_poll",
       "promotion_qualified": false,
       "event_driven_multi_supervisor_qualified": false,
-      "qualification_reason": "The current profile is explicitly client-polling and the state-owner implementation has no qualified server-owned wait_for_events/no-lost-wakeup path."
+      "qualification_reason": "The current profile is explicitly client-polling and the starting tree has no qualified server-owned wait_for_events/no-lost-wakeup path."
     },
     "ducklake_extension": {
       "status": "available_with_caveats",
@@ -53,6 +89,10 @@
       "loaded": true,
       "authoritative": false,
       "scheduling_prerequisite": false,
+      "lease_prerequisite": false,
+      "policy_prerequisite": false,
+      "acceptance_prerequisite": false,
+      "completion_prerequisite": false,
       "promotion_qualified": false,
       "qualification_reason": "LOAD success does not supply a typed catalog binding, idempotent projection, recovery, source-event-range binding, security qualification, or projection receipt."
     },
@@ -74,13 +114,32 @@
       "implementation": "ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py",
       "projection_state": "typed_unavailable",
       "authoritative": false,
-      "reason": "The current four-line placeholder only reports observation and authoritative=false; it has no event range, cursor, checksums, catalog binding, recovery, redaction, schema evolution, or receipt."
+      "scheduling_prerequisite": false,
+      "reason": "At the sealed starting tree, project_history only reports observation and authoritative=false. That is not a typed catalog, cursor, source-range, recovery, redaction, schema-evolution, or receipt pipeline. Later descendant source is not starting-tree DuckLake promotion."
+    },
+    "state_owner": {
+      "status": "available_with_caveats",
+      "implementation": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "exclusive_owner_required": true,
+      "embedded_mode_scope": [
+        "hermetic tests",
+        "single-process development",
+        "exclusive offline recovery"
+      ],
+      "multi_supervisor_fails_closed_without_quack": true
+    },
+    "event_driven_wakeup": {
+      "status": "missing",
+      "required_symbol": "wait_for_events",
+      "starting_tree_path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "reason": "No server-owned wait_for_events implementation or process-safe commit notification path exists at the starting tree."
     }
   },
   "typed_blockers": [
     {
       "blocker_id": "CASF-BLOCKER-EVENT-WAIT-MISSING",
       "capability": "event_driven_wakeup",
+      "status": "missing",
       "blocking_scope": "event-driven and no-lost-wakeup qualification",
       "reason": "No server-owned wait_for_events implementation or process-safe commit notification path exists at the starting tree.",
       "independent_work_allowed": true
@@ -88,6 +147,7 @@
     {
       "blocker_id": "CASF-BLOCKER-QUACK-EVENT-QUALIFICATION",
       "capability": "quack_multi_supervisor_event_transport",
+      "status": "available_with_caveats",
       "blocking_scope": "event-driven multi-supervisor promotion",
       "reason": "The extension is compatible and healthy, but experimental_usable=false and its beta profile requires polling clients.",
       "independent_work_allowed": true
@@ -95,28 +155,60 @@
     {
       "blocker_id": "CASF-BLOCKER-DUCKLAKE-PROJECTION-MISSING",
       "capability": "typed_ducklake_projection",
+      "status": "stale",
       "blocking_scope": "DuckLake promotion only",
-      "reason": "DuckLake and httpfs load, but the projection implementation is a non-authoritative placeholder without qualification evidence.",
+      "reason": "DuckLake and httpfs load, but the starting-tree projection implementation is a non-authoritative placeholder without qualification evidence.",
       "independent_work_allowed": true
     },
     {
       "blocker_id": "CASF-BLOCKER-MULTI-SUPERVISOR-QUALIFICATION",
       "capability": "qualified_parallel_federation",
+      "status": "missing",
       "blocking_scope": "multi-supervisor, parallel, and production claims",
       "reason": "No current-tree event-driven 12-supervisor process qualification exists.",
       "independent_work_allowed": true
+    }
+  ],
+  "negative_paths": [
+    {
+      "input": "duckdb_import_without_health_check",
+      "expected": "fail_closed_not_available"
+    },
+    {
+      "input": "quack_load_success",
+      "expected": "available_with_caveats_not_event_wait_qualified"
+    },
+    {
+      "input": "ducklake_or_httpfs_load_success",
+      "expected": "available_with_caveats_not_promotion_qualified"
+    },
+    {
+      "input": "missing_python_ducklake_package",
+      "expected": "missing_and_not_a_duckdb_extension_blocker"
+    },
+    {
+      "input": "placeholder_or_observational_projection",
+      "expected": "stale_not_available"
+    },
+    {
+      "input": "unknown_capability_status",
+      "expected": "rejected"
+    },
+    {
+      "input": "network_install_request_during_ordinary_probe",
+      "expected": "denied"
     }
   ],
   "nonclaims": [
     {
       "claim": "event_driven",
       "allowed": false,
-      "reason": "Polling limitation and missing wait/no-lost-wakeup evidence."
+      "reason": "Polling limitation and missing wait/no-lost-wakeup evidence at the starting tree."
     },
     {
       "claim": "causally_coordinated",
       "allowed": false,
-      "reason": "No authoritative causal graph, abstraction map, or frontier implementation exists."
+      "reason": "No authoritative causal graph, abstraction map, or frontier implementation exists at the starting tree."
     },
     {
       "claim": "multi_supervisor_qualified",
@@ -141,7 +233,7 @@
     {
       "claim": "exactly_once_delivery",
       "allowed": false,
-      "reason": "The intended delivery contract is at-least-once delivery with idempotent exactly-once authoritative effects, which is not yet implemented."
+      "reason": "The intended delivery contract is at-least-once delivery with idempotent exactly-once authoritative effects, which is not starting-tree qualified."
     },
     {
       "claim": "quack_event_wait_qualified",

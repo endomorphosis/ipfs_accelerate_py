@@ -16,10 +16,13 @@ task-board completion claim, a policy decision, or a promotion receipt.
 | Program | agent-supervisor-causal-event-federation-v1 |
 | Root objective | CASF-G000 |
 | Inventory tasks | CASF-000, CASF-001 |
+| Authority | false; evidence-only |
 
 The exact machine-readable baseline is in starting_tree.json. Concurrent
 implementation work may make the worktree dirty after this committed tree was
-sealed; that does not change the starting commit or tree identity.
+sealed; that does not change the starting commit or tree identity. Later
+descendant source is not starting-tree qualification and cannot complete a
+pending final-result identity.
 
 ## Closed status vocabulary
 
@@ -31,18 +34,38 @@ sealed; that does not change the starting commit or tree identity.
 | incompatible | Present, but unsafe as the canonical CASF path because its behavior conflicts with a non-compensable constraint. |
 | missing | No qualifying current-tree implementation was found. |
 
+Unknown statuses are rejected. Missing functionality is never reported as
+available. A compatibility adapter is used only when its semantics and effect
+ceiling are exact; otherwise a typed blocker is emitted and independent work
+continues.
+
+## Validation environment
+
+CASF-000 judges capability against the sealed validation environment, not a
+provider-only toolchain:
+
+- interpreter: `/usr/bin/python3.12`
+- `PATH`: `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin`
+- network: deny
+- ordinary probes never `INSTALL` extensions
+
+The canonical probe is
+`ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities.probe_quack_capabilities`
+with `allow_network_install=false`. Import success alone never passes a health
+check.
+
 ## Current capability snapshot
 
 | Capability | Inventory result | Qualification boundary |
 |---|---|---|
-| DuckDB | available; version 1.5.5 | Runtime presence is not federation qualification. |
+| DuckDB | available; version 1.5.5 | Runtime presence is not federation qualification. Direct multi-process file mutation and implicit Quack-to-file fallback remain prohibited. |
 | Quack | available_with_caveats; core extension c154811 loaded; quack_serve and quack_query present; compatible and health check passed | experimental_usable is false and the declared beta limitation is no_server_push_clients_must_poll. It does not qualify the required event-wait gate. |
 | DuckLake | available_with_caveats; core extension d8a1881e loaded | Extension load is not a typed, idempotent projection pipeline or a promotion receipt. |
 | httpfs | available_with_caveats; core extension 827222f loaded | Transport capability does not grant scheduling or policy authority. |
 | Python ducklake package | missing | This is not a DuckDB-extension blocker, but no standalone-package behavior is claimed. |
 
-Network installation was disabled during the probes. Full probe facts and
-nonclaims are recorded in capability_snapshot.json.
+Network installation was disabled during the probes. Full probe facts,
+negative paths, and explicit nonclaims are recorded in capability_snapshot.json.
 
 ## Named authority disposition
 
@@ -93,6 +116,25 @@ incompatible surfaces, and missing target surfaces.
 - Existing MCP++ wire profiles are reused when applicable; this program does
   not create a new profile.
 
+Sibling gitlinks are read-only. A missing sibling capability is a typed
+blocker, never a write into the sibling repository.
+
+## Non-compensable constraints
+
+These constraints are not traded for throughput, convenience, or a model
+claim:
+
+- zero unauthorized supervisor, subagent, or mutation creation
+- zero duplicate committed effects, stale-fence completion, or lost
+  authoritative transitions
+- zero simulated-as-live evidence, model-created authority, model-created
+  policy permission, model-created completion, or false completion
+- zero DuckLake-derived scheduling, lease, policy, or completion authority
+- zero direct multi-process DuckDB file mutation and zero implicit Quack to
+  embedded/file fallback
+- zero arbitrary SQL from an agent, unbounded event fanout, hidden validation
+  reduction, cross-tenant leakage, or raw credential propagation
+
 ## Typed blockers
 
 - CASF-BLOCKER-FEDERATION-SURFACE-MISSING: no qualifying federation package,
@@ -130,3 +172,15 @@ production ready, exactly-once-delivery capable, DuckLake-promotion qualified,
 or Quack event-wait qualified. It also does not infer authority from an import,
 module name, report, fixture, task-board state, table name, or historical
 receipt.
+
+## Entrypoints and tests
+
+| Surface | Identity | Qualification bound |
+|---|---|---|
+| Operator bootstrap | scripts/run_agent_supervisor_causal_event_federation.py | Not completion authority. |
+| Board validator | scripts/validate_agent_supervisor_causal_event_federation_board.py --inventory-only | Seals these artifacts; does not complete the task. |
+| Board contract tests | test/api/causal_federation/test_board.py | Identity-bound; execution is not self-promotion. |
+| Control operation catalog | OPERATION_CATALOG_V2, 35 operations, requirement 294719425747343997526263348545558645762 | No federation.* operations at the starting tree. |
+
+Process exit, board status, a quiet queue, or a model statement cannot complete
+CASF-000.
