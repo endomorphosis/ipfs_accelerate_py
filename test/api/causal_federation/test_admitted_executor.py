@@ -660,7 +660,7 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
         )
 
     request.addfinalizer(_cleanup_isolated_runtime)
-    relative_runtime = ".casf-runtime"
+    relative_runtime = "data/casf-managed-e2e-runtime"
     runtime_paths = {
         "root": relative_runtime,
         "state": f"{relative_runtime}/state",
