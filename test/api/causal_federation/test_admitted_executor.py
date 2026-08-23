@@ -41,6 +41,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
+    TypedStateOwnerAuthorizationError,
+    TypedStateOwnerConnection,
+    TypedStateOwnerError,
     build_control_plane_operation_catalog,
 )
 from test.api.causal_federation.test_bootstrap_runtime import (
@@ -227,7 +230,7 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
     identity = server.start()
     client_id = "database-implementation-daemon:typed-test"
     operator_birth_id = identity.process_birth_id
-    token = server.issue_typed_client_grant(
+    token, grant = server.issue_typed_client_grant_record(
         client_id=client_id,
         process_birth_id=operator_birth_id,
         allowed_operations=tuple(build_control_plane_operation_catalog()),
@@ -284,11 +287,37 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
         )
         assert completed.task.status == "completed"
         assert adapter.snapshot().terminal is True
+
+        with pytest.raises(TypedStateOwnerAuthorizationError):
+            TypedStateOwnerConnection(
+                socket_path=server.typed_command_socket_path(),
+                token="",
+                client_id=client_id,
+                process_birth_id=operator_birth_id,
+                store_id=identity.store_id,
+            )
+        with pytest.raises(TypedStateOwnerError):
+            TypedStateOwnerConnection(
+                socket_path=server.typed_command_socket_path(),
+                token=token,
+                client_id=client_id,
+                process_birth_id="birth:wrong",
+                store_id=identity.store_id,
+            )
     finally:
         if adapter is not None:
             adapter.close()
         else:
             client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+        with pytest.raises(TypedStateOwnerError):
+            TypedStateOwnerConnection(
+                socket_path=server.typed_command_socket_path(),
+                token=token,
+                client_id=client_id,
+                process_birth_id=operator_birth_id,
+                store_id=identity.store_id,
+            )
         server.stop()
 
     connection = open_duckdb_connection(database)
@@ -368,6 +397,127 @@ def test_typed_database_task_source_pages_transport_for_public_maximum() -> None
     assert client.page_requests == [
         {"limit": 500, "offset": 0},
         {"limit": 1, "offset": 500},
+    ]
+
+
+def test_executor_typed_operation_catalog_is_closed_and_full_fidelity() -> None:
+    catalog = build_control_plane_operation_catalog()
+
+    assert catalog["executor_task_projection_page"].parameter_names == (
+        "limit",
+        "offset",
+    )
+    assert catalog["executor_task_projection_page"].mutation is False
+    assert catalog["executor_task_projection_by_identity"].parameter_names == (
+        "task_identity",
+        "task_alias",
+    )
+    assert catalog["executor_control_snapshot"].parameter_names == ()
+    assert catalog["executor_control_snapshot"].mutation is False
+
+
+@pytest.mark.timeout(10)
+def test_executor_bootstrap_broker_stop_unblocks_an_accepted_peer(
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    address = "\0casf-broker-stop-" + os.urandom(8).hex()
+    listener.bind(address)
+    listener.listen(1)
+    broker = operator._ExecutorBootstrapBroker(
+        channel=listener,
+        server=SimpleNamespace(revoke_typed_client_grant=lambda _grant: None),
+        board=SimpleNamespace(),
+        paths={
+            "executor_history": tmp_path / "history.json",
+            "executor_current": tmp_path / "current.json",
+        },
+        supervisor_birth=operator._process_birth(os.getpid()),
+    )
+    peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    broker.start()
+    try:
+        peer.connect(address)
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            with broker._accepted_lock:
+                if broker._accepted is not None:
+                    break
+            time.sleep(0.01)
+        else:
+            pytest.fail("broker did not accept the intentionally stalled peer")
+
+        broker.stop()
+
+        assert broker._thread.is_alive() is False
+        assert broker.active_grant_id == ""
+    finally:
+        peer.close()
+        if broker._thread.is_alive():
+            broker.stop()
+
+
+def test_executor_retirement_freezes_supervisor_before_reading_latest_rotation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    supervisor_birth = {"pid": 101, "start_time_ticks": 1, "boot_id": "boot"}
+    stale_executor = {"pid": 202, "start_time_ticks": 2, "boot_id": "boot"}
+    latest_executor = {"pid": 303, "start_time_ticks": 3, "boot_id": "boot"}
+    current_path = tmp_path / "executor-current.json"
+    current_path.write_text(
+        json.dumps(
+            {
+                "supervisor_process_birth": supervisor_birth,
+                "executor_process_birth": stale_executor,
+            }
+        ),
+        encoding="utf-8",
+    )
+    events: list[Any] = []
+
+    class _Broker:
+        @staticmethod
+        def stop() -> None:
+            events.append("broker.stop")
+
+    def _terminate(birth: Mapping[str, Any], *, grace_seconds: float) -> str:
+        events.append(("terminate", dict(birth), grace_seconds))
+        if dict(birth) == supervisor_birth:
+            current_path.write_text(
+                json.dumps(
+                    {
+                        "supervisor_process_birth": supervisor_birth,
+                        "executor_process_birth": latest_executor,
+                    }
+                ),
+                encoding="utf-8",
+            )
+        return "terminated"
+
+    monkeypatch.setattr(operator, "_terminate_birth", _terminate)
+
+    cleanup, failures = operator._retire_configured_executor(
+        paths={"executor_current": current_path},
+        supervisor_birth=supervisor_birth,
+        broker=_Broker(),
+        fallback_executor_birth=stale_executor,
+        grace_seconds=7.0,
+    )
+
+    assert failures == []
+    assert events == [
+        "broker.stop",
+        ("terminate", supervisor_birth, 7.0),
+        ("terminate", latest_executor, 7.0),
+        ("terminate", stale_executor, 7.0),
+    ]
+    assert [item["role"] for item in cleanup] == [
+        "executor_supervisor",
+        "executor_daemon",
+        "executor_daemon",
     ]
 
 
