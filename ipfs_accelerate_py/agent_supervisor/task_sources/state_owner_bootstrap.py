@@ -25,6 +25,7 @@ from typing import Any, Final
 from ..merge.database_worktree_registry import process_birth_id
 from ..merge.worktree_lifecycle import read_process_birth
 from .control_plane_contracts import canonical_json_bytes
+from .task_execution_route_policy import TaskExecutionRoutePolicy
 from .typed_state_owner import (
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
@@ -140,6 +141,7 @@ class StateOwnerBootstrapCredentials:
     client_id: str
     process_birth_id: str
     token: str
+    execution_route_policy: TaskExecutionRoutePolicy
 
     @classmethod
     def from_response(
@@ -160,6 +162,7 @@ class StateOwnerBootstrapCredentials:
             "client_id",
             "process_birth_id",
             "token",
+            "execution_route_policy",
         }
         if set(payload) != fields:
             raise StateOwnerBootstrapError(
@@ -172,7 +175,7 @@ class StateOwnerBootstrapCredentials:
             raise StateOwnerBootstrapError("state-owner bootstrap was denied")
         values = {
             name: str(payload.get(name) or "").strip()
-            for name in fields - {"schema", "ok"}
+            for name in fields - {"schema", "ok", "execution_route_policy"}
         }
         if any(not value or len(value) > 4_096 for value in values.values()):
             raise StateOwnerBootstrapError("state-owner bootstrap identity is invalid")
@@ -189,6 +192,17 @@ class StateOwnerBootstrapCredentials:
         socket_path = os.path.abspath(values["socket_path"])
         if socket_path != values["socket_path"]:
             raise StateOwnerBootstrapError("state-owner socket path is not absolute")
+        raw_policy = payload.get("execution_route_policy")
+        if not isinstance(raw_policy, Mapping):
+            raise StateOwnerBootstrapError(
+                "state-owner bootstrap execution route policy is unavailable"
+            )
+        try:
+            execution_route_policy = TaskExecutionRoutePolicy.from_dict(raw_policy)
+        except (TypeError, ValueError, RuntimeError) as exc:
+            raise StateOwnerBootstrapError(
+                "state-owner bootstrap execution route policy is invalid"
+            ) from exc
         return cls(
             endpoint=values["endpoint"],
             socket_path=socket_path,
@@ -197,6 +211,7 @@ class StateOwnerBootstrapCredentials:
             client_id=values["client_id"],
             process_birth_id=values["process_birth_id"],
             token=values["token"],
+            execution_route_policy=execution_route_policy,
         )
 
     def install_environment(self) -> dict[str, str | bool]:
@@ -210,6 +225,10 @@ class StateOwnerBootstrapCredentials:
             "server_id": self.server_id,
             "client_id": self.client_id,
             "process_birth_id": self.process_birth_id,
+            "execution_route_policy_id": self.execution_route_policy.policy_id,
+            "execution_route_plan_root_cid": (
+                self.execution_route_policy.plan_root_cid
+            ),
             "credential_transport": "private_inherited_socket",
             "credential_in_argv": False,
         }

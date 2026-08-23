@@ -98,10 +98,31 @@ EXECUTOR_BOOTSTRAP_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/casf-executor-runtime@1"
 )
 MAX_EXECUTOR_HISTORY: Final = 128
+CASF_TASK_ALIASES: Final = tuple(f"CASF-{ordinal:03d}" for ordinal in range(44))
+CASF_DETERMINISTIC_TASK_ALIASES: Final = frozenset(
+    f"CASF-{ordinal:03d}" for ordinal in range(2, 33)
+)
 
 
 class OperatorError(RuntimeError):
     """Fail-closed CASF bootstrap operator error."""
+
+
+def _casf_mixed_execution_modes() -> dict[str, str]:
+    """Return the closed one-generation CASF task routing vocabulary."""
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.task_execution_policy import (
+        ExecutionMode,
+    )
+
+    return {
+        alias: (
+            ExecutionMode.DETERMINISTIC_ONLY.value
+            if alias in CASF_DETERMINISTIC_TASK_ALIASES
+            else ExecutionMode.GROK_CODEX.value
+        )
+        for alias in CASF_TASK_ALIASES
+    }
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -1368,12 +1389,22 @@ class _ExecutorBootstrapBroker:
         board: Any,
         paths: Mapping[str, Path],
         supervisor_birth: Mapping[str, Any],
+        execution_route_policy: Any,
     ) -> None:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+            TaskExecutionRoutePolicy,
+        )
+
+        if not isinstance(execution_route_policy, TaskExecutionRoutePolicy):
+            raise OperatorError(
+                "executor bootstrap requires an immutable typed route policy"
+            )
         self.channel = channel
         self.server = server
         self.board = board
         self.paths = paths
         self.supervisor_birth = dict(supervisor_birth)
+        self.execution_route_policy = execution_route_policy
         self.stopping = threading.Event()
         self.failure = ""
         self._thread = threading.Thread(
@@ -1535,6 +1566,13 @@ class _ExecutorBootstrapBroker:
             "client_id": client_id,
             "store_id": store_id,
             "server_id": identity.server_id,
+            "execution_route_policy_id": self.execution_route_policy.policy_id,
+            "execution_route_plan_root_cid": (
+                self.execution_route_policy.plan_root_cid
+            ),
+            "execution_route_source_revision": int(
+                self.execution_route_policy.source_revision
+            ),
             "credential_transport": "private_inherited_socket",
             "credential_in_argv_or_environment_at_spawn": False,
         }
@@ -1554,6 +1592,7 @@ class _ExecutorBootstrapBroker:
             "client_id": client_id,
             "process_birth_id": str(request["process_birth_id"]),
             "token": token,
+            "execution_route_policy": self.execution_route_policy.to_dict(),
         }
 
     def _run(self) -> None:
@@ -1705,6 +1744,7 @@ def _spawn_configured_executor(
     board: Any,
     paths: Mapping[str, Path],
     owner_identity: Mapping[str, Any],
+    execution_route_policy: Any,
     implementation_command: str = "",
 ) -> tuple[subprocess.Popen[Any], dict[str, Any], _ExecutorBootstrapBroker]:
     """Spawn and prove the configured supervisor plus its actual daemon birth."""
@@ -1751,6 +1791,7 @@ def _spawn_configured_executor(
             board=board,
             paths=paths,
             supervisor_birth=supervisor_birth,
+            execution_route_policy=execution_route_policy,
         )
         broker.start()
         deadline = time.monotonic() + 60.0
@@ -2043,6 +2084,16 @@ def state_owner(
     executor_broker: _ExecutorBootstrapBroker | None = None
     if admit_task_execution:
         try:
+            from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+                TypedDatabaseTaskSource,
+            )
+
+            route_projection = TypedDatabaseTaskSource(owner_client)
+            execution_route_policy = (
+                route_projection.seal_execution_route_policy(
+                    _casf_mixed_execution_modes()
+                )
+            )
             (
                 executor_process,
                 executor_supervisor_birth,
@@ -2052,6 +2103,7 @@ def state_owner(
                 board=board,
                 paths=paths,
                 owner_identity=identity.to_dict(),
+                execution_route_policy=execution_route_policy,
                 implementation_command=implementation_command,
             )
         except BaseException:

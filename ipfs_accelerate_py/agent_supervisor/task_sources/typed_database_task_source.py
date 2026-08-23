@@ -35,6 +35,11 @@ from .database_task_source import (
 )
 from .intent_repository import IntentReceipt
 from .quack_state_client import QuackStateClient
+from .task_execution_route_policy import (
+    TaskExecutionRouteBinding,
+    TaskExecutionRoutePolicy,
+    task_execution_contract_cid,
+)
 
 TYPED_DATABASE_TASK_SOURCE_INTERFACE: Final = "TypedDatabaseTaskSource@1"
 TYPED_DATABASE_TASK_SOURCE_SCHEMA: Final = (
@@ -212,7 +217,14 @@ class TypedDatabaseTaskSource:
     INTERFACE: ClassVar[str] = TYPED_DATABASE_TASK_SOURCE_INTERFACE
     SCHEMA: ClassVar[str] = TYPED_DATABASE_TASK_SOURCE_SCHEMA
 
-    def __init__(self, client: QuackStateClient) -> None:
+    def __init__(
+        self,
+        client: QuackStateClient,
+        *,
+        execution_route_policy: TaskExecutionRoutePolicy
+        | Mapping[str, Any]
+        | None = None,
+    ) -> None:
         if not isinstance(client, QuackStateClient) or not client.attached:
             raise TaskSourceIntegrityError(
                 "typed database task source requires an attached QuackStateClient"
@@ -221,6 +233,15 @@ class TypedDatabaseTaskSource:
         self._closed = False
         self.path = Path("typed-state-owner")
         self.database_path = self.path
+        self._execution_route_policy = (
+            execution_route_policy
+            if isinstance(execution_route_policy, TaskExecutionRoutePolicy)
+            else TaskExecutionRoutePolicy.from_dict(execution_route_policy)
+            if execution_route_policy is not None
+            else None
+        )
+        if self._execution_route_policy is not None:
+            self._validate_execution_route_policy_population()
 
     def close(self) -> None:
         if not self._closed:
@@ -342,6 +363,122 @@ class TypedDatabaseTaskSource:
     def snapshot(self) -> TaskSourceSnapshot:
         row, records, revision = self._snapshot_material()
         return self._snapshot_from_material(row, records, revision)
+
+    @property
+    def execution_route_policy(self) -> TaskExecutionRoutePolicy | None:
+        """Return the immutable launch policy, never an ambient projection."""
+
+        return self._execution_route_policy
+
+    def seal_execution_route_policy(
+        self,
+        execution_modes: Mapping[str, str],
+    ) -> TaskExecutionRoutePolicy:
+        """Seal all current tasks and modes from one generation-stable read."""
+
+        row, records, revision = self._snapshot_material()
+        snapshot = self._snapshot_from_material(row, records, revision)
+        return TaskExecutionRoutePolicy.seal(
+            snapshot=snapshot,
+            tasks=tuple(record for record, _identity in records),
+            execution_modes=execution_modes,
+        )
+
+    def _validate_execution_route_policy_population(self) -> None:
+        policy = self._execution_route_policy
+        if policy is None:
+            return
+        row, records, revision = self._snapshot_material()
+        snapshot = self._snapshot_from_material(row, records, revision)
+        tasks = tuple(record for record, _identity in records)
+        entries = policy.entries_by_cid
+        if (
+            snapshot.plan_root_cid != policy.plan_root_cid
+            or snapshot.repository_tree_id != policy.repository_tree_id
+            or len(tasks) != len(entries)
+            or {task.task_cid for task in tasks} != set(entries)
+        ):
+            raise TaskSourceIntegrityError(
+                "launch execution route policy differs from current typed population"
+            )
+        for task in tasks:
+            entry = entries[task.task_cid]
+            if (
+                task.task_alias != entry.task_alias
+                or task.revision < entry.task_revision
+                or task_execution_contract_cid(task) != entry.task_contract_cid
+            ):
+                raise TaskSourceIntegrityError(
+                    "typed task changed after launch execution-route admission"
+                )
+
+    def _require_execution_route_plan_root(self) -> TaskExecutionRoutePolicy:
+        policy = self._execution_route_policy
+        if policy is None:
+            raise TaskSourceIntegrityError(
+                "typed executor has no launch execution route policy"
+            )
+        snapshot = self.snapshot()
+        if (
+            snapshot.plan_root_cid != policy.plan_root_cid
+            or snapshot.repository_tree_id != policy.repository_tree_id
+        ):
+            raise TaskSourceIntegrityError(
+                "typed task plan root changed after execution-route admission"
+            )
+        return policy
+
+    def execution_route_binding_for_task(
+        self,
+        task: TaskRecord,
+    ) -> Mapping[str, Any]:
+        """Bind one exact pre-claim task revision to the launch route policy."""
+
+        policy = self._require_execution_route_plan_root()
+        return MappingProxyType(policy.binding_for_task(task).to_dict())
+
+    def validate_execution_route_binding(
+        self,
+        value: Mapping[str, Any],
+        *,
+        task: TaskRecord,
+        allow_claim_revision: bool = False,
+    ) -> Mapping[str, Any]:
+        """Validate an attempt binding and its exact shared claim lineage."""
+
+        policy = self._require_execution_route_plan_root()
+        binding: TaskExecutionRouteBinding = policy.validate_binding(value)
+        if (
+            task.task_cid != binding.task_cid
+            or task.task_alias != binding.task_alias
+        ):
+            raise TaskSourceIntegrityError(
+                "attempt execution route differs from its authoritative task"
+            )
+        if task.revision == binding.task_revision:
+            return MappingProxyType(binding.to_dict())
+        if not allow_claim_revision or task.revision <= binding.task_revision:
+            raise TaskSourceIntegrityError(
+                "authoritative task revision differs from its execution route"
+            )
+        body = task.body if isinstance(task.body, Mapping) else {}
+        receipt = body.get("completion_receipt")
+        route = (
+            receipt.get("execution_route_binding")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        if (
+            not isinstance(receipt, Mapping)
+            or receipt.get("operation") != "database_claim"
+            or receipt.get("claimed_from_revision") != binding.task_revision
+            or not isinstance(route, Mapping)
+            or dict(route) != binding.to_dict()
+        ):
+            raise TaskSourceIntegrityError(
+                "advanced task revision has no exact execution-route claim receipt"
+            )
+        return MappingProxyType(binding.to_dict())
 
     def get_task(self, task_cid_or_alias: Any) -> TaskRecord | None:
         self._require_open()

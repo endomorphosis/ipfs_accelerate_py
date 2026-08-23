@@ -6536,10 +6536,56 @@ class DatabasePortalExecutionBridge:
         receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
         return receipt
 
+    def _execution_route_binding(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+    ) -> dict[str, Any]:
+        """Recover and validate the route fixed before the shared claim CAS."""
+
+        body = getattr(attempt, "body", None)
+        raw = (
+            body.get("execution_route_binding")
+            if isinstance(body, Mapping)
+            else None
+        )
+        policy = getattr(self.task_source, "execution_route_policy", None)
+        validate = getattr(
+            self.task_source,
+            "validate_execution_route_binding",
+            None,
+        )
+        if raw is None and policy is None:
+            return {}
+        if not isinstance(raw, Mapping) or not callable(validate):
+            raise DatabasePortalBridgeError(
+                "database attempt has no valid launch execution-route binding"
+            )
+        try:
+            validated = validate(
+                raw,
+                task=record,
+                allow_claim_revision=True,
+            )
+        except Exception as exc:
+            raise DatabasePortalBridgeError(
+                "database attempt execution-route binding is no longer authoritative"
+            ) from exc
+        if not isinstance(validated, Mapping) or not validated:
+            raise DatabasePortalBridgeError(
+                "database attempt execution-route validation returned no binding"
+            )
+        return dict(validated)
+
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
         record = self._record_for_attempt(self.task_source, attempt)
+        execution_route_binding = self._execution_route_binding(
+            attempt=attempt,
+            record=record,
+        )
         paths, binding = self._ensure_attempt_projection(attempt, record)
         self._initialize_validation_retry_seed(
             attempt=attempt,
@@ -6556,6 +6602,17 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "portal_factory did not return a Portal-compatible daemon"
             )
+        if execution_route_binding:
+            bind_route = getattr(
+                daemon,
+                "bind_launch_task_execution_route",
+                None,
+            )
+            if not callable(bind_route):
+                raise DatabasePortalBridgeError(
+                    "Portal daemon cannot bind the admitted task execution route"
+                )
+            bind_route(execution_route_binding)
         try:
             for _pass_index in range(self.max_passes):
                 projection = self._verify_projection(paths, binding)

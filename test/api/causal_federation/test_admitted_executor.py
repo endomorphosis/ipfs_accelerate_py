@@ -28,12 +28,19 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
+    TaskRecord,
+    TaskSourceSnapshot,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
     QuackStateClient,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+    DETERMINISTIC_ONLY_EXECUTION_MODE,
+    GROK_CODEX_EXECUTION_MODE,
+    TaskExecutionRoutePolicy,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
     TypedDatabaseTaskSource,
@@ -55,6 +62,56 @@ ROOT = Path(__file__).resolve().parents[3]
 OPERATOR_PATH = ROOT / "scripts/run_agent_supervisor_causal_event_federation.py"
 CONFIG = ROOT / "config/agent_supervisor_causal_event_federation_scheduler.json"
 CHILD = Path(__file__).with_name("executor_bootstrap_child.py")
+
+
+def _execution_route_policy(
+    *aliases: str,
+    deterministic_aliases: tuple[str, ...] = (),
+    plan_root_cid: str = "plan:test-execution-route",
+    repository_tree_id: str = "tree:test-execution-route",
+) -> TaskExecutionRoutePolicy:
+    tasks = tuple(
+        TaskRecord(
+            task_cid=f"task:test-route:{index}",
+            task_alias=alias,
+            goal_cid="goal:test-route",
+            plan_cid=plan_root_cid,
+            ordinal=index,
+            status="ready",
+            revision=1,
+        )
+        for index, alias in enumerate(aliases)
+    )
+    snapshot = TaskSourceSnapshot(
+        source_schema="test-task-source@1",
+        schema_version=1,
+        plan_root_cid=plan_root_cid,
+        repository_tree_id=repository_tree_id,
+        projection_cid="projection:test-execution-route",
+        formal_plan_id=plan_root_cid,
+        source_identity="source:test-execution-route",
+        revision=1,
+        event_cursor=0,
+        goal_count=1,
+        task_count=len(tasks),
+        dependency_count=0,
+        terminal=False,
+        objective_count=1,
+        plan_count=1,
+    )
+    deterministic = set(deterministic_aliases)
+    return TaskExecutionRoutePolicy.seal(
+        snapshot=snapshot,
+        tasks=tasks,
+        execution_modes={
+            task.task_alias: (
+                DETERMINISTIC_ONLY_EXECUTION_MODE
+                if task.task_alias in deterministic
+                else GROK_CODEX_EXECUTION_MODE
+            )
+            for task in tasks
+        },
+    )
 
 
 def _operator() -> ModuleType:
@@ -434,6 +491,7 @@ def test_executor_bootstrap_broker_stop_unblocks_an_accepted_peer(
             "executor_current": tmp_path / "current.json",
         },
         supervisor_birth=operator._process_birth(os.getpid()),
+        execution_route_policy=_execution_route_policy("CASF-BROKER-STOP"),
     )
     peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     broker.start()
@@ -584,6 +642,7 @@ def test_real_duckdb_owner_bootstrap_claim_restart_status_and_stop(
         board=board,
         paths=paths,
         supervisor_birth=supervisor_birth,
+        execution_route_policy=_execution_route_policy("CASF-E2E"),
     )
     revoked: list[str] = []
     original_revoke = server.revoke_typed_client_grant
@@ -897,6 +956,9 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
     )
     observer_client.attach(identity.listen_uri, server_id=identity.server_id)
     observer = TypedDatabaseTaskSource(observer_client)
+    managed_route_policy = observer.seal_execution_route_policy(
+        {"CASF-MANAGED": DETERMINISTIC_ONLY_EXECUTION_MODE}
+    )
     supervisor: subprocess.Popen[Any] | None = None
     supervisor_birth: Mapping[str, Any] | None = None
     broker: Any = None
@@ -907,6 +969,7 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
             board=managed_board,
             paths=paths,
             owner_identity=identity.to_dict(),
+            execution_route_policy=managed_route_policy,
             implementation_command="/usr/bin/true",
         )
         deadline = time.monotonic() + 120.0
