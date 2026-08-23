@@ -38,6 +38,7 @@ FEDERATION_OWNED_MODULES: Final[tuple[str, ...]] = (
     "retrieval_projection",
     "scheduler",
     "semantic_projection",
+    "sharding",
     "subscriptions",
     "supervisor_registry",
     "supervisor_runtime",
