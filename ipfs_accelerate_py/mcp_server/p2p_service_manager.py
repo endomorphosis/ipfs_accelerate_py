@@ -12,7 +12,9 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-_DEFAULT_QUEUE_PATH = os.path.join(os.path.expanduser("~"), ".cache", "ipfs_datasets_py", "task_queue.duckdb")
+_DEFAULT_QUEUE_PATH = os.path.join(
+    os.path.expanduser("~"), ".cache", "ipfs_datasets_py", "task_queue.duckdb"
+)
 
 
 @dataclass
@@ -83,9 +85,15 @@ class P2PServiceManager:
     def _apply_env(self) -> None:
         self._setdefault_env("IPFS_ACCELERATE_PY_TASK_QUEUE_PATH", self.queue_path)
         self._setdefault_env("IPFS_DATASETS_PY_TASK_QUEUE_PATH", self.queue_path)
-        self._setdefault_env("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS", "1" if self.enable_tools else "0")
-        self._setdefault_env("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE", "1" if self.enable_cache else "0")
-        self._setdefault_env("IPFS_DATASETS_PY_TASK_P2P_ENABLE_CACHE", "1" if self.enable_cache else "0")
+        self._setdefault_env(
+            "IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS", "1" if self.enable_tools else "0"
+        )
+        self._setdefault_env(
+            "IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE", "1" if self.enable_cache else "0"
+        )
+        self._setdefault_env(
+            "IPFS_DATASETS_PY_TASK_P2P_ENABLE_CACHE", "1" if self.enable_cache else "0"
+        )
         self._setdefault_env("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE", "1")
         self._setdefault_env("IPFS_DATASETS_PY_TASK_P2P_AUTH_MODE", self.auth_mode)
         self._setdefault_env("IPFS_ACCELERATE_PY_TASK_P2P_AUTH_MODE", self.auth_mode)
@@ -183,7 +191,11 @@ class P2PServiceManager:
             listen_port = st.get("listen_port") if isinstance(st.get("listen_port"), int) else None
             started_at = float(st.get("started_at") or 0.0)
         except Exception:
-            running = bool(getattr(self._runtime, "running", False)) if self._runtime is not None else False
+            running = (
+                bool(getattr(self._runtime, "running", False))
+                if self._runtime is not None
+                else False
+            )
             started_at = time.time() if running else 0.0
 
         connected_peers = 0
@@ -200,7 +212,9 @@ class P2PServiceManager:
             peer_id=peer_id,
             listen_port=listen_port,
             started_at=started_at,
-            last_error=str(getattr(self._runtime, "last_error", "") or "") if self._runtime is not None else "",
+            last_error=str(getattr(self._runtime, "last_error", "") or "")
+            if self._runtime is not None
+            else "",
             workflow_scheduler_available=self._workflow_scheduler is not None,
             peer_registry_available=self._peer_registry is not None,
             bootstrap_available=self._peer_bootstrap is not None,

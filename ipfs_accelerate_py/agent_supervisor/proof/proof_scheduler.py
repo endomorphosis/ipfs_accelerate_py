@@ -70,9 +70,7 @@ from ..runtime.resource_scheduler import (
 )
 
 
-PROOF_SCHEDULER_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/proof-scheduler-state@1"
-)
+PROOF_SCHEDULER_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/proof-scheduler-state@1"
 DEFAULT_PROOF_LEASE_SECONDS: Final = 300
 DEFAULT_POLL_INTERVAL_SECONDS: Final = 0.02
 # Opt-in validation-pipeline ordering.  A phase is a barrier, while stages in
@@ -88,9 +86,7 @@ STAGED_PROOF_PHASES: Final[tuple[tuple[ProofStage, ...], ...]] = (
     (ProofStage.PERSIST,),
 )
 _STAGED_PROOF_PHASE_BY_STAGE: Final = {
-    stage: phase
-    for phase, stages in enumerate(STAGED_PROOF_PHASES)
-    for stage in stages
+    stage: phase for phase, stages in enumerate(STAGED_PROOF_PHASES) for stage in stages
 }
 
 
@@ -206,22 +202,16 @@ class ProofSchedulerConfig:
             raise ValueError("poll_interval_seconds must be positive")
         if not isinstance(self.stage_barriers, bool):
             raise ValueError("stage_barriers must be a boolean")
-        if self.staged_execution is not None and not isinstance(
-            self.staged_execution, bool
-        ):
+        if self.staged_execution is not None and not isinstance(self.staged_execution, bool):
             raise ValueError("staged_execution must be a boolean or None")
         if (
             self.staged_execution is not None
             and self.stage_barriers
             and self.staged_execution is not self.stage_barriers
         ):
-            raise ValueError(
-                "stage_barriers and staged_execution must not conflict"
-            )
+            raise ValueError("stage_barriers and staged_execution must not conflict")
         resolved_stage_barriers = (
-            self.stage_barriers
-            if self.staged_execution is None
-            else self.staged_execution
+            self.stage_barriers if self.staged_execution is None else self.staged_execution
         )
         object.__setattr__(self, "stage_barriers", resolved_stage_barriers)
         object.__setattr__(self, "staged_execution", resolved_stage_barriers)
@@ -535,9 +525,7 @@ class ProofScheduleResult:
     @property
     def authoritative_receipts(self) -> tuple[ProofReceipt, ...]:
         return tuple(
-            receipt
-            for receipt in self.receipts
-            if receipt.authoritative_verdict.conclusive
+            receipt for receipt in self.receipts if receipt.authoritative_verdict.conclusive
         )
 
     @property
@@ -673,9 +661,7 @@ class _ProofStateStore:
                 "SELECT plan_json FROM proof_plans WHERE plan_id=?", (plan.plan_id,)
             ).fetchone()
             if row is not None and str(row["plan_json"]) != encoded:
-                raise ContractValidationError(
-                    "durable proof plan identity has conflicting content"
-                )
+                raise ContractValidationError("durable proof plan identity has conflicting content")
             connection.execute(
                 "INSERT OR IGNORE INTO proof_plans(plan_id, plan_json, created_at_ms) "
                 "VALUES (?, ?, ?)",
@@ -775,9 +761,7 @@ class _ProofStateStore:
         finally:
             connection.close()
 
-    def update_nodes(
-        self, plan_id: str, updates: Mapping[str, tuple[ProofNodeState, str]]
-    ) -> None:
+    def update_nodes(self, plan_id: str, updates: Mapping[str, tuple[ProofNodeState, str]]) -> None:
         if not updates:
             return
         connection = self.connect()
@@ -873,34 +857,36 @@ class _ProofStateStore:
             ).fetchall()
             by_id = {item.step_id: item for item in plan.steps}
             active_definitions = [
-                by_id[str(row["step_id"])]
-                for row in active_steps
-                if str(row["step_id"]) in by_id
+                by_id[str(row["step_id"])] for row in active_steps if str(row["step_id"]) in by_id
             ]
             stage_limit = stage_limits.get(step.stage.value)
-            if stage_limit is not None and sum(
-                item.stage is step.stage for item in active_definitions
-            ) >= stage_limit:
+            if (
+                stage_limit is not None
+                and sum(item.stage is step.stage for item in active_definitions) >= stage_limit
+            ):
                 connection.rollback()
                 return None
             resource_limit = resource_limits.get(step.resource_class)
-            if step.resource_class and resource_limit is not None and sum(
-                item.resource_class == step.resource_class for item in active_definitions
-            ) >= resource_limit:
+            if (
+                step.resource_class
+                and resource_limit is not None
+                and sum(item.resource_class == step.resource_class for item in active_definitions)
+                >= resource_limit
+            ):
                 connection.rollback()
                 return None
-            normalized_class = normalize_resource_class(
-                step.resource_class, stage=step.stage
-            )
+            normalized_class = normalize_resource_class(step.resource_class, stage=step.stage)
             pool = resource_pool(normalized_class)
             pool_limit = pool_limits.get(pool)
-            if pool_limit is not None and sum(
-                resource_pool(
-                    normalize_resource_class(item.resource_class, stage=item.stage)
+            if (
+                pool_limit is not None
+                and sum(
+                    resource_pool(normalize_resource_class(item.resource_class, stage=item.stage))
+                    == pool
+                    for item in active_definitions
                 )
-                == pool
-                for item in active_definitions
-            ) >= pool_limit:
+                >= pool_limit
+            ):
                 connection.rollback()
                 return None
 
@@ -954,9 +940,7 @@ class _ProofStateStore:
         finally:
             connection.close()
 
-    def heartbeat(
-        self, plan_id: str, lease: _Lease, lease_seconds: int
-    ) -> bool:
+    def heartbeat(self, plan_id: str, lease: _Lease, lease_seconds: int) -> bool:
         connection = self.connect()
         now = self._now_ms()
         try:
@@ -1034,7 +1018,9 @@ class _ProofStateStore:
         finally:
             connection.close()
 
-    def attempts(self, plan_id: str, step_ids: Sequence[str] | None = None) -> tuple[ProofAttempt, ...]:
+    def attempts(
+        self, plan_id: str, step_ids: Sequence[str] | None = None
+    ) -> tuple[ProofAttempt, ...]:
         connection = self.connect()
         try:
             if step_ids is None:
@@ -1054,11 +1040,11 @@ class _ProofStateStore:
                 ).fetchall()
         finally:
             connection.close()
-        return tuple(
-            ProofAttempt.from_dict(json.loads(str(row["attempt_json"]))) for row in rows
-        )
+        return tuple(ProofAttempt.from_dict(json.loads(str(row["attempt_json"]))) for row in rows)
 
-    def receipts(self, plan_id: str, obligation_ids: Sequence[str] | None = None) -> tuple[ProofReceipt, ...]:
+    def receipts(
+        self, plan_id: str, obligation_ids: Sequence[str] | None = None
+    ) -> tuple[ProofReceipt, ...]:
         connection = self.connect()
         try:
             if obligation_ids is None:
@@ -1078,11 +1064,11 @@ class _ProofStateStore:
                 ).fetchall()
         finally:
             connection.close()
-        return tuple(
-            ProofReceipt.from_dict(json.loads(str(row["receipt_json"]))) for row in rows
-        )
+        return tuple(ProofReceipt.from_dict(json.loads(str(row["receipt_json"]))) for row in rows)
 
-    def store_receipt(self, plan: ProofPlan, step: ProofPlanStep, receipt: ProofReceipt) -> ProofReceipt:
+    def store_receipt(
+        self, plan: ProofPlan, step: ProofPlanStep, receipt: ProofReceipt
+    ) -> ProofReceipt:
         if receipt.plan_id != plan.plan_id:
             raise ContractValidationError("receipt plan_id does not match scheduled plan")
         if receipt.repository_tree_id != plan.repository_tree_id:
@@ -1090,9 +1076,7 @@ class _ProofStateStore:
                 "receipt repository_tree_id does not match scheduled plan"
             )
         if receipt.obligation_id != step.obligation_id:
-            raise ContractValidationError(
-                "receipt obligation_id does not match scheduled step"
-            )
+            raise ContractValidationError("receipt obligation_id does not match scheduled step")
         authoritative = receipt.authoritative_verdict.conclusive
         connection = self.connect()
         now = self._now_ms()
@@ -1153,17 +1137,13 @@ class _ProofStateStore:
 
         for receipt in receipts:
             if receipt.plan_id != plan.plan_id:
-                raise ContractValidationError(
-                    "receipt plan_id does not match scheduled plan"
-                )
+                raise ContractValidationError("receipt plan_id does not match scheduled plan")
             if receipt.repository_tree_id != plan.repository_tree_id:
                 raise ContractValidationError(
                     "receipt repository_tree_id does not match scheduled plan"
                 )
             if receipt.obligation_id != step.obligation_id:
-                raise ContractValidationError(
-                    "receipt obligation_id does not match scheduled step"
-                )
+                raise ContractValidationError("receipt obligation_id does not match scheduled step")
 
         connection = self.connect()
         now = self._now_ms()
@@ -1215,9 +1195,7 @@ class _ProofStateStore:
             # A cancellation request fences publication as well as the node
             # transition.  The attempt remains in the audit log, but its
             # receipts cannot become authoritative after cancellation.
-            publishable_receipts = (
-                receipts if actual_state is not ProofNodeState.CANCELLED else ()
-            )
+            publishable_receipts = receipts if actual_state is not ProofNodeState.CANCELLED else ()
             for receipt in publishable_receipts:
                 authoritative = receipt.authoritative_verdict.conclusive
                 existing = None
@@ -1230,11 +1208,7 @@ class _ProofStateStore:
                         (plan.plan_id, receipt.obligation_id),
                     ).fetchone()
                 if existing is not None:
-                    stored.append(
-                        ProofReceipt.from_dict(
-                            json.loads(str(existing["receipt_json"]))
-                        )
-                    )
+                    stored.append(ProofReceipt.from_dict(json.loads(str(existing["receipt_json"]))))
                     continue
                 connection.execute(
                     """
@@ -1324,8 +1298,7 @@ class _ProofStateStore:
                 connection.rollback()
                 return False
             node = connection.execute(
-                "SELECT cancellation_requested FROM proof_nodes "
-                "WHERE plan_id=? AND step_id=?",
+                "SELECT cancellation_requested FROM proof_nodes WHERE plan_id=? AND step_id=?",
                 (plan_id, lease.step_id),
             ).fetchone()
             if node is not None and bool(node["cancellation_requested"]):
@@ -1457,14 +1430,9 @@ class _ProofStateStore:
                 acquired_at_ms=int(row["acquired_at_ms"]),
                 heartbeat_at_ms=int(row["heartbeat_at_ms"]),
                 expires_at_ms=int(row["expires_at_ms"]),
-                active=(
-                    row["released_at_ms"] is None
-                    and int(row["expires_at_ms"]) > now
-                ),
+                active=(row["released_at_ms"] is None and int(row["expires_at_ms"]) > now),
                 released_at_ms=(
-                    int(row["released_at_ms"])
-                    if row["released_at_ms"] is not None
-                    else 0
+                    int(row["released_at_ms"]) if row["released_at_ms"] is not None else 0
                 ),
                 release_reason=str(row["release_reason"] or ""),
             )
@@ -1498,8 +1466,14 @@ class ProofScheduler:
         resource_scheduler: ResourceScheduler | None = None,
         resource_policy: ResourcePolicy | Mapping[str, Any] | None = None,
         resource_lease_budget: ResourceLeaseBudget | None = None,
-        host_resource_source: Callable[..., Any] | HostResourceSnapshot | Mapping[str, Any] | None = None,
-        provider_capacity_source: Callable[..., Any] | Mapping[str, Any] | Sequence[Any] | None = None,
+        host_resource_source: Callable[..., Any]
+        | HostResourceSnapshot
+        | Mapping[str, Any]
+        | None = None,
+        provider_capacity_source: Callable[..., Any]
+        | Mapping[str, Any]
+        | Sequence[Any]
+        | None = None,
         owner_id: str = "",
         clock: Callable[[], float] = time.time,
     ) -> None:
@@ -1514,21 +1488,13 @@ class ProofScheduler:
             self._store.register_plan(self.plan)
 
         barrier_aliases = tuple(
-            value
-            for value in (stage_barriers, staged_execution, staged)
-            if value is not None
+            value for value in (stage_barriers, staged_execution, staged) if value is not None
         )
         if any(not isinstance(value, bool) for value in barrier_aliases):
-            raise ValueError(
-                "stage_barriers, staged_execution, and staged must be booleans"
-            )
+            raise ValueError("stage_barriers, staged_execution, and staged must be booleans")
         if len(set(barrier_aliases)) > 1:
-            raise ValueError(
-                "stage_barriers, staged_execution, and staged must not conflict"
-            )
-        requested_stage_barriers = (
-            barrier_aliases[0] if barrier_aliases else None
-        )
+            raise ValueError("stage_barriers, staged_execution, and staged must not conflict")
+        requested_stage_barriers = barrier_aliases[0] if barrier_aliases else None
         if config is not None and any(
             value is not None
             for value in (
@@ -1545,23 +1511,15 @@ class ProofScheduler:
             raise ValueError("config cannot be combined with individual scheduler limits")
         self.config = config or ProofSchedulerConfig(
             max_parallel=0 if max_parallel is None else max_parallel,
-            lease_seconds=(
-                DEFAULT_PROOF_LEASE_SECONDS if lease_seconds is None else lease_seconds
-            ),
+            lease_seconds=(DEFAULT_PROOF_LEASE_SECONDS if lease_seconds is None else lease_seconds),
             stage_limits=stage_limits or {},
             resource_limits=resource_limits or {},
             max_cpu_proof_concurrency=(
-                0
-                if max_cpu_proof_concurrency is None
-                else max_cpu_proof_concurrency
+                0 if max_cpu_proof_concurrency is None else max_cpu_proof_concurrency
             ),
-            max_model_concurrency=(
-                0 if max_model_concurrency is None else max_model_concurrency
-            ),
+            max_model_concurrency=(0 if max_model_concurrency is None else max_model_concurrency),
             max_artifact_concurrency=(
-                0
-                if max_artifact_concurrency is None
-                else max_artifact_concurrency
+                0 if max_artifact_concurrency is None else max_artifact_concurrency
             ),
             stage_barriers=bool(requested_stage_barriers),
         )
@@ -1573,9 +1531,7 @@ class ProofScheduler:
             # constrain but never expand it.
             self.max_parallel = self.plan.max_parallel
         if resource_scheduler is not None and resource_policy is not None:
-            raise ValueError(
-                "resource_scheduler cannot be combined with resource_policy"
-            )
+            raise ValueError("resource_scheduler cannot be combined with resource_policy")
         self._implicit_resource_admission = (
             resource_scheduler is None
             and resource_policy is None
@@ -1605,9 +1561,7 @@ class ProofScheduler:
             or self.max_parallel
         )
         model_limit = (
-            self.config.max_model_concurrency
-            or policy.max_model_concurrency
-            or self.max_parallel
+            self.config.max_model_concurrency or policy.max_model_concurrency or self.max_parallel
         )
         artifact_limit = (
             self.config.max_artifact_concurrency
@@ -1714,11 +1668,7 @@ class ProofScheduler:
         for source in sources:
             for name in names:
                 value = source.get(name)
-                if (
-                    isinstance(value, int)
-                    and not isinstance(value, bool)
-                    and value >= 0
-                ):
+                if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
                     return value
         return default
 
@@ -1753,9 +1703,7 @@ class ProofScheduler:
             "token_budget",
             "model_token_limit",
             "max_new_tokens",
-            default=(
-                self.plan.resource_budget.model_token_limit if model_work else 0
-            ),
+            default=(self.plan.resource_budget.model_token_limit if model_work else 0),
         )
         quota_units = self._positive_metadata_int(
             metadata,
@@ -1767,19 +1715,11 @@ class ProofScheduler:
         capabilities = metadata.get("required_capabilities", ())
         if isinstance(capabilities, str):
             required_capabilities = tuple(
-                item.strip().lower()
-                for item in capabilities.split(",")
-                if item.strip()
+                item.strip().lower() for item in capabilities.split(",") if item.strip()
             )
         elif isinstance(capabilities, Sequence):
             required_capabilities = tuple(
-                sorted(
-                    {
-                        str(item).strip().lower()
-                        for item in capabilities
-                        if str(item).strip()
-                    }
-                )
+                sorted({str(item).strip().lower() for item in capabilities if str(item).strip()})
             )
         else:
             required_capabilities = ()
@@ -1788,9 +1728,7 @@ class ProofScheduler:
                 sorted(
                     set(required_capabilities)
                     | {
-                        item
-                        if item.startswith(("llm:", "host:"))
-                        else f"llm:{item}"
+                        item if item.startswith(("llm:", "host:")) else f"llm:{item}"
                         for item in required_capabilities
                     }
                 )
@@ -1860,9 +1798,7 @@ class ProofScheduler:
                 worker_limit=self.max_parallel,
                 available_worker_capacity=self.max_parallel,
             )
-        providers = self._read_capacity_source(
-            self._provider_capacity_source, step
-        )
+        providers = self._read_capacity_source(self._provider_capacity_source, step)
         decision, lease = self.resource_scheduler.acquire(
             self.resource_requirement(step),
             budget=self.resource_lease_budget,
@@ -1900,8 +1836,7 @@ class ProofScheduler:
         else:
             values = stages
         normalized = frozenset(
-            value if isinstance(value, ProofStage) else ProofStage(str(value))
-            for value in values
+            value if isinstance(value, ProofStage) else ProofStage(str(value)) for value in values
         )
         if not normalized:
             raise ValueError("stages must contain at least one proof stage")
@@ -1938,8 +1873,7 @@ class ProofScheduler:
         phases = [
             self.proof_phase(by_id[node.step_id].stage)
             for node in snapshot.nodes
-            if not node.state.terminal
-            and (stages is None or by_id[node.step_id].stage in stages)
+            if not node.state.terminal and (stages is None or by_id[node.step_id].stage in stages)
         ]
         return min(phases) if phases else None
 
@@ -1950,9 +1884,7 @@ class ProofScheduler:
     ) -> bool:
         by_id = {step.step_id: step for step in self.plan.steps}
         return all(
-            node.state.terminal
-            for node in snapshot.nodes
-            if by_id[node.step_id].stage in stages
+            node.state.terminal for node in snapshot.nodes if by_id[node.step_id].stage in stages
         )
 
     def priorities(self) -> dict[str, ProofStepPriority]:
@@ -2000,7 +1932,8 @@ class ProofScheduler:
                         updates[step_id] = (ProofNodeState.READY, "")
                     elif all(item.terminal for item in dependency_states):
                         unsupported = all(
-                            item in {
+                            item
+                            in {
                                 ProofNodeState.UNSUPPORTED,
                                 ProofNodeState.BLOCKED,
                                 ProofNodeState.CANCELLED,
@@ -2008,9 +1941,7 @@ class ProofScheduler:
                             for item in dependency_states
                         )
                         updates[step_id] = (
-                            ProofNodeState.UNSUPPORTED
-                            if unsupported
-                            else ProofNodeState.BLOCKED,
+                            ProofNodeState.UNSUPPORTED if unsupported else ProofNodeState.BLOCKED,
                             "no_dependency_alternative_succeeded",
                         )
                 elif all(item.dependency_satisfied for item in dependency_states):
@@ -2034,16 +1965,10 @@ class ProofScheduler:
                         )
                         reason = "unsupported_dependency:" if unsupported else "blocked_dependency:"
                         updates[step_id] = (
-                            ProofNodeState.UNSUPPORTED
-                            if unsupported
-                            else ProofNodeState.BLOCKED,
+                            ProofNodeState.UNSUPPORTED if unsupported else ProofNodeState.BLOCKED,
                             reason + ",".join(item for item, _ in failed),
                         )
-            changed = {
-                key: value
-                for key, value in updates.items()
-                if states.get(key) != value[0]
-            }
+            changed = {key: value for key, value in updates.items() if states.get(key) != value[0]}
             if not changed:
                 break
             self._store.update_nodes(self.plan.plan_id, changed)
@@ -2065,23 +1990,15 @@ class ProofScheduler:
             ScheduledProofStep(by_id[step_id], priorities[step_id])
             for step_id, state in states.items()
             if state is ProofNodeState.READY
-            and (
-                selected_stages is None
-                or by_id[step_id].stage in selected_stages
-            )
-            and (
-                phase is None
-                or self.proof_phase(by_id[step_id].stage) == phase
-            )
+            and (selected_stages is None or by_id[step_id].stage in selected_stages)
+            and (phase is None or self.proof_phase(by_id[step_id].stage) == phase)
         ]
         return tuple(sorted(ready, key=lambda item: item.priority.sort_key))
 
     def snapshot(self) -> ProofScheduleSnapshot:
         rows = self._store.node_rows(self.plan.plan_id)
         leases = self._store.lease_snapshots(self.plan.plan_id)
-        active_leases = {
-            lease.step_id: lease for lease in leases if lease.active
-        }
+        active_leases = {lease.step_id: lease for lease in leases if lease.active}
         steps = {step.step_id: step for step in self.plan.steps}
         nodes = tuple(
             ProofNodeSnapshot(
@@ -2139,10 +2056,7 @@ class ProofScheduler:
             if selected_stages is None:
                 self._cancelled = True
             for step_id, token in self._tokens.items():
-                if (
-                    selected_stages is None
-                    or by_id[step_id].stage in selected_stages
-                ):
+                if selected_stages is None or by_id[step_id].stage in selected_stages:
                     token.cancel()
         states = self._state_map()
         return self._store.cancel_steps(
@@ -2151,17 +2065,16 @@ class ProofScheduler:
                 step_id
                 for step_id, state in states.items()
                 if not state.terminal
-                and (
-                    selected_stages is None
-                    or by_id[step_id].stage in selected_stages
-                )
+                and (selected_stages is None or by_id[step_id].stage in selected_stages)
             ],
             reason_code,
         )
 
     request_cancel = cancel
 
-    def _dependency_context(self, step: ProofPlanStep) -> tuple[tuple[ProofAttempt, ...], tuple[ProofReceipt, ...]]:
+    def _dependency_context(
+        self, step: ProofPlanStep
+    ) -> tuple[tuple[ProofAttempt, ...], tuple[ProofReceipt, ...]]:
         return (
             self._store.attempts(self.plan.plan_id, step.depends_on),
             self._store.receipts(
@@ -2269,9 +2182,7 @@ class ProofScheduler:
                 attempt.status if attempt is not None else AttemptStatus.SUCCEEDED,
             )
             if not isinstance(raw_status, AttemptStatus):
-                status_text = str(
-                    getattr(raw_status, "value", raw_status)
-                ).strip().lower()
+                status_text = str(getattr(raw_status, "value", raw_status)).strip().lower()
                 aliases = {
                     "accepted": AttemptStatus.SUCCEEDED,
                     "candidate": AttemptStatus.SUCCEEDED,
@@ -2289,9 +2200,7 @@ class ProofScheduler:
                 raw_status = aliases.get(status_text, status_text)
             if "returncode" in value and int(value.get("returncode") or 0) != 0:
                 raw_status = (
-                    AttemptStatus.TIMED_OUT
-                    if value.get("timed_out")
-                    else AttemptStatus.FAILED
+                    AttemptStatus.TIMED_OUT if value.get("timed_out") else AttemptStatus.FAILED
                 )
             raw_output_ids = value.get("output_ids") or ()
             output_ids = (
@@ -2367,9 +2276,7 @@ class ProofScheduler:
         if result.attempt is not None:
             attempt = result.attempt
             if not attempt.status.terminal:
-                raise ContractValidationError(
-                    "executor attempt must have a terminal status"
-                )
+                raise ContractValidationError("executor attempt must have a terminal status")
             if attempt.status is not result.status:
                 raise ContractValidationError(
                     "executor attempt status does not match step result status"
@@ -2463,9 +2370,7 @@ class ProofScheduler:
             if isinstance(exc, (KeyboardInterrupt, SystemExit)):
                 raise
             failure_code = exc.code if isinstance(exc, ProofProviderError) else None
-            cancelled = (
-                token.cancelled or failure_code is ProviderFailureCode.CANCELLED
-            )
+            cancelled = token.cancelled or failure_code is ProviderFailureCode.CANCELLED
             if cancelled:
                 status = AttemptStatus.CANCELLED
             elif failure_code in {
@@ -2594,9 +2499,7 @@ class ProofScheduler:
                 self._sync_cancellation_tokens()
                 snapshot = self.snapshot()
                 if selected_stages is not None:
-                    selected_complete = self._selected_nodes_complete(
-                        snapshot, selected_stages
-                    )
+                    selected_complete = self._selected_nodes_complete(snapshot, selected_stages)
                     if selected_complete and not futures:
                         break
                 elif snapshot.complete and not futures:
@@ -2611,9 +2514,7 @@ class ProofScheduler:
                     continue
 
                 eligible_phase = (
-                    self._eligible_phase(snapshot, selected_stages)
-                    if enforce_barriers
-                    else None
+                    self._eligible_phase(snapshot, selected_stages) if enforce_barriers else None
                 )
                 if selected_stages is not None and eligible_phase is not None:
                     by_id = {step.step_id: step for step in self.plan.steps}
@@ -2622,14 +2523,12 @@ class ProofScheduler:
                         for node in snapshot.nodes
                         if not node.state.terminal
                         and by_id[node.step_id].stage not in selected_stages
-                        and self.proof_phase(by_id[node.step_id].stage)
-                        < eligible_phase
+                        and self.proof_phase(by_id[node.step_id].stage) < eligible_phase
                     ]
                     if unfinished_prerequisites and not futures:
                         raise ContractValidationError(
                             "selected proof stages cannot run before unfinished "
-                            "earlier phases: "
-                            + ", ".join(sorted(unfinished_prerequisites))
+                            "earlier phases: " + ", ".join(sorted(unfinished_prerequisites))
                         )
 
                 ready = self.ready_steps(
@@ -2649,9 +2548,7 @@ class ProofScheduler:
                     )
                     refreshed_ready = self.ready_steps(
                         selected_stages,
-                        phase=(
-                            refreshed_phase if enforce_barriers else None
-                        ),
+                        phase=(refreshed_phase if enforce_barriers else None),
                     )
                     if refreshed_ready:
                         continue
@@ -2660,17 +2557,13 @@ class ProofScheduler:
                         for node in refreshed.nodes
                         if not node.state.terminal
                         and next(
-                            step.stage
-                            for step in self.plan.steps
-                            if step.step_id == node.step_id
+                            step.stage for step in self.plan.steps if step.step_id == node.step_id
                         )
                         in selected_stages
                     ]
                     if selected_unfinished and (
                         refreshed.active_leases > 0
-                        or self._store.active_lease_count(
-                            self.plan.plan_id
-                        ) > 0
+                        or self._store.active_lease_count(self.plan.plan_id) > 0
                         or any(
                             node.state is ProofNodeState.RUNNING
                             and node.step_id in selected_unfinished
@@ -2682,8 +2575,7 @@ class ProofScheduler:
                     if selected_unfinished:
                         raise ContractValidationError(
                             "selected proof stages made no progress; unfinished "
-                            "nodes are not ready: "
-                            + ", ".join(sorted(selected_unfinished))
+                            "nodes are not ready: " + ", ".join(sorted(selected_unfinished))
                         )
 
                 admitted: list[
@@ -2702,24 +2594,24 @@ class ProofScheduler:
                             break
                     running_steps = [
                         running_step
-                        for running_step, _lease, _token, _resource_lease
-                        in futures.values()
+                        for running_step, _lease, _token, _resource_lease in futures.values()
                     ] + [item[0] for item in admitted]
-                    stage_limit = self.config.stage_limits.get(
-                        scheduled.step.stage.value
-                    )
-                    if stage_limit is not None and sum(
-                        item.stage is scheduled.step.stage
-                        for item in running_steps
-                    ) >= stage_limit:
+                    stage_limit = self.config.stage_limits.get(scheduled.step.stage.value)
+                    if (
+                        stage_limit is not None
+                        and sum(item.stage is scheduled.step.stage for item in running_steps)
+                        >= stage_limit
+                    ):
                         continue
-                    class_limit = self.config.resource_limits.get(
-                        scheduled.step.resource_class
-                    )
-                    if class_limit is not None and sum(
-                        item.resource_class == scheduled.step.resource_class
-                        for item in running_steps
-                    ) >= class_limit:
+                    class_limit = self.config.resource_limits.get(scheduled.step.resource_class)
+                    if (
+                        class_limit is not None
+                        and sum(
+                            item.resource_class == scheduled.step.resource_class
+                            for item in running_steps
+                        )
+                        >= class_limit
+                    ):
                         continue
                     scheduled_pool = resource_pool(
                         normalize_resource_class(
@@ -2727,20 +2619,21 @@ class ProofScheduler:
                             stage=scheduled.step.stage,
                         )
                     )
-                    if sum(
-                        resource_pool(
-                            normalize_resource_class(
-                                item.resource_class,
-                                stage=item.stage,
+                    if (
+                        sum(
+                            resource_pool(
+                                normalize_resource_class(
+                                    item.resource_class,
+                                    stage=item.stage,
+                                )
                             )
+                            == scheduled_pool
+                            for item in running_steps
                         )
-                        == scheduled_pool
-                        for item in running_steps
-                    ) >= self._pool_limits[scheduled_pool]:
+                        >= self._pool_limits[scheduled_pool]
+                    ):
                         continue
-                    _decision, resource_lease = self._acquire_resource(
-                        scheduled.step
-                    )
+                    _decision, resource_lease = self._acquire_resource(scheduled.step)
                     if resource_lease is None:
                         continue
                     lease = self._store.claim(
@@ -2752,9 +2645,7 @@ class ProofScheduler:
                         stage_limits=self.config.stage_limits,
                         resource_limits=self.config.resource_limits,
                         pool_limits=self._pool_limits,
-                        stage_barrier_phase=(
-                            eligible_phase if enforce_barriers else None
-                        ),
+                        stage_barrier_phase=(eligible_phase if enforce_barriers else None),
                     )
                     if lease is None:
                         self.resource_scheduler.release(resource_lease)
@@ -2762,9 +2653,7 @@ class ProofScheduler:
                     token = CancellationToken()
                     with self._cancel_lock:
                         self._tokens[scheduled.step_id] = token
-                    admitted.append(
-                        (scheduled.step, lease, token, resource_lease)
-                    )
+                    admitted.append((scheduled.step, lease, token, resource_lease))
 
                 # Claim the whole ready batch before callbacks can finish and
                 # release their leases. This keeps short independent proof
@@ -2833,9 +2722,7 @@ class ProofScheduler:
                     )
 
                 for future, (_, lease, _, _) in tuple(futures.items()):
-                    self._store.heartbeat(
-                        self.plan.plan_id, lease, self.config.lease_seconds
-                    )
+                    self._store.heartbeat(self.plan.plan_id, lease, self.config.lease_seconds)
 
                 if futures:
                     completed, _ = wait(

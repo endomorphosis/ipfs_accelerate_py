@@ -177,11 +177,8 @@ api_testing = APIDistributedTesting(coordinator_url="http://coordinator-host:555
 test_id = api_testing.run_distributed_test(
     api_type="openai",
     test_type="latency",
-    parameters={
-        "messages": [{"role": "user", "content": "Hello, world!"}],
-        "iterations": 10
-    },
-    num_workers=2
+    parameters={"messages": [{"role": "user", "content": "Hello, world!"}], "iterations": 10},
+    num_workers=2,
 )
 
 # Wait for and get results
@@ -200,8 +197,8 @@ comparison_id = api_testing.compare_apis(
     parameters={
         "messages": [{"role": "user", "content": "Hello, world!"}],
         "duration": 10,
-        "concurrent_requests": 5
-    }
+        "concurrent_requests": 5,
+    },
 )
 
 # Get comparison results
@@ -304,23 +301,17 @@ The framework can integrate with external monitoring systems:
 ```python
 # Configure notification rules
 notification_config = {
-    "email": {
-        "enabled": True,
-        "recipients": ["alerts@example.com"],
-        "min_severity": "MEDIUM"
-    },
+    "email": {"enabled": True, "recipients": ["alerts@example.com"], "min_severity": "MEDIUM"},
     "slack": {
         "enabled": True,
         "webhook_url": "https://hooks.slack.com/services/...",
         "channel": "#api-alerts",
-        "min_severity": "HIGH"
-    }
+        "min_severity": "HIGH",
+    },
 }
 
 # Start coordinator with notifications
-coordinator = APICoordinatorServer(
-    notification_config=notification_config
-)
+coordinator = APICoordinatorServer(notification_config=notification_config)
 ```
 
 ## FAQ

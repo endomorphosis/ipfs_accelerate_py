@@ -53,8 +53,11 @@ pip install --upgrade transformers g2p-en
 2. Run inference via the Transformers modelling code with the model and hifigan separately
 
 ```python
-
-from transformers import FastSpeech2ConformerTokenizer, FastSpeech2ConformerModel, FastSpeech2ConformerHifiGan
+from transformers import (
+    FastSpeech2ConformerTokenizer,
+    FastSpeech2ConformerModel,
+    FastSpeech2ConformerHifiGan,
+)
 import soundfile as sf
 
 tokenizer = FastSpeech2ConformerTokenizer.from_pretrained("espnet/fastspeech2_conformer")

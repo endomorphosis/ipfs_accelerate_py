@@ -125,6 +125,7 @@ Example CUDA initialization:
 def init_cuda(self):
     """Initialize for CUDA platform."""
     import torch
+
     self.platform = "CUDA"
     self.device = "cuda" if torch.cuda.is_available() else "cpu"
     if self.device != "cuda":
@@ -162,8 +163,11 @@ Example MPS initialization:
 def init_mps(self):
     """Initialize for MPS platform."""
     import torch
+
     self.platform = "MPS"
-    self.device = "mps" if hasattr(torch.backends, "mps") and torch.backends.mps.is_available() else "cpu"
+    self.device = (
+        "mps" if hasattr(torch.backends, "mps") and torch.backends.mps.is_available() else "cpu"
+    )
     if self.device != "mps":
         print("MPS not available, falling back to CPU")
     return True
@@ -178,6 +182,7 @@ Example ROCm initialization:
 def init_rocm(self):
     """Initialize for ROCM platform."""
     import torch
+
     self.platform = "ROCM"
     self.device = "cuda" if torch.cuda.is_available() and hasattr(torch.version, "hip") else "cpu"
     if self.device != "cuda":

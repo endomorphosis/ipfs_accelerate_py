@@ -174,11 +174,29 @@ class GitGarbageCollector:
     repo_root: Path
     state_path: Path | None = None
     worktree_root: Path | None = None
-    gc_interval: float = field(default_factory=lambda: float(os.environ.get(_GC_INTERVAL_ENV, str(DEFAULT_GC_INTERVAL))))
-    aggressive_interval: float = field(default_factory=lambda: float(os.environ.get(_GC_AGGRESSIVE_INTERVAL_ENV, str(DEFAULT_GC_AGGRESSIVE_INTERVAL))))
-    command_timeout: float = field(default_factory=lambda: float(os.environ.get(_GC_COMMAND_TIMEOUT_ENV, str(DEFAULT_GC_COMMAND_TIMEOUT))))
-    max_loose_objects: int = field(default_factory=lambda: int(os.environ.get(_GC_MAX_LOOSE_ENV, str(DEFAULT_MAX_LOOSE_OBJECTS))))
-    reflog_expire_days: int = field(default_factory=lambda: int(os.environ.get(_GC_REFLOG_EXPIRE_ENV, str(DEFAULT_REFLOG_EXPIRE_DAYS))))
+    gc_interval: float = field(
+        default_factory=lambda: float(os.environ.get(_GC_INTERVAL_ENV, str(DEFAULT_GC_INTERVAL)))
+    )
+    aggressive_interval: float = field(
+        default_factory=lambda: float(
+            os.environ.get(_GC_AGGRESSIVE_INTERVAL_ENV, str(DEFAULT_GC_AGGRESSIVE_INTERVAL))
+        )
+    )
+    command_timeout: float = field(
+        default_factory=lambda: float(
+            os.environ.get(_GC_COMMAND_TIMEOUT_ENV, str(DEFAULT_GC_COMMAND_TIMEOUT))
+        )
+    )
+    max_loose_objects: int = field(
+        default_factory=lambda: int(
+            os.environ.get(_GC_MAX_LOOSE_ENV, str(DEFAULT_MAX_LOOSE_OBJECTS))
+        )
+    )
+    reflog_expire_days: int = field(
+        default_factory=lambda: int(
+            os.environ.get(_GC_REFLOG_EXPIRE_ENV, str(DEFAULT_REFLOG_EXPIRE_DAYS))
+        )
+    )
     _state: GCState | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -186,9 +204,7 @@ class GitGarbageCollector:
             # Git objects and worktree metadata are repository-wide. Keep the
             # shared maintenance state in the common Git directory so linked
             # worktrees reuse it without making any checkout dirty.
-            self.state_path = (
-                git_common_dir(self.repo_root) / "agent-supervisor" / "gc_state.json"
-            )
+            self.state_path = git_common_dir(self.repo_root) / "agent-supervisor" / "gc_state.json"
         if self.worktree_root is None:
             env_root = os.environ.get(_GC_WORKTREE_ROOT_ENV)
             if env_root:
@@ -429,7 +445,11 @@ class GitGarbageCollector:
                 timeout=max(1.0, float(self.command_timeout)),
             )
         except subprocess.TimeoutExpired:
-            return {"step": "git_gc", "error": "timeout", "mode": "aggressive" if aggressive else "auto" if auto else "standard"}
+            return {
+                "step": "git_gc",
+                "error": "timeout",
+                "mode": "aggressive" if aggressive else "auto" if auto else "standard",
+            }
 
         return {
             "step": "git_gc",
@@ -470,7 +490,9 @@ class GitGarbageCollector:
         results: list[dict[str, Any]] = []
 
         # Find submodules
-        sm_result = _run_git(["submodule", "foreach", "--quiet", "echo $sm_path"], cwd=self.repo_root)
+        sm_result = _run_git(
+            ["submodule", "foreach", "--quiet", "echo $sm_path"], cwd=self.repo_root
+        )
         if sm_result.returncode != 0:
             return {"step": "submodule_gc", "error": "list_failed", "submodules": []}
 
@@ -483,10 +505,12 @@ class GitGarbageCollector:
                 continue
 
             gc_result = _run_git(["gc", "--auto", "--quiet"], cwd=full_path, timeout=120)
-            results.append({
-                "submodule": sm_path,
-                "returncode": gc_result.returncode,
-            })
+            results.append(
+                {
+                    "submodule": sm_path,
+                    "returncode": gc_result.returncode,
+                }
+            )
 
         return {
             "step": "submodule_gc",

@@ -53,7 +53,8 @@ class TemplateBaseTest(unittest.TestCase):
     def test_render(self):
         """Test template rendering."""
         # Create a simple template string
-        self.template.get_template_str = MagicMock(return_value="""
+        self.template.get_template_str = MagicMock(
+            return_value="""
 # {{ model_info.name }} Test
 import os
 import sys
@@ -61,21 +62,13 @@ import sys
 # Hardware: {{ hardware_info.get('cuda', {}).get('available', False) }}
 # Model: {{ model_info.name }}
 # Task: {{ model_info.task }}
-""")
+"""
+        )
 
         # Create context
         context = {
-            "model_info": {
-                "name": "Test Model",
-                "id": "test-model",
-                "task": "test-task"
-            },
-            "hardware_info": {
-                "cuda": {
-                    "available": True,
-                    "version": "11.7"
-                }
-            }
+            "model_info": {"name": "Test Model", "id": "test-model", "task": "test-task"},
+            "hardware_info": {"cuda": {"available": True, "version": "11.7"}},
         }
 
         # Render the template
@@ -94,7 +87,7 @@ class ArchitectureTemplatesTest(unittest.TestCase):
     def setUp(self):
         """Set up test environment."""
         self.config = ConfigManager()
-        
+
         # Initialize all templates
         self.encoder_only = EncoderOnlyTemplate(self.config)
         self.decoder_only = DecoderOnlyTemplate(self.config)
@@ -109,27 +102,27 @@ class ArchitectureTemplatesTest(unittest.TestCase):
         encoder_metadata = self.encoder_only.get_metadata()
         self.assertEqual("EncoderOnlyTemplate", encoder_metadata["name"])
         self.assertIn("encoder-only", encoder_metadata["supported_architectures"])
-        
+
         # Check decoder-only metadata
         decoder_metadata = self.decoder_only.get_metadata()
         self.assertEqual("DecoderOnlyTemplate", decoder_metadata["name"])
         self.assertIn("decoder-only", decoder_metadata["supported_architectures"])
-        
+
         # Check encoder-decoder metadata
         enc_dec_metadata = self.encoder_decoder.get_metadata()
         self.assertEqual("EncoderDecoderTemplate", enc_dec_metadata["name"])
         self.assertIn("encoder-decoder", enc_dec_metadata["supported_architectures"])
-        
+
         # Check vision metadata
         vision_metadata = self.vision.get_metadata()
         self.assertEqual("VisionTemplate", vision_metadata["name"])
         self.assertIn("vision", vision_metadata["supported_architectures"])
-        
+
         # Check vision-text metadata
         vision_text_metadata = self.vision_text.get_metadata()
         self.assertEqual("VisionTextTemplate", vision_text_metadata["name"])
         self.assertIn("vision-text", vision_text_metadata["supported_architectures"])
-        
+
         # Check speech metadata
         speech_metadata = self.speech.get_metadata()
         self.assertEqual("SpeechTemplate", speech_metadata["name"])
@@ -139,29 +132,40 @@ class ArchitectureTemplatesTest(unittest.TestCase):
         """Test architecture-specific imports."""
         # Check encoder-only imports
         encoder_imports = self.encoder_only.get_imports()
-        self.assertIn("from transformers import AutoModelForMaskedLM, AutoTokenizer", encoder_imports)
-        
+        self.assertIn(
+            "from transformers import AutoModelForMaskedLM, AutoTokenizer", encoder_imports
+        )
+
         # Check decoder-only imports
         decoder_imports = self.decoder_only.get_imports()
-        self.assertIn("from transformers import AutoModelForCausalLM, AutoTokenizer", decoder_imports)
-        
+        self.assertIn(
+            "from transformers import AutoModelForCausalLM, AutoTokenizer", decoder_imports
+        )
+
         # Check encoder-decoder imports
         enc_dec_imports = self.encoder_decoder.get_imports()
-        self.assertIn("from transformers import AutoModelForSeq2SeqLM, AutoTokenizer", enc_dec_imports)
-        
+        self.assertIn(
+            "from transformers import AutoModelForSeq2SeqLM, AutoTokenizer", enc_dec_imports
+        )
+
         # Check vision imports
         vision_imports = self.vision.get_imports()
-        self.assertIn("from transformers import AutoImageProcessor, AutoModelForImageClassification", vision_imports)
+        self.assertIn(
+            "from transformers import AutoImageProcessor, AutoModelForImageClassification",
+            vision_imports,
+        )
         self.assertIn("from PIL import Image", vision_imports)
-        
+
         # Check vision-text imports
         vision_text_imports = self.vision_text.get_imports()
         self.assertIn("from transformers import CLIPProcessor, CLIPModel", vision_text_imports)
         self.assertIn("from PIL import Image", vision_text_imports)
-        
+
         # Check speech imports
         speech_imports = self.speech.get_imports()
-        self.assertIn("from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq", speech_imports)
+        self.assertIn(
+            "from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq", speech_imports
+        )
 
     def test_template_renders(self):
         """Test that all templates can render with a context."""
@@ -171,12 +175,12 @@ class ArchitectureTemplatesTest(unittest.TestCase):
                 "name": "Test Model",
                 "id": "test-model",
                 "task": "test-task",
-                "class_name": "TestModel"
+                "class_name": "TestModel",
             },
             "hardware_info": {
                 "cuda": {"available": True, "version": "11.7"},
                 "rocm": {"available": False},
-                "mps": {"available": False}
+                "mps": {"available": False},
             },
             "has_cuda": True,
             "has_rocm": False,
@@ -186,10 +190,10 @@ class ArchitectureTemplatesTest(unittest.TestCase):
             "has_webgpu": False,
             "dependencies": {
                 "torch": {"available": True, "version": "2.0.0"},
-                "transformers": {"available": True, "version": "4.30.0"}
-            }
+                "transformers": {"available": True, "version": "4.30.0"},
+            },
         }
-        
+
         # Test rendering for all templates
         templates = [
             self.encoder_only,
@@ -197,9 +201,9 @@ class ArchitectureTemplatesTest(unittest.TestCase):
             self.encoder_decoder,
             self.vision,
             self.vision_text,
-            self.speech
+            self.speech,
         ]
-        
+
         for template in templates:
             rendered = template.render(context)
             self.assertIsNotNone(rendered)
@@ -216,15 +220,15 @@ class ArchitectureTemplatesTest(unittest.TestCase):
                 "name": "BERT",
                 "id": "bert-base-uncased",
                 "task": "fill-mask",
-                "class_name": "Bert"
+                "class_name": "Bert",
             },
             "hardware_info": {"cuda": {"available": True}},
             "has_cuda": True,
-            "dependencies": {"torch": {"available": True}, "transformers": {"available": True}}
+            "dependencies": {"torch": {"available": True}, "transformers": {"available": True}},
         }
-        
+
         rendered = self.encoder_only.render(context)
-        
+
         # Check for encoder-only specific content
         self.assertIn("AutoModelForMaskedLM", rendered)
         self.assertIn("fill-mask", rendered)
@@ -238,15 +242,15 @@ class ArchitectureTemplatesTest(unittest.TestCase):
                 "name": "GPT-2",
                 "id": "gpt2",
                 "task": "text-generation",
-                "class_name": "Gpt2"
+                "class_name": "Gpt2",
             },
             "hardware_info": {"cuda": {"available": True}},
             "has_cuda": True,
-            "dependencies": {"torch": {"available": True}, "transformers": {"available": True}}
+            "dependencies": {"torch": {"available": True}, "transformers": {"available": True}},
         }
-        
+
         rendered = self.decoder_only.render(context)
-        
+
         # Check for decoder-only specific content
         self.assertIn("AutoModelForCausalLM", rendered)
         self.assertIn("text-generation", rendered)
@@ -260,15 +264,15 @@ class ArchitectureTemplatesTest(unittest.TestCase):
                 "name": "ViT",
                 "id": "vit-base-patch16-224",
                 "task": "image-classification",
-                "class_name": "Vit"
+                "class_name": "Vit",
             },
             "hardware_info": {"cuda": {"available": True}},
             "has_cuda": True,
-            "dependencies": {"torch": {"available": True}, "transformers": {"available": True}}
+            "dependencies": {"torch": {"available": True}, "transformers": {"available": True}},
         }
-        
+
         rendered = self.vision.render(context)
-        
+
         # Check for vision specific content
         self.assertIn("AutoImageProcessor", rendered)
         self.assertIn("from PIL import Image", rendered)
@@ -284,29 +288,29 @@ class ArchitectureTemplatesTest(unittest.TestCase):
             "has_cuda": True,
             "has_rocm": False,
             "has_mps": False,
-            "dependencies": {"torch": {"available": True}}
+            "dependencies": {"torch": {"available": True}},
         }
-        
+
         context_without_cuda = {
             "model_info": {"name": "Test", "id": "test", "task": "test-task", "class_name": "Test"},
             "hardware_info": {"cuda": {"available": False}},
             "has_cuda": False,
             "has_rocm": False,
             "has_mps": False,
-            "dependencies": {"torch": {"available": True}}
+            "dependencies": {"torch": {"available": True}},
         }
-        
+
         # Test with encoder-only template
         cuda_rendered = self.encoder_only.render(context_with_cuda)
         no_cuda_rendered = self.encoder_only.render(context_without_cuda)
-        
+
         # CUDA section should be present when CUDA is available
         self.assertIn("torch.cuda.is_available()", cuda_rendered)
         self.assertIn("device = 'cuda'", cuda_rendered)
-        
+
         # CUDA section should handle unavailable CUDA
         self.assertIn("device = 'cpu'", no_cuda_rendered)
-        
+
         # Test OpenVINO conditional section
         context_with_openvino = {
             "model_info": {"name": "Test", "id": "test", "task": "test-task", "class_name": "Test"},
@@ -315,36 +319,36 @@ class ArchitectureTemplatesTest(unittest.TestCase):
             "has_rocm": False,
             "has_mps": False,
             "has_openvino": True,
-            "dependencies": {"torch": {"available": True}, "openvino": {"available": True}}
+            "dependencies": {"torch": {"available": True}, "openvino": {"available": True}},
         }
-        
+
         openvino_rendered = self.encoder_only.render(context_with_openvino)
-        
+
         # OpenVINO section should be present when OpenVINO is available
         self.assertIn("openvino", openvino_rendered.lower())
         self.assertIn("test_openvino", openvino_rendered)
 
     def test_template_extension(self):
         """Test that templates properly extend the base template."""
+
         # Create a custom template extending TemplateBase
         class CustomTemplate(TemplateBase):
             def get_metadata(self):
                 metadata = super().get_metadata()
-                metadata.update({
-                    "name": "CustomTemplate",
-                    "description": "Custom template for testing",
-                    "supported_architectures": ["custom"]
-                })
+                metadata.update(
+                    {
+                        "name": "CustomTemplate",
+                        "description": "Custom template for testing",
+                        "supported_architectures": ["custom"],
+                    }
+                )
                 return metadata
-                
+
             def get_imports(self):
                 imports = super().get_imports()
-                imports.extend([
-                    "import custom_module",
-                    "from custom_module import CustomClass"
-                ])
+                imports.extend(["import custom_module", "from custom_module import CustomClass"])
                 return imports
-                
+
             def get_template_str(self):
                 return """
 # Custom Template
@@ -361,35 +365,29 @@ class {{ model_info.class_name }}Test:
     def test_custom(self):
         return True
 """
-        
+
         # Create an instance of the custom template
         custom_template = CustomTemplate(self.config)
-        
+
         # Test metadata
         metadata = custom_template.get_metadata()
         self.assertEqual("CustomTemplate", metadata["name"])
         self.assertEqual("Custom template for testing", metadata["description"])
         self.assertIn("custom", metadata["supported_architectures"])
-        
+
         # Test imports
         imports = custom_template.get_imports()
         self.assertIn("import custom_module", imports)
         self.assertIn("from custom_module import CustomClass", imports)
-        
+
         # Test rendering
         context = {
-            "model_info": {
-                "name": "Custom Model",
-                "class_name": "CustomModel"
-            },
-            "imports": [
-                "import numpy as np",
-                "import pandas as pd"
-            ]
+            "model_info": {"name": "Custom Model", "class_name": "CustomModel"},
+            "imports": ["import numpy as np", "import pandas as pd"],
         }
-        
+
         rendered = custom_template.render(context)
-        
+
         # Check custom content
         self.assertIn("Custom Model Custom Implementation", rendered)
         self.assertIn("class CustomModelTest", rendered)

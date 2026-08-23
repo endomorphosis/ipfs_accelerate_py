@@ -145,6 +145,7 @@ def test_model_inference_gpu():
     # GPU test code
     pass
 
+
 # Or use naming convention
 def test_cuda_memory_allocation():
     # Test will be picked up by -k "cuda"
@@ -154,6 +155,7 @@ def test_cuda_memory_allocation():
 2. Make tests conditional on GPU availability:
 ```python
 import torch
+
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="GPU not available")
 def test_gpu_inference():

@@ -1958,3 +1958,159 @@ def test_compact_failure_codes_are_bounded_and_round_trip_for_repair() -> None:
         code in {item.value for item in ProposalFindingCode}
         for code in result.receipt.rejection_codes
     )
+
+def _comparison_policy(**overrides: object) -> PromotionComparisonPolicy:
+    values: dict[str, object] = {
+        "policy_id": "policy:promotion",
+        "policy_revision": "policy:promotion:1",
+    }
+    values.update(overrides)
+    return PromotionComparisonPolicy(**values)  # type: ignore[arg-type]
+
+
+def _comparison_request(
+    *,
+    gates: dict[str, PromotionGateEvidence] | None = None,
+    **overrides: object,
+) -> PromotionComparisonRequest:
+    values: dict[str, object] = {
+        "candidate_checkpoint_id": "ir:checkpoint:candidate",
+        "baseline_checkpoint_id": "ir:checkpoint:baseline",
+        "policy": _comparison_policy(),
+        "evaluation_report_identity": "eval:report:1",
+        "proof_evidence_identity": "proof:fresh:1",
+        "actor_identity": "operator:qualifier",
+        "expected_current_pointer": "ir:checkpoint:baseline",
+        "actor_role": "operator",
+        "proof_fresh": True,
+        "gates": gates if gates is not None else passing_m2_evidence(),
+    }
+    values.update(overrides)
+    return PromotionComparisonRequest(**values)  # type: ignore[arg-type]
+
+
+def test_promotion_comparison_represents_every_noncompensable_m2_gate() -> None:
+    receipt = compare_promotion(_comparison_request())
+
+    assert receipt.decision is PromotionDecision.PROMOTE
+    assert tuple(item.gate_id for item in receipt.gate_results) == M2_GATES
+    assert set(receipt.admitted_gates) == set(M2_GATES)
+    assert all(item.status.value == "pass" for item in receipt.gate_results)
+    assert all(item.compensable is False for item in receipt.gate_results)
+
+
+def test_identical_evidence_and_policy_yield_identical_promotion_decision() -> None:
+    first = compare_promotion(_comparison_request())
+    second = compare_promotion(_comparison_request())
+    restored = PromotionComparisonReceipt.from_dict(first.to_dict())
+
+    assert first.receipt_id == second.receipt_id
+    assert restored.receipt_id == first.receipt_id
+    assert first.to_dict() == second.to_dict()
+    assert first.decision is PromotionDecision.PROMOTE
+
+
+def test_loss_improvement_cannot_override_semantic_or_proof_regression() -> None:
+    gates = passing_m2_evidence()
+    gates["semantic"] = PromotionGateEvidence(
+        gate_id="semantic",
+        available=True,
+        baseline_millionths=980_000,
+        candidate_millionths=960_000,
+        noninferiority_passed=False,
+        significant_improvement=False,
+        evidence_identity="evidence:semantic-regressed",
+    )
+    gates["syntax"] = PromotionGateEvidence(
+        gate_id="syntax",
+        available=True,
+        baseline_millionths=980_000,
+        candidate_millionths=999_000,
+        noninferiority_passed=True,
+        significant_improvement=True,
+        evidence_identity="evidence:syntax-improved",
+    )
+    receipt = compare_promotion(
+        _comparison_request(gates=gates, loss_improved=True)
+    )
+
+    assert receipt.decision is PromotionDecision.REGRESSED
+    assert receipt.admitted_gates == ()
+    assert receipt.loss_improved is True
+    assert "semantic:noninferiority_failed" in receipt.reasons
+    assert "loss_improvement_cannot_override_failed_gate" in receipt.reasons
+
+
+def test_self_promotion_test_set_selection_and_model_actor_are_rejected() -> None:
+    self_promotion = compare_promotion(
+        _comparison_request(
+            candidate_checkpoint_id="ir:checkpoint:same",
+            baseline_checkpoint_id="ir:checkpoint:same",
+        )
+    )
+    test_set = compare_promotion(_comparison_request(test_set_selected=True))
+    hidden = compare_promotion(_comparison_request(hidden_labels_used=True))
+    model = compare_promotion(_comparison_request(actor_role="model"))
+    evaluator = compare_promotion(
+        _comparison_request(
+            actor_identity="ir:checkpoint:candidate",
+            actor_role="operator",
+        )
+    )
+
+    for receipt in (self_promotion, test_set, hidden, model, evaluator):
+        assert receipt.decision is PromotionDecision.REJECT
+        assert receipt.admitted_gates == ()
+    assert "self_promotion_prohibited" in self_promotion.reasons
+    assert "test_set_selection_prohibited" in test_set.reasons
+    assert "hidden_label_use_prohibited" in hidden.reasons
+    assert "actor_role_cannot_promote:model" in model.reasons
+    assert "model_self_promotion_prohibited" in evaluator.reasons
+
+
+def test_identity_mismatch_rejects_and_missing_evidence_is_inconclusive() -> None:
+    mismatched = passing_m2_evidence()
+    mismatched["lineage"] = PromotionGateEvidence(
+        gate_id="lineage",
+        available=True,
+        baseline_identity="lineage:frozen",
+        candidate_identity="lineage:other",
+        evidence_identity="evidence:lineage",
+    )
+    rejected = compare_promotion(_comparison_request(gates=mismatched))
+    incomplete = compare_promotion(_comparison_request(gates={}))
+
+    assert rejected.decision is PromotionDecision.REJECT
+    assert "lineage:identity_mismatch" in rejected.reasons
+    assert incomplete.decision is PromotionDecision.INCONCLUSIVE
+    assert all(
+        item.status.value == "inconclusive" for item in incomplete.gate_results
+    )
+    assert len(incomplete.gate_results) == len(M2_GATES)
+
+
+def test_stale_proof_and_lowered_minima_fail_closed() -> None:
+    stale = compare_promotion(
+        _comparison_request(proof_fresh=False, proof_evidence_identity="")
+    )
+
+    assert stale.decision is PromotionDecision.REJECT
+    assert "fresh_proof_evidence_required" in stale.reasons
+    with pytest.raises(PromotionComparisonError, match="semantic minimum cannot be lowered"):
+        _comparison_policy(
+            semantic_minimum_millionths=DEFAULT_SEMANTIC_MINIMUM_MILLIONTHS - 1
+        )
+    with pytest.raises(PromotionComparisonError, match="proof minimum cannot be lowered"):
+        _comparison_policy(proof_minimum_millionths=DEFAULT_PROOF_MINIMUM_MILLIONTHS - 1)
+    with pytest.raises(PromotionComparisonError, match="non-compensable"):
+        PromotionGateEvidence(gate_id="semantic", compensable=True)
+
+
+def test_forged_promotion_comparison_receipt_is_rejected() -> None:
+    receipt = compare_promotion(_comparison_request())
+    payload = receipt.to_dict()
+    payload["receipt_id"] = "forged"
+
+    with pytest.raises(PromotionComparisonError, match="forged"):
+        PromotionComparisonReceipt.from_dict(payload)
+

@@ -192,17 +192,11 @@ def test_warm_path_serves_cache_without_provider(tmp_path: Path) -> None:
         )
 
     metrics = ProofCacheMetrics()
-    first = reprove_code_proof_compilation(
-        cache, comp, prove=prove, metrics=metrics, **REPROOF_KW
-    )
-    second = reprove_code_proof_compilation(
-        cache, comp, prove=prove, metrics=metrics, **REPROOF_KW
-    )
+    first = reprove_code_proof_compilation(cache, comp, prove=prove, metrics=metrics, **REPROOF_KW)
+    second = reprove_code_proof_compilation(cache, comp, prove=prove, metrics=metrics, **REPROOF_KW)
     assert first.re_solved >= 1
     assert second.cache_hits >= 1
-    hit = next(
-        r for r in second.results if r.disposition is ReproofDisposition.CACHE_HIT
-    )
+    hit = next(r for r in second.results if r.disposition is ReproofDisposition.CACHE_HIT)
     assert hit.from_cache is True
     assert hit.provenance.get("provider_calls") == 0
     assert InvalidationReason.AUTHORITATIVE_CACHE_HIT.value in hit.reason_codes
@@ -219,9 +213,7 @@ def test_tree_change_forces_resolve_not_foreign_hit(tmp_path: Path) -> None:
     def prove(it, key):
         tree = str(key.candidate_tree)
         calls["trees"].append(tree)
-        return _receipt_for(
-            it, tree=tree, toolchain=str(key.toolchain), policy=str(key.policy)
-        )
+        return _receipt_for(it, tree=tree, toolchain=str(key.toolchain), policy=str(key.policy))
 
     # Populate cache under parent tree.
     reprove_code_proof_compilation(cache, parent, prove=prove, **REPROOF_KW)

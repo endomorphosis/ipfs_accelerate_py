@@ -28,14 +28,14 @@ api = get_cached_openai_api(api_key="your-key")
 response = api.chat(
     messages=[{"role": "user", "content": "Explain quantum computing"}],
     model="gpt-4",
-    temperature=0.0  # temp=0 cached for 1 hour, temp>0 for 30 min
+    temperature=0.0,  # temp=0 cached for 1 hour, temp>0 for 30 min
 )
 
 # Second identical call uses cache (< 0.01s vs 1-5s)
 response = api.chat(
     messages=[{"role": "user", "content": "Explain quantum computing"}],
     model="gpt-4",
-    temperature=0.0
+    temperature=0.0,
 )
 ```
 
@@ -58,7 +58,7 @@ api = get_cached_claude_api(api_key="your-key")
 response = api.chat(
     messages=[{"role": "user", "content": "Write a poem about AI"}],
     model="claude-3-sonnet-20240229",
-    temperature=0.7
+    temperature=0.7,
 )
 ```
 
@@ -69,9 +69,7 @@ from ipfs_accelerate_py.api_integrations import get_cached_gemini_api
 api = get_cached_gemini_api()
 
 response = api.generate_text(
-    prompt="Explain transformers architecture",
-    model="gemini-pro",
-    temperature=0.0
+    prompt="Explain transformers architecture", model="gemini-pro", temperature=0.0
 )
 ```
 
@@ -84,7 +82,7 @@ api = get_cached_groq_api(api_key="your-key")
 response = api.chat(
     messages=[{"role": "user", "content": "Explain async/await"}],
     model="llama3-70b-8192",
-    temperature=0.0
+    temperature=0.0,
 )
 ```
 
@@ -95,9 +93,7 @@ from ipfs_accelerate_py.api_integrations import get_cached_ollama_api
 api = get_cached_ollama_api()
 
 response = api.generate(
-    prompt="Write a Python function to sort a list",
-    model="llama2",
-    temperature=0.0
+    prompt="Write a Python function to sort a list", model="llama2", temperature=0.0
 )
 ```
 
@@ -112,7 +108,7 @@ api = get_cached_vllm_api()
 response = api.generate(
     prompt="Complete this code: def fibonacci(n):",
     model="meta-llama/Llama-2-7b-hf",
-    temperature=0.0
+    temperature=0.0,
 )
 ```
 
@@ -124,10 +120,7 @@ from ipfs_accelerate_py.api_integrations import get_cached_hf_tgi_api
 
 api = get_cached_hf_tgi_api()
 
-response = api.generate(
-    prompt="Translate to French: Hello world",
-    temperature=0.0
-)
+response = api.generate(prompt="Translate to French: Hello world", temperature=0.0)
 ```
 
 **TTL:** 1800s (30 min) for temp>0, 3600s (1 hour) for temp=0
@@ -152,10 +145,7 @@ from ipfs_accelerate_py.api_integrations import get_cached_ovms_api
 
 api = get_cached_ovms_api()
 
-result = api.infer(
-    inputs={"input_tensor": data},
-    model="resnet50"
-)
+result = api.infer(inputs={"input_tensor": data}, model="resnet50")
 ```
 
 #### 10. OPEA ✅
@@ -164,10 +154,7 @@ from ipfs_accelerate_py.api_integrations import get_cached_opea_api
 
 api = get_cached_opea_api()
 
-result = api.run_pipeline(
-    inputs={"text": "Process this"},
-    pipeline="text-processing-v1"
-)
+result = api.run_pipeline(inputs={"text": "Process this"}, pipeline="text-processing-v1")
 ```
 
 ### Phase 3: Storage APIs (Low-Medium Priority) ✅
@@ -222,7 +209,7 @@ All cached APIs support `use_cache=False` parameter:
 response = api.chat(
     messages=messages,
     model="gpt-4",
-    use_cache=False  # Skip cache
+    use_cache=False,  # Skip cache
 )
 ```
 
@@ -311,12 +298,7 @@ for cache_name, cache in get_all_caches().items():
 Each query is converted to a CID for cache key:
 
 ```python
-query = {
-    "operation": "completion",
-    "prompt": "Hello world",
-    "model": "gpt-4",
-    "temperature": 0.0
-}
+query = {"operation": "completion", "prompt": "Hello world", "model": "gpt-4", "temperature": 0.0}
 
 # Convert to CID
 cid = compute_cid(json.dumps(query, sort_keys=True))

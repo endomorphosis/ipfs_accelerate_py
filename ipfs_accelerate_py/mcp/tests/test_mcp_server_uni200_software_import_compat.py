@@ -17,7 +17,9 @@ from ipfs_accelerate_py.mcp_server.tools.software_engineering_tools import (
     search_repositories,
     suggest_fixes,
 )
-from ipfs_accelerate_py.mcp_server.tools.software_engineering_tools import native_software_engineering_tools
+from ipfs_accelerate_py.mcp_server.tools.software_engineering_tools import (
+    native_software_engineering_tools,
+)
 
 
 def test_software_engineering_package_exports_supported_native_functions() -> None:
@@ -32,4 +34,7 @@ def test_software_engineering_package_exports_supported_native_functions() -> No
     assert detect_error_patterns is native_software_engineering_tools.detect_error_patterns
     assert suggest_fixes is native_software_engineering_tools.suggest_fixes
     assert coordinate_auto_healing is native_software_engineering_tools.coordinate_auto_healing
-    assert monitor_healing_effectiveness is native_software_engineering_tools.monitor_healing_effectiveness
+    assert (
+        monitor_healing_effectiveness
+        is native_software_engineering_tools.monitor_healing_effectiveness
+    )

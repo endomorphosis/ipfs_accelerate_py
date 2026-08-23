@@ -1,0 +1,18 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.fault-schedules@1",
+  "schedules": {
+    "none": [],
+    "provider-unavailable-v1": ["capability_unavailable", "fallback_attempt"],
+    "execution-boundaries-v1": ["invalid_input", "timeout", "cancellation", "typed_failure"],
+    "planner-counterexample-v1": ["counterexample_after_valid_prefix"],
+    "stale-proof-v1": ["proof_tree_mismatch", "proof_tool_mismatch"],
+    "validation-weakening-v1": ["required_test_deleted", "selection_rule_weakened"],
+    "migration-restart-v1": ["restart_after_snapshot", "restart_before_cutover", "stale_dual_writer"],
+    "stale-lease-v1": ["expired_lease", "stale_fence", "duplicate_idempotency_key"],
+    "transport-errors-v1": ["denied", "timeout", "malformed_request", "handler_unavailable"],
+    "legacy-fallback-v1": ["compatibility_bypass", "fallback_false_success"],
+    "simulated-success-v1": ["simulation_capability", "simulation_success", "simulation_receipt"],
+    "import-side-effect-v1": ["eager_provider_import", "registry_mutation_at_import"],
+    "restart-boundaries-v1": ["restart_after_claim", "restart_after_effect", "restart_before_acceptance"]
+  }
+}

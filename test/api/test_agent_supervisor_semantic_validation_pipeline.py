@@ -201,7 +201,9 @@ def test_rejected_output_cannot_create_semantic_or_code_proof_obligations() -> N
     }.issubset(admission.reason_codes)
 
 
-def _g100_completion_packet(tmp_path: Path) -> tuple[
+def _g100_completion_packet(
+    tmp_path: Path,
+) -> tuple[
     ProposalValidationResult,
     tuple[dict[str, str], ...],
     dict[str, object],
@@ -217,14 +219,10 @@ def _g100_completion_packet(tmp_path: Path) -> tuple[
         (_service_validation(),),
         workspace_path=tmp_path,
         dependency_state="g100-fixture",
-        runner=lambda *, spec, **_kwargs: attempted_commands.append(
-            spec.command
-        ),
+        runner=lambda *, spec, **_kwargs: attempted_commands.append(spec.command),
     )
     assert attempted_commands == []
-    witness = ProposalValidationResult.from_dict(
-        report["proposal_validation"]
-    )
+    witness = ProposalValidationResult.from_dict(report["proposal_validation"])
     assert not witness.accepted
     assert witness.receipt.rejection_evidence is not None
     now = datetime(2026, 7, 25, 12, 0, tzinfo=timezone.utc)
@@ -274,10 +272,7 @@ def _g100_completion_packet(tmp_path: Path) -> tuple[
                 criterion=item.acceptance_criterion,
                 status=CoverageStatus.VERIFIED,
                 task_ids=["ASI-031", "ASI-091"],
-                changed_files=[
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "proposal_validation.py"
-                ],
+                changed_files=["ipfs_accelerate_py/agent_supervisor/proposal_validation.py"],
                 validation_receipt_ids=[item.provenance_cid],
                 provenance_cids=[item.provenance_cid],
             )
@@ -303,21 +298,15 @@ def _g100_completion_packet(tmp_path: Path) -> tuple[
             for item in completion_evidence
         ],
         finding_assignments=[],
-        registered_goal_ids=[
-            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
-        ],
+        registered_goal_ids=[NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID],
         evaluated_at=now.isoformat(),
         repository_tree=proposal.repository_tree_id,
     )
     analyzer_binding = {
         "repository_id": proposal.repository_id,
         "tree_id": proposal.repository_tree_id,
-        "objective_revision": (
-            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_REVISION
-        ),
-        "analyzer_version": (
-            NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION
-        ),
+        "objective_revision": (NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_REVISION),
+        "analyzer_version": (NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION),
         "configuration_revision": (
             NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_CONFIGURATION_REVISION
         ),
@@ -343,8 +332,7 @@ def _g100_completion_packet(tmp_path: Path) -> tuple[
                 "binding": analyzer_binding,
                 "scan_mode": "exhaustive",
                 "analyzer_version": (
-                    NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION
-                    + "/implementation"
+                    NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION + "/implementation"
                 ),
                 "passed": True,
                 "analyzer_health": {
@@ -365,8 +353,7 @@ def _g100_completion_packet(tmp_path: Path) -> tuple[
                 "binding": analyzer_binding,
                 "scan_mode": "exhaustive",
                 "analyzer_version": (
-                    NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION
-                    + "/replay"
+                    NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_COMPLETION_ANALYZER_VERSION + "/replay"
                 ),
                 "passed": True,
                 "analyzer_health": {
@@ -468,14 +455,10 @@ def test_g100_completion_rejects_detached_unsafe_or_nonindependent_proof(
         },
     ]
     duplicate_quorum = deepcopy(values["exhaustion_quorum"])
-    duplicate_quorum["members"][1]["receipt_cid"] = (
-        duplicate_quorum["members"][0]["receipt_cid"]
-    )
+    duplicate_quorum["members"][1]["receipt_cid"] = duplicate_quorum["members"][0]["receipt_cid"]
     cases.append({**values, "exhaustion_quorum": duplicate_quorum})
     stale_quorum = deepcopy(values["exhaustion_quorum"])
-    stale_quorum["members"][1]["finished_at"] = (
-        values["now"] - timedelta(hours=1)
-    ).isoformat()
+    stale_quorum["members"][1]["finished_at"] = (values["now"] - timedelta(hours=1)).isoformat()
     cases.append({**values, "exhaustion_quorum": stale_quorum})
     non_exhaustive_quorum = deepcopy(values["exhaustion_quorum"])
     non_exhaustive_quorum["members"][1]["exhaustive"] = False
@@ -489,9 +472,7 @@ def test_g100_completion_rejects_detached_unsafe_or_nonindependent_proof(
     unbound_coverage = typed_coverage.completion_gate_evidence(
         NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_OBJECTIVE_ID
     )
-    unbound_coverage["criteria"][0]["validation_receipt_ids"] = [
-        "validation:foreign"
-    ]
+    unbound_coverage["criteria"][0]["validation_receipt_ids"] = ["validation:foreign"]
     cases.append({**values, "coverage": unbound_coverage})
 
     for invalid_values in cases:
@@ -528,10 +509,7 @@ def test_accepted_proposal_is_bound_into_fresh_code_obligations() -> None:
 
     assert accepted.accepted is True
     assert obligations.binding.proposal_accepted is True
-    assert (
-        obligations.binding.proposal_validation_receipt_id
-        == accepted.receipt.receipt_id
-    )
+    assert obligations.binding.proposal_validation_receipt_id == accepted.receipt.receipt_id
     restored = ImplementationObligationSet.from_dict(obligations.to_dict())
     assert restored.binding.binding_id == obligations.binding.binding_id
     assert (
@@ -675,13 +653,8 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
                 "criterion": criterion,
                 "status": "verified",
                 "verified": True,
-                "implementation": (
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "validation_scheduler.py"
-                ),
-                "validation": (
-                    "test/api/test_agent_supervisor_validation_dag.py"
-                ),
+                "implementation": ("ipfs_accelerate_py/agent_supervisor/validation_scheduler.py"),
+                "validation": ("test/api/test_agent_supervisor_validation_dag.py"),
             }
             for criterion in TRANSITIVE_IMPACT_ACCEPTANCE_CRITERIA
         ],
@@ -700,9 +673,7 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
         "validation_policy_id": dag.policy_id,
         "operational_receipt_id": dag.receipt_id,
         "analyzer_version": TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION,
-        "configuration_revision": (
-            TRANSITIVE_IMPACT_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "configuration_revision": (TRANSITIVE_IMPACT_COMPLETION_CONFIGURATION_REVISION),
     }
     quorum = {
         "required_members": 2,
@@ -718,8 +689,7 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
                 "binding": binding,
                 "scan_mode": "exhaustive",
                 "analyzer_version": (
-                    TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION
-                    + "/implementation"
+                    TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION + "/implementation"
                 ),
                 "passed": True,
                 "analyzer_health": {
@@ -739,10 +709,7 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
                 "receipt_cid": "scan:asi-075:replay",
                 "binding": binding,
                 "scan_mode": "exhaustive",
-                "analyzer_version": (
-                    TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION
-                    + "/replay"
-                ),
+                "analyzer_version": (TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION + "/replay"),
                 "passed": True,
                 "analyzer_health": {
                     "status": "healthy",
@@ -808,13 +775,8 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
                 goal_id=TRANSITIVE_IMPACT_OBJECTIVE_ID,
                 criterion=criterion,
                 status=CoverageStatus.VERIFIED,
-                changed_files=[
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "validation_scheduler.py"
-                ],
-                validation_receipt_ids=[
-                    evidence[index - 1].provenance_cid
-                ],
+                changed_files=["ipfs_accelerate_py/agent_supervisor/validation_scheduler.py"],
+                validation_receipt_ids=[evidence[index - 1].provenance_cid],
                 explanation="implementation and validation are exact",
             )
             for index, criterion in enumerate(
@@ -833,9 +795,7 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
         repository_id="repo:fixture",
         tree_id=dag.repository_tree_id,
         analyzer_version=TRANSITIVE_IMPACT_COMPLETION_ANALYZER_VERSION,
-        configuration_revision=(
-            TRANSITIVE_IMPACT_COMPLETION_CONFIGURATION_REVISION
-        ),
+        configuration_revision=(TRANSITIVE_IMPACT_COMPLETION_CONFIGURATION_REVISION),
         objective_revision=TRANSITIVE_IMPACT_OBJECTIVE_REVISION,
     )
     typed_quorum = ExhaustionQuorumResult(
@@ -932,18 +892,13 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
     assert "analyzer_unhealthy" in unsafe.reason_codes
 
     duplicate_quorum = deepcopy(quorum)
-    duplicate_quorum["members"][1]["receipt_cid"] = (
-        duplicate_quorum["members"][0]["receipt_cid"]
-    )
+    duplicate_quorum["members"][1]["receipt_cid"] = duplicate_quorum["members"][0]["receipt_cid"]
     no_quorum = dag.evaluate_objective_completion(
         current_state=GoalState.PROVISIONALLY_COMPLETE,
         **{**values, "exhaustion_quorum": duplicate_quorum},
     )
     assert no_quorum.state is GoalState.PROVISIONALLY_COMPLETE
-    assert any(
-        code.startswith("exhaustion_quorum")
-        for code in no_quorum.reason_codes
-    )
+    assert any(code.startswith("exhaustion_quorum") for code in no_quorum.reason_codes)
 
     rejected_evidence_populations = [
         evidence[:-1],
@@ -966,11 +921,7 @@ def test_g101_objective_repair_requires_closed_two_phase_proof(
                 {
                     **item.to_dict(),
                     **(
-                        {
-                            "observed_at": (
-                                now.replace(hour=14, minute=0).isoformat()
-                            )
-                        }
+                        {"observed_at": (now.replace(hour=14, minute=0).isoformat())}
                         if index == 0
                         else {}
                     ),
@@ -1136,10 +1087,7 @@ def test_passing_validation_dag_authority_is_bound_into_obligations(
 
     assert obligations.binding.validation_dag_receipt_id == dag.receipt_id
     assert obligations.binding.validation_policy_id == dag.policy_id
-    assert (
-        obligations.binding.receipt_metadata()["validation_dag_receipt_id"]
-        == dag.receipt_id
-    )
+    assert obligations.binding.receipt_metadata()["validation_dag_receipt_id"] == dag.receipt_id
     restored = ImplementationObligationSet.from_dict(obligations.to_dict())
     assert restored.binding.binding_id == obligations.binding.binding_id
     assert restored.binding.validation_policy_id == "policy:strict-transitive"
@@ -1199,40 +1147,20 @@ def _proof_receipt(
 ) -> ProofReceipt:
     obligation = obligations.obligations[obligation_index]
     evidence = ProofEvidence(
-        kind=(
-            EvidenceKind.KERNEL_VERIFICATION
-            if authoritative
-            else EvidenceKind.ATP_CANDIDATE
-        ),
-        authority=(
-            EvidenceAuthority.KERNEL
-            if authoritative
-            else EvidenceAuthority.ATP
-        ),
-        verdict=(
-            EvidenceVerdict.ACCEPTED
-            if authoritative
-            else EvidenceVerdict.CANDIDATE
-        ),
+        kind=(EvidenceKind.KERNEL_VERIFICATION if authoritative else EvidenceKind.ATP_CANDIDATE),
+        authority=(EvidenceAuthority.KERNEL if authoritative else EvidenceAuthority.ATP),
+        verdict=(EvidenceVerdict.ACCEPTED if authoritative else EvidenceVerdict.CANDIDATE),
         artifact_id=(
-            "artifact:independent-kernel"
-            if authoritative
-            else "artifact:provider-candidate"
+            "artifact:independent-kernel" if authoritative else "artifact:provider-candidate"
         ),
         subject_id=obligation.obligation_id,
-        verifier_id=(
-            "kernel:strict"
-            if authoritative
-            else "provider:optimistic-atp"
-        ),
+        verifier_id=("kernel:strict" if authoritative else "provider:optimistic-atp"),
         independent=authoritative,
     )
     return ProofReceipt(
         obligation_id=obligation.obligation_id,
         plan_id=obligations.binding.accepted_plan_id,
-        attempt_id=(
-            "attempt:kernel" if authoritative else "attempt:provider-candidate"
-        ),
+        attempt_id=("attempt:kernel" if authoritative else "attempt:provider-candidate"),
         repository_id=obligations.binding.repository_id,
         repository_tree_id=obligations.binding.repository_tree_id,
         ast_scope_ids=obligation.ast_scope_ids,
@@ -1332,12 +1260,8 @@ def _g040_completion_packet(tmp_path: Path) -> dict[str, object]:
         seeded_defect_path="pkg/core.py",
         dependency_state="fixture",
     )
-    impact_dag = ValidationDAGReceipt.from_dict(
-        report["validation_dag_receipt"]
-    )
-    validation_projection = (
-        impact_dag.strict_validation_completion_evidence()
-    )
+    impact_dag = ValidationDAGReceipt.from_dict(report["validation_dag_receipt"])
+    validation_projection = impact_dag.strict_validation_completion_evidence()
 
     now = datetime(2026, 7, 25, 10, 0, tzinfo=timezone.utc)
     repository_id = accepted.proposal.repository_id
@@ -1358,9 +1282,7 @@ def _g040_completion_packet(tmp_path: Path) -> dict[str, object]:
                 "tree_id": repository_tree,
                 "objective_id": STRICT_VALIDATION_OBJECTIVE_ID,
                 "operational_receipt_id": validation_projection.evidence_id,
-                "validation_policy_id": (
-                    validation_projection.validation_policy_id
-                ),
+                "validation_policy_id": (validation_projection.validation_policy_id),
                 "command": validation_command,
             },
             validation_passed=True,
@@ -1393,16 +1315,10 @@ def _g040_completion_packet(tmp_path: Path) -> dict[str, object]:
                 "verified": True,
                 "implementation": (
                     "ipfs_accelerate_py/agent_supervisor/"
-                    + (
-                        "proposal_validation.py"
-                        if index == 1
-                        else "formal_plan_conformance.py"
-                    )
+                    + ("proposal_validation.py" if index == 1 else "formal_plan_conformance.py")
                 ),
                 "validation": validation_command,
-                "validation_receipt_ids": [
-                    f"validation:asi-089:{index}"
-                ],
+                "validation_receipt_ids": [f"validation:asi-089:{index}"],
             }
             for index, criterion in enumerate(
                 STRICT_VALIDATION_ACCEPTANCE_CRITERIA,
@@ -1420,9 +1336,7 @@ def _g040_completion_packet(tmp_path: Path) -> dict[str, object]:
                 "evaluated_evidence": {
                     "repository_id": repository_id,
                     "repository_tree": repository_tree,
-                    "evaluated_at": (
-                        now - timedelta(minutes=3)
-                    ).isoformat(),
+                    "evaluated_at": (now - timedelta(minutes=3)).isoformat(),
                     "validation_evidence": [
                         {
                             "valid": True,
@@ -1455,12 +1369,8 @@ def _g040_completion_packet(tmp_path: Path) -> dict[str, object]:
         "tree_id": repository_tree,
         "objective_id": STRICT_VALIDATION_OBJECTIVE_ID,
         "objective_revision": STRICT_VALIDATION_OBJECTIVE_REVISION,
-        "analyzer_version": (
-            STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION
-        ),
-        "configuration_revision": (
-            STRICT_VALIDATION_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "analyzer_version": (STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION),
+        "configuration_revision": (STRICT_VALIDATION_COMPLETION_CONFIGURATION_REVISION),
     }
     members = [
         {
@@ -1469,10 +1379,7 @@ def _g040_completion_packet(tmp_path: Path) -> dict[str, object]:
             "receipt_cid": "scan:asi-089:implementation-validation",
             "binding": dict(binding),
             "scan_mode": "exhaustive",
-            "analyzer_version": (
-                STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION
-                + "/implementation"
-            ),
+            "analyzer_version": (STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION + "/implementation"),
             "passed": True,
             "analyzer_health": {
                 "status": "healthy",
@@ -1491,10 +1398,7 @@ def _g040_completion_packet(tmp_path: Path) -> dict[str, object]:
             "receipt_cid": "scan:asi-089:independent-replay",
             "binding": dict(binding),
             "scan_mode": "exhaustive",
-            "analyzer_version": (
-                STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION
-                + "/replay"
-            ),
+            "analyzer_version": (STRICT_VALIDATION_COMPLETION_ANALYZER_VERSION + "/replay"),
             "passed": True,
             "analyzer_health": {
                 "status": "healthy",
@@ -1530,9 +1434,7 @@ def _g040_completion_packet(tmp_path: Path) -> dict[str, object]:
             "binding": dict(binding),
         },
         "exhaustion_quorum": {
-            "required_members": (
-                STRICT_VALIDATION_REQUIRED_EXHAUSTIVE_RECEIPTS
-            ),
+            "required_members": (STRICT_VALIDATION_REQUIRED_EXHAUSTIVE_RECEIPTS),
             "member_count": len(members),
             "satisfied": True,
             "quorum_met": True,
@@ -1579,9 +1481,7 @@ def test_g040_parent_completion_requires_closed_current_tree_proof_packet(
         StrictValidationProofCompletionEvidence,
     )
     assert (
-        StrictValidationProofCompletionEvidence.from_dict(
-            proof_projection.to_dict()
-        )
+        StrictValidationProofCompletionEvidence.from_dict(proof_projection.to_dict())
         == proof_projection
     )
     with pytest.raises(ValueError, match="invalid field population"):
@@ -1608,11 +1508,7 @@ def test_g040_parent_completion_requires_closed_current_tree_proof_packet(
 
     delegated = packet["validation_projection"].evaluate_parent_completion(
         current_state=GoalState.PROVISIONALLY_COMPLETE,
-        **{
-            key: value
-            for key, value in packet.items()
-            if key != "validation_projection"
-        },
+        **{key: value for key, value in packet.items() if key != "validation_projection"},
     )
     assert delegated.state is GoalState.VERIFIED_COMPLETE
 
@@ -1650,47 +1546,33 @@ def test_g040_parent_rejects_open_or_unbound_completion_packet(
     if failure == "missing_producer":
         packet["producing_tasks"] = packet["producing_tasks"][:-1]
     elif failure == "duplicate_producer":
-        packet["producing_tasks"][-1]["task_id"] = (
-            packet["producing_tasks"][0]["task_id"]
-        )
+        packet["producing_tasks"][-1]["task_id"] = packet["producing_tasks"][0]["task_id"]
     elif failure == "active_producer":
         packet["producing_tasks"][0]["status"] = "active"
     elif failure == "missing_child":
         packet["child_goals"] = packet["child_goals"][:-1]
     elif failure == "duplicate_child":
-        packet["child_goals"][-1]["goal_id"] = (
-            packet["child_goals"][0]["goal_id"]
-        )
+        packet["child_goals"][-1]["goal_id"] = packet["child_goals"][0]["goal_id"]
     elif failure == "unverified_child":
         packet["child_goals"][0]["verified"] = False
     elif failure == "stale_child":
-        packet["child_goals"][0]["completion_gate"][
-            "evaluated_evidence"
-        ]["evaluated_at"] = (
+        packet["child_goals"][0]["completion_gate"]["evaluated_evidence"]["evaluated_at"] = (
             packet["now"] - timedelta(hours=2)
         ).isoformat()
     elif failure == "proofless_child":
         packet["child_goals"][0]["proof_requirements"] = []
     elif failure == "foreign_child_validation":
-        packet["child_goals"][0]["completion_gate"][
-            "evaluated_evidence"
-        ]["validation_evidence"][0]["evidence"][
-            "repository_tree"
-        ] = "tree:foreign"
+        packet["child_goals"][0]["completion_gate"]["evaluated_evidence"]["validation_evidence"][0][
+            "evidence"
+        ]["repository_tree"] = "tree:foreign"
     elif failure == "foreign_child_proof":
-        packet["child_goals"][0]["proof_requirements"][0][
-            "repository_tree"
-        ] = "tree:foreign"
+        packet["child_goals"][0]["proof_requirements"][0]["repository_tree"] = "tree:foreign"
     elif failure == "bare_scheduler_projection":
-        packet["validation_projection"] = (
-            packet["validation_projection"].to_dict()
-            | {"evidence_id": "forged"}
-        )
+        packet["validation_projection"] = packet["validation_projection"].to_dict() | {
+            "evidence_id": "forged"
+        }
     elif failure == "bare_proof_projection":
-        packet["proof_projection"] = (
-            packet["proof_projection"].to_dict()
-            | {"qualifies": False}
-        )
+        packet["proof_projection"] = packet["proof_projection"].to_dict() | {"qualifies": False}
     elif failure == "missing_evidence":
         packet["evidence"] = packet["evidence"][:-1]
     elif failure in {"failed_extra_evidence", "stale_extra_evidence"}:
@@ -1702,15 +1584,9 @@ def test_g040_parent_rejects_open_or_unbound_completion_packet(
                 validation_passed=failure != "failed_extra_evidence",
                 validation_receipt={
                     **original.validation_receipt,
-                    "status": (
-                        "failed"
-                        if failure == "failed_extra_evidence"
-                        else "passed"
-                    ),
+                    "status": ("failed" if failure == "failed_extra_evidence" else "passed"),
                 },
-                freshness={
-                    "fresh": failure != "stale_extra_evidence"
-                },
+                freshness={"fresh": failure != "stale_extra_evidence"},
                 observed_at=(
                     packet["now"] - timedelta(hours=2)
                     if failure == "stale_extra_evidence"
@@ -1720,18 +1596,16 @@ def test_g040_parent_rejects_open_or_unbound_completion_packet(
             ),
         )
     elif failure == "unbound_coverage":
-        packet["coverage"]["criteria"][0][
-            "validation_receipt_ids"
-        ] = ["validation:foreign"]
+        packet["coverage"]["criteria"][0]["validation_receipt_ids"] = ["validation:foreign"]
     elif failure == "unsafe_analyzer":
         packet["analyzer_health"]["safe_for_completion_reasoning"] = False
     elif failure == "under_quorum":
         packet["exhaustion_quorum"]["members"].pop()
         packet["exhaustion_quorum"]["member_count"] = 1
     elif failure == "duplicate_quorum":
-        packet["exhaustion_quorum"]["members"][1]["receipt_cid"] = (
-            packet["exhaustion_quorum"]["members"][0]["receipt_cid"]
-        )
+        packet["exhaustion_quorum"]["members"][1]["receipt_cid"] = packet["exhaustion_quorum"][
+            "members"
+        ][0]["receipt_cid"]
     else:
         packet["exhaustion_quorum"]["members"][0]["finished_at"] = (
             packet["now"] - timedelta(hours=2)
@@ -1796,17 +1670,12 @@ def test_provider_proof_candidate_never_becomes_code_completion_evidence(
         proposal_validation=accepted,
         validation_dag=dag,
     )
-    assert evidence.proved_requirement_ids == (
-        PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,
-    )
+    assert evidence.proved_requirement_ids == (PROOF_CANDIDATE_NON_AUTHORITY_REQUIREMENT_ID,)
     assert evidence.code_proof_authoritative is False
     assert evidence.proof_authoritative is False
     assert evidence.completion_authoritative is False
     assert evidence.completion_admission == admission
-    assert (
-        ProofCandidateNonAuthorityEvidence.from_dict(evidence.to_dict())
-        == evidence
-    )
+    assert ProofCandidateNonAuthorityEvidence.from_dict(evidence.to_dict()) == evidence
     assert CompletionAdmissionGate.from_dict(admission.to_dict()) == admission
 
 
@@ -1890,14 +1759,8 @@ def test_g102_objective_repair_requires_bound_candidate_isolation_proof(
                 "criterion": criterion,
                 "status": "verified",
                 "verified": True,
-                "implementation": (
-                    "ipfs_accelerate_py/agent_supervisor/"
-                    "code_proof_obligations.py"
-                ),
-                "validation": (
-                    "test/api/"
-                    "test_agent_supervisor_semantic_validation_pipeline.py"
-                ),
+                "implementation": ("ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py"),
+                "validation": ("test/api/test_agent_supervisor_semantic_validation_pipeline.py"),
             }
             for criterion in PROOF_CANDIDATE_NON_AUTHORITY_ACCEPTANCE_CRITERIA
         ],
@@ -1907,25 +1770,17 @@ def test_g102_objective_repair_requires_bound_candidate_isolation_proof(
         "healthy": True,
         "safe_for_completion_reasoning": True,
         "exhaustive": True,
-        "analyzer_version": (
-            PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
-        ),
+        "analyzer_version": (PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION),
     }
     binding = {
         "repository_id": witness.obligation_set.binding.repository_id,
         "tree_id": witness.obligation_set.binding.repository_tree_id,
         "objective_id": PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_ID,
-        "objective_revision": (
-            PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION
-        ),
+        "objective_revision": (PROOF_CANDIDATE_NON_AUTHORITY_OBJECTIVE_REVISION),
         "validation_policy_id": witness.validation_dag.policy_id,
         "operational_receipt_id": witness.evidence_id,
-        "analyzer_version": (
-            PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
-        ),
-        "configuration_revision": (
-            PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION
-        ),
+        "analyzer_version": (PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION),
+        "configuration_revision": (PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_CONFIGURATION_REVISION),
     }
     quorum = {
         "required_members": 2,
@@ -1941,8 +1796,7 @@ def test_g102_objective_repair_requires_bound_candidate_isolation_proof(
                 "binding": binding,
                 "scan_mode": "exhaustive",
                 "analyzer_version": (
-                    PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
-                    + "/implementation"
+                    PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION + "/implementation"
                 ),
                 "passed": True,
                 "analyzer_health": {
@@ -1963,8 +1817,7 @@ def test_g102_objective_repair_requires_bound_candidate_isolation_proof(
                 "binding": binding,
                 "scan_mode": "exhaustive",
                 "analyzer_version": (
-                    PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION
-                    + "/replay"
+                    PROOF_CANDIDATE_NON_AUTHORITY_COMPLETION_ANALYZER_VERSION + "/replay"
                 ),
                 "passed": True,
                 "analyzer_health": {
@@ -2044,18 +1897,13 @@ def test_g102_objective_repair_requires_bound_candidate_isolation_proof(
     assert "analyzer_unhealthy" in unsafe.reason_codes
 
     duplicate_quorum = deepcopy(quorum)
-    duplicate_quorum["members"][1]["receipt_cid"] = (
-        duplicate_quorum["members"][0]["receipt_cid"]
-    )
+    duplicate_quorum["members"][1]["receipt_cid"] = duplicate_quorum["members"][0]["receipt_cid"]
     no_quorum = witness.evaluate_objective_completion(
         current_state=GoalState.PROVISIONALLY_COMPLETE,
         **{**values, "exhaustion_quorum": duplicate_quorum},
     )
     assert no_quorum.state is GoalState.PROVISIONALLY_COMPLETE
-    assert any(
-        code.startswith("exhaustion_quorum")
-        for code in no_quorum.reason_codes
-    )
+    assert any(code.startswith("exhaustion_quorum") for code in no_quorum.reason_codes)
 
 
 @pytest.mark.parametrize(
@@ -2065,9 +1913,7 @@ def test_g102_objective_repair_requires_bound_candidate_isolation_proof(
         lambda payload: payload.__setitem__("code_proof_authoritative", True),
         lambda payload: payload.__setitem__("proof_authoritative", True),
         lambda payload: payload["binding_result"].__setitem__("valid", True),
-        lambda payload: payload["completion_admission"].__setitem__(
-            "admitted", True
-        ),
+        lambda payload: payload["completion_admission"].__setitem__("admitted", True),
         lambda payload: payload["candidate_receipt"].__setitem__(
             "repository_tree_id", "tree:replayed"
         ),
@@ -2197,9 +2043,7 @@ def test_wrong_theorem_and_post_merge_receipts_are_not_reusable() -> None:
         obligations,
     )
     assert wrong_theorem.valid is False
-    assert "wrong_theorem_not_in_fresh_obligation_set" in (
-        wrong_theorem.reason_codes
-    )
+    assert "wrong_theorem_not_in_fresh_obligation_set" in (wrong_theorem.reason_codes)
 
     merged_obligations = derive_fresh_implementation_obligations(
         scopes,
@@ -2234,7 +2078,4 @@ def test_omitted_planned_effect_fails_closed() -> None:
     )
 
     assert obligations.complete is False
-    assert (
-        "planned_effect_scope_omitted"
-        in obligations.incomplete_reason_codes
-    )
+    assert "planned_effect_scope_omitted" in obligations.incomplete_reason_codes

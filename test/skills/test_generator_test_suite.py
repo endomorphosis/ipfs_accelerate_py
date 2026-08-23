@@ -16,26 +16,27 @@ from pathlib import Path
 # Model families to test
 MODEL_FAMILIES = ["bert", "gpt2", "t5", "vit"]
 
+
 class TestGeneratorTestCase(unittest.TestCase):
     """Test case for the HuggingFace test generator."""
-    
+
     def setUp(self):
         """Set up the test case."""
         # Create temporary directory for test files
         self.temp_dir = tempfile.TemporaryDirectory()
         self.output_dir = self.temp_dir.name
-        
+
         # Path to the test generator script
         self.generator_path = os.path.abspath("../test_generator.py")
-        
+
         # Check if the generator exists
         if not os.path.exists(self.generator_path):
             raise FileNotFoundError(f"Generator script not found at {self.generator_path}")
-    
+
     def tearDown(self):
         """Clean up after the test case."""
         self.temp_dir.cleanup()
-    
+
     def test_generator_imports(self):
         """Test that the generator can be imported without errors."""
         spec = importlib.util.spec_from_file_location("test_generator", self.generator_path)
@@ -45,65 +46,73 @@ class TestGeneratorTestCase(unittest.TestCase):
             self.assertTrue(hasattr(module, "generate_test_file"))
         except Exception as e:
             self.fail(f"Failed to import test generator: {e}")
-    
+
     def test_file_generation(self):
         """Test that the generator can generate files for all model families."""
         for family in MODEL_FAMILIES:
             output_path = os.path.join(self.output_dir, f"test_hf_{family}.py")
-            
+
             # Generate test file
             cmd = [
                 sys.executable,
                 self.generator_path,
-                "--family", family,
-                "--output", self.output_dir
+                "--family",
+                family,
+                "--output",
+                self.output_dir,
             ]
-            
+
             try:
                 result = subprocess.run(cmd, capture_output=True, text=True)
-                self.assertEqual(result.returncode, 0, 
-                                f"Generator failed for {family}: {result.stderr}")
-                
+                self.assertEqual(
+                    result.returncode, 0, f"Generator failed for {family}: {result.stderr}"
+                )
+
                 # Check that the file exists
-                self.assertTrue(os.path.exists(output_path), 
-                               f"Generated file does not exist: {output_path}")
-                
+                self.assertTrue(
+                    os.path.exists(output_path), f"Generated file does not exist: {output_path}"
+                )
+
                 # Check file size
                 file_size = os.path.getsize(output_path)
-                self.assertGreater(file_size, 1000, 
-                                  f"Generated file is too small: {file_size} bytes")
-                
+                self.assertGreater(
+                    file_size, 1000, f"Generated file is too small: {file_size} bytes"
+                )
+
                 # Check syntax
                 syntax_check = subprocess.run(
                     [sys.executable, "-m", "py_compile", output_path],
                     capture_output=True,
-                    text=True
+                    text=True,
                 )
-                self.assertEqual(syntax_check.returncode, 0, 
-                                f"Syntax check failed: {syntax_check.stderr}")
+                self.assertEqual(
+                    syntax_check.returncode, 0, f"Syntax check failed: {syntax_check.stderr}"
+                )
             except Exception as e:
                 self.fail(f"Test generation failed for {family}: {e}")
-    
+
     def test_architecture_specifics(self):
         """Test that the generator includes architecture-specific code."""
         for family in MODEL_FAMILIES:
             output_path = os.path.join(self.output_dir, f"test_hf_{family}.py")
-            
+
             # Generate test file
             cmd = [
                 sys.executable,
                 self.generator_path,
-                "--family", family,
-                "--output", self.output_dir
+                "--family",
+                family,
+                "--output",
+                self.output_dir,
             ]
-            
+
             try:
                 subprocess.run(cmd, capture_output=True, text=True, check=True)
-                
+
                 # Read generated file
-                with open(output_path, 'r') as f:
+                with open(output_path, "r") as f:
                     content = f.read()
-                
+
                 # Check architecture-specific patterns
                 if family == "bert":
                     self.assertIn("BERT_MODELS_REGISTRY", content)
@@ -125,26 +134,21 @@ class TestGeneratorTestCase(unittest.TestCase):
                     self.assertIn("image", content)
             except Exception as e:
                 self.fail(f"Architecture test failed for {family}: {e}")
-    
+
     def test_hardware_detection(self):
         """Test that the generator includes hardware detection code."""
         # Generate test file for any family
         output_path = os.path.join(self.output_dir, "test_hf_bert.py")
-        
-        cmd = [
-            sys.executable,
-            self.generator_path,
-            "--family", "bert",
-            "--output", self.output_dir
-        ]
-        
+
+        cmd = [sys.executable, self.generator_path, "--family", "bert", "--output", self.output_dir]
+
         try:
             subprocess.run(cmd, capture_output=True, text=True, check=True)
-            
+
             # Read generated file
-            with open(output_path, 'r') as f:
+            with open(output_path, "r") as f:
                 content = f.read()
-            
+
             # Check hardware detection code
             self.assertIn("check_hardware", content)
             self.assertIn("cuda", content)
@@ -152,25 +156,20 @@ class TestGeneratorTestCase(unittest.TestCase):
             self.assertIn("openvino", content)
         except Exception as e:
             self.fail(f"Hardware detection test failed: {e}")
-    
+
     def test_mock_imports(self):
         """Test that the generator includes mock imports for missing packages."""
         output_path = os.path.join(self.output_dir, "test_hf_bert.py")
-        
-        cmd = [
-            sys.executable,
-            self.generator_path,
-            "--family", "bert",
-            "--output", self.output_dir
-        ]
-        
+
+        cmd = [sys.executable, self.generator_path, "--family", "bert", "--output", self.output_dir]
+
         try:
             subprocess.run(cmd, capture_output=True, text=True, check=True)
-            
+
             # Read generated file
-            with open(output_path, 'r') as f:
+            with open(output_path, "r") as f:
                 content = f.read()
-            
+
             # Check mock imports
             self.assertIn("try:", content)
             self.assertIn("import torch", content)
@@ -179,9 +178,11 @@ class TestGeneratorTestCase(unittest.TestCase):
         except Exception as e:
             self.fail(f"Mock imports test failed: {e}")
 
+
 def run_tests():
     """Run all tests."""
     unittest.main()
+
 
 if __name__ == "__main__":
     run_tests()

@@ -108,7 +108,9 @@ class TFHubertModelTester:
         self.encoder_seq_length = self.output_seq_length
 
     def prepare_config_and_inputs(self):
-        input_values = tf.cast(ids_tensor([self.batch_size, self.seq_length], 32768), tf.float32) / 32768.0
+        input_values = (
+            tf.cast(ids_tensor([self.batch_size, self.seq_length], 32768), tf.float32) / 32768.0
+        )
         attention_mask = tf.ones_like(input_values)
 
         config = HubertConfig(
@@ -139,7 +141,8 @@ class TFHubertModelTester:
         model = TFHubertModel(config)
         result = model(input_values, attention_mask=attention_mask)
         self.parent.assertEqual(
-            result.last_hidden_state.shape, (self.batch_size, self.output_seq_length, self.hidden_size)
+            result.last_hidden_state.shape,
+            (self.batch_size, self.output_seq_length, self.hidden_size),
         )
 
     def create_and_check_batch_inference(self, config, input_values, *args):
@@ -158,7 +161,9 @@ class TFHubertModelTester:
         input_values = input_values * length_mask
         attention_mask = attention_mask * length_mask
 
-        batch_outputs = model(input_values, attention_mask=attention_mask, training=False).last_hidden_state
+        batch_outputs = model(
+            input_values, attention_mask=attention_mask, training=False
+        ).last_hidden_state
 
         for i in range(input_values.shape[0]):
             input_slice = input_values[i : i + 1, : input_lengths[i]]
@@ -175,7 +180,9 @@ class TFHubertModelTester:
 
         input_lengths = tf.constant([input_values.shape[-1] // i for i in [4, 2, 1]])
         max_length_labels = model.hubert._get_feat_extract_output_lengths(input_lengths)
-        labels = ids_tensor((input_values.shape[0], min(max_length_labels) - 1), model.config.vocab_size)
+        labels = ids_tensor(
+            (input_values.shape[0], min(max_length_labels) - 1), model.config.vocab_size
+        )
 
         length_mask = tf.sequence_mask(input_lengths, dtype=tf.float32)
 
@@ -201,7 +208,9 @@ class TFHubertModelTester:
 
         input_lengths = tf.constant([input_values.shape[-1] // i for i in [4, 2, 1]])
         max_length_labels = model.hubert._get_feat_extract_output_lengths(input_lengths)
-        labels = ids_tensor((input_values.shape[0], max(max_length_labels) - 2), model.config.vocab_size)
+        labels = ids_tensor(
+            (input_values.shape[0], max(max_length_labels) - 2), model.config.vocab_size
+        )
 
         length_mask = tf.sequence_mask(input_lengths, dtype=tf.float32)
 
@@ -218,7 +227,9 @@ class TFHubertModelTester:
         model = TFHubertForCTC(config)
         input_lengths = tf.constant([input_values.shape[-1] // i for i in [4, 2, 1]])
         max_length_labels = model.hubert._get_feat_extract_output_lengths(input_lengths)
-        labels = ids_tensor((input_values.shape[0], min(max_length_labels) - 1), model.config.vocab_size + 100)
+        labels = ids_tensor(
+            (input_values.shape[0], min(max_length_labels) - 1), model.config.vocab_size + 100
+        )
         with pytest.raises(ValueError):
             model(input_values, labels=labels)
 
@@ -285,7 +296,9 @@ class TFHubertModelTest(TFModelTesterMixin, PipelineTesterMixin, unittest.TestCa
             model = model_class(config)
             outputs = model(self._prepare_for_class(inputs_dict, model_class))
             expected_num_layers = getattr(
-                self.model_tester, "expected_num_hidden_layers", self.model_tester.num_hidden_layers + 1
+                self.model_tester,
+                "expected_num_hidden_layers",
+                self.model_tester.num_hidden_layers + 1,
             )
 
             hidden_states = outputs.hidden_states
@@ -406,7 +419,9 @@ class TFHubertRobustModelTest(TFModelTesterMixin, unittest.TestCase):
             model = model_class(config)
             outputs = model(self._prepare_for_class(inputs_dict, model_class))
             expected_num_layers = getattr(
-                self.model_tester, "expected_num_hidden_layers", self.model_tester.num_hidden_layers + 1
+                self.model_tester,
+                "expected_num_hidden_layers",
+                self.model_tester.num_hidden_layers + 1,
             )
 
             hidden_states = outputs.hidden_states
@@ -480,7 +495,8 @@ class TFHubertUtilsTest(unittest.TestCase):
         mask = _compute_mask_indices((batch_size, sequence_length), mask_prob, mask_length)
 
         self.assertListEqual(
-            tf.reduce_sum(mask, -1).numpy().tolist(), [mask_prob * sequence_length for _ in range(batch_size)]
+            tf.reduce_sum(mask, -1).numpy().tolist(),
+            [mask_prob * sequence_length for _ in range(batch_size)],
         )
 
     def test_compute_mask_indices_overlap(self):
@@ -513,10 +529,14 @@ class TFHubertModelIntegrationTest(unittest.TestCase):
 
     def test_inference_ctc_normal(self):
         model = TFHubertForCTC.from_pretrained("facebook/hubert-large-ls960-ft")
-        processor = Wav2Vec2Processor.from_pretrained("facebook/hubert-large-ls960-ft", do_lower_case=True)
+        processor = Wav2Vec2Processor.from_pretrained(
+            "facebook/hubert-large-ls960-ft", do_lower_case=True
+        )
         input_speech = self._load_datasamples(1)
 
-        input_values = processor(input_speech, return_tensors="tf", sampling_rate=16000).input_values
+        input_values = processor(
+            input_speech, return_tensors="tf", sampling_rate=16000
+        ).input_values
 
         logits = model(input_values).logits
 
@@ -528,11 +548,15 @@ class TFHubertModelIntegrationTest(unittest.TestCase):
 
     def test_inference_ctc_normal_batched(self):
         model = TFHubertForCTC.from_pretrained("facebook/hubert-large-ls960-ft")
-        processor = Wav2Vec2Processor.from_pretrained("facebook/hubert-large-ls960-ft", do_lower_case=True)
+        processor = Wav2Vec2Processor.from_pretrained(
+            "facebook/hubert-large-ls960-ft", do_lower_case=True
+        )
 
         input_speech = self._load_datasamples(2)
 
-        input_values = processor(input_speech, return_tensors="tf", padding=True, sampling_rate=16000).input_values
+        input_values = processor(
+            input_speech, return_tensors="tf", padding=True, sampling_rate=16000
+        ).input_values
 
         logits = model(input_values).logits
 
@@ -547,7 +571,9 @@ class TFHubertModelIntegrationTest(unittest.TestCase):
 
     def test_inference_ctc_robust_batched(self):
         model = TFHubertForCTC.from_pretrained("facebook/hubert-large-ls960-ft")
-        processor = Wav2Vec2Processor.from_pretrained("facebook/hubert-large-ls960-ft", do_lower_case=True)
+        processor = Wav2Vec2Processor.from_pretrained(
+            "facebook/hubert-large-ls960-ft", do_lower_case=True
+        )
 
         input_speech = self._load_datasamples(4)
 

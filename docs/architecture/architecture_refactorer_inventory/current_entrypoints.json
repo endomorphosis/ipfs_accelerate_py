@@ -1,0 +1,265 @@
+{
+  "authority": false,
+  "entrypoints": [
+    {
+      "kind": "console_script",
+      "name": "ipfs_accelerate",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1076,
+        "path": "ipfs_accelerate_py/ai_inference_cli.py",
+        "start_line": 1076
+      },
+      "target": "ipfs_accelerate_py.ai_inference_cli:main",
+      "uncertainty": null
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 12,
+        "path": "ipfs_accelerate_py/cli_entry.py",
+        "start_line": 12
+      },
+      "target": "ipfs_accelerate_py.cli_entry:main",
+      "uncertainty": null
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-objective-daemon",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 4692,
+        "path": "ipfs_accelerate_py/agent_supervisor/objectives/objective_daemon.py",
+        "start_line": 4692
+      },
+      "target": "ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon:main",
+      "uncertainty": null
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-backlog-refinery",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 9710,
+        "path": "ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py",
+        "start_line": 9710
+      },
+      "target": "ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery:main",
+      "uncertainty": null
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-bundle-supervisor",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 6831,
+        "path": "ipfs_accelerate_py/agent_supervisor/objectives/bundle_supervisor.py",
+        "start_line": 6831
+      },
+      "target": "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor:main",
+      "uncertainty": null
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-artifact-query",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 5214,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py",
+        "start_line": 5214
+      },
+      "target": "ipfs_accelerate_py.agent_supervisor.runtime.artifact_store:main",
+      "uncertainty": null
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-implementation-daemon",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 74729,
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "start_line": 74729
+      },
+      "target": "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon:main",
+      "uncertainty": null
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-implementation-supervisor",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 20336,
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "start_line": 20336
+      },
+      "target": "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main",
+      "uncertainty": null
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-merge-resolver",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1479,
+        "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
+        "start_line": 1479
+      },
+      "target": "ipfs_accelerate_py.agent_supervisor.merge.merge_resolver:main",
+      "uncertainty": null
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-agent-llm-merge-resolver-fallback",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 159,
+        "path": "ipfs_accelerate_py/agent_supervisor/integrations/llm_merge_resolver_fallback.py",
+        "start_line": 159
+      },
+      "target": "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main",
+      "uncertainty": null
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-proof-reuse-provision",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 333,
+        "path": "ipfs_accelerate_py/testing/proof_reuse/provisioning_cli.py",
+        "start_line": 333
+      },
+      "target": "ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main",
+      "uncertainty": null
+    },
+    {
+      "kind": "console_script",
+      "name": "ipfs-accelerate-llama-cpp-serve",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 4240,
+        "path": "ipfs_accelerate_py/utils/llama_cpp.py",
+        "start_line": 4240
+      },
+      "target": "ipfs_accelerate_py.utils.llama_cpp:main",
+      "uncertainty": null
+    },
+    {
+      "kind": "pytest_plugin",
+      "name": "ipfs-proof-reuse",
+      "reachability": "test",
+      "source_span": {
+        "end_line": 17,
+        "path": "ipfs_accelerate_py/testing/proof_reuse/plugin.py",
+        "start_line": 17
+      },
+      "target": "ipfs_accelerate_py/testing/proof_reuse/plugin.py",
+      "uncertainty": null
+    },
+    {
+      "kind": "cli_adapter",
+      "name": "ipfs-accelerate agent",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 503,
+        "path": "ipfs_accelerate_py/agent_supervisor/control/control_cli.py",
+        "start_line": 503
+      },
+      "target": "ipfs_accelerate_py/agent_supervisor/control/control_cli.py",
+      "uncertainty": null
+    },
+    {
+      "kind": "cli_adapter",
+      "name": "ipfs-accelerate supervisor",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 40,
+        "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/cli.py",
+        "start_line": 40
+      },
+      "target": "ipfs_accelerate_py/agent_supervisor/entrypoints/cli.py",
+      "uncertainty": null
+    },
+    {
+      "kind": "mcp_category",
+      "name": "agent_supervisor",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 60,
+        "path": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py",
+        "start_line": 60
+      },
+      "target": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py",
+      "uncertainty": "mcp_tool_population_is_closed_catalog_plus_usage_tool"
+    },
+    {
+      "kind": "mcp_tool",
+      "name": "agent_supervisor_usage",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 444,
+        "path": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py",
+        "start_line": 444
+      },
+      "target": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py",
+      "uncertainty": null
+    },
+    {
+      "kind": "python_module",
+      "name": "ipfs_accelerate_py.agent_supervisor.todo_daemon",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 39,
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/__main__.py",
+        "start_line": 39
+      },
+      "target": "ipfs_accelerate_py/agent_supervisor/todo_daemon/__main__.py",
+      "uncertainty": null
+    },
+    {
+      "kind": "operator_launcher",
+      "name": "run_agent_supervisor_architecture_refactorer",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "scripts/run_agent_supervisor_architecture_refactorer.py",
+        "start_line": 1
+      },
+      "target": "scripts/run_agent_supervisor_architecture_refactorer.py",
+      "uncertainty": null
+    },
+    {
+      "kind": "operator_launcher",
+      "name": "implementation_supervisor_entry",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+        "start_line": 1
+      },
+      "target": "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+      "uncertainty": null
+    },
+    {
+      "kind": "operator_launcher",
+      "name": "validate_agent_supervisor_architecture_refactorer_board",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "scripts/validate_agent_supervisor_architecture_refactorer_board.py",
+        "start_line": 1
+      },
+      "target": "scripts/validate_agent_supervisor_architecture_refactorer_board.py",
+      "uncertainty": null
+    }
+  ],
+  "inspection": {
+    "assurance": "static_surfaces_only",
+    "method": "static_source_inventory",
+    "nonclaim": "entrypoint_inventory_does_not_execute_tools_or_establish_capability"
+  },
+  "repository_tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}",
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.current-entrypoints@1",
+  "task_id": "PCAR-001"
+}

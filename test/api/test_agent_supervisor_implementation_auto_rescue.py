@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -88,6 +90,24 @@ def test_plan_stage_and_revalidate_for_empty_patch_with_dirty_outputs() -> None:
     )
     assert plan.action is AutoRescueAction.STAGE_AND_REVALIDATE
     assert plan.reason == "stage_declared_outputs_and_revalidate"
+
+
+def test_looks_like_validation_retry_accepts_command_failure() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+        DatabasePortalExecutionBridge,
+    )
+
+    payload = {
+        "returncode": 1,
+        "attempt_consumed": True,
+        "provider_dispatched": True,
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "reason": "validation_command_failed",
+        },
+    }
+    assert DatabasePortalExecutionBridge._looks_like_validation_retry(payload) is True
 
 
 def test_plan_inline_provider_rescue_for_validation_command_failed() -> None:
@@ -574,4 +594,56 @@ def test_inline_provider_rescue_keeps_unsealed_command_without_pass_fds(
 
     assert result["passed"] is True
     assert len(calls) == 1
+    assert calls[0]["inherit_environment"] is False
     assert "pass_fds" not in calls[0]
+
+
+def test_auto_rescue_materializer_uses_sanitized_exact_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("QUACK_TOKEN", "private-quack-token")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        "private-canonical-quack-token",
+    )
+    monkeypatch.setenv("APMC_MATERIALIZER_ALLOWED", "allowed")
+    script_path = tmp_path / "inspect_materializer_environment.py"
+    result_path = tmp_path / "materializer-environment.json"
+    script_path.write_text(
+        "import json, os, pathlib\n"
+        "pathlib.Path('materializer-environment.json').write_text(json.dumps({\n"
+        "    'quack_token': bool(os.environ.get('QUACK_TOKEN')),\n"
+        "    'canonical_quack_token': bool(os.environ.get(\n"
+        "        'IPFS_ACCELERATE_AGENT_QUACK_TOKEN')),\n"
+        "    'allowed': os.environ.get('APMC_MATERIALIZER_ALLOWED'),\n"
+        "}))\n",
+        encoding="utf-8",
+    )
+    daemon = object.__new__(PortalImplementationDaemon)
+    daemon.implementation_timeout = 60
+    monkeypatch.setattr(daemon, "_record_event", lambda *_args, **_kwargs: None)
+    task = PortalTask(
+        task_id="RESCUE-ENV-001",
+        title="materialize without state credentials",
+        status="in_progress",
+        completion="manual",
+        priority="P0",
+        track="security",
+    )
+
+    results = daemon._run_auto_rescue_materialize_commands(
+        workspace_path=tmp_path,
+        log_path=tmp_path / "materializer.log",
+        commands=(
+            f"{shlex.quote(sys.executable)} {shlex.quote(str(script_path))}",
+        ),
+        task=task,
+    )
+
+    assert results[0]["ok"] is True
+    assert json.loads(result_path.read_text(encoding="utf-8")) == {
+        "allowed": "allowed",
+        "canonical_quack_token": False,
+        "quack_token": False,
+    }

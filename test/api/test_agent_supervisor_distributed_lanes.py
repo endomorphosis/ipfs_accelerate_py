@@ -212,9 +212,7 @@ def test_remote_publication_is_fenced_and_handed_to_merge_train(
     assert publication["artifact_id"] == execution.artifact_id
     assert publication["fencing_token"] == grant.fencing_token
     assert publication["digest"].startswith("sha256:")
-    assert publication["digest"] == MergeTrain.distributed_publication_digest(
-        publication
-    )
+    assert publication["digest"] == MergeTrain.distributed_publication_digest(publication)
 
 
 def test_absent_or_incompatible_remote_capacity_falls_back_locally(
@@ -372,12 +370,8 @@ def test_malformed_and_foreign_results_are_quarantined(
 ) -> None:
     now = [1_000]
     case = reason.replace(":", "-")
-    with LeaseCoordinator(
-        tmp_path / f"{case}.duckdb", clock_ms=lambda: now[0]
-    ) as coordinator:
-        registered = coordinator.register_bundle(
-            _bundle(f"REJECT-{case}"), created_at_ms=900
-        )
+    with LeaseCoordinator(tmp_path / f"{case}.duckdb", clock_ms=lambda: now[0]) as coordinator:
+        registered = coordinator.register_bundle(_bundle(f"REJECT-{case}"), created_at_ms=900)
         lane = _lane(tmp_path, registered["task_cid"], f"REJECT-{case}")
         grant = coordinator.claim(
             lane.task_cid,
@@ -388,12 +382,8 @@ def test_malformed_and_foreign_results_are_quarantined(
             coordinator,
             repository_id="repository:test",
             local_executor=lambda *_args: pytest.fail("unexpected local fallback"),
-            remote_workers=[
-                _worker("worker-a", lambda *_args: dict(raw_result))
-            ],
-            merge_submit=lambda _request: pytest.fail(
-                "quarantined result reached merge train"
-            ),
+            remote_workers=[_worker("worker-a", lambda *_args: dict(raw_result))],
+            merge_submit=lambda _request: pytest.fail("quarantined result reached merge train"),
             clock_ms=lambda: now[0],
         ).execute(lane, grant)
 
@@ -458,12 +448,8 @@ def test_duplicate_restart_conflict_and_cancellation_remain_fenced(
         duplicate = restarted.publish_remote_result(
             captured["dispatch"],
             captured["result"],
-            current_capability_receipt=_worker(
-                "worker-a", lambda *_args: {}
-            ).capability_receipt,
-            current_environment_receipt=_worker(
-                "worker-a", lambda *_args: {}
-            ).environment_receipt,
+            current_capability_receipt=_worker("worker-a", lambda *_args: {}).capability_receipt,
+            current_environment_receipt=_worker("worker-a", lambda *_args: {}).environment_receipt,
             now_ms=now[0],
         )
         assert duplicate["duplicate"] is True
@@ -504,19 +490,13 @@ def test_distributed_evidence_requires_complete_post_merge_bindings() -> None:
                 "environment_receipt_id": "environment:1",
             }
         ],
-        validation=[
-            {**task, "passed": True, "receipt_ids": ["validation:1"]}
-        ],
-        terminal_results=[
-            {**task, "accepted": True, "candidate_commit": "abc123"}
-        ],
+        validation=[{**task, "passed": True, "receipt_ids": ["validation:1"]}],
+        terminal_results=[{**task, "accepted": True, "candidate_commit": "abc123"}],
     )
-    assert receipt.proved_requirement_ids_for("tree:accepted") == (
-        DISTRIBUTED_LANE_REQUIREMENT_ID,
-    )
+    assert receipt.proved_requirement_ids_for("tree:accepted") == (DISTRIBUTED_LANE_REQUIREMENT_ID,)
     assert not receipt.proved_requirement_ids_for("tree:foreign")
-    assert not type(receipt).from_dict(receipt.to_dict()).proved_requirement_ids_for(
-        "tree:accepted"
+    assert (
+        not type(receipt).from_dict(receipt.to_dict()).proved_requirement_ids_for("tree:accepted")
     )
 
     incomplete = evaluate_distributed_lane_evidence(

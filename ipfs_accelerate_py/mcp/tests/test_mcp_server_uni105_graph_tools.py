@@ -32,7 +32,9 @@ class TestMCPServerUNI105GraphTools(unittest.TestCase):
 
     def test_graph_add_relationship_rejects_missing_required_fields(self) -> None:
         async def _run() -> None:
-            result = await graph_add_relationship(source_id="", target_id="b", relationship_type="KNOWS")
+            result = await graph_add_relationship(
+                source_id="", target_id="b", relationship_type="KNOWS"
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("must be provided", str(result.get("message", "")))
 

@@ -212,6 +212,85 @@ def test_stale_reclamation_requires_expiry_and_advances_fence(tmp_path: Path) ->
     assert decision.record.state is WorkspaceLifecycleState.TERMINAL
 
 
+def test_controlled_restart_reclaims_only_dead_same_lane_owner(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=600.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    lane_state = tmp_path / "state" / "lane-1"
+    other_state = tmp_path / "state" / "lane-2"
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 9,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    dead_workspace = tmp_path / "dead-same-lane"
+    dead_record = store.begin_preparing(
+        task_id="RESTART-DEAD",
+        canonical_task_cid="cid:restart-dead",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=dead_workspace,
+        branch="implementation/restart-dead",
+        merge_target="main",
+        state_dir=str(lane_state),
+        owner=dead_owner,
+    )
+    other_workspace = tmp_path / "dead-other-lane"
+    store.begin_preparing(
+        task_id="RESTART-OTHER",
+        canonical_task_cid="cid:restart-other",
+        attempt=1,
+        lane_id="lane-2",
+        workspace_path=other_workspace,
+        branch="implementation/restart-other",
+        merge_target="main",
+        state_dir=str(other_state),
+        owner=dead_owner,
+    )
+    live_workspace = tmp_path / "live-same-lane"
+    store.begin_preparing(
+        task_id="RESTART-LIVE",
+        canonical_task_cid="cid:restart-live",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=live_workspace,
+        branch="implementation/restart-live",
+        merge_target="main",
+        state_dir=str(lane_state),
+    )
+
+    assert store.evaluate_cleanup(
+        workspace_path=dead_workspace
+    ).reason == "owner_dead_lease_unexpired"
+    assert (
+        store.reclaim_dead_owner_for_controlled_restart(
+            dead_workspace,
+            expected_state_dir=other_state,
+        )
+        is None
+    )
+
+    recovered = store.reclaim_dead_owners_for_controlled_restart(
+        expected_state_dir=lane_state,
+    )
+
+    assert [record.task_id for record in recovered] == ["RESTART-DEAD"]
+    terminal = store.load_workspace(dead_workspace)
+    assert terminal is not None
+    assert terminal.state is WorkspaceLifecycleState.TERMINAL
+    assert terminal.fence == dead_record.fence + 1
+    assert terminal.expires_at == clock.now
+    assert terminal.terminal_reason == "controlled_restart_dead_owner"
+    assert store.load_workspace(other_workspace).is_nonterminal
+    assert store.load_workspace(live_workspace).is_nonterminal
+
+
 def test_exact_dead_owner_adoption_does_not_wait_for_lease_expiry(
     tmp_path: Path,
 ) -> None:
@@ -1505,3 +1584,136 @@ def test_record_round_trip_json(tmp_path: Path) -> None:
     assert payload["state"] == "preparing"
     assert payload["attempt"] == 9
     assert payload["owner"]["pid"] == record.owner.pid
+
+def _learning_binding(**overrides: object) -> LearningCheckpointBinding:
+    payload = {
+        "architecture_id": "arch:v1",
+        "weights_id": "weights:0",
+        "optimizer_id": "opt:adam",
+        "scheduler_id": "sched:cosine",
+        "tokenizer_id": "tok:v1",
+        "vocab_id": "vocab:v1",
+        "cursor_id": "cursor:0",
+        "corpus_id": "corpus:v1",
+        "split_id": "split:v1",
+        "curriculum_id": "curr:v1",
+        "loss_id": "loss:ce",
+        "random_id": "rng:0",
+        "env_id": "env:v1",
+        "code_id": "code:v1",
+        "compiler_id": "compiler:v1",
+        "cursor_step": 0,
+    }
+    payload.update(overrides)
+    return LearningCheckpointBinding.from_dict(payload)
+
+
+def test_worktree_fence_protects_learning_checkpoint_write(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    workspace = tmp_path / "ws-learning"
+    record = store.begin_preparing(
+        task_id="PGIR-062",
+        attempt=1,
+        lane_id="lane",
+        workspace_path=workspace,
+        branch="implementation/learning",
+        merge_target="main",
+    )
+    leases = CampaignLeaseCoordinator(tmp_path / "leases", clock=store.clock)
+    adapter = LearningCheckpointAdapter(tmp_path / "recovery", leases=leases)
+    checkpoint_lease = leases.acquire(L3ResourceKind.CHECKPOINT, owner_id=record.lease_id)
+    cursor = EventCursor.initial("stream:learning", snapshot_id="tree:merged")
+    saved = adapter.save(
+        _learning_binding(),
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=1,
+        cursor=cursor,
+        fence=checkpoint_lease.fence,
+        lease=checkpoint_lease,
+    )
+    assert saved.fencing_epoch == checkpoint_lease.fence
+    heartbeated = leases.heartbeat(checkpoint_lease, expected_fence=checkpoint_lease.fence)
+    with pytest.raises(StaleFenceError):
+        adapter.save(
+            _learning_binding(
+                weights_id="weights:1",
+                cursor_id="cursor:1",
+                random_id="rng:1",
+                cursor_step=1,
+            ),
+            repository_id="repository:current",
+            tree_id="tree:merged",
+            generation=2,
+            cursor=cursor,
+            fence=checkpoint_lease.fence,
+            lease=checkpoint_lease,
+        )
+    advanced = adapter.save(
+        _learning_binding(
+            weights_id="weights:1",
+            cursor_id="cursor:1",
+            random_id="rng:1",
+            cursor_step=1,
+        ),
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=2,
+        cursor=cursor,
+        fence=heartbeated.fence,
+        lease=heartbeated,
+    )
+    assert advanced.fencing_epoch == heartbeated.fence
+
+
+def test_stale_worktree_reclaim_does_not_accept_old_checkpoint_fence(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(tmp_path, lease_seconds=10.0, startup_grace_seconds=0.0, clock=clock)
+    workspace = tmp_path / "stale-learning"
+    record = store.begin_preparing(
+        task_id="STALE-LEARN",
+        attempt=1,
+        lane_id="dead-owner",
+        workspace_path=workspace,
+        branch="implementation/stale-learn",
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    adapter = LearningCheckpointAdapter(tmp_path / "recovery")
+    cursor = EventCursor.initial("stream:learning", snapshot_id="tree:merged")
+    adapter.save(
+        _learning_binding(),
+        repository_id="repository:current",
+        tree_id="tree:merged",
+        generation=1,
+        cursor=cursor,
+        fence=record.fence,
+    )
+    clock.advance(11.0)
+    decision = store.authorize_cleanup(
+        workspace_path=workspace,
+        caller_lease_id="reclaimer",
+    )
+    assert decision.allowed
+    assert decision.record is not None
+    assert decision.record.fence == record.fence + 1
+    with pytest.raises(StaleFenceError):
+        adapter.save(
+            _learning_binding(
+                weights_id="weights:1",
+                cursor_id="cursor:1",
+                random_id="rng:1",
+                cursor_step=1,
+            ),
+            repository_id="repository:current",
+            tree_id="tree:merged",
+            generation=2,
+            cursor=cursor,
+            fence=record.fence,
+        )

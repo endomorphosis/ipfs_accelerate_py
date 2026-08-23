@@ -1,0 +1,1686 @@
+# Proof-Carrying Architecture Refactorer task board
+
+Executable bootstrap projection for `ipfs_accelerate_py.agent_supervisor`.
+Task prefix: `PCAR-`. Board namespace:
+`agent-supervisor-proof-carrying-architecture-refactorer-v1`. Plan revision:
+`PCAR-PLAN-R1`.
+
+DuckDB is authoritative for goals, tasks, dependencies, attempts, leases,
+fencing, CAS, evidence and completion. Quack is the authenticated loopback
+multi-reader/multi-writer transport and exclusive mutation/state-owner boundary.
+DuckLake is an optional non-authoritative history/benchmark projection and
+cannot gate readiness, acceptance, completion or release. After materialization
+this Markdown is a sealed bootstrap/human projection, not operational authority.
+
+All tasks start `todo`, automatic, and schedulable. Only `PCAR-000` has no
+dependency. The supervisor therefore projects all other tasks as `waiting`,
+not `blocked`, until their dependencies are accepted from exact current-tree
+evidence. Missing optional prerequisites are carried as typed capability
+blockers inside applicable tasks and do not block independent work.
+
+`bbf7f68799072c2b81f7d96eac91f2df3c4b3952` /
+`a698da9e4b54e2929adacb613bc61ba3e72eed58` is the sealed starting baseline.
+The supervisor dispatches each attempt from the actual current merge-target
+tree and records that exact tree in its attempt/evidence receipts.
+
+## Parallel waves
+
+```text
+W0   PCAR-000
+W1   PCAR-001 | PCAR-002
+W2   PCAR-003 | PCAR-004 | PCAR-025
+W3   PCAR-005 | PCAR-006
+W4   PCAR-007 | PCAR-013 | PCAR-014 | PCAR-015
+W5   PCAR-008 | PCAR-010
+W6   PCAR-009 | PCAR-011
+W7   PCAR-012
+W8   PCAR-016
+W9   PCAR-017 | PCAR-024
+W10  PCAR-018
+W11  PCAR-019
+W12  PCAR-020
+W13  PCAR-021 | PCAR-022
+W14  PCAR-023
+W15  PCAR-026 | PCAR-027
+W16  PCAR-028
+W17  PCAR-029
+W18  PCAR-030
+W19  PCAR-031
+```
+
+Tasks in the same wave own disjoint paths. A later task may deliberately extend
+a predecessor-owned integration module only through an explicit dependency.
+Plan, objective, board, scheduler configuration, validator, and bootstrap
+operator paths are protected from workers. Unknown or opaque write scope
+serializes. Sibling repositories are read-only.
+
+## PCAR-000 Seal current source and prerequisite baseline
+
+- Stable task ID: PCAR-000
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: baseline-inventory
+- Goal id: PCAR-G011
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G011
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Recheck and seal the exact branch, commit, tree, protection, environment, gitlink pins, operation catalog, proof/receipt schemas, prerequisite sources/tests, and qualified command ledger before implementation evidence is admitted.
+- Depends on:
+- Owned paths: docs/architecture/architecture_refactorer_inventory/sealed_current_tree_baseline.json, docs/architecture/architecture_refactorer_inventory/sealed_prerequisite_matrix.json, test/api/architecture_refactorer/test_baseline_seal.py
+- Predicted files: docs/architecture/architecture_refactorer_inventory/sealed_current_tree_baseline.json, docs/architecture/architecture_refactorer_inventory/sealed_prerequisite_matrix.json, test/api/architecture_refactorer/test_baseline_seal.py
+- Predicted symbols: baseline manifest schemas; prerequisite source/test identity verifier
+- Read scope: Git metadata; pyproject.toml; .gitmodules; required supervisor subsystems and direct tests; compact bootstrap inventories
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Creates immutable evidence only; does not become source, task, proof, or completion authority.
+- Effect class: read_only_analysis plus compact local evidence writes
+- Public API impact: none
+- State impact: Writes versioned manifests only; DuckDB retains task and completion authority.
+- Preconditions: Clean exact campaign branch; starting commit is ancestor; required gitlinks initialized at pins; no sibling write.
+- Permitted effects: Read exact local source/Git objects; run hermetic prerequisite tests; write owned compact manifests/tests.
+- Prohibited effects: Network-dependent qualification; sibling mutation; source inference from plans; simulated availability; task self-completion.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=24000; output_tokens=8000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=baseline-exclusive; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: baseline
+- Concurrency group: baseline-exclusive
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: source-tree-seal; exact-gitlinks; current-prerequisite-matrix; qualified-test-ledger
+- Completion contract: Every baseline fact is reproduced from current source or tests, each command result distinguishes pass/fail/skip/not-run, optional missing prerequisites are typed, and identities bind the actual task tree.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_baseline_seal.py
+- Proof requirements: Git commit/tree equality; manifest canonical identity; source/test blob bindings; no unclassified prerequisite.
+- Rollback: Discard the isolated task worktree and manifests; retain failed probe receipts; do not advance the architecture root.
+- Required evidence: source/tree/status receipt; branch-protection record; version/gitlink/catalog/schema ledger; prerequisite matrix; test result ledger
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: docs/architecture/architecture_refactorer_inventory/sealed_current_tree_baseline.json, docs/architecture/architecture_refactorer_inventory/sealed_prerequisite_matrix.json, test/api/architecture_refactorer/test_baseline_seal.py
+- Raw-source requirements: Git objects and exact prerequisite source/test files listed by the bootstrap inventory
+- Capability blockers: prerequisite.autonomous_meta_controller.current_tree_missing; prerequisite.proof_carrying_procedure_compiler.current_tree_missing; prerequisite.adversarial_assurance.exact_engine_symbol_absent
+
+## PCAR-001 Inventory packages, entrypoints, authorities, and state stores
+
+- Stable task ID: PCAR-001
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: baseline-inventory
+- Goal id: PCAR-G011
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G011
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Inventory the required supervisor roots and overlapping accelerator/provider/hardware/endpoint/compatibility paths with exact source spans, entrypoints, dynamic-loading uncertainty, authority candidates, and mutable stores.
+- Depends on: PCAR-000
+- Owned paths: docs/architecture/architecture_refactorer_inventory/current_repository_inventory.json, docs/architecture/architecture_refactorer_inventory/current_entrypoints.json, docs/architecture/architecture_refactorer_inventory/current_state_stores.json, test/api/architecture_refactorer/test_repository_inventory.py
+- Predicted files: docs/architecture/architecture_refactorer_inventory/current_repository_inventory.json, docs/architecture/architecture_refactorer_inventory/current_entrypoints.json, docs/architecture/architecture_refactorer_inventory/current_state_stores.json, test/api/architecture_refactorer/test_repository_inventory.py
+- Predicted symbols: repository inventory builder; entrypoint classifier; preliminary authority and store records
+- Read scope: Declared agent_supervisor roots; MCP supervisor tools; package entrypoints; legacy accelerator, provider, hardware, endpoint, compatibility, fixture, and simulation paths
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Nominates ownership only; unknown and competing owners remain findings for PCAR-006/007.
+- Effect class: read_only_analysis plus compact local inventory writes
+- Public API impact: none
+- State impact: Classifies stores without migrating or mutating them.
+- Preconditions: Accepted PCAR-000 baseline; exact same repository lineage; raw-source scope declared.
+- Permitted effects: Static/import-safe inspection; local metadata probes; write only owned inventories/tests.
+- Prohibited effects: Dynamic production effects; sibling writes; dead-code declaration from static reachability; authority inference from identity.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=36000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=inventory-writer; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: inventory
+- Concurrency group: inventory-writer
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: required-root-coverage; entrypoint-coverage; store-inventory; uncertainty-retained
+- Completion contract: Every mandated path has an exact classification or typed unknown, production/test/compatibility/simulation reachability is distinguished, and all mutable stores are nominated without changing authority.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_repository_inventory.py
+- Proof requirements: Inventory schema/identity; exact source spans; no requested root omitted; no external path resolution.
+- Rollback: Discard owned inventory/test changes; retain incomplete-scope receipt; leave source untouched.
+- Required evidence: package/file/symbol/entrypoint ledger; state-store ledger; reachability uncertainty; source identities
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: docs/architecture/architecture_refactorer_inventory/current_repository_inventory.json, docs/architecture/architecture_refactorer_inventory/current_entrypoints.json, docs/architecture/architecture_refactorer_inventory/current_state_stores.json, test/api/architecture_refactorer/test_repository_inventory.py
+- Raw-source requirements: All minimum inspection roots and overlapping legacy/provider/hardware/endpoint/compatibility paths
+- Capability blockers: none
+## PCAR-002 Define ArchitectureIR and graph contracts
+
+- Stable task ID: PCAR-002
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: architecture-analysis
+- Goal id: PCAR-G012
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G012
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Define the one canonical, versioned ArchitectureIR with closed nodes, edges, confidence, provenance, freshness, repository tree, content identity, deterministic round trips, and unknown-field rejection.
+- Depends on: PCAR-000
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/__init__.py, ipfs_accelerate_py/agent_supervisor/architecture_refactorer/contracts.py, ipfs_accelerate_py/agent_supervisor/architecture_refactorer/architecture_ir.py, test/api/architecture_refactorer/test_contracts.py, test/api/architecture_refactorer/test_architecture_ir.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/__init__.py, ipfs_accelerate_py/agent_supervisor/architecture_refactorer/contracts.py, ipfs_accelerate_py/agent_supervisor/architecture_refactorer/architecture_ir.py, test/api/architecture_refactorer/test_contracts.py, test/api/architecture_refactorer/test_architecture_ir.py
+- Predicted symbols: ArchitectureIR; closed node/edge/confidence enums; source fact identity; strict serialization contracts
+- Read scope: Existing canonical content identity, proof contract, strict schema, effect and operation-catalog patterns
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: ArchitectureIR becomes architecture representation authority only; it reuses existing content identity and does not own runtime concerns.
+- Effect class: internal_pure_contract_addition
+- Public API impact: provisional internal package surface
+- State impact: Immutable value contracts only; no mutable store.
+- Preconditions: Accepted PCAR-000 baseline; canonical identity implementation located; no duplicate CID system.
+- Permitted effects: Add owned strict immutable contracts and hermetic tests; reuse canonical identity.
+- Prohibited effects: New content identity/receipt/task/objective systems; open node or edge vocabularies; hidden extras.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=28000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=architecture-package-bootstrap; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: ir-contracts
+- Concurrency group: architecture-package-bootstrap
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: closed-contracts; canonical-identity; deterministic-round-trip; unknown-field-rejection
+- Completion contract: All required node/edge kinds and graph-fact provenance fields serialize canonically, reject unknowns, and preserve exact equality on round trip.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_contracts.py test/api/architecture_refactorer/test_architecture_ir.py
+- Proof requirements: Schema closure; canonical content identity; deterministic ordering; invalid/unknown field counterexamples.
+- Rollback: Revert owned new package files and tests; no persisted architecture root exists.
+- Required evidence: contract schemas; round-trip vectors; rejection vectors; canonical identity fixtures
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/__init__.py, ipfs_accelerate_py/agent_supervisor/architecture_refactorer/contracts.py, ipfs_accelerate_py/agent_supervisor/architecture_refactorer/architecture_ir.py, test/api/architecture_refactorer/test_contracts.py, test/api/architecture_refactorer/test_architecture_ir.py
+- Raw-source requirements: Existing identity, operation, effect, proof, receipt, and strict dataclass contracts
+- Capability blockers: none
+
+## PCAR-003 Implement architecture graph extraction
+
+- Stable task ID: PCAR-003
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: architecture-analysis
+- Goal id: PCAR-G012
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G012
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Extract bounded ArchitectureIR graphs for Python modules, imports, calls, constructs, schemas, operations, effects, tests, and proofs while preserving exact spans and conservative uncertainty.
+- Depends on: PCAR-001, PCAR-002
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/graph_builder.py, test/api/architecture_refactorer/test_graph_builder.py, test/api/architecture_refactorer/test_graph_effect_edges.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/graph_builder.py, test/api/architecture_refactorer/test_graph_builder.py, test/api/architecture_refactorer/test_graph_effect_edges.py
+- Predicted symbols: ArchitectureGraphBuilder; Python AST/import/call/effect extractors; conservative dynamic edge records
+- Read scope: Accepted inventory and ArchitectureIR; existing AST/repository analysis interfaces; selected fixture source
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Produces ArchitectureIR facts but cannot decide ownership, equivalence, safety, or removal.
+- Effect class: read_only_analysis and immutable graph construction
+- Public API impact: internal
+- State impact: No authority; managed large graph bodies are external artifacts addressed by compact manifests.
+- Preconditions: Accepted PCAR-001 inventory and PCAR-002 contracts; bounded repository root and exclusions.
+- Permitted effects: Parse declared text/source; resolve safe in-repository imports; emit exact/conservative/heuristic/opaque facts.
+- Prohibited effects: Import-time execution of inspected modules; symlink/submodule escape; heuristic fact promotion; large Git artifacts.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=36000; output_tokens=14000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=graph-builder; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: graph
+- Concurrency group: graph-builder
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: graph-extraction; import-call-edges; effect-edges; provenance; conservative-dynamic-dispatch
+- Completion contract: Representative source yields deterministic provenance-bound graph facts, dynamic ambiguity widens edges, and protected/external paths fail closed.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_graph_builder.py test/api/architecture_refactorer/test_graph_effect_edges.py
+- Proof requirements: Deterministic graph root; source span/content binding; path containment; dynamic-edge conservative supersets.
+- Rollback: Revert builder/tests and discard managed graph artifacts; retain extractor failure receipt.
+- Required evidence: fixture graphs; provenance records; path escape negatives; determinism receipts
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/graph_builder.py, test/api/architecture_refactorer/test_graph_builder.py, test/api/architecture_refactorer/test_graph_effect_edges.py
+- Raw-source requirements: Selected source files in accepted inventory; existing AST and effect vocabulary implementations
+- Capability blockers: none
+
+## PCAR-004 Define semantic-entropy metrics
+
+- Stable task ID: PCAR-004
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: architecture-analysis
+- Goal id: PCAR-G012
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G012
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Define versioned, independently auditable authority, duplication, surface, cone, dispatch, state, effect, compatibility, validation, cache, drift, conflict, and context dimensions without using an aesthetic aggregate as proof.
+- Depends on: PCAR-002
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/entropy.py, test/api/architecture_refactorer/test_entropy.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/entropy.py, test/api/architecture_refactorer/test_entropy.py
+- Predicted symbols: SemanticEntropyReport; independent entropy dimension records; change amplification measures
+- Read scope: Accepted ArchitectureIR contracts; existing metrics and semantic-compression governance interfaces
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Metric reports prioritize work only; they cannot establish correctness, equivalence, ownership, or promotion.
+- Effect class: internal_pure_contract_and_measurement
+- Public API impact: internal
+- State impact: Immutable measurements with evidence identities only.
+- Preconditions: Accepted PCAR-002 contracts; each dimension has numerator, denominator or explicit unit, uncertainty, and evidence.
+- Permitted effects: Add closed metric contracts/calculations and deterministic fixtures.
+- Prohibited effects: Compensating safety scores; undocumented aggregation; metric-driven deletion/promotion.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=22000; output_tokens=9000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=entropy-contracts; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: entropy
+- Concurrency group: entropy-contracts
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: all-dimensions; independent-measures; change-amplification; uncertainty; no-safety-inference
+- Completion contract: Every requested entropy dimension serializes independently with evidence and uncertainty, and tests prove lower scores cannot satisfy a safety predicate.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_entropy.py
+- Proof requirements: Dimension closure; deterministic calculation; monotonic fixture properties; safety non-authority.
+- Rollback: Revert owned module/test; no runtime state changed.
+- Required evidence: dimension schema; canonical vectors; aggregation rejection tests
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/entropy.py, test/api/architecture_refactorer/test_entropy.py
+- Raw-source requirements: Existing supervisor metrics, semantic-compression, validation, cache, and context contracts
+- Capability blockers: none
+
+## PCAR-005 Implement dependency-cone and context-burden analysis
+
+- Stable task ID: PCAR-005
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: architecture-analysis
+- Goal id: PCAR-G012
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G012
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Measure the files, symbols, interfaces, schemas, effects, tests, proofs, providers, runtime paths, tokens, raw expansions, hops, and owners needed for an admitted operation or task family.
+- Depends on: PCAR-003, PCAR-004
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/metrics.py, test/api/architecture_refactorer/test_dependency_cone.py, test/api/architecture_refactorer/test_context_burden.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/metrics.py, test/api/architecture_refactorer/test_dependency_cone.py, test/api/architecture_refactorer/test_context_burden.py
+- Predicted symbols: DependencyConeAnalyzer; ContextBurdenAnalyzer; ValidationAmplificationMeasure
+- Read scope: Accepted graph and entropy contracts; ContextCompiler and incremental verification selection interfaces; frozen fixture tasks
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Measurements observe canonical graph/context/validation authorities and never replace them.
+- Effect class: read_only_analysis
+- Public API impact: internal
+- State impact: Immutable reports; no cache authority.
+- Preconditions: Accepted PCAR-003 graph and PCAR-004 entropy contracts; exact frozen corpus identity.
+- Permitted effects: Traverse bounded graph; invoke pure/dry-run context and validation selection; record raw counts and uncertainty.
+- Prohibited effects: Omit required evidence; mutate context cache; infer safety from smaller cones; unbounded traversal.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=28000; output_tokens=10000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=architecture-metrics; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: metrics
+- Concurrency group: architecture-metrics
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: dependency-cone; context-burden; validation-amplification; bounded-traversal; evidence-parity
+- Completion contract: Deterministic fixtures report every required unit, cycles and opaque edges terminate conservatively, and context reductions fail when evidence coverage differs.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_dependency_cone.py test/api/architecture_refactorer/test_context_burden.py
+- Proof requirements: Bounded traversal; same-evidence comparator; zero-division semantics; context/compiler provenance.
+- Rollback: Revert module/tests and discard measurement artifacts.
+- Required evidence: cone/context fixture reports; traversal bounds; evidence parity negatives
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/metrics.py, test/api/architecture_refactorer/test_dependency_cone.py, test/api/architecture_refactorer/test_context_burden.py
+- Raw-source requirements: Accepted ArchitectureIR fixtures plus current ContextCompiler and verification planner interfaces
+- Capability blockers: none
+
+## PCAR-006 Implement canonical authority ownership graph
+
+- Stable task ID: PCAR-006
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: authority
+- Goal id: PCAR-G013
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G013
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Resolve the initial concern vocabulary to canonical owners, adapters, projections, legacy/simulation owners, unknowns, and formal arbitration using source-bound facts.
+- Depends on: PCAR-001, PCAR-003
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/authority_graph.py, test/api/architecture_refactorer/test_authority_graph.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/authority_graph.py, test/api/architecture_refactorer/test_authority_graph.py
+- Predicted symbols: AuthorityOwnershipGraph; ConcernOwnership; OwnerDisposition; arbitration and blocker contracts
+- Read scope: Accepted inventory and graph; existing content/operation/provider/task/objective/policy/control/proof/receipt/state authorities
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: This graph records reviewed ownership; it cannot transfer an existing authority or authorize code changes.
+- Effect class: read_only_analysis plus immutable ownership records
+- Public API impact: internal
+- State impact: No runtime state migration; unknown/multiple owners remain blockers.
+- Preconditions: Accepted PCAR-001 inventory and PCAR-003 graph; concern set closed; authority evidence policy explicit.
+- Permitted effects: Correlate exact source/contracts/tests/receipts; emit blockers and typed adapters/projections.
+- Prohibited effects: Authority inference from import/re-export/content identity alone; silent arbitration; ownership mutation.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=38000; output_tokens=14000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=authority-model; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: authority
+- Concurrency group: authority-model
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: initial-concern-coverage; exactly-one-owner-or-blocker; adapters-projections; unknown-fails-closed
+- Completion contract: Each initial concern has exactly one evidence-backed canonical owner or a typed hard blocker, and all non-owner paths are explicit.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_authority_graph.py
+- Proof requirements: Concern coverage; one-owner cardinality; arbitration contract; re-export non-authority; source identity.
+- Rollback: Revert module/test and discard ownership candidates; existing authorities remain unchanged.
+- Required evidence: ownership graph; source/contract/test bindings; unknown and multiple-owner counterexamples
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/authority_graph.py, test/api/architecture_refactorer/test_authority_graph.py
+- Raw-source requirements: Canonical current sources/tests for every initial concern plus accepted graph facts
+- Capability blockers: none
+
+## PCAR-007 Implement duplicate-authority detection
+
+- Stable task ID: PCAR-007
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: authority
+- Goal id: PCAR-G013
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G013
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Detect independent provider-capability and receipt decisions, competing state owners, compatibility/control bypasses, simulation-to-production flow, Python/CLI/MCP divergence, re-export authorities, and obsolete-authority tests.
+- Depends on: PCAR-006
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/duplicate_authority.py, test/api/architecture_refactorer/test_duplicate_authority.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/duplicate_authority.py, test/api/architecture_refactorer/test_duplicate_authority.py
+- Predicted symbols: DuplicateAuthorityDetector; AuthorityCollision; bypass and surface-divergence findings
+- Read scope: Accepted ownership graph and source-bound ArchitectureIR; current control/provider/state/receipt/surface paths
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Produces hard findings only; no finding selects a canonical owner or executes remediation.
+- Effect class: read_only_analysis
+- Public API impact: internal
+- State impact: No state mutation.
+- Preconditions: Accepted PCAR-006 ownership graph; production versus test/simulation reachability classified or unknown.
+- Permitted effects: Run bounded structural and fixture flow analysis; preserve false-positive and unknown dispositions.
+- Prohibited effects: Automatic authority consolidation; deletion; heuristic-only critical finding promotion.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=30000; output_tokens=11000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=authority-detector; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: authority-detection
+- Concurrency group: authority-detector
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: required-detections; formal-arbitration-recognition; false-positive-rejection; blocker-emission
+- Completion contract: All required collision fixtures are detected, formally arbitrated cases are not false collisions, and unknown production ownership is blocking.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_duplicate_authority.py
+- Proof requirements: Positive/negative collision vectors; reachability provenance; one-owner invariant; no-remediation side effect.
+- Rollback: Revert detector/test; retain candidate finding fixtures.
+- Required evidence: collision reports; bypass/simulation/surface fixtures; false-positive cases
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/duplicate_authority.py, test/api/architecture_refactorer/test_duplicate_authority.py
+- Raw-source requirements: Authority graph evidence and relevant provider/control/state/receipt/surface source
+- Capability blockers: none
+
+## PCAR-008 Implement semantic duplicate detector
+
+- Stable task ID: PCAR-008
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: candidate-discovery
+- Goal id: PCAR-G021
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G021
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Discover exact, structural, behavioral, partial, legacy, simulation, false, and unknown duplication using multiple independent semantic signals and explicit authority/effect differences.
+- Depends on: PCAR-003, PCAR-007
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/duplicate_detector.py, test/api/architecture_refactorer/test_duplicate_detector.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/duplicate_detector.py, test/api/architecture_refactorer/test_duplicate_detector.py
+- Predicted symbols: SemanticDuplicateDetector; DuplicateClass; VerificationLevel; DuplicateCandidate
+- Read scope: Accepted ArchitectureIR and ownership findings; bounded source/tests/proofs/runtime trace fixtures
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Candidate-tier only; does not prove equivalence, ownership, dead code, removal, or canonical choice.
+- Effect class: read_only_analysis
+- Public API impact: internal
+- State impact: No state mutation; trace fixtures hermetic.
+- Preconditions: Accepted graph and duplicate-authority detector; signal provenance available.
+- Permitted effects: AST/call/effect/schema/error/test/proof/trace/anti-unification signals; bounded local differential probes.
+- Prohibited effects: Text-only classification; production effects; automatic removal or migration.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=36000; output_tokens=14000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=semantic-duplicates; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: duplicates
+- Concurrency group: semantic-duplicates
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: multi-signal; closed-classes; verification-levels; false-duplicate-rejection; differences-preserved
+- Completion contract: Every candidate names alternatives, common/different behavior/effects/authority, coverage, migration, risk, and predicted context reduction with an appropriate verification level.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_duplicate_detector.py
+- Proof requirements: Exact/alpha/behavioral/partial/false fixtures; signal independence; authority/effect difference retention.
+- Rollback: Revert module/test; discard candidate artifacts.
+- Required evidence: candidate vectors; signal reports; false-positive and unknown cases
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/duplicate_detector.py, test/api/architecture_refactorer/test_duplicate_detector.py
+- Raw-source requirements: Selected source, tests, proofs, and bounded trace fixtures identified by accepted graph
+- Capability blockers: none
+
+## PCAR-009 Implement bounded e-graph normalization
+
+- Stable task ID: PCAR-009
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: candidate-discovery
+- Goal id: PCAR-G021
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G021
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Normalize only explicit supported semantic domains with bounded equality saturation and proof/solver/translation/heuristic rule dispositions.
+- Depends on: PCAR-002, PCAR-008
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/egraph_normalizer.py, test/api/architecture_refactorer/test_egraph_normalizer.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/egraph_normalizer.py, test/api/architecture_refactorer/test_egraph_normalizer.py
+- Predicted symbols: BoundedEGraphNormalizer; RewriteRule; RewriteEvidence; multi-objective extractor
+- Read scope: Accepted contracts and duplicate candidates; existing expression/operation/effect/policy/result/schema/dependency/validation contracts
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Validated rules support equivalence obligations; heuristic rules support search only and cannot authorize removal.
+- Effect class: pure_bounded_computation
+- Public API impact: internal
+- State impact: No state; explicit iteration/node/time bounds.
+- Preconditions: Accepted PCAR-002 contracts and PCAR-008 candidates; closed domain and rewrite catalog.
+- Permitted effects: Run deterministic bounded saturation and multi-objective extraction on pure expressions.
+- Prohibited effects: Arbitrary Python equivalence; unbounded saturation; heuristic critical proof; source-length-only optimization.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=30000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=egraph-normalization; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: egraph
+- Concurrency group: egraph-normalization
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: supported-domains; bounded-saturation; rule-evidence; heuristic-separation; multi-objective-extraction
+- Completion contract: Validated rules preserve fixture semantics, heuristic paths remain visibly non-proving, limits terminate deterministically, and extraction includes semantic/runtime/dependency/effect/surface/context/validation costs.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_egraph_normalizer.py
+- Proof requirements: Rule-specific proof/translation vectors; bound enforcement; semantic counterexamples; deterministic extraction.
+- Rollback: Revert module/test; discard normalization artifacts.
+- Required evidence: rule catalog; validation identities; saturation receipts; heuristic rejection cases
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/egraph_normalizer.py, test/api/architecture_refactorer/test_egraph_normalizer.py
+- Raw-source requirements: Reviewed pure semantic domain contracts and representative expressions
+- Capability blockers: none
+
+## PCAR-010 Implement contract-candidate extraction
+
+- Stable task ID: PCAR-010
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: candidate-discovery
+- Goal id: PCAR-G021
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G021
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Mine candidate inputs, outputs, pre/postconditions, effects, frames, errors, idempotency, reversibility, authority, policy, confirmation, bounds, freshness, and observations while retaining conflicts.
+- Depends on: PCAR-002, PCAR-003, PCAR-007
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/contract_extractor.py, test/api/architecture_refactorer/test_contract_extractor.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/contract_extractor.py, test/api/architecture_refactorer/test_contract_extractor.py
+- Predicted symbols: ContractCandidateExtractor; ContractCandidate; ContractAmbiguity; evidence comparison
+- Read scope: Accepted graph/ownership; types, schemas, tests, runtime checks, proofs, receipts, negatives, mutants, authoritative documents
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: All mined contracts remain candidate-tier; public contracts and reviewed authorities retain precedence.
+- Effect class: read_only_analysis
+- Public API impact: internal
+- State impact: No mutation.
+- Preconditions: Accepted graph and authority findings; source kinds and authority classes explicit.
+- Permitted effects: Correlate declared evidence sources and emit candidates/ambiguities with provenance.
+- Prohibited effects: Implementation-wins resolution; test completeness assumption; documentation authority without marking; hidden conflict.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=36000; output_tokens=14000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=contract-extraction; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: contracts
+- Concurrency group: contract-extraction
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: all-contract-dimensions; source-comparison; ambiguity; negative-evidence; candidate-tier
+- Completion contract: Conflicting evidence yields typed ContractAmbiguity, absent dimensions remain explicit, and no candidate is promoted as a requirement.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_contract_extractor.py
+- Proof requirements: Ambiguity vectors; source precedence retention; negative/mutant evidence; deterministic candidate identity.
+- Rollback: Revert module/test and discard candidate contracts.
+- Required evidence: candidate/ambiguity fixtures; source comparison matrices; negative cases
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/contract_extractor.py, test/api/architecture_refactorer/test_contract_extractor.py
+- Raw-source requirements: Selected authoritative contracts, implementation/types, tests, proof obligations, receipts, negative examples, and marked documents
+- Capability blockers: none
+
+## PCAR-011 Implement interface-boundary synthesis
+
+- Stable task ID: PCAR-011
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: candidate-discovery
+- Goal id: PCAR-G021
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G021
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Propose smaller stable interfaces around coherent authorities while minimizing cross-boundary effects, mutable sharing, cycles, public symbols, change/context/validation amplification.
+- Depends on: PCAR-004, PCAR-006, PCAR-010
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/boundary_synthesizer.py, test/api/architecture_refactorer/test_boundary_synthesizer.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/boundary_synthesizer.py, test/api/architecture_refactorer/test_boundary_synthesizer.py
+- Predicted symbols: InterfaceBoundarySynthesizer; BoundaryProposal; boundary cost and hard constraint model
+- Read scope: Accepted entropy, ownership, contract candidates, graph, and initial boundary concern set
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Proposals preserve existing canonical owners and do not create, transfer, or promote authority.
+- Effect class: read_only_planning
+- Public API impact: candidate interfaces only
+- State impact: Proposals name owner/migration but perform no state change.
+- Preconditions: Accepted entropy/authority/contract evidence; unresolved ambiguities hard reject affected proposals.
+- Permitted effects: Generate bounded proposals with callers/effects/state/adapters/deprecations/tests/proofs/benefit.
+- Prohibited effects: Unresolved authority/state movement; behavior/performance/observability/rollback loss; autonomous application.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=32000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=boundary-synthesis; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: boundaries
+- Concurrency group: boundary-synthesis
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: initial-boundaries; coherent-authority; hard-constraint-preservation; complete-proposal
+- Completion contract: Every proposal declares the required interface, owners, callers, effects, state, migration, deprecated paths, tests, proofs, and context/cone predictions; unsafe proposals are rejected.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_boundary_synthesizer.py
+- Proof requirements: Boundary invariant checks; cycle/effect/state counterexamples; deterministic ranking inputs.
+- Rollback: Revert module/test; candidates have no applied effects.
+- Required evidence: accepted/rejected proposal fixtures; cost measures; hard-gate explanations
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/boundary_synthesizer.py, test/api/architecture_refactorer/test_boundary_synthesizer.py
+- Raw-source requirements: Accepted graph, entropy, ownership, contracts, and selected boundary source
+- Capability blockers: none
+
+## PCAR-012 Define closed refactor-operator grammar
+
+- Stable task ID: PCAR-012
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: candidate-discovery
+- Goal id: PCAR-G021
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G021
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Define the closed declarative operator vocabulary with preconditions, targets, effects, authority/API/state impact, migration, rollback, validation, proofs, maximum scope, and canonical candidate identity.
+- Depends on: PCAR-002, PCAR-006, PCAR-010, PCAR-011
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/refactor_operators.py, ipfs_accelerate_py/agent_supervisor/architecture_refactorer/candidate.py, test/api/architecture_refactorer/test_refactor_operators.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/refactor_operators.py, ipfs_accelerate_py/agent_supervisor/architecture_refactorer/candidate.py, test/api/architecture_refactorer/test_refactor_operators.py
+- Predicted symbols: RefactorOperator; RefactorCandidate; operator contracts; autonomy risk classes
+- Read scope: Accepted ArchitectureIR, ownership, contracts, boundaries, existing worktree/policy/validation contracts
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Operators describe bounded changes only; they cannot authorize execution, reduce gates, or self-promote.
+- Effect class: internal_pure_contract_addition
+- Public API impact: internal
+- State impact: Immutable declarations; no mutation.
+- Preconditions: Accepted ownership/contracts/boundaries; every required initial operator has a risk/autonomy disposition.
+- Permitted effects: Add strict operator/candidate contracts and negative validation fixtures.
+- Prohibited effects: Arbitrary script/shell payloads; open operator kinds; self-authorization; missing scope/rollback/validation.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=30000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=operator-grammar; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: operators
+- Concurrency group: operator-grammar
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: closed-vocabulary; complete-declarations; maximum-scope; self-authorization-rejection; canonical-candidate
+- Completion contract: All required operators validate only with complete declarations, unknown operators/fields and scope expansion fail closed, and candidate identity binds exact tree/contract/effects.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_refactor_operators.py
+- Proof requirements: Vocabulary closure; invariant/precondition validation; scope and self-promotion counterexamples; identity determinism.
+- Rollback: Revert contracts/tests; no candidate was executed.
+- Required evidence: operator catalog; valid/invalid vectors; autonomy classification map
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/refactor_operators.py, ipfs_accelerate_py/agent_supervisor/architecture_refactorer/candidate.py, test/api/architecture_refactorer/test_refactor_operators.py
+- Raw-source requirements: Existing worktree, control policy, proof, validation, and candidate contract patterns
+- Capability blockers: none
+
+## PCAR-013 Implement public-surface manifest
+
+- Stable task ID: PCAR-013
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: ownership-quarantine
+- Goal id: PCAR-G022
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G022
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Classify exported symbols and bind stable symbols to owner/schema/version/effects/errors/authority/tests/proofs/consumers while detecting accidental exports and surface divergence.
+- Depends on: PCAR-001, PCAR-003, PCAR-006
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/public_surface.py, test/api/architecture_refactorer/test_public_surface.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/public_surface.py, test/api/architecture_refactorer/test_public_surface.py
+- Predicted symbols: PublicSurfaceManifest; ExportClassification; StablePublicSymbolRecord; projection parity findings
+- Read scope: Accepted inventory/graph/ownership; package __init__, pyproject entrypoints, CLI and MCP registries; import tests
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Manifest observes canonical owners and public contracts; it does not make internal symbols public or deprecate them.
+- Effect class: read_only_analysis
+- Public API impact: manifest only; no actual public API change
+- State impact: No mutation.
+- Preconditions: Accepted inventory, graph, and authority model; safe import/static discovery modes.
+- Permitted effects: Classify stable/provisional/internal/compatibility/deprecated/simulation/test_only/accidental symbols.
+- Prohibited effects: Eager side-effect imports; public removal; consumer assumptions; CLI/MCP semantic invention.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=30000; output_tokens=11000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=surface-analysis; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: public-surface
+- Concurrency group: surface-analysis
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: all-export-classes; stable-metadata; consumer-evidence; accidental-surface; projection-mismatch
+- Completion contract: Every selected export has one classification and provenance, stable entries are complete, imports are assessed for laziness/effects, and unknown consumers block removal.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_public_surface.py
+- Proof requirements: Export closure; side-effect-free fixture; stable metadata completeness; CLI/Python/MCP mismatch vectors.
+- Rollback: Revert module/test; public imports remain unchanged.
+- Required evidence: surface manifest fixtures; import traces; consumer references; mismatch findings
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/public_surface.py, test/api/architecture_refactorer/test_public_surface.py
+- Raw-source requirements: Package exports, Python entrypoints, CLI and MCP registries and relevant tests
+- Capability blockers: none
+
+## PCAR-014 Implement state-ownership model
+
+- Stable task ID: PCAR-014
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: ownership-quarantine
+- Goal id: PCAR-G022
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G022
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Classify DuckDB tables, files, Markdown, registries, events, caches, worktrees, leases, providers, goals, tasks, completion, and receipts so each mutable semantic fact has exactly one authoritative store.
+- Depends on: PCAR-001, PCAR-003, PCAR-006
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/state_ownership.py, test/api/architecture_refactorer/test_state_ownership.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/state_ownership.py, test/api/architecture_refactorer/test_state_ownership.py
+- Predicted symbols: StateOwnershipModel; StateItem; StateDisposition; StateMigrationPlan
+- Read scope: Accepted state inventory, graph, ownership; control-plane schema and persistence/cache/event interfaces
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Records existing store authority; proposed migrations cannot grant authority or create indefinite dual ownership.
+- Effect class: read_only_analysis and immutable migration proposals
+- Public API impact: internal
+- State impact: Model only; no store or schema mutation.
+- Preconditions: Accepted inventory/graph/authority; mutable semantic fact vocabulary and store evidence explicit.
+- Permitted effects: Classify authoritative/projection/cache/event/fixture/legacy/unknown; plan bounded migration phases.
+- Prohibited effects: Raw state writes; Markdown/dashboard authority; indefinite dual write/authority; unknown-owner acceptance.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=32000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=state-ownership; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: state
+- Concurrency group: state-ownership
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: all-store-classes; one-authoritative-store; unknown-conflict; bounded-migration; rebuildable-projections
+- Completion contract: All inventoried state has a disposition, each mutable semantic fact has exactly one authoritative owner or hard blocker, and migration plans end dual-read/write.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_state_ownership.py
+- Proof requirements: One-owner invariant; conflict/unknown fixtures; migration phase closure; projection/cache non-authority.
+- Rollback: Revert model/test; no operational state changed.
+- Required evidence: state ownership fixtures; conflict reports; migration plan vectors
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/state_ownership.py, test/api/architecture_refactorer/test_state_ownership.py
+- Raw-source requirements: Control-plane schema, state stores, registries, caches, events, leases, receipt and Markdown projections
+- Capability blockers: none
+
+## PCAR-015 Inventory legacy, compatibility, fixture, and simulation paths
+
+- Stable task ID: PCAR-015
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: ownership-quarantine
+- Goal id: PCAR-G022
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G022
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Inventory mock workers/inference, simulated hardware, fake/compatibility CIDs, fixture providers, fallback successes, deprecated coordinators, endpoint registries, and historical routers with explicit reachability.
+- Depends on: PCAR-001, PCAR-003, PCAR-006
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/legacy_paths.py, docs/architecture/architecture_refactorer_inventory/legacy_simulation_inventory.json, test/api/architecture_refactorer/test_legacy_reachability.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/legacy_paths.py, docs/architecture/architecture_refactorer_inventory/legacy_simulation_inventory.json, test/api/architecture_refactorer/test_legacy_reachability.py
+- Predicted symbols: LegacyPathInventory; ReachabilityDisposition; OriginTaint; dynamic reachability records
+- Read scope: Accepted inventory/graph/authority; legacy accelerator/provider/hardware/endpoint/compatibility and test paths
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Inventory never treats compatibility, fixture, or simulation as production authority.
+- Effect class: read_only_analysis plus compact inventory
+- Public API impact: none
+- State impact: No mutation.
+- Preconditions: Accepted inventory/graph/authority; production entrypoints and dynamic registry uncertainty known or typed.
+- Permitted effects: Static and hermetic dynamic reachability tracing; classify production/test/compatibility/dead/unknown.
+- Prohibited effects: Dead classification from static reachability alone; deletion; importing effectful production plugins; fake-to-live promotion.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=36000; output_tokens=13000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=legacy-analysis; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: legacy-inventory
+- Concurrency group: legacy-analysis
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: required-path-types; explicit-reachability; dynamic-uncertainty; source-origin
+- Completion contract: Every required legacy/simulation class has source identity and reachability disposition; unknown dynamic paths remain unknown/blocking, not dead.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_legacy_reachability.py
+- Proof requirements: Entrypoint reachability fixtures; dynamic loader counterexamples; origin-taint preservation; no-side-effect scan.
+- Rollback: Revert module/inventory/test; no path moved or deleted.
+- Required evidence: legacy/simulation inventory; reachability traces; dynamic unknown cases
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/legacy_paths.py, docs/architecture/architecture_refactorer_inventory/legacy_simulation_inventory.json, test/api/architecture_refactorer/test_legacy_reachability.py
+- Raw-source requirements: Legacy accelerator, provider, hardware, endpoint, registry, fixture, mock, fallback, compatibility and simulation sources
+- Capability blockers: none
+
+## PCAR-016 Implement compatibility and simulation quarantine checks
+
+- Stable task ID: PCAR-016
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: ownership-quarantine
+- Goal id: PCAR-G022
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G022
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Enforce static and dynamic barriers so compatibility, fixture, and simulation origins cannot satisfy production capability, success, proof, completion, or release predicates.
+- Depends on: PCAR-012, PCAR-013, PCAR-014, PCAR-015
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/quarantine.py, test/api/architecture_refactorer/test_compatibility_quarantine.py, test/api/architecture_refactorer/test_simulation_quarantine.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/quarantine.py, test/api/architecture_refactorer/test_compatibility_quarantine.py, test/api/architecture_refactorer/test_simulation_quarantine.py
+- Predicted symbols: QuarantinePolicy; ProductionPredicate; OriginFlowCheck; QuarantineFinding
+- Read scope: Accepted operator/public/state/legacy models; canonical production predicates and entrypoints
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Canonical production predicates remain owned by existing systems; quarantine only rejects contaminated flow.
+- Effect class: read_only_validation
+- Public API impact: internal validation API
+- State impact: No relocation or deletion; findings/proposals only.
+- Preconditions: Accepted operator grammar, public/state/legacy inventories; source origins and production predicates closed.
+- Permitted effects: Static taint/flow checks; hermetic dynamic fixtures; propose explicit namespace relocations/adapters.
+- Prohibited effects: Treating simulation as unavailable live capability; automatic compatibility deletion; consumer-free migration assumption.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=32000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=quarantine-validation; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: quarantine
+- Concurrency group: quarantine-validation
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: origin-taint; production-predicate-barrier; static-and-dynamic; compatibility-migration-gates
+- Completion contract: All production predicates reject contaminated fixture/compatibility/simulation values, default entrypoints do not instantiate them in fixtures, and intentional compatibility remains explicitly typed.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_compatibility_quarantine.py test/api/architecture_refactorer/test_simulation_quarantine.py
+- Proof requirements: NoSimulatedAsLive flow property; positive/negative taint fixtures; migration/deprecation precondition checks.
+- Rollback: Revert checks/tests; no path was moved.
+- Required evidence: flow reports; contaminated predicate negatives; explicit compatibility adapter positives
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/quarantine.py, test/api/architecture_refactorer/test_compatibility_quarantine.py, test/api/architecture_refactorer/test_simulation_quarantine.py
+- Raw-source requirements: Accepted inventories plus canonical capability/execution/proof/completion/release predicate sources
+- Capability blockers: none
+
+## PCAR-017 Implement isolated refactor-candidate execution
+
+- Stable task ID: PCAR-017
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: execution-validation
+- Goal id: PCAR-G031
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G031
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Apply only validated declarative candidates in isolated worktrees with exact repository/tree/scope, leases/fencing, resource limits, preserved original, audit receipt, cancellation, and rollback.
+- Depends on: PCAR-012, PCAR-014, PCAR-016
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/executor.py, ipfs_accelerate_py/agent_supervisor/architecture_refactorer/runtime.py, test/api/architecture_refactorer/test_executor.py, test/api/architecture_refactorer/test_rollback.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/executor.py, ipfs_accelerate_py/agent_supervisor/architecture_refactorer/runtime.py, test/api/architecture_refactorer/test_executor.py, test/api/architecture_refactorer/test_rollback.py
+- Predicted symbols: RefactorCandidateExecutor; ExecutionReceipt; ScopeFence; RollbackReceipt
+- Read scope: Accepted operator/state/quarantine contracts; existing worktree, lease/fence, policy, audit and scheduler interfaces
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Existing control/policy/worktree/task authorities authorize execution; executor cannot self-authorize or accept results.
+- Effect class: bounded_isolated_source_mutation
+- Public API impact: internal
+- State impact: Task worktree only; no authoritative store migration; receipts via canonical control path.
+- Preconditions: Validated candidate; allowed autonomy class; exact clean base; disjoint owned scope; rollback plan; lease/fence.
+- Permitted effects: Apply closed operator inside isolated worktree; run declared local checks; cancel and rollback.
+- Prohibited effects: Arbitrary shell synthesis; protected/sibling/symlink/submodule escape; main checkout write; self-promotion.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=36000; output_tokens=14000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=candidate-execution; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: execution
+- Concurrency group: candidate-execution
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: isolated-worktree; exact-scope; declarative-only; lease-fence; cancellation; rollback
+- Completion contract: Valid candidates modify only owned paths in an isolated tree, invalid/expired/scope-escaping work fails before effects, restart is durable, and rollback restores exact pre-change content.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_executor.py test/api/architecture_refactorer/test_rollback.py
+- Proof requirements: Tree/scope equality; lease/fence freshness; path containment; pre/post diff identity; exercised rollback.
+- Rollback: Invoke the sealed candidate rollback in its isolated worktree; verify exact pre-change tree; quarantine partial attempt.
+- Required evidence: execution/audit/rollback receipts; exact diff; scope and escape negatives; restart trace
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/executor.py, ipfs_accelerate_py/agent_supervisor/architecture_refactorer/runtime.py, test/api/architecture_refactorer/test_executor.py, test/api/architecture_refactorer/test_rollback.py
+- Raw-source requirements: Existing worktree manager, policy, leases/fencing, task identity, audit and refactor contracts
+- Capability blockers: none
+
+## PCAR-018 Implement differential behavioral validation
+
+- Stable task ID: PCAR-018
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: execution-validation
+- Goal id: PCAR-G031
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G031
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Compare preserved original and candidate on valid/invalid/boundary inputs, exceptions, effects, state transitions, receipts, performance, cancellation, timeout, restart, errors, and outcomes.
+- Depends on: PCAR-017
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/differential.py, test/api/architecture_refactorer/test_differential_behavior.py, test/api/architecture_refactorer/test_error_receipt_comparison.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/differential.py, test/api/architecture_refactorer/test_differential_behavior.py, test/api/architecture_refactorer/test_error_receipt_comparison.py
+- Predicted symbols: DifferentialValidator; BehavioralObservation; AdmittedDifference; comparison matrix
+- Read scope: Accepted isolated executor; original/candidate artifacts; candidate contract and declared validation corpus
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Only contract-declared intentional differences are admissible; validator cannot rewrite a contract or accept a task.
+- Effect class: isolated_test_execution
+- Public API impact: internal
+- State impact: Ephemeral isolated fixtures; deterministic snapshots restored between cases.
+- Preconditions: Accepted PCAR-017 execution/rollback; preserved original; complete candidate contract and test generators.
+- Permitted effects: Hermetic differential/property/bounded fault execution; normalize only validated nondeterminism.
+- Prohibited effects: Live provider/network effects; omitted negative/boundary cases; undeclared difference acceptance.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=34000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=behavior-validation; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: differential
+- Concurrency group: behavior-validation
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: input-matrix; behavior; exceptions-errors; state-receipts; cancellation-timeout-restart; admitted-differences
+- Completion contract: Zero undeclared difference remains across the declared matrix, intentional differences bind versioned migration/test/docs disposition, and inconclusive cases fail.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_differential_behavior.py test/api/architecture_refactorer/test_error_receipt_comparison.py
+- Proof requirements: Paired observation identities; corpus coverage; allowed-difference contract; inconclusive and false-equivalence negatives.
+- Rollback: Discard candidate on any required mismatch and exercise PCAR-017 rollback; retain counterexample.
+- Required evidence: differential report; paired traces; counterexamples; coverage and normalization ledger
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/differential.py, test/api/architecture_refactorer/test_differential_behavior.py, test/api/architecture_refactorer/test_error_receipt_comparison.py
+- Raw-source requirements: Candidate/original source and declared tests, contracts, fixtures, fault schedule
+- Capability blockers: none
+
+## PCAR-019 Implement effect and authority comparison
+
+- Stable task ID: PCAR-019
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: execution-validation
+- Goal id: PCAR-G031
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G031
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Compare old/new allowed and observed effects, frame conditions, owners, policy/authorization/confirmation, state writes, receipt producers, and reachability without compensating scores.
+- Depends on: PCAR-006, PCAR-014, PCAR-018
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/effect_comparison.py, test/api/architecture_refactorer/test_effect_authority_comparison.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/effect_comparison.py, test/api/architecture_refactorer/test_effect_authority_comparison.py
+- Predicted symbols: EffectAuthorityComparator; EffectDelta; AuthorityDelta; FrameComparison
+- Read scope: Accepted authority/state models and differential observations; candidate contracts and graph deltas
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Existing authority graph and policy remain canonical; any weakening or unknown delta hard rejects.
+- Effect class: read_only_validation
+- Public API impact: internal
+- State impact: No operational mutation.
+- Preconditions: Accepted authority/state models and differential report; old/new graphs bound to exact trees.
+- Permitted effects: Calculate effect/authority/frame deltas and intentional versioned differences.
+- Prohibited effects: Effect expansion; authority weakening; new dual store; score compensation; heuristic critical conclusion.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=30000; output_tokens=11000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=effect-validation; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: effect-authority
+- Concurrency group: effect-validation
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: effect-subset; authority-preservation; frame-conditions; state-owner; receipt-policy-confirmation
+- Completion contract: Every candidate has exact old/new effect and authority comparisons; expansion, weakening, unknown ownership, bypass, or dual authority is rejected.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_effect_authority_comparison.py
+- Proof requirements: NoEffectExpansion and NoAuthorityWeakening; owner cardinality; policy dominance; contaminated-flow negatives.
+- Rollback: Reject and roll back the candidate on any failed or inconclusive property; retain delta/counterexample.
+- Required evidence: effect/authority delta; graph identities; rejection fixtures; policy/state/receipt comparisons
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/effect_comparison.py, test/api/architecture_refactorer/test_effect_authority_comparison.py
+- Raw-source requirements: Accepted old/new graph, state/authority models, candidate contract and differential traces
+- Capability blockers: none
+
+## PCAR-020 Implement translation validation for generated adapters
+
+- Stable task ID: PCAR-020
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: execution-validation
+- Goal id: PCAR-G031
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G031
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Independently validate pure extraction, schema adapters, closed outcome conversion, operation projections, facades, relocation, and error conversion while retaining original implementations.
+- Depends on: PCAR-009, PCAR-018, PCAR-019
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/translation_validation.py, test/api/architecture_refactorer/test_translation_validation.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/translation_validation.py, test/api/architecture_refactorer/test_translation_validation.py
+- Predicted symbols: TranslationValidator; RefinementObligation; ValidationDisposition; generated adapter checks
+- Read scope: Accepted e-graph rules, differential and effect/authority comparisons; original/generated source and declared obligation
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Independent validator supplies evidence only; unavailable/inconclusive required validation rejects.
+- Effect class: isolated_validation
+- Public API impact: internal
+- State impact: No persistent state beyond receipts.
+- Preconditions: Original preserved; generated candidate and independent equivalence/refinement obligation; validator supports required property.
+- Permitted effects: Differential/property/bounded symbolic/type/effect/mutation checks; explicit human-review disposition.
+- Prohibited effects: Full arbitrary Python equivalence claim; generator self-validation as sole proof; inconclusive promotion.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=32000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=translation-validation; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: translation
+- Concurrency group: translation-validation
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: independent-obligation; supported-targets; validator-unavailable-rejection; refinement
+- Completion contract: Supported generated refactors pass an independently produced obligation, unsupported/inconclusive properties reject, and every receipt binds original/candidate/tool/tree.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_translation_validation.py
+- Proof requirements: Independent obligation identity; generator/validator separation; refinement counterexamples; stale tool/tree rejection.
+- Rollback: Reject and roll back candidate; preserve original and counterexample.
+- Required evidence: translation receipt; obligation; tool identities; differential/property/symbolic/type/effect/mutation results
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/translation_validation.py, test/api/architecture_refactorer/test_translation_validation.py
+- Raw-source requirements: Original/generated implementations, candidate contract, validated rewrite rules, and declared validators
+- Capability blockers: none
+
+## PCAR-021 Integrate existing procedure compiler or expose future adapter
+
+- Stable task ID: PCAR-021
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: execution-validation
+- Goal id: PCAR-G031
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G031
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Expose a narrow typed adapter for reusable refactor procedure families, integrating the current-tree compiler only when present and otherwise reporting its typed absence without recreating it.
+- Depends on: PCAR-012, PCAR-020
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/procedure_adapter.py, test/api/architecture_refactorer/test_procedure_adapter.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/procedure_adapter.py, test/api/architecture_refactorer/test_procedure_adapter.py
+- Predicted symbols: RefactorProcedureAdapter; ProcedureCapability; family compatibility and transfer rejection
+- Read scope: Accepted operator/translation contracts; current-tree procedure compiler discovery; existing proof and task-family interfaces
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Procedure evidence cannot authorize, transfer across incompatible authority/state/effects/validation, or promote candidates.
+- Effect class: internal_adapter_addition
+- Public API impact: provisional internal future integration
+- State impact: No procedure registry authority created.
+- Preconditions: Accepted operator grammar and translation validation; exact current-tree capability probe.
+- Permitted effects: Declare initial reusable family contracts; fail closed when compiler unavailable; validate compatible transfer dimensions.
+- Prohibited effects: Reimplement compiler; infer capability from another branch; procedure self-authorization; cross-family unsafe transfer.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=26000; output_tokens=10000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=procedure-integration; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: procedure-adapter
+- Concurrency group: procedure-integration
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: narrow-adapter; typed-unavailable; initial-families; transfer-gates; no-self-authorization
+- Completion contract: All initial families are representable, absent compiler returns the typed blocker while declarative operators continue, and incompatible transfer is rejected.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_procedure_adapter.py
+- Proof requirements: Capability probe source identity; family boundary checks; authority/state/effect/validation transfer negatives.
+- Rollback: Revert adapter/test; operators remain independently usable.
+- Required evidence: capability disposition; family contracts; transfer vectors; no-compiler behavior
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/procedure_adapter.py, test/api/architecture_refactorer/test_procedure_adapter.py
+- Raw-source requirements: Current-tree procedure compiler probe plus accepted operator/proof/task-family contracts
+- Capability blockers: prerequisite.proof_carrying_procedure_compiler.current_tree_missing
+
+## PCAR-022 Implement autonomous architecture-refactor planner
+
+- Stable task ID: PCAR-022
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: autonomy-drift-audit
+- Goal id: PCAR-G032
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G032
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Rank the smallest recurring architecture improvement by context/cone/authority/validation/conflict/surface/procedure/runtime benefit versus cost/risk/rollback/consumer impact after applying every hard gate.
+- Depends on: PCAR-005, PCAR-011, PCAR-012, PCAR-014, PCAR-019, PCAR-020
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/planner.py, test/api/architecture_refactorer/test_planner.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/planner.py, test/api/architecture_refactorer/test_planner.py
+- Predicted symbols: ArchitectureRefactorPlanner; RefactorPlan; HardGateDecision; expected-value ranking
+- Read scope: Accepted metrics, boundaries, operators, state/effect/authority and translation evidence; AdaptivePlanner interface
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Existing policy/control authorities admit plans; planner only proposes and cannot waive hard gates or accept/promote.
+- Effect class: read_only_planning
+- Public API impact: internal
+- State impact: Immutable plan proposals; valid prefix and affected suffix identities.
+- Preconditions: Accepted prerequisite analyses; exact candidate/tree; all costs/benefits and uncertainty explicit.
+- Permitted effects: Deterministic hard-gate evaluation; bounded ranking; valid-prefix preservation; suffix replan after counterexample.
+- Prohibited effects: Style-only cleanup; unrelated authority batch; unresolved contract/state/equivalence/scope/rollback candidate; self-promotion.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=34000; output_tokens=13000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=architecture-planning; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: planner
+- Concurrency group: architecture-planning
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: hard-gates-first; expected-value; smallest-change; prefix-preservation; suffix-replan
+- Completion contract: Every rejected hard-gate candidate stays rejected regardless of score, admitted plans are bounded/testable/rollbackable, and counterexamples replan only affected suffixes.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_planner.py
+- Proof requirements: Hard-gate precedence; deterministic tie-break; scope/cost bounds; prefix/suffix fixtures; no-style-only case.
+- Rollback: Discard proposal/plan revision; no candidate executed.
+- Required evidence: ranked candidates; gate decisions; value components; counterexample replan traces
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/planner.py, test/api/architecture_refactorer/test_planner.py
+- Raw-source requirements: Accepted candidates, metrics, ownership/state/effect/translation evidence and AdaptivePlanner public contract
+- Capability blockers: prerequisite.autonomous_meta_controller.current_tree_missing; not required for bounded planner
+
+## PCAR-023 Implement bounded autonomous refactor execution
+
+- Stable task ID: PCAR-023
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: autonomy-drift-audit
+- Goal id: PCAR-G032
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G032
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Execute only automatically eligible low-risk operator classes through the verified pipeline, while routing proposal-only and always-human classes without effects.
+- Depends on: PCAR-017, PCAR-018, PCAR-019, PCAR-020, PCAR-021, PCAR-022
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/autonomous_executor.py, test/api/architecture_refactorer/test_autonomous_execution.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/autonomous_executor.py, test/api/architecture_refactorer/test_autonomous_execution.py
+- Predicted symbols: BoundedAutonomousExecutor; AutonomyCeiling; PromotionRequest; SelfPromotionError
+- Read scope: Accepted executor/validators/procedure adapter/planner; canonical policy/authorization/control contracts
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Policy and human approval remain external canonical authorities; executor cannot raise its ceiling or promote.
+- Effect class: bounded_isolated_source_mutation for allowlisted low-risk classes only
+- Public API impact: internal
+- State impact: Durable attempts/receipts through existing control authority; no new scheduler or registry.
+- Preconditions: Accepted full execution/validation/planner chain; exact autonomy class; current policy; lease/fence; rollback.
+- Permitted effects: Execute allowlisted automatic classes in isolated worktrees; create proposal packets for higher risk; cancel/rollback.
+- Prohibited effects: Public/state/provider/receipt retirement automatically; authorization/policy/security/payment/wire/key/release/legal/financial change; self-promotion.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=32000; output_tokens=12000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=autonomous-execution; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: autonomy
+- Concurrency group: autonomous-execution
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: closed-ceiling; low-risk-pipeline; proposal-routing; human-gates; self-promotion-rejection
+- Completion contract: Every class follows the declared ceiling, autonomous high-risk executions remain zero, expired/changed policy stops work, and self-ceiling/promotion attempts fail before effects.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_autonomous_execution.py
+- Proof requirements: Autonomy class closure; policy freshness; self-promotion negatives; high-risk zero-effect traces; rollback.
+- Rollback: Cancel and invoke PCAR-017 exact rollback; retain attempt/denial receipts.
+- Required evidence: autonomy decision; policy/lease/fence identity; execution/proposal/denial receipts; rollback proof
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/autonomous_executor.py, test/api/architecture_refactorer/test_autonomous_execution.py
+- Raw-source requirements: Accepted planner/executor/validator contracts and canonical current policy/control authorization
+- Capability blockers: prerequisite.autonomous_meta_controller.current_tree_missing; not required for declared bounded executor
+
+## PCAR-024 Implement architecture drift monitor
+
+- Stable task ID: PCAR-024
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: autonomy-drift-audit
+- Goal id: PCAR-G032
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G032
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Compare exact current graph with admitted architecture root, emit minimal classified deltas, invalidate affected evidence, open bounded findings, deduplicate unchanged drift, and remain idle on an unchanged tree.
+- Depends on: PCAR-003, PCAR-005, PCAR-006, PCAR-007, PCAR-013, PCAR-014, PCAR-015, PCAR-016
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/drift_monitor.py, test/api/architecture_refactorer/test_drift_monitor.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/drift_monitor.py, test/api/architecture_refactorer/test_drift_monitor.py
+- Predicted symbols: ArchitectureDriftMonitor; ArchitectureDelta; DriftFinding; deduplication and invalidation records
+- Read scope: Accepted graph/metrics/authority/surface/state/legacy/quarantine models; current repository tree
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Monitor observes and invalidates architecture evidence only; it cannot mutate source, authorize repair, or grant authority.
+- Effect class: read_only_monitoring
+- Public API impact: internal
+- State impact: Durable dedup/findings through existing event/receipt authority; no new state store.
+- Preconditions: Accepted architecture root and monitor scope; exact tree/freshness; read-only operation.
+- Permitted effects: Detect requested symbol/authority/store/cycle/simulation/duplicate/surface/opaque/cone/context deltas; emit minimal finding.
+- Prohibited effects: Repeated unchanged finding; broad repair; source mutation; stale root acceptance; new task authority.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=30000; output_tokens=11000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=drift-monitor; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: drift
+- Concurrency group: drift-monitor
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: required-drift-kinds; minimal-delta; targeted-invalidation; deduplication; idle-stability
+- Completion contract: All required drift fixtures produce one minimal finding and affected invalidation, repeated identical trees produce none, and unchanged tree remains idle.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_drift_monitor.py
+- Proof requirements: Root/tree identity; delta minimality; dedup key; targeted invalidation; idle zero-event property.
+- Rollback: Revert module/test; delete only non-authoritative test artifacts; preserve event history.
+- Required evidence: drift/dedup/idle fixture receipts; invalidation sets; exact root/tree bindings
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/drift_monitor.py, test/api/architecture_refactorer/test_drift_monitor.py
+- Raw-source requirements: Accepted ArchitectureIR/root and current selected source tree
+- Capability blockers: none
+
+## PCAR-025 Implement cross-repository read-only contract audit
+
+- Stable task ID: PCAR-025
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: autonomy-drift-audit
+- Goal id: PCAR-G032
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G032
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Read pinned published datasets identity, kit storage/proof-seal, and MCP++ wire/profile contracts and classify local compatibility, adapter need, duplicate authority, schema drift, version incompatibility, or unavailability.
+- Depends on: PCAR-000, PCAR-001, PCAR-002
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/cross_repository_audit.py, docs/architecture/architecture_refactorer_inventory/cross_repository_contract_audit.json, test/api/architecture_refactorer/test_cross_repository_audit.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/cross_repository_audit.py, docs/architecture/architecture_refactorer_inventory/cross_repository_contract_audit.json, test/api/architecture_refactorer/test_cross_repository_audit.py
+- Predicted symbols: CrossRepositoryContractAuditor; ContractCompatibilityDisposition; ProposalPacket
+- Read scope: Accepted baseline/inventory/contracts; pinned sibling published typed contracts and schemas only
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Sibling published contracts retain their authority; audit cannot modify them or create a shared-contract change.
+- Effect class: cross_repository_read_only
+- Public API impact: internal local audit records
+- State impact: Compact local audit/proposal only; no sibling state.
+- Preconditions: Exact pinned gitlinks; read-only paths; published interface scope; path containment.
+- Permitted effects: Read published contracts; compare versions/schemas/authority; emit local adapter or external proposal packet.
+- Prohibited effects: Any sibling write/commit; private implementation inference; remote revision adoption; unavailable-as-compatible.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=30000; output_tokens=11000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=read-only-sibling-audit; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: cross-repo-audit
+- Concurrency group: read-only-sibling-audit
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: three-sibling-scopes; closed-dispositions; read-only-enforcement; proposal-packet
+- Completion contract: Each requested contract has one evidence-bound disposition, unavailable stays unavailable, genuine shared changes yield proposal packets, and write/escape attempts fail before I/O.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_cross_repository_audit.py
+- Proof requirements: Gitlink/source identity; read-only path guard; compatibility comparison; cross-repository write/symlink/submodule escape negatives.
+- Rollback: Revert local auditor/inventory/test; siblings remain byte-identical.
+- Required evidence: contract source/version/schema ledger; comparison report; proposal packets; write rejection traces
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/cross_repository_audit.py, docs/architecture/architecture_refactorer_inventory/cross_repository_contract_audit.json, test/api/architecture_refactorer/test_cross_repository_audit.py
+- Raw-source requirements: Published interfaces only in pinned ipfs_datasets_py, ipfs_kit_py, and mcplusplus gitlinks
+- Capability blockers: none
+
+## PCAR-026 Generate current architecture projections
+
+- Stable task ID: PCAR-026
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: projection-control
+- Goal id: PCAR-G041
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G041
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Generate compact current-tree authority, dependency, operation/effect, public surface, state, legacy/simulation, receipt, test/proof coverage, and drift projections from ArchitectureIR.
+- Depends on: PCAR-003, PCAR-004, PCAR-005, PCAR-006, PCAR-007, PCAR-013, PCAR-014, PCAR-015, PCAR-024, PCAR-025
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/documentation.py, docs/architecture/architecture_refactorer_inventory/generated_projection_manifest.json, test/api/architecture_refactorer/test_generated_documentation.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/documentation.py, docs/architecture/architecture_refactorer_inventory/generated_projection_manifest.json, test/api/architecture_refactorer/test_generated_documentation.py
+- Predicted symbols: ArchitectureDocumentationGenerator; ProjectionManifest; compact authority/dependency/effect/state/coverage maps
+- Read scope: Accepted ArchitectureIR/metrics/ownership/surface/state/legacy/drift/audit records and managed graph references
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: ArchitectureIR and signed root remain authoritative; every document is labeled a rebuildable projection.
+- Effect class: generated_local_projection
+- Public API impact: internal generator
+- State impact: Compact Git projections and managed-artifact references only.
+- Preconditions: Accepted source analyses; exact architecture root/tree; deterministic templates; large bodies managed by CID.
+- Permitted effects: Generate owned compact manifests/maps and links to managed bodies.
+- Prohibited effects: Generated-document authority; large graph commit; private data; stale-root projection; hand-maintained semantic claims.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=26000; output_tokens=10000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=architecture-projections; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: documentation
+- Concurrency group: architecture-projections
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: all-required-maps; deterministic-generation; compact-artifacts; projection-label; current-root
+- Completion contract: All required maps regenerate deterministically from the exact root, large bodies are referenced by CID, and documents cannot satisfy authority/completion predicates.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_generated_documentation.py
+- Proof requirements: Input root/output identity; deterministic reproduction; size bound; projection non-authority.
+- Rollback: Revert generator/projection/test; regenerate previous projection from prior root.
+- Required evidence: generation receipt; root and managed artifact CIDs; compactness and determinism results
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/documentation.py, docs/architecture/architecture_refactorer_inventory/generated_projection_manifest.json, test/api/architecture_refactorer/test_generated_documentation.py
+- Raw-source requirements: Accepted architecture records and managed artifact manifests only
+- Capability blockers: none
+
+## PCAR-027 Add control service, CLI, and MCP surfaces
+
+- Stable task ID: PCAR-027
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: projection-control
+- Goal id: PCAR-G041
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G041
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Extend the canonical operation catalog/control service with all architecture reads and mutations, then expose equivalent Python, CLI, and MCP projections without direct dispatch or CLI shelling.
+- Depends on: PCAR-002, PCAR-006, PCAR-013, PCAR-014, PCAR-016, PCAR-022, PCAR-023, PCAR-024
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/cli.py, ipfs_accelerate_py/agent_supervisor/control/architecture_operations.py, ipfs_accelerate_py/agent_supervisor/control/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control/control_plane.py, ipfs_accelerate_py/cli_entry.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/architecture_tools.py, test/api/architecture_refactorer/test_control_surfaces.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/cli.py, ipfs_accelerate_py/agent_supervisor/control/architecture_operations.py, ipfs_accelerate_py/agent_supervisor/control/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control/control_plane.py, ipfs_accelerate_py/cli_entry.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/architecture_tools.py, test/api/architecture_refactorer/test_control_surfaces.py
+- Predicted symbols: architecture operation contracts and handlers; CLI projection; MCP typed projection
+- Read scope: Accepted contracts/ownership/surface/state/quarantine/planner/executor/drift; current control catalog/service/CLI/MCP adapters
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: SupervisorControlService remains canonical execution boundary; CLI/MCP are adapters; mutations require existing policy authority.
+- Effect class: public_typed_control_extension
+- Public API impact: additive versioned Python/CLI/MCP operations
+- State impact: No new state authority; mutations bind existing DuckDB task/audit/lease/fence records.
+- Preconditions: Accepted backend capabilities and public-surface model; catalog version migration; authorization/idempotency/dry-run/tree/scope/lease/fence/audit contracts.
+- Permitted effects: Add typed operations and adapters; update catalog version; hermetic transport parity tests.
+- Prohibited effects: Direct tool dispatch; MCP shelling; divergent semantics; secret exposure; mutation without all gates.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=40000; output_tokens=16000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=public-control-exclusive; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: control-integration
+- Concurrency group: public-control-exclusive
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: all-read-operations; all-mutation-operations; typed-service; cli-mcp-parity; mutation-gates
+- Completion contract: The closed catalog, Python service, CLI, and MCP expose exactly equivalent operations and failures, all mutations enforce every required gate, and bypasses fail.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_control_surfaces.py test/api/test_agent_supervisor_control_catalog.py test/api/test_agent_supervisor_control_transport_parity.py
+- Proof requirements: Catalog closure; transport parity; policy-before-effect; no-direct-dispatch; secret redaction; exact tree/scope/lease/fence.
+- Rollback: Revert versioned operation additions/adapters together; restore prior catalog CID; preserve audit history.
+- Required evidence: catalog CID; conformance matrix; authorization/idempotency/dry-run/lease/fence receipts; bypass negatives
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/cli.py, ipfs_accelerate_py/agent_supervisor/control/architecture_operations.py, ipfs_accelerate_py/agent_supervisor/control/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control/control_plane.py, ipfs_accelerate_py/cli_entry.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/architecture_tools.py, test/api/architecture_refactorer/test_control_surfaces.py
+- Raw-source requirements: Current control contracts/service, CLI entrypoint, MCP tools, accepted architecture backend contracts
+- Capability blockers: none
+
+## PCAR-028 Build frozen context and architecture benchmark
+
+- Stable task ID: PCAR-028
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: release
+- Goal id: PCAR-G042
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G042
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Run the frozen feature/bug/schema/provider/proof/state/compatibility/simulation/module/facade corpus with exact criteria, evidence, tree, fixtures, tokenizer, policy, and fault schedules before and after.
+- Depends on: PCAR-005, PCAR-018, PCAR-019, PCAR-023, PCAR-027
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/benchmark.py, benchmarks/agent_supervisor/architecture_refactorer/benchmark_result.schema.json, test/api/architecture_refactorer/test_benchmark.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/benchmark.py, benchmarks/agent_supervisor/architecture_refactorer/benchmark_result.schema.json, test/api/architecture_refactorer/test_benchmark.py
+- Predicted symbols: ArchitectureBenchmark; FrozenTaskCase; BenchmarkComparison; promotion metric calculations
+- Read scope: Committed frozen benchmark inputs; accepted metrics/differential/effect/autonomy/control interfaces; ContextCompiler
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Benchmark measures claims only; it cannot weaken evidence, validation, or promotion gates.
+- Effect class: hermetic_benchmark_execution
+- Public API impact: internal
+- State impact: Managed result bodies by CID; compact schemas/manifests in Git; no task authority.
+- Preconditions: Accepted comparison/control chain; frozen manifest identity; same provider/tokenizer/evidence policy.
+- Permitted effects: Run hermetic cases; record files/symbols/interfaces/expansions/hops/owners/tokens/cache/tests/proofs/duration/calls/interventions.
+- Prohibited effects: Network/paid model in default tests; changed corpus between sides; omitted checks; hidden retry; benchmark self-promotion.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=40000; output_tokens=14000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=benchmark-exclusive; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: benchmark
+- Concurrency group: benchmark-exclusive
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: required-domains-and-task-types; frozen-inputs; same-evidence; all-metrics; deterministic-results
+- Completion contract: All cases bind exact frozen inputs and raw samples, comparisons reject evidence/safety mismatch and hidden retry/opacity, and managed results are CID-addressed.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_benchmark.py
+- Proof requirements: Corpus/fixture identity; comparator evidence equality; deterministic aggregate; validation amplification math; omitted-check negatives.
+- Rollback: Discard managed result namespace and module/test changes; preserve frozen inputs.
+- Required evidence: corpus CID; case receipts; raw before/after samples; aggregate/comparator decisions
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/benchmark.py, benchmarks/agent_supervisor/architecture_refactorer/benchmark_result.schema.json, test/api/architecture_refactorer/test_benchmark.py
+- Raw-source requirements: Committed benchmark manifest/cases/fixtures and accepted context/graph/validation/control interfaces
+- Capability blockers: none
+
+## PCAR-029 Run adversarial architecture-assurance campaign
+
+- Stable task ID: PCAR-029
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: release
+- Goal id: PCAR-G042
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G042
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Attack identity, ownership, simulation flow, scope, symlink/submodule containment, test/proof deletion, validation weakening, forged/stale receipts/roots, self-promotion, rollback, restart, and idle behavior.
+- Depends on: PCAR-016, PCAR-018, PCAR-019, PCAR-020, PCAR-021, PCAR-022, PCAR-023, PCAR-024, PCAR-027, PCAR-028
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/assurance.py, test/api/architecture_refactorer/test_adversarial_assurance.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/assurance.py, test/api/architecture_refactorer/test_adversarial_assurance.py
+- Predicted symbols: ArchitectureAssuranceCampaign; mutant catalog; seeded escape and intervention report
+- Read scope: Accepted complete candidate/execution/control/benchmark chain; AssuranceCampaignApi@1 and adversarial fixtures
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Existing adversarial assurance and proof authorities judge evidence; exact absent class symbol remains a typed caveat.
+- Effect class: hermetic_adversarial_execution
+- Public API impact: internal
+- State impact: Isolated mutant worktrees and managed receipts only.
+- Preconditions: Accepted validation/control/benchmark; current AssuranceCampaignApi capability; closed mutant/fault catalog.
+- Permitted effects: Seed bounded local mutants/faults; run required tests/proofs; record escapes, detections, interventions, counterexamples.
+- Prohibited effects: Live production effect; disabled gate; mutant merge; exact-engine-name simulation; evidence suppression.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=38000; output_tokens=14000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=adversarial-exclusive; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: assurance
+- Concurrency group: adversarial-exclusive
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: all-required-attacks; zero-escaped-seeded-defects; no-gate-weakening; restart-rollback-idle
+- Completion contract: Every seeded attack has expected detection/containment evidence, escaped seeded defects are zero, mutants are never merged, and caveats/unrun live checks remain explicit.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_adversarial_assurance.py
+- Proof requirements: Mutant catalog/CID; detection matrix; containment/tree equality; no test/proof deletion; forged/stale/self-promotion negatives.
+- Rollback: Destroy isolated mutant worktrees through existing safe manager; preserve counterexamples and receipts.
+- Required evidence: campaign report; mutant/fault identities; detection/escape/intervention counts; rollback/restart/idle traces
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/assurance.py, test/api/architecture_refactorer/test_adversarial_assurance.py
+- Raw-source requirements: Accepted architecture pipeline, AssuranceCampaignApi@1, proof/test contracts, and frozen fault fixtures
+- Capability blockers: prerequisite.adversarial_assurance.exact_engine_symbol_absent; use current AssuranceCampaignApi@1
+
+## PCAR-030 Implement promotion, rollback, and release gates
+
+- Stable task ID: PCAR-030
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: release
+- Goal id: PCAR-G042
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G042
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Apply non-compensable behavioral, authority, effect, state, evidence, context, validation, autonomy, complexity-reporting, merge, post-merge, signing, and rollback gates.
+- Depends on: PCAR-017, PCAR-018, PCAR-019, PCAR-020, PCAR-021, PCAR-022, PCAR-023, PCAR-028, PCAR-029
+- Owned paths: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/promotion.py, test/api/architecture_refactorer/test_promotion.py, test/api/architecture_refactorer/test_release_rollback.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/promotion.py, test/api/architecture_refactorer/test_promotion.py, test/api/architecture_refactorer/test_release_rollback.py
+- Predicted symbols: ArchitecturePromotionGate; PromotionDecision; RefactorReceipt; ReleaseRollback
+- Read scope: Accepted execution/comparison/planner/autonomy/benchmark/assurance evidence; canonical proof seal, merge, policy and receipt interfaces
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Existing policy/merge/release authorities retain final authority; PCAR supplies typed gate decisions and cannot self-promote.
+- Effect class: release_proposal_and_rollback_validation
+- Public API impact: internal promotion contract
+- State impact: Signed receipts through existing receipt/proof stores; no new authority or key mutation.
+- Preconditions: All required exact-tree evidence present/fresh; current policy; independent signing authority; rollback target verified.
+- Permitted effects: Evaluate conjunction; reject; produce proposal/receipt; run merge preflight/post-merge validation; exercise rollback.
+- Prohibited effects: Safety compensation; stale evidence; autonomous high-risk release; trusted-key change; task-board completion promotion.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=36000; output_tokens=13000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=release-gate-exclusive; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: promotion
+- Concurrency group: release-gate-exclusive
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: behavioral-zeroes; architecture-quality; efficiency-thresholds; validation-autonomy; signed-receipt; rollback
+- Completion contract: Every safety gate passes or decision is no-go, efficiency gates use exact comparable raw evidence, zero high-risk autonomous action occurs, receipts verify, and rollback restores target.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_promotion.py test/api/architecture_refactorer/test_release_rollback.py
+- Proof requirements: Gate conjunction/non-compensation; evidence freshness; signer/key provenance; forged receipt rejection; exact rollback tree.
+- Rollback: Execute recorded release rollback target through authorized path; verify current-tree and receipt invalidation; never rewrite history.
+- Required evidence: promotion/no-go decision; all gate inputs; signed receipt; merge preflight/post-merge results; rollback receipt
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: ipfs_accelerate_py/agent_supervisor/architecture_refactorer/promotion.py, test/api/architecture_refactorer/test_promotion.py, test/api/architecture_refactorer/test_release_rollback.py
+- Raw-source requirements: Accepted pipeline evidence and canonical proof/merge/policy/receipt/signing interfaces
+- Capability blockers: none
+
+## PCAR-031 Produce current-tree qualification and residual-gap report
+
+- Stable task ID: PCAR-031
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: release
+- Goal id: PCAR-G042
+- Parent goal ID: PCAR-G000
+- Subgoal ID: PCAR-G042
+- Owning repository: ipfs_accelerate_py
+- Board namespace: agent-supervisor-proof-carrying-architecture-refactorer-v1
+- Base revision: bbf7f68799072c2b81f7d96eac91f2df3c4b3952
+- Base repository tree: a698da9e4b54e2929adacb613bc61ba3e72eed58
+- Base plan revision: PCAR-PLAN-R1
+- Objective: Qualify the actual final merged current tree and report starting/ending identities, changes, owners, duplicates, stores, surfaces, quarantine, contracts, boundaries, candidates, counterexamples, effects, tests/proofs, comparisons, interventions, rollback, blockers, and eligibility.
+- Depends on: PCAR-026, PCAR-027, PCAR-028, PCAR-029, PCAR-030
+- Owned paths: docs/architecture/AGENT_SUPERVISOR_PROOF_CARRYING_ARCHITECTURE_REFACTORER_QUALIFICATION.md, docs/architecture/architecture_refactorer_inventory/final_qualification_report.json, docs/architecture/architecture_refactorer_inventory/architecture_root_manifest.json, test/api/architecture_refactorer/test_qualification_report.py
+- Predicted files: docs/architecture/AGENT_SUPERVISOR_PROOF_CARRYING_ARCHITECTURE_REFACTORER_QUALIFICATION.md, docs/architecture/architecture_refactorer_inventory/final_qualification_report.json, docs/architecture/architecture_refactorer_inventory/architecture_root_manifest.json, test/api/architecture_refactorer/test_qualification_report.py
+- Predicted symbols: final human and machine qualification schemas; architecture root manifest
+- Read scope: All accepted task/current-tree receipts, managed artifacts, promotion decision, Git tree and rollback target
+- Write scope: Owned paths only in the isolated ipfs_accelerate_py task worktree.
+- External effect scope: No network, paid provider, protected-branch, production, credential, or sibling-repository effect; local declared validation and managed artifacts only.
+- Authority impact: Report is evidence projection; signed current-tree receipts and existing release authority determine eligibility.
+- Effect class: generated_release_reporting
+- Public API impact: human and machine report only
+- State impact: Compact immutable manifests; no task state or release mutation.
+- Preconditions: Accepted PCAR-026..030; clean exact final tree; no active claims/merge work; all evidence freshness verified.
+- Permitted effects: Regenerate compact reports; enumerate run/not-run checks and residual gaps; sign architecture root through canonical proof path.
+- Prohibited effects: Unsupported simplified/ready/preserved/consolidated/efficient claim; hidden blocker/unrun test; large graph commit; self-release.
+- Resource class: cpu-standard-local-proof
+- Token budget: input_tokens=36000; output_tokens=14000
+- Resource demand: cpu_ms=7200000; cpu_concurrency=2; ram_mib=4096; gpu_memory_mib=0; gpu_compute_class=none; disk_mib=4096; disk_bandwidth_mib_s=100; network=deny; network_bandwidth_kib_s=0; subprocesses=12; worktree_slots=1; provider_quota_units=1; provider_concurrency=1; prover_class=local; prover_concurrency=1; exclusive_keys=final-report-exclusive; merge_slots=1; persistence_kib_s=2048
+- Model-route class: implementation/high; exact current-tree tests, proofs, policies, and receipts are authority
+- Parallel lane: qualification
+- Concurrency group: final-report-exclusive
+- Conflict policy: Exclusive writer for owned paths and concurrency group; declared shared reads do not conflict; opaque scope serializes.
+- Lease and fencing: One isolated worktree/task claim with exact task, attempt, branch, base tree, plan root, lease token, epoch, fence, expiry, CAS and idempotency binding; stale holders cannot validate, merge, settle, or accept.
+- Acceptance subset: all-required-fields; exact-final-tree; evidence-links; residual-gaps; truthful-eligibility; rollback-target
+- Completion contract: Machine/human reports contain every required field, all claims link exact evidence, unrun checks/blockers are explicit, architecture root verifies, and eligibility matches PCAR-030.
+- Validation: python3 -m pytest -q test/api/architecture_refactorer/test_qualification_report.py python3 scripts/validate_agent_supervisor_architecture_refactorer_board.py --check-all
+- Proof requirements: Final commit/tree; architecture root/signature; report schema/content identity; evidence reachability/freshness; eligibility consistency.
+- Rollback: Regenerate reports as no-go for the restored rollback tree; preserve prior signed report as historical evidence.
+- Required evidence: final report/root CIDs; file/symbol diff; all comparisons; test/proof ledger; blocker/eligibility/rollback records
+- Final result identity: pending; the supervisor derives and accepts a canonical result CID only after declared current-tree validation, proof, merge, and post-merge gates
+- Outputs: docs/architecture/AGENT_SUPERVISOR_PROOF_CARRYING_ARCHITECTURE_REFACTORER_QUALIFICATION.md, docs/architecture/architecture_refactorer_inventory/final_qualification_report.json, docs/architecture/architecture_refactorer_inventory/architecture_root_manifest.json, test/api/architecture_refactorer/test_qualification_report.py
+- Raw-source requirements: Accepted current-tree receipts and managed artifact manifests only; expand source solely to verify final identity
+- Capability blockers: none

@@ -93,13 +93,9 @@ def _records(
 def _snapshot(*groups: Iterable[Any]) -> CatalogSnapshot:
     records = tuple(item for group in groups for item in group)
     return CatalogSnapshot(
-        providers=tuple(
-            item for item in records if isinstance(item, ProviderDescriptor)
-        ),
+        providers=tuple(item for item in records if isinstance(item, ProviderDescriptor)),
         models=tuple(item for item in records if isinstance(item, ModelDescriptor)),
-        deployments=tuple(
-            item for item in records if isinstance(item, DeploymentDescriptor)
-        ),
+        deployments=tuple(item for item in records if isinstance(item, DeploymentDescriptor)),
         bindings=tuple(item for item in records if isinstance(item, RouterBinding)),
     )
 
@@ -235,9 +231,9 @@ def test_cold_registration_adds_catalog_tools_without_resolving_manager(
     assert set(refresh_schema["required"]) == {"sources", "authority"}
     assert refresh_schema["properties"]["authority"]["const"] is True
     assert (
-        registry.tools["model_catalog_list_models"]["input_schema"]["properties"][
-            "limit"
-        ]["maximum"]
+        registry.tools["model_catalog_list_models"]["input_schema"]["properties"]["limit"][
+            "maximum"
+        ]
         == 1000
     )
 
@@ -270,10 +266,7 @@ def test_list_tools_delegate_with_versioned_canonical_identity_parity(
     assert services["schema_version"] == manager.snapshot().schema_version
     assert services["catalog_revision"] == manager.catalog_revision
     assert services["tool_schema_version"] == "ai.catalog.mcp.v1"
-    assert (
-        services["items"][0]["provider_id"]
-        == python_services.items[0].provider_id
-    )
+    assert services["items"][0]["provider_id"] == python_services.items[0].provider_id
     assert services["services"] == services["items"]
     assert models["items"][0]["model_id"] == python_models.items[0].model_id
     assert models["models"] == models["items"]
@@ -326,24 +319,19 @@ def test_pagination_is_bounded_and_cursor_revision_mismatch_is_typed(
     install_manager,
 ) -> None:
     initial_groups = tuple(
-        _records("provider-%04d" % index, source="fixture.large")
-        for index in range(3)
+        _records("provider-%04d" % index, source="fixture.large") for index in range(3)
     )
     source = MemorySource("fixture.large", _snapshot(*initial_groups))
     manager = install_manager(source)
 
-    first = _run(
-        native_model_tools.model_catalog_list_models(limit=2)
-    )
+    first = _run(native_model_tools.model_catalog_list_models(limit=2))
 
     assert first["status"] == "success"
     assert first["count"] == len(first["items"]) == 2
     assert first["total"] == 3
     assert first["next_cursor"]
     old_cursor = first["next_cursor"]
-    source.current = _snapshot(
-        _records("replacement", source="fixture.large")
-    )
+    source.current = _snapshot(_records("replacement", source="fixture.large"))
     manager.refresh((source.source,))
 
     stale = _run(
@@ -430,10 +418,13 @@ def test_get_and_resolve_redact_private_endpoint_but_preserve_ids(
     assert candidate["deployment"]["endpoint_uri"] == "[REDACTED]"
     serialized = json.dumps((fetched, resolved))
     assert "127.0.0.1" not in serialized
-    assert manager.get(
-        deployment.deployment_id,
-        record_type="deployments",
-    ).record.deployment_id == fetched["record"]["deployment_id"]
+    assert (
+        manager.get(
+            deployment.deployment_id,
+            record_type="deployments",
+        ).record.deployment_id
+        == fetched["record"]["deployment_id"]
+    )
     assert source.refresh_calls == source.invoke_calls == 0
 
 
@@ -472,12 +463,8 @@ def test_refresh_requires_explicit_authority_and_named_sources(
     )
     manager = install_manager(source)
 
-    denied = _run(
-        native_model_tools.model_catalog_refresh([source.source])
-    )
-    unnamed = _run(
-        native_model_tools.model_catalog_refresh([], authority=True)
-    )
+    denied = _run(native_model_tools.model_catalog_refresh([source.source]))
+    unnamed = _run(native_model_tools.model_catalog_refresh([], authority=True))
 
     assert denied["error"]["code"] == "refresh_denied"
     assert unnamed["error"]["code"] == "invalid_sources"

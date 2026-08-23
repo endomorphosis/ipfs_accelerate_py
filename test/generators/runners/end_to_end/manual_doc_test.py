@@ -15,8 +15,7 @@ from pathlib import Path
 
 # Setup logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("ManualDocTest")
 
@@ -25,15 +24,16 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 test_dir = os.path.abspath(os.path.join(script_dir, "../../../"))
 sys.path.append(test_dir)
 
+
 def generate_documentation(model_name, model_family, hardware, output_dir):
     """Generate documentation manually."""
     # Create output directory
-    output_dir = os.path.join(output_dir, model_name.replace('/', '_'))
+    output_dir = os.path.join(output_dir, model_name.replace("/", "_"))
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Create file path
     doc_path = os.path.join(output_dir, f"{model_name.replace('/', '_')}_{hardware}_docs.md")
-    
+
     # Get model architecture description
     if model_family == "text_embedding":
         architecture = """This text embedding model uses a Transformer-based architecture:
@@ -102,12 +102,12 @@ The model architecture aligns representations from different modalities to enabl
     else:
         architecture = f"""This model's specific architecture is based on the {model_family} family:
 
-1. **Input Processing**: Takes {model_family.replace('_', ' ')} inputs and converts them to model representations
+1. **Input Processing**: Takes {model_family.replace("_", " ")} inputs and converts them to model representations
 2. **Model Backbone**: Uses a transformer-based architecture to process inputs
 3. **Output Layer**: Produces appropriate outputs for the model's primary task
 
-The model follows standard practices for {model_family.replace('_', ' ')} models with potential model-specific enhancements."""
-    
+The model follows standard practices for {model_family.replace("_", " ")} models with potential model-specific enhancements."""
+
     # Get hardware-specific notes
     if hardware == "cpu":
         hardware_notes = """- **Standard CPU Implementation**: Optimized for general CPU execution
@@ -139,7 +139,7 @@ The model follows standard practices for {model_family.replace('_', ' ')} models
         hardware_notes = f"""- **{hardware.title()} Implementation**: Specialized implementation for {hardware} hardware
 - **Platform-Specific Optimizations**: Tuned for optimal performance on {hardware} hardware
 - **Performance Characteristics**: Varies based on specific {hardware} hardware capabilities"""
-    
+
     # Get model-specific features
     if model_family == "vision":
         features = """- **Patch-Based Processing**: Processes images as sequences of patches
@@ -153,11 +153,11 @@ The model follows standard practices for {model_family.replace('_', ' ')} models
 - **Attention Visualization**: Supports visualization of regions the model focuses on
 - **Class Token**: Uses special classification token for image-level tasks"""
     else:
-        features = f"""- **{model_family.replace('_', ' ').title()} Processing**: Specialized for {model_family.replace('_', ' ')} data
+        features = f"""- **{model_family.replace("_", " ").title()} Processing**: Specialized for {model_family.replace("_", " ")} data
 - **Feature Extraction**: Rich representation learning
 - **Transfer Learning**: Adaptable to downstream tasks
 - **High Performance**: Optimized for {hardware} execution"""
-    
+
     # Get use cases
     if model_family == "vision":
         use_cases = """- **Image Classification**: Categorizing images into classes
@@ -171,11 +171,11 @@ The model follows standard practices for {model_family.replace('_', ' ')} models
 - **Transfer Learning**: Using pre-trained visual knowledge for new tasks
 - **Visual Representation Learning**: Learning rich image representations"""
     else:
-        use_cases = f"""- **{model_family.replace('_', ' ').title()} Analysis**: Processing {model_family.replace('_', ' ')} data
+        use_cases = f"""- **{model_family.replace("_", " ").title()} Analysis**: Processing {model_family.replace("_", " ")} data
 - **Feature Extraction**: Creating rich features
 - **Classification**: Categorizing inputs
 - **Recommendation**: Suggesting related content"""
-    
+
     # Generate usage example
     usage_example = """
 ```python
@@ -199,7 +199,7 @@ print("Model output:", result)
 # Clean up resources
 skill.cleanup()
 ```"""
-    
+
     # Generate complete documentation - making sure to include all required sections
     doc_content = f"""# {model_name} Implementation for {hardware}
 
@@ -235,7 +235,7 @@ This document describes the implementation of {model_name} for {hardware} hardwa
 ### Class Definition
 
 ```python
-class {model_name.replace('-', '_').replace('/', '_').title()}Skill:
+class {model_name.replace("-", "_").replace("/", "_").title()}Skill:
     \"\"\"
     Model skill for {model_name} on {hardware} hardware.
     This skill provides model inference functionality.
@@ -306,42 +306,48 @@ This implementation may have limitations specific to {hardware} hardware. Please
 """
 
     # Write to file
-    with open(doc_path, 'w') as f:
+    with open(doc_path, "w") as f:
         f.write(doc_content)
-    
+
     logger.info(f"Generated documentation: {doc_path}")
     return doc_path
+
 
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(description="Manual Documentation Generator")
-    parser.add_argument("--model", type=str, default="vit-base-patch16-224",
-                       help="Model name to generate documentation for")
-    parser.add_argument("--family", type=str, default="vision",
-                       help="Model family (text_embedding, vision, audio, multimodal, text_generation)")
-    parser.add_argument("--hardware", type=str, default="webgpu",
-                       help="Hardware platform")
-    parser.add_argument("--output-dir", type=str, 
-                       default=os.path.join(script_dir, "test_output", "enhanced_docs_test"),
-                       help="Output directory")
-    parser.add_argument("--verbose", action="store_true",
-                       help="Enable verbose logging")
-    
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="vit-base-patch16-224",
+        help="Model name to generate documentation for",
+    )
+    parser.add_argument(
+        "--family",
+        type=str,
+        default="vision",
+        help="Model family (text_embedding, vision, audio, multimodal, text_generation)",
+    )
+    parser.add_argument("--hardware", type=str, default="webgpu", help="Hardware platform")
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=os.path.join(script_dir, "test_output", "enhanced_docs_test"),
+        help="Output directory",
+    )
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+
     args = parser.parse_args()
-    
+
     # Configure logging
     if args.verbose:
         logger.setLevel(logging.DEBUG)
-    
+
     # Generate documentation
-    doc_path = generate_documentation(
-        args.model,
-        args.family,
-        args.hardware,
-        args.output_dir
-    )
-    
+    doc_path = generate_documentation(args.model, args.family, args.hardware, args.output_dir)
+
     logger.info(f"Documentation generated: {doc_path}")
-    
+
+
 if __name__ == "__main__":
     main()

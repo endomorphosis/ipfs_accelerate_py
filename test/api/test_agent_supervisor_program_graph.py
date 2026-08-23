@@ -303,12 +303,33 @@ def _fixture_graph() -> ProgramGraph:
         proof_obligation,
     )
     edges = (
-        _edge(repo.node_id, blob.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"),
-        _edge(blob.node_id, module.node_id, ProgramEdgeKind.CONTAINS, component_id="module:pkg.mod"),
-        _edge(module.node_id, symbol.node_id, ProgramEdgeKind.DEFINES, component_id="module:pkg.mod"),
-        _edge(symbol.node_id, definition.node_id, ProgramEdgeKind.DEFINES, component_id="module:pkg.mod"),
-        _edge(module.node_id, import_node.node_id, ProgramEdgeKind.IMPORTS, component_id="module:pkg.mod"),
-        _edge(module.node_id, export_node.node_id, ProgramEdgeKind.EXPORTS, component_id="module:pkg.mod"),
+        _edge(
+            repo.node_id, blob.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"
+        ),
+        _edge(
+            blob.node_id, module.node_id, ProgramEdgeKind.CONTAINS, component_id="module:pkg.mod"
+        ),
+        _edge(
+            module.node_id, symbol.node_id, ProgramEdgeKind.DEFINES, component_id="module:pkg.mod"
+        ),
+        _edge(
+            symbol.node_id,
+            definition.node_id,
+            ProgramEdgeKind.DEFINES,
+            component_id="module:pkg.mod",
+        ),
+        _edge(
+            module.node_id,
+            import_node.node_id,
+            ProgramEdgeKind.IMPORTS,
+            component_id="module:pkg.mod",
+        ),
+        _edge(
+            module.node_id,
+            export_node.node_id,
+            ProgramEdgeKind.EXPORTS,
+            component_id="module:pkg.mod",
+        ),
         _edge(
             call.node_id,
             symbol.node_id,
@@ -316,10 +337,19 @@ def _fixture_graph() -> ProgramGraph:
             component_id="module:pkg.mod",
             resolver_status=ResolverStatus.CANDIDATE,
         ),
-        _edge(symbol.node_id, type_node.node_id, ProgramEdgeKind.TYPED_AS, component_id="module:pkg.mod"),
-        _edge(doc.node_id, symbol.node_id, ProgramEdgeKind.DOCUMENTS, component_id="module:pkg.mod"),
+        _edge(
+            symbol.node_id,
+            type_node.node_id,
+            ProgramEdgeKind.TYPED_AS,
+            component_id="module:pkg.mod",
+        ),
+        _edge(
+            doc.node_id, symbol.node_id, ProgramEdgeKind.DOCUMENTS, component_id="module:pkg.mod"
+        ),
         _edge(test.node_id, symbol.node_id, ProgramEdgeKind.TESTS, component_id="test:test_entry"),
-        _edge(mcp_reg.node_id, mcp_tool.node_id, ProgramEdgeKind.REGISTERS, component_id="mcp:entry"),
+        _edge(
+            mcp_reg.node_id, mcp_tool.node_id, ProgramEdgeKind.REGISTERS, component_id="mcp:entry"
+        ),
         _edge(
             mcp_tool.node_id,
             transport.node_id,
@@ -332,19 +362,36 @@ def _fixture_graph() -> ProgramGraph:
             ProgramEdgeKind.IMPLEMENTS,
             component_id="mcp:entry",
         ),
-        _edge(mcp_tool.node_id, schema.node_id, ProgramEdgeKind.REFERENCES, component_id="mcp:entry"),
-        _edge(contract.node_id, schema.node_id, ProgramEdgeKind.REFERENCES, component_id="mcp:entry"),
-        _edge(contract.node_id, mcp_tool.node_id, ProgramEdgeKind.OBLIGATES, component_id="mcp:entry"),
-        _edge(finding.node_id, contract.node_id, ProgramEdgeKind.SUPPORTS, component_id="mcp:entry"),
+        _edge(
+            mcp_tool.node_id, schema.node_id, ProgramEdgeKind.REFERENCES, component_id="mcp:entry"
+        ),
+        _edge(
+            contract.node_id, schema.node_id, ProgramEdgeKind.REFERENCES, component_id="mcp:entry"
+        ),
+        _edge(
+            contract.node_id, mcp_tool.node_id, ProgramEdgeKind.OBLIGATES, component_id="mcp:entry"
+        ),
+        _edge(
+            finding.node_id, contract.node_id, ProgramEdgeKind.SUPPORTS, component_id="mcp:entry"
+        ),
         _edge(
             proof_obligation.node_id,
             symbol.node_id,
             ProgramEdgeKind.OBLIGATES,
             component_id="mcp:entry",
         ),
-        _edge(artifact.node_id, module.node_id, ProgramEdgeKind.DERIVED_FROM, component_id="module:pkg.mod"),
-        _edge(symbol.node_id, module.node_id, ProgramEdgeKind.MEMBER_OF, component_id="module:pkg.mod"),
-        _edge(module.node_id, repo.node_id, ProgramEdgeKind.DEPENDS_ON, component_id="module:pkg.mod"),
+        _edge(
+            artifact.node_id,
+            module.node_id,
+            ProgramEdgeKind.DERIVED_FROM,
+            component_id="module:pkg.mod",
+        ),
+        _edge(
+            symbol.node_id, module.node_id, ProgramEdgeKind.MEMBER_OF, component_id="module:pkg.mod"
+        ),
+        _edge(
+            module.node_id, repo.node_id, ProgramEdgeKind.DEPENDS_ON, component_id="module:pkg.mod"
+        ),
         _edge(
             import_node.node_id,
             import_node.node_id,
@@ -403,9 +450,7 @@ def test_graph_is_deterministic_and_content_addressed() -> None:
         producer=PRODUCER,
     )
     assert shuffled.graph_id == left.graph_id
-    assert [node.node_id for node in shuffled.nodes] == [
-        node.node_id for node in left.nodes
-    ]
+    assert [node.node_id for node in shuffled.nodes] == [node.node_id for node in left.nodes]
 
 
 def test_round_trip_serialization_preserves_identity() -> None:
@@ -445,9 +490,7 @@ def test_rejects_forged_node_and_edge_identities() -> None:
     with pytest.raises(ForgedIdentityError):
         ProgramGraphEdge.from_dict(forged_edge)
 
-    graph = build_program_graph(
-        forest_id=FOREST_ID, nodes=[node, other], edges=[edge]
-    )
+    graph = build_program_graph(forest_id=FOREST_ID, nodes=[node, other], edges=[edge])
     forged_graph = dict(graph.to_dict())
     forged_graph["graph_id"] = "pgraph-forged"
     with pytest.raises(ForgedIdentityError):
@@ -515,9 +558,7 @@ def test_indexes_and_chunks_are_deterministic_and_content_addressed() -> None:
 
     chunks = graph.chunk_all_components()
     assert chunks
-    assert [chunk.chunk_key for chunk in chunks] == sorted(
-        chunk.chunk_key for chunk in chunks
-    )
+    assert [chunk.chunk_key for chunk in chunks] == sorted(chunk.chunk_key for chunk in chunks)
     for chunk in chunks:
         assert chunk.chunk_id.startswith("pchunk-")
         assert chunk.forest_id == FOREST_ID
@@ -562,23 +603,17 @@ def test_incremental_component_replacement() -> None:
         component_id=component,
         blob_cid=BLOB_B,
     )
-    replaced = graph.replace_component(
-        component, nodes=[module, symbol], edges=[edge]
-    )
+    replaced = graph.replace_component(component, nodes=[module, symbol], edges=[edge])
     assert replaced.forest_id == FOREST_ID
     assert replaced.graph_id != original_id
     # Other components remain.
     assert replaced.nodes_by_kind(ProgramNodeKind.MCP_TOOL)
     assert replaced.nodes_by_kind(ProgramNodeKind.REPOSITORY)
     # Replaced component no longer contains old module-scoped symbols.
-    remaining_keys = {
-        node.record_key for node in replaced.nodes_for_component(component)
-    }
+    remaining_keys = {node.record_key for node in replaced.nodes_for_component(component)}
     assert remaining_keys == {"module:pkg.mod", "symbol:pkg.mod.entry_v2"}
     # Replacing with the same content is idempotent on identity.
-    again = replaced.replace_component(
-        component, nodes=[module, symbol], edges=[edge]
-    )
+    again = replaced.replace_component(component, nodes=[module, symbol], edges=[edge])
     assert again.graph_id == replaced.graph_id
 
 
@@ -748,9 +783,7 @@ def test_replacement_rejects_dangling_and_foreign_nodes() -> None:
         component_id="module:pkg.mod",
     )
     with pytest.raises(DanglingEdgeError):
-        graph.replace_component(
-            "module:pkg.mod", nodes=[local], edges=[dangling]
-        )
+        graph.replace_component("module:pkg.mod", nodes=[local], edges=[dangling])
 
 
 # ---------------------------------------------------------------------------
@@ -897,9 +930,7 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
     assert OBJECTIVE_GOAL_ID == "VFS-G040"
     assert OBJECTIVE_VALIDATION_REPAIR_GOAL_ID == "VFS-G144"
     assert OBJECTIVE_GOAL_PACKET_IDS == ("VFS-G041", "VFS-G144")
-    assert objective_validation_repair_evidence_terms() == (
-        "objective validation repair",
-    )
+    assert objective_validation_repair_evidence_terms() == ("objective validation repair",)
     # Domain envelope evidence remains construction-only.
     assert program_graph_evidence_terms() == ("vfs/program-graph@1",)
     assert "objective validation repair" not in program_graph_evidence_terms()
@@ -1012,9 +1043,7 @@ def test_vfs_g144_acceptance_provenance_chunks_ranking_and_non_authority() -> No
         assert "source_body" not in body
         assert "source_code" not in body
         assert "completion" not in body
-        assert any(
-            key in body for key in ("ranking_reason", "score", "reasons", "node_id")
-        )
+        assert any(key in body for key in ("ranking_reason", "score", "reasons", "node_id"))
 
     # GraphRAG output cannot create completion or proof authority.
     for body in (projection.to_dict(), result.to_dict()):

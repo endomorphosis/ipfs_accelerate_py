@@ -1,0 +1,30 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.cross-repository-bootstrap@1",
+  "authority": false,
+  "write_policy": "deny",
+  "targets": [
+    {
+      "repository": "ipfs_datasets_py",
+      "gitlink": "66a02063496fd200f2372b3083e376f1978c6be1",
+      "published_concern": "semantic and content identities"
+    },
+    {
+      "repository": "ipfs_kit_py",
+      "gitlink": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+      "published_concern": "storage and proof-seal authority"
+    },
+    {
+      "repository": "MCP++",
+      "gitlink": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+      "published_concern": "wire and profile schemas"
+    }
+  ],
+  "closed_dispositions": [
+    "compatible",
+    "adapter_required",
+    "duplicate_authority",
+    "schema_drift",
+    "version_incompatible",
+    "unavailable"
+  ]
+}

@@ -81,12 +81,8 @@ def _semantic_canonical_response_format() -> dict[str, object]:
                                     "enum": ["", "notice", "record"],
                                 },
                                 "conditions": qualifier_schema,
-                                "exceptions": json.loads(
-                                    json.dumps(qualifier_schema)
-                                ),
-                                "temporal": json.loads(
-                                    json.dumps(qualifier_schema)
-                                ),
+                                "exceptions": json.loads(json.dumps(qualifier_schema)),
+                                "temporal": json.loads(json.dumps(qualifier_schema)),
                             },
                         },
                     }
@@ -262,9 +258,7 @@ def test_pinned_symai_dispatches_exact_semantic_roundtrip_contracts(
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(llm_router, "_pinned_symai_urlopen", urlopen)
-    deps = llm_router.RouterDeps(
-        accelerate_managers={"llm_router": object()}
-    )
+    deps = llm_router.RouterDeps(accelerate_managers={"llm_router": object()})
     provider = llm_router._get_accelerate_provider(deps)
     assert provider is not None
 
@@ -276,9 +270,7 @@ def test_pinned_symai_dispatches_exact_semantic_roundtrip_contracts(
         deps=deps,
         allow_local_fallback=False,
         disable_model_retry=True,
-        _symai_route_binding=dict(
-            llm_router._PINNED_SYMAI_ROUTE_BINDING
-        ),
+        _symai_route_binding=dict(llm_router._PINNED_SYMAI_ROUTE_BINDING),
         **_semantic_generation_options(
             response_format,
             max_tokens=max_tokens,
@@ -303,9 +295,7 @@ def test_pinned_symai_request_validator_is_side_effect_free(
     def forbidden_urlopen(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("contract validation must not perform HTTP")
 
-    monkeypatch.setattr(
-        llm_router, "_pinned_symai_urlopen", forbidden_urlopen
-    )
+    monkeypatch.setattr(llm_router, "_pinned_symai_urlopen", forbidden_urlopen)
     response_format = _semantic_canonical_response_format()
 
     normalized = llm_router.validate_pinned_symai_request_contract(
@@ -321,12 +311,8 @@ def test_pinned_symai_request_validator_is_side_effect_free(
     assert normalized["max_tokens"] == 3072
     assert normalized["timeout"] == 120.0
     assert normalized["stop"] == ["<|im_end|>"]
-    normalized_schema = normalized["response_format"]["json_schema"][
-        "schema"
-    ]
-    actor_enum = normalized_schema["properties"]["rules"]["items"][
-        "properties"
-    ]["actor"]["enum"]
+    normalized_schema = normalized["response_format"]["json_schema"]["schema"]
+    actor_enum = normalized_schema["properties"]["rules"]["items"]["properties"]["actor"]["enum"]
     assert actor_enum == ["company_a", "company_b", "agency"]
 
 
@@ -354,9 +340,7 @@ def test_pinned_symai_rejects_semantic_setting_drift_before_http(
         calls.append((args, kwargs))
         raise AssertionError("drifted settings must not make an HTTP request")
 
-    monkeypatch.setattr(
-        llm_router, "_pinned_symai_urlopen", forbidden_urlopen
-    )
+    monkeypatch.setattr(llm_router, "_pinned_symai_urlopen", forbidden_urlopen)
     options = _semantic_generation_options(
         _semantic_canonical_response_format(),
         max_tokens=3071,
@@ -382,9 +366,7 @@ def test_pinned_symai_rejects_unsafe_semantic_schemas_before_http(
         calls.append((args, kwargs))
         raise AssertionError("unsafe schema must not make an HTTP request")
 
-    monkeypatch.setattr(
-        llm_router, "_pinned_symai_urlopen", forbidden_urlopen
-    )
+    monkeypatch.setattr(llm_router, "_pinned_symai_urlopen", forbidden_urlopen)
     response_format = _semantic_canonical_response_format()
     schema = response_format["json_schema"]["schema"]
     rule_array = schema["properties"]["rules"]
@@ -482,9 +464,7 @@ def test_pinned_symai_accepts_exact_source_withheld_realization_contract(
         if request.full_url.endswith("/models"):
             return _Response({"data": [{"id": model}]})
         payload = json.loads(request.data.decode("utf-8"))
-        assert payload["response_format"] == (
-            llm_router._PINNED_SYMAI_REALIZATION_RESPONSE_FORMAT
-        )
+        assert payload["response_format"] == (llm_router._PINNED_SYMAI_REALIZATION_RESPONSE_FORMAT)
         return _Response(
             {
                 "model": model,
@@ -502,9 +482,7 @@ def test_pinned_symai_accepts_exact_source_withheld_realization_contract(
     text, trace = llm_router._generate_pinned_symai_leanstral(
         "realize this canonical IR",
         kwargs={
-            "response_format": (
-                llm_router._PINNED_SYMAI_REALIZATION_RESPONSE_FORMAT
-            ),
+            "response_format": (llm_router._PINNED_SYMAI_REALIZATION_RESPONSE_FORMAT),
             "temperature": 0.0,
             "max_tokens": 128,
         },
@@ -527,9 +505,7 @@ def test_pinned_symai_still_rejects_arbitrary_json_schemas(
         calls.append((args, kwargs))
         raise AssertionError("rejected schema must not make an HTTP request")
 
-    monkeypatch.setattr(
-        llm_router, "_pinned_symai_urlopen", forbidden_urlopen
-    )
+    monkeypatch.setattr(llm_router, "_pinned_symai_urlopen", forbidden_urlopen)
     arbitrary = {
         "type": "json_schema",
         "json_schema": {

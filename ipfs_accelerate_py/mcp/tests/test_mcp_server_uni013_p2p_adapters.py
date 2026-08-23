@@ -110,7 +110,10 @@ class TestMCPServerUNI013P2PAdapters(unittest.TestCase):
                     "started_at": 123.0,
                 },
             ):
-                with patch("ipfs_accelerate_py.p2p_tasks.service.list_known_peers", return_value=[{"peer_id": "p2"}]):
+                with patch(
+                    "ipfs_accelerate_py.p2p_tasks.service.list_known_peers",
+                    return_value=[{"peer_id": "p2"}],
+                ):
                     state = mgr.state()
 
             self.assertTrue(state.running)

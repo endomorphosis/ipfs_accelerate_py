@@ -7,8 +7,9 @@ and never grants scheduling authority.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any
 
 try:
     from ipfs_accelerate_py.agent_supervisor.semantic_state.world_snapshot_contracts import (
@@ -298,7 +299,7 @@ def current_authority_fixture(*, seed: str = "lgswf-011") -> dict[str, dict[str,
     import hashlib
 
     def _cid(label: str) -> str:
-        return "sha256:" + hashlib.sha256(f"{seed}:{label}".encode("utf-8")).hexdigest()
+        return "sha256:" + hashlib.sha256(f"{seed}:{label}".encode()).hexdigest()
 
     plan_cid = _cid("accepted_plan_root")
     generation = _cid("datasets_semantic_state_root")
@@ -314,3 +315,51 @@ def current_authority_fixture(*, seed: str = "lgswf-011") -> dict[str, dict[str,
             "verified": True,
         }
     return authorities
+
+
+CASF_PROJECTED_COMPONENTS = (
+    "datasets_semantic_state_root",
+    "task_population",
+    "policy_root",
+    "repository_tree",
+)
+
+
+def project_casf_world_inputs(result: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Project a SupervisorWorldSnapshot into compact CASF inputs.
+
+    The projection is observational.  DuckLake health cannot become snapshot,
+    scheduling, lease, or completion authority.
+    """
+
+    if not isinstance(result, Mapping) or "snapshot" not in result:
+        raise WorldSnapshotAdmissionError("builder result is required")
+    snapshot = result["snapshot"]
+    if not isinstance(snapshot, Mapping) or "components" not in snapshot:
+        raise WorldSnapshotAdmissionError("builder snapshot is malformed")
+    components = snapshot["components"]
+    ducklake = result.get("ducklake_projection") or {}
+    if ducklake.get("authoritative") is True:
+        raise WorldSnapshotAdmissionError("DuckLake cannot admit a world snapshot")
+    projected: dict[str, Any] = {
+        "schedulable": bool(result.get("schedulable")),
+        "snapshot_cid": str(snapshot.get("snapshot_cid") or ""),
+        "ducklake_authoritative": False,
+    }
+    for name in CASF_PROJECTED_COMPONENTS:
+        record = components.get(name) or {}
+        if not isinstance(record, Mapping):
+            raise WorldSnapshotAdmissionError(f"projected component {name} is malformed")
+        projected[name] = str(record.get("cid") or "")
+        projected[f"{name}_status"] = str(record.get("status") or "")
+    return MappingProxyType(projected)
+
+
+def refuse_ducklake_world_authority(receipt: Mapping[str, Any] | None) -> None:
+    """Fail closed if a DuckLake receipt tries to mint world-snapshot authority."""
+
+    observed = observe_ducklake_projection(receipt)
+    if observed.get("authoritative") is True:
+        raise WorldSnapshotAdmissionError("DuckLake cannot admit a world snapshot")
+    if receipt is not None and receipt.get("authoritative") is True:
+        raise WorldSnapshotAdmissionError("DuckLake cannot admit a world snapshot")

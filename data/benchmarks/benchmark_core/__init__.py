@@ -12,9 +12,9 @@ from .results import ResultsCollector
 from .hardware import HardwareManager
 
 __all__ = [
-    'BenchmarkRegistry',
-    'BenchmarkRunner',
-    'BenchmarkBase',
-    'ResultsCollector',
-    'HardwareManager'
+    "BenchmarkRegistry",
+    "BenchmarkRunner",
+    "BenchmarkBase",
+    "ResultsCollector",
+    "HardwareManager",
 ]

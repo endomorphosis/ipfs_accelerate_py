@@ -54,9 +54,7 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_contract
 NOW = datetime(2026, 7, 26, 12, 0, tzinfo=timezone.utc)
 
 
-def _dependency(
-    key: str = "source-tree", revision: str = "tree:abc"
-) -> SemanticDependencyIdentity:
+def _dependency(key: str = "source-tree", revision: str = "tree:abc") -> SemanticDependencyIdentity:
     return SemanticDependencyIdentity(
         namespace="repository",
         key=key,
@@ -253,9 +251,7 @@ def test_binding_freezes_every_required_identity_and_dependency_population() -> 
         "environment_revision",
         "semantic_dependencies",
     }.issubset(payload)
-    assert binding.semantic_dependency_ids == (
-        binding.semantic_dependencies[0].dependency_id,
-    )
+    assert binding.semantic_dependency_ids == (binding.semantic_dependencies[0].dependency_id,)
 
     payload["task_id"] = ""
     with pytest.raises(SupervisorV2ContractError, match="task_id"):
@@ -340,9 +336,7 @@ def test_evidence_summary_and_derived_completion_claim_cannot_be_forged() -> Non
     with pytest.raises(ForgedSummaryError, match="derived"):
         EvidenceReference.from_dict(payload)
 
-    completion = _evidence(
-        authority=AuthorityClass.COMPLETION, suffix="completion"
-    )
+    completion = _evidence(authority=AuthorityClass.COMPLETION, suffix="completion")
     assert completion.completion_authoritative is True
     stale = completion.to_dict()
     stale["freshness"] = EvidenceFreshness.STALE.value
@@ -653,16 +647,12 @@ def test_refill_epoch_is_bounded_target_bound_and_dependency_bound() -> None:
     with pytest.raises(ContractBoundsError, match="successor_goal_ids"):
         RefillEpoch(
             **values,
-            successor_goal_ids=tuple(
-                f"goal:{index}" for index in range(MAX_REFILL_GOALS + 1)
-            ),
+            successor_goal_ids=tuple(f"goal:{index}" for index in range(MAX_REFILL_GOALS + 1)),
         )
     with pytest.raises(ContractBoundsError, match="successor_task_ids"):
         RefillEpoch(
             **values,
-            successor_task_ids=tuple(
-                f"task:{index}" for index in range(MAX_REFILL_TASKS + 1)
-            ),
+            successor_task_ids=tuple(f"task:{index}" for index in range(MAX_REFILL_TASKS + 1)),
         )
     with pytest.raises(DetachedReferenceError, match="trigger"):
         RefillEpoch(
@@ -716,9 +706,7 @@ def test_typed_failures_are_bounded_redacted_and_binding_checked() -> None:
             reason_code="tree_changed",
             public_message="The repository tree changed.",
             occurred_at=NOW,
-            evidence_references=(
-                _evidence(binding=_binding(tree_id="tree:foreign")),
-            ),
+            evidence_references=(_evidence(binding=_binding(tree_id="tree:foreign")),),
         )
 
 

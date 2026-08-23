@@ -45,18 +45,10 @@ from ..analysis.semantic_dependency_graph import MandatoryClosure
 
 
 EXECUTION_PERMIT_VERSION: Final[int] = 1
-EXECUTION_PERMIT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/execution-permit@1"
-)
-EXECUTION_EVIDENCE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/execution-evidence@1"
-)
-EXECUTION_ATTEMPT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/execution-attempt@1"
-)
-PERMIT_USE_RECEIPT_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/execution-permit-use@1"
-)
+EXECUTION_PERMIT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/execution-permit@1"
+EXECUTION_EVIDENCE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/execution-evidence@1"
+EXECUTION_ATTEMPT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/execution-attempt@1"
+PERMIT_USE_RECEIPT_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/execution-permit-use@1"
 DEFAULT_MAX_PERMIT_TTL_MS: Final[int] = 5 * 60 * 1_000
 MAX_ALLOWED_USES: Final[int] = 1_024
 _ACCEPTED_EVIDENCE_AUTHORITIES: Final[frozenset[str]] = frozenset(
@@ -130,9 +122,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
     if not isinstance(value, str):
         raise ExecutionPermitError(f"{name} must be a string")
     if value != value.strip() or "\x00" in value:
-        raise ExecutionPermitError(
-            f"{name} must not contain surrounding whitespace or NUL"
-        )
+        raise ExecutionPermitError(f"{name} must not contain surrounding whitespace or NUL")
     if required and not value:
         raise ExecutionPermitError(f"{name} is required")
     return value
@@ -146,9 +136,7 @@ def _integer(
     maximum: int | None = None,
 ) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise ExecutionPermitError(
-            f"{name} must be an integer greater than or equal to {minimum}"
-        )
+        raise ExecutionPermitError(f"{name} must be an integer greater than or equal to {minimum}")
     if maximum is not None and value > maximum:
         raise ExecutionPermitError(f"{name} exceeds its maximum")
     return value
@@ -160,16 +148,12 @@ def _plain(value: Any) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):
-        raise ExecutionPermitError(
-            "floating point values are not canonical permit data"
-        )
+        raise ExecutionPermitError("floating point values are not canonical permit data")
     if isinstance(value, Mapping):
         if not all(isinstance(key, str) for key in value):
             raise ExecutionPermitError("permit mapping keys must be strings")
         return {key: _plain(value[key]) for key in sorted(value)}
-    if isinstance(value, Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_plain(item) for item in value]
     converter = getattr(value, "to_dict", None)
     if callable(converter):
@@ -177,17 +161,13 @@ def _plain(value: Any) -> Any:
     converter = getattr(value, "to_record", None)
     if callable(converter):
         return _plain(converter())
-    raise ExecutionPermitError(
-        f"unsupported permit value: {type(value).__name__}"
-    )
+    raise ExecutionPermitError(f"unsupported permit value: {type(value).__name__}")
 
 
 def _freeze(value: Any) -> Any:
     plain = _plain(value)
     if isinstance(plain, dict):
-        return MappingProxyType(
-            {key: _freeze(item) for key, item in plain.items()}
-        )
+        return MappingProxyType({key: _freeze(item) for key, item in plain.items()})
     if isinstance(plain, list):
         return tuple(_freeze(item) for item in plain)
     return plain
@@ -223,10 +203,7 @@ def _artifact_token(artifact: Any) -> str:
 
 def _semantic_root_tokens(request: DecisionRequest) -> Mapping[str, str]:
     return MappingProxyType(
-        {
-            root.kind.value: _artifact_token(root.artifact)
-            for root in request.semantic_roots
-        }
+        {root.kind.value: _artifact_token(root.artifact) for root in request.semantic_roots}
     )
 
 
@@ -254,16 +231,8 @@ def _repository_tree_aliases(request: DecisionRequest) -> frozenset[str]:
 def _declared_paths(request: DecisionRequest) -> tuple[str, ...]:
     return tuple(
         sorted(
-            {
-                path
-                for target in request.action.targets
-                for path in target.repository_paths
-            }
-            | {
-                path
-                for effect in request.expected_effects
-                for path in effect.repository_paths
-            }
+            {path for target in request.action.targets for path in target.repository_paths}
+            | {path for effect in request.expected_effects for path in effect.repository_paths}
         )
     )
 
@@ -275,9 +244,7 @@ def _candidate_records(
     raw_actions = candidate.get("actions", candidate.get("tasks", ()))
     if isinstance(raw_actions, Mapping):
         raw_actions = tuple(raw_actions.values())
-    actions = tuple(
-        item for item in raw_actions if isinstance(item, Mapping)
-    )
+    actions = tuple(item for item in raw_actions if isinstance(item, Mapping))
     selected = tuple(
         item
         for item in actions
@@ -301,8 +268,7 @@ def _candidate_records(
         item
         for item in top
         if isinstance(item, Mapping)
-        and item.get("action_id", item.get("task_id"))
-        == request.decision_request.action.action_id
+        and item.get("action_id", item.get("task_id")) == request.decision_request.action.action_id
     )
     by_id: dict[str, Mapping[str, Any]] = {}
     for item in raw_effects:
@@ -315,13 +281,9 @@ def _candidate_records(
                     "candidate graph contains contradictory duplicate effects"
                 )
             by_id[effect_id] = normalized
-    expected_ids = {
-        item.effect_id for item in request.decision_request.expected_effects
-    }
+    expected_ids = {item.effect_id for item in request.decision_request.expected_effects}
     if set(by_id) != expected_ids:
-        raise PermitIssuanceError(
-            "candidate and DecisionRequest effect identities differ"
-        )
+        raise PermitIssuanceError("candidate and DecisionRequest effect identities differ")
     return _freeze(action), tuple(_freeze(by_id[key]) for key in sorted(by_id))
 
 
@@ -341,19 +303,13 @@ def _check_candidate_binding(
     }
     for name, expected in comparisons.items():
         if action.get(name) != expected:
-            raise PermitIssuanceError(
-                f"candidate {name} does not match the DecisionRequest"
-            )
+            raise PermitIssuanceError(f"candidate {name} does not match the DecisionRequest")
     if not any(action.get(name) == expected for name, expected in aliases.items()):
-        raise PermitIssuanceError(
-            "candidate tool does not match the DecisionRequest"
-        )
+        raise PermitIssuanceError("candidate tool does not match the DecisionRequest")
     if "arguments" not in action or _plain(action["arguments"]) != _plain(
         decision.action.arguments
     ):
-        raise PermitIssuanceError(
-            "candidate tool arguments do not match the DecisionRequest"
-        )
+        raise PermitIssuanceError("candidate tool arguments do not match the DecisionRequest")
     expected_targets = {item.target_id for item in decision.action.targets}
     raw_targets = action.get("targets")
     if raw_targets is None:
@@ -364,17 +320,10 @@ def _check_candidate_binding(
             raise PermitIssuanceError("candidate targets must be a sequence")
         candidate_targets = set(raw_targets)
     if candidate_targets != expected_targets:
-        raise PermitIssuanceError(
-            "candidate targets do not exactly match the DecisionRequest"
-        )
-    candidate_paths = {
-        str(path)
-        for path in action.get("repository_paths", ())
-    }
+        raise PermitIssuanceError("candidate targets do not exactly match the DecisionRequest")
+    candidate_paths = {str(path) for path in action.get("repository_paths", ())}
     if not candidate_paths.issubset(_declared_paths(decision)):
-        raise PermitIssuanceError(
-            "candidate action broadens the DecisionRequest path scope"
-        )
+        raise PermitIssuanceError("candidate action broadens the DecisionRequest path scope")
 
 
 @dataclass(frozen=True)
@@ -391,9 +340,7 @@ class ExecutionEvidence:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "domain", _text(self.domain, "evidence domain"))
-        object.__setattr__(
-            self, "receipt_id", _text(self.receipt_id, "evidence receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _text(self.receipt_id, "evidence receipt_id"))
         object.__setattr__(
             self,
             "subject_ids",
@@ -411,9 +358,7 @@ class ExecutionEvidence:
             MappingProxyType(dict(sorted(roots.items()))),
         )
         object.__setattr__(self, "state", MandatoryEvidenceState(self.state))
-        object.__setattr__(
-            self, "authority", _text(self.authority, "evidence authority")
-        )
+        object.__setattr__(self, "authority", _text(self.authority, "evidence authority"))
         if self.expires_at_ms is not None:
             object.__setattr__(
                 self,
@@ -461,9 +406,7 @@ class ExecutionEvidence:
             expires_at_ms=value.get("expires_at_ms"),
         )
         if set(value) != set(result.to_dict()):
-            raise ExecutionPermitError(
-                "execution evidence has missing or unknown fields"
-            )
+            raise ExecutionPermitError("execution evidence has missing or unknown fields")
         return result
 
 
@@ -471,9 +414,7 @@ def _coerce_evidence(values: Any) -> tuple[ExecutionEvidence, ...]:
     if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
         raise ExecutionPermitError("evidence_receipts must be a sequence")
     result = tuple(
-        item
-        if isinstance(item, ExecutionEvidence)
-        else ExecutionEvidence.from_dict(item)
+        item if isinstance(item, ExecutionEvidence) else ExecutionEvidence.from_dict(item)
         for item in values
     )
     result = tuple(sorted(result, key=lambda item: (item.domain, item.receipt_id)))
@@ -511,9 +452,7 @@ class ExecutionPermit:
     def __post_init__(self) -> None:
         if not isinstance(self.decision_request, DecisionRequest):
             if not isinstance(self.decision_request, Mapping):
-                raise ExecutionPermitError(
-                    "decision_request must be a DecisionRequest"
-                )
+                raise ExecutionPermitError("decision_request must be a DecisionRequest")
             object.__setattr__(
                 self,
                 "decision_request",
@@ -530,14 +469,10 @@ class ExecutionPermit:
             "policy_revision",
             "issuer_id",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _text(getattr(self, name), name))
         if not isinstance(self.candidate_action, Mapping):
             raise ExecutionPermitError("candidate_action must be a mapping")
-        object.__setattr__(
-            self, "candidate_action", _freeze(self.candidate_action)
-        )
+        object.__setattr__(self, "candidate_action", _freeze(self.candidate_action))
         if isinstance(self.candidate_effects, (str, bytes)) or not isinstance(
             self.candidate_effects, Sequence
         ):
@@ -557,9 +492,7 @@ class ExecutionPermit:
         )
         if not isinstance(self.mandatory_closure, MandatoryClosure):
             if not isinstance(self.mandatory_closure, Mapping):
-                raise ExecutionPermitError(
-                    "mandatory_closure must be a MandatoryClosure"
-                )
+                raise ExecutionPermitError("mandatory_closure must be a MandatoryClosure")
             object.__setattr__(
                 self,
                 "mandatory_closure",
@@ -567,39 +500,27 @@ class ExecutionPermit:
             )
         if not isinstance(self.context_witness, ContextCompletenessWitness):
             if not isinstance(self.context_witness, Mapping):
-                raise ExecutionPermitError(
-                    "context_witness must be a ContextCompletenessWitness"
-                )
+                raise ExecutionPermitError("context_witness must be a ContextCompletenessWitness")
             object.__setattr__(
                 self,
                 "context_witness",
                 ContextCompletenessWitness.from_dict(self.context_witness),
             )
-        object.__setattr__(
-            self, "evidence_receipts", _coerce_evidence(self.evidence_receipts)
-        )
+        object.__setattr__(self, "evidence_receipts", _coerce_evidence(self.evidence_receipts))
         validations = tuple(
             item
             if isinstance(item, ValidationRequirement)
             else ValidationRequirement.from_dict(item)
             for item in self.validation_plan
         )
-        validations = tuple(
-            sorted(validations, key=lambda item: item.requirement_id)
-        )
+        validations = tuple(sorted(validations, key=lambda item: item.requirement_id))
         object.__setattr__(self, "validation_plan", validations)
-        object.__setattr__(
-            self, "issued_at_ms", _integer(self.issued_at_ms, "issued_at_ms")
-        )
-        object.__setattr__(
-            self, "expires_at_ms", _integer(self.expires_at_ms, "expires_at_ms")
-        )
+        object.__setattr__(self, "issued_at_ms", _integer(self.issued_at_ms, "issued_at_ms"))
+        object.__setattr__(self, "expires_at_ms", _integer(self.expires_at_ms, "expires_at_ms"))
         if self.expires_at_ms <= self.issued_at_ms:
             raise ExecutionPermitError("permit expiry must be after issuance")
         if self.expires_at_ms - self.issued_at_ms > DEFAULT_MAX_PERMIT_TTL_MS:
-            raise ExecutionPermitError(
-                "permit lifetime exceeds the absolute short-lived TTL bound"
-            )
+            raise ExecutionPermitError("permit lifetime exceeds the absolute short-lived TTL bound")
         object.__setattr__(
             self,
             "allowed_use_count",
@@ -612,44 +533,28 @@ class ExecutionPermit:
         )
         decision = self.decision_request
         if decision.requested_authority is not DecisionAuthority.MUTATION:
-            raise ExecutionPermitError(
-                "an execution permit requires exact mutation authority"
-            )
+            raise ExecutionPermitError("an execution permit requires exact mutation authority")
         if (
             decision.lease_id is None
             or decision.fencing_epoch is None
             or decision.idempotency_key is None
         ):
-            raise ExecutionPermitError(
-                "execution permit requires lease, fence, and idempotency"
-            )
+            raise ExecutionPermitError("execution permit requires lease, fence, and idempotency")
         if self.semantic_roots != _semantic_root_tokens(decision):
-            raise ExecutionPermitError(
-                "permit semantic roots do not match its DecisionRequest"
-            )
+            raise ExecutionPermitError("permit semantic roots do not match its DecisionRequest")
         if self.context_witness.decision_request_id != decision.request_id:
-            raise ExecutionPermitError(
-                "context witness belongs to a different DecisionRequest"
-            )
+            raise ExecutionPermitError("context witness belongs to a different DecisionRequest")
         if self.context_witness.closure_id != self.mandatory_closure.closure_id:
-            raise ExecutionPermitError(
-                "context witness and mandatory closure differ"
-            )
+            raise ExecutionPermitError("context witness and mandatory closure differ")
         if self.context_witness.roots_digest != _semantic_roots_digest(decision):
             raise ExecutionPermitError(
                 "context witness semantic roots differ from the DecisionRequest"
             )
         _check_candidate_binding(decision, self.candidate_action)
-        candidate_effect_ids = {
-            str(item.get("effect_id") or "") for item in self.candidate_effects
-        }
-        expected_effect_ids = {
-            item.effect_id for item in decision.expected_effects
-        }
+        candidate_effect_ids = {str(item.get("effect_id") or "") for item in self.candidate_effects}
+        expected_effect_ids = {item.effect_id for item in decision.expected_effects}
         if candidate_effect_ids != expected_effect_ids:
-            raise ExecutionPermitError(
-                "candidate effects do not exactly match the DecisionRequest"
-            )
+            raise ExecutionPermitError("candidate effects do not exactly match the DecisionRequest")
 
     @property
     def permit_id(self) -> str:
@@ -715,12 +620,8 @@ class ExecutionPermit:
                 "semantic_roots": dict(self.semantic_roots),
                 "closure_id": self.mandatory_closure.closure_id,
                 "context_witness_id": self.context_witness.content_id,
-                "evidence_receipt_ids": [
-                    item.content_id for item in self.evidence_receipts
-                ],
-                "validation_plan": [
-                    item.to_dict() for item in self.validation_plan
-                ],
+                "evidence_receipt_ids": [item.content_id for item in self.evidence_receipts],
+                "validation_plan": [item.to_dict() for item in self.validation_plan],
                 "caller": self.caller,
                 "policy_id": self.policy_id,
                 "policy_revision": self.policy_revision,
@@ -740,13 +641,9 @@ class ExecutionPermit:
             "candidate_graph_id": self.candidate_graph_id,
             "candidate_action": _plain(self.candidate_action),
             "tool_arguments": _plain(self.decision_request.action.arguments),
-            "targets": [
-                item.to_dict() for item in self.decision_request.action.targets
-            ],
+            "targets": [item.to_dict() for item in self.decision_request.action.targets],
             "candidate_effects": _plain(self.candidate_effects),
-            "expected_effects": [
-                item.to_dict() for item in self.decision_request.expected_effects
-            ],
+            "expected_effects": [item.to_dict() for item in self.decision_request.expected_effects],
             "admission_request_id": self.admission_request_id,
             "admission_receipt_id": self.admission_receipt_id,
             "repository_id": self.repository_id,
@@ -756,12 +653,8 @@ class ExecutionPermit:
             "semantic_roots": dict(self.semantic_roots),
             "mandatory_closure": self.mandatory_closure.to_dict(),
             "context_witness": self.context_witness.to_dict(),
-            "evidence_receipts": [
-                item.to_dict() for item in self.evidence_receipts
-            ],
-            "validation_plan": [
-                item.to_dict() for item in self.validation_plan
-            ],
+            "evidence_receipts": [item.to_dict() for item in self.evidence_receipts],
+            "validation_plan": [item.to_dict() for item in self.validation_plan],
             "caller": self.caller,
             "principal_id": self.principal_id,
             "objective_id": self.objective_id,
@@ -797,9 +690,7 @@ class ExecutionPermit:
         if value.get("version") != EXECUTION_PERMIT_VERSION:
             raise ExecutionPermitError("unsupported execution permit version")
         result = cls(
-            decision_request=DecisionRequest.from_dict(
-                value.get("decision_request") or {}
-            ),
+            decision_request=DecisionRequest.from_dict(value.get("decision_request") or {}),
             candidate_plan_id=value.get("candidate_plan_id", ""),
             candidate_graph_id=value.get("candidate_graph_id", ""),
             candidate_action=value.get("candidate_action") or {},
@@ -808,19 +699,15 @@ class ExecutionPermit:
             admission_receipt_id=value.get("admission_receipt_id", ""),
             repository_tree_id=value.get("repository_tree_id", ""),
             semantic_roots=value.get("semantic_roots") or {},
-            mandatory_closure=MandatoryClosure.from_dict(
-                value.get("mandatory_closure") or {}
-            ),
+            mandatory_closure=MandatoryClosure.from_dict(value.get("mandatory_closure") or {}),
             context_witness=ContextCompletenessWitness.from_dict(
                 value.get("context_witness") or {}
             ),
             evidence_receipts=tuple(
-                ExecutionEvidence.from_dict(item)
-                for item in value.get("evidence_receipts") or ()
+                ExecutionEvidence.from_dict(item) for item in value.get("evidence_receipts") or ()
             ),
             validation_plan=tuple(
-                ValidationRequirement.from_dict(item)
-                for item in value.get("validation_plan") or ()
+                ValidationRequirement.from_dict(item) for item in value.get("validation_plan") or ()
             ),
             caller=value.get("caller", ""),
             policy_id=value.get("policy_id", ""),
@@ -852,9 +739,7 @@ class ExecutionPermit:
                 )
         sequence_projections = {
             "tool_arguments": _plain(result.decision_request.action.arguments),
-            "targets": [
-                item.to_dict() for item in result.decision_request.action.targets
-            ],
+            "targets": [item.to_dict() for item in result.decision_request.action.targets],
             "expected_effects": [
                 item.to_dict() for item in result.decision_request.expected_effects
             ],
@@ -866,9 +751,7 @@ class ExecutionPermit:
                     f"execution permit {name} projection does not match content"
                 )
         if set(value) != set(result.to_dict()):
-            raise ExecutionPermitError(
-                "execution permit has missing or unknown fields"
-            )
+            raise ExecutionPermitError("execution permit has missing or unknown fields")
         return result
 
     @classmethod
@@ -881,9 +764,7 @@ class ExecutionPermit:
             raise ExecutionPermitError("execution permit JSON must be an object")
         result = cls.from_dict(payload)
         if result.to_json() != value:
-            raise ExecutionPermitError(
-                "execution permit JSON changes during canonical round trip"
-            )
+            raise ExecutionPermitError("execution permit JSON changes during canonical round trip")
         return result
 
 
@@ -955,13 +836,9 @@ def _derived_evidence(
     for item in records:
         previous = by_id.get(item.receipt_id)
         if previous is not None and previous != item:
-            raise PermitIssuanceError(
-                "the same receipt ID has contradictory permit evidence"
-            )
+            raise PermitIssuanceError("the same receipt ID has contradictory permit evidence")
         by_id[item.receipt_id] = item
-    return tuple(
-        sorted(by_id.values(), key=lambda item: (item.domain, item.receipt_id))
-    )
+    return tuple(sorted(by_id.values(), key=lambda item: (item.domain, item.receipt_id)))
 
 
 def _reject_completion(decision: DecisionRequest) -> None:
@@ -972,9 +849,7 @@ def _reject_completion(decision: DecisionRequest) -> None:
         or normalized_action in _COMPLETION_WORDS
         or normalized_action.endswith("_complete")
     ):
-        raise PermitIssuanceError(
-            "execution permits never grant task-completion authority"
-        )
+        raise PermitIssuanceError("execution permits never grant task-completion authority")
 
 
 def issue_execution_permit(
@@ -995,22 +870,14 @@ def issue_execution_permit(
     """Issue an exact permit after independently rechecking all admission facts."""
 
     if not isinstance(admission_request, PlanAdmissionRequest):
-        raise PermitIssuanceError(
-            "admission_request must be a PlanAdmissionRequest"
-        )
+        raise PermitIssuanceError("admission_request must be a PlanAdmissionRequest")
     if not isinstance(admission_receipt, PlanAdmissionReceipt):
-        raise PermitIssuanceError(
-            "admission_receipt must be a PlanAdmissionReceipt"
-        )
+        raise PermitIssuanceError("admission_receipt must be a PlanAdmissionReceipt")
     if not isinstance(context_witness, ContextCompletenessWitness):
-        raise PermitIssuanceError(
-            "context_witness must be a ContextCompletenessWitness"
-        )
+        raise PermitIssuanceError("context_witness must be a ContextCompletenessWitness")
     decision = admission_request.decision_request
     if decision is None:
-        raise PermitIssuanceError(
-            "permit issuance requires the complete canonical DecisionRequest"
-        )
+        raise PermitIssuanceError("permit issuance requires the complete canonical DecisionRequest")
     _reject_completion(decision)
     if admission_request.cve_security_evidence and (
         admission_request.required_cve_security_stage
@@ -1019,32 +886,19 @@ def issue_execution_permit(
         is not CVESecurityEnforcementStage.PRE_EXECUTION
     ):
         raise PermitIssuanceError(
-            "CVE-gated execution requires the complete pre-execution "
-            "enforcement stage"
+            "CVE-gated execution requires the complete pre-execution enforcement stage"
         )
     if decision.requested_authority is not DecisionAuthority.MUTATION:
-        raise PermitIssuanceError(
-            "permit issuance requires exact mutation authority"
-        )
+        raise PermitIssuanceError("permit issuance requires exact mutation authority")
     recomputed = compile_plan_admission(admission_request)
-    if (
-        recomputed != admission_receipt
-        or recomputed.receipt_id != admission_receipt.receipt_id
-    ):
+    if recomputed != admission_receipt or recomputed.receipt_id != admission_receipt.receipt_id:
         raise PermitIssuanceError(
             "admission receipt is stale, forged, or detached from its request"
         )
-    if (
-        recomputed.verdict is not PlanAdmissionVerdict.ADMITTED
-        or not recomputed.admitted
-    ):
-        raise PermitIssuanceError(
-            "a rejected or unknown plan admission cannot issue a permit"
-        )
+    if recomputed.verdict is not PlanAdmissionVerdict.ADMITTED or not recomputed.admitted:
+        raise PermitIssuanceError("a rejected or unknown plan admission cannot issue a permit")
     if not recomputed.security_decision_ids or not recomputed.security_grant_ids:
-        raise PermitIssuanceError(
-            "permit issuance requires exact SecurityIR authorization"
-        )
+        raise PermitIssuanceError("permit issuance requires exact SecurityIR authorization")
     closure = admission_request.mandatory_closure
     if closure is None or not closure.complete:
         raise PermitIssuanceError(
@@ -1056,18 +910,14 @@ def issue_execution_permit(
         or context_witness.mandatory_node_ids != closure.node_ids
         or context_witness.mandatory_edge_ids != closure.edge_ids
     ):
-        raise PermitIssuanceError(
-            "admission, dependency closure, and context witness differ"
-        )
+        raise PermitIssuanceError("admission, dependency closure, and context witness differ")
     if (
         context_witness.decision_request_id != decision.request_id
         or context_witness.roots_digest != _semantic_roots_digest(decision)
         or not context_witness.complete
         or context_witness.truncated
     ):
-        raise PermitIssuanceError(
-            "context completeness witness is stale, partial, or detached"
-        )
+        raise PermitIssuanceError("context completeness witness is stale, partial, or detached")
     if admission_request.repository_tree_id not in _repository_tree_aliases(decision):
         raise PermitIssuanceError(
             "admission repository tree does not match the DecisionRequest roots"
@@ -1094,35 +944,21 @@ def issue_execution_permit(
     roots = dict(_semantic_root_tokens(decision))
     for item in evidence:
         if not item.current_and_authoritative:
-            raise PermitIssuanceError(
-                f"mandatory {item.domain} state is {item.state.value}"
-            )
+            raise PermitIssuanceError(f"mandatory {item.domain} state is {item.state.value}")
         if item.expires_at_ms is not None and item.expires_at_ms <= issued:
-            raise PermitIssuanceError(
-                f"mandatory {item.domain} receipt is expired"
-            )
+            raise PermitIssuanceError(f"mandatory {item.domain} receipt is expired")
         if item.semantic_roots != roots:
             raise PermitIssuanceError(
                 f"mandatory {item.domain} receipt is not bound to all current roots"
             )
     monitor_subjects = {
-        subject
-        for item in evidence
-        if item.domain == "monitor"
-        for subject in item.subject_ids
+        subject for item in evidence if item.domain == "monitor" for subject in item.subject_ids
     }
     required_monitors = {
-        entry.node_id
-        for entry in context_witness.entries
-        if entry.node_kind == "monitor"
-    } | {
-        entry.node_content_id
-        for entry in context_witness.entries
-        if entry.node_kind == "monitor"
-    }
+        entry.node_id for entry in context_witness.entries if entry.node_kind == "monitor"
+    } | {entry.node_content_id for entry in context_witness.entries if entry.node_kind == "monitor"}
     if required_monitors and not all(
-        entry.node_id in monitor_subjects
-        or entry.node_content_id in monitor_subjects
+        entry.node_id in monitor_subjects or entry.node_content_id in monitor_subjects
         for entry in context_witness.entries
         if entry.node_kind == "monitor"
     ):
@@ -1176,9 +1012,7 @@ def issue_cve_execution_permit(
         or admission_request.required_cve_security_stage
         is not CVESecurityEnforcementStage.PRE_EXECUTION
     ):
-        raise PermitIssuanceError(
-            "CVE execution permit requires a pre-execution-gated admission"
-        )
+        raise PermitIssuanceError("CVE execution permit requires a pre-execution-gated admission")
     return issue_execution_permit(
         admission_request,
         admission_receipt,
@@ -1223,9 +1057,7 @@ class ExecutionAttempt:
 
     def __post_init__(self) -> None:
         if not isinstance(self.decision_request, DecisionRequest):
-            raise ExecutionPermitError(
-                "attempt decision_request must be a DecisionRequest"
-            )
+            raise ExecutionPermitError("attempt decision_request must be a DecisionRequest")
         for name in (
             "candidate_plan_id",
             "candidate_graph_id",
@@ -1244,9 +1076,7 @@ class ExecutionAttempt:
             tuple(_freeze(item) for item in self.candidate_effects),
         )
         roots = {
-            _text(key, "attempt semantic root kind"): _text(
-                value, "attempt semantic root"
-            )
+            _text(key, "attempt semantic root kind"): _text(value, "attempt semantic root")
             for key, value in self.semantic_roots.items()
         }
         object.__setattr__(
@@ -1255,16 +1085,12 @@ class ExecutionAttempt:
             MappingProxyType(dict(sorted(roots.items()))),
         )
         if not isinstance(self.mandatory_closure, MandatoryClosure):
-            raise ExecutionPermitError(
-                "attempt mandatory_closure must be a MandatoryClosure"
-            )
+            raise ExecutionPermitError("attempt mandatory_closure must be a MandatoryClosure")
         if not isinstance(self.context_witness, ContextCompletenessWitness):
             raise ExecutionPermitError(
                 "attempt context_witness must be a ContextCompletenessWitness"
             )
-        object.__setattr__(
-            self, "evidence_receipts", _coerce_evidence(self.evidence_receipts)
-        )
+        object.__setattr__(self, "evidence_receipts", _coerce_evidence(self.evidence_receipts))
         validations = tuple(
             item
             if isinstance(item, ValidationRequirement)
@@ -1343,12 +1169,8 @@ class ExecutionAttempt:
                 "semantic_roots": dict(self.semantic_roots),
                 "closure_id": self.mandatory_closure.closure_id,
                 "context_witness_id": self.context_witness.content_id,
-                "evidence_receipt_ids": [
-                    item.content_id for item in self.evidence_receipts
-                ],
-                "validation_plan": [
-                    item.to_dict() for item in self.validation_plan
-                ],
+                "evidence_receipt_ids": [item.content_id for item in self.evidence_receipts],
+                "validation_plan": [item.to_dict() for item in self.validation_plan],
                 "caller": self.caller,
                 "policy_id": self.policy_id,
                 "policy_revision": self.policy_revision,
@@ -1476,9 +1298,7 @@ class PermitUseLedger:
             )
 
     def used_count(self, permit: ExecutionPermit | str) -> int:
-        permit_id = (
-            permit.permit_id if isinstance(permit, ExecutionPermit) else permit
-        )
+        permit_id = permit.permit_id if isinstance(permit, ExecutionPermit) else permit
         with self._lock:
             return len(self._uses.get(permit_id, ()))
 
@@ -1505,9 +1325,7 @@ class ExecutionPermitVerifier:
         )
         self._trust_resolver = trust_resolver
 
-    def _reject(
-        self, code: PermitVerificationCode, reason: str
-    ) -> None:
+    def _reject(self, code: PermitVerificationCode, reason: str) -> None:
         raise PermitVerificationError(code, reason)
 
     def verify(
@@ -1535,10 +1353,7 @@ class ExecutionPermitVerifier:
                 PermitVerificationCode.UNTRUSTED,
                 "permit verification requires an explicit trust authority",
             )
-        if (
-            self._trust_resolver is not None
-            and not self._trust_resolver(permit)
-        ):
+        if self._trust_resolver is not None and not self._trust_resolver(permit):
             self._reject(
                 PermitVerificationCode.UNTRUSTED,
                 "permit was rejected by the active permit authority",
@@ -1608,11 +1423,9 @@ class ExecutionPermitVerifier:
                 "one or more semantic roots changed after permit issuance",
             )
         if (
-            attempt.mandatory_closure.closure_id
-            != permit.mandatory_closure.closure_id
+            attempt.mandatory_closure.closure_id != permit.mandatory_closure.closure_id
             or attempt.mandatory_closure != permit.mandatory_closure
-            or attempt.context_witness.content_id
-            != permit.context_witness.content_id
+            or attempt.context_witness.content_id != permit.context_witness.content_id
             or attempt.context_witness != permit.context_witness
         ):
             self._reject(
@@ -1632,18 +1445,14 @@ class ExecutionPermitVerifier:
                 PermitVerificationCode.CHANGED_OPERATION,
                 "candidate action, tool, or arguments changed",
             )
-        if (
-            attempt.decision_request.action.targets
-            != permit.decision_request.action.targets
-        ):
+        if attempt.decision_request.action.targets != permit.decision_request.action.targets:
             self._reject(
                 PermitVerificationCode.CHANGED_TARGET,
                 "operation targets changed after permit issuance",
             )
         if (
             attempt.candidate_effects != permit.candidate_effects
-            or attempt.decision_request.expected_effects
-            != permit.decision_request.expected_effects
+            or attempt.decision_request.expected_effects != permit.decision_request.expected_effects
         ):
             self._reject(
                 PermitVerificationCode.CHANGED_EFFECT,
@@ -1684,13 +1493,9 @@ class ExecutionPermitVerifier:
             if (
                 item.state is MandatoryEvidenceState.STALE
                 or item.authority not in _ACCEPTED_EVIDENCE_AUTHORITIES
-                or (
-                    item.expires_at_ms is not None
-                    and attempt.now_ms >= item.expires_at_ms
-                )
+                or (item.expires_at_ms is not None and attempt.now_ms >= item.expires_at_ms)
                 or any(
-                    current_roots.get(kind) != value
-                    for kind, value in item.semantic_roots.items()
+                    current_roots.get(kind) != value for kind, value in item.semantic_roots.items()
                 )
             ):
                 self._reject(
@@ -1808,9 +1613,7 @@ class ExecutionPermitIssuer:
             self._idempotency[key] = permit.permit_id
         return permit
 
-    def verifier(
-        self, *, ledger: PermitUseLedger | None = None
-    ) -> ExecutionPermitVerifier:
+    def verifier(self, *, ledger: PermitUseLedger | None = None) -> ExecutionPermitVerifier:
         return ExecutionPermitVerifier(
             ledger=ledger,
             trust_resolver=self.issued,
@@ -1848,10 +1651,8 @@ def verify_cve_execution_permit(
     """Verify a CVE-gated permit immediately before its declared effect."""
 
     required_domains = {
-        "cve_security_gate:"
-        f"{CVESecurityEnforcementStage.PLAN_ADMISSION.value}",
-        "cve_security_gate:"
-        f"{CVESecurityEnforcementStage.PRE_EXECUTION.value}",
+        f"cve_security_gate:{CVESecurityEnforcementStage.PLAN_ADMISSION.value}",
+        f"cve_security_gate:{CVESecurityEnforcementStage.PRE_EXECUTION.value}",
     }
     observed_domains = {
         item.domain
@@ -1861,8 +1662,7 @@ def verify_cve_execution_permit(
     if observed_domains != required_domains:
         raise PermitVerificationError(
             PermitVerificationCode.INVALID_PERMIT,
-            "CVE execution permit lacks the exact plan and pre-execution "
-            "gate evidence",
+            "CVE execution permit lacks the exact plan and pre-execution gate evidence",
         )
     return verify_execution_permit(
         permit,

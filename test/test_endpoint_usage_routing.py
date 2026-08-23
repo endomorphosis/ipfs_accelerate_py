@@ -88,9 +88,7 @@ def _now() -> datetime:
 
 
 def _rfc(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _scope(provider_key: str = "prov-a", operation: str = "text.chat") -> EndpointUsageScope:
@@ -147,9 +145,7 @@ def _snapshot(
                 state=state
                 if state is not AvailabilityState.AVAILABLE
                 else (
-                    AvailabilityState.AVAILABLE
-                    if available > 0
-                    else AvailabilityState.EXHAUSTED
+                    AvailabilityState.AVAILABLE if available > 0 else AvailabilityState.EXHAUSTED
                 ),
             ),
         ),
@@ -625,10 +621,7 @@ def test_unsafe_semantic_client_side_effect_never_fallback():
     assert classify_invoke_error(side_effecting=True) is ErrorSafetyClass.SIDE_EFFECT
     assert classify_invoke_error(http_status=429) is ErrorSafetyClass.CAPACITY
     assert classify_invoke_error(http_status=400) is ErrorSafetyClass.CLIENT
-    assert (
-        classify_invoke_error(reason_codes=("context_overflow",))
-        is ErrorSafetyClass.SEMANTIC
-    )
+    assert classify_invoke_error(reason_codes=("context_overflow",)) is ErrorSafetyClass.SEMANTIC
 
     clock = FakeClock(_now())
     coord = _coord(clock)
@@ -792,7 +785,7 @@ def test_single_flight_collapses_concurrent_work():
         barrier.wait()
         out = sf.do(
             "same-key",
-            lambda: (counter.__setitem__("n", counter["n"] + 1) or counter["n"]),
+            lambda: counter.__setitem__("n", counter["n"] + 1) or counter["n"],
         )
         results.append(out)
 
@@ -812,9 +805,7 @@ def test_circuit_breaker_prevents_herd_on_hot_binding():
     def now_ms():
         return clock_ms["t"]
 
-    cb = CircuitBreakerRegistry(
-        failure_threshold=2, cooldown_ms=10_000, clock_ms=now_ms
-    )
+    cb = CircuitBreakerRegistry(failure_threshold=2, cooldown_ms=10_000, clock_ms=now_ms)
     binding = stable_id("binding", "hot")
     assert cb.is_open(binding) is False
     cb.record_failure(binding)
@@ -936,9 +927,7 @@ def test_hard_rejection_and_ranking_digests_are_stable():
         candidates=[cand],
         snapshots_by_scope={scope.scope_id: snap},
         policy=RoutingPolicy(mode=RoutingMode.ENFORCE),
-        request=UsageRoutingRequest(
-            required=UsageVector.of(requests=1), now=_rfc(_now())
-        ),
+        request=UsageRoutingRequest(required=UsageVector.of(requests=1), now=_rfc(_now())),
     )
     d1 = hard_rejection_digest(resolution.rejected)
     d2 = hard_rejection_digest(resolution.rejected)
@@ -994,9 +983,7 @@ def test_plan_route_with_exact_pin_does_not_cross_provider():
             mode=RoutingMode.ENFORCE,
             fallback=FallbackClass.CROSS_PROVIDER,
         ),
-        request=UsageRoutingRequest(
-            required=UsageVector.of(requests=1), now=_rfc(_now())
-        ),
+        request=UsageRoutingRequest(required=UsageVector.of(requests=1), now=_rfc(_now())),
         pin=RoutePin(provider_id=scope_a.provider_id),
     )
     assert resolution.selected_binding_id == cand_a.binding_id
@@ -1035,9 +1022,7 @@ def test_successful_invoke_settles_and_records_observation():
         operation="text.chat",
         requested=UsageVector.of(requests=1),
         policy=RoutingPolicy(mode=RoutingMode.ENFORCE),
-        request=UsageRoutingRequest(
-            required=UsageVector.of(requests=1), now=_rfc(clock.now())
-        ),
+        request=UsageRoutingRequest(required=UsageVector.of(requests=1), now=_rfc(clock.now())),
         invoke=invoke,
     )
     assert result.success

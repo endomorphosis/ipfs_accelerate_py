@@ -260,10 +260,7 @@ def fallback_class_allows(
     if fallback is FallbackClass.SAME_MODEL:
         if not origin.model_id or not candidate.model_id:
             return candidate.binding_id == origin.binding_id
-        return (
-            candidate.model_id == origin.model_id
-            and candidate.provider_id == origin.provider_id
-        )
+        return candidate.model_id == origin.model_id and candidate.provider_id == origin.provider_id
     if fallback is FallbackClass.EQUIVALENT_MODEL:
         if origin.equivalent_model_group and candidate.equivalent_model_group:
             return origin.equivalent_model_group == candidate.equivalent_model_group
@@ -565,9 +562,7 @@ class InvokeOutcome:
         if not isinstance(self.success, bool):
             raise RoutingError("success must be a boolean")
         if not isinstance(self.error_class, ErrorSafetyClass):
-            object.__setattr__(
-                self, "error_class", ErrorSafetyClass(str(self.error_class))
-            )
+            object.__setattr__(self, "error_class", ErrorSafetyClass(str(self.error_class)))
         object.__setattr__(self, "reason_codes", tuple(self.reason_codes or ()))
 
 
@@ -647,9 +642,7 @@ class RouteAdmissionResult:
             "receipt_id": self.receipt.receipt_id if self.receipt else None,
             "final_status": self.final_status,
             "reason_codes": list(self.reason_codes),
-            "wait_or_reroute": self.wait_or_reroute.value
-            if self.wait_or_reroute
-            else None,
+            "wait_or_reroute": self.wait_or_reroute.value if self.wait_or_reroute else None,
             "next_eligible_at": self.next_eligible_at,
         }
 
@@ -657,8 +650,7 @@ class RouteAdmissionResult:
 class SnapshotProvider(Protocol):
     """Minimal snapshot surface for admission planning."""
 
-    def snapshot(self, scope_id: str) -> UsageSnapshot:
-        ...
+    def snapshot(self, scope_id: str) -> UsageSnapshot: ...
 
 
 # ---------------------------------------------------------------------------
@@ -739,9 +731,7 @@ def _parse_rfc3339(value: Optional[str]) -> Optional[datetime]:
     if not raw:
         return None
     try:
-        parsed = datetime.fromisoformat(
-            raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-        )
+        parsed = datetime.fromisoformat(raw[:-1] + "+00:00" if raw.endswith("Z") else raw)
     except ValueError as exc:
         raise RoutingError("timestamp is not RFC 3339: %r" % value) from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
@@ -750,9 +740,7 @@ def _parse_rfc3339(value: Optional[str]) -> Optional[datetime]:
 
 
 def _to_rfc3339(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _attempt_id(request_id: str, index: int) -> str:
@@ -803,9 +791,7 @@ class UsageRouteAdmission:
         self._coord = coordinator
         self._owner_id = owner_id
         self._circuits = circuits or CircuitBreakerRegistry(
-            clock_ms=lambda: int(
-                self._coord.clock.now().timestamp() * 1000
-            )
+            clock_ms=lambda: int(self._coord.clock.now().timestamp() * 1000)
         )
         self._single_flight = single_flight or SingleFlight()
         self._jitter_max_ms = max(0, int(jitter_max_ms))
@@ -864,8 +850,12 @@ class UsageRouteAdmission:
         if not isinstance(requested, UsageVector) or not requested.entries:
             raise RoutingError("requested usage vector must be non-empty")
 
-        policy = policy if policy is not None else RoutingPolicy(
-            mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE, max_attempts=1
+        policy = (
+            policy
+            if policy is not None
+            else RoutingPolicy(
+                mode=RoutingMode.ENFORCE, fallback=FallbackClass.NONE, max_attempts=1
+            )
         )
         if not isinstance(policy, RoutingPolicy):
             policy = RoutingPolicy.from_dict(policy)
@@ -902,9 +892,7 @@ class UsageRouteAdmission:
 
         deadline_at = _parse_rfc3339(request.deadline_at)
         if deadline_at is None and policy.deadline_ms is not None:
-            deadline_at = self._coord.clock.now() + timedelta(
-                milliseconds=int(policy.deadline_ms)
-            )
+            deadline_at = self._coord.clock.now() + timedelta(milliseconds=int(policy.deadline_ms))
         now = self._coord.clock.now()
         if request.now is not None:
             now = _parse_rfc3339(request.now) or now
@@ -926,9 +914,7 @@ class UsageRouteAdmission:
                 wait_decision = WaitOrReroute.FAIL
                 break
 
-            jitter = admission_jitter_ms(
-                request_id, max_ms=self._jitter_max_ms, salt=str(index)
-            )
+            jitter = admission_jitter_ms(request_id, max_ms=self._jitter_max_ms, salt=str(index))
             if self._apply_jitter_sleep and jitter > 0:
                 time.sleep(jitter / 1000.0)
 
@@ -1003,8 +989,7 @@ class UsageRouteAdmission:
                 attempt_id = _attempt_id(request_id, index)
                 denial = TypedDenial(
                     kind=DenialKind.NO_CANDIDATES,
-                    reason_codes=tuple(resolution.reason_codes)
-                    or ("no_eligible_candidates",),
+                    reason_codes=tuple(resolution.reason_codes) or ("no_eligible_candidates",),
                 )
                 # Wait vs fail when no candidates.
                 next_dt = _parse_rfc3339(resolution.next_eligible_at)
@@ -1265,11 +1250,7 @@ class UsageRouteAdmission:
                             settlement = self._coord.commit(
                                 decision.reservation_id,
                                 outcome.settled
-                                or (
-                                    outcome.observation.usage
-                                    if outcome.observation
-                                    else None
-                                ),
+                                or (outcome.observation.usage if outcome.observation else None),
                                 observation_id=(
                                     outcome.observation.observation_id
                                     if outcome.observation
@@ -1304,8 +1285,7 @@ class UsageRouteAdmission:
                     if outcome.observation is not None:
                         error_class = classify_invoke_error(
                             http_status=outcome.observation.http_status,
-                            reason_codes=outcome.observation.reason_codes
-                            or outcome.reason_codes,
+                            reason_codes=outcome.observation.reason_codes or outcome.reason_codes,
                             side_effecting=outcome.side_effecting,
                         )
                     elif outcome.side_effecting:
@@ -1386,7 +1366,9 @@ class UsageRouteAdmission:
                     reservation_id=decision.reservation_id,
                     reservation=decision.reservation,
                     decision=decision,
-                    denial=None if outcome.success else TypedDenial(
+                    denial=None
+                    if outcome.success
+                    else TypedDenial(
                         kind=DenialKind.CAPACITY
                         if error_class is ErrorSafetyClass.CAPACITY
                         else DenialKind.UNKNOWN,
@@ -1438,10 +1420,7 @@ class UsageRouteAdmission:
                         receipt=receipt,
                         final_status=final_status,
                         reason_codes=tuple(
-                            sorted(
-                                set(attempt_result.reason_codes)
-                                | {"no_fallback_unsafe_error"}
-                            )
+                            sorted(set(attempt_result.reason_codes) | {"no_fallback_unsafe_error"})
                         ),
                         next_eligible_at=next_eligible,
                     )
@@ -1459,12 +1438,10 @@ class UsageRouteAdmission:
                         # Build receipt for last denial.
                         receipt = self._build_receipt(
                             catalog_revision=catalog_revision,
-                            usage_revision=attempt_result.usage_revision
-                            or USAGE_REVISION_OFF,
+                            usage_revision=attempt_result.usage_revision or USAGE_REVISION_OFF,
                             request_id=request_id,
                             attempt_id=attempt_result.attempt_id,
-                            idempotency_key="%s#%s"
-                            % (idempotency_key, attempt_result.attempt_id),
+                            idempotency_key="%s#%s" % (idempotency_key, attempt_result.attempt_id),
                             operation=operation,
                             policy=policy,
                             resolution=resolution,
@@ -1570,9 +1547,7 @@ class UsageRouteAdmission:
                 # Decide wait vs fail for next loop iteration.
                 next_dt = _parse_rfc3339(next_eligible)
                 remaining_candidates = [
-                    c
-                    for c in resolution.candidates
-                    if c.binding_id not in excluded_bindings
+                    c for c in resolution.candidates if c.binding_id not in excluded_bindings
                 ]
                 wait_decision = decide_wait_or_reroute(
                     policy=policy,
@@ -1729,9 +1704,7 @@ class UsageRouteAdmission:
             error_code=error,
         )
 
-    def _chain_from_attempts(
-        self, attempts: Sequence[RouteAttemptResult]
-    ) -> ReceiptChain:
+    def _chain_from_attempts(self, attempts: Sequence[RouteAttemptResult]) -> ReceiptChain:
         links: List[AttemptLink] = []
         for item in attempts:
             links.append(
@@ -1778,14 +1751,8 @@ class UsageRouteAdmission:
         selected_binding_id: Optional[str] = None,
         scope_id: Optional[str] = None,
     ) -> UsageRoutingReceipt:
-        hard_dig = (
-            hard_rejection_digest(resolution.rejected) if resolution is not None else None
-        )
-        rank_dig = (
-            ranking_inputs_digest(resolution.candidates)
-            if resolution is not None
-            else None
-        )
+        hard_dig = hard_rejection_digest(resolution.rejected) if resolution is not None else None
+        rank_dig = ranking_inputs_digest(resolution.candidates) if resolution is not None else None
         cand_dig = (
             candidates_digest(
                 resolution.candidates if resolution else None,
@@ -1866,9 +1833,7 @@ def score_cannot_bypass_hard_gate(
     capability/authorization proxies, cost, media, or deadline constraints.
     """
 
-    ok, _reasons, _headroom = hard_filter_candidate(
-        candidate, snapshot, request, policy, now=now
-    )
+    ok, _reasons, _headroom = hard_filter_candidate(candidate, snapshot, request, policy, now=now)
     return not ok
 
 

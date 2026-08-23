@@ -339,3 +339,124 @@ print(json.dumps({{
         # export in this manifest.
         "resolved_owner_modules": sorted(V2_OWNER_MODULES),
     }
+
+def _same_public_export(public_value: object, owner_value: object) -> bool:
+    """Dual-layout copies remain equivalent when names and values match."""
+
+    if isinstance(public_value, type) or isinstance(owner_value, type):
+        return getattr(public_value, "__qualname__", None) == getattr(
+            owner_value, "__qualname__", None
+        )
+    if callable(public_value) or callable(owner_value):
+        return getattr(public_value, "__name__", None) == getattr(owner_value, "__name__", None)
+    return public_value == owner_value
+
+
+def test_operational_campaign_public_api_is_immutable_and_catalog_aligned() -> None:
+    from ipfs_accelerate_py.agent_supervisor.control.campaign_public_api import (
+        OPERATIONAL_CAMPAIGN_CONTROL_MAP,
+        OPERATIONAL_CAMPAIGN_OPERATION_NAMES,
+        discover_operational_campaign_api,
+    )
+    from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
+        Operation,
+        get_operation_catalog,
+    )
+
+    catalog = discover_operational_campaign_api()
+    control = get_operation_catalog()
+    assert catalog["schema"] == "OperationalCampaignAPI@1"
+    assert catalog["import_side_effects"] == "none"
+    assert catalog["expands_control_catalog"] is False
+    assert catalog["prompt_selected_authority"] is False
+    assert tuple(catalog["operation_names"]) == OPERATIONAL_CAMPAIGN_OPERATION_NAMES
+    assert catalog["catalog_id"] == control.content_id
+    try:
+        OPERATIONAL_CAMPAIGN_CONTROL_MAP["invent"] = Operation.START  # type: ignore[index]
+    except TypeError:
+        pass
+    else:  # pragma: no cover - makes the immutability failure explicit
+        raise AssertionError("the operational campaign control map is mutable")
+    for name, operation in OPERATIONAL_CAMPAIGN_CONTROL_MAP.items():
+        assert control.operation(operation).operation == operation
+        assert catalog["operations"][name]["control_operation"] == operation.value
+
+
+def test_fresh_operational_campaign_discovery_is_side_effect_free() -> None:
+    program = """
+import importlib
+import json
+import sys
+
+PROCESS_EVENTS = (
+    "subprocess.Popen",
+    "os.system",
+    "os.posix_spawn",
+    "os.posix_spawnp",
+    "os.fork",
+    "os.forkpty",
+)
+started = []
+
+def audit(event, args):
+    if event in PROCESS_EVENTS:
+        started.append(event)
+        raise RuntimeError(f"campaign API discovery started a process: {event}")
+
+import ipfs_accelerate_py  # host init may probe libc; not campaign discovery
+api = importlib.import_module(
+    "ipfs_accelerate_py.agent_supervisor.control.campaign_public_api"
+)
+sys.addaudithook(audit)
+before = set(sys.modules)
+first = api.discover_operational_campaign_api()
+second = api.discover_operational_campaign_api()
+loaded = sorted(
+    name
+    for name in set(sys.modules).difference(before)
+    if name.startswith(
+        (
+            "ipfs_datasets_py",
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon.llm",
+            "ipfs_accelerate_py.agent_supervisor.objectives.ir_learning_campaign",
+            "ipfs_accelerate_py.agent_supervisor.runtime.operational_campaign",
+        )
+    )
+)
+print(json.dumps({
+    "identical": first == second,
+    "side_effects": first["import_side_effects"],
+    "expands": first["expands_control_catalog"],
+    "process_events": started,
+    "loaded_heavy": loaded,
+    "operation_count": len(first["operation_names"]),
+}, sort_keys=True))
+"""
+    repository_root = Path(__file__).resolve().parents[2]
+    environment = os.environ.copy()
+    environment.pop("IPFS_ACCEL_SKIP_CORE", None)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        item
+        for item in (str(repository_root), environment.get("PYTHONPATH", ""))
+        if item
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", program],
+        cwd=repository_root,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert completed.returncode == 0, completed.stderr
+    observation: Mapping[str, object] = json.loads(completed.stdout)
+    assert observation == {
+        "identical": True,
+        "side_effects": "none",
+        "expands": False,
+        "process_events": [],
+        "loaded_heavy": [],
+        "operation_count": 12,
+    }
+

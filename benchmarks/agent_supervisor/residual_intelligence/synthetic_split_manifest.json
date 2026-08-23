@@ -1,0 +1,47 @@
+{
+  "assignments": [
+    {
+      "component_id": "baguqeerafotkrrcskde4wlbnoztnlffnf5e4ecgo7xw4ltli4caytq7r2tla",
+      "example_identity": "baguqeera2fygctkhxlhpjn2crrjtfncvyjli4qf3kuc6k3wylpzpjvsjugxq",
+      "hidden_from_training": true,
+      "partition": "held_out",
+      "split_group": "holdout-a"
+    },
+    {
+      "component_id": "baguqeerafzn6t6h3ovloe7yg7q7oktcqqkdhguzqen5icvcrs4ldnwdt7vgq",
+      "example_identity": "baguqeeraa6e6j37ppejejgtm32um4e77nap65phuslqkownax2csowyv3ljq",
+      "hidden_from_training": false,
+      "partition": "training",
+      "split_group": "train-a"
+    },
+    {
+      "component_id": "baguqeeraefzjdujtoyphh47pjt6ag6ur2wlck2sqkpjhlkbq6pgqw7frnggq",
+      "example_identity": "baguqeeratesqfn6jvhwbmz376x2b2ybeerkp2nr3osyaygg6acw5ixdltheq",
+      "hidden_from_training": false,
+      "partition": "development",
+      "split_group": "dev-a"
+    },
+    {
+      "component_id": "baguqeerasb74mx6f3ndv34q7btecdwzklkl5h4elxssnhr3r7rmqogkc5icq",
+      "example_identity": "baguqeeraurvvka73brvt3k5ota4gqkamgd7btmykeufph6hoiumgqmkw56lq",
+      "hidden_from_training": true,
+      "partition": "adversarial",
+      "split_group": "adversarial-a"
+    }
+  ],
+  "hidden_test_commitment": "sha256:hidden-test-fixture-commitment",
+  "policy": {
+    "adversarial_basis_points": 1000,
+    "development_basis_points": 1000,
+    "forced_adversarial_groups": ["adversarial-a"],
+    "forced_development_groups": ["dev-a"],
+    "forced_held_out_groups": ["holdout-a"],
+    "held_out_basis_points": 1000,
+    "policy_id": "semantic-lineage-fixture@1",
+    "schema": "ipfs_accelerate_py/agent-supervisor/residual-semantic-split-policy@1",
+    "seed_identity": "seed:vrif-fixture-v1",
+    "train_basis_points": 7000
+  },
+  "schema": "ipfs_accelerate_py/agent-supervisor/residual-semantic-split-manifest@1",
+  "split_root": "baguqeeradbwccksw3vppbhz3xiu2l55isclxhi2xixthngpyeiy422jhmhzq"
+}

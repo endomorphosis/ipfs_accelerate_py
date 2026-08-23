@@ -142,7 +142,9 @@ def test_task_p2p_peer_id_only_uses_announce_file(tmp_path, monkeypatch):
         assert isinstance(attempts, list) and attempts
         assert any(a.get("method") == "announce-file" and a.get("ok") is True for a in attempts)
 
-        set_resp = cache_set_sync(remote=remote, key="k", value={"from": "peer_id_only"}, ttl_s=5.0, timeout_s=10.0)
+        set_resp = cache_set_sync(
+            remote=remote, key="k", value={"from": "peer_id_only"}, ttl_s=5.0, timeout_s=10.0
+        )
         assert set_resp.get("ok") is True
 
         hit = cache_get_sync(remote=remote, key="k", timeout_s=10.0)

@@ -6,19 +6,24 @@ import argparse
 import errno
 import hashlib
 import json
+import math
 import os
 import re
+import shutil
 import signal
 import stat
 import subprocess
 import sys
 import time
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Any, Callable, ClassVar, Mapping, MutableMapping, Protocol, Sequence
+from typing import Any, ClassVar, Protocol
+
+_UTC = timezone.utc  # noqa: UP017 - package supports Python 3.8.
 
 # A datasets-authoritative configured-board process must not import repository
 # code before its complete dependency closure is available as one immutable
@@ -116,6 +121,16 @@ CONFIGURED_BOARD_LIVE_SEAL_VERIFIERS = MappingProxyType(
     }
 )
 PLAN_BOUND_REPLAN_RETURN_CODE = 75
+STALE_DETACHED_MASTER_PID_DECISION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "stale-detached-master-pid-quarantine-decision@1"
+)
+STALE_DETACHED_MASTER_PID_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "stale-detached-master-pid-quarantine@1"
+)
+_LEGACY_MASTER_PID_PAYLOAD = re.compile(rb"[1-9][0-9]*\n")
+_LEGACY_MASTER_PID_MAX_BYTES = 32
 SEALED_CONTROL_PLANE_MODULES = frozenset(
     {
         "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler",
@@ -167,17 +182,13 @@ try:
     prefix=archive+'/'
     root_origin=getattr(accepted_root,'__file__',None)
     if type(root_origin) is not str or not root_origin.startswith(prefix): raise SystemExit(78)
-    package_name='ipfs_accelerate_py.agent_supervisor'; package_path=archive+'/ipfs_accelerate_py/agent_supervisor'
+    package_name='ipfs_accelerate_py.agent_supervisor'
     if any(name==package_name or name.startswith(package_name+'.') for name in sys.modules): raise SystemExit(78)
-    package_file=package_path+'/__init__.py'; package_spec=importlib.machinery.ModuleSpec(package_name,loader=None,origin=package_file,is_package=True); package_spec.submodule_search_locations=[package_path]
-    package=types.ModuleType(package_name); package.__file__=package_file; package.__package__=package_name; package.__path__=[package_path]; package.__spec__=package_spec
-    sys.modules[package_name]=package; setattr(accepted_root,'agent_supervisor',package)
-    if module in sys.modules or package.__path__!=[package_path] or package.__spec__.origin!=package_file: raise SystemExit(78)
-    if module=='ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor':
-        timeout_name=package_name+'.todo_daemon.implementation_timeout'; timeout_alias=package_name+'.implementation_timeout'
-        timeout_module=importlib.import_module(timeout_name); timeout_origin=getattr(timeout_module,'__file__',None)
-        if type(timeout_origin) is not str or not timeout_origin.startswith(prefix): raise SystemExit(78)
-        sys.modules[timeout_alias]=timeout_module; setattr(package,'implementation_timeout',timeout_module)
+    package=importlib.import_module(package_name)
+    package_origin=getattr(package,'__file__',None)
+    if type(package_origin) is not str or not package_origin.startswith(prefix): raise SystemExit(78)
+    setattr(accepted_root,'agent_supervisor',package)
+    if module in sys.modules: raise SystemExit(78)
     namespace=runpy.run_module(module,run_name=module,alter_sys=True)
     if module in sys.modules: raise SystemExit(78)
     target_origin=namespace.get('__file__')
@@ -200,6 +211,9 @@ SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256 = (
 ORDERED_IMPLEMENTATION_PROVIDER_ROUTE: Mapping[str, str] = MappingProxyType(
     resolve_agent_implementation_route(default_route="legacy").as_environment()
 )
+_IMPLEMENTATION_PROVIDER_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+)
 _ROUTE_AUTHORIZATION_ENV_NAMES = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_BOARD_NAMESPACE",
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_AUTHORIZATION_PATH",
@@ -209,6 +223,12 @@ _ROUTE_AUTHORIZATION_ENV_NAMES = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_HEAD",
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_SOURCE_TREE",
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID",
+)
+_PROVIDER_EXECUTABLE_ENV_NAMES = (
+    "IPFS_ACCELERATE_AGENT_GROK_BIN",
+)
+PROVIDER_EXTERNAL_ISOLATION_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_EXTERNAL_ISOLATION_JSON"
 )
 
 
@@ -302,16 +322,17 @@ def _python_executable_sha256(python_executable: str) -> tuple[str, str]:
         after = os.fstat(descriptor)
     finally:
         os.close(descriptor)
-    identity = lambda item: (
-        item.st_dev,
-        item.st_ino,
-        item.st_mode,
-        item.st_uid,
-        item.st_nlink,
-        item.st_size,
-        item.st_mtime_ns,
-        item.st_ctime_ns,
-    )
+    def identity(item):
+        return (
+            item.st_dev,
+            item.st_ino,
+            item.st_mode,
+            item.st_uid,
+            item.st_nlink,
+            item.st_size,
+            item.st_mtime_ns,
+            item.st_ctime_ns,
+        )
     if identity(before) != identity(after) or identity(before) != identity(metadata):
         raise ValueError("sealed control-plane Python executable changed")
     return str(executable), "sha256:" + digest.hexdigest()
@@ -374,7 +395,7 @@ class SupervisorTrack:
     module_name: str = ""
     database_program: DatabaseProgramConfig | None = None
 
-    def resolve(self, repo_root: Path) -> "SupervisorTrack":
+    def resolve(self, repo_root: Path) -> SupervisorTrack:
         return SupervisorTrack(
             name=self.name,
             script_path=_resolve_path(repo_root, self.script_path),
@@ -458,26 +479,50 @@ FORBIDDEN_QUACK_FAILOVER_TARGETS = frozenset(
 
 STATE_AUTHORITY_MODE_ENV = "IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE"
 STATE_QUACK_ENDPOINT_ENV = "IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT"
+STATE_QUACK_MUTATION_DIR_ENV = "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"
 STATE_ENDPOINT_SECRET_HANDLE_ENV = (
     "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE"
 )
 STATE_STORE_ID_ENV = "IPFS_ACCELERATE_AGENT_STATE_STORE_ID"
 STATE_STORE_GENERATION_ENV = "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION"
 STATE_SCHEMA_REVISION_ENV = "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION"
+STATE_STORE_LIVE_GENERATION_ENV = (
+    "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION"
+)
+STATE_LIVE_SCHEMA_REVISION_ENV = (
+    "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION"
+)
+STATE_OWNER_SOCKET_ENV = "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"
 TASK_SOURCE_KIND_ENV = "IPFS_ACCELERATE_AGENT_TASK_SOURCE_KIND"
 EVENT_STORE_PATH_ENV = "IPFS_ACCELERATE_AGENT_EVENT_STORE_PATH"
 RUNTIME_REGISTRY_PATH_ENV = "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"
 EXPORT_PROFILE_ENV = "IPFS_ACCELERATE_AGENT_EXPORT_PROFILE"
 STATE_FAILOVER_POLICY_ENV = "IPFS_ACCELERATE_AGENT_STATE_FAILOVER_POLICY"
 DATABASE_PROGRAM_JSON_ENV = "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON"
+TRUSTED_DUCKDB_HOME_ENV = "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME"
+TRUSTED_PYTHON_USER_BASE_ENV = "PYTHONUSERBASE"
+TRUSTED_XDG_CACHE_HOME_ENV = "XDG_CACHE_HOME"
+TRUSTED_CUDA_CACHE_PATH_ENV = "CUDA_CACHE_PATH"
+TRUSTED_CUDA_CACHE_DISABLE_ENV = "CUDA_CACHE_DISABLE"
+TRUSTED_PYTHONDONTWRITEBYTECODE_ENV = "PYTHONDONTWRITEBYTECODE"
+TRUSTED_RUNTIME_CACHE_ENV_NAMES: tuple[str, ...] = (
+    TRUSTED_XDG_CACHE_HOME_ENV,
+    TRUSTED_CUDA_CACHE_PATH_ENV,
+    TRUSTED_CUDA_CACHE_DISABLE_ENV,
+    TRUSTED_PYTHONDONTWRITEBYTECODE_ENV,
+)
 
 DATABASE_PROGRAM_ENV_NAMES: tuple[str, ...] = (
     STATE_AUTHORITY_MODE_ENV,
     STATE_QUACK_ENDPOINT_ENV,
+    STATE_QUACK_MUTATION_DIR_ENV,
     STATE_ENDPOINT_SECRET_HANDLE_ENV,
     STATE_STORE_ID_ENV,
     STATE_STORE_GENERATION_ENV,
     STATE_SCHEMA_REVISION_ENV,
+    STATE_STORE_LIVE_GENERATION_ENV,
+    STATE_LIVE_SCHEMA_REVISION_ENV,
+    STATE_OWNER_SOCKET_ENV,
     TASK_SOURCE_KIND_ENV,
     EVENT_STORE_PATH_ENV,
     RUNTIME_REGISTRY_PATH_ENV,
@@ -486,17 +531,216 @@ DATABASE_PROGRAM_ENV_NAMES: tuple[str, ...] = (
     DATABASE_PROGRAM_JSON_ENV,
 )
 
+_PLAN_BOUND_PROFILE_ENV_NAMES = frozenset(
+    {
+        *ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
+        *_ROUTE_AUTHORIZATION_ENV_NAMES,
+        *_PROVIDER_EXECUTABLE_ENV_NAMES,
+        *DATABASE_PROGRAM_ENV_NAMES,
+        PROVIDER_EXTERNAL_ISOLATION_ENV,
+        TRUSTED_DUCKDB_HOME_ENV,
+    }
+)
+_PLAN_BOUND_LIFECYCLE_ENV_NAMES = frozenset(
+    {
+        RUN_ID_ENV,
+        PROFILE_ID_ENV,
+        TARGET_ID_ENV,
+        REPOSITORY_ROOT_ENV,
+        STATE_ROOT_ENV,
+        RUN_ROOT_ENV,
+        FENCING_EPOCH_ENV,
+        CONFIGURATION_ROOT_ENV,
+    }
+)
+
+
+def _plan_bound_positive_child_environment(
+    environment: Mapping[str, str],
+) -> dict[str, str]:
+    """Project only sealed lane-control bindings into an accepted child."""
+
+    allowed_names = {
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "TZ",
+        *_PLAN_BOUND_LIFECYCLE_ENV_NAMES,
+        *_PLAN_BOUND_PROFILE_ENV_NAMES,
+    }
+    projected = {
+        name: str(value)
+        for name, value in environment.items()
+        if name in allowed_names
+    }
+    trusted_home = str(projected.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
+    if trusted_home:
+        repository_root = str(environment.get(REPOSITORY_ROOT_ENV, "") or "")
+        projected.update(
+            _trusted_duckdb_runtime_environment(
+                environment,
+                repository_root=Path(repository_root),
+            )
+        )
+    else:
+        projected.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
+        for name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+            projected.pop(name, None)
+    projected["PATH"] = "/usr/bin:/bin"
+    return projected
+
+
+def _plan_bound_profile_environment(
+    environment: Mapping[str, str],
+) -> tuple[tuple[str, str], ...]:
+    """Bind every positive non-lifecycle lane value into a profile CID."""
+
+    return tuple(
+        sorted(
+            (name, str(environment[name]))
+            for name in _PLAN_BOUND_PROFILE_ENV_NAMES
+            if name in environment
+        )
+    )
+
+
+def _validate_trusted_duckdb_home(
+    value: str,
+    *,
+    repository_root: str,
+    observed_home: str,
+) -> Path:
+    """Check the shape of a launcher-created DuckDB extension HOME binding."""
+
+    if (
+        not value
+        or "\x00" in value
+        or len(value.encode("utf-8")) > 4096
+        or value != observed_home
+    ):
+        raise ValueError("trusted DuckDB HOME binding is incomplete")
+    home = Path(value)
+    root = Path(repository_root)
+    if (
+        not home.is_absolute()
+        or not root.is_absolute()
+        or home.parent.name != "qualification-homes"
+        or re.fullmatch(r"[0-9a-f]{64}", home.name) is None
+    ):
+        raise ValueError("trusted DuckDB HOME binding is not canonical")
+    try:
+        home.relative_to(root)
+        resolved_home = home.resolve(strict=True)
+        resolved_root = root.resolve(strict=True)
+        resolved_home.relative_to(resolved_root)
+        observed = os.lstat(home)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError("trusted DuckDB HOME escapes the accepted repository") from exc
+    if (
+        resolved_home != home
+        or not stat.S_ISDIR(observed.st_mode)
+        or stat.S_ISLNK(observed.st_mode)
+        or observed.st_uid != os.geteuid()
+        or stat.S_IMODE(observed.st_mode) != 0o500
+    ):
+        raise ValueError("trusted DuckDB HOME is not an immutable owned directory")
+    return home
+
+
+def _trusted_duckdb_runtime_environment(
+    environment: Mapping[str, str],
+    *,
+    repository_root: Path,
+) -> dict[str, str]:
+    """Derive closed trusted-runtime bindings; never admit ambient cache paths."""
+
+    trusted_home = str(environment.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
+    python_user_base = str(environment.get(TRUSTED_PYTHON_USER_BASE_ENV, "") or "")
+    if not trusted_home or not python_user_base:
+        raise ValueError("trusted DuckDB HOME and Python user base must be paired")
+    home = _validate_trusted_duckdb_home(
+        trusted_home,
+        repository_root=str(repository_root.resolve()),
+        observed_home=str(environment.get("HOME", "") or ""),
+    )
+    user_base = Path(python_user_base)
+    if (
+        "\x00" in python_user_base
+        or len(python_user_base.encode("utf-8")) > 4096
+        or not user_base.is_absolute()
+    ):
+        raise ValueError("trusted Python user base binding is incomplete")
+    try:
+        user_base_observed = os.lstat(user_base)
+        user_base_resolved = user_base.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("trusted Python user base binding is unavailable") from exc
+    if (
+        user_base_resolved != user_base
+        or not stat.S_ISDIR(user_base_observed.st_mode)
+        or stat.S_ISLNK(user_base_observed.st_mode)
+        or user_base_observed.st_uid != os.geteuid()
+        or stat.S_IMODE(user_base_observed.st_mode) & 0o022
+    ):
+        raise ValueError("trusted Python user base binding is unsafe")
+    cache_root = home / ".cache"
+    xdg_cache = cache_root / "xdg"
+    cuda_cache = cache_root / "cuda"
+    for directory in (cache_root, xdg_cache, cuda_cache):
+        try:
+            observed = os.lstat(directory)
+            resolved = directory.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise ValueError("trusted runtime cache directory is unavailable") from exc
+        if (
+            resolved != directory
+            or not stat.S_ISDIR(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != os.geteuid()
+            or stat.S_IMODE(observed.st_mode) != 0o700
+        ):
+            raise ValueError("trusted runtime cache directory is unsafe")
+    return {
+        "HOME": str(home),
+        TRUSTED_DUCKDB_HOME_ENV: str(home),
+        TRUSTED_PYTHON_USER_BASE_ENV: str(user_base),
+        TRUSTED_XDG_CACHE_HOME_ENV: str(xdg_cache),
+        TRUSTED_CUDA_CACHE_PATH_ENV: str(cuda_cache),
+        TRUSTED_CUDA_CACHE_DISABLE_ENV: "1",
+        TRUSTED_PYTHONDONTWRITEBYTECODE_ENV: "1",
+    }
+
+
+def _trusted_duckdb_profile_environment(
+    environment: Mapping[str, str],
+    *,
+    repository_root: Path,
+) -> tuple[tuple[str, str], ...]:
+    """Bind an admitted extension HOME into a lifecycle profile."""
+
+    if not str(environment.get(TRUSTED_DUCKDB_HOME_ENV, "") or ""):
+        return ()
+    return tuple(
+        sorted(
+            _trusted_duckdb_runtime_environment(
+                environment,
+                repository_root=repository_root,
+            ).items()
+        )
+    )
+
 # Raw state credentials that must never reach implementation-provider children.
 STATE_CREDENTIAL_ENV_NAMES: frozenset[str] = frozenset(
     {
         "QUACK_TOKEN",
         "QUACK_PASSWORD",
         "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+        STATE_QUACK_MUTATION_DIR_ENV,
+        RUNTIME_REGISTRY_PATH_ENV,
         "QUACK_SECRET",
         "DUCKDB_TOKEN",
         "DUCKDB_PASSWORD",
         "DUCKDB_SECRET",
-        "IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
         "IPFS_ACCELERATE_AGENT_QUACK_PASSWORD",
         "IPFS_ACCELERATE_AGENT_QUACK_SECRET",
         "IPFS_ACCELERATE_AGENT_STATE_TOKEN",
@@ -833,7 +1077,11 @@ class DatabaseProgramConfig:
             args.append("--explicit-legacy-task-source")
         return args
 
-    def environment(self) -> dict[str, str]:
+    def environment(
+        self,
+        *,
+        repository_root: str | Path | None = None,
+    ) -> dict[str, str]:
         """Return non-secret environment bindings for child supervisors/daemons."""
 
         env = {
@@ -858,7 +1106,27 @@ class DatabaseProgramConfig:
             env[STATE_SCHEMA_REVISION_ENV] = self.schema_revision
         if self.event_store_path:
             env[EVENT_STORE_PATH_ENV] = self.event_store_path
-        if self.runtime_registry_path:
+        if self.authority_mode == AUTHORITY_MODE_QUACK:
+            if not self.runtime_registry_path:
+                raise DatabaseProgramConfigError(
+                    "quack authority requires runtime_registry_path for "
+                    "owner/worker mutation binding"
+                )
+            from ..task_sources.duckdb_state import (
+                DuckDBConnectionPolicyError,
+                quack_owner_mutation_inbox_path,
+            )
+
+            try:
+                mutation_inbox = quack_owner_mutation_inbox_path(
+                    self.runtime_registry_path,
+                    repository_root=repository_root,
+                )
+            except DuckDBConnectionPolicyError as exc:
+                raise DatabaseProgramConfigError(str(exc)) from exc
+            env[RUNTIME_REGISTRY_PATH_ENV] = str(mutation_inbox.parent)
+            env[STATE_QUACK_MUTATION_DIR_ENV] = str(mutation_inbox)
+        elif self.runtime_registry_path:
             env[RUNTIME_REGISTRY_PATH_ENV] = self.runtime_registry_path
         if self.export_profile:
             env[EXPORT_PROFILE_ENV] = self.export_profile
@@ -914,7 +1182,7 @@ class DatabaseProgramConfig:
             )
 
     @classmethod
-    def from_mapping(cls, payload: Mapping[str, Any]) -> "DatabaseProgramConfig":
+    def from_mapping(cls, payload: Mapping[str, Any]) -> DatabaseProgramConfig:
         if not isinstance(payload, Mapping):
             raise DatabaseProgramConfigError(
                 "database program config must be an object"
@@ -946,7 +1214,7 @@ class DatabaseProgramConfig:
         )
 
     @classmethod
-    def explicit_legacy_markdown(cls) -> "DatabaseProgramConfig":
+    def explicit_legacy_markdown(cls) -> DatabaseProgramConfig:
         """Return an explicit legacy Markdown program selection (not implicit)."""
 
         return cls(
@@ -1056,6 +1324,14 @@ def provider_subprocess_environment(
     # bindings; they operate on worktree files only.
     for name in DATABASE_PROGRAM_ENV_NAMES:
         cleaned.pop(name, None)
+    cleaned.pop(REPOSITORY_ROOT_ENV, None)
+    cleaned.pop(PROVIDER_EXTERNAL_ISOLATION_ENV, None)
+    trusted_home = str(cleaned.pop(TRUSTED_DUCKDB_HOME_ENV, "") or "")
+    cleaned.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
+    for name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+        cleaned.pop(name, None)
+    if trusted_home and cleaned.get("HOME") == trusted_home:
+        cleaned.pop("HOME", None)
     return cleaned
 
 
@@ -1132,210 +1408,6 @@ class DatabaseImplementationTrack:
 
     def common_args(self) -> list[str]:
         return self.database_program.cli_args()
-
-
-@dataclass(frozen=True)
-class ImplementationSupervisorNamespaceTrackSpec:
-    """Minimal namespace-based inputs for one implementation-supervisor track."""
-
-    name: str
-    script_path: Path | str
-    namespace: str
-    state_prefix: str | None = None
-
-
-def implementation_supervisor_namespace_track_config(
-    *,
-    name: str,
-    script_path: Path | str,
-    namespace_paths: AgentSupervisorNamespacePaths,
-    state_prefix: str | None = None,
-) -> ImplementationSupervisorTrackConfig:
-    """Return a track config using the standard namespace state directory."""
-
-    return ImplementationSupervisorTrackConfig(
-        name=name,
-        script_path=script_path,
-        state_dir=namespace_paths.state_dir,
-        state_prefix=state_prefix or namespace_paths.namespace,
-    )
-
-
-def _implementation_supervisor_namespace_track_spec(
-    spec: (
-        ImplementationSupervisorNamespaceTrackSpec
-        | tuple[str, Path | str, str]
-        | tuple[str, Path | str, str, str]
-    ),
-) -> ImplementationSupervisorNamespaceTrackSpec:
-    if isinstance(spec, ImplementationSupervisorNamespaceTrackSpec):
-        return spec
-    if len(spec) == 3:
-        name, script_path, namespace = spec
-        state_prefix = None
-    elif len(spec) == 4:
-        name, script_path, namespace, state_prefix = spec
-    else:
-        raise ValueError(
-            "namespace track specs must have NAME|SCRIPT|NAMESPACE or "
-            "NAME|SCRIPT|NAMESPACE|STATE_PREFIX"
-        )
-    return ImplementationSupervisorNamespaceTrackSpec(
-        name=name,
-        script_path=script_path,
-        namespace=namespace,
-        state_prefix=state_prefix,
-    )
-
-
-def implementation_supervisor_namespace_track_configs(
-    *,
-    repo_root: Path | str,
-    track_specs: Sequence[
-        ImplementationSupervisorNamespaceTrackSpec
-        | tuple[str, Path | str, str]
-        | tuple[str, Path | str, str, str]
-    ],
-    data_root: Path | str = "data",
-) -> tuple[ImplementationSupervisorTrackConfig, ...]:
-    """Return implementation-supervisor track configs from namespace-based specs."""
-
-    from ..core.wrapper_utils import agent_supervisor_namespace_paths
-
-    return tuple(
-        implementation_supervisor_namespace_track_config(
-            name=resolved_spec.name,
-            script_path=resolved_spec.script_path,
-            namespace_paths=agent_supervisor_namespace_paths(
-                repo_root,
-                resolved_spec.namespace,
-                data_root=data_root,
-            ),
-            state_prefix=resolved_spec.state_prefix,
-        )
-        for resolved_spec in (
-            _implementation_supervisor_namespace_track_spec(spec) for spec in track_specs
-        )
-    )
-
-
-@dataclass(frozen=True)
-class ConfiguredMultiSupervisorCliRunner:
-    """Project-bound CLI argv for launching the reusable multi-supervisor runner."""
-
-    argv: tuple[str, ...]
-
-    def args(self) -> list[str]:
-        """Return the configured runner argv as a mutable list."""
-
-        return list(self.argv)
-
-    def run(self, extra_argv: Sequence[str] | None = None) -> int:
-        """Run the multi-supervisor CLI with configured args plus any overrides."""
-
-        return main([*self.argv, *(extra_argv or ())])
-
-    def run_cli(self, argv: Sequence[str] | None = None) -> int:
-        """Run from a wrapper CLI, defaulting overrides from ``sys.argv``."""
-
-        return self.run(sys.argv[1:] if argv is None else argv)
-
-
-@dataclass(frozen=True)
-class ConfiguredMultiSupervisorLauncher:
-    """Prepared launcher for a configured multi-supervisor runner."""
-
-    runner: ConfiguredMultiSupervisorCliRunner
-    env_defaults: tuple[tuple[str, str], ...] = ()
-    prepare_environment: Callable[[], None] | None = None
-
-    def args(self) -> list[str]:
-        """Return the configured runner argv as a mutable list."""
-
-        return self.runner.args()
-
-    def prepare(self) -> None:
-        """Apply environment defaults and run the optional preparation callback."""
-
-        if self.env_defaults:
-            apply_env_defaults(dict(self.env_defaults))
-        if self.prepare_environment is not None:
-            self.prepare_environment()
-
-    def run(self, extra_argv: Sequence[str] | None = None) -> int:
-        """Prepare the environment and run the configured multi-supervisor CLI."""
-
-        self.prepare()
-        return self.runner.run(extra_argv)
-
-    def run_cli(self, argv: Sequence[str] | None = None) -> int:
-        """Prepare and run from a wrapper CLI, defaulting overrides from ``sys.argv``."""
-
-        self.prepare()
-        return self.runner.run_cli(argv)
-
-
-class SupervisorRunInterrupted(Exception):
-    """Raised internally when a signal requests orderly shutdown."""
-
-
-def utc_run_stamp() -> str:
-    """Return a UTC run stamp suitable for log/pid filenames."""
-
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-
-def iso_timestamp() -> str:
-    """Return a compact local timestamp for operator logs."""
-
-    return datetime.now().astimezone().isoformat(timespec="seconds")
-
-
-def _resolve_path(repo_root: Path, path: Path) -> Path:
-    return path if path.is_absolute() else repo_root / path
-
-
-def parse_track_spec(spec: str, *, stamp: str = "") -> SupervisorTrack:
-    """Parse ``NAME|SCRIPT|LOG|SUPERVISOR_PID|DAEMON_PID[|SUPERVISOR_STATUS]`` specs."""
-
-    rendered = spec.format(stamp=stamp) if stamp else spec
-    parts = rendered.split("|")
-    if len(parts) not in {5, 6} or not parts[0].strip():
-        raise ValueError(
-            "track specs must have NAME|SCRIPT|LOG|SUPERVISOR_PID|DAEMON_PID"
-            "[|SUPERVISOR_STATUS]"
-        )
-    name, script, log, supervisor_pid, daemon_pid = (part.strip() for part in parts[:5])
-    supervisor_status = parts[5].strip() if len(parts) == 6 else ""
-    return SupervisorTrack(
-        name=name,
-        script_path=Path(script),
-        log_path=Path(log),
-        supervisor_pid_path=Path(supervisor_pid),
-        daemon_pid_path=Path(daemon_pid),
-        supervisor_status_path=Path(supervisor_status) if supervisor_status else None,
-    )
-
-
-def implementation_supervisor_track_spec(
-    *,
-    name: str,
-    script_path: Path | str,
-    state_dir: Path | str,
-    state_prefix: str,
-) -> str:
-    """Return a standard implementation-supervisor track spec."""
-
-    state_path = Path(state_dir).as_posix()
-    return "|".join(
-        (
-            str(name),
-            Path(script_path).as_posix(),
-            f"{state_path}/{state_prefix}_8h_run_{{stamp}}.log",
-            f"{state_path}/{state_prefix}_supervisor.pid",
-            f"{state_path}/{state_prefix}_managed_daemon.pid",
-        )
-    )
 
 
 @dataclass(frozen=True)
@@ -1487,7 +1559,7 @@ class PlanBoundSupervisorChild:
         return json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"))
 
     @classmethod
-    def from_cli_record(cls, value: str) -> "PlanBoundSupervisorChild":
+    def from_cli_record(cls, value: str) -> PlanBoundSupervisorChild:
         def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             result: dict[str, Any] = {}
             for key, item in pairs:
@@ -1669,7 +1741,7 @@ def _read_stable_regular_bytes(
                 return None, {"state": "absent", "path": str(artifact)}
             raise _StableArtifactReadError(
                 f"artifact appeared during absent read: {artifact}"
-            )
+            ) from None
         except OSError as exc:
             raise _StableArtifactReadError(
                 f"cannot prove absent artifact {artifact}: {exc}"
@@ -1999,7 +2071,8 @@ def configured_board_live_seal_launch_profile(
                         _profile_option_values(source.extra_args, "--task-shard-index")
                     ),
                 }
-                for item, source in zip(projected_tracks, tracks)
+                # ``strict=`` is unavailable on the supported Python 3.8.
+                for item, source in zip(projected_tracks, tracks)  # noqa: B905
             ],
         },
         "launch_policy": {
@@ -2837,7 +2910,7 @@ def reassign_fenced_plan_bound_child(
                     )
 
     suffix = hashlib.sha256(
-        f"{donor.slice_id}:{generation}:{recipient.lane_id}".encode("utf-8")
+        f"{donor.slice_id}:{generation}:{recipient.lane_id}".encode()
     ).hexdigest()[:12]
     return replace(
         donor,
@@ -3015,7 +3088,7 @@ class PlanBoundProcessBirthError(RuntimeError):
 def utc_run_stamp() -> str:
     """Return a UTC run stamp suitable for log/pid filenames."""
 
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(_UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 def iso_timestamp() -> str:
@@ -3303,12 +3376,14 @@ def seal_ordered_implementation_provider_route(
     *,
     repo_root: Path | str | None = None,
 ) -> dict[str, str]:
-    """Atomically default or validate the reviewed implementation route.
+    """Classify a direct Codex selector or seal the reviewed ordered route.
 
-    Validation precedes every mutation.  An unset route receives all six
-    bindings together.  Compatible legacy Grok primary aliases are
-    canonicalized to ``grok_cli``; any other explicit value fails closed and
-    leaves the environment unchanged.
+    Validation precedes every mutation.  A lone ``codex`` provider remains
+    the legacy direct-provider selector consumed by the implementation
+    daemon.  An unset route receives all six ordered bindings together.
+    Compatible legacy Grok primary aliases are canonicalized to ``grok_cli``;
+    any incompatible ordered tuple fails closed and leaves the environment
+    unchanged.
     """
 
     target = os.environ if environment is None else environment
@@ -3320,6 +3395,19 @@ def seal_ordered_implementation_provider_route(
         name: str(target.get(name, "") or "").strip()
         for name in _ROUTE_AUTHORIZATION_ENV_NAMES
     }
+    selected_name = route_environment[_IMPLEMENTATION_PROVIDER_ENV].lower()
+    if (
+        selected_name in {"codex", "auto"}
+        and not any(
+            value
+            for name, value in route_environment.items()
+            if name != _IMPLEMENTATION_PROVIDER_ENV
+        )
+        and not any(authorization_environment.values())
+    ):
+        selected_provider = {_IMPLEMENTATION_PROVIDER_ENV: selected_name}
+        target.update(selected_provider)
+        return selected_provider
     authorization = None
     if any(authorization_environment.values()):
         if not all(authorization_environment.values()):
@@ -3648,7 +3736,17 @@ def build_repo_implementation_multi_supervisor_launcher(
         caller_route_defaults,
         repo_root=repo_root,
     )
-    effective_env_defaults = implementation_multi_supervisor_env_defaults()
+    if sealed_route_defaults.keys() == {_IMPLEMENTATION_PROVIDER_ENV} and (
+        sealed_route_defaults.get(_IMPLEMENTATION_PROVIDER_ENV) in {"codex", "auto"}
+    ):
+        # Direct Codex and automatic host-CLI selectors must not be overlaid
+        # onto the ordered Grok-to-Codex defaults.  Doing so creates a hybrid
+        # six-field tuple that the canonical route resolver correctly rejects.
+        effective_env_defaults = implementation_multi_supervisor_env_defaults()
+        for name in ORDERED_IMPLEMENTATION_PROVIDER_ROUTE:
+            effective_env_defaults.pop(name, None)
+    else:
+        effective_env_defaults = implementation_multi_supervisor_env_defaults()
     effective_env_defaults.update(
         {
             name: value
@@ -3806,6 +3904,315 @@ def _remove_owned_pid_projection(pid_path: Path, expected_pid: int) -> bool:
         return False
 
 
+def _fsync_pid_projection_parent(path: Path) -> None:
+    """Durably publish one PID-projection namespace transition."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(Path(path).parent, flags)
+    try:
+        observed = os.fstat(descriptor)
+        if not stat.S_ISDIR(observed.st_mode):
+            raise ValueError("PID projection parent is not a directory")
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _publish_private_pid_audit(path: Path, payload: Mapping[str, Any]) -> None:
+    """Atomically publish one immutable owner-only PID recovery artifact."""
+
+    target = Path(path)
+    encoded = (
+        json.dumps(
+            dict(payload),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )
+        + "\n"
+    ).encode("utf-8")
+    temporary = target.with_name(
+        f".{target.name}.tmp-{os.getpid()}-{time.time_ns()}"
+    )
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = -1
+    temporary_identity: tuple[int, int] | None = None
+    try:
+        descriptor = os.open(temporary, flags, 0o600)
+        os.fchmod(descriptor, 0o600)
+        opened = os.fstat(descriptor)
+        temporary_identity = (int(opened.st_dev), int(opened.st_ino))
+        view = memoryview(encoded)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise OSError("PID recovery audit write stalled")
+            view = view[written:]
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        # A hard-link publication is atomic and refuses an existing target.
+        # The temporary link is removed before the receipt is admitted below.
+        os.link(temporary, target, follow_symlinks=False)
+        temporary.unlink()
+        temporary_identity = None
+        _fsync_pid_projection_parent(target)
+        observed_payload, evidence = _read_stable_regular_bytes(
+            target,
+            max_bytes=max(4096, len(encoded)),
+        )
+        if (
+            observed_payload != encoded
+            or int(evidence.get("uid", -1)) != os.geteuid()
+            or int(evidence.get("link_count", -1)) != 1
+            or stat.S_IMODE(int(evidence.get("mode", 0))) != 0o600
+        ):
+            raise ValueError("PID recovery audit publication is not owner-only")
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if temporary_identity is not None:
+            try:
+                observed = os.lstat(temporary)
+            except FileNotFoundError:
+                pass
+            else:
+                if (
+                    (int(observed.st_dev), int(observed.st_ino))
+                    == temporary_identity
+                    and stat.S_ISREG(observed.st_mode)
+                    and int(observed.st_nlink) == 1
+                    and int(observed.st_uid) == os.geteuid()
+                ):
+                    temporary.unlink()
+
+
+def _pid_projection_audit_evidence(
+    evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the stable bounded fields admitted into a recovery receipt."""
+
+    return {
+        field: evidence[field]
+        for field in (
+            "path",
+            "content_sha256",
+            "device",
+            "inode",
+            "mode",
+            "link_count",
+            "uid",
+            "gid",
+            "size",
+            "mtime_ns",
+            "ctime_ns",
+        )
+    }
+
+
+def _quarantine_stale_detached_master_pid_locked(pid_path: Path) -> dict[str, Any]:
+    """Quarantine one exact legacy PID after an ESRCH-only absence proof.
+
+    The caller holds ``serialized_lock_update(pid_path)``.  Signal zero probes
+    process existence without delivering a signal; every result except ESRCH
+    is deliberately treated as live or unknown and therefore non-reclaimable.
+    """
+
+    path = Path(pid_path)
+    try:
+        payload, evidence = _read_stable_regular_bytes(
+            path,
+            max_bytes=_LEGACY_MASTER_PID_MAX_BYTES,
+        )
+    except _StableArtifactReadError as exc:
+        raise ValueError(f"unsafe detached master PID projection: {exc}") from exc
+    if payload is None:
+        raise ValueError("detached master PID projection disappeared during recovery")
+    if (
+        int(evidence.get("uid", -1)) != os.geteuid()
+        or int(evidence.get("link_count", -1)) != 1
+        or not stat.S_ISREG(int(evidence.get("mode", 0)))
+    ):
+        raise ValueError(
+            "detached master PID projection is not an owned single-link regular file"
+        )
+    if _LEGACY_MASTER_PID_PAYLOAD.fullmatch(payload) is None:
+        raise ValueError("detached master PID projection is not a strict legacy PID")
+    legacy_pid = int(payload[:-1].decode("ascii"))
+    try:
+        os.kill(legacy_pid, 0)
+    except ProcessLookupError as exc:
+        if exc.errno != errno.ESRCH:
+            raise ValueError(
+                "detached master PID liveness is unknown"
+            ) from exc
+    except PermissionError as exc:
+        raise ValueError("detached master PID liveness is unknown") from exc
+    except OSError as exc:
+        raise ValueError("detached master PID liveness is unknown") from exc
+    else:
+        raise ValueError("detached master PID projection names a live process")
+
+    # Bind the absence proof to the still-identical projection before any
+    # pathname mutation.  A non-cooperating replacement fails closed.
+    try:
+        confirmed_payload, confirmed_evidence = _read_stable_regular_bytes(
+            path,
+            max_bytes=_LEGACY_MASTER_PID_MAX_BYTES,
+        )
+    except _StableArtifactReadError as exc:
+        raise ValueError(
+            f"detached master PID projection changed after liveness proof: {exc}"
+        ) from exc
+    if confirmed_payload != payload or confirmed_evidence != evidence:
+        raise ValueError("detached master PID projection changed after liveness proof")
+
+    observed_at_unix_ns = time.time_ns()
+    quarantine_key = hashlib.sha256(
+        json.dumps(
+            {
+                "legacy_pid": legacy_pid,
+                "projection": _pid_projection_audit_evidence(evidence),
+                "observed_at_unix_ns": observed_at_unix_ns,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    quarantine_path = path.with_name(
+        f".{path.name}.stale-{quarantine_key}.quarantine"
+    )
+    decision_path = path.with_name(
+        f".{path.name}.stale-{quarantine_key}.decision.json"
+    )
+    receipt_path = path.with_name(
+        f".{path.name}.stale-{quarantine_key}.receipt.json"
+    )
+    for target in (quarantine_path, decision_path, receipt_path):
+        try:
+            os.lstat(target)
+        except FileNotFoundError:
+            continue
+        raise ValueError("detached master PID quarantine target already exists")
+
+    liveness_evidence = {
+        "operation": "os.kill",
+        "signal": 0,
+        "result": "dead",
+        "errno": "ESRCH",
+        "errno_number": errno.ESRCH,
+    }
+    decision = {
+        "schema": STALE_DETACHED_MASTER_PID_DECISION_SCHEMA,
+        "producer": "multi-supervisor-runner@1",
+        "model_created": False,
+        "completion_authority": False,
+        "decision": "quarantine_authorized",
+        "legacy_pid": legacy_pid,
+        "source_projection": _pid_projection_audit_evidence(evidence),
+        "quarantine_path": str(quarantine_path),
+        "liveness_evidence": liveness_evidence,
+        "observed_at_unix_ns": observed_at_unix_ns,
+    }
+    decision["decision_receipt_id"] = content_identity(decision)
+    # Publish the decision first: a crash can leave an authorization without
+    # an outcome claim, but can never leave an unaudited quarantine.
+    _publish_private_pid_audit(decision_path, decision)
+
+    latest_payload, latest_evidence = _read_stable_regular_bytes(
+        path,
+        max_bytes=_LEGACY_MASTER_PID_MAX_BYTES,
+    )
+    if latest_payload != payload or latest_evidence != evidence:
+        raise ValueError("detached master PID projection changed before quarantine")
+    try:
+        os.rename(path, quarantine_path)
+    except OSError as exc:
+        raise ValueError("cannot atomically quarantine stale master PID") from exc
+    _fsync_pid_projection_parent(path)
+
+    quarantined_payload, quarantined_evidence = _read_stable_regular_bytes(
+        quarantine_path,
+        max_bytes=_LEGACY_MASTER_PID_MAX_BYTES,
+    )
+    stable_fields = (
+        "content_sha256",
+        "device",
+        "inode",
+        "mode",
+        "link_count",
+        "uid",
+        "gid",
+        "size",
+        "mtime_ns",
+    )
+    if (
+        quarantined_payload != payload
+        or any(
+            quarantined_evidence.get(field) != evidence.get(field)
+            for field in stable_fields
+        )
+    ):
+        raise ValueError("quarantined master PID projection identity changed")
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        pass
+    else:
+        raise ValueError("stale master PID pathname remained after quarantine")
+
+    receipt = {
+        "schema": STALE_DETACHED_MASTER_PID_RECEIPT_SCHEMA,
+        "producer": "multi-supervisor-runner@1",
+        "model_created": False,
+        "completion_authority": False,
+        "outcome": "quarantined",
+        "legacy_pid": legacy_pid,
+        "decision_receipt_id": decision["decision_receipt_id"],
+        "source_projection": _pid_projection_audit_evidence(evidence),
+        "quarantine_projection": _pid_projection_audit_evidence(
+            quarantined_evidence
+        ),
+        "liveness_evidence": liveness_evidence,
+        "observed_at_unix_ns": observed_at_unix_ns,
+    }
+    receipt["receipt_id"] = content_identity(receipt)
+    _publish_private_pid_audit(receipt_path, receipt)
+    return receipt
+
+
+def _reserve_owned_pid_projection_locked(
+    pid_path: Path,
+) -> tuple[int, tuple[int, int]]:
+    """Reserve one projection while its canonical update lock is held."""
+
+    path = Path(pid_path)
+    _require_absent_pid_projection(path)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except OSError as exc:
+        raise ValueError("cannot reserve plan-bound PID projection") from exc
+    os.fchmod(descriptor, 0o600)
+    opened = os.fstat(descriptor)
+    if (
+        not stat.S_ISREG(opened.st_mode)
+        or int(opened.st_nlink) != 1
+        or int(opened.st_uid) != os.geteuid()
+        or stat.S_IMODE(opened.st_mode) != 0o600
+    ):
+        os.close(descriptor)
+        raise ValueError("plan-bound PID reservation is not owner-only")
+    _fsync_pid_projection_parent(path)
+    return descriptor, (int(opened.st_dev), int(opened.st_ino))
+
+
 def _reserve_owned_pid_projection(
     pid_path: Path,
 ) -> tuple[int, tuple[int, int]]:
@@ -3813,24 +4220,7 @@ def _reserve_owned_pid_projection(
 
     path = Path(pid_path)
     with serialized_lock_update(path):
-        _require_absent_pid_projection(path)
-        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-        flags |= getattr(os, "O_CLOEXEC", 0)
-        flags |= getattr(os, "O_NOFOLLOW", 0)
-        try:
-            descriptor = os.open(path, flags, 0o600)
-        except OSError as exc:
-            raise ValueError("cannot reserve plan-bound PID projection") from exc
-        opened = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(opened.st_mode)
-            or int(opened.st_nlink) != 1
-            or int(opened.st_uid) != os.geteuid()
-            or stat.S_IMODE(opened.st_mode) != 0o600
-        ):
-            os.close(descriptor)
-            raise ValueError("plan-bound PID reservation is not owner-only")
-        return descriptor, (int(opened.st_dev), int(opened.st_ino))
+        return _reserve_owned_pid_projection_locked(path)
 
 
 def _require_absent_pid_projection(pid_path: Path) -> None:
@@ -3891,18 +4281,63 @@ def _discard_reserved_pid_projection(
     """Remove only the pathname that still owns a failed reservation."""
 
     with serialized_lock_update(pid_path):
+        _discard_reserved_pid_projection_locked(pid_path, identity)
+
+
+def _discard_reserved_pid_projection_locked(
+    pid_path: Path,
+    identity: tuple[int, int],
+) -> None:
+    """Discard the still-identical reservation while its lock is held."""
+
+    try:
+        observed = os.lstat(pid_path)
+    except FileNotFoundError:
+        return
+    if (
+        (int(observed.st_dev), int(observed.st_ino)) == identity
+        and stat.S_ISREG(observed.st_mode)
+        and int(observed.st_nlink) == 1
+        and int(observed.st_uid) == os.geteuid()
+        and stat.S_IMODE(observed.st_mode) == 0o600
+    ):
+        pid_path.unlink()
+        _fsync_pid_projection_parent(pid_path)
+
+
+def _adopt_or_create_current_master_pid_projection(pid_path: Path) -> None:
+    """Adopt a detached parent's exact projection or create a foreground one."""
+
+    path = Path(pid_path)
+    expected = f"{os.getpid()}\n".encode("ascii")
+    with serialized_lock_update(path):
         try:
-            observed = os.lstat(pid_path)
-        except FileNotFoundError:
+            payload, evidence = _read_stable_regular_bytes(path, max_bytes=32)
+        except _StableArtifactReadError as exc:
+            raise ValueError(f"unsafe master PID projection: {exc}") from exc
+        if payload is not None:
+            if (
+                payload != expected
+                or int(evidence.get("uid", -1)) != os.geteuid()
+                or int(evidence.get("link_count", -1)) != 1
+                or not stat.S_ISREG(int(evidence.get("mode", 0)))
+                or stat.S_IMODE(int(evidence.get("mode", 0))) != 0o600
+            ):
+                raise ValueError("master PID projection is not owned by this runner")
             return
-        if (
-            (int(observed.st_dev), int(observed.st_ino)) == identity
-            and stat.S_ISREG(observed.st_mode)
-            and int(observed.st_nlink) == 1
-            and int(observed.st_uid) == os.geteuid()
-            and stat.S_IMODE(observed.st_mode) == 0o600
-        ):
-            pid_path.unlink()
+        descriptor, identity = _reserve_owned_pid_projection_locked(path)
+        try:
+            _publish_reserved_pid_projection(
+                path,
+                descriptor,
+                identity,
+                os.getpid(),
+            )
+        except BaseException:
+            _discard_reserved_pid_projection_locked(path, identity)
+            raise
+        finally:
+            os.close(descriptor)
 
 
 def daemon_pid_health_fields(
@@ -3965,8 +4400,8 @@ def _parse_status_timestamp(value: object) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=_UTC)
+    return parsed.astimezone(_UTC)
 
 
 def _inferred_supervisor_status_path(track: SupervisorTrack) -> Path | None:
@@ -3978,6 +4413,41 @@ def _inferred_supervisor_status_path(track: SupervisorTrack) -> Path | None:
         prefix = name[: -len(suffix)]
         return track.supervisor_pid_path.with_name(f"{prefix}_supervisor_status.json")
     return None
+
+
+def _track_supervisor_status_startup_grace_seconds(
+    track: SupervisorTrack,
+    *,
+    common_args: Sequence[str],
+    fallback_seconds: float,
+) -> float:
+    """Resolve the current launch generation's declared startup grace."""
+
+    launch_args = (
+        tuple(track.extra_args)
+        if track.module_name
+        else (*common_args, *track.extra_args)
+    )
+    configured = _profile_option_values(
+        launch_args,
+        "--watchdog-startup-grace-seconds",
+    )
+    if len(configured) > 1:
+        raise ValueError(
+            "supervisor status startup grace must be declared at most once"
+        )
+    raw = configured[0] if configured else fallback_seconds
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "supervisor status startup grace must be a finite non-negative number"
+        ) from exc
+    if not math.isfinite(seconds) or seconds < 0:
+        raise ValueError(
+            "supervisor status startup grace must be a finite non-negative number"
+        )
+    return seconds
 
 
 def _relative_or_absolute_path(repo_root: Path, value: object) -> Path | None:
@@ -4110,30 +4580,160 @@ def terminal_task_state_fields(
     }
 
 
+def _pending_supervisor_generation_fields(
+    *,
+    status_path: Path,
+    observed_at: datetime,
+    expected_supervisor_pid: int,
+    generation_started_at_epoch_seconds: float,
+    startup_grace_seconds: float,
+    reason: str,
+    observed_supervisor_pid: int | None = None,
+    status_age_seconds: float | None = None,
+) -> dict[str, object]:
+    """Return bounded startup health until this process generation reports."""
+
+    startup_age_seconds = max(
+        0.0,
+        observed_at.timestamp() - generation_started_at_epoch_seconds,
+    )
+    within_startup_grace = startup_age_seconds <= startup_grace_seconds
+    fields: dict[str, object] = {
+        "supervisor_status": "starting" if within_startup_grace else "stale",
+        "supervisor_status_generation": "pending",
+        "supervisor_status_generation_reason": reason,
+        "supervisor_status_path": str(status_path),
+        "supervisor_startup_age_seconds": round(startup_age_seconds, 1),
+        "supervisor_startup_grace_seconds": startup_grace_seconds,
+        "supervisor_within_startup_grace": within_startup_grace,
+        "expected_supervisor_pid": expected_supervisor_pid,
+        "restart_supervisor": not within_startup_grace,
+    }
+    if observed_supervisor_pid is not None:
+        fields["observed_supervisor_pid"] = observed_supervisor_pid
+    if status_age_seconds is not None:
+        fields["supervisor_status_age_seconds"] = round(
+            status_age_seconds,
+            1,
+        )
+    return fields
+
+
 def supervisor_status_health_fields(
     track: SupervisorTrack,
     *,
     repo_root: Path,
     stale_seconds: float,
+    expected_supervisor_pid: int | None = None,
+    generation_started_at_epoch_seconds: float | None = None,
+    startup_grace_seconds: float = 0.0,
 ) -> dict[str, object]:
-    """Return heartbeat fields for the wrapper supervisor status file."""
+    """Return generation-bound health for the wrapper supervisor status file."""
 
     status_path = _inferred_supervisor_status_path(track)
     if status_path is None:
         return {"supervisor_status": "untracked"}
+    generation_bound = (
+        expected_supervisor_pid is not None
+        or generation_started_at_epoch_seconds is not None
+    )
+    if generation_bound and (
+        expected_supervisor_pid is None
+        or expected_supervisor_pid <= 0
+        or generation_started_at_epoch_seconds is None
+    ):
+        raise ValueError(
+            "supervisor status generation requires a positive PID and spawn epoch"
+        )
+    observed_at = datetime.now(timezone.utc)
+    generation_started_at = (
+        float(generation_started_at_epoch_seconds)
+        if generation_started_at_epoch_seconds is not None
+        else None
+    )
+    grace = float(startup_grace_seconds)
+    if (
+        generation_started_at is not None
+        and (
+            not math.isfinite(generation_started_at)
+            or generation_started_at <= 0
+            or not math.isfinite(grace)
+            or grace < 0
+        )
+    ):
+        raise ValueError("supervisor status generation bounds are invalid")
     payload = _read_json_dict(status_path)
     if not payload:
+        if generation_bound:
+            return _pending_supervisor_generation_fields(
+                status_path=status_path,
+                observed_at=observed_at,
+                expected_supervisor_pid=int(expected_supervisor_pid),
+                generation_started_at_epoch_seconds=float(
+                    generation_started_at
+                ),
+                startup_grace_seconds=grace,
+                reason="status_missing",
+            )
         return {
             "supervisor_status": "missing",
             "supervisor_status_path": str(status_path),
         }
     updated_at = _parse_status_timestamp(payload.get("updated_at") or payload.get("heartbeat_at"))
     if updated_at is None:
+        if generation_bound:
+            return _pending_supervisor_generation_fields(
+                status_path=status_path,
+                observed_at=observed_at,
+                expected_supervisor_pid=int(expected_supervisor_pid),
+                generation_started_at_epoch_seconds=float(
+                    generation_started_at
+                ),
+                startup_grace_seconds=grace,
+                reason="status_timestamp_missing_or_invalid",
+            )
         return {
             "supervisor_status": "unknown",
             "supervisor_status_path": str(status_path),
         }
-    age_seconds = max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds())
+    age_seconds = max(0.0, (observed_at - updated_at).total_seconds())
+    observed_pid_value = payload.get("supervisor_pid")
+    observed_pid = (
+        observed_pid_value
+        if isinstance(observed_pid_value, int)
+        and not isinstance(observed_pid_value, bool)
+        and observed_pid_value > 0
+        else None
+    )
+    if generation_bound and observed_pid != expected_supervisor_pid:
+        return _pending_supervisor_generation_fields(
+            status_path=status_path,
+            observed_at=observed_at,
+            expected_supervisor_pid=int(expected_supervisor_pid),
+            generation_started_at_epoch_seconds=float(generation_started_at),
+            startup_grace_seconds=grace,
+            reason=(
+                "supervisor_pid_missing"
+                if observed_pid is None
+                else "supervisor_pid_mismatch"
+            ),
+            observed_supervisor_pid=observed_pid,
+            status_age_seconds=age_seconds,
+        )
+    if (
+        generation_bound
+        and updated_at.timestamp() + 1e-6 < float(generation_started_at)
+    ):
+        return _pending_supervisor_generation_fields(
+            status_path=status_path,
+            observed_at=observed_at,
+            expected_supervisor_pid=int(expected_supervisor_pid),
+            generation_started_at_epoch_seconds=float(generation_started_at),
+            startup_grace_seconds=grace,
+            reason="status_predates_process_generation",
+            observed_supervisor_pid=observed_pid,
+            status_age_seconds=age_seconds,
+        )
     if stale_seconds <= 0 or age_seconds <= stale_seconds:
         return {
             "supervisor_status": "live",
@@ -4166,12 +4766,25 @@ def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
     if not status or status == "untracked":
         return ""
     parts = [f"supervisor_status={status}"]
+    generation = fields.get("supervisor_status_generation")
+    if generation:
+        parts.append(f"supervisor_status_generation={generation}")
+    generation_reason = fields.get("supervisor_status_generation_reason")
+    if generation_reason:
+        parts.append(
+            f"supervisor_status_generation_reason={generation_reason}"
+        )
     age = fields.get("supervisor_status_age_seconds")
     if age is not None:
         parts.append(f"supervisor_status_age_seconds={age}")
     active_task_id = fields.get("supervisor_active_task_id")
     if active_task_id:
         parts.append(f"supervisor_active_task_id={active_task_id}")
+    startup_age = fields.get("supervisor_startup_age_seconds")
+    if startup_age is not None:
+        parts.append(f"supervisor_startup_age_seconds={startup_age}")
+    if fields.get("supervisor_within_startup_grace"):
+        parts.append("supervisor_within_startup_grace=true")
     if fields.get("restart_supervisor"):
         parts.append("restart_supervisor=true")
     return " ".join(parts)
@@ -4818,12 +5431,24 @@ def start_track(
     state_root = resolved.supervisor_pid_path.parent.resolve(strict=False)
     run_root = state_root / "lifecycle-runs" / resolved.name
     status_path = _inferred_supervisor_status_path(resolved)
+    profile_environment_values = dict(
+        _plan_bound_profile_environment(os.environ)
+        if plan_bound_dispatch
+        else ()
+    )
+    profile_environment_values.update(
+        _trusted_duckdb_profile_environment(
+            os.environ,
+            repository_root=repo_root,
+        )
+    )
+    profile_environment = tuple(sorted(profile_environment_values.items()))
     profile = LifecycleProfile(
         target_id=f"supervisor-track:{resolved.name}",
         run_id=(
             "multi-supervisor:"
             + hashlib.sha256(
-                f"{repo_root.resolve()}:{resolved.name}".encode("utf-8")
+                f"{repo_root.resolve()}:{resolved.name}".encode()
             ).hexdigest()
         ),
         configuration_root=configuration_root,
@@ -4832,6 +5457,7 @@ def start_track(
         run_root=str(run_root),
         argv=tuple(command),
         cwd=str(repo_root.resolve()),
+        environment=profile_environment,
         health_path=(
             str(status_path.resolve(strict=False))
             if status_path is not None
@@ -4858,20 +5484,15 @@ def start_track(
         # would be too late for LD_PRELOAD.  The sealed native dependency's
         # DT_NEEDED resolution is intentionally bounded to the host's default
         # system ABI, not caller-provided loader/search configuration.
-        ambient_names = {"PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-        lifecycle_names = {
-            RUN_ID_ENV,
-            PROFILE_ID_ENV,
-            TARGET_ID_ENV,
-            REPOSITORY_ROOT_ENV,
-            STATE_ROOT_ENV,
-            RUN_ROOT_ENV,
-            FENCING_EPOCH_ENV,
-            CONFIGURATION_ROOT_ENV,
-        }
+        # HOME, Python user-base, and cache bindings enter this profile only
+        # through _trusted_duckdb_profile_environment, which derives them from
+        # the independently admitted marker. They are not ambient allowlist
+        # members, but they are valid sealed profile fields at this boundary.
         route_names = {
-            *ORDERED_IMPLEMENTATION_PROVIDER_ROUTE,
-            *_ROUTE_AUTHORIZATION_ENV_NAMES,
+            *_PLAN_BOUND_PROFILE_ENV_NAMES,
+            "HOME",
+            TRUSTED_PYTHON_USER_BASE_ENV,
+            *TRUSTED_RUNTIME_CACHE_ENV_NAMES,
         }
         explicit_profile = dict(profile.environment)
         disallowed_profile_names = set(explicit_profile) - route_names
@@ -4879,13 +5500,9 @@ def start_track(
             raise ValueError(
                 "plan-bound lifecycle profile contains non-route environment"
             )
-        positive_names = ambient_names | lifecycle_names | route_names
-        launch_environment = {
-            name: value
-            for name, value in launch_environment.items()
-            if name in positive_names
-        }
-        launch_environment["PATH"] = "/usr/bin:/bin"
+        launch_environment = _plan_bound_positive_child_environment(
+            launch_environment
+        )
     try:
         try:
             process = subprocess.Popen(
@@ -4921,7 +5538,7 @@ def start_track(
         os.close(gate_read_fd)
     # Popen is only an observation handle.  The immutable profile is what lets
     # stop/restart rediscover children that have detached or been reparented.
-    setattr(process, "_agent_supervisor_lifecycle_profile", profile)
+    process._agent_supervisor_lifecycle_profile = profile
     if plan_bound_dispatch:
         if gate_write_fd is None:
             raise AssertionError("plan-bound launch gate was not created")
@@ -4935,21 +5552,13 @@ def start_track(
                 raise ProcessIdentityMismatch(
                     "plan-bound launch returned no typed process identity"
                 )
-            setattr(
-                process,
-                "_agent_supervisor_process_identity",
-                process_identity,
-            )
+            process._agent_supervisor_process_identity = process_identity
             birth_cid = _persist_plan_bound_process_birth(
                 profile=profile,
                 process_identity=process_identity,
                 repo_root=Path(repo_root).resolve(),
             )
-            setattr(
-                process,
-                "_agent_supervisor_process_birth_cid",
-                birth_cid,
-            )
+            process._agent_supervisor_process_birth_cid = birth_cid
             if (
                 pid_reservation_fd is None
                 or pid_reservation_identity is None
@@ -5010,11 +5619,7 @@ def start_track(
         ):
             # Legacy tracks retain their previous best-effort observability.
             process_identity = None
-        setattr(
-            process,
-            "_agent_supervisor_process_identity",
-            process_identity,
-        )
+        process._agent_supervisor_process_identity = process_identity
         resolved.supervisor_pid_path.write_text(
             f"{process.pid}\n", encoding="utf-8"
         )
@@ -5256,7 +5861,7 @@ def _plan_bound_recovery_artifact_evidence(
                     f"{current_git_path.relative_to(root).as_posix()}:"
                     f"{stat.S_IMODE(git_stat.st_mode)}:{git_stat.st_uid}:"
                     f"{git_stat.st_nlink}"
-                ).encode("utf-8")
+                ).encode()
             )
             current_git_path /= part
         git_stat = os.lstat(git_dir)
@@ -5272,7 +5877,7 @@ def _plan_bound_recovery_artifact_evidence(
                 f"{git_dir.relative_to(root).as_posix()}:"
                 f"{stat.S_IMODE(git_stat.st_mode)}:{git_stat.st_uid}:"
                 f"{git_stat.st_nlink}"
-            ).encode("utf-8")
+            ).encode()
         )
         top = _plan_bound_git(artifact, "rev-parse", "--show-toplevel")
         common = _plan_bound_git(artifact, "rev-parse", "--git-common-dir")
@@ -6890,8 +7495,8 @@ def run_supervisor_tracks(
             finally:
                 os.close(master_descriptor)
         else:
-            resolved_master_pid.write_text(
-                f"{os.getpid()}\n", encoding="utf-8"
+            _adopt_or_create_current_master_pid_projection(
+                resolved_master_pid
             )
     processes: dict[str, subprocess.Popen[bytes]] = {}
 
@@ -6914,6 +7519,32 @@ def run_supervisor_tracks(
     scope_drift_receipts: list[dict[str, Any]] = []
     replan_required = False
     run_started_at = time.time()
+    track_generation_started_at: dict[str, float] = {}
+    track_startup_grace_seconds: dict[str, float] = {}
+
+    def start_generation(track: SupervisorTrack) -> subprocess.Popen[bytes]:
+        """Start one track and retain the lower bound for its status generation."""
+
+        startup_grace = _track_supervisor_status_startup_grace_seconds(
+            track,
+            common_args=common_args,
+            fallback_seconds=float(supervisor_status_stale_seconds),
+        )
+        generation_started_at = time.time()
+        process = start_track(
+            track,
+            repo_root=resolved_repo_root,
+            common_args=common_args,
+            python_executable=python_executable,
+            accepted_control_plane_pin=accepted_control_plane_pin,
+            accepted_control_plane_descriptor=(
+                accepted_control_plane_descriptor
+            ),
+            output=output,
+        )
+        track_generation_started_at[track.name] = generation_started_at
+        track_startup_grace_seconds[track.name] = startup_grace
+        return process
 
     def recovery_recipient(
         donor: PlanBoundSupervisorChild,
@@ -6938,9 +7569,7 @@ def run_supervisor_tracks(
         )
         generation = current[1].generation + 1 if current is not None else 1
         token = hashlib.sha256(
-            f"{donor.revision_cid}:{donor.slice_id}:{generation}".encode(
-                "utf-8"
-            )
+            f"{donor.revision_cid}:{donor.slice_id}:{generation}".encode()
         ).hexdigest()[:12]
         lane_id = f"recovery-{generation}-{token}"
         state_parent = PurePosixPath(str(donor.state_dir)).parent
@@ -6971,17 +7600,7 @@ def run_supervisor_tracks(
                     raise ValueError("reassigned track name is not unique")
                 managed_tracks.append(adopted_track)
                 plan_children_by_name[adopted.name] = adopted
-                processes[adopted_track.name] = start_track(
-                    adopted_track,
-                    repo_root=resolved_repo_root,
-                    common_args=common_args,
-                    python_executable=python_executable,
-                    accepted_control_plane_pin=accepted_control_plane_pin,
-                    accepted_control_plane_descriptor=(
-                        accepted_control_plane_descriptor
-                    ),
-                    output=output,
-                )
+                processes[adopted_track.name] = start_generation(adopted_track)
                 reassignment_count += 1
                 _emit(
                     output,
@@ -7035,17 +7654,7 @@ def run_supervisor_tracks(
     try:
         _emit(output, f"starting {label} duration_seconds={duration_seconds:g}")
         for track in managed_tracks:
-            processes[track.name] = start_track(
-                track,
-                repo_root=resolved_repo_root,
-                common_args=common_args,
-                python_executable=python_executable,
-                accepted_control_plane_pin=accepted_control_plane_pin,
-                accepted_control_plane_descriptor=(
-                    accepted_control_plane_descriptor
-                ),
-                output=output,
-            )
+            processes[track.name] = start_generation(track)
 
         deadline = time.monotonic() + max(0.0, float(duration_seconds))
         while time.monotonic() < deadline:
@@ -7068,6 +7677,16 @@ def run_supervisor_tracks(
                     resolved,
                     repo_root=resolved_repo_root,
                     stale_seconds=float(supervisor_status_stale_seconds),
+                    expected_supervisor_pid=(
+                        None if process is None else int(process.pid)
+                    ),
+                    generation_started_at_epoch_seconds=(
+                        track_generation_started_at.get(track.name)
+                    ),
+                    startup_grace_seconds=track_startup_grace_seconds.get(
+                        track.name,
+                        0.0,
+                    ),
                 )
                 if process is not None and process.poll() is None and pid_alive(process.pid):
                     supervisor_summary = format_supervisor_status_fields(supervisor_fields)
@@ -7104,17 +7723,7 @@ def run_supervisor_tracks(
                             process.wait(timeout=max(0.1, stop_grace_seconds))
                         except subprocess.TimeoutExpired:
                             pass
-                        processes[track.name] = start_track(
-                            track,
-                            repo_root=resolved_repo_root,
-                            common_args=common_args,
-                            python_executable=python_executable,
-                            accepted_control_plane_pin=accepted_control_plane_pin,
-                            accepted_control_plane_descriptor=(
-                                accepted_control_plane_descriptor
-                            ),
-                            output=output,
-                        )
+                        processes[track.name] = start_generation(track)
                     elif exit_when_all_tracks_terminal:
                         task_fields = terminal_task_state_fields(
                             resolved,
@@ -7310,19 +7919,7 @@ def run_supervisor_tracks(
                                 blocked = blocker
                     if recover_execution and not blocked:
                         try:
-                            processes[track.name] = start_track(
-                                track,
-                                repo_root=resolved_repo_root,
-                                common_args=common_args,
-                                python_executable=python_executable,
-                                accepted_control_plane_pin=(
-                                    accepted_control_plane_pin
-                                ),
-                                accepted_control_plane_descriptor=(
-                                    accepted_control_plane_descriptor
-                                ),
-                                output=output,
-                            )
+                            processes[track.name] = start_generation(track)
                         except Exception as exc:  # noqa: BLE001
                             blocker = (
                                 "cannot restart recoverable plan-bound handoff: "
@@ -7363,17 +7960,7 @@ def run_supervisor_tracks(
                         raise SupervisorRunInterrupted(
                             f"could not fence exited {track.name} descendants"
                         )
-                processes[track.name] = start_track(
-                    track,
-                    repo_root=resolved_repo_root,
-                    common_args=common_args,
-                    python_executable=python_executable,
-                    accepted_control_plane_pin=accepted_control_plane_pin,
-                    accepted_control_plane_descriptor=(
-                        accepted_control_plane_descriptor
-                    ),
-                    output=output,
-                )
+                processes[track.name] = start_generation(track)
             dispatch_pending_reassignments()
             if replan_required:
                 _emit(
@@ -7654,24 +8241,69 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
         "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
         *_without_detach(argv),
     ]
-    out_handle = master_log.open("ab")
-    try:
-        process = subprocess.Popen(
-            command,
-            cwd=args.repo_root,
-            stdin=subprocess.DEVNULL,
-            stdout=out_handle,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
+    process: subprocess.Popen[bytes] | None = None
+    descriptor = -1
+    reservation_identity: tuple[int, int] | None = None
+    with serialized_lock_update(master_pid):
+        try:
+            os.lstat(master_pid)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise ValueError("cannot inspect detached master PID projection") from exc
+        else:
+            _quarantine_stale_detached_master_pid_locked(master_pid)
+        descriptor, reservation_identity = _reserve_owned_pid_projection_locked(
+            master_pid
         )
-    finally:
-        out_handle.close()
-    master_pid.write_text(f"{process.pid}\n", encoding="utf-8")
+        try:
+            out_handle = master_log.open("ab")
+            try:
+                process = subprocess.Popen(
+                    command,
+                    cwd=args.repo_root,
+                    stdin=subprocess.DEVNULL,
+                    stdout=out_handle,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
+            finally:
+                out_handle.close()
+            _publish_reserved_pid_projection(
+                master_pid,
+                descriptor,
+                reservation_identity,
+                int(process.pid),
+            )
+        except BaseException:
+            if process is not None and process.poll() is None:
+                try:
+                    os.killpg(int(process.pid), signal.SIGTERM)
+                    process.wait(timeout=2.0)
+                except (OSError, subprocess.TimeoutExpired):
+                    try:
+                        os.killpg(int(process.pid), signal.SIGKILL)
+                    except OSError:
+                        pass
+                    try:
+                        process.wait(timeout=2.0)
+                    except subprocess.TimeoutExpired:
+                        pass
+            _discard_reserved_pid_projection_locked(
+                master_pid,
+                reservation_identity,
+            )
+            raise
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+                descriptor = -1
+    assert process is not None
     # The child normally removes its own projection after fencing every
     # track.  Cover the short-run race where it exits before this parent can
     # publish the detached PID.
     if process.poll() is not None or not pid_alive(process.pid):
-        _remove_stale_pid_marker_if_unchanged(master_pid, process.pid)
+        _remove_owned_pid_projection(master_pid, process.pid)
     return {
         "stamp": args.stamp,
         "master_pid": process.pid,
@@ -7980,12 +8612,7 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
     ):
         return 78
     try:
-        environment = {
-            name: value
-            for name, value in os.environ.items()
-            if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-        }
-        environment["PATH"] = "/usr/bin:/bin"
+        environment = _plan_bound_positive_child_environment(os.environ)
         os.execvpe(child_command[0], child_command, environment)
     except OSError:
         return 78
@@ -7993,6 +8620,9 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from .process_security import harden_state_authority_process
+
+    harden_state_authority_process()
     args_list = list(sys.argv[1:] if argv is None else argv)
     if args_list[:1] == [CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_GATE_MARKER]:
         return 78
@@ -8121,6 +8751,46 @@ def main(argv: list[str] | None = None) -> int:
     ):
         return 2
     return 0
+
+
+CASF_EVENT_DRIVEN_WAKE_INTERFACE = (
+    "ipfs_accelerate_py/agent-supervisor/casf-event-driven-wake@1"
+)
+
+
+def casf_require_event_driven_wait(wait_capability: Mapping[str, object]) -> None:
+    """Fail closed unless the federation wait path is event-driven qualified."""
+
+    from ipfs_accelerate_py.agent_supervisor.federation.scheduler import (
+        require_event_driven_capability,
+    )
+
+    require_event_driven_capability(wait_capability)
+
+
+def casf_select_tracks_for_frontier(
+    tracks: Sequence[SupervisorTrack],
+    *,
+    must_wake: Sequence[str],
+    may_wake: Sequence[str],
+    do_not_wake: Sequence[str],
+    wait_capability: Mapping[str, object],
+) -> tuple[SupervisorTrack, ...]:
+    """Wake only frontier-eligible tracks. Unchanged do_not_wake tracks stay asleep."""
+
+    casf_require_event_driven_wait(wait_capability)
+    asleep = set(do_not_wake)
+    eligible = set(must_wake) | set(may_wake)
+    overlap = eligible & asleep
+    if overlap:
+        raise ValueError("frontier dispositions overlap")
+    selected: list[SupervisorTrack] = []
+    for track in tracks:
+        if track.name in asleep:
+            continue
+        if track.name in eligible:
+            selected.append(track)
+    return tuple(selected)
 
 
 if __name__ == "__main__":

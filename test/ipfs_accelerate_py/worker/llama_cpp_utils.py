@@ -4,6 +4,6 @@ class llama_cpp_utils:
 
     def init(self):
         return None
-    
+
     def __test__(self):
         return None

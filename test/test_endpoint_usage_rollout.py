@@ -77,9 +77,7 @@ DEFAULT_LIVE_BUDGET_MICROS = 5_000  # $0.005 hard cap when live is opted in
 
 
 def _rfc(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
-    )
+    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def _scope(key: str = "roll-a") -> EndpointUsageScope:
@@ -148,11 +146,7 @@ def _legacy_select(
 ) -> Optional[StaticCandidate]:
     """Legacy selection: highest catalog_score among configured/healthy/authorized."""
 
-    eligible = [
-        c
-        for c in candidates
-        if c.configured and c.healthy and c.authorized and c.routable
-    ]
+    eligible = [c for c in candidates if c.configured and c.healthy and c.authorized and c.routable]
     if not eligible:
         return None
     return max(eligible, key=lambda c: (c.catalog_score, c.binding_id))
@@ -335,9 +329,7 @@ def test_enforce_mode_denies_exhausted_and_may_fallback_when_policy_allows() -> 
             full.scope_id: coord.snapshot(full.scope_id),
             ok.scope_id: coord.snapshot(ok.scope_id),
         },
-        invoke=lambda attempt: InvokeOutcome(
-            success=True, settled=UsageVector.of(requests=1)
-        ),
+        invoke=lambda attempt: InvokeOutcome(success=True, settled=UsageVector.of(requests=1)),
     )
     assert result.success is True
     assert result.selected is not None
@@ -414,9 +406,7 @@ def test_automatic_fallback_requires_paired_gate() -> None:
             a.scope_id: coord.snapshot(a.scope_id),
             b.scope_id: coord.snapshot(b.scope_id),
         },
-        invoke=lambda attempt: InvokeOutcome(
-            success=True, settled=UsageVector.of(requests=1)
-        ),
+        invoke=lambda attempt: InvokeOutcome(success=True, settled=UsageVector.of(requests=1)),
     )
     assert open_result.success is True
     assert open_result.selected is not None
@@ -451,9 +441,7 @@ def test_regression_restores_legacy_selection_preserving_observed_usage() -> Non
     assert after.usage_revision == observed_revision
     assert _headroom(after) == observed_headroom
 
-    service = UsageControlService(
-        coord, catalog_revision_provider=lambda: "catalog-regress-1"
-    )
+    service = UsageControlService(coord, catalog_revision_provider=lambda: "catalog-regress-1")
     status = service.status(authorities=[USAGE_READ_AUTHORITY])
     assert status["success"] is True
     # Diagnosis still available after rollback.
@@ -545,9 +533,7 @@ def test_rollout_phase_policy_matrix(
     mode: RoutingMode,
     allows_fallback: bool,
 ) -> None:
-    fallback = (
-        FallbackClass.CROSS_PROVIDER if allows_fallback else FallbackClass.NONE
-    )
+    fallback = FallbackClass.CROSS_PROVIDER if allows_fallback else FallbackClass.NONE
     policy = RoutingPolicy(mode=mode, fallback=fallback, max_attempts=2 if allows_fallback else 1)
     assert policy.mode is mode
     assert policy.fallback is fallback
@@ -610,16 +596,12 @@ def test_receipt_on_rollout_path_never_embeds_payloads() -> None:
             now=_rfc(clock.now()),
         ),
         snapshots_by_scope={scope.scope_id: coord.snapshot(scope.scope_id)},
-        invoke=lambda attempt: InvokeOutcome(
-            success=True, settled=UsageVector.of(requests=1)
-        ),
+        invoke=lambda attempt: InvokeOutcome(success=True, settled=UsageVector.of(requests=1)),
     )
     assert result.success is True
     if result.receipt is not None:
         payload = (
-            result.receipt.to_dict()
-            if hasattr(result.receipt, "to_dict")
-            else dict(result.receipt)
+            result.receipt.to_dict() if hasattr(result.receipt, "to_dict") else dict(result.receipt)
         )
         assert_no_prompt_media_or_output(payload)
         blob = json.dumps(payload, default=str)

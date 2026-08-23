@@ -114,15 +114,9 @@ def changed():
 
     assert {item.source_scope.symbol for item in result.facts} == {"changed"}
     assert "trusted" not in _values(result, CodeSecurityFactKind.TARGET)
-    assert {"old_call", "new_call"}.issubset(
-        _values(result, CodeSecurityFactKind.TARGET)
-    )
-    old_facts = [
-        item for item in result.facts if item.source_scope.delta.value == "removed"
-    ]
-    new_facts = [
-        item for item in result.facts if item.source_scope.delta.value == "added"
-    ]
+    assert {"old_call", "new_call"}.issubset(_values(result, CodeSecurityFactKind.TARGET))
+    old_facts = [item for item in result.facts if item.source_scope.delta.value == "removed"]
+    new_facts = [item for item in result.facts if item.source_scope.delta.value == "added"]
     assert old_facts and all(item.source_scope.path == "old/service.py" for item in old_facts)
     assert new_facts and all(item.source_scope.path == "new/service.py" for item in new_facts)
 
@@ -151,9 +145,7 @@ def harmless():
 
 
 def test_unsupported_parse_failures_missing_sources_and_dynamic_calls_are_explicit() -> None:
-    unsupported = extract_code_security_facts(
-        _diff(before="x", after="y", language="rust")
-    )
+    unsupported = extract_code_security_facts(_diff(before="x", after="y", language="rust"))
     assert unsupported.status is CodeSecurityExtractionStatus.UNSUPPORTED
     assert unsupported.diagnostics[0].code is CodeSecurityDiagnosticCode.UNSUPPORTED_LANGUAGE
 
@@ -163,9 +155,7 @@ def test_unsupported_parse_failures_missing_sources_and_dynamic_calls_are_explic
     assert invalid.status is CodeSecurityExtractionStatus.INVALID
     assert invalid.diagnostics[0].code is CodeSecurityDiagnosticCode.PARSE_ERROR
 
-    missing = extract_code_security_facts(
-        _diff(before=None, after=None)
-    )
+    missing = extract_code_security_facts(_diff(before=None, after=None))
     assert missing.status is CodeSecurityExtractionStatus.UNSUPPORTED
     assert {item.code for item in missing.diagnostics} == {
         CodeSecurityDiagnosticCode.MISSING_SOURCE
@@ -198,9 +188,7 @@ def test_canonical_round_trip_is_stable_tamper_evident_and_non_authoritative() -
     restored = CodeSecurityFactSet.from_json(result.to_json())
 
     assert restored.fact_set_id == result.fact_set_id
-    assert [item.fact_id for item in restored.facts] == [
-        item.fact_id for item in result.facts
-    ]
+    assert [item.fact_id for item in restored.facts] == [item.fact_id for item in result.facts]
     assert not result.grants_execution_authority
     assert not result.authorizes_completion
     assert not result.establishes_generated_code_correctness

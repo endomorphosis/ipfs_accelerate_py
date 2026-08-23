@@ -124,11 +124,7 @@ def _request(**changes: object) -> DecisionRequest:
                 SemanticRoot(
                     kind=kind,
                     artifact=_ref(f"root-{kind.value}"),
-                    coverage=(
-                        coverage
-                        if kind is SemanticRootKind.DIRTY_WORKTREE
-                        else ()
-                    ),
+                    coverage=(coverage if kind is SemanticRootKind.DIRTY_WORKTREE else ()),
                 )
                 for kind in SemanticRootKind
             ),
@@ -380,10 +376,7 @@ def test_stale_cross_partition_and_poisoned_candidates_cannot_hide_denial() -> N
     assert "denial" in receipt.closure_node_ids
     assert "denial" in receipt.included_node_ids
     assert "denial" not in receipt.omitted_node_ids
-    assert all(
-        item.disposition is CandidateDisposition.REJECTED
-        for item in receipt.candidates
-    )
+    assert all(item.disposition is CandidateDisposition.REJECTED for item in receipt.candidates)
     assert receipt.truncation["rejected_candidate_count"] == 2
 
     poisoned_query = retrieve_proof_directed(
@@ -396,12 +389,8 @@ def test_stale_cross_partition_and_poisoned_candidates_cannot_hide_denial() -> N
         required_indexes=("vector",),
     )
     assert "denial" in poisoned_query.closure_node_ids
-    assert poisoned_query.backend_states["vector"] == (
-        RetrievalBackendState.EXACT_FALLBACK.value
-    )
-    assert "poisoned_or_non_finite_query_embedding" in (
-        poisoned_query.disagreement
-    )
+    assert poisoned_query.backend_states["vector"] == (RetrievalBackendState.EXACT_FALLBACK.value)
+    assert "poisoned_or_non_finite_query_embedding" in (poisoned_query.disagreement)
 
 
 def test_bound_candidate_rejects_cross_partition_snapshot() -> None:
@@ -432,9 +421,7 @@ def test_missing_required_index_uses_exact_fallback_or_fails_closed() -> None:
         required_indexes=("vector",),
     )
 
-    assert fallback.backend_states["vector"] == (
-        RetrievalBackendState.EXACT_FALLBACK.value
-    )
+    assert fallback.backend_states["vector"] == (RetrievalBackendState.EXACT_FALLBACK.value)
     assert fallback.fallback == ("vector:deterministic_exact_graph_scan",)
     assert "proof" in fallback.closure_node_ids
 

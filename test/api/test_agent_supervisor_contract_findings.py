@@ -307,7 +307,9 @@ def test_duplicates_and_stale_are_not_actionable_current(
 
     ledger.invalidate_stale(finding_cids=(first.finding_cid,))
     assert ledger.current_findings(admitted_only=True) == ()
-    stale_entries = [e for e in ledger.projection().entries if e.admission is FindingAdmissionState.STALE]
+    stale_entries = [
+        e for e in ledger.projection().entries if e.admission is FindingAdmissionState.STALE
+    ]
     assert len(stale_entries) >= 1
     # History retained separately from the mutable current projection.
     assert len(ledger.history()) >= 3
@@ -506,11 +508,7 @@ def test_bounds_reject_oversized_text_and_collections() -> None:
         broken_finding(symbols=[f"sym{i}" for i in range(MAX_COLLECTION_ITEMS + 1)])
 
     with pytest.raises(ContractFindingBoundsError):
-        CallSlice(
-            steps=tuple(
-                CallSliceStep(symbol=f"s{i}") for i in range(65)
-            )
-        )
+        CallSlice(steps=tuple(CallSliceStep(symbol=f"s{i}") for i in range(65)))
 
 
 # ---------------------------------------------------------------------------
@@ -738,9 +736,7 @@ def test_supersession_and_rejection_preserve_prior_records(
     assert ledger.current_findings() == ()
 
 
-def by_cid_admission(
-    snapshot: ProjectionSnapshot, finding_cid: str
-) -> FindingAdmissionState:
+def by_cid_admission(snapshot: ProjectionSnapshot, finding_cid: str) -> FindingAdmissionState:
     for entry in snapshot.entries:
         if entry.finding_cid == finding_cid:
             return entry.admission
@@ -953,8 +949,6 @@ def test_ledger_does_not_mutate_source_records(tmp_path: Path) -> None:
     assert ledger.require(original_cid).summary == record.summary
     assert ledger.require(original_cid).rejection_reasons == ()
     # Rejection lives only in projection / events.
-    entry = next(
-        e for e in ledger.projection().entries if e.finding_cid == original_cid
-    )
+    entry = next(e for e in ledger.projection().entries if e.finding_cid == original_cid)
     assert entry.admission is FindingAdmissionState.REJECTED
     assert "diagnostic_only" in entry.rejection_reasons

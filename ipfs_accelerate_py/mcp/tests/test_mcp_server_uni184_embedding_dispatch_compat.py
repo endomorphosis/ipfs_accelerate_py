@@ -30,7 +30,9 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -45,22 +47,25 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
             return {"status": "success"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_embedding_tools._API,
-                {
-                    "generate_embeddings": _minimal,
-                    "chunk_text": _minimal,
-                    "manage_endpoints": _minimal,
-                    "shard_embeddings": _minimal,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_embedding_tools._API,
+                    {
+                        "generate_embeddings": _minimal,
+                        "chunk_text": _minimal,
+                        "manage_endpoints": _minimal,
+                        "shard_embeddings": _minimal,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="embedding-dispatch-compat")
 
@@ -141,7 +146,9 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -156,19 +163,22 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
             return {"status": "success", "success": False, "error": "semantic upstream failed"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_embedding_tools._API,
-                {
-                    "semantic_search": _contradictory_failure,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_embedding_tools._API,
+                    {
+                        "semantic_search": _contradictory_failure,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="embedding-dispatch-compat-errors")
                 dispatch = server.tools["tools_dispatch"]["function"]
@@ -194,7 +204,9 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -209,19 +221,22 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
             return {"status": "success", "success": False, "error": "endpoint upstream failed"}
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.dict(
-                native_embedding_tools._API,
-                {
-                    "manage_endpoints": _contradictory_failure,
-                },
-                clear=False,
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.dict(
+                    native_embedding_tools._API,
+                    {
+                        "manage_endpoints": _contradictory_failure,
+                    },
+                    clear=False,
+                ),
             ):
                 server = create_mcp_server(name="embedding-dispatch-endpoint-errors")
                 dispatch = server.tools["tools_dispatch"]["function"]

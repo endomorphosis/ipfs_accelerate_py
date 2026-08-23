@@ -82,7 +82,11 @@ def _discover_other_peer_multiaddr(
     - Verify the peer responds to a `status` RPC before returning.
     """
 
-    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, discover_peers_via_mdns_sync, request_status_sync
+    from ipfs_accelerate_py.p2p_tasks.client import (
+        RemoteQueue,
+        discover_peers_via_mdns_sync,
+        request_status_sync,
+    )
 
     deadline = time.time() + max(0.1, float(timeout_s))
     self_peer_id = str(self_peer_id or "").strip()
@@ -103,15 +107,21 @@ def _discover_other_peer_multiaddr(
             candidates.append((pid, ma))
 
         # Prefer same port to avoid accidentally selecting unrelated LAN peers.
-        preferred = [c for c in candidates if _tcp_port_from_multiaddr_text(c[1]) == int(expected_tcp_port)]
+        preferred = [
+            c for c in candidates if _tcp_port_from_multiaddr_text(c[1]) == int(expected_tcp_port)
+        ]
         ordered = preferred + [c for c in candidates if c not in preferred]
         last_seen = ordered
 
         for pid, ma in ordered:
-            if int(expected_tcp_port) and _tcp_port_from_multiaddr_text(ma) != int(expected_tcp_port):
+            if int(expected_tcp_port) and _tcp_port_from_multiaddr_text(ma) != int(
+                expected_tcp_port
+            ):
                 continue
             try:
-                resp = request_status_sync(remote=RemoteQueue(peer_id=pid, multiaddr=ma), timeout_s=5.0, detail=False)
+                resp = request_status_sync(
+                    remote=RemoteQueue(peer_id=pid, multiaddr=ma), timeout_s=5.0, detail=False
+                )
                 if not (isinstance(resp, dict) and resp.get("ok")):
                     continue
                 if expected_session:
@@ -135,7 +145,13 @@ def _discover_other_peer_multiaddr(
 
 
 def _run_worker_process(
-    *, queue_path: str, listen_host: str, listen_port: int, announce_file: str, worker_id: str, public_ip: str
+    *,
+    queue_path: str,
+    listen_host: str,
+    listen_port: int,
+    announce_file: str,
+    worker_id: str,
+    public_ip: str,
 ) -> None:
     # Keep this process minimal and LAN-reachable.
     os.environ["IPFS_KIT_DISABLE"] = "1"
@@ -167,19 +183,27 @@ def _run_worker_process(
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Start a LAN peer and run mDNS-discovered textgen load")
+    parser = argparse.ArgumentParser(
+        description="Start a LAN peer and run mDNS-discovered textgen load"
+    )
     parser.add_argument(
         "--listen-host",
         default="0.0.0.0",
         help="IP/interface to bind the local TaskQueue peer (default: 0.0.0.0).",
     )
-    parser.add_argument("--listen-port", type=int, default=9710, help="TCP listen port for the local TaskQueue peer")
+    parser.add_argument(
+        "--listen-port", type=int, default=9710, help="TCP listen port for the local TaskQueue peer"
+    )
     parser.add_argument(
         "--public-ip",
         default="auto",
         help="IP to advertise in the service multiaddr (default: auto). Use this if auto picks loopback.",
     )
-    parser.add_argument("--state-dir", default="state/lan_mdns_two_machine", help="Directory for queue/announce/report files")
+    parser.add_argument(
+        "--state-dir",
+        default="state/lan_mdns_two_machine",
+        help="Directory for queue/announce/report files",
+    )
     parser.add_argument("--worker-id", default="", help="Worker id (default: hostname)")
     parser.add_argument(
         "--session",
@@ -191,11 +215,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--concurrency", type=int, default=10, help="Submit/wait concurrency")
     parser.add_argument("--timeout-s", type=float, default=300.0, help="Per-task wait timeout")
 
-    parser.add_argument("--prompt", default="The quick brown fox", help="Prompt for text generation")
+    parser.add_argument(
+        "--prompt", default="The quick brown fox", help="Prompt for text generation"
+    )
     parser.add_argument("--max-new-tokens", type=int, default=16)
     parser.add_argument("--temperature", type=float, default=0.2)
 
-    parser.add_argument("--mdns-timeout-s", type=float, default=30.0, help="How long to wait for mDNS peer discovery")
+    parser.add_argument(
+        "--mdns-timeout-s",
+        type=float,
+        default=30.0,
+        help="How long to wait for mDNS peer discovery",
+    )
     return parser.parse_args(argv)
 
 
@@ -322,7 +353,9 @@ def main(argv: list[str] | None = None) -> int:
             "session": session,
         }
         try:
-            Path(tmp).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            Path(tmp).write_text(
+                json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
             os.replace(tmp, report_path)
         except Exception:
             pass

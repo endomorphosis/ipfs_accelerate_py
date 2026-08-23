@@ -119,7 +119,9 @@ def _write_bundle_index(path: Path, count: int, *, llm: bool = False) -> None:
             "tasks": [task],
         }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"source_todo": "tasks.todo.md", "bundles": bundles}), encoding="utf-8")
+    path.write_text(
+        json.dumps({"source_todo": "tasks.todo.md", "bundles": bundles}), encoding="utf-8"
+    )
 
 
 def test_sample_host_resources_reports_measured_cpu_memory_disk_and_worker_capacity(
@@ -161,7 +163,11 @@ def test_sample_host_resources_reports_measured_cpu_memory_disk_and_worker_capac
         ({"disk_percent": 95}, {}, "host_disk_high_watermark"),
         ({"memory_available_bytes": 999}, {"memory_bytes": 1_000}, "host_memory_headroom"),
         ({"disk_available_bytes": 999}, {"disk_bytes": 1_000}, "host_disk_headroom"),
-        ({"resource_classes": ("cpu-small",)}, {"resource_class": "gpu"}, "resource_class_mismatch"),
+        (
+            {"resource_classes": ("cpu-small",)},
+            {"resource_class": "gpu"},
+            "resource_class_mismatch",
+        ),
         ({"active_workers": 4, "available_worker_capacity": 0}, {}, "host_worker_capacity"),
     ],
 )
@@ -254,7 +260,12 @@ def test_gpu_prefixed_workload_class_still_mismatches_cpu_host() -> None:
     ("provider_overrides", "requirement_overrides", "policy_overrides", "reason"),
     [
         ({"healthy": False}, {}, {}, "provider_unhealthy"),
-        ({"quota_remaining": 1}, {"quota_units": 1}, {"provider_quota_reserve": 1}, "provider_quota"),
+        (
+            {"quota_remaining": 1},
+            {"quota_units": 1},
+            {"provider_quota_reserve": 1},
+            "provider_quota",
+        ),
         ({"latency_ms": 501}, {}, {"maximum_provider_latency_ms": 500}, "provider_latency"),
         ({"context_window_tokens": 7_999}, {"context_tokens": 8_000}, {}, "provider_context"),
         (
@@ -419,7 +430,9 @@ def test_schedule_accumulates_quota_and_token_reservations() -> None:
         _llm_lane("third", quota_units=2, token_budget=10),
     ]
 
-    schedule = scheduler.schedule(lanes, host=_host(worker_limit=3, available_worker_capacity=3), providers=[provider])
+    schedule = scheduler.schedule(
+        lanes, host=_host(worker_limit=3, available_worker_capacity=3), providers=[provider]
+    )
 
     assert schedule.admitted_lane_ids == ("first", "second")
     assert schedule.decisions[2].admitted is False
@@ -690,8 +703,7 @@ def test_leased_lane_drains_freshly_completed_slice_and_releases_provider_claim(
     events_path = tmp_path / "events.jsonl"
     child_pid_path = tmp_path / "child.pid"
     task_cids_by_id = {
-        task_id: profile_g_cid({"member": task_id})
-        for task_id in ("RES-LONG-1", "RES-LONG-1B")
+        task_id: profile_g_cid({"member": task_id}) for task_id in ("RES-LONG-1", "RES-LONG-1B")
     }
     first_bundle = {
         "bundle_key": "objective/resources/long-lived-first",
@@ -795,10 +807,7 @@ def test_leased_lane_drains_freshly_completed_slice_and_releases_provider_claim(
         while time.monotonic() < deadline:
             with LeaseCoordinator(path) as coordinator:
                 heartbeat = coordinator.latest_heartbeat(first["task_cid"])
-            if (
-                heartbeat is not None
-                and heartbeat.get("active_phase") == "implementation"
-            ):
+            if heartbeat is not None and heartbeat.get("active_phase") == "implementation":
                 observed_active = True
                 break
             time.sleep(0.01)
@@ -832,9 +841,7 @@ def test_leased_lane_drains_freshly_completed_slice_and_releases_provider_claim(
                         "canonical_task_cid": task_cids_by_id["RES-LONG-1"],
                     },
                     "RES-LONG-1B": {
-                        "canonical_task_cid": profile_g_cid(
-                            {"wrong-member": "RES-LONG-1B"}
-                        ),
+                        "canonical_task_cid": profile_g_cid({"wrong-member": "RES-LONG-1B"}),
                     },
                 },
             }
@@ -867,8 +874,7 @@ def test_leased_lane_drains_freshly_completed_slice_and_releases_provider_claim(
                 "completion_receipts": [
                     {
                         "schema": (
-                            "ipfs_accelerate_py.agent_supervisor."
-                            "member_completion_receipt@1"
+                            "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
                         ),
                         "task_id": task_id,
                         "canonical_task_cid": (
@@ -893,8 +899,7 @@ def test_leased_lane_drains_freshly_completed_slice_and_releases_provider_claim(
                 "completion_receipts": [
                     {
                         "schema": (
-                            "ipfs_accelerate_py.agent_supervisor."
-                            "member_completion_receipt@1"
+                            "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
                         ),
                         "task_id": task_id,
                         "canonical_task_cid": task_cid,
@@ -995,10 +1000,7 @@ def test_dynamic_scheduler_reuses_provider_after_completed_slice_wrapper_exits(
 
         @property
         def phase_state_path(self) -> Path:
-            return (
-                self.lane.state_dir
-                / f"{self.lane.state_prefix}_task_state.json"
-            )
+            return self.lane.state_dir / f"{self.lane.state_prefix}_task_state.json"
 
         def _execute(self) -> None:
             self.lane.state_dir.mkdir(parents=True, exist_ok=True)
@@ -1013,28 +1015,28 @@ def test_dynamic_scheduler_reuses_provider_after_completed_slice_wrapper_exits(
                         "time.sleep(60)"
                     ),
                     str(child_pid_paths[task_id]),
-                    ]
-                    if task_id == "RES-1"
-                    else [
-                        sys.executable,
-                        "-c",
-                        (
-                            "import json,pathlib,sys;"
-                            "from datetime import datetime,timezone;"
-                            "pathlib.Path(sys.argv[1]).write_text(json.dumps({"
-                            "'heartbeat_at':datetime.now(timezone.utc).isoformat(),"
-                            "'active_task_id':'',"
-                            "'implementation_in_progress':False,"
-                            "'completed_task_ids':[sys.argv[2]],"
-                            "'task_identities':{sys.argv[2]:{"
-                            "'canonical_task_cid':sys.argv[3]}}"
-                            "}),encoding='utf-8')"
-                        ),
-                        str(self.phase_state_path),
-                        task_id,
-                        self.lane.expected_task_cids_by_id[task_id],
-                    ]
-                )
+                ]
+                if task_id == "RES-1"
+                else [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import json,pathlib,sys;"
+                        "from datetime import datetime,timezone;"
+                        "pathlib.Path(sys.argv[1]).write_text(json.dumps({"
+                        "'heartbeat_at':datetime.now(timezone.utc).isoformat(),"
+                        "'active_task_id':'',"
+                        "'implementation_in_progress':False,"
+                        "'completed_task_ids':[sys.argv[2]],"
+                        "'task_identities':{sys.argv[2]:{"
+                        "'canonical_task_cid':sys.argv[3]}}"
+                        "}),encoding='utf-8')"
+                    ),
+                    str(self.phase_state_path),
+                    task_id,
+                    self.lane.expected_task_cids_by_id[task_id],
+                ]
+            )
             try:
                 self.result = run_leased_lane_result(
                     coordination_path=repo / "coordination.sqlite3",
@@ -1116,10 +1118,7 @@ def test_dynamic_scheduler_reuses_provider_after_completed_slice_wrapper_exits(
     first_lane, first_grant, first_process = starts[0]
     first_resource_lease = scheduler.resource_scheduler.active_leases[0]
     deadline = time.monotonic() + 5
-    while (
-        not child_pid_paths["RES-1"].exists()
-        and time.monotonic() < deadline
-    ):
+    while not child_pid_paths["RES-1"].exists() and time.monotonic() < deadline:
         time.sleep(0.01)
     assert child_pid_paths["RES-1"].exists()
 
@@ -1138,9 +1137,7 @@ def test_dynamic_scheduler_reuses_provider_after_completed_slice_wrapper_exits(
                     "task_identities": {
                         "RES-1": {
                             "canonical_task_cid": (
-                                first_process.lane.expected_task_cids_by_id[
-                                    "RES-1"
-                                ]
+                                first_process.lane.expected_task_cids_by_id["RES-1"]
                             ),
                         },
                     },
@@ -1168,9 +1165,7 @@ def test_dynamic_scheduler_reuses_provider_after_completed_slice_wrapper_exits(
             for lease in scheduler.resource_scheduler.active_leases
         )
         assert len(scheduler.resource_scheduler.active_leases) == 1
-        assert scheduler.resource_scheduler.active_leases[0].provider_id == (
-            "provider-a"
-        )
+        assert scheduler.resource_scheduler.active_leases[0].provider_id == ("provider-a")
         assert any(
             decision["bundle_key"] == "objective/resources/2"
             and decision["decision"] == "launched"
@@ -1381,9 +1376,8 @@ time.sleep(60)
     lane_thread.start()
     deadline = time.monotonic() + 5
     while (
-        (not root_pid_path.exists() or not worker_pid_path.exists())
-        and time.monotonic() < deadline
-    ):
+        not root_pid_path.exists() or not worker_pid_path.exists()
+    ) and time.monotonic() < deadline:
         time.sleep(0.01)
     assert root_pid_path.exists()
     assert worker_pid_path.exists()
@@ -1423,10 +1417,7 @@ time.sleep(60)
 
 
 def test_goal_runtime_work_kinds_have_four_distinct_resource_classes() -> None:
-    classes = {
-        kind: resource_class_for_work_kind(kind)
-        for kind in ProofWorkKind
-    }
+    classes = {kind: resource_class_for_work_kind(kind) for kind in ProofWorkKind}
 
     assert classes == {
         ProofWorkKind.MODEL_DRAFT: ProofResourceClass.MODEL_DRAFT.value,
@@ -1549,10 +1540,7 @@ def test_model_and_type_check_classes_can_execute_concurrently() -> None:
         ProofWorkKind.MODEL_DRAFT,
         ProofWorkKind.TYPE_CHECK,
     }
-    assert all(
-        result.status is ProofWorkStatus.SUCCEEDED
-        for result in results.values()
-    )
+    assert all(result.status is ProofWorkStatus.SUCCEEDED for result in results.values())
     assert scheduler.resource_scheduler.active_leases == ()
 
 
@@ -1621,8 +1609,7 @@ def test_bounded_queue_backpressure_and_cancellation_are_observable() -> None:
             work_kind=ProofWorkKind.SOLVER_PORTFOLIO,
         ),
         lambda _context: "must-not-run",
-        fallback=lambda context: fallback_calls.append(context.fallback_reason)
-        or "safe",
+        fallback=lambda context: fallback_calls.append(context.fallback_reason) or "safe",
     )
     assert third.status is ProofWorkStatus.FALLBACK
     assert third.fallback_reason == "queue_capacity"
@@ -1755,3 +1742,349 @@ def test_concurrent_fallbacks_obey_explicit_fallback_capacity() -> None:
     first_thread.join(2)
     assert results["first"].status is ProofWorkStatus.FALLBACK
     assert scheduler.running_count == scheduler.fallback_running_count == 0
+
+
+def _campaign_host(**overrides: object) -> HostResourceSnapshot:
+    values: dict[str, object] = {
+        "observed_at_ms": 2_000,
+        "cpu_percent": 10,
+        "memory_percent": 10,
+        "disk_percent": 10,
+        "memory_total_bytes": 64 * 1024 * 1024 * 1024,
+        "memory_available_bytes": 48 * 1024 * 1024 * 1024,
+        "disk_total_bytes": 512 * 1024 * 1024 * 1024,
+        "disk_available_bytes": 400 * 1024 * 1024 * 1024,
+        "gpu_memory_total_bytes": 24 * 1024 * 1024 * 1024,
+        "gpu_memory_available_bytes": 20 * 1024 * 1024 * 1024,
+        "active_workers": 0,
+        "worker_limit": 8,
+        "available_worker_capacity": 8,
+        "capabilities": ("cpu", "gpu", "prover", "network", "https"),
+        "resource_classes": (
+            "cpu-small",
+            "cpu-medium",
+            "cpu-proof-solver",
+            "io-artifact",
+            "llm-proof-draft",
+            "gpu",
+            "network",
+            "prover",
+        ),
+    }
+    values.update(overrides)
+    return HostResourceSnapshot(**values)  # type: ignore[arg-type]
+
+
+def test_campaign_resource_profiles_model_seven_resource_kinds() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
+        CAMPAIGN_RESOURCE_KINDS,
+        campaign_resource_profile_spec,
+        lane_requirements_for_resource_profile,
+        stage_admission_profile,
+    )
+
+    assert CAMPAIGN_RESOURCE_KINDS == (
+        "cpu",
+        "gpu",
+        "prover",
+        "io",
+        "token",
+        "provider",
+        "network",
+    )
+    gpu = campaign_resource_profile_spec("RP-GPU")
+    assert gpu.allows_gpu is True
+    assert gpu.deny_missing_gpu_telemetry is True
+    assert "gpu" in gpu.resource_kinds
+    claim = lane_requirements_for_resource_profile(
+        "train-1",
+        "RP-GPU",
+        stage="training",
+        input_sealed=True,
+        tokenizer_identity="tok:v1",
+        expected_tokenizer_identity="tok:v1",
+    )
+    assert claim.requires_gpu is True
+    assert claim.gpu_memory_bytes == 16 * 1024 * 1024 * 1024
+    training = stage_admission_profile("training")
+    assert training.requires_gpu is True
+    assert training.requires_sealed_inputs is True
+    assert "inference" in training.overlap_safe_stages or "proof" in training.overlap_safe_stages
+
+
+def test_safe_pipeline_overlap_admits_disjoint_resource_kinds() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
+        ResourceScheduler,
+        lane_requirements_for_resource_profile,
+    )
+
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
+    schedule = scheduler.simulate_pipeline(
+        [
+            lane_requirements_for_resource_profile(
+                "analysis-cpu",
+                "RP-CPU-M",
+                stage="analysis",
+                memory_bytes=0,
+                disk_bytes=0,
+            ),
+            lane_requirements_for_resource_profile(
+                "proof-cpu",
+                "RP-PROVER",
+                stage="prover",
+                memory_bytes=0,
+                disk_bytes=0,
+                requires_prover=True,
+            ),
+            lane_requirements_for_resource_profile(
+                "persist-io",
+                "RP-IO-PINNED",
+                stage="persistence",
+                memory_bytes=0,
+                disk_bytes=0,
+                requires_network=False,
+            ),
+        ],
+        host=_campaign_host(),
+    )
+    assert set(schedule.admitted_lane_ids) == {"analysis-cpu", "proof-cpu", "persist-io"}
+    assert schedule.fairness_overlap_receipt is not None
+    assert schedule.fairness_overlap_receipt.hazard_counts == {}
+    assert len(schedule.overlap_receipts) == 3
+    assert all(item.admitted for item in schedule.overlap_receipts)
+
+
+def test_prohibited_overlap_rejects_unsealed_stale_checkpoint_and_tokenizer() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
+        PipelineHazard,
+        ResourceScheduler,
+        lane_requirements_for_resource_profile,
+    )
+
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
+    host = _campaign_host()
+    unsealed = scheduler.evaluate(
+        lane_requirements_for_resource_profile(
+            "train-unsealed",
+            "RP-GPU",
+            stage="training",
+            input_sealed=False,
+            memory_bytes=0,
+            disk_bytes=0,
+            gpu_memory_bytes=1024,
+        ),
+        host=host,
+    )
+    assert unsealed.admitted is False
+    assert PipelineHazard.UNSEALED_DATA.value in unsealed.reasons
+
+    stale = scheduler.evaluate(
+        lane_requirements_for_resource_profile(
+            "eval-stale",
+            "RP-CPU-M",
+            stage="evaluation",
+            memory_bytes=0,
+            disk_bytes=0,
+            input_sealed=True,
+            trace_identity="trace:old",
+            expected_trace_identity="trace:current",
+        ),
+        host=host,
+    )
+    assert stale.admitted is False
+    assert PipelineHazard.STALE_TRACE.value in stale.reasons
+
+    tokenizer = lane_requirements_for_resource_profile(
+        "tok-mutate",
+        "RP-CPU-M",
+        stage="tokenizer",
+        memory_bytes=0,
+        disk_bytes=0,
+        mutates_tokenizer=True,
+        tokenizer_identity="tok:v2",
+        expected_tokenizer_identity="tok:v2",
+    )
+    training = lane_requirements_for_resource_profile(
+        "train-frozen",
+        "RP-GPU",
+        stage="training",
+        memory_bytes=0,
+        disk_bytes=0,
+        gpu_memory_bytes=1024,
+        tokenizer_identity="tok:v1",
+        expected_tokenizer_identity="tok:v1",
+    )
+    overlap = scheduler.schedule([tokenizer, training], host=host)
+    assert overlap.decision_for("tok-mutate").admitted is True
+    assert overlap.decision_for("train-frozen").admitted is False
+    assert (
+        PipelineHazard.INCOMPATIBLE_TOKENIZER_MUTATION.value
+        in overlap.decision_for("train-frozen").reasons
+    )
+
+    first_ckpt = lane_requirements_for_resource_profile(
+        "ckpt-a",
+        "RP-CPU-M",
+        stage="checkpoint",
+        memory_bytes=0,
+        disk_bytes=0,
+        checkpoint_key="candidate",
+        mutates_checkpoint=True,
+    )
+    second_ckpt = lane_requirements_for_resource_profile(
+        "ckpt-b",
+        "RP-CPU-M",
+        stage="checkpoint",
+        memory_bytes=0,
+        disk_bytes=0,
+        checkpoint_key="candidate",
+        mutates_checkpoint=True,
+    )
+    collisions = scheduler.schedule([first_ckpt, second_ckpt], host=host)
+    assert collisions.admitted_count == 1
+    rejected = next(item for item in collisions.decisions if not item.admitted)
+    assert PipelineHazard.CHECKPOINT_COLLISION.value in rejected.reasons
+
+
+def test_gpu_profile_denies_missing_telemetry_and_does_not_over_admit() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
+        PipelineHazard,
+        ResourceScheduler,
+        lane_requirements_for_resource_profile,
+    )
+
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4, max_gpu_concurrency=1))
+    missing = scheduler.evaluate(
+        lane_requirements_for_resource_profile(
+            "gpu-blind",
+            "RP-GPU",
+            stage="training",
+            memory_bytes=0,
+            disk_bytes=0,
+            gpu_memory_bytes=1024,
+        ),
+        host=_campaign_host(
+            gpu_memory_total_bytes=0,
+            gpu_memory_available_bytes=0,
+            capabilities=("cpu",),
+        ),
+    )
+    assert missing.admitted is False
+    assert PipelineHazard.GPU_TELEMETRY_MISSING.value in missing.reasons
+
+    lanes = [
+        lane_requirements_for_resource_profile(
+            f"gpu-{index}",
+            "RP-GPU",
+            stage="training",
+            memory_bytes=0,
+            disk_bytes=0,
+            gpu_memory_bytes=1024,
+            input_sealed=True,
+            requires_provider=False,
+        )
+        for index in range(3)
+    ]
+    schedule = scheduler.schedule(lanes, host=_campaign_host())
+    assert schedule.admitted_count == 1
+    assert all(
+        "gpu_concurrency" in decision.reasons
+        for decision in schedule.decisions
+        if not decision.admitted
+    )
+
+
+def test_fairness_avoids_starvation_and_timeouts_are_observable() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
+        PipelineHazard,
+        ResourcePolicy,
+        ResourceScheduler,
+        lane_requirements_for_resource_profile,
+    )
+
+    scheduler = ResourceScheduler(
+        ResourcePolicy(
+            max_lanes=2,
+            adaptive_enabled=True,
+            adaptive_starvation_age_ms=50,
+        )
+    )
+    schedule = scheduler.schedule(
+        [
+            lane_requirements_for_resource_profile(
+                "cpu-fresh",
+                "RP-CPU-S",
+                stage="analysis",
+                memory_bytes=0,
+                disk_bytes=0,
+                fairness_key="cpu",
+                queue_age_ms=1,
+            ),
+            lane_requirements_for_resource_profile(
+                "cpu-fresh-2",
+                "RP-CPU-S",
+                stage="analysis",
+                memory_bytes=0,
+                disk_bytes=0,
+                fairness_key="cpu",
+                queue_age_ms=1,
+            ),
+            lane_requirements_for_resource_profile(
+                "prover-starved",
+                "RP-PROVER",
+                stage="prover",
+                memory_bytes=0,
+                disk_bytes=0,
+                fairness_key="prover",
+                queue_age_ms=5_000,
+                requires_prover=True,
+            ),
+        ],
+        host=_campaign_host(worker_limit=2, available_worker_capacity=2),
+    )
+    assert "prover-starved" in schedule.admitted_lane_ids[:2]
+    receipt = schedule.fairness_overlap_receipt
+    assert receipt is not None
+    assert receipt.fairness_order[0] == "prover-starved"
+
+    timed = scheduler.evaluate(
+        lane_requirements_for_resource_profile(
+            "late-eval",
+            "RP-CPU-M",
+            stage="evaluation",
+            memory_bytes=0,
+            disk_bytes=0,
+            timeout_ms=100,
+            queue_age_ms=250,
+        ),
+        host=_campaign_host(),
+    )
+    assert timed.admitted is False
+    assert PipelineHazard.TIMED_OUT.value in timed.reasons
+
+    decision, lease = scheduler.acquire(
+        lane_requirements_for_resource_profile(
+            "cancel-me",
+            "RP-CPU-S",
+            stage="analysis",
+            memory_bytes=0,
+            disk_bytes=0,
+        ),
+        host=_campaign_host(),
+    )
+    assert lease is not None
+    assert scheduler.cancel(lease, reason="operator_cancelled") is True
+    cancelled = scheduler.evaluate(
+        lane_requirements_for_resource_profile(
+            "cancel-me",
+            "RP-CPU-S",
+            stage="analysis",
+            memory_bytes=0,
+            disk_bytes=0,
+        ),
+        host=_campaign_host(),
+    )
+    assert cancelled.admitted is False
+    assert "cancelled" in cancelled.reasons
+    metrics = scheduler.metrics_snapshot(observed_at_ms=3_000)
+    assert metrics.by_stage["analysis"].cancelled >= 1

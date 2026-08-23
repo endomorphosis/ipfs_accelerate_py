@@ -7,8 +7,10 @@ from pathlib import Path
 import pytest
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     DATABASE_PROGRAM_JSON_ENV,
+    RUNTIME_REGISTRY_PATH_ENV,
     STATE_AUTHORITY_MODE_ENV,
     STATE_FAILOVER_POLICY_ENV,
+    STATE_QUACK_MUTATION_DIR_ENV,
     TASK_SOURCE_KIND_ENV,
     DatabaseProgramConfigError,
 )
@@ -152,10 +154,68 @@ def test_supervisor_round_trips_full_quack_authority_without_raw_credentials(
 
     child_env = supervisor_module._managed_daemon_child_environment(
         database_program=program,
+        repo_root=tmp_path,
     )
     assert child_env[STATE_AUTHORITY_MODE_ENV] == "quack"
     assert child_env[TASK_SOURCE_KIND_ENV] == "duckdb"
+    assert child_env[RUNTIME_REGISTRY_PATH_ENV] == str(
+        (tmp_path / "state" / "registry").resolve()
+    )
+    assert child_env[STATE_QUACK_MUTATION_DIR_ENV] == str(
+        (tmp_path / "state" / "registry" / "mutations").resolve()
+    )
     assert "QUACK_TOKEN" not in child_env
+
+
+
+def test_managed_daemon_forwards_env_secret_handle_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("QUACK_TOKEN", "admitted-parent-token")
+    (tmp_path / "tasks.md").write_text("# Tasks\n", encoding="utf-8")
+    (tmp_path / "state").mkdir()
+    args = supervisor_module.parse_args(
+        [
+            "--todo-path",
+            str(tmp_path / "tasks.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--worktree-root",
+            str(tmp_path / "worktrees"),
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "quack",
+            "--endpoint-secret-handle",
+            "env://QUACK_TOKEN",
+            "--quack-endpoint",
+            "quack:127.0.0.1:45123",
+            "--state-store-id",
+            "control.duckdb",
+            "--state-store-generation",
+            "gen-7",
+            "--state-schema-revision",
+            "schema-v1",
+            "--event-store-path",
+            "state/events",
+            "--runtime-registry-path",
+            "state/registry",
+            "--export-profile",
+            "operator-export",
+            "--state-failover-policy",
+            "fail_closed",
+        ]
+    )
+    program = supervisor_module.database_program_from_cli_namespace(
+        args,
+        environ={},
+    )
+    child_env = supervisor_module._managed_daemon_child_environment(
+        database_program=program,
+        repo_root=tmp_path,
+    )
+    assert child_env["QUACK_TOKEN"] == "admitted-parent-token"
 
 
 def test_direct_supervisor_round_trips_embedded_one_writer_authority(

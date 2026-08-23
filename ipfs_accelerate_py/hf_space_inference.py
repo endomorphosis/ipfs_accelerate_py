@@ -119,9 +119,7 @@ def _exception_text(value: object) -> str:
     chain = list(_exception_chain(value))
     if not chain:
         return str(value or "").casefold()
-    return " | ".join(
-        f"{type(error).__name__}: {error}" for error in chain
-    ).casefold()
+    return " | ".join(f"{type(error).__name__}: {error}" for error in chain).casefold()
 
 
 def is_stale_gradio_file_error(value: object) -> bool:
@@ -236,9 +234,7 @@ class RefreshableGradioFile:
             if self._value is None:
                 uploaded = self._uploader()
                 if not isinstance(uploaded, Mapping):
-                    raise TypeError(
-                        "Gradio file uploader must return a mapping"
-                    )
+                    raise TypeError("Gradio file uploader must return a mapping")
                 self._value = dict(uploaded)
             return dict(self._value)
 
@@ -274,7 +270,7 @@ class RefreshableGradioFile:
                 retry_number = attempt + 1
                 if on_retry is not None:
                     on_retry(error, retry_number)
-                delay = backoff * (multiplier ** attempt)
+                delay = backoff * (multiplier**attempt)
                 if delay > 0:
                     self._sleeper(delay)
         raise AssertionError("unreachable")
@@ -403,9 +399,7 @@ class HFBucketBackend(OutputBackend):
             or os.getenv("HUGGINGFACEHUB_API_TOKEN")
             or os.getenv("HUGGINGFACE_TOKEN")
         )
-        self.cli_executable = str(
-            cli_executable or os.getenv("HF_CLI_BIN") or "hf"
-        ).strip() or "hf"
+        self.cli_executable = str(cli_executable or os.getenv("HF_CLI_BIN") or "hf").strip() or "hf"
         self.timeout_seconds = max(1.0, float(timeout_seconds))
 
     def _env(self) -> dict[str, str]:
@@ -426,9 +420,7 @@ class HFBucketBackend(OutputBackend):
     def _object_path(value: str) -> str:
         """Normalize a CLI path or bucket URI to its bucket-relative path."""
 
-        candidate = urllib_parse.unquote(
-            str(value or "").strip()
-        ).replace("\\", "/")
+        candidate = urllib_parse.unquote(str(value or "").strip()).replace("\\", "/")
         if candidate.startswith("hf://"):
             parsed = urllib_parse.urlsplit(candidate)
             if parsed.scheme != "hf" or parsed.netloc != "buckets":
@@ -438,11 +430,7 @@ class HFBucketBackend(OutputBackend):
             if len(parts) < 3:
                 return ""
             candidate = "/".join(parts[2:])
-        parts = [
-            part
-            for part in candidate.strip("/").split("/")
-            if part and part != "."
-        ]
+        parts = [part for part in candidate.strip("/").split("/") if part and part != "."]
         if ".." in parts:
             return ""
         return "/".join(parts)
@@ -475,27 +463,20 @@ class HFBucketBackend(OutputBackend):
             ) from error
         if isinstance(parsed, list):
             if any(not isinstance(entry, Mapping) for entry in parsed):
-                raise HFBucketBackendError(
-                    "Hugging Face bucket listing entries are not objects"
-                )
+                raise HFBucketBackendError("Hugging Face bucket listing entries are not objects")
             return list(parsed)
         if isinstance(parsed, Mapping):
             for key in ("items", "files", "entries"):
                 entries = parsed.get(key)
                 if isinstance(entries, list):
-                    if any(
-                        not isinstance(entry, Mapping)
-                        for entry in entries
-                    ):
+                    if any(not isinstance(entry, Mapping) for entry in entries):
                         raise HFBucketBackendError(
                             "Hugging Face bucket listing entries are not objects"
                         )
                     return list(entries)
             if parsed.get("path"):
                 return [parsed]
-        raise HFBucketBackendError(
-            "Hugging Face bucket listing returned an unsupported payload"
-        )
+        raise HFBucketBackendError("Hugging Face bucket listing returned an unsupported payload")
 
     def _list_entries(self, remote_path: str, *, recursive: bool) -> list[Mapping[str, Any]]:
         arguments = [
@@ -509,19 +490,14 @@ class HFBucketBackend(OutputBackend):
         try:
             completed = self._run(arguments)
         except (OSError, subprocess.SubprocessError) as error:
-            raise HFBucketBackendError(
-                "Hugging Face bucket listing was unavailable"
-            ) from error
+            raise HFBucketBackendError("Hugging Face bucket listing was unavailable") from error
         if completed.returncode != 0:
             detail = str(
-                getattr(completed, "stderr", "")
-                or getattr(completed, "stdout", "")
-                or ""
+                getattr(completed, "stderr", "") or getattr(completed, "stdout", "") or ""
             ).strip()
             suffix = f": {detail[:500]}" if detail else ""
             raise HFBucketBackendError(
-                "Hugging Face bucket listing failed with exit code "
-                f"{completed.returncode}{suffix}"
+                f"Hugging Face bucket listing failed with exit code {completed.returncode}{suffix}"
             )
         if not isinstance(completed.stdout, str):
             # Some legacy callers inject a minimal CompletedProcess-like test
@@ -571,9 +547,7 @@ class HFBucketBackend(OutputBackend):
                 ) from error
             if completed.returncode != 0:
                 detail = str(
-                    getattr(completed, "stderr", "")
-                    or getattr(completed, "stdout", "")
-                    or ""
+                    getattr(completed, "stderr", "") or getattr(completed, "stdout", "") or ""
                 ).strip()
                 suffix = f": {detail[:500]}" if detail else ""
                 raise HFBucketBackendError(
@@ -588,9 +562,7 @@ class HFBucketBackend(OutputBackend):
                     "Hugging Face bucket download produced no readable file"
                 ) from error
             if len(content) > max_bytes:
-                raise HFBucketBackendError(
-                    "Hugging Face bucket object exceeds the download limit"
-                )
+                raise HFBucketBackendError("Hugging Face bucket object exceeds the download limit")
             return content
 
     def exists(self, remote_path: str) -> bool:
@@ -603,9 +575,7 @@ class HFBucketBackend(OutputBackend):
                 "blob",
             }:
                 continue
-            entry_path = self._object_path(
-                str(entry.get("path") or entry.get("name") or "")
-            )
+            entry_path = self._object_path(str(entry.get("path") or entry.get("name") or ""))
             if entry_path == expected_path:
                 return True
         return False
@@ -658,11 +628,7 @@ class HFSpaceClient:
             supplied = self.headers_factory()
             if supplied:
                 headers.update(
-                    {
-                        str(key): str(value)
-                        for key, value in supplied.items()
-                        if value is not None
-                    }
+                    {str(key): str(value) for key, value in supplied.items() if value is not None}
                 )
         return headers
 
@@ -769,22 +735,14 @@ class HFSpaceClient:
                 dependency_id = position
             inputs = dependency.get("inputs")
             raw_api_name = dependency.get("api_name")
-            api_name = (
-                normalize_api_name(raw_api_name)
-                if isinstance(raw_api_name, str)
-                else ""
-            )
+            api_name = normalize_api_name(raw_api_name) if isinstance(raw_api_name, str) else ""
             endpoints.append(
                 EndpointContract(
                     fn_index=dependency_id,
                     dependency_id=dependency_id,
-                    label=str(
-                        dependency.get("label") or f"fn_{dependency_id}"
-                    ),
+                    label=str(dependency.get("label") or f"fn_{dependency_id}"),
                     api_name=api_name,
-                    component_name=str(
-                        dependency.get("component_name") or "unknown"
-                    ),
+                    component_name=str(dependency.get("component_name") or "unknown"),
                     input_count=len(inputs) if isinstance(inputs, list) else None,
                 )
             )
@@ -797,11 +755,7 @@ class HFSpaceClient:
         """Return normalized, unique registered API names."""
 
         return sorted(
-            {
-                endpoint.api_name
-                for endpoint in self.get_endpoints(config)
-                if endpoint.api_name
-            }
+            {endpoint.api_name for endpoint in self.get_endpoints(config) if endpoint.api_name}
         )
 
     def resolve_fn_index(
@@ -825,10 +779,7 @@ class HFSpaceClient:
             if str(marker).strip()
         ]
         for endpoint in endpoints:
-            searchable = (
-                f"{endpoint.api_name} {endpoint.label} "
-                f"{endpoint.component_name}"
-            ).lower()
+            searchable = (f"{endpoint.api_name} {endpoint.label} {endpoint.component_name}").lower()
             if any(marker in searchable for marker in markers):
                 return endpoint.fn_index
         raise ValueError(f"Space api_name {api_name!r} was not found")
@@ -913,9 +864,7 @@ class HFSpaceClient:
         message = str(event.get("msg") or "")
         if message == "process_completed":
             if event.get("success") is False:
-                raise RuntimeError(
-                    f"Space {operation} failed: {event.get('output') or event}"
-                )
+                raise RuntimeError(f"Space {operation} failed: {event.get('output') or event}")
             output = event.get("output")
             return dict(output) if isinstance(output, Mapping) else dict(event)
         if message in {"process_failed", "queue_full"}:
@@ -983,13 +932,10 @@ class HFSpaceClient:
         """Wait for the terminal event on a submitted queue session."""
 
         timeout = (
-            self.timeout_seconds
-            if timeout_seconds is None
-            else max(1.0, float(timeout_seconds))
+            self.timeout_seconds if timeout_seconds is None else max(1.0, float(timeout_seconds))
         )
         stream_url = self._url(
-            "gradio_api/queue/data?session_hash="
-            f"{urllib_parse.quote(str(session_hash), safe='')}"
+            f"gradio_api/queue/data?session_hash={urllib_parse.quote(str(session_hash), safe='')}"
         )
         return self._wait_for_sse_result(
             stream_url,
@@ -1013,9 +959,7 @@ class HFSpaceClient:
         if not normalized_name:
             raise ValueError("api_name is required")
         timeout = (
-            self.timeout_seconds
-            if timeout_seconds is None
-            else max(1.0, float(timeout_seconds))
+            self.timeout_seconds if timeout_seconds is None else max(1.0, float(timeout_seconds))
         )
         encoded_name = urllib_parse.quote(normalized_name, safe="")
         response = self._session.post(
@@ -1028,17 +972,14 @@ class HFSpaceClient:
         submitted = response.json()
         if not isinstance(submitted, Mapping):
             raise ValueError("Gradio call response is not a JSON object")
-        event_id = str(
-            submitted.get("event_id") or submitted.get("eventId") or ""
-        ).strip()
+        event_id = str(submitted.get("event_id") or submitted.get("eventId") or "").strip()
         if not event_id:
             if isinstance(submitted.get("data"), list):
                 return dict(submitted)
             raise ValueError("Gradio call response did not include event_id")
 
         stream_url = self._url(
-            f"gradio_api/call/{encoded_name}/"
-            f"{urllib_parse.quote(event_id, safe='')}"
+            f"gradio_api/call/{encoded_name}/{urllib_parse.quote(event_id, safe='')}"
         )
         return self._wait_for_sse_result(
             stream_url,
@@ -1053,9 +994,7 @@ class HFSpaceClient:
 
         if isinstance(reference, Mapping):
             direct_url = str(reference.get("url") or "").strip()
-            path = str(
-                reference.get("path") or reference.get("name") or ""
-            ).strip()
+            path = str(reference.get("path") or reference.get("name") or "").strip()
         else:
             direct_url = str(reference or "").strip()
             path = direct_url
@@ -1077,12 +1016,9 @@ class HFSpaceClient:
         if isinstance(reference, Mapping):
             inline_bytes = reference.get("_inline_bytes")
             if isinstance(inline_bytes, (bytes, bytearray)):
-                name = str(
-                    reference.get("name") or reference.get("path") or ""
-                )
+                name = str(reference.get("name") or reference.get("path") or "")
                 return bytes(inline_bytes), (
-                    mimetypes.guess_type(name)[0]
-                    or "application/octet-stream"
+                    mimetypes.guess_type(name)[0] or "application/octet-stream"
                 )
         response = self._session.get(
             self.file_url(reference),
@@ -1092,10 +1028,7 @@ class HFSpaceClient:
         response.raise_for_status()
         return (
             response.content,
-            str(
-                response.headers.get("Content-Type")
-                or "application/octet-stream"
-            ),
+            str(response.headers.get("Content-Type") or "application/octet-stream"),
         )
 
     def probe_contract(
@@ -1138,9 +1071,7 @@ class HFSpaceClient:
                     and normalized not in available_names
                     and normalized.lstrip("/") not in available_names
                 ):
-                    summary["errors"].append(
-                        f"Expected endpoint {expected!r} not found"
-                    )
+                    summary["errors"].append(f"Expected endpoint {expected!r} not found")
             summary["available"] = not summary["errors"]
         except Exception as exc:
             summary["errors"].append(f"{type(exc).__name__}: {exc}")
@@ -1199,11 +1130,7 @@ class BatchState:
             "batchesCompleted": self.batches_completed,
             "failures": self.failures,
             "lastBatchId": self.last_batch_id,
-            **(
-                {"stopReason": self.stop_reason}
-                if self.stop_reason
-                else {}
-            ),
+            **({"stopReason": self.stop_reason} if self.stop_reason else {}),
         }
 
     @classmethod
@@ -1257,9 +1184,7 @@ class BatchProcessor:
         if not self.state_file.exists():
             return BatchState(batch_size=self.batch_size)
         try:
-            payload = json.loads(
-                self.state_file.read_text(encoding="utf-8")
-            )
+            payload = json.loads(self.state_file.read_text(encoding="utf-8"))
             if not isinstance(payload, Mapping):
                 raise ValueError("top level is not an object")
             required_fields = frozenset(
@@ -1277,8 +1202,7 @@ class BatchProcessor:
             missing_fields = sorted(required_fields - payload.keys())
             if missing_fields:
                 raise ValueError(
-                    "checkpoint is missing required fields: "
-                    + ", ".join(missing_fields)
+                    "checkpoint is missing required fields: " + ", ".join(missing_fields)
                 )
             integer_fields = (
                 "schemaVersion",
@@ -1304,9 +1228,7 @@ class BatchProcessor:
             state.validate()
             return state
         except (OSError, TypeError, ValueError) as error:
-            raise RuntimeError(
-                f"Invalid batch checkpoint: {self.state_file}"
-            ) from error
+            raise RuntimeError(f"Invalid batch checkpoint: {self.state_file}") from error
 
     def save_state(self, state: BatchState) -> None:
         state.validate()
@@ -1327,11 +1249,7 @@ class BatchProcessor:
     def calculate_retry_backoff(self, attempt: int) -> float:
         return min(
             self.retry_backoff_max_seconds,
-            self.retry_backoff_seconds
-            * (
-                self.retry_backoff_multiplier
-                ** max(0, int(attempt))
-            ),
+            self.retry_backoff_seconds * (self.retry_backoff_multiplier ** max(0, int(attempt))),
         )
 
     def process_batch(
@@ -1354,11 +1272,7 @@ class BatchProcessor:
         del output_batch_id  # Reserved for backend-specific subclasses.
         for attempt in range(self.retry_attempts):
             try:
-                payload = list(
-                    payload_builder(items)
-                    if payload_builder is not None
-                    else items
-                )
+                payload = list(payload_builder(items) if payload_builder is not None else items)
                 if use_queue:
                     session_hash = self.client.queue_join(
                         endpoint_fn_index,
@@ -1368,11 +1282,7 @@ class BatchProcessor:
                         session_hash,
                         timeout_seconds=queue_timeout_seconds,
                     )
-                    result = (
-                        response.get("data")
-                        if isinstance(response, Mapping)
-                        else None
-                    )
+                    result = response.get("data") if isinstance(response, Mapping) else None
                     outputs = list(result) if isinstance(result, list) else []
                 else:
                     outputs = self.client.call_endpoint(

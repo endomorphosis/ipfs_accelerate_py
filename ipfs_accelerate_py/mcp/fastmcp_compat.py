@@ -645,7 +645,11 @@ def ensure_register_resource_compat(mcp: Any) -> Any:
         # function accepts parameters.
         try:
             sig = inspect.signature(inspect.unwrap(function))
-            params = [p for p in sig.parameters.values() if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)]
+            params = [
+                p
+                for p in sig.parameters.values()
+                if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)
+            ]
         except Exception:
             params = []
 

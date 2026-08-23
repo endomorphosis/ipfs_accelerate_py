@@ -16,7 +16,9 @@ class _DummyServer:
         self.tools = {}
         self.mcp = None
 
-    def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+    def register_tool(
+        self, name, function, description, input_schema, execution_context=None, tags=None
+    ):
         self.tools[name] = {
             "function": function,
             "description": description,

@@ -149,8 +149,16 @@ def test_graph_separates_uncovered_weak_stale_contradicted_and_verified() -> Non
 
 def test_dynamic_findings_attach_to_best_registered_goal_and_keep_unmapped_bucket() -> None:
     goals = [
-        _goal("G-CACHE", "Cache invalidation preserves runtime consistency.", title="Runtime cache invalidation"),
-        _goal("G-UI", "Navigation controls meet accessibility rules.", title="Accessible navigation UI"),
+        _goal(
+            "G-CACHE",
+            "Cache invalidation preserves runtime consistency.",
+            title="Runtime cache invalidation",
+        ),
+        _goal(
+            "G-UI",
+            "Navigation controls meet accessibility rules.",
+            title="Accessible navigation UI",
+        ),
     ]
     findings = [
         {

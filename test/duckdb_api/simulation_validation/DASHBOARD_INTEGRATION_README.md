@@ -75,10 +75,10 @@ To enable dashboard integration, use the following constructor parameters for `V
 ```python
 connector = ValidationVisualizerDBConnector(
     db_integration=db_integration,  # Optional, will create one if not provided
-    visualizer=visualizer,          # Optional, will create one if not provided
-    dashboard_integration=True,     # Enable dashboard integration
+    visualizer=visualizer,  # Optional, will create one if not provided
+    dashboard_integration=True,  # Enable dashboard integration
     dashboard_url="http://dashboard.example.com/api",  # Dashboard API URL
-    dashboard_api_key="your_api_key_here"             # API key for authentication
+    dashboard_api_key="your_api_key_here",  # API key for authentication
 )
 ```
 
@@ -96,8 +96,8 @@ result = connector.create_dashboard_panel_from_db(
     dashboard_id="my_dashboard",
     panel_title="MAPE Comparison",
     refresh_interval=60,  # Refresh every 60 seconds
-    width=6,              # Width in grid units
-    height=4              # Height in grid units
+    width=6,  # Width in grid units
+    height=4,  # Height in grid units
 )
 ```
 
@@ -111,14 +111,14 @@ result = connector.create_comprehensive_monitoring_dashboard(
     dashboard_title="BERT GPU Monitoring Dashboard",
     dashboard_description="Comprehensive monitoring of BERT model on RTX 3080",
     refresh_interval=60,  # Default refresh interval for panels
-    include_panels=[      # List of panel types to include
+    include_panels=[  # List of panel types to include
         "mape_comparison",
         "hardware_heatmap",
         "time_series",
-        "simulation_vs_hardware", 
+        "simulation_vs_hardware",
         "drift_detection",
-        "calibration_effectiveness"
-    ]
+        "calibration_effectiveness",
+    ],
 )
 
 # Access the dashboard URL
@@ -138,9 +138,9 @@ result = connector.set_up_real_time_monitoring(
         "throughput_mape": 15.0,  # Alert if MAPE exceeds 15%
         "latency_mape": 15.0,
         "memory_mape": 20.0,
-        "power_mape": 25.0
+        "power_mape": 25.0,
     },
-    dashboard_id="my_dashboard"  # Add monitoring panels to existing dashboard
+    dashboard_id="my_dashboard",  # Add monitoring panels to existing dashboard
 )
 ```
 
@@ -153,7 +153,7 @@ result = connector.create_mape_comparison_chart_from_db(
     model_ids=["bert-base-uncased"],
     metric_name="throughput_items_per_second",
     dashboard_id="my_dashboard",
-    create_dashboard_panel=True
+    create_dashboard_panel=True,
 )
 
 # Create a time series chart as a dashboard panel
@@ -162,7 +162,7 @@ result = connector.create_time_series_chart_from_db(
     hardware_id="gpu_rtx3080",
     model_id="bert-base-uncased",
     dashboard_id="my_dashboard",
-    create_dashboard_panel=True
+    create_dashboard_panel=True,
 )
 ```
 

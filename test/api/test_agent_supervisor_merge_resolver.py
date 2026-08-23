@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     active_merge_matches_payload,
     build_merge_prompt,
+    invoke_llm_resolver,
     latest_failed_merge_event,
     resolver_payload,
     validate_resolved_paths,
@@ -109,16 +112,10 @@ def test_merge_prompt_restores_only_exact_affected_gitlinks_without_recursion(
         repo_root=repo,
     )
 
-    assert (
-        "git -c submodule.recurse=false submodule update --init -- <exact-path>"
-        in prompt
-    )
+    assert "git -c submodule.recurse=false submodule update --init -- <exact-path>" in prompt
     assert "git submodule update --init --recursive" not in prompt
     assert "never run a recursive or repository-wide submodule update" in prompt
-    assert (
-        "only when that exact nested path is itself conflicted or explicitly declared"
-        in prompt
-    )
+    assert "only when that exact nested path is itself conflicted or explicitly declared" in prompt
     assert "innermost first and working outward" in prompt
 
 
@@ -180,7 +177,9 @@ def test_resolution_validation_rejects_markers_and_invalid_python(tmp_path: Path
     marked = tmp_path / "marked.py"
     invalid = tmp_path / "invalid.py"
     clean.write_text("value = 1\n", encoding="utf-8")
-    marked.write_text("<<<<<<< HEAD\nvalue = 1\n=======\nvalue = 2\n>>>>>>> branch\n", encoding="utf-8")
+    marked.write_text(
+        "<<<<<<< HEAD\nvalue = 1\n=======\nvalue = 2\n>>>>>>> branch\n", encoding="utf-8"
+    )
     invalid.write_text("def broken(\n", encoding="utf-8")
 
     result = validate_resolved_paths(tmp_path, ["clean.py", "marked.py", "invalid.py"])
@@ -206,3 +205,49 @@ def test_resolution_validation_expands_changed_files_in_nested_git_repo(tmp_path
     assert result["valid"] is False
     assert result["expanded_paths"] == ["nested/broken.py"]
     assert result["syntax_errors"][0]["path"] == "nested/broken.py"
+
+
+def test_external_resolver_child_cannot_observe_state_authority_environment(
+    monkeypatch, tmp_path: Path
+) -> None:
+    probe = tmp_path / "environment_probe.py"
+    probe.write_text(
+        "import json, os\n"
+        "names = (\n"
+        "    'IPFS_ACCELERATE_AGENT_QUACK_TOKEN',\n"
+        "    'QUACK_TOKEN',\n"
+        "    'IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR',\n"
+        "    'IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH',\n"
+        "    'IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON',\n"
+        "    'TEST_PROVIDER_API_KEY',\n"
+        ")\n"
+        "print(json.dumps({name: os.environ.get(name) for name in names}))\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "state-secret")
+    monkeypatch.setenv("QUACK_TOKEN", "owner-secret")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", "/private/quack-mutations"
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH", "/private/runtime-registry"
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", '{"authority_mode":"quack"}'
+    )
+    monkeypatch.setenv("TEST_PROVIDER_API_KEY", "provider-secret")
+
+    result = invoke_llm_resolver(
+        {"found": True, "repo_root": str(tmp_path), "prompt": "resolve"},
+        command_template=f"{shlex.quote(sys.executable)} {shlex.quote(str(probe))}",
+        timeout_seconds=5,
+    )
+
+    assert result["applied"] is True
+    observed = json.loads(result["llm_stdout"])
+    assert observed["TEST_PROVIDER_API_KEY"] == "provider-secret"
+    assert observed["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] is None
+    assert observed["QUACK_TOKEN"] is None
+    assert observed["IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"] is None
+    assert observed["IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"] is None
+    assert observed["IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON"] is None

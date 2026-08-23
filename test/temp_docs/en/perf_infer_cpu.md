@@ -29,7 +29,11 @@ Optimum provides the [`~optimum.onnxruntime.ORTModel`] class for loading ONNX mo
 from transformers import AutoTokenizer, pipeline
 from optimum.onnxruntime import ORTModelForQuestionAnswering
 
-onnx_qa = pipeline("question-answering", model="optimum/roberta-base-squad2", tokenizer="deepset/roberta-base-squad2")
+onnx_qa = pipeline(
+    "question-answering",
+    model="optimum/roberta-base-squad2",
+    tokenizer="deepset/roberta-base-squad2",
+)
 
 question = "What's my name?"
 context = "My name is Philipp and I live in Nuremberg."

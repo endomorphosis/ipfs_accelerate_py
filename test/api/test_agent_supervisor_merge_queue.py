@@ -403,15 +403,11 @@ def test_batch_claims_have_a_deterministic_total_order_and_unique_fences(
     (
         lambda claimed: replace(claimed, consumer_id="merge-train:impostor"),
         lambda claimed: replace(claimed, claim_token="stale-token"),
-        lambda claimed: replace(
-            claimed, claim_generation=max(0, claimed.claim_generation - 1)
-        ),
+        lambda claimed: replace(claimed, claim_generation=max(0, claimed.claim_generation - 1)),
     ),
     ids=("wrong-owner", "wrong-token", "stale-generation"),
 )
-def test_completion_requires_the_exact_current_claim_fence(
-    tmp_path: Path, stale_request
-) -> None:
+def test_completion_requires_the_exact_current_claim_fence(tmp_path: Path, stale_request) -> None:
     queue = MergeQueue(tmp_path / "queue")
     pending = _enqueue(queue, 0)
     claimed = queue.dequeue(consumer_id="merge-train:owner")
@@ -525,9 +521,7 @@ def test_merge_debt_stops_additional_claims_until_a_slot_is_released(
     queue.complete(claimed[0])
     replacement = queue.dequeue(consumer_id="merge-train:other")
     assert replacement is not None
-    assert replacement.request_id not in {
-        request.request_id for request in claimed
-    }
+    assert replacement.request_id not in {request.request_id for request in claimed}
     assert queue.status()["merge_debt"] == 2
 
 
@@ -631,9 +625,7 @@ def test_failed_validation_is_quarantined_with_a_durable_receipt(
     assert payload["status"] == "quarantined"
     assert payload["failure_reason"] == "post-merge validation failed"
     assert payload["receipt_type"] == "merge_quarantine"
-    assert payload["metadata"]["quarantine"] == {
-        "validation_receipt_id": "sha256:failed"
-    }
+    assert payload["metadata"]["quarantine"] == {"validation_receipt_id": "sha256:failed"}
 
     restarted = MergeQueue(queue_path)
     stored = restarted.get(pending.request_id)
@@ -720,9 +712,7 @@ def test_bound_main_consumer_cannot_claim_benchmark_or_legacy_request(
         consumer_id="merge-train:main",
     )
 
-    assert [request.request_id for request in claimed_by_main] == [
-        main.request_id
-    ]
+    assert [request.request_id for request in claimed_by_main] == [main.request_id]
     assert main_queue.pending_count() == 0
     assert main_queue.processing_count() == 1
     assert main_queue.active_canonical_task_ids() == {"canonical-main"}
@@ -732,9 +722,7 @@ def test_bound_main_consumer_cannot_claim_benchmark_or_legacy_request(
     assert benchmark_queue.get(legacy.request_id).status == "pending"  # type: ignore[union-attr]
     with pytest.raises(MergeQueueFenceError, match="target differs"):
         main_queue.cancel(benchmark.request_id)
-    claimed_by_benchmark = benchmark_queue.dequeue(
-        consumer_id="merge-train:benchmark"
-    )
+    claimed_by_benchmark = benchmark_queue.dequeue(consumer_id="merge-train:benchmark")
     assert claimed_by_benchmark is not None
     assert claimed_by_benchmark.request_id == benchmark.request_id
     assert main_queue.owns_claim(claimed_by_benchmark) is False
@@ -837,3 +825,184 @@ def test_bloated_store_rebuild_preserves_live_rows(
     assert stored.commit_sha == pending.commit_sha
     assert stored.status == "pending"
     assert rebuilt.database_path.stat().st_size < 8 * 1024 * 1024
+
+
+def test_queue_claim_pending_request_never_claims_a_fairer_foreign_request(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    fairer = queue.enqueue(
+        branch_name="implementation/fairer",
+        task_id="FAIRER",
+        priority="P0",
+        commit_sha="a" * 40,
+    )
+    selected = queue.enqueue(
+        branch_name="implementation/exact",
+        task_id="EXACT",
+        priority="P3",
+        commit_sha="b" * 40,
+    )
+
+    claimed = queue.claim_pending_request(
+        selected.request_id,
+        consumer_id="request-routed-recovery",
+    )
+
+    assert claimed is not None
+    assert claimed.request_id == selected.request_id
+    assert claimed.consumer_id == "request-routed-recovery"
+    stored_fairer = queue.get(fairer.request_id)
+    assert stored_fairer is not None
+    assert stored_fairer.status == "pending"
+    assert [item.request_id for item in queue.pending_requests()] == [
+        fairer.request_id
+    ]
+
+
+def test_bound_quarantine_snapshot_filters_target_before_limit(
+    tmp_path: Path,
+) -> None:
+    queue_dir = tmp_path / "queue"
+    producer = MergeQueue(queue_dir, max_queue_size=32)
+    for index in range(6):
+        foreign = producer.enqueue(
+            branch_name=f"implementation/foreign-{index}",
+            task_id=f"FOREIGN-{index}",
+            commit_sha=f"{index + 1:040x}",
+            target_repository_id="repository:foreign",
+            target_branch="main",
+        )
+        producer.quarantine(foreign, reason="foreign terminal row")
+    selected = producer.enqueue(
+        branch_name="implementation/selected-target",
+        task_id="SELECTED-TARGET",
+        commit_sha="f" * 40,
+        target_repository_id="repository:selected",
+        target_branch="main",
+    )
+    producer.quarantine(
+        selected,
+        reason="post_merge_declared_outputs_missing",
+    )
+    consumer = MergeQueue(
+        queue_dir,
+        target_repository_id="repository:selected",
+        target_branch="main",
+        require_target_binding=True,
+    )
+
+    visible = consumer.quarantined_requests(limit=1)
+
+    assert [request.request_id for request in visible] == [
+        selected.request_id
+    ]
+
+
+def test_completed_recovery_snapshot_filters_and_paginates_before_limit(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id="repository:selected",
+        target_branch="main",
+        require_target_binding=True,
+    )
+    completion_schema = "repair-completion@test"
+    completion_reason = "post_merge_declared_outputs_repaired"
+
+    def complete(task_id: str, *, repair: bool) -> MergeRequest:
+        request = queue.enqueue(
+            branch_name=f"implementation/{task_id.casefold()}",
+            task_id=task_id,
+            commit_sha=(task_id[-1].casefold() * 40),
+        )
+        claimed = queue.claim_pending_request(
+            request.request_id,
+            consumer_id="fixture",
+        )
+        assert claimed is not None
+        queue.complete(
+            claimed,
+            metadata=(
+                {
+                    "schema": completion_schema,
+                    "reason": completion_reason,
+                }
+                if repair
+                else {"schema": "ordinary-completion@test"}
+            ),
+        )
+        stored = queue.get(request.request_id)
+        assert stored is not None
+        return stored
+
+    older = complete("TASK-A", repair=True)
+    complete("TASK-B", repair=False)
+    newer = complete("TASK-C", repair=True)
+
+    first_page = queue.completed_requests(
+        limit=1,
+        completion_schema=completion_schema,
+        completion_reason=completion_reason,
+    )
+    second_page = queue.completed_requests(
+        limit=1,
+        completion_schema=completion_schema,
+        completion_reason=completion_reason,
+        before_request_id=newer.request_id,
+    )
+
+    assert [request.request_id for request in first_page] == [
+        newer.request_id
+    ]
+    assert [request.request_id for request in second_page] == [
+        older.request_id
+    ]
+
+
+def test_active_recovery_snapshot_keyset_reaches_later_same_target_row(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id="repository:selected",
+        target_branch="main",
+        require_target_binding=True,
+    )
+    rows = []
+    for index in range(3):
+        request = queue.enqueue(
+            branch_name=f"implementation/recovery-{index}",
+            task_id=f"RECOVERY-{index}",
+            commit_sha=f"{index + 1:040x}",
+        )
+        claimed = queue.claim_pending_request(
+            request.request_id,
+            consumer_id="fixture",
+        )
+        assert claimed is not None
+        queue.quarantine(
+            claimed,
+            reason="post_merge_declared_outputs_missing",
+        )
+        stored = queue.get(request.request_id)
+        assert stored is not None
+        rows.append(stored)
+
+    first_page = queue.quarantined_requests(
+        limit=2,
+        after_request_id="",
+    )
+    second_page = queue.quarantined_requests(
+        limit=2,
+        after_request_id=first_page[-1].request_id,
+    )
+
+    assert [request.request_id for request in first_page] == [
+        rows[0].request_id,
+        rows[1].request_id,
+    ]
+    assert [request.request_id for request in second_page] == [
+        rows[2].request_id
+    ]

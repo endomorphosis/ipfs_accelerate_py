@@ -29,14 +29,16 @@ class TestMCPServerUNI171StorageTools(unittest.TestCase):
         self.assertGreaterEqual(len(all_of), 1)
 
         first_rule = all_of[0]
-        then_required = ((first_rule.get("then") or {}).get("required") or [])
+        then_required = (first_rule.get("then") or {}).get("required") or []
         self.assertIn("collection_name", then_required)
 
     def test_manage_collections_rejects_missing_collection_name_for_create(self) -> None:
         async def _run() -> None:
             result = await native_storage_tools.manage_collections(action="create")
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("collection_name required for create action", str(result.get("error", "")))
+            self.assertIn(
+                "collection_name required for create action", str(result.get("error", ""))
+            )
 
         anyio.run(_run)
 

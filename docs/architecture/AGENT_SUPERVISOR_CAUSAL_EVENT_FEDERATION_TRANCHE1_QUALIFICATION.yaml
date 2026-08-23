@@ -1,0 +1,235 @@
+schema: ipfs_accelerate_py.agent_supervisor.casf_tranche1_qualification@1
+program_id: agent-supervisor-causal-event-federation-v1
+root_objective_id: CASF-G000
+report_kind: prelaunch_tranche_1_qualification
+report_state: draft_pending_post_launch_amendment
+recorded_date_utc: "2026-08-22"
+branch: codex/causal-event-supervisor-federation-v1
+evidence_rule: >-
+  pending and not_executed values are not zero, pass, unavailable, or completion;
+  only typed current-tree producer receipts may replace them
+
+board_truth:
+  status: verified_planning_projection
+  task_count: 44
+  todo_count: 44
+  completed_count: 0
+  blocked_count: 0
+  sole_dependency_ready_task: CASF-000
+  tranche_1_task_acceptance: pending_canonical_producer_receipts
+  residual_implementation_tasks: CASF-013..043
+
+evidence_classes:
+  implementation:
+    status: locally_tested_final_tree_manifest_pending
+    includes:
+      - closed Tranche-1 contracts and negative validation
+      - normalized schema migration and typed repositories
+      - federation, supervisor, and logical-subagent registries
+      - sealed-HMAC local bootstrap authentication and scoped typed grants
+      - transactional event and outbox writes
+      - bounded subscriptions, routing, retries, backpressure, and dead letters
+      - exclusive typed state-owner event wait
+  local_bootstrap_authentication:
+    status: qualified_hermetic_path_live_receipt_pending
+    authority_expansion_permitted: false
+    live_federation_admission_receipt: null
+  exact_event_wait_path:
+    status: qualified_focused_local_tests
+    scope: server_owned_typed_wait_only
+    federation_wide_event_driven_qualification: false
+  nonclaims:
+    federation_event_driven: false
+    causally_coordinated: false
+    multi_supervisor: false
+    parallel: false
+    high_concurrency: false
+    token_efficient: false
+    production_ready: false
+    ducklake_promoted: false
+
+final_report:
+  starting_commit:
+    status: verified
+    value: 84a056e41e48a81d4484be43840196578d6c87da
+  ending_commit:
+    status: pending_post_launch_receipt
+    value: null
+  control_plane_generation:
+    status: pending_live_owner_receipt
+    value: null
+  schema_fingerprint:
+    status: pending_final_tree_materialization_receipt
+    value: null
+  quack_capability_and_environment:
+    status: pending_exact_post_launch_identity
+    implementation_evidence: compatible local preflight and typed exclusive-owner path
+    required_values:
+      - duckdb_version
+      - quack_extension_version
+      - extension_fingerprint
+      - endpoint_identity
+      - owner_process_birth
+    remote_mode_qualified: false
+  ducklake_capability_and_projection_state:
+    status: typed_unavailable_not_executed
+    authority: false
+    scheduling_prerequisite: false
+    implementation_tasks: CASF-031..032
+  federations_created:
+    status: pending_live_bootstrap_receipt
+    value: null
+  supervisors_created:
+    status: pending_live_bootstrap_receipt
+    value: null
+    target_scope: one_bounded_coordinator_only
+  logical_agents_registered:
+    status: pending_live_bootstrap_receipt
+    value: null
+  maximum_active_agents:
+    status: pending_live_observation
+    value: null
+  tasks_completed:
+    status: verified_authoritative_board_truth
+    value: 0
+  duplicate_work_suppressed:
+    status: not_executed
+    value: null
+  causal_graph_identities:
+    status: not_available_residual_work
+    value: []
+    task: CASF-013
+  abstraction_maps:
+    status: not_available_residual_work
+    value: []
+    task: CASF-015
+  intervention_validation:
+    status: not_executed
+    value: null
+  events_committed:
+    status: pending_live_receipt
+    value: null
+  events_delivered:
+    status: pending_live_receipt
+    value: null
+  duplicate_deliveries:
+    status: pending_replay_measurement
+    value: null
+  lost_events:
+    status: pending_replay_and_recovery_evidence
+    value: null
+  dead_letters:
+    status: pending_live_counter
+    value: null
+  supervisor_wakeups:
+    status: pending_live_wait_cursor_evidence
+    value: null
+  unnecessary_wakeups:
+    status: not_executed_causal_frontier_missing
+    value: null
+  idle_query_count:
+    status: pending_live_idle_observation
+    value: null
+  idle_cpu_and_wakeup_observations:
+    status: pending_live_no_event_interval
+    value: null
+  parallel_throughput:
+    status: not_executed_gate_closed
+    value: null
+  merge_conflicts:
+    status: not_executed
+    value: null
+  model_calls:
+    status: pending_live_receipt
+    value: null
+  remote_model_calls:
+    status: pending_live_receipt_provider_execution_not_admitted
+    value: null
+  input_and_output_tokens:
+    status: pending_live_accounting_receipts
+    input_tokens: null
+    output_tokens: null
+  context_reuse:
+    status: not_executed
+    value: null
+  proof_cache_reuse:
+    status: not_executed
+    value: null
+  validation_reuse:
+    status: not_executed
+    value: null
+  ducklake_projection_lag:
+    status: not_applicable_projection_typed_unavailable
+    value: null
+  failures_and_recovery:
+    status: partial_implementation_evidence_live_recovery_not_executed
+    value: null
+  tests_and_models_executed:
+    status: implementation_suites_executed_exact_final_tree_manifest_pending
+    test_families:
+      - contracts_and_unknown_fields
+      - schema_and_migration
+      - registries_budgets_and_capacity
+      - authenticated_trigger
+      - event_outbox_wait_subscription_router
+      - bootstrap_and_operator
+      - typed_state_owner_boundary
+    formal_model_results: []
+  tests_and_models_not_executed:
+    status: explicit
+    items:
+      - CASF-013..043 causal semantic parallel DuckLake control formal chaos and qualification suites
+      - 12-supervisor qualification
+      - 256-logical-agent and 64-active-slot qualification
+      - 1000-task and 100000-delivery qualification
+      - remote and multi-host qualification
+  safety_gate_results:
+    status: partial_implementation_evidence_not_conjunctively_qualified
+    locally_tested:
+      - closed-contract rejection
+      - local authentication and authorization negative paths
+      - typed exclusive state-owner boundary
+      - transactional outbox and idempotency paths
+      - bounded exact event wait
+    pending_or_not_executed:
+      - exact live launch and recovery gates
+      - causal correctness and frontier gates
+      - scale parallel merge and token gates
+      - full tenant secret idle and promotion gates
+  remaining_blockers:
+    status: open
+    items:
+      - canonical current-tree producer receipts for CASF-000..012
+      - real launch health and durable event acknowledgement receipt
+      - CASF-013..043
+      - causal frontier budget hierarchy and recovery before concurrency
+      - formal chaos idle scale throughput and token benchmarks
+      - DuckLake-specific promotion gates
+  qualification_level:
+    status: assigned
+    value: prelaunch_tranche_1_implementation_evidence_only
+  promotion_eligibility:
+    status: ineligible
+    value: false
+    prohibited_claims:
+      - federation_event_driven
+      - causally_coordinated
+      - multi_supervisor
+      - parallel_or_high_concurrency
+      - token_efficient
+      - production_ready
+      - ducklake_promoted
+  rollback_target:
+    status: verified
+    value: 84a056e41e48a81d4484be43840196578d6c87da
+    history_rewrite_permitted: false
+
+post_launch_required_bindings:
+  - ending_commit_and_tree
+  - schema_fingerprint_and_store_generation
+  - Quack_extension_endpoint_and_owner_process_birth
+  - authenticated_federation_supervisor_and_subagent_identities
+  - event_outbox_delivery_acknowledgement_and_cursor_identities
+  - current_runtime_lease_and_fence
+  - exact_health_classification
+  - bounded_idle_observations

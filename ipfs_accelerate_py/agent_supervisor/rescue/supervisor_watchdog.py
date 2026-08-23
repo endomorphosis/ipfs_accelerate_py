@@ -57,15 +57,11 @@ from ..runtime.scheduler_metrics import scheduler_snapshot, scheduler_state_even
 
 logger = logging.getLogger(__name__)
 
-SUPERVISOR_LIFECYCLE_STATES: Final[tuple[str, ...]] = (
-    tuple(state.value for state in SupervisorLifecycleState)
+SUPERVISOR_LIFECYCLE_STATES: Final[tuple[str, ...]] = tuple(
+    state.value for state in SupervisorLifecycleState
 )
-_LIFECYCLE_STATE_SET: Final[frozenset[str]] = frozenset(
-    SUPERVISOR_LIFECYCLE_STATES
-)
-_TRANSITIONAL_STATES: Final[frozenset[str]] = frozenset(
-    {"starting", "draining", "stopping"}
-)
+_LIFECYCLE_STATE_SET: Final[frozenset[str]] = frozenset(SUPERVISOR_LIFECYCLE_STATES)
+_TRANSITIONAL_STATES: Final[frozenset[str]] = frozenset({"starting", "draining", "stopping"})
 _INTENTIONAL_NON_RUNNING_STATES: Final[frozenset[str]] = frozenset(
     {"paused", "draining", "blocked", "stopping", "stopped", "failed"}
 )
@@ -181,9 +177,7 @@ class AutonomousUnstallPolicy:
             or self.rescue_execution_enabled
             or self.allow_provider_calls
         ) and not self.operating_policy_id.strip():
-            raise ValueError(
-                "rescue requires an explicit operating_policy_id"
-            )
+            raise ValueError("rescue requires an explicit operating_policy_id")
 
     @property
     def deterministic_policy(self) -> ProgrammaticRecoveryPolicy:
@@ -214,15 +208,10 @@ class AutonomousUnstallCoordinator:
         policy_root: str,
         run_cid: str,
         policy: AutonomousUnstallPolicy | None = None,
-        recovery_handlers: Mapping[
-            RescueOperation | str, Callable[[Any], Any]
-        ]
-        | None = None,
+        recovery_handlers: Mapping[RescueOperation | str, Callable[[Any], Any]] | None = None,
         health_probe: Callable[[], Mapping[str, Any]] | None = None,
         root_probe: Callable[[], Mapping[str, str]] | None = None,
-        quarantine_scope: Callable[
-            [Sequence[str], str, str], Mapping[str, Any] | None
-        ]
+        quarantine_scope: Callable[[Sequence[str], str, str], Mapping[str, Any] | None]
         | None = None,
         event_publisher: Callable[[str, Mapping[str, Any]], Any] | None = None,
         rescue_planner: RescuePlanner | None = None,
@@ -242,9 +231,7 @@ class AutonomousUnstallCoordinator:
         self.repository_root_cid = str(repository_root_cid).strip()
         self.policy_root = str(policy_root).strip()
         self.run_cid = str(run_cid).strip()
-        if not all(
-            (self.repository_root_cid, self.policy_root, self.run_cid)
-        ):
+        if not all((self.repository_root_cid, self.policy_root, self.run_cid)):
             raise ValueError("current repository, policy, and run roots are required")
         self.policy = policy or AutonomousUnstallPolicy()
         self.recovery_handlers = dict(recovery_handlers or {})
@@ -255,9 +242,7 @@ class AutonomousUnstallCoordinator:
         self.rescue_planner = rescue_planner
         self.rescue_request_factory = rescue_request_factory
         self.rescue_orchestrator = rescue_orchestrator
-        self.rescue_execution_request_factory = (
-            rescue_execution_request_factory
-        )
+        self.rescue_execution_request_factory = rescue_execution_request_factory
         self.clock_ms = clock_ms or (lambda: time.time_ns() // 1_000_000)
         self.state_path = self.state_dir / "autonomous-unstall-state.json"
         self.recovery_state_dir = self.state_dir / "autonomous-unstall-recovery"
@@ -305,9 +290,7 @@ class AutonomousUnstallCoordinator:
             or payload.get("schema") != AUTONOMOUS_UNSTALL_STATE_SCHEMA
             or not isinstance(payload.get("incidents"), dict)
         ):
-            return self._corrupt_state_fallback(
-                ValueError("unsupported autonomous unstall state")
-            )
+            return self._corrupt_state_fallback(ValueError("unsupported autonomous unstall state"))
         if "rescue_runtime" not in payload:
             payload["rescue_runtime"] = {}
         elif not isinstance(payload.get("rescue_runtime"), dict):
@@ -316,40 +299,23 @@ class AutonomousUnstallCoordinator:
             )
         try:
             for incident_cid, entry in payload["incidents"].items():
-                target_ids = entry.get("target_ids") if isinstance(
-                    entry, Mapping
-                ) else None
+                target_ids = entry.get("target_ids") if isinstance(entry, Mapping) else None
                 if (
                     not isinstance(incident_cid, str)
                     or not incident_cid.strip()
                     or not isinstance(entry, Mapping)
-                    or (
-                        entry.get("incident_cid")
-                        and entry.get("incident_cid") != incident_cid
-                    )
-                    or str(entry.get("phase") or "")
-                    not in _AUTONOMOUS_UNSTALL_PHASES
+                    or (entry.get("incident_cid") and entry.get("incident_cid") != incident_cid)
+                    or str(entry.get("phase") or "") not in _AUTONOMOUS_UNSTALL_PHASES
                     or not isinstance(target_ids, list)
-                    or any(
-                        not isinstance(item, str) or not item.strip()
-                        for item in target_ids
-                    )
+                    or any(not isinstance(item, str) or not item.strip() for item in target_ids)
                 ):
-                    raise ValueError(
-                        "invalid autonomous unstall incident entry"
-                    )
+                    raise ValueError("invalid autonomous unstall incident entry")
                 for key in ("created_at_ms", "updated_at_ms"):
                     if key not in entry:
                         continue
                     value = entry[key]
-                    if (
-                        isinstance(value, bool)
-                        or not isinstance(value, int)
-                        or value < 0
-                    ):
-                        raise ValueError(
-                            "invalid autonomous unstall incident timestamp"
-                        )
+                    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                        raise ValueError("invalid autonomous unstall incident timestamp")
             runtime = payload["rescue_runtime"]
             for key in (
                 "provider_calls",
@@ -360,28 +326,12 @@ class AutonomousUnstallCoordinator:
                 if key not in runtime:
                     continue
                 value = runtime[key]
-                if (
-                    isinstance(value, bool)
-                    or not isinstance(value, int)
-                    or value < 0
-                ):
-                    raise ValueError(
-                        f"invalid autonomous unstall runtime {key}"
-                    )
-            if (
-                "circuit_open" in runtime
-                and not isinstance(runtime["circuit_open"], bool)
-            ):
-                raise ValueError(
-                    "invalid autonomous unstall runtime circuit_open"
-                )
-            if (
-                "reason" in runtime
-                and not isinstance(runtime["reason"], str)
-            ):
-                raise ValueError(
-                    "invalid autonomous unstall runtime reason"
-                )
+                if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                    raise ValueError(f"invalid autonomous unstall runtime {key}")
+            if "circuit_open" in runtime and not isinstance(runtime["circuit_open"], bool):
+                raise ValueError("invalid autonomous unstall runtime circuit_open")
+            if "reason" in runtime and not isinstance(runtime["reason"], str):
+                raise ValueError("invalid autonomous unstall runtime reason")
         except (TypeError, ValueError) as exc:
             return self._corrupt_state_fallback(exc)
         return payload
@@ -389,9 +339,7 @@ class AutonomousUnstallCoordinator:
     def _corrupt_state_fallback(self, exc: BaseException) -> dict[str, Any]:
         """Preserve corrupt bytes and fail closed for uncertain rescue history."""
 
-        backup = self.state_path.with_name(
-            f"{self.state_path.name}.corrupt-{self.clock_ms()}"
-        )
+        backup = self.state_path.with_name(f"{self.state_path.name}.corrupt-{self.clock_ms()}")
         try:
             os.replace(self.state_path, backup)
         except OSError:
@@ -422,9 +370,7 @@ class AutonomousUnstallCoordinator:
             ordered = sorted(
                 incidents.items(),
                 key=lambda item: int(
-                    item[1].get("updated_at_ms", 0)
-                    if isinstance(item[1], Mapping)
-                    else 0
+                    item[1].get("updated_at_ms", 0) if isinstance(item[1], Mapping) else 0
                 ),
                 reverse=True,
             )
@@ -500,10 +446,7 @@ class AutonomousUnstallCoordinator:
         }:
             return False
         # pid_alive/alive without one of these semantic signals is not health.
-        return bool(
-            value.get("healthy") is True
-            or status in {"healthy", "ok", "recovered"}
-        )
+        return bool(value.get("healthy") is True or status in {"healthy", "ok", "recovered"})
 
     def _health(self) -> dict[str, Any]:
         if self.health_probe is None:
@@ -529,9 +472,7 @@ class AutonomousUnstallCoordinator:
         now_ms = self.clock_ms()
         previous = state["incidents"].get(incident_cid)
         previous_created_at = (
-            previous.get("created_at_ms")
-            if isinstance(previous, Mapping)
-            else None
+            previous.get("created_at_ms") if isinstance(previous, Mapping) else None
         )
         entry = {
             "incident_cid": incident_cid,
@@ -578,9 +519,7 @@ class AutonomousUnstallCoordinator:
     ) -> dict[str, Any]:
         effect: Mapping[str, Any] = {}
         if self.quarantine_scope is not None:
-            raw = self.quarantine_scope(
-                diagnosis.target_ids, diagnosis.incident_cid, reason
-            )
+            raw = self.quarantine_scope(diagnosis.target_ids, diagnosis.incident_cid, reason)
             if isinstance(raw, Mapping):
                 effect = dict(raw)
         entry = self._record(
@@ -633,6 +572,7 @@ class AutonomousUnstallCoordinator:
         wrapped: dict[RescueOperation | str, Callable[[Any], Any]] = {}
 
         for operation, handler in handlers.items():
+
             def invoke(
                 context: Any,
                 *,
@@ -673,10 +613,7 @@ class AutonomousUnstallCoordinator:
         *,
         evidence: Mapping[str, Any],
         prior_actions: Sequence[Mapping[str, Any]] = (),
-        recovery_handlers: Mapping[
-            RescueOperation | str, Callable[[Any], Any]
-        ]
-        | None = None,
+        recovery_handlers: Mapping[RescueOperation | str, Callable[[Any], Any]] | None = None,
     ) -> dict[str, Any]:
         """Run one finite incident-bound recovery pass."""
 
@@ -695,8 +632,7 @@ class AutonomousUnstallCoordinator:
         unknown = set(evidence).difference(_AUTONOMOUS_UNSTALL_EVIDENCE_SLOTS)
         if unknown:
             raise RecoveryDiagnosticError(
-                "unknown autonomous unstall evidence slots: "
-                + ", ".join(sorted(unknown))
+                "unknown autonomous unstall evidence slots: " + ", ".join(sorted(unknown))
             )
         with self._lock:
             roots = self._roots()
@@ -735,9 +671,7 @@ class AutonomousUnstallCoordinator:
                     "quarantined",
                     "rescue_previewed",
                 }:
-                    return self._result(
-                        diagnosis, existing, deduplicated=True
-                    )
+                    return self._result(diagnosis, existing, deduplicated=True)
 
             self._record(
                 state,
@@ -749,26 +683,16 @@ class AutonomousUnstallCoordinator:
                 reason_codes=list(diagnosis.reason_codes),
                 operating_policy={
                     "operating_policy_id": self.policy.operating_policy_id,
-                    "rescue_preview_enabled": (
-                        self.policy.rescue_preview_enabled
-                    ),
-                    "rescue_execution_enabled": (
-                        self.policy.rescue_execution_enabled
-                    ),
+                    "rescue_preview_enabled": (self.policy.rescue_preview_enabled),
+                    "rescue_execution_enabled": (self.policy.rescue_execution_enabled),
                     "allow_provider_calls": self.policy.allow_provider_calls,
                     "cooldown_ms": self.policy.cooldown_ms,
                     "deadline_ms": self.policy.deadline_ms,
-                    "max_total_attempts": (
-                        self.policy.deterministic_max_total_attempts
-                    ),
+                    "max_total_attempts": (self.policy.deterministic_max_total_attempts),
                     "max_actions": self.policy.deterministic_max_actions,
                     "max_provider_calls": self.policy.max_provider_calls,
-                    "max_rescue_executions": (
-                        self.policy.max_rescue_executions
-                    ),
-                    "circuit_breaker_failures": (
-                        self.policy.circuit_breaker_failures
-                    ),
+                    "max_rescue_executions": (self.policy.max_rescue_executions),
+                    "circuit_breaker_failures": (self.policy.circuit_breaker_failures),
                 },
             )
             handlers = {
@@ -782,18 +706,14 @@ class AutonomousUnstallCoordinator:
                 policy=self.policy.deterministic_policy,
                 clock_ms=self.clock_ms,
             )
-            deterministic_result: ProgrammaticRecoveryResult = (
-                controller.recover(diagnosis)
-            )
+            deterministic_result: ProgrammaticRecoveryResult = controller.recover(diagnosis)
             deterministic = {
                 "terminal_cid": deterministic_result.terminal_cid,
                 "recovered": deterministic_result.recovered,
                 "quarantined": deterministic_result.quarantined,
                 "deduplicated": deterministic_result.deduplicated,
                 "attempt_count": len(deterministic_result.attempts),
-                "attempts": [
-                    item.to_record() for item in deterministic_result.attempts
-                ],
+                "attempts": [item.to_record() for item in deterministic_result.attempts],
                 "exhaustion_receipt_cid": (
                     ""
                     if deterministic_result.exhaustion_receipt is None
@@ -855,10 +775,7 @@ class AutonomousUnstallCoordinator:
                     "rescue_not_permitted_after_deterministic_exhaustion",
                     deterministic=deterministic,
                 )
-            if (
-                self.rescue_planner is None
-                or self.rescue_request_factory is None
-            ):
+            if self.rescue_planner is None or self.rescue_request_factory is None:
                 return self._quarantine(
                     state,
                     diagnosis,
@@ -870,9 +787,7 @@ class AutonomousUnstallCoordinator:
             provider_calls = int(runtime.get("provider_calls") or 0)
             executions = int(runtime.get("executions") or 0)
             failures = int(runtime.get("consecutive_failures") or 0)
-            last_provider_call_ms = int(
-                runtime.get("last_provider_call_ms") or 0
-            )
+            last_provider_call_ms = int(runtime.get("last_provider_call_ms") or 0)
             if runtime.get("circuit_open") is True:
                 return self._quarantine(
                     state,
@@ -890,11 +805,7 @@ class AutonomousUnstallCoordinator:
                     deterministic=deterministic,
                 )
             now_ms = self.clock_ms()
-            if (
-                last_provider_call_ms
-                and now_ms
-                < last_provider_call_ms + self.policy.cooldown_ms
-            ):
+            if last_provider_call_ms and now_ms < last_provider_call_ms + self.policy.cooldown_ms:
                 return self._quarantine(
                     state,
                     diagnosis,
@@ -922,9 +833,7 @@ class AutonomousUnstallCoordinator:
                 exhaustion_receipt_cid=exhaustion.receipt_cid,
             )
             try:
-                planning_request = self.rescue_request_factory(
-                    diagnosis, exhaustion, roots
-                )
+                planning_request = self.rescue_request_factory(diagnosis, exhaustion, roots)
             except Exception as exc:
                 failures += 1
                 runtime["consecutive_failures"] = failures
@@ -1005,10 +914,7 @@ class AutonomousUnstallCoordinator:
                     quarantined=True,
                 )
                 return self._result(diagnosis, entry, deduplicated=False)
-            if (
-                self.rescue_orchestrator is None
-                or self.rescue_execution_request_factory is None
-            ):
+            if self.rescue_orchestrator is None or self.rescue_execution_request_factory is None:
                 return self._quarantine(
                     state,
                     diagnosis,
@@ -1038,10 +944,8 @@ class AutonomousUnstallCoordinator:
                 rescue=rescue,
             )
             try:
-                execution_request = (
-                    self.rescue_execution_request_factory(
-                        diagnosis, exhaustion, planning.plan, roots
-                    )
+                execution_request = self.rescue_execution_request_factory(
+                    diagnosis, exhaustion, planning.plan, roots
                 )
             except Exception as exc:
                 runtime["consecutive_failures"] = failures + 1
@@ -1055,9 +959,7 @@ class AutonomousUnstallCoordinator:
                     rescue=rescue,
                 )
             try:
-                execution = self.rescue_orchestrator.execute(
-                    execution_request
-                )
+                execution = self.rescue_orchestrator.execute(execution_request)
             except Exception as exc:
                 # The orchestrator may have crossed an effect boundary before
                 # failing.  Persist uncertainty and quarantine; never retry it.
@@ -1111,10 +1013,7 @@ class AutonomousUnstallCoordinator:
         *,
         evidence: Mapping[str, Any],
         prior_actions: Sequence[Mapping[str, Any]] = (),
-        recovery_handlers: Mapping[
-            RescueOperation | str, Callable[[Any], Any]
-        ]
-        | None = None,
+        recovery_handlers: Mapping[RescueOperation | str, Callable[[Any], Any]] | None = None,
     ) -> dict[str, Any]:
         """Serialize durable incident/provider state across processes."""
 
@@ -1187,11 +1086,7 @@ def _nonnegative_int(value: Any) -> int:
 def _timestamp_text_from_ms(value: int) -> str:
     if value <= 0:
         return ""
-    return (
-        datetime.fromtimestamp(value / 1000.0, timezone.utc)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.fromtimestamp(value / 1000.0, timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _status_payload(path: Path) -> dict[str, Any]:
@@ -1205,13 +1100,9 @@ def _status_payload(path: Path) -> dict[str, Any]:
 def _active_leases(payload: Mapping[str, Any]) -> list[str]:
     value = payload.get("active_leases")
     if isinstance(value, (list, tuple)):
-        return sorted(
-            {str(item).strip() for item in value if str(item).strip()}
-        )[:256]
+        return sorted({str(item).strip() for item in value if str(item).strip()})[:256]
     if isinstance(value, Mapping):
-        return sorted(
-            {str(item).strip() for item in value if str(item).strip()}
-        )[:256]
+        return sorted({str(item).strip() for item in value if str(item).strip()})[:256]
     lease_id = str(payload.get("lease_id") or "").strip()
     return [lease_id] if lease_id else []
 
@@ -1235,9 +1126,7 @@ def lifecycle_status_projection(
     alive = bool(pid_check.get("alive"))
     stale = bool(heartbeat_check.get("stale"))
     if not observed_state:
-        observed_state = "healthy" if alive and not stale else (
-            "degraded" if alive else "stopped"
-        )
+        observed_state = "healthy" if alive and not stale else ("degraded" if alive else "stopped")
     if alive and stale and observed_state not in _INTENTIONAL_NON_RUNNING_STATES:
         observed_state = "degraded"
     elif not alive and observed_state == "healthy":
@@ -1452,7 +1341,9 @@ def check_lane_pid(state_dir: Path, state_prefix: str) -> dict[str, Any]:
     return result
 
 
-def check_lane_heartbeat(state_dir: Path, state_prefix: str, *, timeout_seconds: float) -> dict[str, Any]:
+def check_lane_heartbeat(
+    state_dir: Path, state_prefix: str, *, timeout_seconds: float
+) -> dict[str, Any]:
     """Check if a lane has updated its status file recently."""
     status_path = state_dir / f"{state_prefix}_status.json"
     result: dict[str, Any] = {"status_path": str(status_path), "stale": False}
@@ -1498,22 +1389,16 @@ def check_lane_heartbeat(state_dir: Path, state_prefix: str, *, timeout_seconds:
         result["updated_at"] = str(status.get("updated_at") or "")
         result["updated_at_ms"] = status.get("updated_at_ms")
         result["state"] = _lifecycle_state(
-            status.get("state")
-            or status.get("lifecycle_state")
-            or status.get("status")
+            status.get("state") or status.get("lifecycle_state") or status.get("status")
         )
         result["active_leases"] = _active_leases(status)
         result["refill_state"] = status.get("refill_state")
         result["backpressure"] = bool(status.get("backpressure", False))
         raw_reasons = status.get("backpressure_reasons")
         result["backpressure_reasons"] = (
-            list(raw_reasons[:256])
-            if isinstance(raw_reasons, (list, tuple))
-            else []
+            list(raw_reasons[:256]) if isinstance(raw_reasons, (list, tuple)) else []
         )
-        result["terminal_reason"] = str(
-            status.get("terminal_reason") or status.get("reason") or ""
-        )
+        result["terminal_reason"] = str(status.get("terminal_reason") or status.get("reason") or "")
         result["transition_id"] = str(status.get("transition_id") or "")
         result["generation"] = status.get("generation") or 0
         result["fencing_epoch"] = status.get("fencing_epoch")
@@ -1534,9 +1419,7 @@ def check_lane_heartbeat(state_dir: Path, state_prefix: str, *, timeout_seconds:
 def _replace_pid_file(pid_path: Path, pid: int) -> None:
     """Atomically repair a PID file from a live canonical status record."""
 
-    temporary = pid_path.with_name(
-        f".{pid_path.name}.{os.getpid()}.{time.monotonic_ns()}.tmp"
-    )
+    temporary = pid_path.with_name(f".{pid_path.name}.{os.getpid()}.{time.monotonic_ns()}.tmp")
     try:
         temporary.write_text(f"{pid}\n", encoding="utf-8")
         os.replace(temporary, pid_path)
@@ -1551,8 +1434,7 @@ def restart_lane(
     lane_info: dict[str, Any],
     *,
     repo_root: Path,
-    lifecycle_transition: Callable[[Mapping[str, Any]], Mapping[str, Any]]
-    | None = None,
+    lifecycle_transition: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Delegate restart to an authorized fenced lifecycle transition.
 
@@ -1594,10 +1476,7 @@ def restart_lane(
         result.get("restarted")
         or result.get("succeeded")
         or result.get("status") == "succeeded"
-        or (
-            isinstance(transition, Mapping)
-            and transition.get("phase") == "committed"
-        )
+        or (isinstance(transition, Mapping) and transition.get("phase") == "committed")
     )
     result["restarted"] = restarted
     result.setdefault("pid_persisted", False)
@@ -1629,7 +1508,9 @@ def aggregate_logs(
         log_path_str = lane.get("log_path", "")
         if not log_path_str:
             continue
-        log_path = Path(log_path_str) if Path(log_path_str).is_absolute() else repo_root / log_path_str
+        log_path = (
+            Path(log_path_str) if Path(log_path_str).is_absolute() else repo_root / log_path_str
+        )
         if not log_path.exists():
             continue
 
@@ -1647,10 +1528,12 @@ def aggregate_logs(
 
             lines = tail_bytes.decode("utf-8", errors="replace").splitlines()[-max_lines_per_lane:]
             for line in lines:
-                aggregated.append({
-                    "lane": bundle_key,
-                    "line": line,
-                })
+                aggregated.append(
+                    {
+                        "lane": bundle_key,
+                        "line": line,
+                    }
+                )
         except OSError:
             continue
 
@@ -1692,17 +1575,10 @@ class SupervisorWatchdog:
         lane_timeout: float = 600.0,
         max_consecutive_restarts: int = 5,
         log_aggregation_dir: Path | None = None,
-        lifecycle_restart: Callable[
-            [Mapping[str, Any]], Mapping[str, Any]
-        ]
-        | None = None,
+        lifecycle_restart: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
         autonomous_unstall_policy: AutonomousUnstallPolicy | None = None,
-        autonomous_unstall_factory: Callable[..., AutonomousUnstallCoordinator]
-        | None = None,
-        control_event_publisher: Callable[
-            [str, Mapping[str, Any]], Any
-        ]
-        | None = None,
+        autonomous_unstall_factory: Callable[..., AutonomousUnstallCoordinator] | None = None,
+        control_event_publisher: Callable[[str, Mapping[str, Any]], Any] | None = None,
         rescue_planner: RescuePlanner | None = None,
         rescue_request_factory: Callable[
             [RecoveryDiagnosis, Any, Mapping[str, str]], RescuePlanningRequest
@@ -1724,16 +1600,12 @@ class SupervisorWatchdog:
         )
         self.lifecycle_restart = lifecycle_restart
         self.autonomous_unstall_policy = autonomous_unstall_policy
-        self.autonomous_unstall_factory = (
-            autonomous_unstall_factory or AutonomousUnstallCoordinator
-        )
+        self.autonomous_unstall_factory = autonomous_unstall_factory or AutonomousUnstallCoordinator
         self.control_event_publisher = control_event_publisher
         self.rescue_planner = rescue_planner
         self.rescue_request_factory = rescue_request_factory
         self.rescue_orchestrator = rescue_orchestrator
-        self.rescue_execution_request_factory = (
-            rescue_execution_request_factory
-        )
+        self.rescue_execution_request_factory = rescue_execution_request_factory
         self._consecutive_restart_counts: dict[str, int] = {}
         self._recent_restarts: dict[str, tuple[int, float]] = {}
         self._generation = 0
@@ -1746,10 +1618,7 @@ class SupervisorWatchdog:
         raw = manifest.get("autonomous_unstall_policy")
         if not isinstance(raw, Mapping):
             return None
-        allowed = {
-            item.name
-            for item in AutonomousUnstallPolicy.__dataclass_fields__.values()
-        }
+        allowed = {item.name for item in AutonomousUnstallPolicy.__dataclass_fields__.values()}
         values = {key: value for key, value in raw.items() if key in allowed}
         return AutonomousUnstallPolicy(**values)
 
@@ -1765,10 +1634,7 @@ class SupervisorWatchdog:
         pid_check: Mapping[str, Any],
         heartbeat_check: Mapping[str, Any],
     ) -> dict[str, Any] | None:
-        policy = (
-            self.autonomous_unstall_policy
-            or self._manifest_unstall_policy(manifest)
-        )
+        policy = self.autonomous_unstall_policy or self._manifest_unstall_policy(manifest)
         if policy is None or not policy.enabled:
             return None
         restart_info = dict(lane_started or lane)
@@ -1796,6 +1662,7 @@ class SupervisorWatchdog:
 
         handlers: dict[RescueOperation, Callable[[Any], Any]] = {}
         if self.lifecycle_restart is not None:
+
             def restart(context: Any) -> Mapping[str, Any]:
                 result = restart_lane(
                     restart_info,
@@ -1834,8 +1701,7 @@ class SupervisorWatchdog:
                 (
                     item
                     for item in current_lanes
-                    if isinstance(item, Mapping)
-                    and str(item.get("bundle_key") or "") == bundle_key
+                    if isinstance(item, Mapping) and str(item.get("bundle_key") or "") == bundle_key
                 ),
                 None,
             )
@@ -1852,26 +1718,17 @@ class SupervisorWatchdog:
             return {
                 "repository_root_cid": str(
                     current_manifest.get("repository_root_cid")
-                    or prompt_workflow_cid(
-                        {"watchdog-repository": identity}
-                    )
+                    or prompt_workflow_cid({"watchdog-repository": identity})
                 ),
                 "policy_root": str(
                     current_manifest.get("policy_root")
                     or prompt_workflow_cid(
-                        {
-                            "watchdog-policy": (
-                                policy.operating_policy_id
-                                or "deterministic-only"
-                            )
-                        }
+                        {"watchdog-policy": (policy.operating_policy_id or "deterministic-only")}
                     )
                 ),
                 "run_cid": str(
                     current_manifest.get("run_cid")
-                    or prompt_workflow_cid(
-                        {"watchdog-lane-run": identity}
-                    )
+                    or prompt_workflow_cid({"watchdog-lane-run": identity})
                 ),
             }
 
@@ -1885,9 +1742,7 @@ class SupervisorWatchdog:
             policy=policy,
             recovery_handlers=handlers,
             health_probe=current_health,
-            root_probe=lambda: current_roots(
-                read_lane_manifest(self.manifest_path)
-            ),
+            root_probe=lambda: current_roots(read_lane_manifest(self.manifest_path)),
             quarantine_scope=lambda targets, incident, reason: {
                 "target_ids": list(targets),
                 "incident_cid": incident,
@@ -1898,18 +1753,14 @@ class SupervisorWatchdog:
             rescue_planner=self.rescue_planner,
             rescue_request_factory=self.rescue_request_factory,
             rescue_orchestrator=self.rescue_orchestrator,
-            rescue_execution_request_factory=(
-                self.rescue_execution_request_factory
-            ),
+            rescue_execution_request_factory=(self.rescue_execution_request_factory),
         )
         return coordinator.unstall(
             evidence={
                 "status": {
                     "lane_id": bundle_key,
                     "state": heartbeat_check.get("state") or "degraded",
-                    "state_inconsistent": bool(
-                        heartbeat_check.get("state_inconsistent")
-                    ),
+                    "state_inconsistent": bool(heartbeat_check.get("state_inconsistent")),
                 },
                 "health": {
                     "lane_id": bundle_key,
@@ -1930,9 +1781,7 @@ class SupervisorWatchdog:
                 "heartbeat": {
                     "lane_id": bundle_key,
                     "stale": bool(heartbeat_check.get("stale")),
-                    "age_ms": int(
-                        float(heartbeat_check.get("age_seconds") or 0) * 1000
-                    ),
+                    "age_ms": int(float(heartbeat_check.get("age_seconds") or 0) * 1000),
                 },
             }
         )
@@ -2038,9 +1887,7 @@ class SupervisorWatchdog:
             heartbeat_check = check_lane_heartbeat(
                 state_dir, state_prefix, timeout_seconds=self.lane_timeout
             )
-            canonical_status = (
-                heartbeat_check.get("schema") == LIFECYCLE_STATUS_SCHEMA
-            )
+            canonical_status = heartbeat_check.get("schema") == LIFECYCLE_STATUS_SCHEMA
             observed_state = _lifecycle_state(heartbeat_check.get("state"))
             recovery: dict[str, Any] = {}
 
@@ -2064,9 +1911,7 @@ class SupervisorWatchdog:
                         _replace_pid_file(pid_path, status_pid)
                     except OSError as exc:
                         heartbeat_check["state_inconsistent"] = True
-                        heartbeat_check["state_reason"] = (
-                            f"pid_file_repair_error: {exc}"
-                        )
+                        heartbeat_check["state_reason"] = f"pid_file_repair_error: {exc}"
                     else:
                         recovery = {
                             "kind": "stale_pid_file",
@@ -2111,15 +1956,11 @@ class SupervisorWatchdog:
                     "kind": "restart_heartbeat_pending",
                     "pid": pid_check.get("pid"),
                 }
-            elif recent and (
-                not heartbeat_stale or pid_check.get("pid") != recent[0]
-            ):
+            elif recent and (not heartbeat_stale or pid_check.get("pid") != recent[0]):
                 self._recent_restarts.pop(bundle_key, None)
 
             terminal_process_conflict = (
-                canonical_status
-                and observed_state in {"stopped", "failed"}
-                and alive
+                canonical_status and observed_state in {"stopped", "failed"} and alive
             )
             if terminal_process_conflict:
                 inconsistent = True
@@ -2152,9 +1993,7 @@ class SupervisorWatchdog:
                     report["autonomous_unstall"] = unstall_result
                     if unstall_result.get("recovered"):
                         report["action"] = "autonomous_unstall_recovered"
-                        report["reason"] = str(
-                            unstall_result.get("reason") or ""
-                        )
+                        report["reason"] = str(unstall_result.get("reason") or "")
                         refreshed_pid = check_lane_pid(state_dir, state_prefix)
                         refreshed_heartbeat = check_lane_heartbeat(
                             state_dir,
@@ -2173,18 +2012,16 @@ class SupervisorWatchdog:
                             any(
                                 item.get("operation") == "restart_lane"
                                 and item.get("outcome") == "succeeded"
-                                for item in unstall_result.get(
-                                    "deterministic", {}
-                                ).get("attempts", ())
+                                for item in unstall_result.get("deterministic", {}).get(
+                                    "attempts", ()
+                                )
                                 if isinstance(item, Mapping)
                             )
                         )
                         continue
                     if unstall_result.get("quarantined"):
                         report["action"] = "autonomous_unstall_quarantined"
-                        report["reason"] = str(
-                            unstall_result.get("reason") or ""
-                        )
+                        report["reason"] = str(unstall_result.get("reason") or "")
                         report["status"] = lifecycle_status_projection(
                             pid_check=pid_check,
                             heartbeat_check=heartbeat_check,
@@ -2238,16 +2075,16 @@ class SupervisorWatchdog:
                     if self.lifecycle_restart is None:
                         # Keep the call shape compatible with injected test and
                         # deployment shims.  The built-in helper fails closed.
-                        restart_result = restart_lane(
-                            restart_info, repo_root=self.repo_root
-                        )
+                        restart_result = restart_lane(restart_info, repo_root=self.repo_root)
                     else:
                         restart_result = restart_lane(
                             restart_info,
                             repo_root=self.repo_root,
                             lifecycle_transition=self.lifecycle_restart,
                         )
-                    report["action"] = "restarted" if restart_result.get("restarted") else "restart_failed"
+                    report["action"] = (
+                        "restarted" if restart_result.get("restarted") else "restart_failed"
+                    )
                     report["restart_result"] = restart_result
                     if restart_result.get("restarted"):
                         restarts += 1
@@ -2278,22 +2115,14 @@ class SupervisorWatchdog:
                 # Healthy - reset consecutive restart counter
                 self._consecutive_restart_counts[bundle_key] = 0
                 if suppressed_state:
-                    if (
-                        not alive
-                        and observed_state
-                        in {"paused", "draining", "stopping"}
-                    ):
+                    if not alive and observed_state in {"paused", "draining", "stopping"}:
                         interrupted_state = observed_state
                         if interrupted_state == "stopping":
                             observed_state = "stopped"
-                            terminal_reason = (
-                                "stop_completed_after_process_exit"
-                            )
+                            terminal_reason = "stop_completed_after_process_exit"
                         else:
                             observed_state = "failed"
-                            terminal_reason = (
-                                f"{interrupted_state}_process_exited"
-                            )
+                            terminal_reason = f"{interrupted_state}_process_exited"
                         heartbeat_check["terminal_reason"] = terminal_reason
                         report["action"] = "control_recovery_required"
                         report["reason"] = terminal_reason
@@ -2338,9 +2167,7 @@ class SupervisorWatchdog:
             operator_snapshot = scheduler_snapshot(events).to_dict()
 
         timestamp = utc_now()
-        lane_states = [
-            str(item.get("status", {}).get("state") or "") for item in reports
-        ]
+        lane_states = [str(item.get("status", {}).get("state") or "") for item in reports]
         state_priority = (
             "failed",
             "blocked",
@@ -2354,17 +2181,11 @@ class SupervisorWatchdog:
             (
                 "stopped"
                 if not lane_states or all(state == "stopped" for state in lane_states)
-                else (
-                    "paused"
-                    if all(state == "paused" for state in lane_states)
-                    else "healthy"
-                )
+                else ("paused" if all(state == "paused" for state in lane_states) else "healthy")
             ),
         )
         timestamp_seconds = _timestamp_seconds(timestamp)
-        timestamp_ms = (
-            None if timestamp_seconds is None else int(timestamp_seconds * 1000)
-        )
+        timestamp_ms = None if timestamp_seconds is None else int(timestamp_seconds * 1000)
         status_timestamp = _timestamp_text_from_ms(timestamp_ms or 0)
         aggregate_leases = sorted(
             {
@@ -2386,16 +2207,13 @@ class SupervisorWatchdog:
             "active_lease_count": len(aggregate_leases),
             "refill_state": "idle",
             "backpressure": any(
-                bool(item.get("status", {}).get("backpressure"))
-                for item in reports
+                bool(item.get("status", {}).get("backpressure")) for item in reports
             ),
             "backpressure_reasons": sorted(
                 {
                     str(reason)
                     for item in reports
-                    for reason in item.get("status", {}).get(
-                        "backpressure_reasons", ()
-                    )
+                    for reason in item.get("status", {}).get("backpressure_reasons", ())
                 }
             )[:256],
             "terminal_reason": "",
@@ -2452,7 +2270,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=int(os.environ.get("WATCHDOG_MAX_CONSECUTIVE_RESTARTS", "5")),
     )
     parser.add_argument("--log-aggregation-dir", type=Path, default=None)
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
     return parser
 
 

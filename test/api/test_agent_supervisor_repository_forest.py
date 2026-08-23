@@ -401,16 +401,12 @@ def test_duplicate_aliases_rejected(tmp_path: Path) -> None:
                 ForestRootSpec(
                     alias="same",
                     root_path=repo_a,
-                    authority=RepositoryAuthority(
-                        mode=AuthorityMode.READ_WRITE.value
-                    ),
+                    authority=RepositoryAuthority(mode=AuthorityMode.READ_WRITE.value),
                 ),
                 ForestRootSpec(
                     alias="same",
                     root_path=repo_b,
-                    authority=RepositoryAuthority(
-                        mode=AuthorityMode.READ_ONLY.value
-                    ),
+                    authority=RepositoryAuthority(mode=AuthorityMode.READ_ONLY.value),
                 ),
             ),
             sole_write_alias="same",
@@ -443,16 +439,12 @@ def test_sibling_roots_never_share_git_authority(tmp_path: Path) -> None:
                     ForestRootSpec(
                         alias=DEFAULT_SWISSKNIFE_ALIAS,
                         root_path=accel,
-                        authority=RepositoryAuthority(
-                            mode=AuthorityMode.READ_ONLY.value
-                        ),
+                        authority=RepositoryAuthority(mode=AuthorityMode.READ_ONLY.value),
                     ),
                     ForestRootSpec(
                         alias=DEFAULT_ACCELERATOR_ALIAS,
                         root_path=accel,
-                        authority=RepositoryAuthority(
-                            mode=AuthorityMode.READ_WRITE.value
-                        ),
+                        authority=RepositoryAuthority(mode=AuthorityMode.READ_WRITE.value),
                     ),
                 ),
                 sole_write_alias=DEFAULT_ACCELERATOR_ALIAS,
@@ -503,10 +495,8 @@ def test_portable_replay_preserves_forest_identity(tmp_path: Path) -> None:
     relocated = build_repository_forest(_two_root_policy(swiss2, accel2))
     assert relocated.forest_id == forest.forest_id
     assert (
-        relocated.descriptor_for_alias(DEFAULT_ACCELERATOR_ALIAS)
-        .local_locator.resolved_root_path
-        != forest.descriptor_for_alias(DEFAULT_ACCELERATOR_ALIAS)
-        .local_locator.resolved_root_path
+        relocated.descriptor_for_alias(DEFAULT_ACCELERATOR_ALIAS).local_locator.resolved_root_path
+        != forest.descriptor_for_alias(DEFAULT_ACCELERATOR_ALIAS).local_locator.resolved_root_path
     )
 
 
@@ -582,16 +572,12 @@ def test_only_one_write_root_allowed(tmp_path: Path) -> None:
                 ForestRootSpec(
                     alias="a",
                     root_path=a,
-                    authority=RepositoryAuthority(
-                        mode=AuthorityMode.READ_WRITE.value
-                    ),
+                    authority=RepositoryAuthority(mode=AuthorityMode.READ_WRITE.value),
                 ),
                 ForestRootSpec(
                     alias="b",
                     root_path=b,
-                    authority=RepositoryAuthority(
-                        mode=AuthorityMode.READ_WRITE.value
-                    ),
+                    authority=RepositoryAuthority(mode=AuthorityMode.READ_WRITE.value),
                 ),
             ),
             sole_write_alias="a",
@@ -642,9 +628,7 @@ def test_optional_missing_root_can_be_skipped(tmp_path: Path) -> None:
         DEFAULT_SWISSKNIFE_ALIAS,
         DEFAULT_ACCELERATOR_ALIAS,
     }
-    assert any(
-        code.startswith("ipfs_kit_py:") for code in forest.reason_codes
-    )
+    assert any(code.startswith("ipfs_kit_py:") for code in forest.reason_codes)
 
 
 def test_canonical_records_round_trip(tmp_path: Path) -> None:
@@ -666,9 +650,7 @@ def test_canonical_records_round_trip(tmp_path: Path) -> None:
     assert full["forest_id"]
     portable = forest.to_portable_dict()
     # Round-trip portable projection through JSON.
-    restored = RepositoryForest.from_portable_dict(
-        json.loads(json.dumps(portable))
-    )
+    restored = RepositoryForest.from_portable_dict(json.loads(json.dumps(portable)))
     assert restored.forest_id == forest.forest_id
 
 

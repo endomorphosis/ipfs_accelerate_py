@@ -205,19 +205,31 @@ class AnalysisEscalationRecord:
     reason: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "stage", AnalysisEscalationStage(str(getattr(self.stage, "value", self.stage))))
-        object.__setattr__(self, "status", AnalysisEscalationStatus(str(getattr(self.status, "value", self.status))))
+        object.__setattr__(
+            self, "stage", AnalysisEscalationStage(str(getattr(self.stage, "value", self.stage)))
+        )
+        object.__setattr__(
+            self,
+            "status",
+            AnalysisEscalationStatus(str(getattr(self.status, "value", self.status))),
+        )
         for name in ("novelty", "confidence"):
             value = float(getattr(self, name))
             if not math.isfinite(value) or not 0.0 <= value <= 1.0:
                 raise ValueError(f"{name} must be between 0 and 1")
             object.__setattr__(self, name, value)
-        terms = tuple(dict.fromkeys(str(item).strip() for item in self.objective_terms if str(item).strip()))
+        terms = tuple(
+            dict.fromkeys(str(item).strip() for item in self.objective_terms if str(item).strip())
+        )
         object.__setattr__(self, "objective_terms", terms)
         object.__setattr__(self, "cost", dict(self.cost))
         object.__setattr__(self, "scope", dict(self.scope))
-        object.__setattr__(self, "rejected_candidates", tuple(dict(item) for item in self.rejected_candidates))
-        object.__setattr__(self, "accepted_candidates", tuple(dict(item) for item in self.accepted_candidates))
+        object.__setattr__(
+            self, "rejected_candidates", tuple(dict(item) for item in self.rejected_candidates)
+        )
+        object.__setattr__(
+            self, "accepted_candidates", tuple(dict(item) for item in self.accepted_candidates)
+        )
         object.__setattr__(self, "reason", str(self.reason or ""))
 
     @property
@@ -334,29 +346,44 @@ class AnalyzerCanaryFixture:
 # parser paths (ordinary line scanning and Markdown/RST fenced-block scanning).
 _CODEBASE_V1_CANARIES = (
     AnalyzerCanaryFixture(
-        "line-source-annotated-followup", "line_source", "annotation.py",
-        "# TODO: canary annotation\n", ("annotated_followup",),
+        "line-source-annotated-followup",
+        "line_source",
+        "annotation.py",
+        "# TODO: canary annotation\n",
+        ("annotated_followup",),
     ),
     AnalyzerCanaryFixture(
-        "line-source-swallowed-exception", "line_source", "exception.py",
-        "try:\n    work()\nexcept Exception:\n    pass\n", ("swallowed_exception",),
+        "line-source-swallowed-exception",
+        "line_source",
+        "exception.py",
+        "try:\n    work()\nexcept Exception:\n    pass\n",
+        ("swallowed_exception",),
     ),
     AnalyzerCanaryFixture(
-        "line-source-placeholder", "line_source", "placeholder.py",
-        "raise NotImplementedError\n", ("placeholder_runtime_path",),
+        "line-source-placeholder",
+        "line_source",
+        "placeholder.py",
+        "raise NotImplementedError\n",
+        ("placeholder_runtime_path",),
     ),
     AnalyzerCanaryFixture(
-        "markdown-annotated-followup", "markdown_fenced", "annotation.md",
+        "markdown-annotated-followup",
+        "markdown_fenced",
+        "annotation.md",
         "TODO: visible canary\n```python\n# TODO: fenced canary must be ignored\n```\n",
         ("annotated_followup",),
     ),
     AnalyzerCanaryFixture(
-        "markdown-swallowed-exception", "markdown_fenced", "exception.md",
+        "markdown-swallowed-exception",
+        "markdown_fenced",
+        "exception.md",
         "except Exception:\n    pass\n```python\nexcept Exception:\n    pass\n```\n",
         ("swallowed_exception",),
     ),
     AnalyzerCanaryFixture(
-        "markdown-placeholder", "markdown_fenced", "placeholder.md",
+        "markdown-placeholder",
+        "markdown_fenced",
+        "placeholder.md",
         "raise NotImplementedError\n```python\nraise NotImplementedError\n```\n",
         ("placeholder_runtime_path",),
     ),
@@ -382,7 +409,9 @@ def validate_canary_registry(analyzer_version: str | None = None) -> tuple[str, 
     versions = (
         (str(analyzer_version),)
         if analyzer_version is not None
-        else tuple(sorted(set(ANALYZER_SUPPORTED_FINDING_KINDS) | set(ANALYZER_SUPPORTED_PARSER_PATHS)))
+        else tuple(
+            sorted(set(ANALYZER_SUPPORTED_FINDING_KINDS) | set(ANALYZER_SUPPORTED_PARSER_PATHS))
+        )
     )
     errors: list[str] = []
     for version in versions:
@@ -415,7 +444,9 @@ class AnalyzerCanaryResult:
 
     @property
     def passed(self) -> bool:
-        return not self.parser_failure and self.observed_finding_kinds == self.expected_finding_kinds
+        return (
+            not self.parser_failure and self.observed_finding_kinds == self.expected_finding_kinds
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -490,7 +521,9 @@ def run_analyzer_canaries(
                 fixture.source, fixture.relative_path
             )
             kinds = tuple(
-                str(item.get("kind", "") if isinstance(item, Mapping) else getattr(item, "kind", ""))
+                str(
+                    item.get("kind", "") if isinstance(item, Mapping) else getattr(item, "kind", "")
+                )
                 for item in findings
             )
             failure = str(parser_failure or "")
@@ -544,9 +577,7 @@ class AnalyzerHealthReport:
 _COUNTER_ALIASES: Mapping[str, tuple[str, ...]] = {
     "raw_candidate_count": ("raw_candidate_count", "raw_candidates"),
     "seen_candidate_count": ("seen_candidate_count", "seen_candidates"),
-    "deduplicated_candidate_count": (
-        "deduplicated_candidate_count", "deduplicated_candidates"
-    ),
+    "deduplicated_candidate_count": ("deduplicated_candidate_count", "deduplicated_candidates"),
     "rejected_candidate_count": ("rejected_candidate_count", "rejected_candidates"),
     "appended_task_count": ("appended_task_count", "appended_tasks"),
     "tracked_file_count": ("tracked_file_count", "tracked_files"),
@@ -668,7 +699,9 @@ def classify_analyzer_health(
     discovered_roots = max(0, _integer(inventory, "git_root_count"))
     if policy.require_git_root and discovered_roots < policy.min_git_roots:
         unhealthy.append("no_git_roots_discovered")
-    root_ratio = discovered_roots / expected_roots if expected_roots else (1.0 if discovered_roots else 0.0)
+    root_ratio = (
+        discovered_roots / expected_roots if expected_roots else (1.0 if discovered_roots else 0.0)
+    )
     if expected_roots and discovered_roots < expected_roots:
         if root_ratio < policy.min_git_root_discovery_ratio:
             unhealthy.append("git_root_discovery_below_budget")

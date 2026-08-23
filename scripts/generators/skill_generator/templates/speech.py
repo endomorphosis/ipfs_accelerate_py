@@ -8,9 +8,10 @@ This module provides the architecture template for speech models like Whisper, W
 from typing import Dict, Any, List
 from .base_architecture import BaseArchitectureTemplate
 
+
 class SpeechArchitectureTemplate(BaseArchitectureTemplate):
     """Template for speech architecture models like Whisper, Wav2Vec2, etc."""
-    
+
     def __init__(self):
         """Initialize the speech architecture template."""
         super().__init__()
@@ -21,7 +22,7 @@ class SpeechArchitectureTemplate(BaseArchitectureTemplate):
         self.model_description = "This is a model designed for speech and audio processing tasks."
         self.hidden_size = 768  # Default hidden size, varies by model
         self.test_input = "test.wav"  # Default test file
-    
+
     def get_model_class(self, task_type: str) -> str:
         """Get speech model class for task type."""
         if task_type == "speech_recognition":
@@ -32,11 +33,11 @@ class SpeechArchitectureTemplate(BaseArchitectureTemplate):
             return "self.transformers.AutoModelForTextToSpeech"
         else:
             return "self.transformers.AutoModel"
-    
+
     def get_processor_class(self, task_type: str) -> str:
         """Get speech processor class for task type."""
         return "self.transformers.AutoProcessor"
-    
+
     def get_input_processing_code(self, task_type: str) -> str:
         """Get speech input processing code."""
         return """
@@ -87,7 +88,7 @@ inputs = processor(audio, sampling_rate=sr, return_tensors="pt")
 # Move inputs to device
 inputs = {k: v.to(device) for k, v in inputs.items()}
 """
-    
+
     def get_output_processing_code(self, task_type: str) -> str:
         """Get speech output processing code."""
         if task_type == "speech_recognition":
@@ -138,7 +139,7 @@ with self.torch.no_grad():
 # Extract relevant information from outputs
 result = outputs
 """
-    
+
     def get_mock_processor_code(self) -> str:
         """Get speech mock processor code."""
         return """
@@ -168,7 +169,7 @@ def mock_tokenize(audio, sampling_rate=16000, return_tensors="pt", **kwargs):
         "attention_mask": attention_mask
     }
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get speech mock output code."""
         return """
@@ -177,7 +178,7 @@ result.logits = torch.rand((batch_size, sequence_length, hidden_size))
 result.generation_outputs = torch.randint(0, 1000, (batch_size, 20))
 return result
 """
-    
+
     def get_compatibility_matrix(self) -> Dict[str, bool]:
         """Get speech hardware compatibility matrix."""
         return {
@@ -186,5 +187,5 @@ return result
             "rocm": True,
             "mps": True,
             "openvino": True,
-            "qnn": False  # Limited support for speech models in Qualcomm QNN
+            "qnn": False,  # Limited support for speech models in Qualcomm QNN
         }

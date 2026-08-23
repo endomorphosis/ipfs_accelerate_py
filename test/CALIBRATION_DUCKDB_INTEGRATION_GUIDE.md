@@ -45,7 +45,7 @@ Here's a simple example of using the calibration system with DuckDB:
 from duckdb_api.simulation_validation.calibration import (
     BasicCalibrator,
     DuckDBCalibrationRepository,
-    CalibratorDuckDBAdapter
+    CalibratorDuckDBAdapter,
 )
 
 # Create repository
@@ -57,7 +57,7 @@ adapter = CalibratorDuckDBAdapter(
     calibrator=calibrator,
     repository=repository,
     calibration_id="example-calibration",
-    metadata={"description": "Example calibration run"}
+    metadata={"description": "Example calibration run"},
 )
 
 # Run calibration
@@ -65,7 +65,7 @@ result = adapter.calibrate(
     simulation_results=simulation_data,
     hardware_results=hardware_data,
     simulation_parameters=initial_params,
-    hardware_id="cuda"
+    hardware_id="cuda",
 )
 
 print(f"Calibration completed with improvement: {result['improvement_percent']:.2f}%")
@@ -119,7 +119,7 @@ The DuckDB database contains the following tables:
 from duckdb_api.simulation_validation.calibration import (
     CalibrationCrossValidator,
     DuckDBCalibrationRepository,
-    CrossValidatorDuckDBAdapter
+    CrossValidatorDuckDBAdapter,
 )
 
 # Create repository
@@ -128,9 +128,7 @@ repository = DuckDBCalibrationRepository(db_path="calibration.duckdb")
 # Create cross-validator with repository integration
 cross_validator = CalibrationCrossValidator(n_splits=5, calibrator_type="basic")
 adapter = CrossValidatorDuckDBAdapter(
-    cross_validator=cross_validator,
-    repository=repository,
-    validation_id="example-validation"
+    cross_validator=cross_validator, repository=repository, validation_id="example-validation"
 )
 
 # Run cross-validation
@@ -139,7 +137,7 @@ result = adapter.cross_validate(
     hardware_results=hardware_data,
     initial_parameters=initial_params,
     calibration_id="example-calibration",
-    dataset_id="benchmark-dataset"
+    dataset_id="benchmark-dataset",
 )
 
 print(f"Cross-validation generalization gap: {result['generalization_gap_percentage']:.2f}%")
@@ -151,7 +149,7 @@ print(f"Cross-validation generalization gap: {result['generalization_gap_percent
 from duckdb_api.simulation_validation.calibration import (
     ParameterDiscovery,
     DuckDBCalibrationRepository,
-    ParameterDiscoveryDuckDBAdapter
+    ParameterDiscoveryDuckDBAdapter,
 )
 
 # Create repository
@@ -160,10 +158,9 @@ repository = DuckDBCalibrationRepository(db_path="calibration.duckdb")
 # Create parameter discovery with repository integration
 discovery = ParameterDiscovery(sensitivity_threshold=0.01)
 adapter = ParameterDiscoveryDuckDBAdapter(
-    parameter_discovery=discovery,
-    repository=repository,
-    analysis_id="example-analysis"
+    parameter_discovery=discovery, repository=repository, analysis_id="example-analysis"
 )
+
 
 # Define error function for discovery
 def error_function(params):
@@ -171,11 +168,12 @@ def error_function(params):
     # ...
     return error_value
 
+
 # Run parameter discovery
 result = adapter.discover_parameters(
     error_function=error_function,
     initial_parameters=initial_params,
-    calibration_id="example-calibration"
+    calibration_id="example-calibration",
 )
 
 print(f"Discovered {len(result['sensitive_parameters'])} sensitive parameters")
@@ -187,7 +185,7 @@ print(f"Discovered {len(result['sensitive_parameters'])} sensitive parameters")
 from duckdb_api.simulation_validation.calibration import (
     UncertaintyQuantifier,
     DuckDBCalibrationRepository,
-    UncertaintyQuantifierDuckDBAdapter
+    UncertaintyQuantifierDuckDBAdapter,
 )
 
 # Create repository
@@ -196,15 +194,12 @@ repository = DuckDBCalibrationRepository(db_path="calibration.duckdb")
 # Create uncertainty quantifier with repository integration
 quantifier = UncertaintyQuantifier(confidence_level=0.95)
 adapter = UncertaintyQuantifierDuckDBAdapter(
-    uncertainty_quantifier=quantifier,
-    repository=repository,
-    analysis_id="example-uncertainty"
+    uncertainty_quantifier=quantifier, repository=repository, analysis_id="example-uncertainty"
 )
 
 # Run uncertainty quantification
 result = adapter.quantify_parameter_uncertainty(
-    parameter_sets=parameter_sets,
-    calibration_id="example-calibration"
+    parameter_sets=parameter_sets, calibration_id="example-calibration"
 )
 
 print("Parameter uncertainty analysis completed")
@@ -260,10 +255,12 @@ for entry in history:
 uncertainties = repository.get_uncertainty_quantifications(analysis_id="example-uncertainty")
 
 for uncertainty in uncertainties:
-    print(f"Parameter {uncertainty['parameter_name']}: "
-          f"μ={uncertainty['mean_value']:.4f}, "
-          f"σ={uncertainty['std_value']:.4f}, "
-          f"Level: {uncertainty['uncertainty_level']}")
+    print(
+        f"Parameter {uncertainty['parameter_name']}: "
+        f"μ={uncertainty['mean_value']:.4f}, "
+        f"σ={uncertainty['std_value']:.4f}, "
+        f"Level: {uncertainty['uncertainty_level']}"
+    )
 ```
 
 ## Best Practices

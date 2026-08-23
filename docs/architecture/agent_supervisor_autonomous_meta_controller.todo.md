@@ -1,0 +1,982 @@
+# Autonomous Meta-Controller executable task board
+
+Program: `agent-supervisor-autonomous-meta-controller-v1`
+Task prefix: `APMC-`
+Root objective: `APMC-G000`
+
+This Markdown file is a sealed bootstrap/export. After materialization,
+`DatabaseTaskSource@1` and `IntentRepository@1` in DuckDB are task and
+goal authority, reached by parallel supervisors through the exclusive Quack
+state owner. DuckLake receives optional non-authoritative history/benchmark
+projections only.
+
+A task is not complete because this file says so. Completion requires the
+declared command against the current admitted tree, fresh required
+test/proof/benchmark evidence, and acceptance through existing supervisor
+control/lease/fence/merge authorities.
+
+## APMC-000 Seal current authority and benchmark baseline
+
+- Stable task ID: APMC-000
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: baseline
+- Depends on:
+- Goal id: APMC-G010
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G010
+- Owning repository: ipfs_accelerate_py
+- Outputs: docs/architecture/agent_supervisor_autonomous_meta_controller_inventory/baseline.json, docs/architecture/agent_supervisor_autonomous_meta_controller_inventory/authority_map.md, docs/architecture/agent_supervisor_autonomous_meta_controller_inventory/ducklake_projection_capability.json, docs/architecture/agent_supervisor_autonomous_meta_controller_inventory/current_tree_baseline_seal.md, docs/architecture/agent_supervisor_autonomous_meta_controller.todo.md, benchmarks/agent_supervisor/autonomous_meta_controller/baseline_manifest.json, config/agent_supervisor_autonomous_meta_controller_scheduler.json, scripts/validate_agent_supervisor_autonomous_meta_controller_board.py, scripts/materialize_agent_supervisor_autonomous_meta_controller_board.py, scripts/ops/agent_supervisor/quack_state_server.py, scripts/lgswf_start_quack_control.py, ipfs_accelerate_py/agent_implementation_route.py, ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py, ipfs_accelerate_py/agent_supervisor/analysis/mcp_invocation_trace.py, ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py, ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py, ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py, ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py, ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py, ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py, ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py, ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py, ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py, ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py, ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py, ipfs_accelerate_py/llm_router.py, test/api/test_agent_supervisor_database_coordination.py, test/api/test_agent_supervisor_database_implementation_daemon.py, test/api/test_agent_supervisor_database_portal_bridge.py, test/api/test_agent_supervisor_database_runner_propagation.py, test/api/test_agent_supervisor_grok_quota_terra_gate.py, test/api/test_agent_supervisor_grok_router_compatibility.py, test/api/test_agent_supervisor_project_dependency_preflight.py, test/api/test_agent_supervisor_duckdb_connection_policy.py, test/api/test_agent_supervisor_implementation_auto_rescue.py, test/api/test_agent_supervisor_implementation_progress.py, test/api/test_agent_supervisor_implementation_protected_paths.py, test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py, test/api/test_agent_supervisor_intent_repository.py, test/api/test_agent_supervisor_apmc_materializer.py, test/api/test_agent_supervisor_merge_resolver.py, test/api/test_agent_supervisor_objective_daemon_import.py, test/api/test_agent_supervisor_quack_state_server.py, test/api/test_agent_supervisor_quack_transport_defaults.py, test/api/test_agent_supervisor_task_revision_reconciliation.py, test/api/test_agent_supervisor_todo_llm.py, test/api/test_implementation_daemon_stale_quarantined_merge.py, test/test_llm_router_grok_cli.py
+- Validation: python3 scripts/validate_agent_supervisor_autonomous_meta_controller_board.py --check-inventory --check-baseline-seal; python3 -m pytest -q test/api/test_agent_supervisor_database_runner_propagation.py test/api/test_agent_supervisor_duckdb_connection_policy.py test/api/test_agent_supervisor_intent_repository.py test/api/test_agent_supervisor_objective_daemon_import.py test/api/test_agent_supervisor_quack_state_server.py -k 'goal_edges or owner_mutation or objective_daemon or state_credentials or distinct_tasks or lane_local or quack_owner_policy or remote_policy_rejects_unimplemented_tls or real_default_transport'; python3 -m pytest -q test/api/test_agent_supervisor_quack_state_server.py::test_mutation_request_is_published_only_after_complete_fsync test/api/test_agent_supervisor_quack_state_server.py::test_mutation_request_publication_fails_closed_without_atomic_rename; python3 -m pytest -q test/api/test_agent_supervisor_implementation_progress.py::test_provider_process_uses_exact_sanitized_environment test/api/test_agent_supervisor_implementation_progress.py::test_process_group_stream_preserves_default_environment_inheritance test/api/test_agent_supervisor_implementation_progress.py::test_deterministic_writer_uses_sanitized_exact_environment test/api/test_agent_supervisor_implementation_protected_paths.py::test_ephemeral_verification_lock_deferral_does_not_consume_attempt test/api/test_agent_supervisor_implementation_auto_rescue.py::test_inline_provider_rescue_keeps_unsealed_command_without_pass_fds test/api/test_agent_supervisor_implementation_auto_rescue.py::test_auto_rescue_materializer_uses_sanitized_exact_environment; python3 -m pytest -q test/api/test_agent_supervisor_merge_resolver.py::test_external_resolver_child_cannot_observe_state_authority_environment test/api/test_agent_supervisor_todo_llm.py::test_child_environment_strips_state_authority_but_retains_provider_credentials; python3 -m pytest -q test/api/test_agent_supervisor_database_portal_bridge.py; python3 -m pytest -q test/api/test_agent_supervisor_database_implementation_daemon.py; python3 -m pytest -q test/api/test_agent_supervisor_grok_router_compatibility.py test/api/test_agent_supervisor_grok_quota_terra_gate.py -k 'not real_disposable_codex_container_and_board_toolchain_probe'; python3 -m pytest -q test/test_llm_router_grok_cli.py::test_grok_cli_router_accepts_runtime_runner_sealed_call_shape test/test_llm_router_grok_cli.py::test_grok_cli_runtime_runner_isolated_env_is_a_closed_allowlist; python3 -m py_compile ipfs_accelerate_py/agent_implementation_route.py ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py ipfs_accelerate_py/llm_router.py; python3 -m ruff check --select F821 ipfs_accelerate_py/agent_implementation_route.py ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py ipfs_accelerate_py/llm_router.py; python3 -m pytest -q test/api/test_agent_supervisor_database_coordination.py::test_authoritative_task_sync_is_idempotent_fail_closed_and_preserves_prepared test/api/test_agent_supervisor_database_implementation_daemon.py::test_apmc_bootstrap_completions_unlock_exact_frontier_across_lane_sidecars test/api/test_agent_supervisor_database_implementation_daemon.py::test_removed_authoritative_task_is_excluded_without_idle_growth test/api/test_agent_supervisor_database_implementation_daemon.py::test_authoritative_dependency_reopen_invalidates_stale_lane_readiness test/api/test_agent_supervisor_database_implementation_daemon.py::test_fenced_retry_cannot_bypass_dependency_reopen_after_local_claim test/api/test_agent_supervisor_database_implementation_daemon.py::test_restart_retires_prepared_absent_expired_attempt_then_refences_retry test/api/test_agent_supervisor_database_implementation_daemon.py::test_expired_preparation_without_control_cas_is_aborted_and_requeued; python3 -m pytest -q test/api/test_implementation_daemon_stale_quarantined_merge.py; python3 -m pytest -q test/api/test_agent_supervisor_task_revision_reconciliation.py; python3 -m pytest -q test/api/test_agent_supervisor_apmc_materializer.py; python3 -m pytest -q test/api/test_agent_supervisor_intent_repository.py; python3 -m ruff check --select F821 ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py; python3 -m pytest -q test/api/test_agent_supervisor_database_implementation_daemon.py::test_strict_database_lane_claims_only_alias_hash_home_tasks test/api/test_agent_supervisor_database_implementation_daemon.py::test_non_strict_database_lane_preserves_cross_shard_claiming test/api/test_agent_supervisor_database_implementation_daemon.py::test_strict_restart_resumes_exact_in_home_claim test/api/test_agent_supervisor_database_implementation_daemon.py::test_strict_restart_requeues_pre_provider_out_of_home_attempt test/api/test_agent_supervisor_database_implementation_daemon.py::test_strict_restart_quarantines_effect_committed_out_of_home_attempt test/api/test_agent_supervisor_database_implementation_daemon.py::test_strict_restart_quarantines_provider_receipt_before_phase_commit test/api/test_agent_supervisor_database_implementation_daemon.py::test_strict_database_lane_rechecks_authoritative_alias_after_local_claim test/api/test_agent_supervisor_database_implementation_daemon.py::test_portal_deferral_refreshes_failed_revision_and_releases_exact_lease test/api/test_agent_supervisor_database_implementation_daemon.py::test_parse_args_accepts_database_authority_flags test/api/test_agent_supervisor_database_implementation_daemon.py::test_runner_builds_database_daemon_without_json_projections test/api/test_agent_supervisor_database_implementation_daemon.py::test_database_runner_preserves_exact_shard_types_for_constructor_guard test/api/test_agent_supervisor_database_implementation_daemon.py::test_runner_portal_builder_selects_database_daemon test/api/test_agent_supervisor_database_portal_bridge.py::test_bridge_preserves_explicit_non_consuming_portal_deferral test/api/test_agent_supervisor_project_dependency_preflight.py::test_dependency_preflight_compaction_binds_oversized_receipt test/api/test_agent_supervisor_project_dependency_preflight.py::test_dependency_preflight_compaction_fits_worst_case_samples test/api/test_agent_supervisor_project_dependency_preflight.py::test_dependency_preflight_projection_rejects_hidden_claim_fields; python3 -m pytest -q test/api/test_agent_supervisor_database_runner_propagation.py::test_quack_environment_binds_absolute_repo_scoped_mutation_inbox test/api/test_agent_supervisor_database_runner_propagation.py::test_supervisor_propagates_program_to_daemon_command_and_child_env test/api/test_agent_supervisor_database_runner_propagation.py::test_supervisor_loop_binds_trusted_source_root_for_safe_path_child test/api/test_agent_supervisor_database_runner_propagation.py::test_configured_board_propagates_database_program test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py::test_supervisor_round_trips_full_quack_authority_without_raw_credentials test/api/test_agent_supervisor_quack_state_server.py::test_owner_relative_paths_require_absolute_scoped_repository_root test/api/test_agent_supervisor_quack_state_server.py::test_concurrent_mutation_inbox_replacement_cannot_redirect_real_cas test/api/test_agent_supervisor_quack_state_server.py::test_owner_result_collision_is_never_overwritten_or_replayed test/api/test_agent_supervisor_quack_state_server.py::test_owner_restart_rejects_prior_generation_mutation_request test/api/test_agent_supervisor_quack_transport_defaults.py::test_quack_mutation_dir_rejects_missing_or_mismatched_registry_binding test/api/test_agent_supervisor_quack_transport_defaults.py::test_quack_mutation_timeout_is_unknown_outcome_without_internal_replay
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/baseline
+- Parallel lane: inventory
+- Resource class: cpu-medium
+- Resource stage: analysis
+- Estimated tokens: 18000
+- Implementation timeout seconds: 3600
+- Predicted files: docs/architecture/agent_supervisor_autonomous_meta_controller_inventory/baseline.json, docs/architecture/agent_supervisor_autonomous_meta_controller_inventory/authority_map.md, docs/architecture/agent_supervisor_autonomous_meta_controller_inventory/ducklake_projection_capability.json, docs/architecture/agent_supervisor_autonomous_meta_controller_inventory/current_tree_baseline_seal.md, docs/architecture/agent_supervisor_autonomous_meta_controller.todo.md, benchmarks/agent_supervisor/autonomous_meta_controller/baseline_manifest.json, config/agent_supervisor_autonomous_meta_controller_scheduler.json, scripts/validate_agent_supervisor_autonomous_meta_controller_board.py, scripts/materialize_agent_supervisor_autonomous_meta_controller_board.py, scripts/ops/agent_supervisor/quack_state_server.py, scripts/lgswf_start_quack_control.py, ipfs_accelerate_py/agent_implementation_route.py, ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py, ipfs_accelerate_py/agent_supervisor/analysis/mcp_invocation_trace.py, ipfs_accelerate_py/agent_supervisor/merge/database_coordination.py, ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py, ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py, ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py, ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py, ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py, ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py, ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py, ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py, ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py, ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon_runner.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py, ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py, ipfs_accelerate_py/agent_supervisor/validation/project_dependency_preflight.py, ipfs_accelerate_py/llm_router.py, test/api/test_agent_supervisor_database_coordination.py, test/api/test_agent_supervisor_database_implementation_daemon.py, test/api/test_agent_supervisor_database_portal_bridge.py, test/api/test_agent_supervisor_database_runner_propagation.py, test/api/test_agent_supervisor_grok_quota_terra_gate.py, test/api/test_agent_supervisor_grok_router_compatibility.py, test/api/test_agent_supervisor_project_dependency_preflight.py, test/api/test_agent_supervisor_duckdb_connection_policy.py, test/api/test_agent_supervisor_implementation_auto_rescue.py, test/api/test_agent_supervisor_implementation_progress.py, test/api/test_agent_supervisor_implementation_protected_paths.py, test/api/test_agent_supervisor_implementation_supervisor_authority_forwarding.py, test/api/test_agent_supervisor_intent_repository.py, test/api/test_agent_supervisor_apmc_materializer.py, test/api/test_agent_supervisor_merge_resolver.py, test/api/test_agent_supervisor_objective_daemon_import.py, test/api/test_agent_supervisor_quack_state_server.py, test/api/test_agent_supervisor_quack_transport_defaults.py, test/api/test_agent_supervisor_task_revision_reconciliation.py, test/api/test_agent_supervisor_todo_llm.py, test/api/test_implementation_daemon_stale_quarantined_merge.py, test/test_llm_router_grok_cli.py
+- Interfaces: CurrentAuthorityInventory@1, APMCBaselineManifest@1, APMCBoardMaterializationReceipt@1, DatabaseProgramConfig@1, DatabaseCoordinator@1, DatabaseImplementationDaemon@1, ObjectiveDaemonCompatibility@1, QuackOwnerMutationEnvelope@1, DatabasePortalExecutionBridge@1, AgentImplementationPreflightCompatibility@1, GrokCliIsolationBoundary@1, GrokContainerIdentityBinding@1, PortalRetryDeferral@1, DatabasePortalConsumedNoProgress@1, DatabaseProviderCallbackUnknown@1, DatabaseTaskExecutionContractDigest@1, APMCBaselineQualificationReceipt@1, APMCBaselineValidationSet@1, APMCPrelaunchQualificationReceipt@1, APMCPrelaunchValidationSet@1, ProjectDependencyPreflightProjection@1
+- Allow concurrent with:
+- Conflict policy: Exclusive inventory and evidence-qualified bootstrap publisher; later tasks consume the sealed files and content-addressed, closed-allowlist current-tree qualification receipts read-only.
+- Preconditions: Fresh origin/main is fetched; clean requested worktree exists; no Gitlink pin is changed; the operator's explicit APMC implementation-and-launch request admits this local bounded protocol-sensitive bootstrap but does not authorize external promotion.
+- Effects: Read Git/source/package/capability metadata; add the bounded inventory, frozen benchmark manifest, fail-closed board materializer, exact reviewed objective-daemon compatibility restoration, typed goal-edge verification, authenticated and atomically published Quack owner mutation composition through one repo-root-bound runtime-registry inbox with pinned directory-descriptor request/result I/O, exact database task identity through disposable Portal projections, exact bounded canonical task/completion/readiness projection into lane-local coordinators with current authoritative rechecks, SHA-256 full-task-alias home-lane routing, strict preclaim/postclaim/restart admission with provider-invocation receipt guards and fenced restart recovery, typed explicit Portal deferral with exact revision-aware failure/release, restore the exact Grok 4.6 router/runner import surface, closed provider-isolation environment, sandbox/deny/tool command shape, one narrowly typed local max-turns preflight retry, and create/cidfile container identity binding, convert one consumed-no-progress Portal attempt or durable provider-callback-start with unknown outcome into an evidence-bound neutral quarantine instead of a second provider dispatch, content-addressed closed 64-KiB dependency-preflight projections, exact state-credential scrubs for provider, deterministic-writer, materializer, LLM-router and merge-resolver subprocesses, restore the bounded implementation-daemon merge-reconciliation lifecycle with current canonical-task-revision isolation, add one operator-readable current-tree baseline seal, then execute every exact declared shell-free validation argv for the closed APMC-000..005 plus APMC-018 prelaunch set in a scrubbed bounded environment and complete only that set by dependency-ordered evidence-gated revision-1 to revision-2 CAS before Quack starts.
+- Evidence subset: commit/tree, Gitlinks, Python, dependency declarations and lock absence, relevant tests, requested authority map, Quack and DuckLake typed capability receipts, objective-daemon import, exact materialized task/goal/dependency projection, authenticated owner-side CAS and forged-envelope rejection through one exact absolute repo-root-scoped runtime-registry inbox propagated across configured launch, supervisor, daemon and owner, directory-descriptor-pinned request/result I/O with pathname-replacement resistance, signed-result collision no-overwrite/no-replay, stale-generation refusal and typed unknown-outcome timeout, complete-fsync single-link no-replace Quack mutation publication with typed fail-closed behavior when atomic publication is unavailable, exact canonical database task key/CID and attempt binding through disposable Portal projections and completion events, exact lane-local task/revision/status/dependency/completion projection, exact recovery claim/attempt/lease/fence/owner binding, SHA-256 full task-alias shard assignments and raw integer/boolean runner bindings, strict in-home resume, pre-provider out-of-home requeue, effect-committed out-of-home quarantine plus canonical- and custom-key evidence that any provider_invocations row for the attempt forbids requeue or replay and requires quarantine, same- and cross-home post-local-claim authoritative alias rechecks, non-strict compatibility, explicit non-consuming Portal deferral with refreshed attempt revision and exact claim/attempt/lease release permitting retry, exact Grok 4.6 router export/signature compatibility, exact 25-byte max-turns evidence and receipt binding, two local hermetic preflight probes with no model call, closed Grok environment plus sandbox/deny/tool arguments, and lowercase 64-hex create-stdout/cidfile equality before attached start, canonical ContextCompilationReceipt-to-ImplementationDiagnosticReceipt identity with bounded artifact digests and sizes, complete status-independent structured task contract, authoritative repository tree, database binding, attempt, claim, lease and fence cross-binding, durable callback-start intent before invocation, immutable terminal/full-body replay evidence, and exact response-loss/CAS recovery, bounded dependency-preflight full-receipt digest and projection identity with sampled counts/issues, worst-case ASCII and NUL byte-bound evidence and unknown or hidden-field rejection, dependency reopen/recompletion convergence, and removed-task two-pass no-growth evidence, exact provider environment across primary/retry/inline-rescue/writer/materializer/LLM-router/merge-resolver paths, durable merge_reconciled events, exact stale or already-reconciled queued-request cancellation, ancestor inventory status-commit preservation, reconciled-commit suppression after later failed finishes, typed proposal-gate rearming, canonical task CID and board-namespace matching for finish and merge history, contradictory task identity rejection, canonical-only pending-merge lookup, same-revision completion-persistence recovery, ordered current-tree validation entries bound to source head, repository tree, plan root, population, task CID, acceptance/output declarations and validation-declaration-set identities, one current dedicated validation-set aggregate per prelaunch-qualified task, exact dependency-ordered completion CAS, and the post-qualification APMC-006/APMC-012/APMC-014 frontier
+- Symbolic first: true
+- LLM context budget bytes: 22096
+- Risk class: R4_SECURITY_OR_PROTOCOL_SENSITIVE
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Every requested authority is classified; exact baseline identities reproduce; the real objective daemon imports without mocks; materialization is clean-tree bound, refuses an unqualified runtime projection, records every exact ordered declared validation set under the dedicated top-level apmc_baseline_validation_set or apmc_prelaunch_validation_set evidence policy, completes exactly APMC-000..005 and APMC-018 from current content-addressed evidence by dependency-ordered exact CAS, and emits only the APMC-006/APMC-012/APMC-014 parallel frontier; Quack/DuckLake observations are truthfully separated from authority; a Quack mutation request cannot become visible before complete fsync, collision never overwrites, and an unavailable atomic no-replace primitive fails closed; configured launch, supervisor, daemon and owner derive the same absolute runtime_registry_path/mutations inbox from the repo-root-relative configuration identity, reject absent, mismatched or escaping bindings before writes, and pin request/result operations to the admitted directory identity so concurrent pathname replacement cannot redirect CAS, a signed-result collision cannot overwrite or replay, a prior generation is rejected, and timeout remains a typed unknown outcome without internal replay; disposable Portal Markdown preserves the exact authoritative database task key/CID and binds it through the attempt and completion event without deriving a second identity, while contradictory key/CID claims fail closed; lane-local coordinators route only by the stable full task alias SHA-256 first 32 bits modulo lane count, never by content CID, reproduce the exact APMC bootstrap completions and lane0 empty/lane1 APMC-012/lane2 APMC-006/lane3 APMC-014 frontier, reject missing, changed or cross-home aliases before provider execution and after local claim, resume only exact in-home attempts, requeue pre-provider wrong-home attempts, quarantine effect-committed wrong-home attempts, and treat any provider_invocations row for the attempt as forbidding wrong-home requeue or replay and requiring quarantine without a second provider call, preserve non-strict compatibility, keep explicit Portal deferral typed and non-consuming while refreshing the current attempt revision and releasing the exact claim/attempt/lease for retry, admit only closed structured lifecycle/capacity deferrals and never free-text retry authority, seal the exact grok_cli/grok-4.6 to codex/gpt-5.6-terra quota-only medium-effort provider tuple, keep every supervised Grok router import present, permit one fresh local preflight retry only for the exact receipt-bound 25-byte max-turns artifact without authorizing fallback, withhold alternate-provider and ambient authority through the closed environment and explicit sandbox/deny/tool arguments, and reject a missing, malformed, uppercase, multiple or cidfile-mismatched Docker create identity before start; one consumed Portal attempt with no implementation candidate and validation not run remains cause-neutral with provider effect unknown, binds the canonical context/diagnostic receipt chain plus full structured task contract/current tree/binding/attempt/claim/lease/fence, and is quarantined after one attempt with retry_required false; a durable callback-start intent is committed before the callback and an unresolved restart or lease expiry is terminalized through the same neutral quarantine without redispatch; terminal phase rows are append-only and idempotent only for the same canonical body, while response-loss, claim-release and CAS replay require exact evidence equality and forged, rebound, stale-tree or structured-contract-race evidence fails closed, bind compact dependency-preflight evidence to the full receipt and projection identities within 65536 bytes even at worst-case ASCII and NUL samples while rejecting unknown or hidden fields, preserve every dependency edge plus active or prepared claim authority, refresh completed-task revisions, reject contradictory status flags, revision regression, identity or dependency drift, forged or cross-owner recovery and stale post-claim readiness, recover only exact fenced attempts, reconverge after a dependency reopens and completes again, and exclude tasks absent from the current authoritative population without repeated claims or state growth; provider, deterministic-writer, materializer, LLM-router and merge-resolver children receive only their admitted non-state bindings and no ambient database program or resolved state credentials; authorized provider credentials remain available where required; non-provider callers retain the default inherited environment; a stale quarantined or already-reconciled queued request is cancelled and durably reconciled exactly once; an ancestor inventory merge awaiting its status commit is preserved; a reconciled commit cannot block selection even after a later failed finish; prior-revision finish, merge, reconciliation, or display-ID queue state cannot block, cancel, or complete the current canonical task revision; current-revision completion-persistence recovery remains eligible; only typed proposal-gate evidence re-arms the covered exhausted inventory attempt; sibling repositories and pins remain unchanged; the operator-readable baseline seal is present.
+- Embedding query: autonomous meta controller current authority inventory duckdb quack ducklake baseline
+
+## APMC-001 Define autonomy, question, action, budget and receipt contracts
+
+- Stable task ID: APMC-001
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: contracts
+- Depends on: APMC-000
+- Goal id: APMC-G020
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G020
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/__init__.py, ipfs_accelerate_py/agent_supervisor/autonomy/contracts.py, test/api/autonomy/test_contracts.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_contracts.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/contracts
+- Parallel lane: contracts
+- Resource class: cpu-medium
+- Resource stage: implementation
+- Estimated tokens: 30000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/__init__.py, ipfs_accelerate_py/agent_supervisor/autonomy/contracts.py, test/api/autonomy/test_contracts.py
+- Interfaces: AutonomyPolicy@1, AutonomyEnvelope@1, DecisionQuestion@1, ResolutionAction@1, CognitiveBudget@1, AutonomyRunReceipt@1
+- Allow concurrent with: APMC-018
+- Conflict policy: Sole owner of autonomy contract definitions and package exports; no sibling or existing receipt schema changes.
+- Preconditions: APMC-000 authority map is accepted; existing CanonicalContract and content identity are available.
+- Effects: Add immutable closed data contracts, enums, strict decoders, canonical identities and hermetic tests.
+- Evidence subset: round trips, unknown-field rejection, bounds, enum closure, safe paths, canonical vectors, forged identity and self-authority rejection
+- Symbolic first: true
+- LLM context budget bytes: 34096
+- Risk class: R2_REVERSIBLE_LOCAL
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: All required named contracts exist, are immutable/versioned/bounded/content-addressed, reject unknown fields/floats/unrestricted autonomy, and do not grant execution authority.
+- Embedding query: closed autonomy contracts decision question action budget receipt canonical identity
+
+## APMC-002 Implement decision and uncertainty graph
+
+- Stable task ID: APMC-002
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: decision-graph
+- Depends on: APMC-001
+- Goal id: APMC-G030
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G030
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/decision_graph.py, test/api/autonomy/test_decision_graph.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_decision_graph.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/decision-graph
+- Parallel lane: question-graph
+- Resource class: cpu-medium
+- Resource stage: implementation
+- Estimated tokens: 28000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/decision_graph.py, test/api/autonomy/test_decision_graph.py
+- Interfaces: DecisionGraph@1, BeliefState@1
+- Allow concurrent with: APMC-003, APMC-006, APMC-018
+- Conflict policy: Own decision_graph.py only; adapters to objective/planning stores land in APMC-005/APMC-016.
+- Preconditions: Closed DecisionQuestion/DecisionGraph/Belief contracts pass.
+- Effects: Add semantic dedup, evidence dependencies, terminal decisions, dependency-local invalidation and canonical snapshot/restore.
+- Evidence subset: dedup fixtures, changed-evidence cone, contradiction, restart equivalence, mandatory-terminal completion projection
+- Symbolic first: true
+- LLM context budget bytes: 32096
+- Risk class: R2_REVERSIBLE_LOCAL
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Equivalent questions deduplicate; only dependants invalidate; unresolved state survives restart; no task completion projection occurs while a mandatory question lacks a current admissible terminal decision.
+- Embedding query: decision uncertainty graph question dedup evidence invalidation restart
+
+## APMC-003 Implement objective-level cognitive budget ledger
+
+- Stable task ID: APMC-003
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: cognitive-budget
+- Depends on: APMC-001
+- Goal id: APMC-G030
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G030
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/cognitive_budget.py, test/api/autonomy/test_cognitive_budget.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_cognitive_budget.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/cognitive-budget
+- Parallel lane: budget
+- Resource class: cpu-medium
+- Resource stage: implementation
+- Estimated tokens: 24000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/cognitive_budget.py, test/api/autonomy/test_cognitive_budget.py
+- Interfaces: ObjectiveBudgetLedger@1, BudgetReservation@1
+- Allow concurrent with: APMC-002, APMC-006, APMC-018
+- Conflict policy: Own cognitive_budget.py; actual provider/resource accounting remains in existing ledgers/schedulers.
+- Preconditions: CognitiveBudget, BudgetReservation and BudgetLedger contracts pass.
+- Effects: Reserve and reconcile integer-unit objective/epoch costs; protect validation/proof reserves; attribute retries/speculation; emit typed exhaustion.
+- Evidence subset: atomic reservation, replay, overrun, reconciliation, reserve protection, restart, unattributed-token rejection, metric formulas
+- Symbolic first: true
+- LLM context budget bytes: 28096
+- Risk class: R2_REVERSIBLE_LOCAL
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Every reasoning action reserves before start and reconciles actual use; planners cannot spend validation reserves; exhaustion never expands itself; all token/model/human costs retain a question attribution.
+- Embedding query: objective epoch cognitive budget reservation reconciliation validation reserve token attribution
+
+## APMC-004 Implement deterministic cognitive scheduler
+
+- Stable task ID: APMC-004
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: cognitive-scheduler
+- Depends on: APMC-001, APMC-003
+- Goal id: APMC-G030
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G030
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/cognitive_scheduler.py, test/api/autonomy/test_cognitive_scheduler.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_cognitive_scheduler.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/cognitive-scheduler
+- Parallel lane: scheduler
+- Resource class: cpu-medium
+- Resource stage: implementation
+- Estimated tokens: 30000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/cognitive_scheduler.py, test/api/autonomy/test_cognitive_scheduler.py
+- Interfaces: CognitiveScheduler@1, MetaDecision@1
+- Allow concurrent with: APMC-002, APMC-006, APMC-018
+- Conflict policy: Own cognitive_scheduler.py; provider routing and resource/proof execution remain existing authorities.
+- Preconditions: ResolutionAction/Candidate contracts and objective budget reservations pass.
+- Effects: Apply hard filters, closed route precedence, integer utility/tie-break, budget preview and explicit abstention decisions without dispatch.
+- Evidence subset: ordering vectors, no-question/no-value/current-cache/deterministic-authority/privacy/budget/non-authoritative/repeated-failure abstention, local-to-remote escalation, unavailable provider
+- Symbolic first: true
+- LLM context budget bytes: 34096
+- Risk class: R2_REVERSIBLE_LOCAL
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Identical inputs select the identical admissible action; hard constraints precede cost utility; every forbidden model-call case returns a typed non-model decision.
+- Embedding query: deterministic cognitive scheduler software first model abstention expected decision value cost
+
+## APMC-005 Integrate software-first analysis and model-call abstention
+
+- Stable task ID: APMC-005
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: software-first
+- Depends on: APMC-002, APMC-004
+- Goal id: APMC-G030
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G030
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/runtime.py, test/api/autonomy/test_runtime.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_runtime.py test/api/autonomy/test_cognitive_scheduler.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/software-first
+- Parallel lane: runtime-integration
+- Resource class: cpu-large
+- Resource stage: integration
+- Estimated tokens: 34000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/runtime.py, test/api/autonomy/test_runtime.py
+- Interfaces: AutonomousMetaController@1, DecisionRuntimeInputAdapter@1
+- Allow concurrent with: APMC-007, APMC-010, APMC-014, APMC-018
+- Conflict policy: Sole P0 runtime composition owner; adapters may call but not duplicate existing authorities.
+- Preconditions: Graph and scheduler pass; requested context/planning/verification/proof/provider authorities are characterized.
+- Effects: Compose existing cache/static/index/graph/context/test/proof/model/human services; feed admitted outcomes to DecisionRuntime; emit compact decisions.
+- Evidence subset: deterministic resolution, cache freshness, context expansion, test/proof delegation, provider unavailable, DecisionRuntime denial, exact receipt dependencies
+- Symbolic first: true
+- LLM context budget bytes: 38096
+- Risk class: R3_BOUNDED_REPOSITORY_MUTATION
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Entering a stage never calls a model by itself; deterministic/current evidence wins; effect-capable decisions still require existing DecisionRuntime/permit authority; imports are provider-free.
+- Embedding query: software first analysis model call abstention decision runtime adapter
+
+## APMC-006 Implement compact experience ledger
+
+- Stable task ID: APMC-006
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: experience
+- Depends on: APMC-001
+- Goal id: APMC-G040
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G040
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/experience_ledger.py, test/api/autonomy/test_experience_ledger.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_experience_ledger.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/experience
+- Parallel lane: experience
+- Resource class: cpu-medium
+- Resource stage: implementation
+- Estimated tokens: 26000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/experience_ledger.py, test/api/autonomy/test_experience_ledger.py
+- Interfaces: ExperienceLedger@1, ExperienceEpisode@1
+- Allow concurrent with: APMC-002, APMC-003, APMC-004, APMC-018
+- Conflict policy: Own experience_ledger.py; physical artifact/CAS stores remain unchanged.
+- Preconditions: ExperienceEpisode contract passes and existing RuntimeCAS/artifact stores are inventoried.
+- Effects: Persist bounded content-addressed public episode projections and dependency indexes through existing storage adapters.
+- Evidence subset: allowed/forbidden field tests, size bounds, canonical replay, dependency invalidation, no prompt/source/private-reasoning retention
+- Symbolic first: true
+- LLM context budget bytes: 30096
+- Risk class: R2_REVERSIBLE_LOCAL
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Ledger stores only the allowed compact episode fields, rejects secrets/raw prompts/source bodies/transcripts, and cannot upgrade evidence authority.
+- Embedding query: compact content addressed experience ledger no chain of thought causal episodes
+
+## APMC-007 Implement causal attribution and controlled ablations
+
+- Stable task ID: APMC-007
+- Status: completed
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: causal-attribution
+- Depends on: APMC-006
+- Goal id: APMC-G040
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G040
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/causal_attribution.py, test/api/autonomy/test_causal_attribution.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_causal_attribution.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/causal-attribution
+- Parallel lane: attribution
+- Resource class: cpu-medium
+- Resource stage: implementation
+- Estimated tokens: 26000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/causal_attribution.py, test/api/autonomy/test_causal_attribution.py
+- Interfaces: CausalAttributionEngine@1, CausalAttribution@1
+- Allow concurrent with: APMC-005, APMC-010, APMC-014, APMC-018
+- Conflict policy: Own causal_attribution.py; SCG/AAE execute admitted shadow comparisons.
+- Preconditions: Compact episodes preserve context/provider/plan/validation/proof/failure identities.
+- Effects: Classify evidence-supported failure causes and generate bounded shadow-only ablation proposals.
+- Evidence subset: context-omission versus model failure, provider/environment/plan/cache/validation/proof/merge/policy cases, confounder abstention, shadow enforcement
+- Symbolic first: true
+- LLM context budget bytes: 30096
+- Risk class: R2_REVERSIBLE_LOCAL
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: No cause is assigned without discriminating evidence; compression is not credited from one pass; model is not blamed for omitted source; ablations cannot affect production acceptance.
+- Embedding query: causal attribution controlled ablation context omission model failure provider failure
+
+## APMC-008 Implement shadow-only constrained route policy
+
+- Stable task ID: APMC-008
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: route-policy
+- Depends on: APMC-004, APMC-006, APMC-007
+- Goal id: APMC-G040
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G040
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/route_policy.py, test/api/autonomy/test_route_policy.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_route_policy.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/route-policy
+- Parallel lane: policy-shadow
+- Resource class: cpu-medium
+- Resource stage: implementation
+- Estimated tokens: 30000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/route_policy.py, test/api/autonomy/test_route_policy.py
+- Interfaces: ShadowRoutePolicy@1, RoutePolicyCandidate@1
+- Allow concurrent with: APMC-010, APMC-012, APMC-014, APMC-015, APMC-018
+- Conflict policy: Own route_policy.py; existing ModelRoutePlanner remains live route authority.
+- Preconditions: Scheduler policy boundary and causally attributed episodes pass.
+- Effects: Score admitted routes with deterministic integer/rational features; log reasons/propensity; evaluate only in shadow; support exact versioned rollback.
+- Evidence subset: feature determinism, closed action set, no provider/authority/privacy/validation/proof/confirmation change, no exploration, rollback vectors
+- Symbolic first: true
+- LLM context budget bytes: 34096
+- Risk class: R2_REVERSIBLE_LOCAL
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Learner can choose only already policy-admitted actions, never production-explores or increases authority, and produces no live routing effect before external promotion.
+- Embedding query: shadow constrained route policy linear score linear ucb no production exploration
+
+## APMC-009 Implement offline and counterfactual policy evaluation
+
+- Stable task ID: APMC-009
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: policy-evaluation
+- Depends on: APMC-008, APMC-018
+- Goal id: APMC-G040
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G040
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/policy_evaluation.py, test/api/autonomy/test_policy_evaluation.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_policy_evaluation.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/policy-evaluation
+- Parallel lane: policy-evaluation
+- Resource class: cpu-large
+- Resource stage: validation
+- Estimated tokens: 28000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/policy_evaluation.py, test/api/autonomy/test_policy_evaluation.py
+- Interfaces: RoutePolicyEvaluation@1
+- Allow concurrent with: APMC-011, APMC-013, APMC-016
+- Conflict policy: Own policy_evaluation.py; APMC-019 alone owns promotion CAS.
+- Preconditions: Shadow route candidate and frozen paired corpus exist.
+- Effects: Run held-out and counterfactual evaluation from logged comparison/propensity evidence; emit promotion-ineligible results on insufficiency.
+- Evidence subset: holdout separation, propensity support, cold/warm pairing, safety/quality floors, exact version binding, insufficiency fixtures
+- Symbolic first: true
+- LLM context budget bytes: 32096
+- Risk class: R2_REVERSIBLE_LOCAL
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Missing comparison or propensity evidence returns exactly insufficient_counterfactual_evidence; no fabricated improvement claim or production policy mutation occurs.
+- Embedding query: offline counterfactual evaluation propensity insufficient evidence held out routing
+
+## APMC-010 Implement declarative decision-rule distillation
+
+- Stable task ID: APMC-010
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: distillation
+- Depends on: APMC-006, APMC-007
+- Goal id: APMC-G050
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G050
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/policy_distillation.py, test/api/autonomy/test_policy_distillation.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_policy_distillation.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/distillation
+- Parallel lane: distillation
+- Resource class: cpu-medium
+- Resource stage: implementation
+- Estimated tokens: 32000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/policy_distillation.py, test/api/autonomy/test_policy_distillation.py
+- Interfaces: PolicyDistiller@1, DistilledDecisionRule@1
+- Allow concurrent with: APMC-005, APMC-008, APMC-012, APMC-014, APMC-015, APMC-018
+- Conflict policy: Own rule DSL/distiller; APMC-011 consumes stable exports and APMC-019 owns promotion.
+- Preconditions: Validated episodes and causal attribution are available.
+- Effects: Detect stable bounded decision classes; emit narrow declarative rules; run development/counterexample/held-out/AAE/shadow gates; retain fallback.
+- Evidence subset: stable feature/output checks, independent example threshold, DSL rejection, counterexample narrowing, held-out failure, AAE mutations, rollback
+- Symbolic first: true
+- LLM context budget bytes: 36096
+- Risk class: R2_REVERSIBLE_LOCAL
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: No arbitrary Python/model-generated executable policy is accepted; rules are narrower than evidence, keep out-of-domain fallback, and cannot self-promote.
+- Embedding query: policy distillation declarative rule dsl cegis counterexample held out fallback
+
+## APMC-011 Implement bounded supervisor skills
+
+- Stable task ID: APMC-011
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: supervisor-skills
+- Depends on: APMC-010
+- Goal id: APMC-G050
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G050
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/supervisor_skills.py, test/api/autonomy/test_supervisor_skills.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_supervisor_skills.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/supervisor-skills
+- Parallel lane: skills
+- Resource class: cpu-medium
+- Resource stage: implementation
+- Estimated tokens: 28000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/supervisor_skills.py, test/api/autonomy/test_supervisor_skills.py
+- Interfaces: SupervisorSkillRegistry@1, SupervisorSkill@1
+- Allow concurrent with: APMC-009, APMC-012, APMC-014, APMC-015, APMC-018
+- Conflict policy: Own supervisor_skills.py and registry; operation implementations remain canonical services.
+- Preconditions: Declarative rule contracts and validation gates pass.
+- Effects: Assemble workflows from allowlisted typed operations with schemas, effects, postconditions, validation, rollback, fallback and exact scope.
+- Evidence subset: allowlist, schema/effect closure, no shell, rollback, cancellation, scope, out-of-domain fallback, forged skill rejection
+- Symbolic first: true
+- LLM context budget bytes: 32096
+- Risk class: R2_REVERSIBLE_LOCAL
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Skills cannot execute arbitrary commands or expand authority; every step is admitted independently and failure rolls back or falls back exactly.
+- Embedding query: bounded supervisor skills allowlisted operations postconditions rollback no shell
+
+## APMC-012 Implement receding-horizon plan-suffix controller
+
+- Stable task ID: APMC-012
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: receding-horizon
+- Depends on: APMC-002, APMC-005
+- Goal id: APMC-G060
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G060
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/receding_horizon.py, test/api/autonomy/test_receding_horizon.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_receding_horizon.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/receding-horizon
+- Parallel lane: suffix
+- Resource class: cpu-large
+- Resource stage: integration
+- Estimated tokens: 32000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/receding_horizon.py, test/api/autonomy/test_receding_horizon.py
+- Interfaces: RecedingHorizonController@1, PlanSuffixInvalidationReceipt@1
+- Allow concurrent with: APMC-008, APMC-010, APMC-011, APMC-014, APMC-015, APMC-018
+- Conflict policy: Own receding_horizon.py; no duplicate replanner or plan identity.
+- Preconditions: Question graph/runtime pass and FormalDeltaReplanner/DeltaReplanDecision identities are characterized.
+- Effects: Freeze objective/plan; select nearest safe segment; adapt dependency-minimal delta replan results; preserve valid prefix and current receipts.
+- Evidence subset: changed-file locality, failed-test dependency, provider reroute, counterexample and human-answer locality, repeated-failure backoff, identity-preserving adapter
+- Symbolic first: true
+- LLM context budget bytes: 36096
+- Risk class: R3_BOUNDED_REPOSITORY_MUTATION
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Only the smallest evidenced suffix reopens; completed/unaffected tasks and current proof/validation receipts are preserved; objective semantics never change without admitted revision.
+- Embedding query: receding horizon plan suffix preservation formal delta replanner invalidation receipt
+
+## APMC-013 Implement bounded autonomous repair controller
+
+- Stable task ID: APMC-013
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: repair
+- Depends on: APMC-005, APMC-011, APMC-012
+- Goal id: APMC-G060
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G060
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/repair_controller.py, test/api/autonomy/test_repair_controller.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_repair_controller.py test/api/test_agent_supervisor_autonomous_repair_source_edit_admission.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/repair
+- Parallel lane: repair
+- Resource class: cpu-large
+- Resource stage: integration
+- Estimated tokens: 36000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/repair_controller.py, test/api/autonomy/test_repair_controller.py
+- Interfaces: AutonomousRepairController@1
+- Allow concurrent with: APMC-009, APMC-014, APMC-015, APMC-018
+- Conflict policy: Own repair_controller.py only; existing autonomous_repair package remains authority.
+- Preconditions: Existing autonomous_repair engine, admitted edit plans, transactions, validation/reproof/publication and no-LLM policy are characterized.
+- Effects: Add a tier-selection/scope facade over existing repair engine; bind exact envelope, isolated worktree, predetermined checks, backoff and merge disposition.
+- Evidence subset: deterministic/template/model tier, exact paths/symbols, protected authority paths, rollback, tests/proofs, repeated failure, R2 merge conjunction, R3 proposal
+- Symbolic first: true
+- LLM context budget bytes: 40096
+- Risk class: R3_BOUNDED_REPOSITORY_MUTATION
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: No second repair engine is created; scope escape/self-edit/validator-policy-key mutation is rejected; identical failures do not cause repeated model calls; autonomous merge satisfies every stated low-risk condition.
+- Embedding query: bounded autonomous repair controller facade deterministic template model isolated scope
+
+## APMC-014 Implement minimal human-escalation compiler
+
+- Stable task ID: APMC-014
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: human-escalation
+- Depends on: APMC-002, APMC-004
+- Goal id: APMC-G070
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G070
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/human_escalation.py, test/api/autonomy/test_human_escalation.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_human_escalation.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/human-escalation
+- Parallel lane: human
+- Resource class: cpu-small
+- Resource stage: implementation
+- Estimated tokens: 22000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/human_escalation.py, test/api/autonomy/test_human_escalation.py
+- Interfaces: HumanEscalationCompiler@1, HumanEscalationPacket@1
+- Allow concurrent with: APMC-005, APMC-007, APMC-008, APMC-010, APMC-011, APMC-012, APMC-013, APMC-015, APMC-018
+- Conflict policy: Own human_escalation.py; control service delivery/answer binding lands in APMC-017.
+- Preconditions: Decision graph and scheduler can prove no admitted non-human route resolves the question.
+- Effects: Compile one precise bounded question with options, safest recommendation, consequences, cost/risk, evidence, continuations and expiry.
+- Evidence subset: irreducibility rules, batch rule, 2-4 options, R5/authority/privacy/budget/ambiguity cases, unnecessary-question suppression, outcome metrics
+- Symbolic first: true
+- LLM context budget bytes: 26096
+- Risk class: R2_REVERSIBLE_LOCAL
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Packets never ask for full-history review; required human decisions cannot be bypassed; non-irreducible questions return a deterministic non-escalation reason.
+- Embedding query: minimal human escalation precise question bounded options consequence evidence expiry
+
+## APMC-015 Implement semantic memory retention and compaction
+
+- Stable task ID: APMC-015
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: semantic-memory
+- Depends on: APMC-006, APMC-010
+- Goal id: APMC-G070
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G070
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/semantic_memory.py, test/api/autonomy/test_semantic_memory.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_semantic_memory.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/semantic-memory
+- Parallel lane: memory
+- Resource class: cpu-medium
+- Resource stage: implementation
+- Estimated tokens: 26000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/semantic_memory.py, test/api/autonomy/test_semantic_memory.py
+- Interfaces: SemanticMemory@1, MemoryEntry@1
+- Allow concurrent with: APMC-008, APMC-010, APMC-011, APMC-012, APMC-013, APMC-014, APMC-018
+- Conflict policy: Own semantic_memory.py; RuntimeCAS/artifact stores remain physical authority.
+- Preconditions: Experience ledger and distilled rule identities pass.
+- Effects: Index existing content-addressed artifacts under closed retention classes with TTL, dependencies, compaction and withdrawal.
+- Evidence subset: retention classes, TTL, targeted invalidation, compaction, bounded growth, no raw prompt/source/private reasoning, frequency non-authority
+- Symbolic first: true
+- LLM context budget bytes: 30096
+- Risk class: R2_REVERSIBLE_LOCAL
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Only approved stable facts/signatures/patterns/rules/capabilities/dependencies/outcomes/answers/counterexamples persist; frequency changes rank but never authority.
+- Embedding query: semantic memory ttl invalidation compaction forgetting frequency not authority
+
+## APMC-016 Integrate event-driven runtime and idle stability
+
+- Stable task ID: APMC-016
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: event-runtime
+- Depends on: APMC-002, APMC-003, APMC-004, APMC-005, APMC-012, APMC-015
+- Goal id: APMC-G080
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G080
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/runtime.py, ipfs_accelerate_py/agent_supervisor/autonomy/metrics.py, test/api/autonomy/test_runtime.py, test/api/autonomy/test_idle_stability.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_runtime.py test/api/autonomy/test_idle_stability.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/event-runtime
+- Parallel lane: runtime
+- Resource class: cpu-large
+- Resource stage: integration
+- Estimated tokens: 36000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/runtime.py, ipfs_accelerate_py/agent_supervisor/autonomy/metrics.py, test/api/autonomy/test_runtime.py, test/api/autonomy/test_idle_stability.py
+- Interfaces: AutonomyRuntime@1, AutonomyMetrics@1
+- Allow concurrent with: APMC-009, APMC-018
+- Conflict policy: Sole event-runtime integration owner; lower services retain their state and execution authority.
+- Preconditions: P0 controller, suffix controller and memory are accepted; canonical wake/event/checkpoint APIs are characterized.
+- Effects: Consume meaningful wake events; run nearest safe segment; acknowledge/replay cursors; persist compact receipts/metrics; enter healthy idle/exhaustion.
+- Evidence subset: all wake kinds, duplicate/reorder/restart, cancellation, stale evidence, provider/lease/human/budget changes, no unchanged write/call/scan/refill, bounded timer
+- Symbolic first: true
+- LLM context budget bytes: 40096
+- Risk class: R3_BOUNDED_REPOSITORY_MUTATION
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Restart is deterministic and idempotent; unchanged complete boards use near-zero CPU with no model calls or writes; insufficient evidence/authority/budget stops honestly.
+- Embedding query: event driven autonomy runtime restart idempotent idle stability no unchanged writes
+
+## APMC-017 Add control service, CLI and MCP adapters
+
+- Stable task ID: APMC-017
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: control-surface
+- Depends on: APMC-014, APMC-016
+- Goal id: APMC-G090
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G090
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/control/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control/control_plane.py, ipfs_accelerate_py/agent_supervisor/autonomy/cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py, test/api/autonomy/test_control_surface.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_control_surface.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/control-surface
+- Parallel lane: control-api
+- Resource class: cpu-medium
+- Resource stage: integration
+- Estimated tokens: 34000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/control/control_contracts.py, ipfs_accelerate_py/agent_supervisor/control/control_plane.py, ipfs_accelerate_py/agent_supervisor/autonomy/cli.py, ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py, test/api/autonomy/test_control_surface.py
+- Interfaces: SupervisorControlService autonomy operation catalog, ipfs-accelerate agent autonomy
+- Allow concurrent with: APMC-018
+- Conflict policy: Exclusive control catalog/service integration; coordinate shared files and serialize adapter export changes.
+- Preconditions: Runtime read/mutation methods and escalation answer bindings are stable; existing control authority is characterized.
+- Effects: Extend closed operation catalog/service; add Python read/mutation methods and thin CLI/MCP adapters; preserve audit/permits/idempotency/fencing/dry-run/confirmation.
+- Evidence subset: all specified operations, Python/CLI/MCP parity, cold discovery, direct service MCP, unauthorized mutation, replay, lease/fence, cancel, dry-run
+- Symbolic first: true
+- LLM context budget bytes: 38096
+- Risk class: R4_SECURITY_OR_PROTOCOL_SENSITIVE
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: MCP never shells out; adapters cannot mint permission; every mutation uses current authority/effect/confirmation semantics and every read is side-effect free.
+- Embedding query: autonomy control service cli mcp typed direct authorization idempotency confirmation
+
+## APMC-018 Build frozen paired benchmark and adversarial corpus
+
+- Stable task ID: APMC-018
+- Status: todo
+- Completion: automatic
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: benchmark
+- Depends on: APMC-000
+- Goal id: APMC-G100
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G100
+- Owning repository: ipfs_accelerate_py
+- Outputs: benchmarks/agent_supervisor/autonomous_meta_controller, test/fixtures/agent_supervisor/autonomy
+- Validation: python3 benchmarks/agent_supervisor/autonomous_meta_controller/validate.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/benchmark
+- Parallel lane: benchmark
+- Resource class: cpu-io-large
+- Resource stage: validation
+- Estimated tokens: 34000
+- Implementation timeout seconds: 10800
+- Predicted files: benchmarks/agent_supervisor/autonomous_meta_controller, test/fixtures/agent_supervisor/autonomy
+- Interfaces: APMCBenchmarkManifest@1, APMCBenchmarkResult@1
+- Allow concurrent with: APMC-001, APMC-002, APMC-003, APMC-004, APMC-005, APMC-006, APMC-007, APMC-008, APMC-010, APMC-011, APMC-012, APMC-013, APMC-014, APMC-015, APMC-016, APMC-017
+- Conflict policy: Own benchmark/fixture directories; manifests freeze after acceptance and results are append-only content-addressed records.
+- Preconditions: Baseline tree/capabilities/tests are sealed.
+- Effects: Freeze required case families, seeds, provider/model/policy/fault/human fixtures and paired accounting; add structural validator and seeded-defect manifest.
+- Evidence subset: semantic compression, AAE, proof/verification, historical failures, maintenance, omission, unavailable provider, retries, escalation, stale cache/tree, conflicts, deterministic repair
+- Symbolic first: true
+- LLM context budget bytes: 38096
+- Risk class: R2_REVERSIBLE_LOCAL
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Baseline and candidate bind identical inputs; all token/model/human/validation costs attribute; live and simulated remain distinct; generated board completion is excluded.
+- Embedding query: frozen paired benchmark tokens model calls human intervention seeded defects fixed seeds
+
+## APMC-019 Implement promotion, rollback and terminal qualification
+
+- Stable task ID: APMC-019
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: true
+- Priority: P0
+- Track: promotion
+- Depends on: APMC-009, APMC-010, APMC-011, APMC-013, APMC-014, APMC-016, APMC-017, APMC-018
+- Goal id: APMC-G110
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G110
+- Owning repository: ipfs_accelerate_py
+- Outputs: ipfs_accelerate_py/agent_supervisor/autonomy/promotion.py, test/api/autonomy/test_promotion.py
+- Validation: python3 -m pytest -q test/api/autonomy/test_promotion.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/promotion
+- Parallel lane: promotion
+- Resource class: cpu-large
+- Resource stage: validation
+- Estimated tokens: 36000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/autonomy/promotion.py, test/api/autonomy/test_promotion.py
+- Interfaces: AutonomyPromotionController@1, AutonomyPromotionReceipt@1
+- Allow concurrent with:
+- Conflict policy: Exclusive policy pointer/CAS owner; no other task may mutate promotion state.
+- Preconditions: All candidate components and frozen paired results are current; external authorization interface is available.
+- Effects: Evaluate non-compensable gates; create promotion/non-promotion receipt; perform externally authorized expected-old policy CAS or exact rollback.
+- Evidence subset: zero safety gates, token/call/human/quality/runtime thresholds, held-out and seeded defects, current versions, external authorization, CAS race/ABA, rollback
+- Symbolic first: true
+- LLM context budget bytes: 40096
+- Risk class: R4_SECURITY_OR_PROTOCOL_SENSITIVE
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Candidate cannot authorize itself or lower gates; every missed gate blocks with exact reason; successful promotion is version-bound, externally authorized and exactly rollbackable.
+- Embedding query: autonomy policy promotion non compensable gates external authorization cas rollback
+
+## APMC-020 Produce current-tree release and residual-gap report
+
+- Stable task ID: APMC-020
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: true
+- Priority: P0
+- Track: release
+- Depends on: APMC-019
+- Goal id: APMC-G110
+- Parent goal ID: APMC-G000
+- Subgoal ID: APMC-G110
+- Owning repository: ipfs_accelerate_py
+- Outputs: docs/architecture/AGENT_SUPERVISOR_AUTONOMOUS_META_CONTROLLER_RELEASE.md, data/agent_supervisor/agent-supervisor-autonomous-meta-controller-v1/release
+- Validation: python3 scripts/validate_agent_supervisor_autonomous_meta_controller_board.py --check-all; python3 -m pytest -q test/api/autonomy; python3 benchmarks/agent_supervisor/autonomous_meta_controller/validate.py
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Bundle: agent-supervisor/autonomy/release
+- Parallel lane: release
+- Resource class: cpu-large
+- Resource stage: release
+- Estimated tokens: 26000
+- Implementation timeout seconds: 10800
+- Predicted files: docs/architecture/AGENT_SUPERVISOR_AUTONOMOUS_META_CONTROLLER_RELEASE.md, data/agent_supervisor/agent-supervisor-autonomous-meta-controller-v1/release
+- Interfaces: APMCReleaseReport@1
+- Allow concurrent with:
+- Conflict policy: Report-only terminal owner; cannot change policy, code authority or benchmark gates.
+- Preconditions: APMC-019 has a current promotion or exact non-promotion receipt; claims/merges are settled.
+- Effects: Read and join exact current-tree evidence; publish commit/files/tests/not-run/benchmarks/cost/humans/safety/blockers/eligibility report without mutating policy.
+- Evidence subset: final commit/tree, changed files, executed/not-executed tests, paired metrics, safety gates, database/Quack replay, DuckLake projection status, residual blockers
+- Symbolic first: true
+- LLM context budget bytes: 30096
+- Risk class: R1_READ_ONLY
+- Network policy: deny by default; separately marked live capability or provider tests only
+- Write scope: exact predicted files only; generated runtime state only through existing typed repositories
+- Prohibited effects: sibling or Gitlink mutation; raw model SQL; authority expansion; validation/proof reduction; simulated-as-live claims; private chain-of-thought storage
+- Rollback or compensation: discard isolated task worktree or exact versioned policy candidate; retain bounded failure receipt; never rewrite accepted history
+- Acceptance: Report is complete, current, content-addressed and truthful; promotion eligibility matches APMC-019; unavailable/not-run dimensions are explicit; no Markdown status substitutes for evidence.
+- Embedding query: autonomous meta controller final release residual gap report promotion eligibility
+
+## APMC-021 Resolve dirty main checkout blocking 1 worktree merges
+
+- Status: completed
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: d9c52644fa20bfe80048c05c7978fffac9f09c7b
+- Dedupe key: reconciliation_guardrail:main_checkout_dirty
+- Depends on:
+- Outputs: state/agent_supervisor_autonomous_meta_controller/state/discovery, docs/architecture/agent_supervisor_autonomous_meta_controller.todo.md
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Goal id: APMC-G110
+- Bundle: agent-supervisor/autonomy/release
+- Parallel lane: release
+- Resource class: cpu-large
+- Validation: test -f /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-20-apmc-021-reconciliation-d9c52644fa20.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-20-apmc-021-reconciliation-d9c52644fa20.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## APMC-022 Resolve 1 dirty backlogged worktrees blocked by content_not_in_target
+
+- Status: completed
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P2
+- Track: ops
+- Fingerprint: 785fbbd92ae690729883c5988853f0959a12ea75
+- Dedupe key: reconciliation_guardrail:dirty_backlogged_worktree:content_not_in_target
+- Depends on:
+- Outputs: state/agent_supervisor_autonomous_meta_controller/state/discovery, docs/architecture/agent_supervisor_autonomous_meta_controller.todo.md
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Goal id: APMC-G110
+- Bundle: agent-supervisor/autonomy/release
+- Parallel lane: release
+- Resource class: cpu-large
+- Validation: test -f /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-022-reconciliation-785fbbd92ae6.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by content_not_in_target. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-022-reconciliation-785fbbd92ae6.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## APMC-023 Resolve dirty main checkout blocking 1 worktree merges
+
+- Status: completed
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: 4e631585894f3a16fb54a2f0c70bdfc6cdec0e21
+- Dedupe key: reconciliation_guardrail:main_checkout_dirty
+- Depends on:
+- Outputs: state/agent_supervisor_autonomous_meta_controller/state/discovery, docs/architecture/agent_supervisor_autonomous_meta_controller.todo.md
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Goal id: APMC-G110
+- Bundle: agent-supervisor/autonomy/release
+- Parallel lane: release
+- Resource class: cpu-large
+- Validation: test -f /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-023-reconciliation-4e631585894f.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-023-reconciliation-4e631585894f.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## APMC-024 Resolve dirty main checkout blocking 1 worktree merges
+
+- Status: completed
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: 34a99ad7e4790a811fae633e2b758aea266ff86b
+- Dedupe key: reconciliation_guardrail:main_checkout_dirty
+- Depends on:
+- Outputs: state/agent_supervisor_autonomous_meta_controller/state/discovery, docs/architecture/agent_supervisor_autonomous_meta_controller.todo.md
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Goal id: APMC-G110
+- Bundle: agent-supervisor/autonomy/release
+- Parallel lane: release
+- Resource class: cpu-large
+- Validation: test -f /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-024-reconciliation-34a99ad7e479.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-024-reconciliation-34a99ad7e479.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## APMC-025 Resolve 1 preflight-conflicting backlogged worktree merges
+
+- Status: completed
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: efa95e2d5613a74c5256067f7b16c90da7844b79
+- Dedupe key: reconciliation_guardrail:preflight_merge_conflict
+- Depends on:
+- Outputs: state/agent_supervisor_autonomous_meta_controller/state/discovery, docs/architecture/agent_supervisor_autonomous_meta_controller.todo.md
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Goal id: APMC-G110
+- Bundle: agent-supervisor/autonomy/release
+- Parallel lane: release
+- Resource class: cpu-large
+- Validation: test -f /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-025-reconciliation-efa95e2d5613.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by preflight_merge_conflict. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-025-reconciliation-efa95e2d5613.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## APMC-026 Resolve dirty main checkout blocking 1 worktree merges
+
+- Status: completed
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: 68dbf3c75b80ebdacf16a651d21d7f6d38354fcc
+- Dedupe key: reconciliation_guardrail:main_checkout_dirty
+- Depends on:
+- Outputs: state/agent_supervisor_autonomous_meta_controller/state/discovery, docs/architecture/agent_supervisor_autonomous_meta_controller.todo.md
+- Board namespace: agent-supervisor-autonomous-meta-controller-v1
+- Goal id: APMC-G110
+- Bundle: agent-supervisor/autonomy/release
+- Parallel lane: release
+- Resource class: cpu-large
+- Validation: test -f /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-026-reconciliation-68dbf3c75b80.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/agent-supervisor-autonomous-meta-controller-v1/state/agent_supervisor_autonomous_meta_controller/state/discovery/2026-08-22-apmc-026-reconciliation-68dbf3c75b80.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.

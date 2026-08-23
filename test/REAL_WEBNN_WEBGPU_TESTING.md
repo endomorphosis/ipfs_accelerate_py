@@ -102,13 +102,17 @@ def verify_real_implementation(self, browser: str, platform: str) -> bool:
     Returns True if using real implementation, False for simulation.
     """
     capabilities = detect_web_platform_capabilities(browser=browser, use_browser_automation=True)
-    
+
     if platform == "webnn":
-        real_impl = capabilities.get("webnn_available", False) and not capabilities.get("webnn_simulated", True)
+        real_impl = capabilities.get("webnn_available", False) and not capabilities.get(
+            "webnn_simulated", True
+        )
         return real_impl
-    
+
     elif platform == "webgpu":
-        real_impl = capabilities.get("webgpu_available", False) and not capabilities.get("webgpu_simulated", True)
+        real_impl = capabilities.get("webgpu_available", False) and not capabilities.get(
+            "webgpu_simulated", True
+        )
         return real_impl
 ```
 

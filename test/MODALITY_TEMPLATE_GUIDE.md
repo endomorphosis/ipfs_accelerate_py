@@ -94,7 +94,7 @@ Different optimizations are applied by modality:
 
 ```python
 # CUDA-specific optimizations for text/vision models
-if hasattr(model, 'half') and (modality == 'text' or modality == 'vision'):
+if hasattr(model, "half") and (modality == "text" or modality == "vision"):
     # Use half precision for text/vision models
     model = model.half()
 ```
@@ -183,14 +183,15 @@ WebNN (Web Neural Network API) enables hardware-accelerated ML in browsers:
 def init_webnn(self, model_name="MODEL_PLACEHOLDER"):
     """Initialize model for WebNN inference."""
     print(f"Initializing {model_name} for WebNN inference")
-    
+
     # Initialize dependencies
     self.init()
-    
+
     try:
         # Import WebNN utilities
         try:
             from ipfs_accelerate_py.worker.web_utils import webnn_utils
+
             webnn_utils_available = True
             webnn_tools = webnn_utils(resources=self.resources, metadata=self.metadata)
             print("WebNN utilities imported successfully")
@@ -198,47 +199,43 @@ def init_webnn(self, model_name="MODEL_PLACEHOLDER"):
             webnn_utils_available = False
             webnn_tools = None
             print("WebNN utilities not available, using simulation mode")
-        
+
         # Add local cache directory for testing environments without internet
         cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_cache")
         os.makedirs(cache_dir, exist_ok=True)
-        
+
         # Load tokenizer (or processor for vision/audio/multimodal models)
         tokenizer = self.transformers.AutoTokenizer.from_pretrained(
-            model_name, 
-            use_fast=True, 
-            trust_remote_code=True,
-            cache_dir=cache_dir
+            model_name, use_fast=True, trust_remote_code=True, cache_dir=cache_dir
         )
-        
+
         # Try to create WebNN endpoint
         if webnn_utils_available:
             endpoint = webnn_tools.export_and_load_model(
-                model_name=model_name,
-                task_type=self.task,
-                cache_dir=cache_dir
+                model_name=model_name, task_type=self.task, cache_dir=cache_dir
             )
             implementation_type = "REAL_WEBNN"
         else:
             # Create simulated endpoint for testing
             endpoint = self._create_mock_endpoint(model_name, "webnn")
             implementation_type = "SIMULATED_WEBNN"
-        
+
         # Create handler function
         handler = self.create_webnn_endpoint_handler(
             endpoint_model=model_name,
             endpoint=endpoint,
             tokenizer=tokenizer,
-            implementation_type=implementation_type
+            implementation_type=implementation_type,
         )
-        
+
         return endpoint, tokenizer, handler, AnyioQueue(32), 0
-        
+
     except Exception as e:
         print(f"Error initializing WebNN model: {e}")
         import traceback
+
         print(f"Traceback: {traceback.format_exc()}")
-        
+
         # Return mock objects for graceful degradation
         return self._create_mock_endpoint(model_name, "webnn")
 ```
@@ -251,14 +248,15 @@ Support for WebGPU acceleration via transformers.js:
 def init_webgpu(self, model_name="MODEL_PLACEHOLDER"):
     """Initialize model for WebGPU inference using transformers.js."""
     print(f"Initializing {model_name} for WebGPU/transformers.js inference")
-    
+
     # Initialize dependencies
     self.init()
-    
+
     try:
         # Import WebGPU utilities
         try:
             from ipfs_accelerate_py.worker.web_utils import webgpu_utils
+
             webgpu_utils_available = True
             webgpu_tools = webgpu_utils(resources=self.resources, metadata=self.metadata)
             print("WebGPU utilities imported successfully")
@@ -266,47 +264,43 @@ def init_webgpu(self, model_name="MODEL_PLACEHOLDER"):
             webgpu_utils_available = False
             webgpu_tools = None
             print("WebGPU utilities not available, using simulation mode")
-        
+
         # Add local cache directory for testing environments without internet
         cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_cache")
         os.makedirs(cache_dir, exist_ok=True)
-        
+
         # Load tokenizer (or processor for vision/audio/multimodal models)
         tokenizer = self.transformers.AutoTokenizer.from_pretrained(
-            model_name, 
-            use_fast=True, 
-            trust_remote_code=True,
-            cache_dir=cache_dir
+            model_name, use_fast=True, trust_remote_code=True, cache_dir=cache_dir
         )
-        
+
         # Try to create WebGPU endpoint
         if webgpu_utils_available:
             endpoint = webgpu_tools.export_for_transformers_js(
-                model_name=model_name,
-                task_type=self.task,
-                cache_dir=cache_dir
+                model_name=model_name, task_type=self.task, cache_dir=cache_dir
             )
             implementation_type = "REAL_WEBGPU_TRANSFORMERS_JS"
         else:
             # Create simulated endpoint for testing
             endpoint = self._create_mock_endpoint(model_name, "webgpu")
             implementation_type = "SIMULATED_WEBGPU_TRANSFORMERS_JS"
-        
+
         # Create handler function
         handler = self.create_webgpu_endpoint_handler(
             endpoint_model=model_name,
             endpoint=endpoint,
             tokenizer=tokenizer,
-            implementation_type=implementation_type
+            implementation_type=implementation_type,
         )
-        
+
         return endpoint, tokenizer, handler, AnyioQueue(32), 0
-        
+
     except Exception as e:
         print(f"Error initializing WebGPU model: {e}")
         import traceback
+
         print(f"Traceback: {traceback.format_exc()}")
-        
+
         # Return mock objects for graceful degradation
         return self._create_mock_endpoint(model_name, "webgpu")
 ```
@@ -316,144 +310,173 @@ def init_webgpu(self, model_name="MODEL_PLACEHOLDER"):
 Each test includes standardized handlers that match the implementation patterns:
 
 ```python
-def create_webnn_endpoint_handler(self, endpoint_model, endpoint, tokenizer, implementation_type="SIMULATED_WEBNN"):
+def create_webnn_endpoint_handler(
+    self, endpoint_model, endpoint, tokenizer, implementation_type="SIMULATED_WEBNN"
+):
     """Create endpoint handler for WebNN backend."""
-    def handler(text_input, endpoint_model=endpoint_model, endpoint=endpoint, 
-                tokenizer=tokenizer, implementation_type=implementation_type):
+
+    def handler(
+        text_input,
+        endpoint_model=endpoint_model,
+        endpoint=endpoint,
+        tokenizer=tokenizer,
+        implementation_type=implementation_type,
+    ):
         """Process input with WebNN model."""
         try:
             # Process different input types based on modality
             if isinstance(text_input, str):
                 tokens = tokenizer(
-                    text_input, 
-                    return_tensors="pt",
-                    padding=True,
-                    truncation=True,
-                    max_length=512
+                    text_input, return_tensors="pt", padding=True, truncation=True, max_length=512
                 )
             elif isinstance(text_input, list):
                 tokens = tokenizer(
-                    text_input, 
-                    return_tensors="pt",
-                    padding=True,
-                    truncation=True,
-                    max_length=512
+                    text_input, return_tensors="pt", padding=True, truncation=True, max_length=512
                 )
             else:
                 tokens = text_input
-            
+
             # Check if using real implementation or simulation
             if implementation_type == "REAL_WEBNN":
                 # Convert inputs to format expected by WebNN
                 inputs = {}
                 for key, value in tokens.items():
-                    if hasattr(value, 'numpy'):
+                    if hasattr(value, "numpy"):
                         inputs[key] = value.numpy()
                     else:
                         inputs[key] = value
-                
+
                 # Run inference with WebNN
                 results = endpoint.run(inputs)
-                
+
                 # Create result object with metadata
                 result = {
                     "outputs": results,
                     "model": endpoint_model,
-                    "implementation_type": implementation_type
+                    "implementation_type": implementation_type,
                 }
             else:
                 # Simulation mode for testing
-                batch_size = 1 if isinstance(text_input, str) else len(text_input) if isinstance(text_input, list) else 1
+                batch_size = (
+                    1
+                    if isinstance(text_input, str)
+                    else len(text_input)
+                    if isinstance(text_input, list)
+                    else 1
+                )
                 result = {
                     "outputs": {"last_hidden_state": torch.rand((batch_size, 512, 768))},
                     "model": endpoint_model,
-                    "implementation_type": implementation_type
+                    "implementation_type": implementation_type,
                 }
-            
+
             return result
-            
+
         except Exception as e:
             print(f"Error in WebNN handler: {e}")
-            
+
             # Return mock result on error
-            batch_size = 1 if isinstance(text_input, str) else len(text_input) if isinstance(text_input, list) else 1
+            batch_size = (
+                1
+                if isinstance(text_input, str)
+                else len(text_input)
+                if isinstance(text_input, list)
+                else 1
+            )
             return {
                 "outputs": {"last_hidden_state": torch.rand((batch_size, 512, 768))},
                 "model": endpoint_model,
                 "implementation_type": "ERROR_FALLBACK",
-                "error": str(e)
+                "error": str(e),
             }
-    
+
     return handler
 
-def create_webgpu_endpoint_handler(self, endpoint_model, endpoint, tokenizer, implementation_type="SIMULATED_WEBGPU_TRANSFORMERS_JS"):
+
+def create_webgpu_endpoint_handler(
+    self,
+    endpoint_model,
+    endpoint,
+    tokenizer,
+    implementation_type="SIMULATED_WEBGPU_TRANSFORMERS_JS",
+):
     """Create endpoint handler for WebGPU/transformers.js backend."""
-    def handler(text_input, endpoint_model=endpoint_model, endpoint=endpoint, 
-                tokenizer=tokenizer, implementation_type=implementation_type):
+
+    def handler(
+        text_input,
+        endpoint_model=endpoint_model,
+        endpoint=endpoint,
+        tokenizer=tokenizer,
+        implementation_type=implementation_type,
+    ):
         """Process input with WebGPU/transformers.js model."""
         try:
             # Process different input types based on modality
             if isinstance(text_input, str):
                 tokens = tokenizer(
-                    text_input, 
-                    return_tensors="pt",
-                    padding=True,
-                    truncation=True,
-                    max_length=512
+                    text_input, return_tensors="pt", padding=True, truncation=True, max_length=512
                 )
             elif isinstance(text_input, list):
                 tokens = tokenizer(
-                    text_input, 
-                    return_tensors="pt",
-                    padding=True,
-                    truncation=True,
-                    max_length=512
+                    text_input, return_tensors="pt", padding=True, truncation=True, max_length=512
                 )
             else:
                 tokens = text_input
-            
+
             # Check if using real implementation or simulation
             if implementation_type == "REAL_WEBGPU_TRANSFORMERS_JS":
                 # Convert inputs to format expected by transformers.js
                 inputs = {}
                 for key, value in tokens.items():
-                    if hasattr(value, 'numpy'):
+                    if hasattr(value, "numpy"):
                         inputs[key] = value.numpy().tolist()
                     else:
                         inputs[key] = value
-                
+
                 # Run inference with transformers.js
                 results = endpoint.run(inputs)
-                
+
                 # Create result object with metadata
                 result = {
                     "outputs": results,
                     "model": endpoint_model,
-                    "implementation_type": implementation_type
+                    "implementation_type": implementation_type,
                 }
             else:
                 # Simulation mode for testing
-                batch_size = 1 if isinstance(text_input, str) else len(text_input) if isinstance(text_input, list) else 1
+                batch_size = (
+                    1
+                    if isinstance(text_input, str)
+                    else len(text_input)
+                    if isinstance(text_input, list)
+                    else 1
+                )
                 result = {
                     "outputs": {"last_hidden_state": torch.rand((batch_size, 512, 768))},
                     "model": endpoint_model,
-                    "implementation_type": implementation_type
+                    "implementation_type": implementation_type,
                 }
-            
+
             return result
-            
+
         except Exception as e:
             print(f"Error in WebGPU/transformers.js handler: {e}")
-            
+
             # Return mock result on error
-            batch_size = 1 if isinstance(text_input, str) else len(text_input) if isinstance(text_input, list) else 1
+            batch_size = (
+                1
+                if isinstance(text_input, str)
+                else len(text_input)
+                if isinstance(text_input, list)
+                else 1
+            )
             return {
                 "outputs": {"last_hidden_state": torch.rand((batch_size, 512, 768))},
                 "model": endpoint_model,
                 "implementation_type": "ERROR_FALLBACK",
-                "error": str(e)
+                "error": str(e),
             }
-    
+
     return handler
 ```
 

@@ -16,7 +16,7 @@ Examples:
     python run_ci_benchmarks.py --device-id 00008101-001D38810168001E --output-db benchmark_results.duckdb
 
     # Run specific models with timeout and simulator
-    python run_ci_benchmarks.py --device-id "iPhone 13" --simulator --output-db benchmark_results.duckdb 
+    python run_ci_benchmarks.py --device-id "iPhone 13" --simulator --output-db benchmark_results.duckdb
         --model-list models.json --timeout 3600
 
 Date: April 2025
@@ -36,8 +36,7 @@ from typing import Dict, List, Any, Optional, Union
 
 # Set up logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -62,21 +61,23 @@ except ImportError as e:
 class CIBenchmarkRunner:
     """
     Runs automated benchmarks for the iOS Test Harness in CI environment.
-    
+
     This class handles device connection, model deployment, benchmark execution,
     result storage, and reporting for CI/CD integration.
     """
-    
-    def __init__(self, 
-                 device_id: str, 
-                 output_db: str,
-                 model_list: Optional[str] = None,
-                 timeout: int = 7200,
-                 simulator: bool = False,
-                 verbose: bool = False):
+
+    def __init__(
+        self,
+        device_id: str,
+        output_db: str,
+        model_list: Optional[str] = None,
+        timeout: int = 7200,
+        simulator: bool = False,
+        verbose: bool = False,
+    ):
         """
         Initialize the CI benchmark runner.
-        
+
         Args:
             device_id: iOS device ID (UDID) or simulator name
             output_db: Path to output DuckDB database
@@ -91,11 +92,11 @@ class CIBenchmarkRunner:
         self.timeout = timeout
         self.simulator = simulator
         self.verbose = verbose
-        
+
         # Set logging level
         if verbose:
             logger.setLevel(logging.DEBUG)
-        
+
         # Initialize database connection
         self.db_api = None
         try:
@@ -104,39 +105,35 @@ class CIBenchmarkRunner:
         except Exception as e:
             logger.error(f"Error connecting to database: {e}")
             logger.warning("Will continue without database connection")
-        
+
         # Initialize iOS test harness
         self.test_harness = None
         self.models_to_test = []
         self.results = {}
         self.start_time = time.time()
-        
+
         # Check for required tools
         self._check_ios_tools()
-    
+
     def _check_ios_tools(self) -> None:
         """Check for required iOS tools."""
         # Check for Xcode command-line tools
         try:
             xcode_path = subprocess.run(
-                ["xcode-select", "--print-path"],
-                capture_output=True,
-                text=True,
-                check=True
+                ["xcode-select", "--print-path"], capture_output=True, text=True, check=True
             ).stdout.strip()
             logger.info(f"Found Xcode at: {xcode_path}")
         except subprocess.CalledProcessError:
-            logger.error("Xcode command-line tools not found. Install them using 'xcode-select --install'")
-        
+            logger.error(
+                "Xcode command-line tools not found. Install them using 'xcode-select --install'"
+            )
+
         # Check for simulator if needed
         if self.simulator:
             try:
                 # List simulators
                 result = subprocess.run(
-                    ["xcrun", "simctl", "list"],
-                    capture_output=True,
-                    text=True,
-                    check=True
+                    ["xcrun", "simctl", "list"], capture_output=True, text=True, check=True
                 )
                 # Check if our simulator exists
                 if self.device_id not in result.stdout:
@@ -147,23 +144,23 @@ class CIBenchmarkRunner:
                             logger.info(f"  {line.strip()}")
             except subprocess.CalledProcessError:
                 logger.error("Error running simctl. Make sure Xcode is properly installed")
-    
+
     def load_model_list(self) -> List[Dict[str, Any]]:
         """
         Load the list of models to test.
-        
+
         Returns:
             List of model configurations
         """
         if self.model_list_path and os.path.exists(self.model_list_path):
             try:
-                with open(self.model_list_path, 'r') as f:
+                with open(self.model_list_path, "r") as f:
                     models = json.load(f)
                 logger.info(f"Loaded {len(models)} models from {self.model_list_path}")
                 return models
             except Exception as e:
                 logger.error(f"Error loading model list: {e}")
-        
+
         # Default model list if not provided or error loading
         logger.info("Using default model list")
         return [
@@ -173,7 +170,7 @@ class CIBenchmarkRunner:
                 "type": "coreml",
                 "batch_sizes": [1, 4],
                 "iterations": 50,
-                "priority": "high"
+                "priority": "high",
             },
             {
                 "name": "mobilenet-v2",
@@ -181,7 +178,7 @@ class CIBenchmarkRunner:
                 "type": "coreml",
                 "batch_sizes": [1, 4],
                 "iterations": 50,
-                "priority": "high"
+                "priority": "high",
             },
             {
                 "name": "roberta-base",
@@ -189,7 +186,7 @@ class CIBenchmarkRunner:
                 "type": "coreml",
                 "batch_sizes": [1],
                 "iterations": 30,
-                "priority": "medium"
+                "priority": "medium",
             },
             {
                 "name": "whisper-tiny",
@@ -197,7 +194,7 @@ class CIBenchmarkRunner:
                 "type": "coreml",
                 "batch_sizes": [1],
                 "iterations": 20,
-                "priority": "medium"
+                "priority": "medium",
             },
             {
                 "name": "clip-vit-base-patch32",
@@ -205,7 +202,7 @@ class CIBenchmarkRunner:
                 "type": "coreml",
                 "batch_sizes": [1],
                 "iterations": 20,
-                "priority": "medium"
+                "priority": "medium",
             },
             {
                 "name": "bert-base-uncased-onnx",
@@ -213,14 +210,14 @@ class CIBenchmarkRunner:
                 "type": "onnx",
                 "batch_sizes": [1],
                 "iterations": 30,
-                "priority": "medium"
-            }
+                "priority": "medium",
+            },
         ]
-    
+
     def connect_to_device(self) -> bool:
         """
         Connect to the iOS device or simulator.
-        
+
         Returns:
             Success status
         """
@@ -229,29 +226,25 @@ class CIBenchmarkRunner:
                 logger.info(f"Preparing iOS simulator: {self.device_id}")
                 # Check if simulator is booted
                 result = subprocess.run(
-                    ["xcrun", "simctl", "list"],
-                    capture_output=True,
-                    text=True,
-                    check=True
+                    ["xcrun", "simctl", "list"], capture_output=True, text=True, check=True
                 )
-                
+
                 if f"{self.device_id} (Booted)" not in result.stdout:
                     logger.info(f"Booting simulator: {self.device_id}")
                     # Boot simulator
                     subprocess.run(
-                        ["xcrun", "simctl", "boot", self.device_id],
-                        capture_output=True,
-                        check=True
+                        ["xcrun", "simctl", "boot", self.device_id], capture_output=True, check=True
                     )
-            
-            logger.info(f"Connecting to iOS {'simulator' if self.simulator else 'device'}: {self.device_id}")
-            self.test_harness = IOSTestHarness(
-                udid=None if self.simulator else self.device_id,
-                db_path=self.output_db
+
+            logger.info(
+                f"Connecting to iOS {'simulator' if self.simulator else 'device'}: {self.device_id}"
             )
-            
+            self.test_harness = IOSTestHarness(
+                udid=None if self.simulator else self.device_id, db_path=self.output_db
+            )
+
             connected = self.test_harness.connect_to_device()
-            
+
             if connected:
                 device_info = self.test_harness.device.to_dict()
                 logger.info(f"Connected to device: {device_info.get('name', 'Unknown')}")
@@ -259,95 +252,99 @@ class CIBenchmarkRunner:
                 logger.info(f"Device capabilities: {device_info.get('capabilities', {})}")
                 return True
             else:
-                logger.error(f"Failed to connect to {'simulator' if self.simulator else 'device'}: {self.device_id}")
+                logger.error(
+                    f"Failed to connect to {'simulator' if self.simulator else 'device'}: {self.device_id}"
+                )
                 return False
-        
+
         except Exception as e:
             logger.error(f"Error connecting to {'simulator' if self.simulator else 'device'}: {e}")
             return False
-    
+
     def prepare_models(self) -> bool:
         """
         Prepare models for testing.
-        
+
         Returns:
             Success status
         """
         if not self.test_harness:
             logger.error("Test harness not initialized")
             return False
-        
+
         # Load model list
         self.models_to_test = self.load_model_list()
-        
+
         # Check if model files exist
         for model in self.models_to_test:
             model_path = model.get("path")
-            
+
             if not os.path.exists(model_path):
                 logger.warning(f"Model file not found: {model_path}")
                 model["skip"] = True
                 continue
-            
+
             logger.info(f"Model file found: {model_path}")
             model["skip"] = False
-        
+
         # Count models to test
         models_to_run = [m for m in self.models_to_test if not m.get("skip", False)]
         logger.info(f"Models prepared for testing: {len(models_to_run)}/{len(self.models_to_test)}")
-        
+
         return len(models_to_run) > 0
-    
+
     def run_benchmarks(self) -> Dict[str, Any]:
         """
         Run benchmarks on all models.
-        
+
         Returns:
             Dictionary with benchmark results
         """
         if not self.test_harness:
             logger.error("Test harness not initialized")
             return {"status": "error", "message": "Test harness not initialized"}
-        
+
         # Check if we have models to test
         if not self.models_to_test:
             logger.error("No models to test")
             return {"status": "error", "message": "No models to test"}
-        
+
         # Run benchmarks for each model
         benchmark_results = {
             "status": "success",
             "device_info": self.test_harness.device.to_dict(),
             "start_time": datetime.datetime.now().isoformat(),
-            "models": {}
+            "models": {},
         }
-        
+
         for i, model in enumerate(self.models_to_test):
             # Check if we should skip this model
             if model.get("skip", False):
                 logger.info(f"Skipping model: {model.get('name')}")
                 continue
-            
+
             # Check timeout
             if (time.time() - self.start_time) > self.timeout:
                 logger.warning("Benchmark timeout reached")
                 benchmark_results["status"] = "timeout"
                 benchmark_results["message"] = "Benchmark timeout reached"
                 break
-            
+
             # Extract model information
             model_name = model.get("name", f"model_{i}")
             model_path = model.get("path")
             model_type = model.get("type", "coreml")
             batch_sizes = model.get("batch_sizes", [1])
             iterations = model.get("iterations", 50)
-            
-            logger.info(f"Running benchmark for model: {model_name} ({i+1}/{len(self.models_to_test)})")
+
+            logger.info(
+                f"Running benchmark for model: {model_name} ({i + 1}/{len(self.models_to_test)})"
+            )
             logger.info(f"  Path: {model_path}")
             logger.info(f"  Type: {model_type}")
             logger.info(f"  Batch sizes: {batch_sizes}")
             logger.info(f"  Iterations: {iterations}")
-            
+
             try:
                 # Run benchmark
                 result = self.test_harness.run_benchmark(
@@ -357,12 +354,12 @@ class CIBenchmarkRunner:
                     batch_sizes=batch_sizes,
                     iterations=iterations,
                     save_to_db=True,
-                    collect_metrics=True
+                    collect_metrics=True,
                 )
-                
+
                 # Store results
                 benchmark_results["models"][model_name] = result
-                
+
                 # Log summary
                 if result.get("status") == "success":
                     logger.info(f"Benchmark successful for {model_name}")
@@ -370,91 +367,92 @@ class CIBenchmarkRunner:
                         batch_size = config.get("configuration", {}).get("batch_size", 1)
                         throughput = config.get("throughput_items_per_second", 0)
                         latency = config.get("latency_ms", {}).get("mean", 0)
-                        logger.info(f"  Batch size {batch_size}: {throughput:.2f} items/s, {latency:.2f} ms")
+                        logger.info(
+                            f"  Batch size {batch_size}: {throughput:.2f} items/s, {latency:.2f} ms"
+                        )
                 else:
-                    logger.error(f"Benchmark failed for {model_name}: {result.get('message', 'Unknown error')}")
-            
+                    logger.error(
+                        f"Benchmark failed for {model_name}: {result.get('message', 'Unknown error')}"
+                    )
+
             except Exception as e:
                 logger.error(f"Error running benchmark for {model_name}: {e}")
-                benchmark_results["models"][model_name] = {
-                    "status": "error",
-                    "message": str(e)
-                }
-        
+                benchmark_results["models"][model_name] = {"status": "error", "message": str(e)}
+
         # Add end time
         benchmark_results["end_time"] = datetime.datetime.now().isoformat()
         benchmark_results["duration_seconds"] = time.time() - self.start_time
-        
+
         # Count successful models
         successful_models = 0
         for model_name, result in benchmark_results["models"].items():
             if result.get("status") == "success":
                 successful_models += 1
-        
+
         benchmark_results["successful_models"] = successful_models
         benchmark_results["total_models"] = len(self.models_to_test)
-        
+
         return benchmark_results
-    
+
     def save_results(self, results: Dict[str, Any]) -> str:
         """
         Save benchmark results to file.
-        
+
         Args:
             results: Benchmark results
-            
+
         Returns:
             Path to results file
         """
         # Create results directory if needed
         os.makedirs("ios_benchmark_results", exist_ok=True)
-        
+
         # Generate filename
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         device_model = results.get("device_info", {}).get("model", "unknown").replace(" ", "_")
         filename = f"ios_benchmark_results/ios_benchmark_{device_model}_{timestamp}.json"
-        
+
         # Save to file
-        with open(filename, 'w') as f:
+        with open(filename, "w") as f:
             json.dump(results, f, indent=2)
-        
+
         logger.info(f"Results saved to {filename}")
         return filename
-    
+
     def generate_report(self, results: Dict[str, Any]) -> str:
         """
         Generate a benchmark report.
-        
+
         Args:
             results: Benchmark results
-            
+
         Returns:
             Path to report file
         """
         # Create results directory if needed
         os.makedirs("ios_benchmark_results", exist_ok=True)
-        
+
         # Generate filename
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         device_model = results.get("device_info", {}).get("model", "unknown").replace(" ", "_")
         filename = f"ios_benchmark_results/ios_benchmark_report_{device_model}_{timestamp}.md"
-        
+
         # Generate report
         report = "# iOS Benchmark Report\n\n"
         report += f"Generated: {datetime.datetime.now().isoformat()}\n\n"
-        
+
         # Device information
         device_info = results.get("device_info", {})
         report += "## Device Information\n\n"
         report += f"- **Model**: {device_info.get('model', 'Unknown')}\n"
         report += f"- **iOS Version**: {device_info.get('ios_version', 'Unknown')}\n"
         report += f"- **Simulator**: {'Yes' if self.simulator else 'No'}\n"
-        
+
         # Neural Engine availability
         has_neural_engine = device_info.get("capabilities", {}).get("neural_engine", False)
         report += f"- **Neural Engine**: {'Available' if has_neural_engine else 'Not Available'}\n"
         report += f"- **Core ML Version**: {device_info.get('capabilities', {}).get('coreml_version', 'Unknown')}\n\n"
-        
+
         # Summary
         report += "## Summary\n\n"
         report += f"- **Start Time**: {results.get('start_time', 'Unknown')}\n"
@@ -462,43 +460,43 @@ class CIBenchmarkRunner:
         report += f"- **Duration**: {results.get('duration_seconds', 0):.1f} seconds\n"
         report += f"- **Status**: {results.get('status', 'Unknown')}\n"
         report += f"- **Models Tested**: {results.get('successful_models', 0)}/{results.get('total_models', 0)}\n\n"
-        
+
         # Model results
         report += "## Model Results\n\n"
-        
+
         # Create summary table
         report += "### Performance Summary\n\n"
         report += "| Model | Batch Size | Throughput (items/s) | Latency (ms) | Memory (MB) | Battery Impact |\n"
         report += "|-------|------------|----------------------|--------------|-------------|----------------|\n"
-        
+
         for model_name, model_results in results.get("models", {}).items():
             if model_results.get("status") != "success":
                 continue
-            
+
             for config in model_results.get("configurations", []):
                 batch_size = config.get("configuration", {}).get("batch_size", 1)
                 throughput = config.get("throughput_items_per_second", 0)
                 latency = config.get("latency_ms", {}).get("mean", 0)
                 memory = config.get("memory_metrics", {}).get("peak_mb", 0)
                 battery = config.get("battery_metrics", {}).get("impact_percentage", 0)
-                
+
                 report += f"| {model_name} | {batch_size} | {throughput:.2f} | {latency:.2f} | {memory:.1f} | {battery:.1f}% |\n"
-        
+
         # Detailed results
         report += "\n### Detailed Results\n\n"
-        
+
         for model_name, model_results in results.get("models", {}).items():
             report += f"#### {model_name}\n\n"
-            
+
             if model_results.get("status") != "success":
                 report += f"**Status**: {model_results.get('status', 'Unknown')}\n"
                 report += f"**Message**: {model_results.get('message', 'Unknown')}\n\n"
                 continue
-            
+
             for i, config in enumerate(model_results.get("configurations", [])):
                 batch_size = config.get("configuration", {}).get("batch_size", 1)
-                report += f"##### Configuration {i+1}: Batch Size {batch_size}\n\n"
-                
+                report += f"##### Configuration {i + 1}: Batch Size {batch_size}\n\n"
+
                 # Latency statistics
                 latency = config.get("latency_ms", {})
                 report += "**Latency (ms)**:\n\n"
@@ -509,97 +507,99 @@ class CIBenchmarkRunner:
                 report += f"- P95: {latency.get('p95', 0):.2f}\n"
                 report += f"- P99: {latency.get('p99', 0):.2f}\n"
                 report += f"- Max: {latency.get('max', 0):.2f}\n\n"
-                
+
                 # Throughput
                 report += "**Throughput**:\n\n"
                 report += f"- {config.get('throughput_items_per_second', 0):.2f} items/s\n\n"
-                
+
                 # Battery impact
                 battery_metrics = config.get("battery_metrics", {})
                 report += "**Battery Impact**:\n\n"
                 report += f"- Impact: {battery_metrics.get('impact_percentage', 0):.1f}%\n"
                 report += f"- Temperature: {battery_metrics.get('temperature_delta', 0):.1f}°C\n\n"
-                
+
                 # Memory usage
                 memory_metrics = config.get("memory_metrics", {})
                 report += "**Memory Usage**:\n\n"
                 report += f"- Peak: {memory_metrics.get('peak_mb', 0):.1f} MB\n\n"
-        
+
         # Neural Engine comparison
         if has_neural_engine:
             report += "## Neural Engine Impact\n\n"
             report += "### Performance with Neural Engine\n\n"
-            
+
             report += "| Model | With Neural Engine | CPU Only | Speedup |\n"
             report += "|-------|-------------------|----------|--------|\n"
-            
+
             for model_name, model_results in results.get("models", {}).items():
                 if model_results.get("status") != "success":
                     continue
-                
+
                 # Find configurations with different compute units
                 neural_engine_config = None
                 cpu_config = None
-                
+
                 for config in model_results.get("configurations", []):
                     compute_units = config.get("configuration", {}).get("compute_units", "")
                     if "all" in compute_units.lower() or "neural" in compute_units.lower():
                         neural_engine_config = config
                     elif "cpu" in compute_units.lower():
                         cpu_config = config
-                
+
                 if neural_engine_config and cpu_config:
                     ne_throughput = neural_engine_config.get("throughput_items_per_second", 0)
                     cpu_throughput = cpu_config.get("throughput_items_per_second", 0)
                     speedup = ne_throughput / cpu_throughput if cpu_throughput > 0 else 0
-                    
+
                     report += f"| {model_name} | {ne_throughput:.2f} items/s | {cpu_throughput:.2f} items/s | {speedup:.2f}x |\n"
-        
+
         # Save report
-        with open(filename, 'w') as f:
+        with open(filename, "w") as f:
             f.write(report)
-        
+
         logger.info(f"Report saved to {filename}")
         return filename
-    
+
     def run(self) -> Dict[str, Any]:
         """
         Run the complete CI benchmark process.
-        
+
         Returns:
             Dictionary with results
         """
         # Track start time
         self.start_time = time.time()
         logger.info(f"Starting iOS CI benchmark run (timeout: {self.timeout}s)")
-        
+
         # Connect to device
         if not self.connect_to_device():
             return {"status": "error", "message": "Failed to connect to device"}
-        
+
         # Prepare models
         if not self.prepare_models():
             return {"status": "error", "message": "Failed to prepare models"}
-        
+
         # Run benchmarks
         results = self.run_benchmarks()
-        
+
         # Save results to file
         results_path = self.save_results(results)
         results["results_path"] = results_path
-        
+
         # Generate report
         report_path = self.generate_report(results)
         results["report_path"] = report_path
-        
+
         # Log summary
         duration = time.time() - self.start_time
         logger.info(f"Benchmark run completed in {duration:.1f} seconds")
         logger.info(f"Status: {results.get('status', 'Unknown')}")
-        logger.info(f"Models tested: {results.get('successful_models', 0)}/{results.get('total_models', 0)}")
+        logger.info(
+            f"Models tested: {results.get('successful_models', 0)}/{results.get('total_models', 0)}"
+        )
         logger.info(f"Results saved to: {results_path}")
         logger.info(f"Report saved to: {report_path}")
-        
+
         # Clean up simulation if needed
         if self.simulator:
             try:
@@ -607,27 +607,31 @@ class CIBenchmarkRunner:
                 subprocess.run(
                     ["xcrun", "simctl", "shutdown", self.device_id],
                     capture_output=True,
-                    check=False
+                    check=False,
                 )
             except Exception as e:
                 logger.warning(f"Error shutting down simulator: {e}")
-        
+
         return results
 
 
 def main():
     """Main function for command-line usage."""
     parser = argparse.ArgumentParser(description="iOS Test Harness CI Benchmark Runner")
-    
+
     parser.add_argument("--device-id", required=True, help="iOS device ID (UDID) or simulator name")
     parser.add_argument("--output-db", required=True, help="Path to output DuckDB database")
     parser.add_argument("--model-list", help="Path to JSON file with models to test")
-    parser.add_argument("--timeout", type=int, default=7200, help="Timeout in seconds (default: 7200)")
-    parser.add_argument("--simulator", action="store_true", help="Use simulator instead of physical device")
+    parser.add_argument(
+        "--timeout", type=int, default=7200, help="Timeout in seconds (default: 7200)"
+    )
+    parser.add_argument(
+        "--simulator", action="store_true", help="Use simulator instead of physical device"
+    )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
-    
+
     args = parser.parse_args()
-    
+
     try:
         # Run benchmarks
         runner = CIBenchmarkRunner(
@@ -636,11 +640,11 @@ def main():
             model_list=args.model_list,
             timeout=args.timeout,
             simulator=args.simulator,
-            verbose=args.verbose
+            verbose=args.verbose,
         )
-        
+
         results = runner.run()
-        
+
         # Return exit code
         if results.get("status") == "success":
             return 0
@@ -650,7 +654,7 @@ def main():
         else:
             logger.error(f"Benchmark run failed: {results.get('message', 'Unknown error')}")
             return 1
-    
+
     except Exception as e:
         logger.error(f"Error running benchmarks: {e}")
         return 1

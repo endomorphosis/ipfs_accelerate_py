@@ -47,22 +47,16 @@ from .goal_refinement_verification import (
 
 ADAPTIVE_GOAL_REFINER_VERSION: Final = 3
 ADAPTIVE_REFINEMENT_RECEIPT_VERSION: Final = 4
-NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID: Final = (
-    "003778425160038348524906247302938706902"
-)
+NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID: Final = "003778425160038348524906247302938706902"
 NEW_EVIDENCE_REFINEMENT_GOAL_ID: Final = "ASI-G098"
-UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID: Final = (
-    "312819945606360295782005228058369235550"
-)
+UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID: Final = "312819945606360295782005228058369235550"
 UNCHANGED_FAILURE_BACKOFF_GOAL_ID: Final = "ASI-G115"
 
 SIGNAL_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/refinement-signal@1"
 QUALITY_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/goal-quality@1"
 GOAL_DEBT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/goal-debt@1"
 REQUEST_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-request@1"
-CANDIDATE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-candidate@1"
-)
+CANDIDATE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-candidate@1"
 RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/adaptive-refinement-receipt@2"
 REQUIREMENT_EVIDENCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/new-counterexample-refinement-evidence@1"
@@ -107,10 +101,7 @@ NEW_COUNTEREXAMPLE_REFINEMENT_ACCEPTANCE_CRITERIA: Final = (
 )
 
 UNCHANGED_FAILURE_BACKOFF_ACCEPTANCE_CRITERIA: Final = (
-    (
-        "A persisted failed refinement attempt starts a finite policy-bounded "
-        "retry window"
-    ),
+    ("A persisted failed refinement attempt starts a finite policy-bounded retry window"),
     (
         "A semantically unchanged typed repeated failure observed before the "
         "deadline suppresses candidate generation and independent verification"
@@ -159,9 +150,7 @@ def _text(value: Any, name: str, *, required: bool = True) -> str:
     return value
 
 
-def _strings(
-    value: Iterable[Any] | None, name: str, *, required: bool = False
-) -> tuple[str, ...]:
+def _strings(value: Iterable[Any] | None, name: str, *, required: bool = False) -> tuple[str, ...]:
     if value is None:
         result: tuple[str, ...] = ()
     elif isinstance(value, (str, bytes, bytearray, memoryview)):
@@ -190,9 +179,7 @@ def _mapping(value: Mapping[str, Any] | None, name: str) -> dict[str, Any]:
 
 def _positive(value: Any, name: str, *, minimum: int = 1) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise AdaptiveGoalRefinementError(
-            f"{name} must be an integer of at least {minimum}"
-        )
+        raise AdaptiveGoalRefinementError(f"{name} must be an integer of at least {minimum}")
     return value
 
 
@@ -235,9 +222,7 @@ def _restored_record(
 ) -> None:
     """Fail closed before restoring an authoritative persisted record."""
 
-    if not isinstance(payload, Mapping) or any(
-        not isinstance(key, str) for key in payload
-    ):
+    if not isinstance(payload, Mapping) or any(not isinstance(key, str) for key in payload):
         raise AdaptiveGoalRefinementError(f"{noun} must be an object")
     if payload.get("schema") != schema:
         raise AdaptiveGoalRefinementError(f"unsupported {noun} schema")
@@ -245,9 +230,7 @@ def _restored_record(
         raise AdaptiveGoalRefinementError(f"unsupported {noun} version")
     unknown = sorted(set(payload) - allowed_fields)
     if unknown:
-        raise AdaptiveGoalRefinementError(
-            f"unknown {noun} fields: {', '.join(unknown)}"
-        )
+        raise AdaptiveGoalRefinementError(f"unknown {noun} fields: {', '.join(unknown)}")
     identity = payload.get(identity_field)
     if not isinstance(identity, str) or not identity.strip():
         raise AdaptiveGoalRefinementError(f"{noun} identity is required")
@@ -355,25 +338,15 @@ _GOAL_DEBT_MESSAGES: Final[Mapping[GoalDebtKind, str]] = {
     GoalDebtKind.MISSING_ASSUMPTIONS: "Goal has no explicit assumption set.",
     GoalDebtKind.MISSING_NON_GOALS: "Goal has no explicit non-goals.",
     GoalDebtKind.MISSING_ACCEPTANCE: "Goal has no acceptance criteria.",
-    GoalDebtKind.MISSING_EVIDENCE_PRODUCER: (
-        "Goal has no bound evidence producer."
-    ),
+    GoalDebtKind.MISSING_EVIDENCE_PRODUCER: ("Goal has no bound evidence producer."),
     GoalDebtKind.MISSING_VALIDATION: "Goal has no validation policy.",
     GoalDebtKind.MISSING_FRESHNESS: "Goal has no evidence freshness horizon.",
-    GoalDebtKind.MISSING_RESOURCE_ENVELOPE: (
-        "Goal has no finite resource envelope."
-    ),
-    GoalDebtKind.MISSING_REFINEMENT_BUDGET: (
-        "Goal has no finite refinement budget."
-    ),
+    GoalDebtKind.MISSING_RESOURCE_ENVELOPE: ("Goal has no finite resource envelope."),
+    GoalDebtKind.MISSING_REFINEMENT_BUDGET: ("Goal has no finite refinement budget."),
     GoalDebtKind.AMBIGUOUS: "Goal contains unresolved ambiguity.",
     GoalDebtKind.STALE_EVIDENCE: "Goal depends on stale evidence.",
-    GoalDebtKind.UNCOVERED_ACCEPTANCE: (
-        "Goal has acceptance criteria without evidence coverage."
-    ),
-    GoalDebtKind.UNSUPPORTED_SEMANTICS: (
-        "Goal relies on unsupported semantics."
-    ),
+    GoalDebtKind.UNCOVERED_ACCEPTANCE: ("Goal has acceptance criteria without evidence coverage."),
+    GoalDebtKind.UNSUPPORTED_SEMANTICS: ("Goal relies on unsupported semantics."),
     GoalDebtKind.EXCESSIVE_BREADTH: "Goal exceeds its reviewed breadth bound.",
 }
 
@@ -447,13 +420,8 @@ class RefinementSignal:
             _positive(self.occurrence_count, "occurrence_count"),
         )
         object.__setattr__(self, "details", _mapping(self.details, "details"))
-        if (
-            self.kind is RefinementSignalKind.REPEATED_FAILURE
-            and not self.failure_signature
-        ):
-            raise AdaptiveGoalRefinementError(
-                "repeated_failure requires failure_signature"
-            )
+        if self.kind is RefinementSignalKind.REPEATED_FAILURE and not self.failure_signature:
+            raise AdaptiveGoalRefinementError("repeated_failure requires failure_signature")
 
     @property
     def evidence_id(self) -> str:
@@ -496,9 +464,7 @@ class RefinementSignal:
         result = cls(
             kind=payload.get("kind", ""),
             subject_id=payload.get("subject_id", ""),
-            evidence_revision=payload.get(
-                "evidence_revision", payload.get("revision", "")
-            ),
+            evidence_revision=payload.get("evidence_revision", payload.get("revision", "")),
             observed_at=payload.get("observed_at", 0),
             failure_signature=payload.get("failure_signature", ""),
             occurrence_count=payload.get("occurrence_count", 1),
@@ -527,9 +493,7 @@ class GoalDebtRecord:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "goal_id", _text(self.goal_id, "goal_id"))
-        object.__setattr__(
-            self, "quality_id", _text(self.quality_id, "quality_id")
-        )
+        object.__setattr__(self, "quality_id", _text(self.quality_id, "quality_id"))
         object.__setattr__(self, "kind", _enum(self.kind, GoalDebtKind, "kind"))
         object.__setattr__(
             self,
@@ -597,9 +561,7 @@ class GoalDebtRecord:
                 "goal-debt dimension does not match its reviewed kind"
             )
         if payload.get("message") != result.message:
-            raise AdaptiveGoalRefinementError(
-                "goal-debt message does not match its reviewed kind"
-            )
+            raise AdaptiveGoalRefinementError("goal-debt message does not match its reviewed kind")
         _claimed(payload, result.content_id, "goal-debt record")
         return result
 
@@ -628,9 +590,7 @@ class GoalQualityRecord:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "goal_id", _text(self.goal_id, "goal_id"))
-        object.__setattr__(
-            self, "outcome", _text(self.outcome, "outcome", required=False)
-        )
+        object.__setattr__(self, "outcome", _text(self.outcome, "outcome", required=False))
         for name in (
             "scope_ids",
             "assumption_ids",
@@ -660,9 +620,7 @@ class GoalQualityRecord:
             _mapping(self.refinement_budget, "refinement_budget"),
         )
         object.__setattr__(self, "breadth", _positive(self.breadth, "breadth"))
-        object.__setattr__(
-            self, "max_breadth", _positive(self.max_breadth, "max_breadth")
-        )
+        object.__setattr__(self, "max_breadth", _positive(self.max_breadth, "max_breadth"))
 
     @property
     def debt(self) -> tuple[GoalDebtKind, ...]:
@@ -695,13 +653,11 @@ class GoalQualityRecord:
                 GoalDebtKind.AMBIGUOUS,
             ),
             (
-                bool(self.stale_evidence_ids)
-                or self.freshness_horizon_seconds == 0,
+                bool(self.stale_evidence_ids) or self.freshness_horizon_seconds == 0,
                 GoalDebtKind.STALE_EVIDENCE,
             ),
             (
-                bool(self.uncovered_acceptance_criteria)
-                or not self.acceptance_criteria,
+                bool(self.uncovered_acceptance_criteria) or not self.acceptance_criteria,
                 GoalDebtKind.UNCOVERED_ACCEPTANCE,
             ),
             (bool(self.unsupported_semantics), GoalDebtKind.UNSUPPORTED_SEMANTICS),
@@ -719,9 +675,7 @@ class GoalQualityRecord:
         related: Mapping[GoalDebtKind, tuple[str, ...]] = {
             GoalDebtKind.AMBIGUOUS: self.ambiguities,
             GoalDebtKind.STALE_EVIDENCE: self.stale_evidence_ids,
-            GoalDebtKind.UNCOVERED_ACCEPTANCE: (
-                self.uncovered_acceptance_criteria
-            ),
+            GoalDebtKind.UNCOVERED_ACCEPTANCE: (self.uncovered_acceptance_criteria),
             GoalDebtKind.UNSUPPORTED_SEMANTICS: self.unsupported_semantics,
         }
         return tuple(
@@ -755,9 +709,7 @@ class GoalQualityRecord:
             "refinement_budget": self.refinement_budget,
             "ambiguities": self.ambiguities,
             "stale_evidence_ids": self.stale_evidence_ids,
-            "uncovered_acceptance_criteria": (
-                self.uncovered_acceptance_criteria
-            ),
+            "uncovered_acceptance_criteria": (self.uncovered_acceptance_criteria),
             "unsupported_semantics": self.unsupported_semantics,
             "breadth": self.breadth,
             "max_breadth": self.max_breadth,
@@ -815,17 +767,12 @@ class GoalQualityRecord:
             acceptance_criteria=payload.get("acceptance_criteria") or (),
             evidence_producer_ids=payload.get("evidence_producer_ids") or (),
             validation_ids=payload.get("validation_ids") or (),
-            freshness_horizon_seconds=payload.get(
-                "freshness_horizon_seconds", 0
-            ),
+            freshness_horizon_seconds=payload.get("freshness_horizon_seconds", 0),
             resource_envelope=payload.get("resource_envelope") or {},
             refinement_budget=payload.get("refinement_budget") or {},
             ambiguities=payload.get("ambiguities") or (),
             stale_evidence_ids=payload.get("stale_evidence_ids") or (),
-            uncovered_acceptance_criteria=payload.get(
-                "uncovered_acceptance_criteria"
-            )
-            or (),
+            uncovered_acceptance_criteria=payload.get("uncovered_acceptance_criteria") or (),
             unsupported_semantics=payload.get("unsupported_semantics") or (),
             breadth=payload.get("breadth", 1),
             max_breadth=payload.get("max_breadth", 8),
@@ -839,21 +786,15 @@ class GoalQualityRecord:
         if not isinstance(records, Sequence) or isinstance(
             records, (str, bytes, bytearray, memoryview)
         ):
-            raise AdaptiveGoalRefinementError(
-                "goal-quality debt_records must be a sequence"
-            )
+            raise AdaptiveGoalRefinementError("goal-quality debt_records must be a sequence")
         restored_record_values: list[GoalDebtRecord] = []
         for item in records:
             if not isinstance(item, Mapping):
-                raise AdaptiveGoalRefinementError(
-                    "goal-quality debt_records must contain objects"
-                )
+                raise AdaptiveGoalRefinementError("goal-quality debt_records must contain objects")
             restored_record_values.append(GoalDebtRecord.from_dict(item))
         restored_records = tuple(restored_record_values)
         if restored_records != result.debt_records:
-            raise AdaptiveGoalRefinementError(
-                "goal-quality debt records do not match its fields"
-            )
+            raise AdaptiveGoalRefinementError("goal-quality debt records do not match its fields")
         _claimed(payload, result.content_id, "goal-quality record")
         return result
 
@@ -910,10 +851,7 @@ class RefinementValueEstimate:
 
     @property
     def net_value_millionths(self) -> int:
-        return (
-            self.information_gain_millionths
-            - self.expected_downstream_cost_millionths
-        )
+        return self.information_gain_millionths - self.expected_downstream_cost_millionths
 
     @property
     def content_id(self) -> str:
@@ -923,9 +861,7 @@ class RefinementValueEstimate:
         return {
             "schema": REFINEMENT_VALUE_ESTIMATE_SCHEMA,
             "information_gain_millionths": self.information_gain_millionths,
-            "expected_downstream_cost_millionths": (
-                self.expected_downstream_cost_millionths
-            ),
+            "expected_downstream_cost_millionths": (self.expected_downstream_cost_millionths),
             "affected_subject_ids": self.affected_subject_ids,
             "signal_ids": self.signal_ids,
             "rationale_codes": self.rationale_codes,
@@ -953,15 +889,11 @@ class RefinementValueEstimate:
             identity_field="content_id",
         )
         result = cls(
-            information_gain_millionths=payload.get(
-                "information_gain_millionths", 0
-            ),
+            information_gain_millionths=payload.get("information_gain_millionths", 0),
             expected_downstream_cost_millionths=payload.get(
                 "expected_downstream_cost_millionths", 0
             ),
-            affected_subject_ids=tuple(
-                payload.get("affected_subject_ids") or ()
-            ),
+            affected_subject_ids=tuple(payload.get("affected_subject_ids") or ()),
             signal_ids=tuple(payload.get("signal_ids") or ()),
             rationale_codes=tuple(payload.get("rationale_codes") or ()),
         )
@@ -990,9 +922,7 @@ class RefinementDeltaQualityReport:
             "linter_id",
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids")
-        )
+        object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids"))
         object.__setattr__(
             self,
             "changed_goal_ids",
@@ -1000,13 +930,9 @@ class RefinementDeltaQualityReport:
         )
         if not isinstance(self.accepted, bool):
             raise AdaptiveGoalRefinementError("accepted must be boolean")
-        object.__setattr__(
-            self, "debt_codes", _strings(self.debt_codes, "debt_codes")
-        )
+        object.__setattr__(self, "debt_codes", _strings(self.debt_codes, "debt_codes"))
         if self.accepted and self.debt_codes:
-            raise AdaptiveGoalRefinementError(
-                "accepted delta quality reports must have no debt"
-            )
+            raise AdaptiveGoalRefinementError("accepted delta quality reports must have no debt")
         if not self.accepted and not self.debt_codes:
             raise AdaptiveGoalRefinementError(
                 "rejected delta quality reports must identify typed debt"
@@ -1033,9 +959,7 @@ class RefinementDeltaQualityReport:
         return {**self._payload(), "content_id": self.content_id}
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "RefinementDeltaQualityReport":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "RefinementDeltaQualityReport":
         fields = {
             "schema",
             "previous_plan_id",
@@ -1100,9 +1024,7 @@ class AdaptiveRefinementPolicy:
         ):
             _millionths(getattr(self, name), name)
         if self.max_model_calls_per_cycle != 1:
-            raise AdaptiveGoalRefinementError(
-                "max_model_calls_per_cycle must be exactly one"
-            )
+            raise AdaptiveGoalRefinementError("max_model_calls_per_cycle must be exactly one")
         if self.initial_backoff_seconds > self.max_backoff_seconds:
             raise AdaptiveGoalRefinementError(
                 "initial_backoff_seconds cannot exceed max_backoff_seconds"
@@ -1113,10 +1035,7 @@ class AdaptiveRefinementPolicy:
         return content_identity(self.to_dict())
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
 
 GoalRefinementPolicy = AdaptiveRefinementPolicy
@@ -1140,17 +1059,13 @@ class AdaptiveRefinementRequest:
     def __post_init__(self) -> None:
         if not isinstance(self.plan, FormalWorkPlan):
             raise AdaptiveGoalRefinementError("plan must be a FormalWorkPlan")
-        object.__setattr__(
-            self, "root_goal_id", _text(self.root_goal_id, "root_goal_id")
-        )
+        object.__setattr__(self, "root_goal_id", _text(self.root_goal_id, "root_goal_id"))
         object.__setattr__(
             self,
             "root_goal_content_id",
             _text(self.root_goal_content_id, "root_goal_content_id"),
         )
-        object.__setattr__(
-            self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids")
-        )
+        object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids"))
         object.__setattr__(self, "cycle_id", _text(self.cycle_id, "cycle_id"))
         object.__setattr__(
             self,
@@ -1159,9 +1074,7 @@ class AdaptiveRefinementRequest:
             or self.plan.repository_tree_id,
         )
         if not self.repository_tree_id:
-            raise AdaptiveGoalRefinementError(
-                "repository_tree_id is required for refinement"
-            )
+            raise AdaptiveGoalRefinementError("repository_tree_id is required for refinement")
         if self.repository_tree_id != self.plan.repository_tree_id:
             raise AdaptiveGoalRefinementError(
                 "request repository tree does not match the frozen plan"
@@ -1173,37 +1086,30 @@ class AdaptiveRefinementRequest:
         )
         signals = tuple(self.signals)
         if not signals or any(not isinstance(item, RefinementSignal) for item in signals):
-            raise AdaptiveGoalRefinementError(
-                "signals must contain at least one RefinementSignal"
-            )
+            raise AdaptiveGoalRefinementError("signals must contain at least one RefinementSignal")
         # Evidence ordering and duplicates must not change request identity.
         object.__setattr__(
             self,
             "signals",
-            tuple({item.evidence_id: item for item in signals}[key]
-                  for key in sorted({item.evidence_id for item in signals})),
+            tuple(
+                {item.evidence_id: item for item in signals}[key]
+                for key in sorted({item.evidence_id for item in signals})
+            ),
         )
-        if self.quality is not None and not isinstance(
-            self.quality, GoalQualityRecord
-        ):
+        if self.quality is not None and not isinstance(self.quality, GoalQualityRecord):
             raise AdaptiveGoalRefinementError("quality must be GoalQualityRecord")
         if self.quality is not None:
             if self.quality.goal_id != self.root_goal_id:
                 raise AdaptiveGoalRefinementError(
                     "quality record must describe the frozen root goal"
                 )
-            if (
-                self.quality.assumption_ids
-                and self.quality.assumption_ids != self.assumption_ids
-            ):
+            if self.quality.assumption_ids and self.quality.assumption_ids != self.assumption_ids:
                 raise AdaptiveGoalRefinementError(
                     "quality assumptions do not match the frozen assumptions"
                 )
         roots = [item for item in self.plan.goals if item.goal_id == self.root_goal_id]
         if len(roots) != 1 or roots[0].content_id != self.root_goal_content_id:
-            raise AdaptiveGoalRefinementError(
-                "request root does not match the frozen plan root"
-            )
+            raise AdaptiveGoalRefinementError("request root does not match the frozen plan root")
 
     @property
     def frozen_context(self) -> FrozenRefinementContext:
@@ -1220,14 +1126,10 @@ class AdaptiveRefinementRequest:
                 "schema": REQUEST_SCHEMA,
                 "root_goal_content_id": self.root_goal_content_id,
                 "assumption_ids": self.assumption_ids,
-                "signal_evidence_ids": tuple(
-                    item.evidence_id for item in self.signals
-                ),
+                "signal_evidence_ids": tuple(item.evidence_id for item in self.signals),
                 "repository_tree_id": self.repository_tree_id,
                 "quality_id": self.quality.content_id if self.quality else "",
-                "goal_debt_ids": tuple(
-                    item.content_id for item in self.quality.debt_records
-                )
+                "goal_debt_ids": tuple(item.content_id for item in self.quality.debt_records)
                 if self.quality
                 else (),
             }
@@ -1250,9 +1152,7 @@ class AdaptiveRefinementRequest:
             "refinement_depth": self.refinement_depth,
             "repository_tree_id": self.repository_tree_id,
             "quality_id": self.quality.content_id if self.quality else "",
-            "goal_debt_ids": tuple(
-                item.content_id for item in self.quality.debt_records
-            )
+            "goal_debt_ids": tuple(item.content_id for item in self.quality.debt_records)
             if self.quality
             else (),
             "evidence_fingerprint": self.evidence_fingerprint,
@@ -1281,9 +1181,7 @@ class AdaptiveRefinementCandidate:
             raise AdaptiveGoalRefinementError("candidate plan must be FormalWorkPlan")
         for name in ("root_goal_id", "root_goal_content_id", "producer_id"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids")
-        )
+        object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids"))
         object.__setattr__(
             self,
             "changed_goal_ids",
@@ -1299,9 +1197,7 @@ class AdaptiveRefinementCandidate:
             "producer_kind",
             _enum(self.producer_kind, RefinementProducerKind, "producer_kind"),
         )
-        object.__setattr__(
-            self, "rationale", _text(self.rationale, "rationale", required=False)
-        )
+        object.__setattr__(self, "rationale", _text(self.rationale, "rationale", required=False))
 
     @property
     def content_id(self) -> str:
@@ -1372,9 +1268,7 @@ class NewCounterexampleRefinementEvidence:
             "evidence_producer_kind",
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids")
-        )
+        object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids"))
         object.__setattr__(
             self,
             "refinement_index",
@@ -1422,9 +1316,7 @@ class NewCounterexampleRefinementEvidence:
         return payload
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "NewCounterexampleRefinementEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "NewCounterexampleRefinementEvidence":
         _restored_record(
             payload,
             noun="counterexample-refinement evidence",
@@ -1532,9 +1424,7 @@ class UnchangedFailureBackoffEvidence:
             "evidence_producer_kind",
         ):
             object.__setattr__(self, name, _text(getattr(self, name), name))
-        object.__setattr__(
-            self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids")
-        )
+        object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids"))
         for name in (
             "source_failure_attempted_at",
             "source_failure_retry_after",
@@ -1552,21 +1442,15 @@ class UnchangedFailureBackoffEvidence:
                 "unsupported backoff source failure decision"
             ) from exc
         if source_decision not in REFINEMENT_FAILURE_DECISIONS:
-            raise AdaptiveGoalRefinementError(
-                "backoff source must be a failed refinement decision"
-            )
+            raise AdaptiveGoalRefinementError("backoff source must be a failed refinement decision")
         if self.source_failure_model_called is not True:
-            raise AdaptiveGoalRefinementError(
-                "backoff source must record the preceding model call"
-            )
+            raise AdaptiveGoalRefinementError("backoff source must record the preceding model call")
         if self.model_call_suppressed is not True:
             raise AdaptiveGoalRefinementError(
                 "backoff evidence must record a suppressed model call"
             )
         if not (
-            self.source_failure_attempted_at
-            <= self.suppressed_at
-            < self.source_failure_retry_after
+            self.source_failure_attempted_at <= self.suppressed_at < self.source_failure_retry_after
         ):
             raise AdaptiveGoalRefinementError(
                 "backoff suppression must occur inside the source retry window"
@@ -1618,9 +1502,7 @@ class UnchangedFailureBackoffEvidence:
             "source_failure_attempted_at": self.source_failure_attempted_at,
             "source_failure_retry_after": self.source_failure_retry_after,
             "source_failure_attempt_index": self.source_failure_attempt_index,
-            "source_failure_refinement_index": (
-                self.source_failure_refinement_index
-            ),
+            "source_failure_refinement_index": (self.source_failure_refinement_index),
             "suppressed_at": self.suppressed_at,
             "suppressed_attempt_index": self.suppressed_attempt_index,
             "retry_after": self.retry_after,
@@ -1653,30 +1535,23 @@ class UnchangedFailureBackoffEvidence:
             "repository_tree_id": source.repository_tree_id,
             "previous_plan_id": source.previous_plan_id,
         }
-        mismatched = [
-            name for name, value in expected.items() if getattr(self, name) != value
-        ]
+        mismatched = [name for name, value in expected.items() if getattr(self, name) != value]
         if mismatched:
             raise AdaptiveGoalRefinementError(
-                "backoff evidence does not match its source failure: "
-                + ", ".join(mismatched)
+                "backoff evidence does not match its source failure: " + ", ".join(mismatched)
             )
         if (
             source.decision not in REFINEMENT_FAILURE_DECISIONS
             or source.requirement_ids
             or source.signal_ids != (self.repeated_failure_signal_id,)
-            or source.signal_kinds
-            != (RefinementSignalKind.REPEATED_FAILURE.value,)
+            or source.signal_kinds != (RefinementSignalKind.REPEATED_FAILURE.value,)
         ):
             raise AdaptiveGoalRefinementError(
-                "backoff source is not the exact non-authoritative repeated "
-                "failure attempt"
+                "backoff source is not the exact non-authoritative repeated failure attempt"
             )
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "UnchangedFailureBackoffEvidence":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "UnchangedFailureBackoffEvidence":
         fields = {
             "schema",
             "requirement_id",
@@ -1760,14 +1635,10 @@ class AdaptiveRefinementReceipt:
     value_estimate: RefinementValueEstimate
     quality_lint_report: RefinementDeltaQualityReport | None = None
     new_counterexample_evidence: NewCounterexampleRefinementEvidence | None = None
-    unchanged_failure_backoff_evidence: (
-        UnchangedFailureBackoffEvidence | None
-    ) = None
+    unchanged_failure_backoff_evidence: UnchangedFailureBackoffEvidence | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "decision", _enum(self.decision, RefinementDecision, "decision")
-        )
+        object.__setattr__(self, "decision", _enum(self.decision, RefinementDecision, "decision"))
         for name in (
             "request_id",
             "cycle_id",
@@ -1786,18 +1657,13 @@ class AdaptiveRefinementReceipt:
             "verification_receipt_id",
             "reason",
         ):
-            object.__setattr__(
-                self, name, _text(getattr(self, name), name, required=False)
-            )
-        object.__setattr__(
-            self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids")
-        )
+            object.__setattr__(self, name, _text(getattr(self, name), name, required=False))
+        object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids, "assumption_ids"))
         object.__setattr__(
             self, "signal_ids", _strings(self.signal_ids, "signal_ids", required=True)
         )
         signal_kinds = tuple(
-            _enum(item, RefinementSignalKind, "signal_kinds").value
-            for item in self.signal_kinds
+            _enum(item, RefinementSignalKind, "signal_kinds").value for item in self.signal_kinds
         )
         if len(signal_kinds) != len(self.signal_ids):
             raise AdaptiveGoalRefinementError(
@@ -1810,19 +1676,13 @@ class AdaptiveRefinementReceipt:
             _strings(self.requirement_ids, "requirement_ids"),
         )
         if not isinstance(self.value_estimate, RefinementValueEstimate):
-            raise AdaptiveGoalRefinementError(
-                "receipt requires a refinement value estimate"
-            )
+            raise AdaptiveGoalRefinementError("receipt requires a refinement value estimate")
         if self.value_estimate.signal_ids != self.signal_ids:
-            raise AdaptiveGoalRefinementError(
-                "value estimate does not bind the receipt signals"
-            )
+            raise AdaptiveGoalRefinementError("value estimate does not bind the receipt signals")
         quality_report = self.quality_lint_report
         if quality_report is not None:
             if not isinstance(quality_report, RefinementDeltaQualityReport):
-                raise AdaptiveGoalRefinementError(
-                    "invalid refinement delta quality report"
-                )
+                raise AdaptiveGoalRefinementError("invalid refinement delta quality report")
             expected_quality = {
                 "previous_plan_id": self.previous_plan_id,
                 "candidate_plan_id": self.candidate_plan_id,
@@ -1842,9 +1702,7 @@ class AdaptiveRefinementReceipt:
         evidence = self.new_counterexample_evidence
         if evidence is not None:
             if not isinstance(evidence, NewCounterexampleRefinementEvidence):
-                raise AdaptiveGoalRefinementError(
-                    "invalid new-counterexample refinement evidence"
-                )
+                raise AdaptiveGoalRefinementError("invalid new-counterexample refinement evidence")
             expected = {
                 "request_id": self.request_id,
                 "evidence_fingerprint": self.evidence_fingerprint,
@@ -1861,9 +1719,7 @@ class AdaptiveRefinementReceipt:
                 "refinement_index": self.refinement_index,
             }
             mismatched = [
-                name
-                for name, value in expected.items()
-                if getattr(evidence, name) != value
+                name for name, value in expected.items() if getattr(evidence, name) != value
             ]
             if mismatched:
                 raise AdaptiveGoalRefinementError(
@@ -1872,22 +1728,16 @@ class AdaptiveRefinementReceipt:
                 )
             if (
                 len(self.signal_ids) != 1
-                or self.signal_kinds
-                != (RefinementSignalKind.COUNTEREXAMPLE.value,)
+                or self.signal_kinds != (RefinementSignalKind.COUNTEREXAMPLE.value,)
                 or evidence.counterexample_signal_id != self.signal_ids[0]
             ):
                 raise AdaptiveGoalRefinementError(
-                    "counterexample evidence requires exactly one bound "
-                    "counterexample signal"
+                    "counterexample evidence requires exactly one bound counterexample signal"
                 )
         backoff_evidence = self.unchanged_failure_backoff_evidence
         if backoff_evidence is not None:
-            if not isinstance(
-                backoff_evidence, UnchangedFailureBackoffEvidence
-            ):
-                raise AdaptiveGoalRefinementError(
-                    "invalid unchanged-failure backoff evidence"
-                )
+            if not isinstance(backoff_evidence, UnchangedFailureBackoffEvidence):
+                raise AdaptiveGoalRefinementError("invalid unchanged-failure backoff evidence")
             expected = {
                 "request_id": self.request_id,
                 "cycle_id": self.cycle_id,
@@ -1904,25 +1754,19 @@ class AdaptiveRefinementReceipt:
                 "model_call_suppressed": not self.model_called,
             }
             mismatched = [
-                name
-                for name, value in expected.items()
-                if getattr(backoff_evidence, name) != value
+                name for name, value in expected.items() if getattr(backoff_evidence, name) != value
             ]
             if mismatched:
                 raise AdaptiveGoalRefinementError(
-                    "backoff evidence does not match receipt bindings: "
-                    + ", ".join(mismatched)
+                    "backoff evidence does not match receipt bindings: " + ", ".join(mismatched)
                 )
             if (
                 len(self.signal_ids) != 1
-                or self.signal_kinds
-                != (RefinementSignalKind.REPEATED_FAILURE.value,)
-                or backoff_evidence.repeated_failure_signal_id
-                != self.signal_ids[0]
+                or self.signal_kinds != (RefinementSignalKind.REPEATED_FAILURE.value,)
+                or backoff_evidence.repeated_failure_signal_id != self.signal_ids[0]
             ):
                 raise AdaptiveGoalRefinementError(
-                    "backoff evidence requires exactly one bound repeated-failure "
-                    "signal"
+                    "backoff evidence requires exactly one bound repeated-failure signal"
                 )
         if not isinstance(self.model_called, bool):
             raise AdaptiveGoalRefinementError("model_called must be boolean")
@@ -1956,8 +1800,7 @@ class AdaptiveRefinementReceipt:
                     "backoff receipt must suppress generation until a future time"
                 )
             if (
-                self.signal_kinds
-                == (RefinementSignalKind.REPEATED_FAILURE.value,)
+                self.signal_kinds == (RefinementSignalKind.REPEATED_FAILURE.value,)
                 and backoff_evidence is None
             ):
                 raise AdaptiveGoalRefinementError(
@@ -1967,10 +1810,14 @@ class AdaptiveRefinementReceipt:
                 raise AdaptiveGoalRefinementError(
                     "backoff receipt cannot claim admitted-refinement evidence"
                 )
-        if self.decision not in {
-            RefinementDecision.ADMITTED,
-            RefinementDecision.BACKED_OFF,
-        } and self.requirement_ids:
+        if (
+            self.decision
+            not in {
+                RefinementDecision.ADMITTED,
+                RefinementDecision.BACKED_OFF,
+            }
+            and self.requirement_ids
+        ):
             raise AdaptiveGoalRefinementError(
                 "non-evidentiary decisions cannot claim objective requirement coverage"
             )
@@ -1988,9 +1835,7 @@ class AdaptiveRefinementReceipt:
                 )
             expected_requirements.append(UNCHANGED_FAILURE_BACKOFF_REQUIREMENT_ID)
         if self.requirement_ids != tuple(sorted(expected_requirements)):
-            raise AdaptiveGoalRefinementError(
-                "receipt requirement projection is inconsistent"
-            )
+            raise AdaptiveGoalRefinementError("receipt requirement projection is inconsistent")
 
     @property
     def receipt_id(self) -> str:
@@ -2051,9 +1896,7 @@ class AdaptiveRefinementReceipt:
             "requirement_ids": self.requirement_ids,
             "value_estimate": self.value_estimate.to_dict(),
             "quality_lint_report": (
-                self.quality_lint_report.to_dict()
-                if self.quality_lint_report is not None
-                else None
+                self.quality_lint_report.to_dict() if self.quality_lint_report is not None else None
             ),
             "new_counterexample_evidence": (
                 self.new_counterexample_evidence.to_dict()
@@ -2137,13 +1980,9 @@ class AdaptiveRefinementReceipt:
             signal_ids=tuple(payload.get("signal_ids") or ()),
             signal_kinds=tuple(payload.get("signal_kinds") or ()),
             requirement_ids=tuple(payload.get("requirement_ids") or ()),
-            value_estimate=RefinementValueEstimate.from_dict(
-                payload.get("value_estimate") or {}
-            ),
+            value_estimate=RefinementValueEstimate.from_dict(payload.get("value_estimate") or {}),
             quality_lint_report=(
-                RefinementDeltaQualityReport.from_dict(
-                    payload["quality_lint_report"]
-                )
+                RefinementDeltaQualityReport.from_dict(payload["quality_lint_report"])
                 if payload.get("quality_lint_report") is not None
                 else None
             ),
@@ -2163,9 +2002,7 @@ class AdaptiveRefinementReceipt:
             ),
         )
         if payload["receipt_id"] != result.receipt_id:
-            raise AdaptiveGoalRefinementError(
-                "refinement receipt content identity does not match"
-            )
+            raise AdaptiveGoalRefinementError("refinement receipt content identity does not match")
         return result
 
 
@@ -2181,9 +2018,7 @@ def _validate_receipt_history(
     by_id: dict[str, AdaptiveRefinementReceipt] = {}
     for receipt in receipts:
         if not isinstance(receipt, AdaptiveRefinementReceipt):
-            raise AdaptiveGoalRefinementError(
-                "refinement history contains a non-receipt value"
-            )
+            raise AdaptiveGoalRefinementError("refinement history contains a non-receipt value")
         witness = receipt.unchanged_failure_backoff_evidence
         if witness is not None:
             source = by_id.get(witness.source_failure_receipt_id)
@@ -2205,14 +2040,10 @@ class AdaptiveRefinementResult:
 
     def __post_init__(self) -> None:
         if not isinstance(self.receipt, AdaptiveRefinementReceipt):
-            raise AdaptiveGoalRefinementError(
-                "result receipt must be AdaptiveRefinementReceipt"
-            )
+            raise AdaptiveGoalRefinementError("result receipt must be AdaptiveRefinementReceipt")
         expected = self.receipt.decision is RefinementDecision.ADMITTED
         if expected != (self.admitted_plan is not None):
-            raise AdaptiveGoalRefinementError(
-                "only an admitted receipt may carry an admitted plan"
-            )
+            raise AdaptiveGoalRefinementError("only an admitted receipt may carry an admitted plan")
         if (
             self.admitted_plan is not None
             and self.admitted_plan.content_id != self.receipt.candidate_plan_id
@@ -2332,17 +2163,12 @@ class AdaptiveRefinementResult:
                 projected = coverage_projection(objective_goal_id)
             except (TypeError, ValueError):
                 projected = {}
-            coverage_value = (
-                dict(projected) if isinstance(projected, Mapping) else {}
-            )
+            coverage_value = dict(projected) if isinstance(projected, Mapping) else {}
         else:
             coverage_value = payload(coverage)
         coverage_rows = coverage_value.get("criteria")
         coverage_rows = coverage_rows if isinstance(coverage_rows, list) else []
-        criterion_keys = {
-            " ".join(item.strip().lower().split())
-            for item in acceptance_criteria
-        }
+        criterion_keys = {" ".join(item.strip().lower().split()) for item in acceptance_criteria}
         relevant_coverage_rows = [
             row
             for row in coverage_rows
@@ -2378,9 +2204,7 @@ class AdaptiveRefinementResult:
         submitted_validation_ids: set[str] = set()
         for item in evidence:
             source: Any = item
-            if isinstance(source, Mapping) and isinstance(
-                source.get("evidence"), Mapping
-            ):
+            if isinstance(source, Mapping) and isinstance(source.get("evidence"), Mapping):
                 source = source["evidence"]
             identity = (
                 source.get("provenance_cid")
@@ -2397,14 +2221,9 @@ class AdaptiveRefinementResult:
                 receipt_ids, (str, bytes, bytearray)
             ):
                 normalized = {
-                    str(item or "").strip()
-                    for item in receipt_ids
-                    if str(item or "").strip()
+                    str(item or "").strip() for item in receipt_ids if str(item or "").strip()
                 }
-                return bool(
-                    normalized
-                    and normalized.intersection(submitted_validation_ids)
-                )
+                return bool(normalized and normalized.intersection(submitted_validation_ids))
             # Preserve the reviewed ASI-058 mapping spelling for persisted
             # compatibility. Canonical GoalCoverageMap projections always use
             # validation_receipt_ids and therefore take the bound path above.
@@ -2451,9 +2270,7 @@ class AdaptiveRefinementResult:
                 "reason_codes": [
                     *(
                         coverage_value.get("reason_codes")
-                        if isinstance(
-                            coverage_value.get("reason_codes"), list
-                        )
+                        if isinstance(coverage_value.get("reason_codes"), list)
                         else []
                     ),
                     "coverage_missing_implementation_validation_binding",
@@ -2473,9 +2290,7 @@ class AdaptiveRefinementResult:
         )
         quorum_value = payload(exhaustion_quorum)
         quorum_members = quorum_value.get("members")
-        quorum_members = (
-            quorum_members if isinstance(quorum_members, list) else []
-        )
+        quorum_members = quorum_members if isinstance(quorum_members, list) else []
         quorum_members_healthy = bool(quorum_members) and (
             # ExhaustionQuorumResult members have already passed the
             # canonical evaluator's terminal, exhaustive-mode, analyzer
@@ -2487,8 +2302,7 @@ class AdaptiveRefinementResult:
                 isinstance(member, Mapping)
                 and member.get("healthy") is True
                 and member.get("safe_for_completion_reasoning") is True
-                and str(member.get("scan_mode") or "").strip().lower()
-                == "exhaustive"
+                and str(member.get("scan_mode") or "").strip().lower() == "exhaustive"
                 for member in quorum_members
             )
         )
@@ -2527,19 +2341,12 @@ class AdaptiveRefinementResult:
             )
 
         binding_value = quorum_value.get("binding")
-        binding = (
-            dict(binding_value)
-            if isinstance(binding_value, Mapping)
-            else {}
-        )
-        binding_is_current = (
-            binding.get("tree_id") == self.receipt.repository_tree_id
-            and all(
-                isinstance(member, Mapping)
-                and isinstance(member.get("binding"), Mapping)
-                and dict(member["binding"]) == binding
-                for member in quorum_members
-            )
+        binding = dict(binding_value) if isinstance(binding_value, Mapping) else {}
+        binding_is_current = binding.get("tree_id") == self.receipt.repository_tree_id and all(
+            isinstance(member, Mapping)
+            and isinstance(member.get("binding"), Mapping)
+            and dict(member["binding"]) == binding
+            for member in quorum_members
         )
         quorum_valid = (
             quorum_members_healthy
@@ -2560,14 +2367,10 @@ class AdaptiveRefinementResult:
         else:
             translated_members = []
             for member in quorum_members:
-                channel = str(
-                    member.get("evidence_channel") or ""
-                ).strip().lower()
+                channel = str(member.get("evidence_channel") or "").strip().lower()
                 scan_mode = str(member.get("scan_mode") or "").strip().lower()
                 is_audit = (
-                    "audit" in channel
-                    or scan_mode == "audit"
-                    or scan_mode.endswith("_audit")
+                    "audit" in channel or scan_mode == "audit" or scan_mode.endswith("_audit")
                 )
                 translated_members.append(
                     {
@@ -2647,9 +2450,7 @@ class InMemoryRefinementStore:
 
     def append(self, receipt: AdaptiveRefinementReceipt) -> None:
         if not isinstance(receipt, AdaptiveRefinementReceipt):
-            raise RefinementPersistenceError(
-                "store accepts only AdaptiveRefinementReceipt"
-            )
+            raise RefinementPersistenceError("store accepts only AdaptiveRefinementReceipt")
         with self._lock:
             if all(item.receipt_id != receipt.receipt_id for item in self._receipts):
                 _validate_receipt_history((*self._receipts, receipt))
@@ -2719,9 +2520,7 @@ class JsonlRefinementStore:
 
     def append(self, receipt: AdaptiveRefinementReceipt) -> None:
         if not isinstance(receipt, AdaptiveRefinementReceipt):
-            raise RefinementPersistenceError(
-                "store accepts only AdaptiveRefinementReceipt"
-            )
+            raise RefinementPersistenceError("store accepts only AdaptiveRefinementReceipt")
         with self._lock:
             existing = self.receipts()
             if any(item.receipt_id == receipt.receipt_id for item in existing):
@@ -2743,12 +2542,8 @@ CandidateGenerator = Callable[
     [AdaptiveRefinementRequest],
     AdaptiveRefinementCandidate | FormalWorkPlan | Mapping[str, Any],
 ]
-CandidateVerifier = Callable[
-    [AdaptiveRefinementCandidate, AdaptiveRefinementRequest], Any
-]
-InformationGainEstimator = Callable[
-    [AdaptiveRefinementRequest], RefinementValueEstimate
-]
+CandidateVerifier = Callable[[AdaptiveRefinementCandidate, AdaptiveRefinementRequest], Any]
+InformationGainEstimator = Callable[[AdaptiveRefinementRequest], RefinementValueEstimate]
 CandidateQualityLinter = Callable[
     [AdaptiveRefinementCandidate, AdaptiveRefinementRequest],
     RefinementDeltaQualityReport,
@@ -2785,9 +2580,7 @@ class AdaptiveGoalRefiner:
         if not callable(generator):
             raise AdaptiveGoalRefinementError("generator must be callable")
         if not callable(verifier):
-            raise AdaptiveGoalRefinementError(
-                "an independent candidate verifier is required"
-            )
+            raise AdaptiveGoalRefinementError("an independent candidate verifier is required")
         self.generator = generator
         self.verifier = verifier
         self.policy = policy or AdaptiveRefinementPolicy()
@@ -2804,9 +2597,7 @@ class AdaptiveGoalRefiner:
         """Process changed evidence and admit zero or one verified refinement."""
 
         if not isinstance(request, AdaptiveRefinementRequest):
-            raise AdaptiveGoalRefinementError(
-                "request must be AdaptiveRefinementRequest"
-            )
+            raise AdaptiveGoalRefinementError("request must be AdaptiveRefinementRequest")
         if len(request.signals) > self.policy.max_signals_per_cycle:
             return self._terminal(
                 request,
@@ -2826,9 +2617,7 @@ class AdaptiveGoalRefiner:
         )
         lock = _evidence_lock(self.store, cycle_lock_id)
         transaction = getattr(self.store, "transaction", None)
-        transaction_context = (
-            transaction() if callable(transaction) else nullcontext()
-        )
+        transaction_context = transaction() if callable(transaction) else nullcontext()
         with lock, transaction_context:
             now = _nonnegative(int(self.clock()), "clock")
             history = self.store.receipts()
@@ -2874,8 +2663,7 @@ class AdaptiveGoalRefiner:
                     now,
                     model_called=False,
                     reason=(
-                        "unchanged evidence is in backoff after "
-                        f"{latest_failure.decision.value}"
+                        f"unchanged evidence is in backoff after {latest_failure.decision.value}"
                     ),
                     retry_after=latest_failure.retry_after,
                     attempt_index=len(matching) + 1,
@@ -2891,8 +2679,7 @@ class AdaptiveGoalRefiner:
                 return self._terminal(
                     request,
                     RefinementDecision.INSUFFICIENT_INFORMATION_GAIN,
-                    "information-gain estimation failed closed: "
-                    f"{type(exc).__name__}: {exc}",
+                    f"information-gain estimation failed closed: {type(exc).__name__}: {exc}",
                     model_called=False,
                 )
             if not isinstance(value_estimate, RefinementValueEstimate):
@@ -2902,9 +2689,7 @@ class AdaptiveGoalRefiner:
                     "information-gain estimator returned an unauditable value",
                     model_called=False,
                 )
-            if value_estimate.signal_ids != tuple(
-                item.evidence_id for item in request.signals
-            ):
+            if value_estimate.signal_ids != tuple(item.evidence_id for item in request.signals):
                 return self._terminal(
                     request,
                     RefinementDecision.INSUFFICIENT_INFORMATION_GAIN,
@@ -2970,11 +2755,7 @@ class AdaptiveGoalRefiner:
 
             attempt_index = len(matching) + 1
             failure_index = (
-                sum(
-                    item.decision in REFINEMENT_FAILURE_DECISIONS
-                    for item in matching
-                )
-                + 1
+                sum(item.decision in REFINEMENT_FAILURE_DECISIONS for item in matching) + 1
             )
             refinement_index = len(root_admissions) + 1
             try:
@@ -3017,17 +2798,14 @@ class AdaptiveGoalRefiner:
                     now,
                     attempt_index,
                     refinement_index,
-                    "delta quality lint failed closed: "
-                    f"{type(exc).__name__}: {exc}",
+                    f"delta quality lint failed closed: {type(exc).__name__}: {exc}",
                     failure_index=failure_index,
                     producer_id=candidate.producer_id,
                     producer_kind=candidate.producer_kind.value,
                     candidate_plan_id=candidate.plan.content_id,
                     value_estimate=value_estimate,
                 )
-            quality_violation = self._quality_violation(
-                quality_report, candidate, request
-            )
+            quality_violation = self._quality_violation(quality_report, candidate, request)
             if quality_violation:
                 return self._failure(
                     request,
@@ -3043,23 +2821,20 @@ class AdaptiveGoalRefiner:
                     value_estimate=value_estimate,
                     quality_lint_report=(
                         quality_report
-                        if isinstance(
-                            quality_report, RefinementDeltaQualityReport
-                        )
+                        if isinstance(quality_report, RefinementDeltaQualityReport)
                         else None
                     ),
                 )
 
             try:
                 verification = self.verifier(candidate, request)
-                verified, verification_id, verification_reason = (
-                    self._verification(verification, candidate, request)
+                verified, verification_id, verification_reason = self._verification(
+                    verification, candidate, request
                 )
             except BaseException as exc:
                 verified, verification_id = False, ""
                 verification_reason = (
-                    "independent verification failed closed: "
-                    f"{type(exc).__name__}: {exc}"
+                    f"independent verification failed closed: {type(exc).__name__}: {exc}"
                 )
             if not verified:
                 return self._failure(
@@ -3144,18 +2919,14 @@ class AdaptiveGoalRefiner:
             1_000_000,
             max(gains) + 25_000 * (len(request.signals) - 1),
         )
-        affected = tuple(
-            sorted({item.subject_id for item in request.signals})
-        )
+        affected = tuple(sorted({item.subject_id for item in request.signals}))
         # More affected subjects and a larger existing plan imply a broader,
         # costlier revalidation suffix.  The estimate is deliberately bounded
         # and independent of provider-authored rationale text.
         plan_nodes = len(request.plan.goals) + len(request.plan.subgoals)
         downstream_cost = min(
             1_000_000,
-            50_000
-            + 50_000 * max(0, len(affected) - 1)
-            + 10_000 * max(0, plan_nodes - 1),
+            50_000 + 50_000 * max(0, len(affected) - 1) + 10_000 * max(0, plan_nodes - 1),
         )
         return RefinementValueEstimate(
             information_gain_millionths=information_gain,
@@ -3163,12 +2934,7 @@ class AdaptiveGoalRefiner:
             affected_subject_ids=affected,
             signal_ids=tuple(item.evidence_id for item in request.signals),
             rationale_codes=tuple(
-                sorted(
-                    {
-                        f"semantic_event:{item.kind.value}"
-                        for item in request.signals
-                    }
-                )
+                sorted({f"semantic_event:{item.kind.value}" for item in request.signals})
             ),
         )
 
@@ -3209,14 +2975,11 @@ class AdaptiveGoalRefiner:
             if getattr(value, name) != expected_value
         ]
         if mismatched:
-            return (
-                "delta quality report does not bind the exact candidate: "
-                + ", ".join(mismatched)
+            return "delta quality report does not bind the exact candidate: " + ", ".join(
+                mismatched
             )
         if not value.accepted:
-            return "candidate delta failed quality lint: " + ", ".join(
-                value.debt_codes
-            )
+            return "candidate delta failed quality lint: " + ", ".join(value.debt_codes)
         return ""
 
     def _candidate(
@@ -3229,10 +2992,7 @@ class AdaptiveGoalRefiner:
         if isinstance(value, FormalWorkPlan):
             before = {
                 **{item.goal_id: item.content_id for item in request.plan.goals},
-                **{
-                    item.subgoal_id: item.content_id
-                    for item in request.plan.subgoals
-                },
+                **{item.subgoal_id: item.content_id for item in request.plan.subgoals},
             }
             after = {
                 **{item.goal_id: item.content_id for item in value.goals},
@@ -3242,8 +3002,7 @@ class AdaptiveGoalRefiner:
                 sorted(
                     goal_id
                     for goal_id in set(before) | set(after)
-                    if before.get(goal_id) != after.get(goal_id)
-                    and goal_id != request.root_goal_id
+                    if before.get(goal_id) != after.get(goal_id) and goal_id != request.root_goal_id
                 )
             )
             return AdaptiveRefinementCandidate(
@@ -3268,15 +3027,11 @@ class AdaptiveGoalRefiner:
                 root_goal_content_id=value.get(
                     "root_goal_content_id", request.root_goal_content_id
                 ),
-                assumption_ids=tuple(
-                    value.get("assumption_ids", request.assumption_ids)
-                ),
+                assumption_ids=tuple(value.get("assumption_ids", request.assumption_ids)),
                 changed_goal_ids=tuple(value.get("changed_goal_ids") or ()),
                 signal_kind=value.get("signal_kind", request.signals[0].kind),
                 producer_id=value.get("producer_id", "adaptive-goal-refiner"),
-                producer_kind=value.get(
-                    "producer_kind", RefinementProducerKind.DETERMINISTIC
-                ),
+                producer_kind=value.get("producer_kind", RefinementProducerKind.DETERMINISTIC),
                 rationale=value.get("rationale", ""),
             )
         raise AdaptiveGoalRefinementError(
@@ -3298,11 +3053,7 @@ class AdaptiveGoalRefiner:
             return "candidate plan does not match the frozen repository tree"
         if candidate.signal_kind not in {item.kind for item in request.signals}:
             return "candidate signal kind is not present in the refinement request"
-        roots = [
-            item
-            for item in candidate.plan.goals
-            if item.goal_id == request.root_goal_id
-        ]
+        roots = [item for item in candidate.plan.goals if item.goal_id == request.root_goal_id]
         if len(roots) != 1 or roots[0].content_id != request.root_goal_content_id:
             return "candidate plan mutated or removed the frozen root"
         if candidate.plan.content_id == request.plan.content_id:
@@ -3313,23 +3064,16 @@ class AdaptiveGoalRefiner:
             return "candidate exceeds the changed-goal budget"
         before = {
             **{item.goal_id: item.content_id for item in request.plan.goals},
-            **{
-                item.subgoal_id: item.content_id
-                for item in request.plan.subgoals
-            },
+            **{item.subgoal_id: item.content_id for item in request.plan.subgoals},
         }
         after = {
             **{item.goal_id: item.content_id for item in candidate.plan.goals},
-            **{
-                item.subgoal_id: item.content_id
-                for item in candidate.plan.subgoals
-            },
+            **{item.subgoal_id: item.content_id for item in candidate.plan.subgoals},
         }
         actual = {
             goal_id
             for goal_id in set(before) | set(after)
-            if before.get(goal_id) != after.get(goal_id)
-            and goal_id != request.root_goal_id
+            if before.get(goal_id) != after.get(goal_id) and goal_id != request.root_goal_id
         }
         declared = set(candidate.changed_goal_ids)
         if not actual.issubset(declared):
@@ -3352,8 +3096,7 @@ class AdaptiveGoalRefiner:
             return False, "", "verification status must be boolean"
         verified = raw_verified
         verification_id = str(
-            getattr(value, "content_id", "")
-            or getattr(value, "receipt_id", "")
+            getattr(value, "content_id", "") or getattr(value, "receipt_id", "")
         ).strip()
         reason = str(getattr(value, "reason", "") or "").strip()
         frozen = getattr(value, "frozen_context", None)
@@ -3362,17 +3105,14 @@ class AdaptiveGoalRefiner:
             verified_plan_id = value.rounds[-1].plan_id
         else:
             verified_plan_id = str(
-                getattr(value, "candidate_plan_id", "")
-                or getattr(value, "plan_id", "")
+                getattr(value, "candidate_plan_id", "") or getattr(value, "plan_id", "")
             ).strip()
         if frozen is None:
             return False, verification_id, "verification omitted frozen context"
         if (
             getattr(frozen, "root_goal_id", None) != request.root_goal_id
-            or getattr(frozen, "root_goal_content_id", None)
-            != request.root_goal_content_id
-            or tuple(getattr(frozen, "assumption_ids", ()))
-            != request.assumption_ids
+            or getattr(frozen, "root_goal_content_id", None) != request.root_goal_content_id
+            or tuple(getattr(frozen, "assumption_ids", ())) != request.assumption_ids
         ):
             return False, verification_id, "verification changed the frozen context"
         if not verified_plan_id:
@@ -3522,9 +3262,7 @@ class AdaptiveGoalRefiner:
                 source_failure_attempted_at=backoff_source.attempted_at,
                 source_failure_retry_after=backoff_source.retry_after,
                 source_failure_attempt_index=backoff_source.attempt_index,
-                source_failure_refinement_index=(
-                    backoff_source.refinement_index
-                ),
+                source_failure_refinement_index=(backoff_source.refinement_index),
                 suppressed_at=now,
                 suppressed_attempt_index=attempt_index,
                 retry_after=retry_after,
@@ -3555,9 +3293,7 @@ class AdaptiveGoalRefiner:
             signal_ids=tuple(item.evidence_id for item in request.signals),
             signal_kinds=tuple(item.kind.value for item in request.signals),
             requirement_ids=tuple(requirement_ids),
-            value_estimate=(
-                value_estimate or self._default_value_estimate(request)
-            ),
+            value_estimate=(value_estimate or self._default_value_estimate(request)),
             quality_lint_report=quality_lint_report,
             new_counterexample_evidence=counterexample_evidence,
             unchanged_failure_backoff_evidence=backoff_evidence,

@@ -26,9 +26,7 @@ generator = BenchmarkGenerator(db_path="benchmark_db.duckdb")
 
 # Generate a benchmark for a specific model and hardware
 benchmark = generator.generate_benchmark(
-    model_name="bert-base-uncased",
-    hardware="cuda",
-    batch_sizes=[1, 2, 4, 8, 16]
+    model_name="bert-base-uncased", hardware="cuda", batch_sizes=[1, 2, 4, 8, 16]
 )
 
 # Run the benchmark

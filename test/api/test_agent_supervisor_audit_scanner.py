@@ -80,8 +80,14 @@ def test_audit_classification_reports_known_stale_changed_and_novel_separately()
         AuditFindingStatus.CHANGED: 1,
         AuditFindingStatus.NOVEL: 1,
     }
-    assert by_status[AuditFindingStatus.KNOWN][0].current_content_revision == by_status[AuditFindingStatus.KNOWN][0].prior_content_revision
-    assert by_status[AuditFindingStatus.CHANGED][0].current_content_revision != by_status[AuditFindingStatus.CHANGED][0].prior_content_revision
+    assert (
+        by_status[AuditFindingStatus.KNOWN][0].current_content_revision
+        == by_status[AuditFindingStatus.KNOWN][0].prior_content_revision
+    )
+    assert (
+        by_status[AuditFindingStatus.CHANGED][0].current_content_revision
+        != by_status[AuditFindingStatus.CHANGED][0].prior_content_revision
+    )
 
 
 def test_audit_ignores_normal_seen_set_and_persists_deduplicated_baseline(tmp_path: Path) -> None:
@@ -163,7 +169,9 @@ def test_goal_scoped_audit_preserves_raw_inventory_but_classifies_only_admitted_
     assert second.receipt.terminal_reason is ScanTerminalReason.EXHAUSTED
 
 
-def _receipt(binding: ExhaustionBinding, channel: str, *, offset: int = 0) -> RefillScanResult[object]:
+def _receipt(
+    binding: ExhaustionBinding, channel: str, *, offset: int = 0
+) -> RefillScanResult[object]:
     started = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=offset)
     return RefillScanResult(
         terminal_reason=ScanTerminalReason.EXHAUSTED,
@@ -209,16 +217,18 @@ def test_exhaustion_quorum_deduplicates_repeats_and_invalidates_changed_context(
         binding.configuration_revision,
         binding.objective_revision,
     )
-    invalidated = evaluate_exhaustion_quorum(
-        quorum.members, binding=changed, required_members=2
-    )
+    invalidated = evaluate_exhaustion_quorum(quorum.members, binding=changed, required_members=2)
     assert not invalidated.satisfied
     assert invalidated.count == 0
-    assert {reason for item in invalidated.invalidated for reason in item["reasons"]} == {"tree_mismatch"}
+    assert {reason for item in invalidated.invalidated for reason in item["reasons"]} == {
+        "tree_mismatch"
+    }
 
 
 def test_configuration_and_objective_revisions_are_canonical_and_binding_sensitive() -> None:
-    assert scan_configuration_revision({"a": 1, "b": [2, 3]}) == scan_configuration_revision({"b": [2, 3], "a": 1})
+    assert scan_configuration_revision({"a": 1, "b": [2, 3]}) == scan_configuration_revision(
+        {"b": [2, 3], "a": 1}
+    )
     assert scan_configuration_revision({"a": 1}) != scan_configuration_revision({"a": 2})
     assert objective_revision("one") != objective_revision("two")
 

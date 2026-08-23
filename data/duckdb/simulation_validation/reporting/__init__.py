@@ -21,9 +21,9 @@ from .comparative_report import ComparativeReportGenerator
 from .report_manager import ReportManager
 
 __all__ = [
-    'ReportGenerator',
-    'ExecutiveSummaryGenerator',
-    'TechnicalReportGenerator',
-    'ComparativeReportGenerator',
-    'ReportManager',
+    "ReportGenerator",
+    "ExecutiveSummaryGenerator",
+    "TechnicalReportGenerator",
+    "ComparativeReportGenerator",
+    "ReportManager",
 ]

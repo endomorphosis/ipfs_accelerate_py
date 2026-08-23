@@ -196,32 +196,27 @@ python -m distributed_testing.run_test_ci_integration example worker_auto_discov
 ```python
 from distributed_testing.plugin_architecture import Plugin, PluginType, HookType
 
+
 class MyReporterPlugin(Plugin):
     """Custom reporter plugin."""
-    
+
     def __init__(self):
-        super().__init__(
-            name="MyReporter",
-            version="1.0.0",
-            plugin_type=PluginType.REPORTER
-        )
-        
+        super().__init__(name="MyReporter", version="1.0.0", plugin_type=PluginType.REPORTER)
+
         # Register hooks
         self.register_hook(HookType.TASK_COMPLETED, self.on_task_completed)
-        
+
     async def initialize(self, coordinator) -> bool:
         """Initialize the plugin."""
         self.coordinator = coordinator
         self.results = []
         return True
-        
+
     async def on_task_completed(self, task_id: str, result: Any):
         """Handle task completed event."""
-        self.results.append({
-            "task_id": task_id,
-            "result": result,
-            "timestamp": datetime.now().isoformat()
-        })
+        self.results.append(
+            {"task_id": task_id, "result": result, "timestamp": datetime.now().isoformat()}
+        )
 ```
 
 ### External System Integration
@@ -231,22 +226,25 @@ from distributed_testing.external_systems import ExternalSystemFactory
 
 # Create JIRA connector
 jira = await ExternalSystemFactory.create_connector(
-    "jira", 
+    "jira",
     {
         "email": "user@example.com",
         "token": "api_token",
         "server_url": "https://jira.example.com",
-        "project_key": "PROJECT"
-    }
+        "project_key": "PROJECT",
+    },
 )
 
 # Create an issue
-issue = await jira.create_item("issue", {
-    "summary": "Test Issue",
-    "description": "This is a test issue",
-    "issue_type": "Bug",
-    "priority": "Medium"
-})
+issue = await jira.create_item(
+    "issue",
+    {
+        "summary": "Test Issue",
+        "description": "This is a test issue",
+        "issue_type": "Bug",
+        "priority": "Medium",
+    },
+)
 ```
 
 ## Documentation

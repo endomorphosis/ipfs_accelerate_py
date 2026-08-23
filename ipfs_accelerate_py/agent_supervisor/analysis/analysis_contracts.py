@@ -51,12 +51,8 @@ ANALYSIS_COST_SCHEMA = "ipfs_accelerate_py/agent-supervisor/analysis-cost@1"
 ANALYSIS_CANDIDATE_PROPOSAL_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/analysis-candidate-proposal@1"
 )
-ANALYSIS_STAGE_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/analysis-stage-receipt@1"
-)
-ANALYSIS_EVIDENCE_PACKET_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/analysis-evidence-packet@1"
-)
+ANALYSIS_STAGE_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/analysis-stage-receipt@1"
+ANALYSIS_EVIDENCE_PACKET_SCHEMA = "ipfs_accelerate_py/agent-supervisor/analysis-evidence-packet@1"
 
 ARTIFACT_REFERENCE_SCHEMA = ANALYSIS_ARTIFACT_REFERENCE_SCHEMA
 PROVENANCE_REFERENCE_SCHEMA = ANALYSIS_PROVENANCE_REFERENCE_SCHEMA
@@ -181,9 +177,7 @@ def _enum(value: Any, enum_type: type[Enum], *, field_name: str) -> Any:
         return enum_type(str(raw))
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(item.value for item in enum_type)
-        raise ContractValidationError(
-            f"{field_name} must be one of: {allowed}"
-        ) from exc
+        raise ContractValidationError(f"{field_name} must be one of: {allowed}") from exc
 
 
 def _nonnegative_int(value: Any, *, field_name: str) -> int:
@@ -210,17 +204,13 @@ def _strings(
         source: Iterable[Any] = ()
     elif isinstance(values, str):
         source = (values,)
-    elif isinstance(values, Sequence) and not isinstance(
-        values, (bytes, bytearray, memoryview)
-    ):
+    elif isinstance(values, Sequence) and not isinstance(values, (bytes, bytearray, memoryview)):
         source = values
     else:
         raise ContractValidationError(f"{field_name} must be a sequence of strings")
     result: list[str] = []
     for index, item in enumerate(source):
-        normalized = _text(
-            item, field_name=f"{field_name}[{index}]", required=True
-        )
+        normalized = _text(item, field_name=f"{field_name}[{index}]", required=True)
         if normalized not in result:
             result.append(normalized)
     if required and not result:
@@ -234,9 +224,7 @@ def _repo_paths(values: Any, *, field_name: str) -> tuple[str, ...]:
         normalized = path.replace("\\", "/")
         candidate = PurePosixPath(normalized)
         if candidate.is_absolute() or ".." in candidate.parts:
-            raise ContractValidationError(
-                f"{field_name} must contain repository-relative paths"
-            )
+            raise ContractValidationError(f"{field_name} must contain repository-relative paths")
     return tuple(sorted(path.replace("\\", "/") for path in result))
 
 
@@ -257,16 +245,10 @@ def _millionths(
         except (InvalidOperation, TypeError, ValueError) as exc:
             raise ContractValidationError(f"{field_name} must be numeric") from exc
         if not decimal.is_finite() or decimal < 0:
-            raise ContractValidationError(
-                f"{field_name} must be finite and non-negative"
-            )
-        result = int(
-            (decimal * MILLION).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-        )
+            raise ContractValidationError(f"{field_name} must be finite and non-negative")
+        result = int((decimal * MILLION).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     if maximum is not None and result > maximum:
-        raise ContractValidationError(
-            f"{field_name} must be between 0 and {maximum} millionths"
-        )
+        raise ContractValidationError(f"{field_name} must be between 0 and {maximum} millionths")
     return result
 
 
@@ -282,15 +264,11 @@ def _timestamp(value: Any, *, field_name: str, required: bool = False) -> str:
         try:
             parsed = datetime.fromisoformat(candidate)
         except ValueError as exc:
-            raise ContractValidationError(
-                f"{field_name} must be an ISO-8601 timestamp"
-            ) from exc
+            raise ContractValidationError(f"{field_name} must be an ISO-8601 timestamp") from exc
     elif isinstance(value, datetime):
         parsed = value
     else:
-        raise ContractValidationError(
-            f"{field_name} must be a datetime or ISO-8601 string"
-        )
+        raise ContractValidationError(f"{field_name} must be a datetime or ISO-8601 string")
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ContractValidationError(f"{field_name} must be timezone-aware")
     return parsed.astimezone(timezone.utc).isoformat()
@@ -301,9 +279,7 @@ def _schema_and_version(payload: Mapping[str, Any], expected_schema: str) -> Non
         raise ContractValidationError("analysis contract payload must be an object")
     schema = payload.get("schema")
     if schema not in (None, "", expected_schema):
-        raise ContractValidationError(
-            f"unsupported schema {schema!r}; expected {expected_schema}"
-        )
+        raise ContractValidationError(f"unsupported schema {schema!r}; expected {expected_schema}")
     version = payload.get("contract_version", payload.get("schema_version"))
     if version not in (None, ANALYSIS_CONTRACT_VERSION):
         raise ContractValidationError(
@@ -353,9 +329,7 @@ def _coerce_tuple(
 ) -> tuple[Any, ...]:
     if values is None:
         return ()
-    if isinstance(values, (str, bytes, bytearray, memoryview)) or not isinstance(
-        values, Sequence
-    ):
+    if isinstance(values, (str, bytes, bytearray, memoryview)) or not isinstance(values, Sequence):
         raise ContractValidationError(f"{field_name} must be a sequence")
     result: list[Any] = []
     for item in values:
@@ -375,9 +349,7 @@ def _unique_sorted(
                 raise ContractValidationError(
                     f"{field_name} contains conflicting records for {identity}"
                 )
-            raise ContractValidationError(
-                f"{field_name} must not contain duplicate records"
-            )
+            raise ContractValidationError(f"{field_name} must not contain duplicate records")
         by_identity[identity] = item
     return tuple(by_identity[key] for key in sorted(by_identity))
 
@@ -417,18 +389,12 @@ class AnalysisLimits(CanonicalContract):
         max_total_bytes: int | None = None,
     ) -> None:
         values = {
-            "max_stage_receipts": (
-                max_stage_receipts if max_receipts is None else max_receipts
-            ),
+            "max_stage_receipts": (max_stage_receipts if max_receipts is None else max_receipts),
             "max_candidate_proposals": (
-                max_candidate_proposals
-                if max_proposals is None
-                else max_proposals
+                max_candidate_proposals if max_proposals is None else max_proposals
             ),
             "max_provenance_references": (
-                max_provenance_references
-                if max_provenance is None
-                else max_provenance
+                max_provenance_references if max_provenance is None else max_provenance
             ),
             "max_artifact_references": (
                 max_artifact_references if max_artifacts is None else max_artifacts
@@ -443,11 +409,7 @@ class AnalysisLimits(CanonicalContract):
             "max_serialized_bytes": (
                 max_total_bytes
                 if max_total_bytes is not None
-                else (
-                    max_serialized_bytes
-                    if max_packet_bytes is None
-                    else max_packet_bytes
-                )
+                else (max_serialized_bytes if max_packet_bytes is None else max_packet_bytes)
             ),
         }
         for name, value in values.items():
@@ -457,9 +419,7 @@ class AnalysisLimits(CanonicalContract):
                 _positive_int(value, field_name=name),
             )
         if self.max_text_bytes > self.max_record_bytes:
-            raise ContractValidationError(
-                "max_text_bytes cannot exceed max_record_bytes"
-            )
+            raise ContractValidationError("max_text_bytes cannot exceed max_record_bytes")
 
     @property
     def max_receipts(self) -> int:
@@ -548,9 +508,7 @@ class AnalysisLimits(CanonicalContract):
                 ),
             ),
             max_text_bytes=payload.get("max_text_bytes", defaults.max_text_bytes),
-            max_record_bytes=payload.get(
-                "max_record_bytes", defaults.max_record_bytes
-            ),
+            max_record_bytes=payload.get("max_record_bytes", defaults.max_record_bytes),
             max_serialized_bytes=payload.get(
                 "max_serialized_bytes",
                 payload.get(
@@ -636,9 +594,7 @@ class ArtifactReference(CanonicalContract):
             len(digest) != 64
             or any(character not in "0123456789abcdefABCDEF" for character in digest)
         ):
-            raise ContractValidationError(
-                "sha256 must be a 64-character hexadecimal digest"
-            )
+            raise ContractValidationError("sha256 must be a 64-character hexadecimal digest")
         if digest:
             object.__setattr__(self, "sha256", digest.lower())
         _bounded_record(self, artifact_name="artifact reference")
@@ -746,9 +702,7 @@ class ProvenanceReference(CanonicalContract):
             "reference_id",
             _text(self.reference_id, field_name="reference_id", required=True),
         )
-        object.__setattr__(
-            self, "kind", _enum(self.kind, ProvenanceKind, field_name="kind")
-        )
+        object.__setattr__(self, "kind", _enum(self.kind, ProvenanceKind, field_name="kind"))
         artifact = self.artifact
         if artifact is not None and not isinstance(artifact, ArtifactReference):
             if not isinstance(artifact, Mapping):
@@ -918,11 +872,7 @@ class AnalysisCost(CanonicalContract):
         }
         _reject_unknown(payload, allowed, artifact_name="analysis cost")
         result = cls(
-            **{
-                name: payload.get(name, 0)
-                for name in cls.__dataclass_fields__
-                if name != "SCHEMA"
-            }
+            **{name: payload.get(name, 0) for name in cls.__dataclass_fields__ if name != "SCHEMA"}
         )
         _claimed_identity(
             payload,
@@ -972,9 +922,7 @@ class CandidateProposal(CanonicalContract):
         source_stage: str = "",
         proposal_id: str = "",
     ) -> None:
-        object.__setattr__(
-            self, "summary", _text(summary, field_name="summary", required=True)
-        )
+        object.__setattr__(self, "summary", _text(summary, field_name="summary", required=True))
         object.__setattr__(
             self,
             "objective_terms",
@@ -1035,8 +983,7 @@ class CandidateProposal(CanonicalContract):
                 field_name="cost",
                 maximum=None,
                 already_millionths=(
-                    cost_millionths is not None
-                    or estimated_cost_millionths is not None
+                    cost_millionths is not None or estimated_cost_millionths is not None
                 ),
             ),
         )
@@ -1163,9 +1110,7 @@ class CandidateProposal(CanonicalContract):
             provenance=tuple(payload.get("provenance") or ()),
             artifacts=tuple(payload.get("artifacts") or ()),
             source_stage=payload.get("source_stage", ""),
-            proposal_id=str(
-                payload.get("proposal_id") or payload.get("content_id") or ""
-            ),
+            proposal_id=str(payload.get("proposal_id") or payload.get("content_id") or ""),
         )
         return result
 
@@ -1222,9 +1167,7 @@ class AnalysisStageReceipt(CanonicalContract):
         query_digest: str = "",
         policy_digest: str = "",
         freshness: AnalysisFreshness | str = AnalysisFreshness.FRESH,
-        cache_disposition: AnalysisCacheDisposition | str = (
-            AnalysisCacheDisposition.NOT_CACHED
-        ),
+        cache_disposition: AnalysisCacheDisposition | str = (AnalysisCacheDisposition.NOT_CACHED),
         coverage_complete: bool = True,
         truncated: bool = False,
         reason_code: str = "",
@@ -1250,9 +1193,7 @@ class AnalysisStageReceipt(CanonicalContract):
             ("tree_id", tree_id),
             ("objective_revision", objective_revision),
         ):
-            object.__setattr__(
-                self, name, _text(value, field_name=name, required=True)
-            )
+            object.__setattr__(self, name, _text(value, field_name=name, required=True))
         for name, value in (
             ("configuration_digest", configuration_digest),
             ("query_digest", query_digest),
@@ -1298,9 +1239,7 @@ class AnalysisStageReceipt(CanonicalContract):
                 "started_at and finished_at must either both be set or both be empty"
             )
         if normalized_started and normalized_finished < normalized_started:
-            raise ContractValidationError(
-                "finished_at must not be earlier than started_at"
-            )
+            raise ContractValidationError("finished_at must not be earlier than started_at")
         object.__setattr__(self, "started_at", normalized_started)
         object.__setattr__(self, "finished_at", normalized_finished)
         object.__setattr__(
@@ -1389,11 +1328,15 @@ class AnalysisStageReceipt(CanonicalContract):
             raise ContractValidationError(
                 f"{self.status.value} stage receipts require an error_code or reason_code"
             )
-        if self.status in {
-            AnalysisStageStatus.FAILED,
-            AnalysisStageStatus.TIMED_OUT,
-            AnalysisStageStatus.SKIPPED,
-        } and self.proposals:
+        if (
+            self.status
+            in {
+                AnalysisStageStatus.FAILED,
+                AnalysisStageStatus.TIMED_OUT,
+                AnalysisStageStatus.SKIPPED,
+            }
+            and self.proposals
+        ):
             raise ContractValidationError(
                 f"{self.status.value} stage receipts cannot contain candidate proposals"
             )
@@ -1545,9 +1488,7 @@ class AnalysisStageReceipt(CanonicalContract):
             query_digest=payload.get("query_digest", ""),
             policy_digest=payload.get("policy_digest", ""),
             freshness=payload.get("freshness", AnalysisFreshness.FRESH),
-            cache_disposition=payload.get(
-                "cache_disposition", AnalysisCacheDisposition.NOT_CACHED
-            ),
+            cache_disposition=payload.get("cache_disposition", AnalysisCacheDisposition.NOT_CACHED),
             coverage_complete=payload.get("coverage_complete", True),
             truncated=payload.get("truncated", False),
             reason_code=payload.get("reason_code", ""),
@@ -1563,9 +1504,7 @@ class AnalysisStageReceipt(CanonicalContract):
             proposals=tuple(payload.get("proposals") or ()),
             provenance=tuple(payload.get("provenance") or ()),
             artifacts=tuple(payload.get("artifacts") or ()),
-            receipt_id=str(
-                payload.get("receipt_id") or payload.get("content_id") or ""
-            ),
+            receipt_id=str(payload.get("receipt_id") or payload.get("content_id") or ""),
         )
         for claim in ("safe_for_completion_reasoning", "is_completion_evidence"):
             if claim in payload and bool(payload[claim]) != result.is_completion_evidence:
@@ -1623,9 +1562,7 @@ class AnalysisEvidencePacket(CanonicalContract):
             ("tree_id", tree_id),
             ("objective_revision", objective_revision),
         ):
-            object.__setattr__(
-                self, name, _text(value, field_name=name, required=True)
-            )
+            object.__setattr__(self, name, _text(value, field_name=name, required=True))
         object.__setattr__(
             self,
             "outcome",
@@ -1655,17 +1592,11 @@ class AnalysisEvidencePacket(CanonicalContract):
             raise ContractValidationError("limits must be AnalysisLimits or a mapping")
         object.__setattr__(self, "limits", normalized_limits)
         if stage_receipts and receipts is not None:
-            raise ContractValidationError(
-                "use either stage_receipts or receipts, not both"
-            )
+            raise ContractValidationError("use either stage_receipts or receipts, not both")
         if candidate_proposals and proposals is not None:
-            raise ContractValidationError(
-                "use either candidate_proposals or proposals, not both"
-            )
+            raise ContractValidationError("use either candidate_proposals or proposals, not both")
         selected_receipts = stage_receipts if receipts is None else receipts
-        selected_proposals = (
-            candidate_proposals if proposals is None else proposals
-        )
+        selected_proposals = candidate_proposals if proposals is None else proposals
         receipt_items = _coerce_tuple(
             selected_receipts,
             AnalysisStageReceipt,
@@ -1758,16 +1689,12 @@ class AnalysisEvidencePacket(CanonicalContract):
     @property
     def completion_evidence_receipts(self) -> tuple[AnalysisStageReceipt, ...]:
         return tuple(
-            receipt
-            for receipt in self.stage_receipts
-            if receipt.safe_for_completion_reasoning
+            receipt for receipt in self.stage_receipts if receipt.safe_for_completion_reasoning
         )
 
     @property
     def completion_evidence_receipt_ids(self) -> tuple[str, ...]:
-        return tuple(
-            receipt.receipt_id for receipt in self.completion_evidence_receipts
-        )
+        return tuple(receipt.receipt_id for receipt in self.completion_evidence_receipts)
 
     @property
     def _completion_gate(self) -> bool:
@@ -1811,9 +1738,7 @@ class AnalysisEvidencePacket(CanonicalContract):
 
     def _all_proposals(self) -> tuple[CandidateProposal, ...]:
         return self.candidate_proposals + tuple(
-            proposal
-            for receipt in self.stage_receipts
-            for proposal in receipt.proposals
+            proposal for receipt in self.stage_receipts for proposal in receipt.proposals
         )
 
     def _all_provenance(self) -> tuple[ProvenanceReference, ...]:
@@ -1821,13 +1746,9 @@ class AnalysisEvidencePacket(CanonicalContract):
         return (
             self.provenance
             + tuple(
-                reference
-                for receipt in self.stage_receipts
-                for reference in receipt.provenance
+                reference for receipt in self.stage_receipts for reference in receipt.provenance
             )
-            + tuple(
-                reference for proposal in proposals for reference in proposal.provenance
-            )
+            + tuple(reference for proposal in proposals for reference in proposal.provenance)
         )
 
     def _all_artifacts(self) -> tuple[ArtifactReference, ...]:
@@ -1835,18 +1756,10 @@ class AnalysisEvidencePacket(CanonicalContract):
         provenance = self._all_provenance()
         return (
             self.artifacts
+            + tuple(artifact for receipt in self.stage_receipts for artifact in receipt.artifacts)
+            + tuple(artifact for proposal in proposals for artifact in proposal.artifacts)
             + tuple(
-                artifact
-                for receipt in self.stage_receipts
-                for artifact in receipt.artifacts
-            )
-            + tuple(
-                artifact for proposal in proposals for artifact in proposal.artifacts
-            )
-            + tuple(
-                reference.artifact
-                for reference in provenance
-                if reference.artifact is not None
+                reference.artifact for reference in provenance if reference.artifact is not None
             )
         )
 
@@ -1884,9 +1797,7 @@ class AnalysisEvidencePacket(CanonicalContract):
                 raise ContractValidationError(
                     "proposal objective_terms exceed the configured count limit"
                 )
-        text_values: list[tuple[str, str]] = [
-            ("conclusion_code", self.conclusion_code)
-        ]
+        text_values: list[tuple[str, str]] = [("conclusion_code", self.conclusion_code)]
         for receipt in self.stage_receipts:
             text_values.extend(
                 (
@@ -1897,14 +1808,10 @@ class AnalysisEvidencePacket(CanonicalContract):
             )
         for proposal in self._all_proposals():
             text_values.append(("proposal summary", proposal.summary))
-            text_values.extend(
-                ("objective term", value) for value in proposal.objective_terms
-            )
+            text_values.extend(("objective term", value) for value in proposal.objective_terms)
         for field_name, value in text_values:
             if len(value.encode("utf-8")) > limits.max_text_bytes:
-                raise ContractValidationError(
-                    f"{field_name} exceeds configured max_text_bytes"
-                )
+                raise ContractValidationError(f"{field_name} exceeds configured max_text_bytes")
         records: tuple[CanonicalContract, ...] = (
             *self.stage_receipts,
             *self._all_proposals(),
@@ -1931,18 +1838,14 @@ class AnalysisEvidencePacket(CanonicalContract):
             "conclusion_code": self.conclusion_code,
             "coverage_complete": self.coverage_complete,
             "truncated": self.truncated,
-            "stage_receipts": tuple(
-                receipt.to_record() for receipt in self.stage_receipts
-            ),
+            "stage_receipts": tuple(receipt.to_record() for receipt in self.stage_receipts),
             "candidate_proposals": tuple(
                 proposal.to_record() for proposal in self.candidate_proposals
             ),
             "provenance": tuple(item.to_record() for item in self.provenance),
             "artifacts": tuple(item.to_record() for item in self.artifacts),
             "limits": self.limits.to_record(),
-            "completion_evidence_receipt_ids": (
-                self.completion_evidence_receipt_ids
-            ),
+            "completion_evidence_receipt_ids": (self.completion_evidence_receipt_ids),
             "safe_for_completion_reasoning": self.safe_for_completion_reasoning,
         }
 
@@ -1988,14 +1891,9 @@ class AnalysisEvidencePacket(CanonicalContract):
             conclusion_code=payload.get("conclusion_code", ""),
             coverage_complete=payload.get("coverage_complete", True),
             truncated=payload.get("truncated", False),
-            stage_receipts=tuple(
-                payload.get("stage_receipts", payload.get("receipts")) or ()
-            ),
+            stage_receipts=tuple(payload.get("stage_receipts", payload.get("receipts")) or ()),
             candidate_proposals=tuple(
-                payload.get(
-                    "candidate_proposals", payload.get("proposals")
-                )
-                or ()
+                payload.get("candidate_proposals", payload.get("proposals")) or ()
             ),
             provenance=tuple(payload.get("provenance") or ()),
             artifacts=tuple(payload.get("artifacts") or ()),

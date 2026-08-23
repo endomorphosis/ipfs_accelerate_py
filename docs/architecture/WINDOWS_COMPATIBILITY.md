@@ -98,7 +98,7 @@ config = {
     "web_interface": {
         "host": "localhost",
         "port": 8080,
-        "browser": "edge"  # or "chrome", "firefox"
+        "browser": "edge",  # or "chrome", "firefox"
     }
 }
 accelerator = ipfs_accelerate_py({}, config)

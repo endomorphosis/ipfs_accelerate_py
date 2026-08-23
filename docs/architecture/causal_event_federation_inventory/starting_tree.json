@@ -1,0 +1,42 @@
+{
+  "artifact_type": "casf_starting_tree_inventory",
+  "artifact_version": 1,
+  "program_id": "agent-supervisor-causal-event-federation-v1",
+  "root_objective_id": "CASF-G000",
+  "task_prefix": "CASF-",
+  "inventory_tasks": [
+    "CASF-000",
+    "CASF-001"
+  ],
+  "repository": {
+    "identity": "endomorphosis/ipfs_accelerate_py",
+    "branch": "codex/causal-event-supervisor-federation-v1",
+    "starting_commit": "84a056e41e48a81d4484be43840196578d6c87da",
+    "starting_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
+    "baseline_kind": "committed_git_tree",
+    "starting_worktree_was_clean": true,
+    "observation_time_utc": "2026-08-21T21:08:48Z",
+    "write_time_note": "Concurrent bounded implementation work may add uncommitted paths after the starting tree was sealed; those paths are not part of this baseline."
+  },
+  "control_plane_baseline": {
+    "migration_catalog": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+    "base_migration": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+    "base_migration_version": 1,
+    "normalized_domain_table_count": 110,
+    "schema_authority": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py",
+    "state_repository_authority": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
+    "transaction_authority": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py"
+  },
+  "evidence_basis": {
+    "source": "exact committed current tree plus explicitly bounded current-environment extension probes",
+    "markdown_board_is_authority": false,
+    "historical_receipt_is_current_qualification": false,
+    "generated_report_is_completion_authority": false,
+    "module_or_table_name_is_capability_authority": false
+  },
+  "inventory_refs": {
+    "human_readable": "docs/architecture/causal_event_federation_inventory/README.md",
+    "authorities": "docs/architecture/causal_event_federation_inventory/authorities.json",
+    "capabilities": "docs/architecture/causal_event_federation_inventory/capability_snapshot.json"
+  }
+}

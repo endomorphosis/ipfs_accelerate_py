@@ -213,7 +213,6 @@ Example:
     >>> list(last_hidden_state.shape)
     [1, 2, 512]
     ```"""
-
 ```
 
 Just run the following line to automatically test every docstring example in the desired file:
@@ -531,11 +530,11 @@ Alternative backends may also require the replacement of device-specific functio
 
 ```python
 import torch
-import torch_npu # for xpu, replace it with `import intel_extension_for_pytorch`
+import torch_npu  # for xpu, replace it with `import intel_extension_for_pytorch`
 # !! Further additional imports can be added here !!
 
 # Specify the device name (eg. 'cuda', 'cpu', 'npu', 'xpu', 'mps')
-DEVICE_NAME = 'npu'
+DEVICE_NAME = "npu"
 
 # Specify device-specific backends to dispatch to.
 # If not specified, will fallback to 'default' in 'testing_utils.py`
@@ -1228,7 +1227,7 @@ import numpy as np
 np.random.seed(seed)
 
 # tf RNG
-import tensorflow as tf 
+import tensorflow as tf
 
 tf.random.set_seed(seed)
 ```

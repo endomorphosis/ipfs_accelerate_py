@@ -38,22 +38,12 @@ from .control_plane import (
 )
 
 
-LIFECYCLE_PROFILE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lifecycle-profile@1"
-)
-PROCESS_IDENTITY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/process-identity@1"
-)
+LIFECYCLE_PROFILE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/lifecycle-profile@1"
+PROCESS_IDENTITY_SCHEMA = "ipfs_accelerate_py/agent-supervisor/process-identity@1"
 PROCESS_TREE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/process-tree@1"
-LIFECYCLE_INTENT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lifecycle-transition-intent@1"
-)
-LIFECYCLE_SAGA_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lifecycle-transition-saga@1"
-)
-LIFECYCLE_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/lifecycle-transition-receipt@1"
-)
+LIFECYCLE_INTENT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/lifecycle-transition-intent@1"
+LIFECYCLE_SAGA_SCHEMA = "ipfs_accelerate_py/agent-supervisor/lifecycle-transition-saga@1"
+LIFECYCLE_RECEIPT_SCHEMA = "ipfs_accelerate_py/agent-supervisor/lifecycle-transition-receipt@1"
 
 RUN_ID_ENV = "IPFS_ACCELERATE_LIFECYCLE_RUN_ID"
 PROFILE_ID_ENV = "IPFS_ACCELERATE_LIFECYCLE_PROFILE_ID"
@@ -80,9 +70,9 @@ _LAUNCH_IDENTITY_POLL_SECONDS = 0.01
 
 
 def _canonical_id(payload: Mapping[str, Any]) -> str:
-    encoded = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
@@ -95,9 +85,7 @@ def _absolute(value: str | Path, name: str) -> str:
 
 def _under(path: str | Path, root: str | Path) -> bool:
     try:
-        Path(path).resolve(strict=False).relative_to(
-            Path(root).resolve(strict=False)
-        )
+        Path(path).resolve(strict=False).relative_to(Path(root).resolve(strict=False))
         return True
     except ValueError:
         return False
@@ -121,9 +109,7 @@ def _positive_int(value: Any, name: str, *, allow_zero: bool = False) -> int:
 
 def _read_boot_id() -> str:
     try:
-        return Path("/proc/sys/kernel/random/boot_id").read_text(
-            encoding="ascii"
-        ).strip()
+        return Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
     except (OSError, UnicodeError):
         return ""
 
@@ -193,16 +179,16 @@ class LifecycleProfile:
         for name in ("target_id", "run_id", "configuration_root"):
             object.__setattr__(self, name, _text(getattr(self, name), name))
         for name in ("repository_root", "state_root", "run_root", "cwd"):
-            object.__setattr__(
-                self, name, _absolute(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _absolute(getattr(self, name), name))
         if not _under(self.cwd, self.repository_root):
             raise ValueError("profile cwd must be inside repository_root")
         if not _under(self.run_root, self.state_root):
             raise ValueError("profile run_root must be inside state_root")
-        argv = tuple(_text(item, "argv item") for item in self.argv)
+        argv = tuple(str(item) for item in self.argv)
         if not argv or len(argv) > 512:
             raise ValueError("argv must contain between 1 and 512 items")
+        if any(not item or "\x00" in item for item in argv):
+            raise ValueError("argv item must be non-empty")
         object.__setattr__(self, "argv", argv)
         environment = tuple(
             sorted(
@@ -411,8 +397,7 @@ class ProcessTreeSnapshot:
         if len({item.pid for item in members}) != len(members):
             raise ValueError("process tree contains duplicate PIDs")
         if any(
-            item.profile_id != self.profile_id or item.run_id != self.run_id
-            for item in members
+            item.profile_id != self.profile_id or item.run_id != self.run_id for item in members
         ):
             raise ValueError("process tree member binding mismatch")
         object.__setattr__(self, "members", members)
@@ -424,9 +409,7 @@ class ProcessTreeSnapshot:
     @property
     def roots(self) -> tuple[ProcessIdentity, ...]:
         member_pids = {item.pid for item in self.members}
-        return tuple(
-            item for item in self.members if item.parent_pid not in member_pids
-        )
+        return tuple(item for item in self.members if item.parent_pid not in member_pids)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -447,23 +430,16 @@ class ProcessTreeSnapshot:
         return cls(
             profile_id=payload.get("profile_id", ""),
             run_id=payload.get("run_id", ""),
-            members=tuple(
-                ProcessIdentity.from_dict(item)
-                for item in payload.get("members") or ()
-            ),
+            members=tuple(ProcessIdentity.from_dict(item) for item in payload.get("members") or ()),
             captured_at_ms=payload.get("captured_at_ms", 0),
             tree_id=payload.get("tree_id", ""),
         )
 
 
 class ProcessAdapter(Protocol):
-    def snapshot(self, profile: LifecycleProfile) -> ProcessTreeSnapshot:
-        ...
+    def snapshot(self, profile: LifecycleProfile) -> ProcessTreeSnapshot: ...
 
-    def launch(
-        self, profile: LifecycleProfile, *, fencing_epoch: int
-    ) -> ProcessIdentity:
-        ...
+    def launch(self, profile: LifecycleProfile, *, fencing_epoch: int) -> ProcessIdentity: ...
 
     def terminate(
         self,
@@ -471,11 +447,9 @@ class ProcessAdapter(Protocol):
         *,
         grace_seconds: float,
         deadline_ms: int,
-    ) -> None:
-        ...
+    ) -> None: ...
 
-    def identity_alive(self, identity: ProcessIdentity) -> bool:
-        ...
+    def identity_alive(self, identity: ProcessIdentity) -> bool: ...
 
     def healthy(
         self,
@@ -484,8 +458,7 @@ class ProcessAdapter(Protocol):
         *,
         fencing_epoch: int,
         now_ms: int,
-    ) -> bool:
-        ...
+    ) -> bool: ...
 
 
 class LinuxProcessAdapter:
@@ -531,9 +504,7 @@ class LinuxProcessAdapter:
             if item
         )
 
-    def _identity(
-        self, pid: int, profile: LifecycleProfile
-    ) -> ProcessIdentity:
+    def _identity(self, pid: int, profile: LifecycleProfile) -> ProcessIdentity:
         parent, group, session, started = self._stat(pid)
         environment = self._environ(pid)
         markers = {
@@ -552,9 +523,7 @@ class LinuxProcessAdapter:
         try:
             fence = int(environment[FENCING_EPOCH_ENV])
         except (KeyError, ValueError) as exc:
-            raise ProcessIdentityMismatch(
-                f"process {pid} has no valid lifecycle fence"
-            ) from exc
+            raise ProcessIdentityMismatch(f"process {pid} has no valid lifecycle fence") from exc
         try:
             cwd = os.readlink(f"/proc/{pid}/cwd")
             executable = os.readlink(f"/proc/{pid}/exe")
@@ -603,10 +572,7 @@ class LinuxProcessAdapter:
                     RUN_ROOT_ENV: profile.run_root,
                     CONFIGURATION_ROOT_ENV: profile.configuration_root,
                 }
-                if any(
-                    environment.get(name) != value
-                    for name, value in expected_markers.items()
-                ):
+                if any(environment.get(name) != value for name, value in expected_markers.items()):
                     raise ProcessIdentityMismatch(
                         "the selected run already has a foreign root or "
                         "changed lifecycle configuration"
@@ -626,9 +592,7 @@ class LinuxProcessAdapter:
             captured_at_ms=self._clock_ms(),
         )
 
-    def launch(
-        self, profile: LifecycleProfile, *, fencing_epoch: int
-    ) -> ProcessIdentity:
+    def launch(self, profile: LifecycleProfile, *, fencing_epoch: int) -> ProcessIdentity:
         Path(profile.run_root).mkdir(parents=True, exist_ok=True)
         process = self._popen(
             list(profile.argv),
@@ -691,15 +655,11 @@ class LinuxProcessAdapter:
     @staticmethod
     def _signal_exact(identity: ProcessIdentity, signum: int) -> None:
         try:
-            _parent, group, _session, started = LinuxProcessAdapter._stat(
-                identity.pid
-            )
+            _parent, group, _session, started = LinuxProcessAdapter._stat(identity.pid)
         except (OSError, ValueError, ProcessLookupError):
             return
         if started != identity.start_time_ticks:
-            raise ProcessIdentityMismatch(
-                f"PID {identity.pid} was reused before signal"
-            )
+            raise ProcessIdentityMismatch(f"PID {identity.pid} was reused before signal")
         # Signal the exact process.  Group signaling is unsafe here because an
         # unrelated process can join a group after the snapshot.
         del group
@@ -736,8 +696,7 @@ class LinuxProcessAdapter:
             time.monotonic() + max(0.0, deadline_ms / 1000.0),
         )
         while (
-            any(self.identity_alive(member) for member in ordered)
-            and time.monotonic() < wait_until
+            any(self.identity_alive(member) for member in ordered) and time.monotonic() < wait_until
         ):
             time.sleep(0.02)
         for member in ordered:
@@ -764,18 +723,13 @@ class LinuxProcessAdapter:
             # must name an authoritative heartbeat/status document.
             return False
         try:
-            payload = json.loads(
-                Path(profile.health_path).read_text(encoding="utf-8")
-            )
+            payload = json.loads(Path(profile.health_path).read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return False
         if not isinstance(payload, Mapping):
             return False
         state = str(
-            payload.get("state")
-            or payload.get("lifecycle_state")
-            or payload.get("status")
-            or ""
+            payload.get("state") or payload.get("lifecycle_state") or payload.get("status") or ""
         ).lower()
         if state not in {"healthy", "running", "ok", "alive"}:
             return False
@@ -902,9 +856,7 @@ class LifecycleTransitionIntent:
             raise ValueError("unsupported lifecycle intent schema")
         values = dict(payload)
         values.pop("schema", None)
-        values["expected_effect_ids"] = tuple(
-            values.get("expected_effect_ids") or ()
-        )
+        values["expected_effect_ids"] = tuple(values.get("expected_effect_ids") or ())
         return cls(**values)
 
 
@@ -988,12 +940,8 @@ class LifecycleTransitionReceipt:
                 else None
             ),
             old_tree_fenced=payload.get("old_tree_fenced", False),
-            health_window_started_at_ms=payload.get(
-                "health_window_started_at_ms", 0
-            ),
-            health_window_completed_at_ms=payload.get(
-                "health_window_completed_at_ms", 0
-            ),
+            health_window_started_at_ms=payload.get("health_window_started_at_ms", 0),
+            health_window_completed_at_ms=payload.get("health_window_completed_at_ms", 0),
             expected_effect_ids=tuple(payload.get("expected_effect_ids") or ()),
             observed_effects=tuple(payload.get("observed_effects") or ()),
             compensation=tuple(payload.get("compensation") or ()),
@@ -1052,9 +1000,7 @@ class _SagaState:
                 else None
             ),
             old_tree_fenced=payload.get("old_tree_fenced", False),
-            health_window_started_at_ms=payload.get(
-                "health_window_started_at_ms", 0
-            ),
+            health_window_started_at_ms=payload.get("health_window_started_at_ms", 0),
             observed_effects=tuple(payload.get("observed_effects") or ()),
             compensation=tuple(payload.get("compensation") or ()),
             failure_code=payload.get("failure_code", ""),
@@ -1098,9 +1044,7 @@ class LifecycleSagaStore:
         try:
             lines = self.path.read_text(encoding="utf-8").splitlines()
         except OSError as exc:
-            raise TransactionConflictError(
-                "lifecycle saga journal is unreadable"
-            ) from exc
+            raise TransactionConflictError("lifecycle saga journal is unreadable") from exc
         for line in lines:
             try:
                 raw = json.loads(line)
@@ -1119,14 +1063,10 @@ class LifecycleSagaStore:
             if current is None or state.revision > current.revision:
                 result[state.intent.target_id] = state
             elif state.revision == current.revision and state != current:
-                raise TransactionConflictError(
-                    "lifecycle saga has divergent target revisions"
-                )
+                raise TransactionConflictError("lifecycle saga has divergent target revisions")
         return result
 
-    def find_idempotency(
-        self, *, target_id: str, idempotency_key: str
-    ) -> _SagaState | None:
+    def find_idempotency(self, *, target_id: str, idempotency_key: str) -> _SagaState | None:
         matching = [
             state
             for state in self.history()
@@ -1165,53 +1105,35 @@ class LifecycleOrchestrator:
         stop_grace_ms: int = 5_000,
     ) -> None:
         self.store = LifecycleSagaStore(state_root)
-        values = (
-            tuple(profiles.values())
-            if isinstance(profiles, Mapping)
-            else tuple(profiles)
-        )
+        values = tuple(profiles.values()) if isinstance(profiles, Mapping) else tuple(profiles)
         self._profiles = {item.configuration_root: item for item in values}
         if len(self._profiles) != len(values):
             raise ValueError("configuration_root values must be unique")
         self._clock_ms = clock_ms or (lambda: int(time.time() * 1000))
         self._monotonic = monotonic
         self._sleep = sleep
-        self._poll_interval_ms = _positive_int(
-            poll_interval_ms, "poll_interval_ms"
-        )
-        self._stop_grace_ms = _positive_int(
-            stop_grace_ms, "stop_grace_ms", allow_zero=True
-        )
-        self._process = process_adapter or LinuxProcessAdapter(
-            clock_ms=self._clock_ms
-        )
+        self._poll_interval_ms = _positive_int(poll_interval_ms, "poll_interval_ms")
+        self._stop_grace_ms = _positive_int(stop_grace_ms, "stop_grace_ms", allow_zero=True)
+        self._process = process_adapter or LinuxProcessAdapter(clock_ms=self._clock_ms)
 
     def _profile(self, request: OperationRequest) -> LifecycleProfile:
-        configuration_root = str(
-            request.parameters.get("configuration_root") or ""
-        ).strip()
+        configuration_root = str(request.parameters.get("configuration_root") or "").strip()
         profile = self._profiles.get(configuration_root)
         if profile is None:
             raise LifecycleProfileChanged(
                 "configuration_root is not a registered validated profile"
             )
         bindings = {
-            "target_id": str(
-                request.parameters.get("target_id") or profile.target_id
-            ),
+            "target_id": str(request.parameters.get("target_id") or profile.target_id),
             "run_id": str(request.parameters.get("run_id") or profile.run_id),
             "repository_root": request.repository_root,
             "state_root": request.state_root,
         }
         for name, actual in bindings.items():
             if getattr(profile, name) != actual:
-                raise LifecycleProfileChanged(
-                    f"profile {name} does not match the request"
-                )
+                raise LifecycleProfileChanged(f"profile {name} does not match the request")
         if Path(request.state_root).resolve() != self.store.state_root:
-            raise LifecycleProfileChanged(
-                "orchestrator state root does not match the request"
-            )
+            raise LifecycleProfileChanged("orchestrator state root does not match the request")
         return profile
 
     def _intent(
@@ -1221,9 +1143,7 @@ class LifecycleOrchestrator:
         action: LifecycleAction,
     ) -> LifecycleTransitionIntent:
         if request.dry_run:
-            raise LifecycleOrchestrationError(
-                "process orchestrator cannot execute a dry-run"
-            )
+            raise LifecycleOrchestrationError("process orchestrator cannot execute a dry-run")
         if request.authorization is None:
             raise LifecycleOrchestrationError(
                 "lifecycle request has no bound authorization decision"
@@ -1231,20 +1151,11 @@ class LifecycleOrchestrator:
         authorization = request.authorization
         now_ms = self._clock_ms()
         if authorization.evaluated_at_ms > now_ms:
-            raise LifecycleOrchestrationError(
-                "authorization decision is from the future"
-            )
-        if (
-            authorization.expires_at_ms is not None
-            and now_ms >= authorization.expires_at_ms
-        ):
+            raise LifecycleOrchestrationError("authorization decision is from the future")
+        if authorization.expires_at_ms is not None and now_ms >= authorization.expires_at_ms:
             raise StaleLeaseError("lifecycle authorization has expired")
-        deadline_ms = int(
-            request.parameters.get("deadline_ms") or request.bounds.timeout_ms
-        )
-        health_window_ms = int(
-            request.parameters.get("health_window_ms") or 0
-        )
+        deadline_ms = int(request.parameters.get("deadline_ms") or request.bounds.timeout_ms)
+        health_window_ms = int(request.parameters.get("health_window_ms") or 0)
         if action in {LifecycleAction.START, LifecycleAction.RESTART}:
             _positive_int(health_window_ms, "health_window_ms")
         _positive_int(deadline_ms, "deadline_ms")
@@ -1269,17 +1180,11 @@ class LifecycleOrchestrator:
             authorization_decision_id=authorization.content_id,
             idempotency_key=request.idempotency_key,
             lease_id=request.lease_id,
-            fencing_epoch=request.fencing_epoch
-            if request.fencing_epoch is not None
-            else -1,
-            expected_revision=int(
-                request.parameters.get("expected_revision") or 0
-            ),
+            fencing_epoch=request.fencing_epoch if request.fencing_epoch is not None else -1,
+            expected_revision=int(request.parameters.get("expected_revision") or 0),
             deadline_ms=deadline_ms,
             health_window_ms=health_window_ms,
-            expected_effect_ids=tuple(
-                item.effect_id for item in request.expected_effects
-            ),
+            expected_effect_ids=tuple(item.effect_id for item in request.expected_effects),
             created_at_ms=self._clock_ms(),
         )
 
@@ -1298,9 +1203,7 @@ class LifecycleOrchestrator:
             latest = self.store.latest().get(intent.target_id)
             if latest is not None:
                 if not latest.phase.terminal:
-                    raise TransactionConflictError(
-                        "another lifecycle transition is still active"
-                    )
+                    raise TransactionConflictError("another lifecycle transition is still active")
                 current_lifecycle_revision = (
                     latest.receipt.revision
                     if latest.receipt is not None
@@ -1317,9 +1220,7 @@ class LifecycleOrchestrator:
                     intent.fencing_epoch == latest.intent.fencing_epoch
                     and intent.lease_id != latest.intent.lease_id
                 ):
-                    raise StaleLeaseError(
-                        "fencing epoch is already owned by another lease"
-                    )
+                    raise StaleLeaseError("fencing epoch is already owned by another lease")
                 if (
                     intent.action is LifecycleAction.RESTART
                     and latest.intent.profile_id != intent.profile_id
@@ -1329,8 +1230,7 @@ class LifecycleOrchestrator:
                     )
             elif intent.expected_revision != 0:
                 raise TransactionConflictError(
-                    f"stale lifecycle revision {intent.expected_revision}; "
-                    "current revision is 0"
+                    f"stale lifecycle revision {intent.expected_revision}; current revision is 0"
                 )
             state = _SagaState(
                 intent=intent,
@@ -1368,9 +1268,7 @@ class LifecycleOrchestrator:
     def _remaining_ms(self, deadline: float) -> int:
         return max(0, int((deadline - self._monotonic()) * 1000))
 
-    def _assert_single_tree(
-        self, tree: ProcessTreeSnapshot, *, allow_empty: bool
-    ) -> None:
+    def _assert_single_tree(self, tree: ProcessTreeSnapshot, *, allow_empty: bool) -> None:
         if not tree.members:
             if allow_empty:
                 return
@@ -1378,9 +1276,7 @@ class LifecycleOrchestrator:
                 "no exact process tree exists for the requested run/profile"
             )
         if len(tree.roots) != 1:
-            raise SplitBrainError(
-                "multiple process roots exist for the requested run/profile"
-            )
+            raise SplitBrainError("multiple process roots exist for the requested run/profile")
 
     def _prove_absent(
         self,
@@ -1388,9 +1284,7 @@ class LifecycleOrchestrator:
         old_tree: ProcessTreeSnapshot,
     ) -> tuple[bool, ProcessTreeSnapshot]:
         exact_alive = tuple(
-            member
-            for member in old_tree.members
-            if self._process.identity_alive(member)
+            member for member in old_tree.members if self._process.identity_alive(member)
         )
         observed = self._process.snapshot(profile)
         return not exact_alive and not observed.members, observed
@@ -1405,13 +1299,8 @@ class LifecycleOrchestrator:
     ) -> _SagaState:
         tree = state.old_tree or self._process.snapshot(profile)
         self._assert_single_tree(tree, allow_empty=not require_running)
-        if any(
-            member.fencing_epoch > state.intent.fencing_epoch
-            for member in tree.members
-        ):
-            raise StaleLeaseError(
-                "request fence is older than the observed process tree"
-            )
+        if any(member.fencing_epoch > state.intent.fencing_epoch for member in tree.members):
+            raise StaleLeaseError("request fence is older than the observed process tree")
         state = self._advance(
             state,
             LifecycleSagaPhase.STOPPING_OLD,
@@ -1440,27 +1329,20 @@ class LifecycleOrchestrator:
                     LifecycleSagaPhase.OLD_FENCED,
                     old_tree_fenced=True,
                     observed_effects=tuple(
-                        sorted(
-                            set(state.observed_effects)
-                            | {stop_observation, "run_fenced"}
-                        )
+                        sorted(set(state.observed_effects) | {stop_observation, "run_fenced"})
                     ),
                 )
             del observed
             self._sleep(min(self._poll_interval_ms, self._remaining_ms(deadline)) / 1000)
         alive = tuple(
-            member.identity_id
-            for member in tree.members
-            if self._process.identity_alive(member)
+            member.identity_id for member in tree.members if self._process.identity_alive(member)
         )
         state = self._advance(
             state,
             LifecycleSagaPhase.PARTIAL_FAILURE,
             failure_code="descendants_remain",
             compensation=("repair_or_quarantine_remaining_process_tree",),
-            observed_effects=tuple(
-                sorted(set(state.observed_effects) | set(alive))
-            ),
+            observed_effects=tuple(sorted(set(state.observed_effects) | set(alive))),
         )
         raise ProcessTreeNotFenced(
             "shutdown left exact descendants alive",
@@ -1478,20 +1360,11 @@ class LifecycleOrchestrator:
         if current.members:
             self._assert_single_tree(current, allow_empty=False)
             if state.new_tree is None:
-                raise SplitBrainError(
-                    "a process tree appeared before the authorized launch"
-                )
+                raise SplitBrainError("a process tree appeared before the authorized launch")
             expected_ids = {item.identity_id for item in state.new_tree.members}
-            if not expected_ids.issubset(
-                {item.identity_id for item in current.members}
-            ):
-                raise ProcessIdentityMismatch(
-                    "resumed startup observes a different process tree"
-                )
-        elif (
-            state.phase is LifecycleSagaPhase.PARTIAL_FAILURE
-            and state.new_tree is not None
-        ):
+            if not expected_ids.issubset({item.identity_id for item in current.members}):
+                raise ProcessIdentityMismatch("resumed startup observes a different process tree")
+        elif state.phase is LifecycleSagaPhase.PARTIAL_FAILURE and state.new_tree is not None:
             # Prior health compensation proved the unhealthy tree absent.
             # Retain the old-tree fence checkpoint but create a fresh identity.
             state = self._advance(
@@ -1503,9 +1376,7 @@ class LifecycleOrchestrator:
         if state.new_tree is None:
             state = self._advance(state, LifecycleSagaPhase.STARTING_NEW)
             try:
-                launched = self._process.launch(
-                    profile, fencing_epoch=state.intent.fencing_epoch
-                )
+                launched = self._process.launch(profile, fencing_epoch=state.intent.fencing_epoch)
             except Exception as exc:
                 state = self._advance(
                     state,
@@ -1522,24 +1393,17 @@ class LifecycleOrchestrator:
                 raise PartialMutationError(
                     f"process launch failed: {exc}",
                     applied_effect_ids=(
-                        state.intent.expected_effect_ids
-                        if state.old_tree_fenced
-                        else ()
+                        state.intent.expected_effect_ids if state.old_tree_fenced else ()
                     ),
                     recovery="repair",
                 ) from exc
             observed = self._process.snapshot(profile)
-            if not any(
-                item.identity_id == launched.identity_id
-                for item in observed.members
-            ):
+            if not any(item.identity_id == launched.identity_id for item in observed.members):
                 # A child which only forked and exited is never startup.
                 observed = ProcessTreeSnapshot(
                     profile_id=profile.profile_id,
                     run_id=profile.run_id,
-                    members=(launched,)
-                    if self._process.identity_alive(launched)
-                    else (),
+                    members=(launched,) if self._process.identity_alive(launched) else (),
                     captured_at_ms=self._clock_ms(),
                 )
             self._assert_single_tree(observed, allow_empty=False)
@@ -1620,9 +1484,7 @@ class LifecycleOrchestrator:
         )
         raise PartialMutationError(
             "startup did not prove sustained health before its deadline",
-            applied_effect_ids=(
-                state.intent.expected_effect_ids if state.old_tree_fenced else ()
-            ),
+            applied_effect_ids=(state.intent.expected_effect_ids if state.old_tree_fenced else ()),
             recovery="repair",
         )
 
@@ -1644,8 +1506,7 @@ class LifecycleOrchestrator:
             health_window_started_at_ms=state.health_window_started_at_ms,
             health_window_completed_at_ms=(
                 now_ms
-                if state.intent.action
-                in {LifecycleAction.START, LifecycleAction.RESTART}
+                if state.intent.action in {LifecycleAction.START, LifecycleAction.RESTART}
                 else 0
             ),
             expected_effect_ids=state.intent.expected_effect_ids,
@@ -1678,20 +1539,14 @@ class LifecycleOrchestrator:
                 current = self._process.snapshot(profile)
                 if current.members:
                     self._assert_single_tree(current, allow_empty=False)
-                    raise SplitBrainError(
-                        "start rejected because an exact run tree already exists"
-                    )
+                    raise SplitBrainError("start rejected because an exact run tree already exists")
             state = self._start_new(state, profile, deadline)
         elif action is LifecycleAction.STOP:
             if not state.old_tree_fenced:
-                state = self._stop_old(
-                    state, profile, deadline, require_running=False
-                )
+                state = self._stop_old(state, profile, deadline, require_running=False)
         else:
             if not state.old_tree_fenced:
-                state = self._stop_old(
-                    state, profile, deadline, require_running=True
-                )
+                state = self._stop_old(state, profile, deadline, require_running=True)
             # A restart always revalidates absence immediately before launch.
             old_tree = state.old_tree or self._process.snapshot(profile)
             absent, _observed = self._prove_absent(profile, old_tree)

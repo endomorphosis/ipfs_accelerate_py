@@ -43,11 +43,12 @@ The system classifies errors using:
 ```python
 class ErrorType(Enum):
     """Types of errors encountered in distributed testing."""
-    NETWORK = "network"             # Network connectivity issues
-    RESOURCE = "resource"           # Resource allocation/availability issues
-    HARDWARE = "hardware"           # Hardware-related failures
-    SYSTEM = "system"               # Operating system issues
-    DATABASE = "database"           # Database access/query issues
+
+    NETWORK = "network"  # Network connectivity issues
+    RESOURCE = "resource"  # Resource allocation/availability issues
+    HARDWARE = "hardware"  # Hardware-related failures
+    SYSTEM = "system"  # Operating system issues
+    DATABASE = "database"  # Database access/query issues
     # ... more types
 ```
 
@@ -59,17 +60,18 @@ Error reports contain comprehensive information about an error:
 @dataclass
 class ErrorReport:
     """Comprehensive error report."""
-    error_id: str                        # Unique ID for this error
-    error_type: ErrorType                # Type of error 
-    error_severity: ErrorSeverity        # Severity of error
-    message: str                         # Error message
-    context: ErrorContext                # Context information
+
+    error_id: str  # Unique ID for this error
+    error_type: ErrorType  # Type of error
+    error_severity: ErrorSeverity  # Severity of error
+    message: str  # Error message
+    context: ErrorContext  # Context information
     exception: Optional[Exception] = None  # Original exception if available
-    retry_count: int = 0                 # Number of retry attempts
+    retry_count: int = 0  # Number of retry attempts
     retry_successful: Optional[bool] = None  # Whether retry was successful
-    aggregated_count: int = 1            # Count of aggregated similar errors
+    aggregated_count: int = 1  # Count of aggregated similar errors
     related_errors: List[str] = field(default_factory=list)  # Related error IDs
-    resolution_status: str = "open"      # Status: open, retrying, resolved, failed
+    resolution_status: str = "open"  # Status: open, retrying, resolved, failed
     # ... more fields
 ```
 
@@ -139,6 +141,7 @@ The system implements a 5-level progressive recovery approach:
 ```python
 class ProgressiveRecoveryLevel(Enum):
     """Levels for progressive recovery escalation."""
+
     LEVEL_1 = 1  # Basic retry with minimal impact
     LEVEL_2 = 2  # Enhanced retry with extended parameters
     LEVEL_3 = 3  # Component restart/reset
@@ -224,23 +227,23 @@ The Enhanced Error Handling system is integrated with the Coordinator through th
 def install_enhanced_error_handling(coordinator):
     """
     Install the enhanced error handling system into the coordinator.
-    
+
     Args:
         coordinator: The coordinator instance
-        
+
     Returns:
         The enhanced error handling integration instance
     """
     # Create enhanced error handling
     enhanced_error_handling = EnhancedErrorHandlingIntegration(coordinator)
-    
+
     # Store in coordinator
     coordinator.enhanced_error_handling = enhanced_error_handling
-    
+
     # Initialize error handling endpoints if needed
-    if hasattr(coordinator, 'app') and hasattr(coordinator, 'app.router'):
+    if hasattr(coordinator, "app") and hasattr(coordinator, "app.router"):
         _setup_error_handling_endpoints(coordinator)
-    
+
     logger.info("Enhanced error handling system installed in coordinator")
     return enhanced_error_handling
 ```
@@ -253,12 +256,14 @@ def _init_enhanced_error_handling(self):
     try:
         # Import the enhanced error handling integration
         from enhanced_error_handling_integration import install_enhanced_error_handling
-        
+
         # Install enhanced error handling
         self.enhanced_error_handling = install_enhanced_error_handling(self)
         logger.info("Enhanced error handling system initialized with performance tracking")
     except ImportError:
-        logger.warning("Enhanced error handling module not available, using standard error handling")
+        logger.warning(
+            "Enhanced error handling module not available, using standard error handling"
+        )
         self.enhanced_error_handling = None
     except Exception as e:
         logger.error(f"Error initializing enhanced error handling: {str(e)}")
@@ -300,16 +305,16 @@ weights = {
     "execution_time": 0.15,
     "impact_score": 0.15,
     "stability_score": 0.15,
-    "task_recovery_rate": 0.15
+    "task_recovery_rate": 0.15,
 }
 
 # Calculate overall score
 overall_score = (
-    weights["success_rate"] * success_rate +
-    weights["execution_time"] * time_score +
-    weights["impact_score"] * (1.0 - avg_impact) +  # Invert so lower impact is better
-    weights["stability_score"] * avg_stability +
-    weights["task_recovery_rate"] * task_recovery_rate
+    weights["success_rate"] * success_rate
+    + weights["execution_time"] * time_score
+    + weights["impact_score"] * (1.0 - avg_impact)  # Invert so lower impact is better
+    + weights["stability_score"] * avg_stability
+    + weights["task_recovery_rate"] * task_recovery_rate
 )
 ```
 
@@ -322,7 +327,7 @@ The system calculates impact scores using multiple factors:
 memory_impact = min(abs(resource_diff.get("memory_percent", 0)) / 100.0, 0.25)
 
 # CPU impact (0-0.25)
-cpu_impact = min(abs(resource_diff.get("cpu_percent", 0)) / 100.0, 0.25) 
+cpu_impact = min(abs(resource_diff.get("cpu_percent", 0)) / 100.0, 0.25)
 
 # Time impact (0-0.25)
 time_impact = min(execution_time / 240.0, 0.25)
@@ -363,15 +368,16 @@ To add new recovery strategies:
 ```python
 class MyCustomRecoveryStrategy(RecoveryStrategy):
     """Custom recovery strategy."""
-    
+
     def __init__(self, coordinator):
         """Initialize the custom recovery strategy."""
         super().__init__(coordinator, "my_custom_strategy", RecoveryLevel.MEDIUM)
-    
+
     async def _execute_impl(self, error_info: Dict[str, Any]) -> bool:
         """Implement custom recovery strategy."""
         # Custom recovery logic
         return True  # Return True if recovery was successful, False otherwise
+
 
 # Register the strategy
 recovery_manager.add_custom_strategy("my_custom_strategy", MyCustomRecoveryStrategy(coordinator))

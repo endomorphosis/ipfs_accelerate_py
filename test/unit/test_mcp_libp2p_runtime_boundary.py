@@ -9,11 +9,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CANONICAL_RUNTIME = (
-    REPO_ROOT
-    / "ipfs_accelerate_py"
-    / "mcplusplus_module"
-    / "p2p"
-    / "libp2p_runtime.py"
+    REPO_ROOT / "ipfs_accelerate_py" / "mcplusplus_module" / "p2p" / "libp2p_runtime.py"
 ).resolve()
 
 
@@ -52,9 +48,7 @@ def test_direct_libp2p_imports_stay_inside_mcp_runtime_boundary() -> None:
 
 
 def test_legacy_libp2p_compat_wrappers_delegate_to_mcp_runtime() -> None:
-    runtime = importlib.import_module(
-        "ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime"
-    )
+    runtime = importlib.import_module("ipfs_accelerate_py.mcplusplus_module.p2p.libp2p_runtime")
     legacy_runtime = importlib.import_module("ipfs_accelerate_py.p2p_tasks.libp2p_runtime")
     legacy_compat = importlib.import_module("ipfs_accelerate_py.github_cli.libp2p_compat")
 

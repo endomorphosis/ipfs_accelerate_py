@@ -17,14 +17,15 @@ import logging
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - [%(name)s] - %(message)s"
 )
 logger = logging.getLogger("run_browser_recovery_tests")
+
 
 def get_script_dir():
     """Get the directory of this script."""
     return os.path.dirname(os.path.abspath(__file__))
+
 
 def setup_environment():
     """Setup the environment for running tests."""
@@ -33,6 +34,7 @@ def setup_environment():
     if parent_dir not in sys.path:
         sys.path.append(parent_dir)
 
+
 def run_tests():
     """Run the browser recovery strategy tests."""
     # Parse command line arguments
@@ -40,14 +42,20 @@ def run_tests():
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
     parser.add_argument("--test", type=str, help="Run specific test (e.g. TestSimpleRetryStrategy)")
     args = parser.parse_args()
-    
+
     # Import test module
     from tests.test_browser_recovery_strategies import (
-        TestBrowserRecoveryStrategy, TestSimpleRetryStrategy, TestBrowserRestartStrategy,
-        TestSettingsAdjustmentStrategy, TestBrowserFallbackStrategy, TestSimulationFallbackStrategy,
-        TestModelSpecificRecoveryStrategy, TestProgressiveRecoveryManager, TestUtilityFunctions
+        TestBrowserRecoveryStrategy,
+        TestSimpleRetryStrategy,
+        TestBrowserRestartStrategy,
+        TestSettingsAdjustmentStrategy,
+        TestBrowserFallbackStrategy,
+        TestSimulationFallbackStrategy,
+        TestModelSpecificRecoveryStrategy,
+        TestProgressiveRecoveryManager,
+        TestUtilityFunctions,
     )
-    
+
     # Create test suite
     if args.test:
         # Run specific test
@@ -65,21 +73,24 @@ def run_tests():
         suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestSettingsAdjustmentStrategy))
         suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestBrowserFallbackStrategy))
         suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestSimulationFallbackStrategy))
-        suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestModelSpecificRecoveryStrategy))
+        suite.addTest(
+            unittest.TestLoader().loadTestsFromTestCase(TestModelSpecificRecoveryStrategy)
+        )
         suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestProgressiveRecoveryManager))
         suite.addTest(unittest.TestLoader().loadTestsFromTestCase(TestUtilityFunctions))
-    
+
     # Run tests
     verbosity = 2 if args.verbose else 1
     result = unittest.TextTestRunner(verbosity=verbosity).run(suite)
-    
+
     # Return exit code based on test result
     return 0 if result.wasSuccessful() else 1
+
 
 def main():
     """Main entry point."""
     setup_environment()
-    
+
     print("=" * 80)
     print("Browser Recovery Strategy Tests")
     print("=" * 80)
@@ -92,9 +103,10 @@ def main():
     print("  - ADVANCED_FAULT_TOLERANCE_BROWSER_INTEGRATION.md")
     print("=" * 80)
     print()
-    
+
     # Run the tests
     sys.exit(run_tests())
+
 
 if __name__ == "__main__":
     main()

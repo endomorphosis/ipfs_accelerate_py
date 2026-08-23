@@ -1,0 +1,580 @@
+{
+  "artifact_type": "casf_authority_inventory",
+  "artifact_version": 1,
+  "program_id": "agent-supervisor-causal-event-federation-v1",
+  "root_objective_id": "CASF-G000",
+  "starting_commit": "84a056e41e48a81d4484be43840196578d6c87da",
+  "starting_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
+  "status_vocabulary": [
+    "available",
+    "available_with_caveats",
+    "stale",
+    "incompatible",
+    "missing"
+  ],
+  "status_definitions": {
+    "available": "Present and suitable as a current canonical primitive for its declared scope.",
+    "available_with_caveats": "Present and reusable, but incomplete, limited, or requiring a compatibility extension for CASF.",
+    "stale": "Present, but historical, placeholder-only, or not current-tree authority.",
+    "incompatible": "Present, but unsafe as the canonical CASF path because its behavior conflicts with a non-compensable constraint.",
+    "missing": "No qualifying current-tree implementation was found."
+  },
+  "classification_rules": [
+    "A Markdown task-board state is not authority.",
+    "A class, package, module, import, fixture, report, receipt, or similarly named table does not establish capability by name alone.",
+    "Embedded-mode and in-process tests do not qualify multi-process Quack authority.",
+    "DuckLake projection data never supplies scheduling, lease, completion, or policy authority.",
+    "Historical exact-tree evidence is retained as history and is not promoted to the current starting tree."
+  ],
+  "authorities": [
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts",
+      "kind": "python_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+      "status": "available",
+      "reason": "Canonical closed store identity, generation, command, snapshot, and export-receipt primitives exist and should be extended rather than replaced.",
+      "key_symbols": [
+        "ControlPlaneStoreIdentity:748",
+        "StoreGeneration:906",
+        "StateCommand:1049",
+        "StateSnapshot:1228",
+        "StateExportReceipt:1390"
+      ],
+      "ownership_constraint": "Do not introduce competing store identities, generation authority, or receipt authority."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations",
+      "kind": "python_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+      "status": "available",
+      "reason": "A versioned migration catalog, runner, and default catalog loader already own control-plane schema evolution.",
+      "key_symbols": [
+        "MigrationCatalog:524",
+        "ControlPlaneMigrationRunner:921",
+        "load_default_catalog:1558"
+      ],
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql"
+      ],
+      "ownership_constraint": "CASF schema changes must be new migrations in this catalog, not runtime DDL or another database."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema",
+      "kind": "python_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py",
+      "status": "available_with_caveats",
+      "reason": "The normalized base schema and semantic/operational ownership profile are canonical, but the 110-table base migration lacks most federation, causal, event-routing, and retrieval populations.",
+      "key_symbols": [
+        "DATASETS_SEMANTIC_TRUTH_RELATIONS:233",
+        "DATASETS_AUTHORITATIVE_OPERATIONAL_TABLES:271",
+        "JOIN_CRITICAL_IDENTITIES:312",
+        "ControlPlaneSchema:406",
+        "verify_installed_schema:1142"
+      ],
+      "ownership_constraint": "Preserve ipfs_datasets_py semantic truth and add join-critical operational identities without opaque-JSON substitution."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_repository",
+      "kind": "python_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
+      "status": "available_with_caveats",
+      "reason": "The canonical repository protocol, embedded repository, Quack repository, and explicit opener exist, including no implicit Quack fallback; the typed surface is limited to current task/lease/event/command/snapshot operations.",
+      "key_symbols": [
+        "StateRepository:342",
+        "EmbeddedStateRepository:910",
+        "QuackStateRepository:1093",
+        "open_state_repository:1579"
+      ],
+      "ownership_constraint": "Extend this boundary for federation operations; supervisors and subagents must not directly open control.duckdb."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions",
+      "kind": "python_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py",
+      "status": "available_with_caveats",
+      "reason": "Transaction, idempotency, compare-and-swap, and command-execution primitives exist, but no atomic mutation plus domain-event plus transactional-outbox operation exists.",
+      "key_symbols": [
+        "StateTransaction:610",
+        "record_idempotency:843",
+        "cas_row_revision:932",
+        "execute_command:994"
+      ],
+      "ownership_constraint": "CASF authoritative transitions and their outbox rows must share one transaction and generation."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities",
+      "kind": "python_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/quack_capabilities.py",
+      "status": "available_with_caveats",
+      "reason": "A closed compatibility profile and probe exist, and the current extension is compatible and healthy; the default beta limitations explicitly state no_server_push_clients_must_poll.",
+      "key_symbols": [
+        "DEFAULT_QUACK_BETA_LIMITATIONS:68",
+        "QuackCompatibilityProfile:204",
+        "QuackCapabilityReport:333",
+        "probe_quack_capabilities:808"
+      ],
+      "ownership_constraint": "Runtime compatibility may not be represented as event-driven or multi-supervisor qualification."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client",
+      "kind": "python_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
+      "status": "available_with_caveats",
+      "reason": "Registered statements and explicit arbitrary-SQL rejection provide a reusable typed client base; no typed event wait, subscription, or complete federation command surface exists.",
+      "key_symbols": [
+        "StatementTemplate:129",
+        "QuackStateClient:687",
+        "register_template:754",
+        "execute_sql:896",
+        "_open_quack_connection:1173"
+      ],
+      "ownership_constraint": "Keep SQL server-owned and catalogued; never accept arbitrary SQL or database paths from agents."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server",
+      "kind": "python_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "status": "available_with_caveats",
+      "reason": "Exclusive-owner lease, in-process transport, server lifecycle, and readiness primitives exist; server-owned event waiting, commit notification, authenticated trigger admission, and no-lost-wakeup logic do not.",
+      "key_symbols": [
+        "ExclusiveOwnerLease:807",
+        "InProcessQuackTransport:1034",
+        "QuackStateServer:1236",
+        "QuackStateServer.start:1546",
+        "QuackStateServer.ready:1703"
+      ],
+      "ownership_constraint": "This server remains the only authoritative DuckDB state owner in Quack mode."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
+      "kind": "python_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "status": "available_with_caveats",
+      "reason": "Bounded process and track machinery is reusable, but the coordinator uses polling sleeps, contains duplicate effective definitions, and declares CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO.",
+      "key_symbols": [
+        "CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO:102",
+        "SupervisorTrack:367",
+        "DatabaseProgramConfig:615",
+        "run_supervisor_tracks:6808"
+      ],
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py:7061",
+        "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md:235"
+      ],
+      "ownership_constraint": "Do not claim event-driven behavior or parallel qualification from this polling runner."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.semantic_state.world_snapshot_builder",
+      "kind": "python_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_builder.py",
+      "status": "available_with_caveats",
+      "reason": "Existing DuckLake observation and world-snapshot composition are useful inputs, but the result is not the closed, federation-bound FederationWorldSnapshot required by CASF.",
+      "key_symbols": [
+        "observe_ducklake_projection:128",
+        "build_world_snapshot:158"
+      ],
+      "ownership_constraint": "Build federation snapshots from authoritative operational state and immutable semantic roots; never promote DuckLake observations."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.analysis.doctor_causal_localization",
+      "kind": "python_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis/doctor_causal_localization.py",
+      "status": "available_with_caveats",
+      "reason": "The module is explicitly report-only and separates causal evidence from NOMINATION_ONLY results; it does not implement the authoritative multilevel causal graph or admitted abstraction maps.",
+      "key_symbols": [
+        "CausalEvidence:292",
+        "DoctorCausalLocalizer:938",
+        "localize_doctor_cause:1037"
+      ],
+      "evidence_paths": [
+        "ipfs_accelerate_py/agent_supervisor/analysis/doctor_causal_localization.py:19"
+      ],
+      "ownership_constraint": "Retrieval and model nominations may widen analysis but may not establish causality, independence, authority, or completion."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.integrations.ducklake_history_projection",
+      "kind": "python_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py",
+      "status": "stale",
+      "reason": "The implementation is a four-line placeholder returning only authoritative=false and an observation boolean; it is not a projection pipeline.",
+      "key_symbols": [
+        "project_history:3"
+      ],
+      "evidence_paths": [
+        "test/api/test_agent_supervisor_ducklake_history_projection.py"
+      ],
+      "ownership_constraint": "DuckLake remains optional, append-only, rebuildable, eventually consistent, and non-authoritative."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.control",
+      "kind": "python_package",
+      "path": "ipfs_accelerate_py/agent_supervisor/control",
+      "status": "available_with_caveats",
+      "reason": "The canonical SupervisorControlService, operation contracts, and lifecycle authority exist, but federation.* operations are absent and the lifecycle vocabulary does not match the required versioned CASF state machine.",
+      "key_symbols": [
+        "control/control_plane.py:4383:SupervisorControlService",
+        "control/control_plane.py:290:SupervisorLifecycleState",
+        "control/control_contracts.py:406:Operation"
+      ],
+      "ownership_constraint": "Extend SupervisorControlService and its catalog; do not create a competing control plane."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.runtime",
+      "kind": "python_package",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime",
+      "status": "available_with_caveats",
+      "reason": "Resource scheduling, provider batching, work partitioning, CAS, backpressure, and worker/process primitives exist, but not a closed event-driven federation runtime.",
+      "key_symbols": [
+        "resource_scheduler.py",
+        "provider_batching.py",
+        "supervisor_fabric.py",
+        "work_partitioning.py",
+        "stage_backpressure.py"
+      ],
+      "ownership_constraint": "Reuse bounded runtime pieces only through the authoritative state owner, leases, fences, and hierarchical budgets."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.planning",
+      "kind": "python_package",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning",
+      "status": "available_with_caveats",
+      "reason": "Plan revisions, parallel-plan compilation, conflict-frontier construction, and semantic work graphs exist; authoritative causal independence, task-intent deduplication, sharding, and federation assignment do not.",
+      "key_symbols": [
+        "plan_revision_contracts.py:2500:PlanRevision",
+        "parallel_plan_compiler.py:1666:ParallelPlanCompiler",
+        "conflict_free_frontier.py:44:construct_frontier",
+        "semantic_work_graph.py:78:compose_work_graph"
+      ],
+      "ownership_constraint": "Unknown conflicts reduce concurrency; model statements of independence remain nomination-only."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.proof",
+      "kind": "python_package",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof",
+      "status": "available_with_caveats",
+      "reason": "Formal proof contracts, cache semantics, and scheduling are reusable, but direct database-opening helpers cannot become multi-process control-plane writers.",
+      "key_symbols": [
+        "formal_verification_cache.py:1232:FormalVerificationCache",
+        "proof_scheduler.py:1443:ProofScheduler"
+      ],
+      "ownership_constraint": "Proof evidence may be reused only under matching roots and policy; proof storage must respect the state-owner boundary."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.verification",
+      "kind": "python_package",
+      "path": "ipfs_accelerate_py/agent_supervisor/verification",
+      "status": "available_with_caveats",
+      "reason": "Incremental verification planning, receipt caches, and verification commitments exist, but federation-bound projection, invalidation, and fixed-point integration remain absent.",
+      "key_symbols": [
+        "planner.py:2310:IncrementalVerificationPlanner",
+        "receipt_cache.py:409:VerificationReceiptCache",
+        "contracts.py:5082:build_verification_commitment"
+      ],
+      "ownership_constraint": "Task-board status and quiet queues cannot replace exact current-tree verification evidence."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.semantic_governor",
+      "kind": "python_package",
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_governor",
+      "status": "available_with_caveats",
+      "reason": "Compression governance, runtime, and promotion machinery exist and reference dataset semantic contracts; they do not own semantic truth or federation policy authority.",
+      "key_symbols": [
+        "governor.py:450:SemanticCompressionGovernor",
+        "runtime.py:1890:GovernorRuntime",
+        "promotion.py:1182:promote_compression_policy"
+      ],
+      "ownership_constraint": "ipfs_datasets_py retains semantic meaning and immutable semantic-contract ownership."
+    },
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.adversarial_assurance",
+      "kind": "python_package",
+      "path": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance",
+      "status": "available_with_caveats",
+      "reason": "Assurance campaign, mutation-worker, and promotion primitives are available, but no CASF-bound chaos campaign or causal/event promotion gate exists.",
+      "key_symbols": [
+        "api.py:1710:AssuranceCampaignApi",
+        "workers.py:1097:MutationWorkerPool",
+        "promotion.py:1565:promote_assurance_policy"
+      ],
+      "ownership_constraint": "Adversarial observations are evidence inputs, not model-created policy, completion, or authority."
+    },
+    {
+      "id": "docs.AGENT_SUPERVISOR_DUCKDB_QUACK_CONTROL_PLANE_PLAN",
+      "kind": "architecture_document",
+      "path": "docs/architecture/AGENT_SUPERVISOR_DUCKDB_QUACK_CONTROL_PLANE_PLAN.md",
+      "status": "available_with_caveats",
+      "reason": "The plan remains useful control-plane architecture input and records one-writer/no-fallback constraints, but it explicitly documents no Quack push and bounded polling.",
+      "evidence_paths": [
+        "docs/architecture/AGENT_SUPERVISOR_DUCKDB_QUACK_CONTROL_PLANE_PLAN.md:3",
+        "docs/architecture/AGENT_SUPERVISOR_DUCKDB_QUACK_CONTROL_PLANE_PLAN.md:60",
+        "docs/architecture/AGENT_SUPERVISOR_DUCKDB_QUACK_CONTROL_PLANE_PLAN.md:104",
+        "docs/architecture/AGENT_SUPERVISOR_DUCKDB_QUACK_CONTROL_PLANE_PLAN.md:119"
+      ],
+      "ownership_constraint": "Use as architecture input, not live capability or task-completion evidence."
+    },
+    {
+      "id": "docs.agent_supervisor_duckdb_quack_control_plane_todo",
+      "kind": "task_board_document",
+      "path": "docs/architecture/agent_supervisor_duckdb_quack_control_plane.todo.md",
+      "status": "stale",
+      "reason": "The file is a historical file-authoritative seed whose DQP tasks are marked completed; Markdown status is not current-tree completion evidence.",
+      "evidence_paths": [
+        "docs/architecture/agent_supervisor_duckdb_quack_control_plane.todo.md:6",
+        "docs/architecture/agent_supervisor_duckdb_quack_control_plane.todo.md:1228"
+      ],
+      "ownership_constraint": "Import history if useful, but schedule and complete work only through authoritative typed state and current evidence."
+    },
+    {
+      "id": "docs.LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN",
+      "kind": "architecture_document",
+      "path": "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md",
+      "status": "stale",
+      "reason": "This is an exact historical program plan with useful recorded gaps and ownership rules, not the current CASF program or an activation receipt.",
+      "evidence_paths": [
+        "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md:3",
+        "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md:184",
+        "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md:235",
+        "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md:239",
+        "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md:637"
+      ],
+      "ownership_constraint": "Retain historical facts without promoting them to the starting tree."
+    },
+    {
+      "id": "docs.LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION",
+      "kind": "qualification_document",
+      "path": "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md",
+      "status": "stale",
+      "reason": "The report is bound to an older exact tree and records research_demo/continuous multi-supervisor NO-GO and incomplete DuckLake activation; it cannot qualify this starting tree.",
+      "evidence_paths": [
+        "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md:7",
+        "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md:162",
+        "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md:166",
+        "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md:173",
+        "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md:183",
+        "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md:213"
+      ],
+      "ownership_constraint": "Use only as historical evidence; requalify against the final merged current tree."
+    },
+    {
+      "id": "docs.AGENT_SUPERVISOR_ARCHITECTURE",
+      "kind": "architecture_document",
+      "path": "docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md",
+      "status": "available_with_caveats",
+      "reason": "The implementation map, stable-control description, package layout, nonclaims, and operational caveats are useful, but the document predates the CASF federation surface.",
+      "evidence_paths": [
+        "docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md:26",
+        "docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md:31",
+        "docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md:51",
+        "docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md:716",
+        "docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md:1365",
+        "docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md:1398"
+      ],
+      "ownership_constraint": "Reconcile it with current contracts and final-tree evidence before using it as an operator guide."
+    }
+  ],
+  "related_surfaces": [
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.runtime.database_event_log",
+      "kind": "python_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/database_event_log.py",
+      "status": "incompatible",
+      "reason": "Its cursor path polls and directly opens a DuckDB file with runtime DDL; using it as the canonical multi-process CASF event authority would violate the exclusive Quack state-owner boundary.",
+      "key_symbols": [
+        "DatabaseEventLog:580",
+        "open_duckdb_connection:624"
+      ],
+      "safe_reuse": "Narrow algorithms may be adapted behind the canonical repository and migration boundaries; the direct-file path may not be promoted."
+    }
+  ],
+  "missing_target_surfaces": [
+    {
+      "id": "ipfs_accelerate_py.agent_supervisor.federation",
+      "status": "missing",
+      "expected_path": "ipfs_accelerate_py/agent_supervisor/federation",
+      "reason": "No qualifying package exists in the starting committed tree."
+    },
+    {
+      "id": "CausalAbstractionSupervisorFederation",
+      "status": "missing",
+      "reason": "No exact current-tree implementation symbol was found."
+    },
+    {
+      "id": "closed_federation_contracts",
+      "status": "missing",
+      "examples": [
+        "FederationRequest",
+        "FederationIdentity",
+        "FederationPolicy",
+        "SupervisorInstance",
+        "SubagentInstance",
+        "SupervisorShard",
+        "FederationBudget",
+        "FederationWorldSnapshot",
+        "FederationCompletionReceipt"
+      ],
+      "reason": "No exact current-tree contract symbols were found."
+    },
+    {
+      "id": "transactional_outbox",
+      "status": "missing",
+      "reason": "The base migration has domain_events but no normalized transactional_outbox or atomic outbox mutation API."
+    },
+    {
+      "id": "server_owned_wait_for_events",
+      "status": "missing",
+      "reason": "No exact wait_for_events symbol or commit-to-condition notification path was found."
+    },
+    {
+      "id": "causal_abstraction_network",
+      "status": "missing",
+      "examples": [
+        "CausalAbstractionMap",
+        "authoritative causal edge store",
+        "intervention consistency",
+        "causal frontier"
+      ],
+      "reason": "Doctor localization is report-only and does not supply the required authoritative graph."
+    },
+    {
+      "id": "shard_rebalance_planner",
+      "status": "missing",
+      "reason": "No exact ShardRebalancePlanner or assignment-revision transfer protocol was found."
+    }
+  ],
+  "schema_gaps": {
+    "base_migration": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+    "base_domain_table_count": 110,
+    "domain_events_evidence": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql:827",
+    "domain_events_missing_join_fields": [
+      "event_cid",
+      "causal_parent_ids",
+      "correlation_id",
+      "causation_id",
+      "federation_id",
+      "supervisor_id",
+      "repository_id",
+      "tree_id",
+      "payload_ref",
+      "changed_fact_refs",
+      "effect_class",
+      "deduplication_key"
+    ],
+    "missing_population_groups": [
+      "federations, revisions, policies, and receipts",
+      "subagents, assignments, budgets, and outcomes",
+      "shards, assignments, rebalances, and fencing transfers",
+      "program/objective/goal/subgoal/plan revision graph",
+      "task conflicts, resolutions, checkpoints, and provider reservations",
+      "semantic capsules, contracts, environment bindings, roots, and snapshots",
+      "proof/test receipts, cache entries, seals, and adversarial findings",
+      "documents, chunks, BM25, vectors, knowledge graph, indexes, and retrieval receipts",
+      "causal nodes, edges, evidence, abstraction maps, interventions, slices, frontiers, and invalidations",
+      "transactional outbox, supervisor inbox, subscriptions, cursors, dead letters, delivery attempts, coalescing, and acknowledgements",
+      "normalized authorization, policy, confirmation, effect-observation, and audit records"
+    ]
+  },
+  "canonical_ownership": [
+    {
+      "owner": "ipfs_datasets_py",
+      "owns": "semantic meaning and immutable semantic data contracts",
+      "casf_constraint": "Persist and query supplied identities without reinterpreting their meaning."
+    },
+    {
+      "owner": "ipfs_accelerate_py",
+      "owns": "operational coordination",
+      "casf_constraint": "Federations, tasks, claims, leases, events, effects, validation, merge, recovery, and control commands remain here."
+    },
+    {
+      "owner": "DuckDB",
+      "owns": "authoritative transactional operational records",
+      "casf_constraint": "All authoritative mutation passes through one state-owner boundary."
+    },
+    {
+      "owner": "Quack",
+      "owns": "qualified multi-client transport and exclusive state-owner service boundary",
+      "casf_constraint": "No client direct-file mutation and no implicit fallback to embedded mode."
+    },
+    {
+      "owner": "DuckLake",
+      "owns": "optional append-only historical and analytical projections",
+      "casf_constraint": "Never scheduling, lease, completion, or policy authority and never a control-plane prerequisite."
+    },
+    {
+      "owner": "ipfs_kit_py",
+      "owns": "published durable artifact and content-storage interfaces",
+      "casf_constraint": "Do not duplicate VFS, proof-seal, WAL, or current-pointer authority."
+    },
+    {
+      "owner": "MCP++",
+      "owns": "existing shared protocol and wire contracts when a profile applies",
+      "casf_constraint": "Do not create a new MCP++ profile for CASF."
+    }
+  ],
+  "typed_blockers": [
+    {
+      "blocker_id": "CASF-BLOCKER-FEDERATION-SURFACE-MISSING",
+      "status": "missing",
+      "blocking_scope": "federation creation, identity, admission, lifecycle, and receipts",
+      "independent_work_allowed": true
+    },
+    {
+      "blocker_id": "CASF-BLOCKER-OUTBOX-MISSING",
+      "status": "missing",
+      "blocking_scope": "atomic state/event/outbox delivery and replay qualification",
+      "independent_work_allowed": true
+    },
+    {
+      "blocker_id": "CASF-BLOCKER-EVENT-WAIT-MISSING",
+      "status": "missing",
+      "blocking_scope": "event-driven and no-lost-wakeup qualification",
+      "independent_work_allowed": true
+    },
+    {
+      "blocker_id": "CASF-BLOCKER-QUACK-EVENT-QUALIFICATION",
+      "status": "available_with_caveats",
+      "blocking_scope": "event-driven multi-supervisor promotion",
+      "independent_work_allowed": true
+    },
+    {
+      "blocker_id": "CASF-BLOCKER-LIFECYCLE-VOCABULARY",
+      "status": "incompatible",
+      "blocking_scope": "closed supervisor lifecycle contract",
+      "independent_work_allowed": true
+    },
+    {
+      "blocker_id": "CASF-BLOCKER-DUCKLAKE-PROJECTION-MISSING",
+      "status": "stale",
+      "blocking_scope": "DuckLake projection promotion only",
+      "independent_work_allowed": true
+    },
+    {
+      "blocker_id": "CASF-BLOCKER-MULTI-SUPERVISOR-QUALIFICATION",
+      "status": "missing",
+      "blocking_scope": "multi-supervisor, parallel, and production claims",
+      "independent_work_allowed": true
+    },
+    {
+      "blocker_id": "CASF-BLOCKER-SCHEMA-COVERAGE",
+      "status": "available_with_caveats",
+      "blocking_scope": "join-complete CASF operational state",
+      "independent_work_allowed": true
+    },
+    {
+      "blocker_id": "CASF-BLOCKER-CURRENT-TREE-QUALIFICATION",
+      "status": "missing",
+      "blocking_scope": "promotion against the final merged tree",
+      "independent_work_allowed": true
+    }
+  ],
+  "nonclaims": [
+    "event_driven",
+    "causally_coordinated",
+    "multi_supervisor_qualified",
+    "parallel_qualified",
+    "token_efficient",
+    "production_ready",
+    "exactly_once_network_delivery",
+    "quack_event_wait_qualified",
+    "ducklake_projection_qualified"
+  ]
+}

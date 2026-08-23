@@ -1,0 +1,3574 @@
+"""Closed typed command transport for the exclusive Quack state owner.
+
+This module is deliberately smaller than a general RPC or SQL service.  A
+client can name an operation from the server's immutable catalog and bind
+JSON scalar parameters.  SQL text, paths, credentials, callbacks, and catalog
+extensions are never accepted over the wire.
+
+The transport is a private Unix-domain socket owned by the same process that
+owns ``control.duckdb``.  A command transaction holds the owner's execution
+lock from BEGIN through COMMIT/ROLLBACK, so a domain mutation, its event, its
+outbox row, its idempotency receipt, and the generation advance share one
+DuckDB transaction.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import math
+import os
+import secrets
+import socket
+import stat
+import struct
+import threading
+import time
+import uuid
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from types import MappingProxyType
+from typing import Any, Final
+
+from .control_plane_contracts import StateCommand, canonical_json_bytes, content_identity
+
+TYPED_STATE_OWNER_INTERFACE: Final = "TypedStateOwnerCommandGateway@1"
+_UTC: Final = timezone.utc  # noqa: UP017 - Python 3.8 compatibility.
+TYPED_STATE_OWNER_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-state-owner-command@1"
+)
+TYPED_STATE_OWNER_SOCKET_ENV: Final = "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"
+TYPED_STATE_OWNER_TOKEN_ENV: Final = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+TYPED_STATE_OWNER_SOCKET_FILENAME: Final = "typed-state-owner.sock"
+TYPED_STATE_OWNER_TOKEN_FILENAME: Final = "typed-state-owner.token"
+MAX_FRAME_BYTES: Final = 16 * 1024 * 1024
+MAX_PARAMETER_COUNT: Final = 512
+MAX_ROW_COUNT: Final = 4096
+MIN_GRANT_TTL_SECONDS: Final = 1.0
+MAX_GRANT_TTL_SECONDS: Final = 86_400.0
+DEFAULT_GRANT_TTL_SECONDS: Final = 3_600.0
+MAX_REMOTE_EVENT_WAIT_SECONDS: Final = 60.0
+STATUS_BOOTSTRAP_CLIENT_ID: Final = "casf-bootstrap-operator:typed-status"
+STATUS_BOOTSTRAP_GRANT_TTL_SECONDS: Final = 60.0
+STATUS_BOOTSTRAP_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "whoami_metadata",
+        "load_store_generation",
+        "list_tasks_page",
+        "list_ready_task_aliases",
+        "count_tasks",
+        "max_event_watermark",
+        "casf_select_supervisor_bootstrap_health",
+    }
+)
+_STATUS_BOOTSTRAP_ENTITY_SCOPE_NAMES: Final[tuple[str, ...]] = (
+    "supervisor_id",
+    "subscription_id",
+    "consumer_id",
+)
+_STATUS_OWNER_PLAN_READS: Final[frozenset[str]] = frozenset(
+    {
+        "list_tasks_page",
+        "list_ready_task_aliases",
+        "count_tasks",
+        "max_event_watermark",
+    }
+)
+_SERVICE_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "event.wait",
+        "event.wait.cancel",
+        "event.wait.clear_cancellation",
+    }
+)
+# Exact observed operation surfaces for the bounded first-tranche child.
+# These are capability allowlists, not convenience catalogs: adding a named
+# query or mutation requires an explicit owner-side review and focused test.
+SUPERVISOR_RUNTIME_CHILD_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "whoami_metadata",
+        "load_store_generation",
+        "txn_load_generation",
+        "txn_lookup_idempotency",
+        "txn_advance_store_revision",
+        "txn_record_idempotency",
+        "casf_select_supervisor",
+        "casf_select_current_supervisor_runtime",
+        "casf_select_latest_supervisor_runtime_revision",
+        "casf_count_supervisor_active_attempts",
+        "casf_count_supervisor_active_effects",
+        "casf_count_supervisor_active_slots",
+        "casf_insert_process_birth_attestation",
+        "casf_insert_supervisor_runtime_lease",
+        "casf_supersede_supervisor_runtime_lease",
+        "casf_update_supervisor_process_birth",
+        "casf_update_supervisor_lifecycle",
+        "casf_seed_global_head",
+        "casf_advance_global_head",
+        "casf_seed_stream_head",
+        "casf_advance_stream_head",
+        "casf_insert_domain_event",
+        "casf_insert_changed_fact",
+        "casf_insert_outbox",
+    }
+)
+SUPERVISOR_EVENT_CHILD_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "whoami_metadata",
+        "load_store_generation",
+        "txn_load_generation",
+        "txn_lookup_idempotency",
+        "txn_advance_store_revision",
+        "txn_record_idempotency",
+        "casf_select_subscription",
+        "casf_select_subscription_selectors",
+        "casf_select_consumer_cursor",
+        "casf_list_routed_wait_events",
+        "casf_list_deliverable_queue",
+        "casf_select_delivery_queue",
+        "casf_select_outbox_for_delivery",
+        "casf_select_queue_for_attempt",
+        "casf_insert_delivery_attempt",
+        "casf_mark_queue_delivered",
+        "casf_select_event_for_ack",
+        "casf_select_delivery_for_ack",
+        "casf_mark_delivery_acknowledged",
+        "casf_mark_queue_acknowledged",
+        "casf_reset_subscription_failures",
+        "casf_insert_event_acknowledgement",
+        "casf_advance_consumer_cursor",
+        *_SERVICE_OPERATIONS,
+    }
+)
+
+
+class TypedStateOwnerError(RuntimeError):
+    """Base typed owner-command failure."""
+
+
+class TypedStateOwnerProtocolError(TypedStateOwnerError):
+    """A request or response violated the closed wire contract."""
+
+
+class TypedStateOwnerAuthorizationError(TypedStateOwnerError):
+    """Authentication or server-side command admission failed."""
+
+
+class TypedStateOwnerRemoteError(TypedStateOwnerError):
+    """The owner rejected or failed one named operation."""
+
+    def __init__(self, error_code: str, error_type: str = "") -> None:
+        code = str(error_code or "owner_operation_failed")
+        kind = str(error_type or "remote_error")
+        # The remote exception message is intentionally never transported: a
+        # DuckDB driver may echo SQL text or credential-bearing ATTACH text.
+        super().__init__(f"typed state-owner {code} ({kind})")
+        self.error_code = code
+        self.error_type = kind
+
+
+@dataclass(frozen=True)
+class OwnerOperation:
+    """One immutable server-owned SQL operation."""
+
+    name: str
+    sql: str
+    parameter_count: int
+    mutation: bool
+    bootstrap_only: bool = False
+    parameter_names: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        name = str(self.name or "").strip()
+        sql = str(self.sql or "").strip()
+        if not name or not name.replace("_", "a").isalnum():
+            raise TypedStateOwnerProtocolError("owner operation name is invalid")
+        if not sql or ";" in sql or "\x00" in sql:
+            raise TypedStateOwnerProtocolError("owner operation SQL is not closed")
+        count = int(self.parameter_count)
+        if count < 0 or count > MAX_PARAMETER_COUNT or sql.count("?") != count:
+            raise TypedStateOwnerProtocolError(
+                f"owner operation {name} has an invalid parameter contract"
+            )
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "sql", sql)
+        object.__setattr__(self, "parameter_count", count)
+        object.__setattr__(self, "mutation", bool(self.mutation))
+        object.__setattr__(self, "bootstrap_only", bool(self.bootstrap_only))
+        names = tuple(str(item or "").strip() for item in self.parameter_names)
+        if names and (
+            len(names) != count
+            or len(set(names)) != len(names)
+            or any(not item.replace("_", "a").isalnum() for item in names)
+        ):
+            raise TypedStateOwnerProtocolError(
+                f"owner operation {name} has invalid parameter names"
+            )
+        object.__setattr__(self, "parameter_names", names)
+
+    def public_dict(self) -> dict[str, Any]:
+        """Return a SQL-free catalog projection."""
+
+        return {
+            "name": self.name,
+            "parameter_count": self.parameter_count,
+            "parameter_names": list(self.parameter_names),
+            "mutation": self.mutation,
+            "bootstrap_only": self.bootstrap_only,
+            "sql_digest": "sha256:"
+            + hashlib.sha256(_normalize_sql(self.sql).encode("utf-8")).hexdigest(),
+        }
+
+
+@dataclass(frozen=True)
+class OwnerClientGrant:
+    """Server-issued capability for one exact client/process/scope."""
+
+    grant_id: str
+    client_id: str
+    process_birth_id: str
+    allowed_operations: frozenset[str]
+    allowed_command_operations: frozenset[str]
+    tenant_id: str = ""
+    federation_id: str = ""
+    entity_scopes: tuple[tuple[str, str], ...] = ()
+    authority_profile: str = ""
+    peer_pid: int = 0
+    peer_uid: int = -1
+    peer_start_time_ticks: int = 0
+    issued_at: int = 0
+    expires_at: int = 0
+
+    def __post_init__(self) -> None:
+        for field_name in ("grant_id", "client_id"):
+            value = str(getattr(self, field_name) or "").strip()
+            if not value or len(value) > 256:
+                raise TypedStateOwnerAuthorizationError(
+                    f"owner grant {field_name} is invalid"
+                )
+            object.__setattr__(self, field_name, value)
+        object.__setattr__(self, "process_birth_id", str(self.process_birth_id or "").strip())
+        object.__setattr__(
+            self,
+            "allowed_operations",
+            frozenset(str(item) for item in self.allowed_operations),
+        )
+        object.__setattr__(
+            self,
+            "allowed_command_operations",
+            frozenset(str(item) for item in self.allowed_command_operations),
+        )
+        object.__setattr__(self, "tenant_id", str(self.tenant_id or "").strip())
+        object.__setattr__(self, "federation_id", str(self.federation_id or "").strip())
+        scopes = tuple(
+            (str(name or "").strip(), str(value or "").strip())
+            for name, value in self.entity_scopes
+        )
+        permitted_scope_names = {
+            "supervisor_id",
+            "subagent_id",
+            "repository_id",
+            "tree_id",
+            "task_id",
+            "task_cid",
+            "subscription_id",
+            "consumer_id",
+            "event_id",
+        }
+        if (
+            len(scopes) > len(permitted_scope_names)
+            or len({name for name, _value in scopes}) != len(scopes)
+            or any(name not in permitted_scope_names or not value for name, value in scopes)
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "owner grant entity scope is invalid"
+            )
+        object.__setattr__(self, "entity_scopes", tuple(sorted(scopes)))
+        authority_profile = str(self.authority_profile or "").strip()
+        if authority_profile not in {"", "dedicated_store_status_portfolio"}:
+            raise TypedStateOwnerAuthorizationError(
+                "owner grant authority profile is invalid"
+            )
+        object.__setattr__(self, "authority_profile", authority_profile)
+        peer_pid = int(self.peer_pid)
+        peer_uid = int(self.peer_uid)
+        peer_start = int(self.peer_start_time_ticks)
+        if isinstance(self.issued_at, bool) or isinstance(self.expires_at, bool):
+            raise TypedStateOwnerAuthorizationError(
+                "owner grant expiry is outside the closed lifetime bound"
+            )
+        issued_at = int(self.issued_at)
+        expires_at = int(self.expires_at)
+        if peer_pid < 1 or peer_uid < 0 or peer_start < 0:
+            raise TypedStateOwnerAuthorizationError(
+                "owner grant requires a kernel-verifiable peer process"
+            )
+        if (
+            issued_at < 1
+            or expires_at <= issued_at
+            or expires_at - issued_at > int(MAX_GRANT_TTL_SECONDS * 1_000)
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "owner grant expiry is outside the closed lifetime bound"
+            )
+        object.__setattr__(self, "peer_pid", peer_pid)
+        object.__setattr__(self, "peer_uid", peer_uid)
+        object.__setattr__(self, "peer_start_time_ticks", peer_start)
+        object.__setattr__(self, "issued_at", issued_at)
+        object.__setattr__(self, "expires_at", expires_at)
+
+    def public_dict(self) -> dict[str, Any]:
+        return {
+            "grant_id": self.grant_id,
+            "client_id": self.client_id,
+            "process_birth_id": self.process_birth_id,
+            "allowed_operations": sorted(self.allowed_operations),
+            "allowed_command_operations": sorted(self.allowed_command_operations),
+            "tenant_id": self.tenant_id,
+            "federation_id": self.federation_id,
+            "entity_scopes": dict(self.entity_scopes),
+            "authority_profile": self.authority_profile,
+            "peer_pid": self.peer_pid,
+            "peer_uid": self.peer_uid,
+            "issued_at": self.issued_at,
+            "expires_at": self.expires_at,
+        }
+
+
+def _process_start_time_ticks(pid: int) -> int:
+    """Read one PID-reuse-resistant start time from procfs.
+
+    The typed transport is Linux/Unix-domain-only today.  Missing procfs is a
+    typed capability blocker instead of weakening a grant to caller-asserted
+    process identity.
+    """
+
+    selected = int(pid)
+    if selected < 1:
+        raise TypedStateOwnerAuthorizationError("grant peer PID is invalid")
+    try:
+        # Field 22 follows the parenthesized comm value.  Split at the final
+        # ')' because a process name may itself contain spaces or parentheses.
+        stat_text = Path(f"/proc/{selected}/stat").read_text(encoding="utf-8")
+        suffix = stat_text.rsplit(")", 1)[1].strip().split()
+        start_time = int(suffix[19])
+    except (FileNotFoundError, IndexError, OSError, ValueError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "kernel peer process identity is unavailable"
+        ) from exc
+    # Linux PID 1 may legitimately report starttime 0 when it is the boot
+    # process; the tuple remains kernel-bound and PID-reuse-resistant.
+    if start_time < 0:
+        raise TypedStateOwnerAuthorizationError(
+            "kernel peer process start identity is invalid"
+        )
+    return start_time
+
+
+def _process_runtime_facts(pid: int) -> tuple[int, int, str]:
+    """Read the kernel facts accepted in a supervisor runtime attestation."""
+
+    selected = int(pid)
+    try:
+        stat_text = Path(f"/proc/{selected}/stat").read_text(encoding="utf-8")
+        suffix = stat_text.rsplit(")", 1)[1].strip().split()
+        parent_pid = int(suffix[1])
+        start_time = int(suffix[19])
+        boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
+            encoding="utf-8"
+        ).strip()
+    except (FileNotFoundError, IndexError, OSError, ValueError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "kernel supervisor process facts are unavailable"
+        ) from exc
+    if parent_pid < 0 or start_time < 0 or not boot_id or len(boot_id) > 128:
+        raise TypedStateOwnerAuthorizationError(
+            "kernel supervisor process facts are invalid"
+        )
+    return start_time, parent_pid, boot_id
+
+
+def _kernel_peer_identity(channel: socket.socket) -> tuple[int, int, int]:
+    """Return PID, UID, and PID start time proven by the Unix socket kernel."""
+
+    peer_option = getattr(socket, "SO_PEERCRED", None)
+    if peer_option is None:
+        raise TypedStateOwnerAuthorizationError(
+            "kernel peer credentials are unavailable for typed owner transport"
+        )
+    try:
+        size = struct.calcsize("3i")
+        raw = channel.getsockopt(socket.SOL_SOCKET, peer_option, size)
+        peer_pid, peer_uid, _peer_gid = struct.unpack("3i", raw)
+    except (OSError, struct.error) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "kernel peer credentials could not be verified"
+        ) from exc
+    return peer_pid, peer_uid, _process_start_time_ticks(peer_pid)
+
+
+def _normalize_sql(sql: str) -> str:
+    return " ".join(str(sql or "").strip().split())
+
+
+_TRANSACTION_SQL: Final[Mapping[str, OwnerOperation]] = MappingProxyType(
+    {
+        "txn_load_generation": OwnerOperation(
+            "txn_load_generation",
+            """
+            SELECT generation, schema_revision, fence_epoch, revision,
+                   database_uuid, birth_id
+            FROM store_generations
+            ORDER BY generation DESC
+            LIMIT 1
+            """,
+            0,
+            False,
+        ),
+        "txn_lookup_idempotency": OwnerOperation(
+            "txn_lookup_idempotency",
+            """
+            SELECT idempotency_key, command_kind, command_id, store_id,
+                   session_id, result_digest, created_at, expires_at, body_json
+            FROM idempotency_records
+            WHERE idempotency_key = ?
+            LIMIT 1
+            """,
+            1,
+            False,
+            parameter_names=("idempotency_key",),
+        ),
+        "txn_record_idempotency": OwnerOperation(
+            "txn_record_idempotency",
+            """
+            INSERT INTO idempotency_records (
+                idempotency_key, command_kind, command_id, store_id,
+                session_id, result_digest, created_at, expires_at, body_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            9,
+            True,
+            parameter_names=(
+                "idempotency_key",
+                "command_kind",
+                "command_id",
+                "store_id",
+                "session_id",
+                "result_digest",
+                "created_at",
+                "expires_at",
+                "body_json",
+            ),
+        ),
+        "txn_advance_store_revision": OwnerOperation(
+            "txn_advance_store_revision",
+            """
+            UPDATE store_generations
+            SET revision = ?
+            WHERE generation = ? AND revision = ? AND fence_epoch = ?
+            """,
+            4,
+            True,
+            parameter_names=(
+                "new_revision",
+                "generation",
+                "expected_revision",
+                "fence_epoch",
+            ),
+        ),
+        "txn_cas_task_status": OwnerOperation(
+            "txn_cas_task_status",
+            """
+            UPDATE "tasks" SET "status" = ?, "updated_at" = ?, "revision" = ?
+            WHERE "task_cid" = ? AND "revision" = ? RETURNING "revision"
+            """,
+            5,
+            True,
+            parameter_names=(
+                "status",
+                "updated_at",
+                "new_revision",
+                "task_cid",
+                "expected_task_revision",
+            ),
+        ),
+    }
+)
+
+_TRANSACTION_SQL_LOOKUP: Final[Mapping[str, str]] = MappingProxyType(
+    {_normalize_sql(value.sql): name for name, value in _TRANSACTION_SQL.items()}
+)
+
+_TRANSACTION_MUTATIONS: Final[frozenset[str]] = frozenset(
+    {"txn_advance_store_revision", "txn_record_idempotency"}
+)
+_EVENT_MUTATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "casf_seed_global_head",
+        "casf_advance_global_head",
+        "casf_seed_stream_head",
+        "casf_advance_stream_head",
+        "casf_insert_domain_event",
+        "casf_insert_event_parent",
+        "casf_insert_changed_fact",
+        "casf_insert_outbox",
+    }
+)
+
+# Closed server policy: a caller's StateCommand label cannot enlarge this map.
+# The common transaction/idempotency operations are added separately below.
+_COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {
+        "federation.create": frozenset(
+            {
+                "casf_insert_federation",
+                "casf_insert_authorization_decision",
+                "casf_insert_policy",
+                "casf_insert_federation_budget",
+                "casf_seed_subagent_slot",
+                "casf_transition_admission_budget_reservation",
+            }
+        ),
+        "budget.reserve": frozenset(
+            {
+                "casf_insert_admission_budget_reservation",
+                "casf_insert_admission_budget_dimension",
+            }
+        ),
+        "budget.release": frozenset(
+            {"casf_transition_admission_budget_reservation"}
+        ),
+        "supervisor.register": frozenset(
+            {
+                "casf_insert_policy_decision",
+                "casf_insert_supervisor_definition",
+                "casf_insert_supervisor_assignment",
+                "casf_insert_supervisor_capability",
+                "casf_insert_supervisor",
+            }
+        ),
+        "supervisor.runtime.attest": frozenset(
+            {
+                "casf_insert_process_birth_attestation",
+                "casf_insert_supervisor_runtime_lease",
+                "casf_supersede_supervisor_runtime_lease",
+                "casf_update_supervisor_process_birth",
+            }
+        ),
+        "supervisor.transition": frozenset({"casf_update_supervisor_lifecycle"}),
+        "subagent.register": frozenset(
+            {
+                "casf_insert_policy_decision",
+                "casf_insert_subagent_definition",
+                "casf_insert_subagent_assignment",
+                "casf_insert_subagent_capability",
+                "casf_insert_subagent",
+            }
+        ),
+        "subagent.slot.reserve": frozenset(
+            {
+                "casf_reserve_subagent_slot",
+                "casf_activate_subagent",
+                "casf_insert_subagent_slot_ledger",
+            }
+        ),
+        "subagent.slot.release": frozenset(
+            {
+                "casf_release_subagent_slot",
+                "casf_deactivate_subagent",
+                "casf_insert_subagent_slot_ledger",
+            }
+        ),
+        "subagent.outcome": frozenset({"casf_insert_subagent_outcome"}),
+        "subscription.register": frozenset(
+            {
+                "casf_insert_subscription",
+                "casf_insert_subscription_selector",
+                "casf_insert_consumer_cursor",
+            }
+        ),
+        "event.route.persist": frozenset(
+            {
+                "casf_insert_coalescing_coverage",
+                "casf_insert_coalescing_input",
+                "casf_insert_delivery_queue",
+            }
+        ),
+        "event.outbox.disposition": frozenset(
+            {
+                "casf_insert_outbox_routing_disposition",
+                "casf_insert_outbox_routing_disposition_event",
+                "casf_mark_outbox_routed",
+            }
+        ),
+        "event.delivery.record": frozenset(
+            {
+                "casf_insert_delivery_attempt",
+                "casf_mark_queue_delivered",
+            }
+        ),
+        "event.delivery.fail": frozenset(
+            {
+                "casf_mark_delivery_failed",
+                "casf_update_queue_after_failure",
+                "casf_increment_subscription_failures",
+                "casf_insert_dead_letter",
+                "casf_quarantine_subscription",
+            }
+        ),
+        "event.acknowledge": frozenset(
+            {
+                "casf_insert_event_acknowledgement",
+                "casf_advance_consumer_cursor",
+                "casf_mark_delivery_acknowledged",
+                "casf_mark_queue_acknowledged",
+                "casf_reset_subscription_failures",
+            }
+        ),
+        "task.status.cas": frozenset({"txn_cas_task_status"}),
+    }
+)
+
+_FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
+    set(_COMMAND_MUTATION_CATALOG) - {"task.status.cas"}
+)
+_EVENT_EMITTING_COMMANDS: Final[frozenset[str]] = frozenset(
+    {
+        "federation.create",
+        "budget.reserve",
+        "budget.release",
+        "supervisor.register",
+        "supervisor.runtime.attest",
+        "supervisor.transition",
+        "subagent.register",
+        "subagent.slot.reserve",
+        "subagent.slot.release",
+        "subagent.outcome",
+        "subscription.register",
+    }
+)
+_COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
+    MappingProxyType(
+        {
+            "federation.create": _COMMAND_MUTATION_CATALOG["federation.create"],
+            "budget.reserve": _COMMAND_MUTATION_CATALOG["budget.reserve"],
+            "budget.release": _COMMAND_MUTATION_CATALOG["budget.release"],
+            "supervisor.register": _COMMAND_MUTATION_CATALOG[
+                "supervisor.register"
+            ],
+            "supervisor.transition": _COMMAND_MUTATION_CATALOG[
+                "supervisor.transition"
+            ],
+            "supervisor.runtime.attest": frozenset(
+                {
+                    "casf_insert_process_birth_attestation",
+                    "casf_insert_supervisor_runtime_lease",
+                    "casf_update_supervisor_process_birth",
+                }
+            ),
+            "subagent.register": _COMMAND_MUTATION_CATALOG["subagent.register"],
+            "subagent.slot.reserve": _COMMAND_MUTATION_CATALOG[
+                "subagent.slot.reserve"
+            ],
+            "subagent.slot.release": _COMMAND_MUTATION_CATALOG[
+                "subagent.slot.release"
+            ],
+            "subagent.outcome": _COMMAND_MUTATION_CATALOG["subagent.outcome"],
+            "subscription.register": _COMMAND_MUTATION_CATALOG[
+                "subscription.register"
+            ],
+            "event.route.persist": _COMMAND_MUTATION_CATALOG[
+                "event.route.persist"
+            ],
+            "event.outbox.disposition": _COMMAND_MUTATION_CATALOG[
+                "event.outbox.disposition"
+            ],
+            "event.delivery.record": frozenset(
+                {"casf_insert_delivery_attempt", "casf_mark_queue_delivered"}
+            ),
+            "event.delivery.fail": frozenset(
+                {
+                    "casf_mark_delivery_failed",
+                    "casf_increment_subscription_failures",
+                    "casf_update_queue_after_failure",
+                }
+            ),
+            "event.acknowledge": _COMMAND_MUTATION_CATALOG["event.acknowledge"],
+            "task.status.cas": frozenset({"txn_cas_task_status"}),
+        }
+    )
+)
+_REPEATABLE_MUTATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "casf_seed_subagent_slot",
+        "casf_insert_admission_budget_dimension",
+        "casf_insert_supervisor_capability",
+        "casf_insert_subagent_capability",
+        "casf_insert_subscription_selector",
+        "casf_insert_coalescing_coverage",
+        "casf_insert_coalescing_input",
+        "casf_insert_delivery_queue",
+        "casf_insert_outbox_routing_disposition_event",
+        "casf_mark_outbox_routed",
+        "casf_insert_event_parent",
+        "casf_insert_changed_fact",
+    }
+)
+_EVENT_CORE_SEQUENCE: Final[tuple[str, ...]] = (
+    "casf_seed_global_head",
+    "casf_advance_global_head",
+    "casf_seed_stream_head",
+    "casf_advance_stream_head",
+    "casf_insert_domain_event",
+    "casf_insert_outbox",
+)
+_POST_EVENT_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
+    MappingProxyType(
+        {
+            "subagent.slot.reserve": frozenset(
+                {"casf_insert_subagent_slot_ledger"}
+            ),
+            "subagent.slot.release": frozenset(
+                {"casf_insert_subagent_slot_ledger"}
+            ),
+        }
+    )
+)
+MAX_TRANSACTION_MUTATIONS: Final = 4_096
+_MUTATION_REPEAT_LIMITS: Final[Mapping[str, int]] = MappingProxyType(
+    {
+        "casf_insert_outbox_routing_disposition_event": 1_024,
+        "casf_mark_outbox_routed": 1_024,
+    }
+)
+_SCOPE_FIELDS: Final[tuple[str, ...]] = (
+    "tenant_id",
+    "federation_id",
+    "supervisor_id",
+    "subagent_id",
+    "repository_id",
+    "tree_id",
+    "task_id",
+    "task_cid",
+    "subscription_id",
+    "consumer_id",
+    "event_id",
+)
+_SCOPE_INDEPENDENT_READS: Final[frozenset[str]] = frozenset(
+    {
+        # Tenant-scoped capacity aggregation intentionally spans the
+        # federation being admitted.  Its present tenant_id parameter is
+        # still compared below; only absent narrower entity scopes are
+        # tolerated for this closed server-owned operation.
+        "casf_select_active_admission_budget_usage",
+        "whoami_metadata",
+        "load_store_generation",
+    }
+)
+
+
+def internal_operation_for_sql(sql: str) -> str:
+    """Map only exact trusted transaction SQL to a server operation name."""
+
+    name = _TRANSACTION_SQL_LOOKUP.get(_normalize_sql(sql), "")
+    if not name:
+        raise TypedStateOwnerProtocolError(
+            "raw SQL is forbidden by the typed state-owner boundary"
+        )
+    return name
+
+
+def build_control_plane_operation_catalog() -> Mapping[str, OwnerOperation]:
+    """Build the immutable catalog from trusted in-tree template producers.
+
+    Imports are intentionally local: the client and server both import this
+    protocol module, while the template producers import the client contracts.
+    No caller can contribute a template to this server catalog.
+    """
+
+    from ..federation.registry import _casf_templates
+    from .control_plane_repository import _REPOSITORY_TEMPLATES
+    from .quack_state_client import DEFAULT_STATEMENT_TEMPLATES, StatementKind
+
+    catalog: dict[str, OwnerOperation] = dict(_TRANSACTION_SQL)
+    templates = [
+        *DEFAULT_STATEMENT_TEMPLATES.values(),
+        *_REPOSITORY_TEMPLATES.values(),
+        *_casf_templates(),
+    ]
+    for template in templates:
+        operation = OwnerOperation(
+            name=template.name,
+            sql=template.sql,
+            parameter_count=len(template.parameter_names),
+            mutation=template.kind is StatementKind.MUTATION,
+            bootstrap_only=template.name in {
+                "seed_store_generation",
+                "seed_client_session",
+            },
+            parameter_names=tuple(template.parameter_names),
+        )
+        existing = catalog.get(operation.name)
+        if existing is not None and existing != operation:
+            raise TypedStateOwnerProtocolError(
+                f"conflicting server operation catalog entry: {operation.name}"
+            )
+        catalog[operation.name] = operation
+    return MappingProxyType(dict(sorted(catalog.items())))
+
+
+def catalog_fingerprint(catalog: Mapping[str, OwnerOperation]) -> str:
+    public = [catalog[name].public_dict() for name in sorted(catalog)]
+    return "sha256:" + hashlib.sha256(canonical_json_bytes(public)).hexdigest()
+
+
+def _json_scalar(value: Any) -> Any:
+    if value is None or isinstance(value, (str, bool, int)):
+        if isinstance(value, str) and ("\x00" in value or len(value.encode()) > 1_048_576):
+            raise TypedStateOwnerProtocolError("bound string exceeds the closed contract")
+        return value
+    if isinstance(value, float):
+        if value != value or abs(value) == float("inf"):
+            raise TypedStateOwnerProtocolError("bound float must be finite")
+        return value
+    # DuckDB DATE/TIMESTAMP/UUID values are observations, never identities in
+    # this transport; preserve them as bounded canonical strings.
+    text = str(value)
+    if "\x00" in text or len(text.encode()) > 1_048_576:
+        raise TypedStateOwnerProtocolError("observed scalar exceeds the closed contract")
+    return text
+
+
+def _closed_parameters(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        raise TypedStateOwnerProtocolError("parameters must be a bounded array")
+    if len(value) > MAX_PARAMETER_COUNT:
+        raise TypedStateOwnerProtocolError("parameter population exceeds bound")
+    return [_json_scalar(item) for item in value]
+
+
+def _send_frame(channel: socket.socket, payload: Mapping[str, Any]) -> None:
+    body = canonical_json_bytes(dict(payload))
+    if len(body) > MAX_FRAME_BYTES:
+        raise TypedStateOwnerProtocolError("typed state-owner frame exceeds bound")
+    channel.sendall(len(body).to_bytes(4, "big") + body)
+
+
+def _receive_exact(channel: socket.socket, length: int) -> bytes:
+    chunks: list[bytes] = []
+    remaining = length
+    while remaining:
+        part = channel.recv(remaining)
+        if not part:
+            raise TypedStateOwnerProtocolError("typed state-owner channel closed")
+        chunks.append(part)
+        remaining -= len(part)
+    return b"".join(chunks)
+
+
+def _receive_frame(channel: socket.socket) -> dict[str, Any]:
+    size = int.from_bytes(_receive_exact(channel, 4), "big")
+    if size < 2 or size > MAX_FRAME_BYTES:
+        raise TypedStateOwnerProtocolError("typed state-owner frame size is invalid")
+    try:
+        value = json.loads(_receive_exact(channel, size).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise TypedStateOwnerProtocolError("typed state-owner frame is not JSON") from exc
+    if not isinstance(value, dict):
+        raise TypedStateOwnerProtocolError("typed state-owner frame must be an object")
+    return value
+
+
+def _result_columns(result: Any) -> tuple[str, ...]:
+    direct = getattr(result, "_columns", None)
+    if isinstance(direct, Sequence) and not isinstance(direct, (str, bytes)):
+        return tuple(str(item) for item in direct)
+    description = getattr(result, "description", None) or ()
+    return tuple(str(item[0] if isinstance(item, Sequence) else item) for item in description)
+
+
+def _result_rows(result: Any) -> list[list[Any]]:
+    fetchall = getattr(result, "fetchall", None)
+    rows = list(fetchall() or []) if callable(fetchall) else []
+    if len(rows) > MAX_ROW_COUNT:
+        raise TypedStateOwnerProtocolError("operation result population exceeds bound")
+    output: list[list[Any]] = []
+    for row in rows:
+        if isinstance(row, Mapping):
+            output.append([_json_scalar(value) for value in row.values()])
+        elif isinstance(row, Sequence) and not isinstance(row, (str, bytes, bytearray)):
+            output.append([_json_scalar(value) for value in row])
+        else:
+            output.append([_json_scalar(row)])
+    return output
+
+
+class TypedOwnerResult:
+    """Small DB-API-shaped result returned to existing transaction code."""
+
+    def __init__(self, columns: Sequence[str], rows: Sequence[Sequence[Any]], rowcount: int) -> None:
+        self._columns = tuple(str(item) for item in columns)
+        self.description = tuple((name,) for name in self._columns)
+        self._rows = [tuple(item) for item in rows]
+        self._offset = 0
+        self.rowcount = int(rowcount)
+
+    def fetchall(self) -> list[tuple[Any, ...]]:
+        rows = self._rows[self._offset :]
+        self._offset = len(self._rows)
+        return list(rows)
+
+    def fetchone(self) -> tuple[Any, ...] | None:
+        if self._offset >= len(self._rows):
+            return None
+        row = self._rows[self._offset]
+        self._offset += 1
+        return row
+
+
+class TypedStateOwnerGateway:
+    """Server-owned, authenticated, closed operation executor."""
+
+    def __init__(
+        self,
+        *,
+        connection: Any,
+        socket_path: Path,
+        store_id: str,
+        identity: Mapping[str, Any],
+        catalog: Mapping[str, OwnerOperation] | None = None,
+    ) -> None:
+        self._connection = connection
+        self.socket_path = Path(socket_path)
+        self.store_id = str(store_id or "").strip()
+        self.identity = MappingProxyType(dict(identity))
+        self.catalog = catalog or build_control_plane_operation_catalog()
+        self.catalog_id = catalog_fingerprint(self.catalog)
+        self._listener: socket.socket | None = None
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+        self._transaction_lock = threading.Lock()
+        self._clients: set[threading.Thread] = set()
+        self._channels: set[socket.socket] = set()
+        self._clients_lock = threading.Lock()
+        self._request_count = 0
+        self._committed_transactions = 0
+        self._last_error_type = ""
+        self._grants: dict[str, OwnerClientGrant] = {}
+        self._revoked_grants: set[str] = set()
+        self._grants_lock = threading.Lock()
+        self._status_bootstrap_token_digest: bytes | None = None
+        self._status_bootstrap_uid = -1
+        self._status_bootstrap_scope: dict[str, str] = {}
+        self._event_wait_handler: Any | None = None
+        self._event_wait_cancel_handler: Any | None = None
+        self._event_wait_clear_handler: Any | None = None
+        self._commit_observer: Any | None = None
+        self._last_observer_error_type = ""
+
+    def configure_status_bootstrap(self) -> str:
+        """Create the owner-local credential for peer-bound status sessions.
+
+        The persisted credential is deliberately not an ``OwnerClientGrant``:
+        a later status invocation has a different PID from the short-lived
+        launcher. The owner authenticates this value and the kernel peer UID,
+        then mints a short-lived read-only grant bound to that exact PID, UID,
+        and procfs start tuple for the lifetime of one connection.
+        """
+
+        missing = STATUS_BOOTSTRAP_ALLOWED_OPERATIONS - set(self.catalog)
+        if missing:
+            raise TypedStateOwnerAuthorizationError(
+                "status bootstrap operation catalog is incomplete"
+            )
+        token = secrets.token_hex(32)
+        digest = hashlib.sha256(token.encode("ascii")).digest()
+        with self._grants_lock:
+            if self._status_bootstrap_token_digest is not None:
+                raise TypedStateOwnerAuthorizationError(
+                    "status bootstrap credential is already configured"
+                )
+            self._status_bootstrap_token_digest = digest
+            self._status_bootstrap_uid = os.getuid()
+        return token
+
+    def _resolve_status_bootstrap_scope(self) -> dict[str, str]:
+        rows = self._connection.execute(
+            """
+            SELECT federations.tenant_id, federations.federation_id,
+                   supervisors.supervisor_id, subscriptions.subscription_id,
+                   subscriptions.consumer_id
+            FROM federations
+            INNER JOIN supervisor_instances AS supervisors
+              ON supervisors.tenant_id = federations.tenant_id
+             AND supervisors.federation_id = federations.federation_id
+            INNER JOIN event_subscriptions AS subscriptions
+              ON subscriptions.tenant_id = federations.tenant_id
+             AND subscriptions.federation_id = federations.federation_id
+             AND subscriptions.supervisor_id = supervisors.supervisor_id
+            WHERE subscriptions.status = 'active'
+              AND supervisors.lifecycle_state NOT IN (
+                  'COMPLETED', 'FAILED', 'STOPPED', 'QUARANTINED'
+              )
+            ORDER BY federations.federation_id, supervisors.supervisor_id,
+                     subscriptions.subscription_id
+            LIMIT 2
+            """
+        ).fetchall()
+        federation_count = self._connection.execute(
+            "SELECT COUNT(*) FROM federations"
+        ).fetchone()
+        if (
+            federation_count is None
+            or int(federation_count[0]) != 1
+            or len(rows) != 1
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "status bootstrap requires one dedicated-store federation slice"
+            )
+        row = rows[0]
+        return {
+            "tenant_id": str(row[0] or "").strip(),
+            "federation_id": str(row[1] or "").strip(),
+            "supervisor_id": str(row[2] or "").strip(),
+            "subscription_id": str(row[3] or "").strip(),
+            "consumer_id": str(row[4] or "").strip(),
+        }
+
+    def bind_status_bootstrap_scope(self) -> None:
+        """Monotonically bind status reads to one admitted federation slice."""
+
+        # All gateway clients share one DuckDB connection.  Resolve the
+        # bootstrap slice under the same transaction lock used by commands so
+        # this read cannot observe or join an unrelated client's uncommitted
+        # transaction.
+        with self._transaction_lock:
+            scope = self._resolve_status_bootstrap_scope()
+        if any(not value or len(value) > 256 for value in scope.values()):
+            raise TypedStateOwnerAuthorizationError(
+                "status bootstrap scope is invalid"
+            )
+        with self._grants_lock:
+            if self._status_bootstrap_token_digest is None:
+                raise TypedStateOwnerAuthorizationError(
+                    "status bootstrap credential is not configured"
+                )
+            if self._status_bootstrap_scope and self._status_bootstrap_scope != scope:
+                raise TypedStateOwnerAuthorizationError(
+                    "status bootstrap scope is already bound"
+                )
+            self._status_bootstrap_scope = scope
+
+    def _issue_status_session_grant(
+        self,
+        *,
+        peer_identity: tuple[int, int, int],
+        process_birth_id: str,
+    ) -> OwnerClientGrant:
+        """Mint one non-exported status grant for the observed socket peer."""
+
+        peer_pid, peer_uid, peer_start = peer_identity
+        issued_at = int(time.time() * 1_000)
+        with self._grants_lock:
+            scope = dict(self._status_bootstrap_scope)
+        if not scope:
+            raise TypedStateOwnerAuthorizationError(
+                "status bootstrap scope is unavailable"
+            )
+        # Do not hold _grants_lock while acquiring the transaction lock: the
+        # connection-serving path records sessions under the transaction lock
+        # and later retires grants under _grants_lock.
+        with self._transaction_lock:
+            live_scope = self._resolve_status_bootstrap_scope()
+        if live_scope != scope:
+            raise TypedStateOwnerAuthorizationError(
+                "status bootstrap dedicated-store authority changed"
+            )
+        grant = OwnerClientGrant(
+            grant_id=f"owner-grant:status:{uuid.uuid4()}",
+            client_id=STATUS_BOOTSTRAP_CLIENT_ID,
+            process_birth_id=process_birth_id,
+            allowed_operations=STATUS_BOOTSTRAP_ALLOWED_OPERATIONS,
+            allowed_command_operations=frozenset(),
+            tenant_id=scope["tenant_id"],
+            federation_id=scope["federation_id"],
+            entity_scopes=tuple(
+                (name, scope[name])
+                for name in _STATUS_BOOTSTRAP_ENTITY_SCOPE_NAMES
+            ),
+            authority_profile="dedicated_store_status_portfolio",
+            peer_pid=peer_pid,
+            peer_uid=peer_uid,
+            peer_start_time_ticks=peer_start,
+            issued_at=issued_at,
+            expires_at=issued_at
+            + int(STATUS_BOOTSTRAP_GRANT_TTL_SECONDS * 1_000),
+        )
+        ephemeral_token = secrets.token_hex(32)
+        with self._grants_lock:
+            self._grants[ephemeral_token] = grant
+        return grant
+
+    def _retire_status_session_grant(self, grant_id: str) -> None:
+        """Remove a connection-local status grant without growing revocation state."""
+
+        with self._grants_lock:
+            self._grants = {
+                token: candidate
+                for token, candidate in self._grants.items()
+                if candidate.grant_id != grant_id
+            }
+            self._revoked_grants.discard(grant_id)
+
+    def bind_commit_observer(self, observer: Any) -> None:
+        """Install one owner-only durable-commit notification hook."""
+
+        if not callable(observer):
+            raise TypedStateOwnerProtocolError(
+                "commit observer must be a server-owned callable"
+            )
+        with self._grants_lock:
+            if self._commit_observer is not None:
+                if self._commit_observer is observer:
+                    return
+                raise TypedStateOwnerProtocolError(
+                    "typed state-owner commit observer is already bound"
+                )
+            self._commit_observer = observer
+
+    def bind_event_wait_handlers(
+        self,
+        *,
+        wait: Any,
+        cancel: Any,
+        clear_cancellation: Any,
+    ) -> None:
+        """Bind the state-owner condition without exposing a client callback.
+
+        The handlers are installed by :class:`QuackStateServer` after its
+        durable routed-event source is sealed.  Binding is monotonic for the
+        gateway lifetime so a later component cannot replace event authority.
+        """
+
+        if not all(callable(item) for item in (wait, cancel, clear_cancellation)):
+            raise TypedStateOwnerProtocolError(
+                "event wait handlers must be server-owned callables"
+            )
+        with self._grants_lock:
+            existing = (
+                self._event_wait_handler,
+                self._event_wait_cancel_handler,
+                self._event_wait_clear_handler,
+            )
+            if any(item is not None for item in existing):
+                if existing == (wait, cancel, clear_cancellation):
+                    return
+                raise TypedStateOwnerProtocolError(
+                    "typed event wait handlers are already bound"
+                )
+            self._event_wait_handler = wait
+            self._event_wait_cancel_handler = cancel
+            self._event_wait_clear_handler = clear_cancellation
+
+    def issue_grant(
+        self,
+        *,
+        client_id: str,
+        process_birth_id: str = "",
+        allowed_operations: Sequence[str] = (),
+        allowed_command_operations: Sequence[str] = (),
+        tenant_id: str = "",
+        federation_id: str = "",
+        entity_scopes: Mapping[str, str] | None = None,
+        peer_pid: int | None = None,
+        ttl_seconds: float = DEFAULT_GRANT_TTL_SECONDS,
+    ) -> tuple[str, OwnerClientGrant]:
+        """Mint one non-promotable client capability in owner memory."""
+
+        operations = frozenset(str(item) for item in allowed_operations)
+        commands = frozenset(str(item) for item in allowed_command_operations)
+        if not operations.issubset(set(self.catalog) | set(_SERVICE_OPERATIONS)):
+            raise TypedStateOwnerAuthorizationError(
+                "grant contains an operation absent from the server catalog"
+            )
+        if not commands.issubset(_COMMAND_MUTATION_CATALOG):
+            raise TypedStateOwnerAuthorizationError(
+                "grant contains a command absent from the server policy"
+            )
+        try:
+            ttl = float(ttl_seconds)
+        except (TypeError, ValueError) as exc:
+            raise TypedStateOwnerAuthorizationError(
+                "grant lifetime is invalid"
+            ) from exc
+        if (
+            not math.isfinite(ttl)
+            or ttl < MIN_GRANT_TTL_SECONDS
+            or ttl > MAX_GRANT_TTL_SECONDS
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "grant lifetime is outside the closed bound"
+            )
+        try:
+            selected_pid = os.getpid() if peer_pid is None else int(peer_pid)
+            selected_uid = os.stat(f"/proc/{selected_pid}").st_uid
+            selected_start = _process_start_time_ticks(selected_pid)
+        except (OSError, TypeError, ValueError) as exc:
+            raise TypedStateOwnerAuthorizationError(
+                "grant peer process is unavailable"
+            ) from exc
+        issued_at = int(time.time() * 1_000)
+        grant = OwnerClientGrant(
+            grant_id=f"owner-grant:{uuid.uuid4()}",
+            client_id=client_id,
+            process_birth_id=process_birth_id,
+            allowed_operations=operations,
+            allowed_command_operations=commands,
+            tenant_id=tenant_id,
+            federation_id=federation_id,
+            entity_scopes=tuple((entity_scopes or {}).items()),
+            peer_pid=selected_pid,
+            peer_uid=selected_uid,
+            peer_start_time_ticks=selected_start,
+            issued_at=issued_at,
+            expires_at=issued_at + int(ttl * 1_000),
+        )
+        token = uuid.uuid4().hex + uuid.uuid4().hex
+        with self._grants_lock:
+            self._grants[token] = grant
+        return token, grant
+
+    def revoke_grant(self, grant_id: str) -> None:
+        selected = str(grant_id or "")
+        with self._grants_lock:
+            self._revoked_grants.add(selected)
+            self._grants = {
+                token: grant
+                for token, grant in self._grants.items()
+                if grant.grant_id != selected
+            }
+
+    def _require_active_grant(
+        self,
+        grant: OwnerClientGrant,
+        *,
+        peer_identity: tuple[int, int, int],
+    ) -> None:
+        """Revalidate revocation, expiry, and kernel peer identity per request."""
+
+        with self._grants_lock:
+            revoked = grant.grant_id in self._revoked_grants
+            still_issued = any(
+                candidate.grant_id == grant.grant_id
+                for candidate in self._grants.values()
+            )
+        if revoked or not still_issued:
+            raise TypedStateOwnerAuthorizationError("owner grant is revoked")
+        if int(time.time() * 1_000) >= grant.expires_at:
+            self.revoke_grant(grant.grant_id)
+            raise TypedStateOwnerAuthorizationError("owner grant is expired")
+        peer_pid, peer_uid, peer_start = peer_identity
+        if (
+            peer_pid != grant.peer_pid
+            or peer_uid != grant.peer_uid
+            or peer_start != grant.peer_start_time_ticks
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "kernel peer identity differs from the owner grant"
+            )
+
+    def start(self) -> None:
+        self.socket_path.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(self.socket_path.parent, 0o700)
+        try:
+            metadata = os.lstat(self.socket_path)
+        except FileNotFoundError:
+            metadata = None
+        if metadata is not None:
+            if not stat.S_ISSOCK(metadata.st_mode):
+                raise TypedStateOwnerProtocolError("gateway socket path is not a socket")
+            self.socket_path.unlink()
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            listener.bind(str(self.socket_path))
+            os.chmod(self.socket_path, 0o600)
+            listener.listen(64)
+            listener.settimeout(0.25)
+        except BaseException:
+            listener.close()
+            raise
+        self._listener = listener
+        self._thread = threading.Thread(
+            target=self._serve,
+            name="typed-state-owner-gateway",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        listener = self._listener
+        self._listener = None
+        if listener is not None:
+            try:
+                listener.close()
+            except OSError:
+                pass
+        if self._thread is not None:
+            self._thread.join(timeout=3.0)
+        with self._clients_lock:
+            clients = tuple(self._clients)
+            channels = tuple(self._channels)
+        for channel in channels:
+            try:
+                channel.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                channel.close()
+            except OSError:
+                pass
+        for thread in clients:
+            thread.join(timeout=1.0)
+        try:
+            self.socket_path.unlink()
+        except FileNotFoundError:
+            pass
+
+    def capability(self) -> dict[str, Any]:
+        return {
+            "interface": TYPED_STATE_OWNER_INTERFACE,
+            "available": self._listener is not None and not self._stop.is_set(),
+            "server_owned": True,
+            "exclusive_connection": True,
+            "raw_sql_permitted": False,
+            "catalog_id": self.catalog_id,
+            "operation_count": len(self.catalog),
+            "request_count": self._request_count,
+            "committed_transactions": self._committed_transactions,
+            "active_grants": len(self._grants),
+            "revoked_grants": len(self._revoked_grants),
+            "grant_expiry_required": True,
+            "kernel_peer_credentials_required": True,
+            "typed_event_wait_bound": self._event_wait_handler is not None,
+            "typed_event_wait_maximum_seconds": MAX_REMOTE_EVENT_WAIT_SECONDS,
+            "commit_observer_bound": self._commit_observer is not None,
+            "last_observer_error_type": self._last_observer_error_type,
+            "last_error_type": self._last_error_type,
+        }
+
+    @staticmethod
+    def _authorize_event_wait_identity(
+        grant: OwnerClientGrant,
+        *,
+        consumer_id: str,
+        subscription_id: str = "",
+    ) -> None:
+        """Require an exact bounded event-consumer capability.
+
+        Tenant and federation are deliberately absent from the wait payload;
+        they are resolved by the server from the durable subscription.  The
+        grant must nevertheless carry both scopes, and the server handler
+        compares those resolved values before entering the condition wait.
+        """
+
+        if not grant.tenant_id or not grant.federation_id:
+            raise TypedStateOwnerAuthorizationError(
+                "event wait grant requires tenant and federation scope"
+            )
+        scopes = dict(grant.entity_scopes)
+        if scopes.get("consumer_id", consumer_id) != consumer_id:
+            raise TypedStateOwnerAuthorizationError(
+                "event wait consumer differs from the client grant"
+            )
+        if subscription_id and (
+            scopes.get("subscription_id", subscription_id) != subscription_id
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "event wait subscription differs from the client grant"
+            )
+
+    @staticmethod
+    def _authorize_event_wait_deadline(
+        grant: OwnerClientGrant,
+        *,
+        deadline: str,
+    ) -> None:
+        try:
+            parsed = datetime.fromisoformat(str(deadline).replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                raise ValueError("naive deadline")
+            deadline_ms = int(parsed.timestamp() * 1_000)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise TypedStateOwnerProtocolError(
+                "event wait deadline is invalid"
+            ) from exc
+        now_ms = int(time.time() * 1_000)
+        maximum_ms = int(MAX_REMOTE_EVENT_WAIT_SECONDS * 1_000)
+        if deadline_ms < now_ms or deadline_ms - now_ms > maximum_ms:
+            raise TypedStateOwnerAuthorizationError(
+                "event wait deadline is outside the service bound"
+            )
+        if deadline_ms >= grant.expires_at:
+            raise TypedStateOwnerAuthorizationError(
+                "event wait deadline exceeds the client grant"
+            )
+
+    def _serve(self) -> None:
+        while not self._stop.is_set():
+            listener = self._listener
+            if listener is None:
+                return
+            try:
+                channel, _ = listener.accept()
+            except TimeoutError:
+                continue
+            except OSError:
+                return
+            thread = threading.Thread(
+                target=self._serve_client,
+                args=(channel,),
+                name="typed-state-owner-client",
+                daemon=True,
+            )
+            with self._clients_lock:
+                self._clients.add(thread)
+                self._channels.add(channel)
+            thread.start()
+
+    @staticmethod
+    def _reject_unknown(payload: Mapping[str, Any], allowed: set[str], kind: str) -> None:
+        unknown = set(payload) - allowed
+        if unknown:
+            raise TypedStateOwnerProtocolError(
+                f"{kind} contains unknown normative fields"
+            )
+
+    def _serve_client(self, channel: socket.socket) -> None:
+        transaction_active = False
+        command: StateCommand | None = None
+        mutation_manifest: list[tuple[str, dict[str, Any]]] = []
+        semantic_authority: dict[str, Any] = {}
+        semantic_authority_captured = False
+        client_id = ""
+        grant: OwnerClientGrant | None = None
+        status_session_grant_id = ""
+        session_id = ""
+        try:
+            channel.settimeout(30.0)
+            peer_identity = _kernel_peer_identity(channel)
+            opened = _receive_frame(channel)
+            self._reject_unknown(
+                opened,
+                {
+                    "schema",
+                    "action",
+                    "request_id",
+                    "token",
+                    "client_id",
+                    "process_birth_id",
+                    "store_id",
+                },
+                "open request",
+            )
+            supplied_token = str(opened.get("token") or "")
+            action = str(opened.get("action") or "")
+            client_id = str(opened.get("client_id") or "").strip()
+            process_birth_id = str(opened.get("process_birth_id") or "").strip()
+            if (
+                opened.get("schema") != TYPED_STATE_OWNER_SCHEMA
+                or opened.get("store_id") != self.store_id
+                or not 16 <= len(supplied_token) <= 256
+                or not process_birth_id
+                or len(process_birth_id) > 256
+            ):
+                raise TypedStateOwnerAuthorizationError("gateway authentication failed")
+            if action == "open_status":
+                supplied_digest = hashlib.sha256(
+                    supplied_token.encode("utf-8")
+                ).digest()
+                with self._grants_lock:
+                    expected_digest = self._status_bootstrap_token_digest
+                    expected_uid = self._status_bootstrap_uid
+                if (
+                    expected_digest is None
+                    or not hmac.compare_digest(supplied_digest, expected_digest)
+                    or peer_identity[1] != expected_uid
+                    or client_id != STATUS_BOOTSTRAP_CLIENT_ID
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "gateway authentication failed"
+                    )
+                grant = self._issue_status_session_grant(
+                    peer_identity=peer_identity,
+                    process_birth_id=process_birth_id,
+                )
+                status_session_grant_id = grant.grant_id
+            elif action == "open":
+                with self._grants_lock:
+                    for candidate_token, candidate_grant in self._grants.items():
+                        if hmac.compare_digest(supplied_token, candidate_token):
+                            grant = candidate_grant
+                            break
+                if grant is None:
+                    raise TypedStateOwnerAuthorizationError(
+                        "gateway authentication failed"
+                    )
+            else:
+                raise TypedStateOwnerAuthorizationError("gateway authentication failed")
+            self._require_active_grant(grant, peer_identity=peer_identity)
+            if (
+                not client_id
+                or len(client_id) > 256
+                or client_id != grant.client_id
+                or (
+                    grant.process_birth_id
+                    and process_birth_id != grant.process_birth_id
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError("gateway client identity is invalid")
+            session_id = f"session:owner:{uuid.uuid4()}"
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            with self._transaction_lock:
+                self._connection.execute(
+                    """
+                    INSERT INTO client_sessions (
+                        session_id, server_id, owner_id, process_birth_id,
+                        attached_at, last_seen_at, fence_epoch, generation,
+                        status, revision
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'attached', 0)
+                    """,
+                    [
+                        session_id,
+                        str(self.identity.get("server_id") or ""),
+                        client_id,
+                        process_birth_id,
+                        now,
+                        now,
+                        int(self.identity.get("fence_epoch") or 0),
+                        int(self.identity.get("generation") or 0),
+                    ],
+                )
+            _send_frame(
+                channel,
+                {
+                    "schema": TYPED_STATE_OWNER_SCHEMA,
+                    "request_id": str(opened.get("request_id") or ""),
+                    "ok": True,
+                    "identity": dict(self.identity),
+                    "catalog_id": self.catalog_id,
+                    "session_id": session_id,
+                    "grant": grant.public_dict(),
+                },
+            )
+            # Admitted clients wait without periodic traffic.  Shutdown closes
+            # every tracked channel, and expiry/revocation is rechecked before
+            # the next request, so an idle socket needs no polling timeout.
+            channel.settimeout(None)
+            while not self._stop.is_set():
+                request = _receive_frame(channel)
+                action = str(request.get("action") or "")
+                request_id = str(request.get("request_id") or "")
+                try:
+                    self._require_active_grant(grant, peer_identity=peer_identity)
+                    if action == "begin":
+                        self._reject_unknown(
+                            request,
+                            {"schema", "action", "request_id", "command"},
+                            "begin request",
+                        )
+                        if transaction_active:
+                            raise TypedStateOwnerProtocolError("transaction already active")
+                        command = StateCommand.from_dict(request.get("command") or {})
+                        if not self._transaction_lock.acquire(timeout=30.0):
+                            raise TypedStateOwnerProtocolError("owner transaction admission timed out")
+                        try:
+                            self._authorize_command(command, client_id, grant=grant)
+                            self._connection.execute("BEGIN TRANSACTION")
+                        except BaseException:
+                            command = None
+                            self._transaction_lock.release()
+                            raise
+                        transaction_active = True
+                        mutation_manifest = []
+                        semantic_authority = {}
+                        semantic_authority_captured = False
+                        response = {"ok": True}
+                    elif action == "execute":
+                        self._reject_unknown(
+                            request,
+                            {"schema", "action", "request_id", "operation", "parameters"},
+                            "execute request",
+                        )
+                        operation_name = str(request.get("operation") or "")
+                        operation = self.catalog.get(operation_name)
+                        if operation is None:
+                            raise TypedStateOwnerProtocolError("unknown server operation")
+                        parameters = _closed_parameters(request.get("parameters"))
+                        if len(parameters) != operation.parameter_count:
+                            raise TypedStateOwnerProtocolError("operation parameter count differs")
+                        if operation.name not in grant.allowed_operations:
+                            raise TypedStateOwnerAuthorizationError(
+                                "operation is outside the client grant"
+                            )
+                        self._authorize_operation_scope(
+                            operation,
+                            parameters,
+                            grant=grant,
+                            command=command if transaction_active else None,
+                        )
+                        if operation.mutation and not transaction_active:
+                            raise TypedStateOwnerAuthorizationError(
+                                "mutation requires an admitted command transaction"
+                            )
+                        if operation.mutation and transaction_active:
+                            if command is None:
+                                raise TypedStateOwnerAuthorizationError(
+                                    "mutation transaction has no admitted command"
+                                )
+                            self._authorize_mutation(
+                                command, operation, parameters, grant=grant
+                            )
+                            if not semantic_authority_captured:
+                                semantic_authority = self._capture_semantic_authority(
+                                    command,
+                                    grant=grant,
+                                )
+                                semantic_authority_captured = True
+                            self._record_manifest_mutation(
+                                command,
+                                operation,
+                                parameters,
+                                mutation_manifest,
+                            )
+                        if transaction_active:
+                            result = self._execute(operation, parameters)
+                        else:
+                            with self._transaction_lock:
+                                result = self._execute(operation, parameters)
+                        response = result
+                    elif action == "wait_events":
+                        self._reject_unknown(
+                            request,
+                            {"schema", "action", "request_id", "wait_request"},
+                            "event wait request",
+                        )
+                        if transaction_active:
+                            raise TypedStateOwnerAuthorizationError(
+                                "event wait is unavailable inside a transaction"
+                            )
+                        if "event.wait" not in grant.allowed_operations:
+                            raise TypedStateOwnerAuthorizationError(
+                                "event wait is outside the client grant"
+                            )
+                        from ..federation.events import EventWaitRequest
+
+                        wait_request = EventWaitRequest.from_dict(
+                            request.get("wait_request") or {}
+                        )
+                        self._authorize_event_wait_identity(
+                            grant,
+                            consumer_id=wait_request.consumer_id,
+                            subscription_id=wait_request.subscription_id,
+                        )
+                        self._authorize_event_wait_deadline(
+                            grant,
+                            deadline=wait_request.deadline,
+                        )
+                        handler = self._event_wait_handler
+                        if not callable(handler):
+                            raise TypedStateOwnerProtocolError(
+                                "server-owned event wait is unavailable"
+                            )
+                        batch = handler(wait_request, grant)
+                        response = {"ok": True, "batch": batch.to_dict()}
+                    elif action in {"cancel_event_wait", "clear_event_wait_cancellation"}:
+                        self._reject_unknown(
+                            request,
+                            {"schema", "action", "request_id", "consumer_id"},
+                            f"{action} request",
+                        )
+                        if transaction_active:
+                            raise TypedStateOwnerAuthorizationError(
+                                "event wait control is unavailable inside a transaction"
+                            )
+                        operation_name = (
+                            "event.wait.cancel"
+                            if action == "cancel_event_wait"
+                            else "event.wait.clear_cancellation"
+                        )
+                        if operation_name not in grant.allowed_operations:
+                            raise TypedStateOwnerAuthorizationError(
+                                "event wait control is outside the client grant"
+                            )
+                        consumer_id = str(request.get("consumer_id") or "").strip()
+                        if not consumer_id or len(consumer_id) > 256:
+                            raise TypedStateOwnerProtocolError(
+                                "event wait consumer identity is invalid"
+                            )
+                        self._authorize_event_wait_identity(
+                            grant,
+                            consumer_id=consumer_id,
+                        )
+                        handler = (
+                            self._event_wait_cancel_handler
+                            if action == "cancel_event_wait"
+                            else self._event_wait_clear_handler
+                        )
+                        if not callable(handler):
+                            raise TypedStateOwnerProtocolError(
+                                "server-owned event wait control is unavailable"
+                            )
+                        handler(consumer_id, grant)
+                        response = {"ok": True}
+                    elif action in {"commit", "rollback"}:
+                        self._reject_unknown(
+                            request,
+                            {"schema", "action", "request_id"},
+                            f"{action} request",
+                        )
+                        if not transaction_active:
+                            raise TypedStateOwnerProtocolError("no active transaction")
+                        if action == "commit":
+                            if command is None:
+                                raise TypedStateOwnerAuthorizationError(
+                                    "transaction manifest has no admitted command"
+                                )
+                            self._validate_transaction_manifest(
+                                command,
+                                mutation_manifest,
+                                semantic_authority=semantic_authority,
+                            )
+                            self._connection.commit()
+                            self._committed_transactions += 1
+                            observer = self._commit_observer
+                            if callable(observer):
+                                try:
+                                    observer(command, tuple(mutation_manifest))
+                                except BaseException as observer_error:
+                                    # The authoritative transaction is already
+                                    # durable.  Notification is an optimization;
+                                    # backlog replay remains authoritative and a
+                                    # post-commit callback must not manufacture an
+                                    # ambiguous command failure for the client.
+                                    self._last_observer_error_type = type(
+                                        observer_error
+                                    ).__name__
+                        else:
+                            self._connection.rollback()
+                        transaction_active = False
+                        command = None
+                        mutation_manifest = []
+                        semantic_authority = {}
+                        semantic_authority_captured = False
+                        self._transaction_lock.release()
+                        response = {"ok": True}
+                    elif action == "close":
+                        self._reject_unknown(
+                            request,
+                            {"schema", "action", "request_id"},
+                            "close request",
+                        )
+                        _send_frame(
+                            channel,
+                            {"schema": TYPED_STATE_OWNER_SCHEMA, "request_id": request_id, "ok": True},
+                        )
+                        return
+                    else:
+                        raise TypedStateOwnerProtocolError("unknown typed state-owner action")
+                    self._request_count += 1
+                    _send_frame(
+                        channel,
+                        {
+                            "schema": TYPED_STATE_OWNER_SCHEMA,
+                            "request_id": request_id,
+                            **response,
+                        },
+                    )
+                except BaseException as exc:
+                    if transaction_active:
+                        try:
+                            self._connection.rollback()
+                        except Exception:
+                            pass
+                        transaction_active = False
+                        command = None
+                        mutation_manifest = []
+                        semantic_authority = {}
+                        semantic_authority_captured = False
+                        self._transaction_lock.release()
+                    _send_frame(
+                        channel,
+                        {
+                            "schema": TYPED_STATE_OWNER_SCHEMA,
+                            "request_id": request_id,
+                            "ok": False,
+                            "error_code": self._error_code(exc),
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+        except (OSError, TypedStateOwnerError, ValueError) as exc:
+            # Authentication and protocol failures are deliberately silent.
+            self._last_error_type = type(exc).__name__
+            return
+        finally:
+            if transaction_active:
+                try:
+                    self._connection.rollback()
+                except Exception:
+                    pass
+                self._transaction_lock.release()
+            try:
+                channel.close()
+            except OSError:
+                pass
+            if status_session_grant_id:
+                self._retire_status_session_grant(status_session_grant_id)
+            with self._clients_lock:
+                self._clients.discard(threading.current_thread())
+                self._channels.discard(channel)
+
+    def _authorize_command(
+        self,
+        command: StateCommand,
+        client_id: str,
+        *,
+        grant: OwnerClientGrant,
+    ) -> None:
+        # The caller's authority_class is observational.  Authority comes from
+        # this server-minted credential, the attached session row, and exact
+        # live generation/fence/revision checks.
+        if command.store_id != self.store_id:
+            raise TypedStateOwnerAuthorizationError("command store differs")
+        operation = str(command.parameters.get("operation") or "")
+        if operation not in _COMMAND_MUTATION_CATALOG:
+            raise TypedStateOwnerAuthorizationError(
+                "command operation is absent from the server policy catalog"
+            )
+        if operation not in grant.allowed_command_operations:
+            raise TypedStateOwnerAuthorizationError(
+                "command operation is outside the client grant"
+            )
+        expected_kind = {
+            "budget.release": "release",
+            "supervisor.runtime.attest": "claim",
+            "subagent.slot.reserve": "claim",
+            "subagent.slot.release": "release",
+            "task.status.cas": "claim",
+        }.get(operation, "append")
+        if command.command_kind.value != expected_kind:
+            raise TypedStateOwnerAuthorizationError(
+                "command kind differs from the server operation policy"
+            )
+        if operation in _FEDERATION_COMMANDS:
+            for field in ("tenant_id", "federation_id"):
+                value = str(command.parameters.get(field) or "").strip()
+                if not value:
+                    raise TypedStateOwnerAuthorizationError(
+                        "federation command lacks exact tenant/federation scope"
+                    )
+            if grant.tenant_id and command.parameters["tenant_id"] != grant.tenant_id:
+                raise TypedStateOwnerAuthorizationError(
+                    "command tenant differs from the client grant"
+                )
+            if (
+                grant.federation_id
+                and command.parameters["federation_id"] != grant.federation_id
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "command federation differs from the client grant"
+                )
+        for field, expected in grant.entity_scopes:
+            if str(command.parameters.get(field) or "") != expected:
+                raise TypedStateOwnerAuthorizationError(
+                    "command entity scope differs from the client grant"
+                )
+        row = self._connection.execute(
+            """
+            SELECT owner_id, generation, fence_epoch, status
+            FROM client_sessions WHERE session_id = ? LIMIT 1
+            """,
+            [command.session_id],
+        ).fetchone()
+        if row is None or str(row[0]) != client_id or str(row[3]) != "attached":
+            raise TypedStateOwnerAuthorizationError("command session is not admitted")
+        if int(row[1]) != command.expected_generation or int(row[2]) != command.fence_epoch:
+            raise TypedStateOwnerAuthorizationError("command session generation is stale")
+        head = self._connection.execute(
+            """
+            SELECT generation, revision, fence_epoch FROM store_generations
+            ORDER BY generation DESC LIMIT 1
+            """
+        ).fetchone()
+        if head is None or (
+            int(head[0]) != command.expected_generation
+            or int(head[2]) != command.fence_epoch
+        ):
+            raise TypedStateOwnerAuthorizationError("command head or fence is stale")
+        # Revision contention is not an authorization failure.  The command
+        # now owns the exclusive state-owner transaction lock, and
+        # StateTransaction performs the exact revision CAS before any domain
+        # mutation.  Let it return OptimisticConflictError so the bounded
+        # client retry can reload the current head; treating ordinary writer
+        # contention as authorization_denied makes concurrent supervisors
+        # fail permanently instead of retrying safely.
+
+    @staticmethod
+    def _authorize_operation_scope(
+        operation: OwnerOperation,
+        parameters: Sequence[Any],
+        *,
+        grant: OwnerClientGrant,
+        command: StateCommand | None,
+    ) -> None:
+        """Prevent a scoped credential from querying a different authority slice."""
+
+        if operation.mutation:
+            return
+        command_bindings = {
+            field: str(command.parameters[field])
+            for field in _SCOPE_FIELDS
+            if command is not None
+            and command.parameters.get(field) not in (None, "")
+        }
+        grant_bindings = {
+            **({"tenant_id": grant.tenant_id} if grant.tenant_id else {}),
+            **({"federation_id": grant.federation_id} if grant.federation_id else {}),
+            **dict(grant.entity_scopes),
+        }
+        if operation.name in _STATUS_OWNER_PLAN_READS:
+            if (
+                grant.client_id == STATUS_BOOTSTRAP_CLIENT_ID
+                and grant.authority_profile
+                == "dedicated_store_status_portfolio"
+                and grant.tenant_id
+                and grant.federation_id
+                and all(
+                    dict(grant.entity_scopes).get(name)
+                    for name in _STATUS_BOOTSTRAP_ENTITY_SCOPE_NAMES
+                )
+            ):
+                # The legacy CASF-000..043 task population is a dedicated-store
+                # portfolio, not tenant-shaped rows. This explicit profile is
+                # owner-issued only after binding the live federation slice;
+                # it must never be inferred from an unscoped status token.
+                return
+            raise TypedStateOwnerAuthorizationError(
+                "portfolio task read requires the dedicated status profile"
+            )
+        if not command_bindings and not grant_bindings:
+            return
+        # The generation head is store-global and only reports the already
+        # admitted command's exact CAS authority.  Other transaction reads do
+        # not receive an ambient exemption: in particular, idempotency bodies
+        # may contain tenant-scoped result data.
+        if command is not None and operation.name == "txn_load_generation":
+            return
+        if command is not None and operation.name in {
+            "lookup_idempotency",
+            "txn_lookup_idempotency",
+        }:
+            if (
+                len(parameters) != 1
+                or str(parameters[0]) != command.idempotency_key
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "idempotency query differs from the admitted command"
+                )
+            return
+        bound = {
+            name: parameters[index]
+            for index, name in enumerate(operation.parameter_names)
+        }
+
+        def present_scope(field: str) -> list[str]:
+            candidates = (field, f"scope_{field}", f"unique_{field}")
+            return [candidate for candidate in candidates if candidate in bound]
+
+        # A server-minted client grant is an outer security boundary.  Unlike
+        # a command's child identity, it may never be silently widened to a
+        # parent query unless that exact named read is explicitly independent.
+        for field, expected in grant_bindings.items():
+            present = present_scope(field)
+            if present:
+                if any(str(bound[candidate]) != expected for candidate in present):
+                    raise TypedStateOwnerAuthorizationError(
+                        "query scope differs from the client grant"
+                    )
+                continue
+            if operation.name not in _SCOPE_INDEPENDENT_READS:
+                raise TypedStateOwnerAuthorizationError(
+                    "scoped grant cannot use an unscoped query"
+                )
+
+        tenant_present = bool(present_scope("tenant_id"))
+        federation_present = bool(present_scope("federation_id"))
+        for field, expected in command_bindings.items():
+            present = present_scope(field)
+            if present:
+                if any(str(bound[candidate]) != expected for candidate in present):
+                    raise TypedStateOwnerAuthorizationError(
+                        "query scope differs from the admitted command"
+                    )
+                continue
+            if operation.name in _SCOPE_INDEPENDENT_READS:
+                continue
+            # Creation/registration reads parent authority before the child
+            # row exists.  A client with no narrower entity grant may perform
+            # that read only when the operation still binds the command's
+            # exact tenant and federation.  Entity-scoped grants remain
+            # fail-closed in the loop above.
+            if (
+                field not in {"tenant_id", "federation_id"}
+                and tenant_present
+                and federation_present
+            ):
+                continue
+            raise TypedStateOwnerAuthorizationError(
+                "command-scoped transaction cannot use an unscoped query"
+            )
+
+    def _capture_semantic_authority(
+        self,
+        command: StateCommand,
+        *,
+        grant: OwnerClientGrant,
+    ) -> dict[str, Any]:
+        """Resolve pre-mutation authority for child-executable commands.
+
+        Client-side registry checks remain defense in depth. This snapshot is
+        captured by the exclusive owner immediately before the first mutation,
+        while its transaction lock is held, so a client cannot replace
+        lifecycle, delivery, or cursor semantics with a structurally valid
+        low-level manifest.
+        """
+
+        operation = str(command.parameters.get("operation") or "")
+        if operation not in {
+            "supervisor.runtime.attest",
+            "supervisor.transition",
+            "event.delivery.record",
+            "event.acknowledge",
+        }:
+            return {}
+        scope = {
+            name: str(command.parameters.get(name) or "").strip()
+            for name in (
+                "tenant_id",
+                "federation_id",
+                "supervisor_id",
+                "subscription_id",
+                "consumer_id",
+                "event_id",
+            )
+        }
+        if not scope["tenant_id"] or not scope["federation_id"]:
+            raise TypedStateOwnerAuthorizationError(
+                "semantic command lacks authoritative scope"
+            )
+        if operation.startswith("supervisor."):
+            rows = self._connection.execute(
+                """
+                SELECT lifecycle_state, revision, fencing_epoch, lease_id,
+                       process_birth_id
+                FROM supervisor_instances
+                WHERE supervisor_id = ? AND tenant_id = ? AND federation_id = ?
+                LIMIT 2
+                """,
+                [
+                    scope["supervisor_id"],
+                    scope["tenant_id"],
+                    scope["federation_id"],
+                ],
+            ).fetchall()
+            if len(rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "supervisor semantic authority is absent or ambiguous"
+                )
+            row = rows[0]
+            current = {
+                "lifecycle_state": str(row[0]),
+                "revision": int(row[1]),
+                "fencing_epoch": int(row[2]),
+                "lease_id": str(row[3]),
+                "process_birth_id": str(row[4]),
+            }
+            if current["fencing_epoch"] != command.fence_epoch:
+                raise TypedStateOwnerAuthorizationError(
+                    "supervisor semantic fence differs from the store fence"
+                )
+            if operation == "supervisor.runtime.attest":
+                expected_revision = command.parameters.get("expected_revision")
+                expected_fence = command.parameters.get("expected_fencing_epoch")
+                if (
+                    isinstance(expected_revision, bool)
+                    or not isinstance(expected_revision, int)
+                    or expected_revision != current["revision"]
+                    or isinstance(expected_fence, bool)
+                    or not isinstance(expected_fence, int)
+                    or expected_fence != current["fencing_epoch"]
+                    or current["lifecycle_state"]
+                    not in {"ADMITTED", "STARTING", "IDLE", "ACTIVE", "PAUSED", "RECOVERING"}
+                    or not grant.process_birth_id
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "supervisor runtime admission authority is stale or ineligible"
+                    )
+                expected_birth_id = "process-birth-attestation:" + content_identity(
+                    {
+                        "tenant_id": scope["tenant_id"],
+                        "federation_id": scope["federation_id"],
+                        "supervisor_id": scope["supervisor_id"],
+                        "subagent_id": "",
+                        "canonical_birth_id": grant.process_birth_id,
+                    }
+                )
+                latest = self._connection.execute(
+                    """
+                    SELECT runtime_lease_id, process_birth_id, revision, status
+                    FROM supervisor_runtime_leases
+                    WHERE tenant_id = ? AND federation_id = ?
+                      AND supervisor_id = ? AND lease_id = ?
+                      AND fencing_epoch = ?
+                    ORDER BY revision DESC LIMIT 1
+                    """,
+                    [
+                        scope["tenant_id"],
+                        scope["federation_id"],
+                        scope["supervisor_id"],
+                        current["lease_id"],
+                        current["fencing_epoch"],
+                    ],
+                ).fetchall()
+                active = self._connection.execute(
+                    """
+                    SELECT runtime_lease_id, process_birth_id
+                    FROM supervisor_runtime_leases
+                    WHERE tenant_id = ? AND federation_id = ?
+                      AND supervisor_id = ? AND lease_id = ?
+                      AND fencing_epoch = ? AND status = 'active'
+                    ORDER BY revision DESC LIMIT 2
+                    """,
+                    [
+                        scope["tenant_id"],
+                        scope["federation_id"],
+                        scope["supervisor_id"],
+                        current["lease_id"],
+                        current["fencing_epoch"],
+                    ],
+                ).fetchall()
+                if (
+                    (latest and str(latest[0][1]) != expected_birth_id)
+                    or len(active) > 1
+                    or (active and str(active[0][1]) != expected_birth_id)
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "runtime takeover requires a new fencing epoch"
+                    )
+                return {
+                    "operation": operation,
+                    "scope": scope,
+                    "supervisor": current,
+                    "expected_process_birth_id": expected_birth_id,
+                    "latest_runtime_lease_id": str(latest[0][0]) if latest else "",
+                    "latest_runtime_revision": int(latest[0][2]) if latest else 0,
+                    "runtime_revision": int(latest[0][2]) + 1 if latest else 1,
+                }
+
+            from ..federation.contracts import FederationLifecycleState
+            from ..federation.lifecycle import assert_transition
+
+            try:
+                requested = FederationLifecycleState(
+                    str(command.parameters.get("requested_state") or "")
+                )
+                active_attempts_row = self._connection.execute(
+                    """
+                    SELECT COUNT(DISTINCT attempts.attempt_id)
+                    FROM task_attempts AS attempts
+                    INNER JOIN subagent_instances AS agents
+                      ON agents.task_id = attempts.task_cid
+                    WHERE agents.tenant_id = ? AND agents.federation_id = ?
+                      AND agents.supervisor_id = ?
+                      AND attempts.status NOT IN (
+                        'accepted','cancelled','completed','failed','rejected','stopped'
+                      )
+                    """,
+                    [scope["tenant_id"], scope["federation_id"], scope["supervisor_id"]],
+                ).fetchone()
+                active_slots_row = self._connection.execute(
+                    """
+                    SELECT COUNT(*) FROM subagent_execution_slots
+                    WHERE tenant_id = ? AND federation_id = ? AND supervisor_id = ?
+                      AND state = 'active' AND subagent_id IS NOT NULL
+                    """,
+                    [scope["tenant_id"], scope["federation_id"], scope["supervisor_id"]],
+                ).fetchone()
+                active_effects_row = self._connection.execute(
+                    """
+                    SELECT COUNT(*) FROM federation_effect_reservations
+                    WHERE tenant_id = ? AND federation_id = ? AND supervisor_id = ?
+                      AND state NOT IN (
+                        'cancelled','compensated','completed','failed','released','revoked'
+                      )
+                    """,
+                    [scope["tenant_id"], scope["federation_id"], scope["supervisor_id"]],
+                ).fetchone()
+                target = assert_transition(
+                    current["lifecycle_state"],
+                    requested,
+                    active_attempts=int(active_attempts_row[0])
+                    + int(active_slots_row[0]),
+                    active_effects=int(active_effects_row[0]),
+                )
+            except (TypeError, ValueError, RuntimeError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "supervisor lifecycle transition is not authoritative"
+                ) from exc
+            if target.value in {"STARTING", "ACTIVE", "COMPLETED"}:
+                now = datetime.now(_UTC).isoformat().replace("+00:00", "Z")
+                runtime = self._connection.execute(
+                    """
+                    SELECT leases.process_birth_id, leases.process_id,
+                           leases.process_start_time_ticks, leases.process_boot_id,
+                           leases.process_parent_id, births.process_id,
+                           births.start_marker, births.host_identity_ref,
+                           leases.evidence_ref
+                    FROM supervisor_runtime_leases AS leases
+                    INNER JOIN process_births AS births
+                      ON births.process_birth_id = leases.process_birth_id
+                     AND births.tenant_id = leases.tenant_id
+                     AND births.federation_id = leases.federation_id
+                     AND births.supervisor_id = leases.supervisor_id
+                    WHERE leases.tenant_id = ? AND leases.federation_id = ?
+                      AND leases.supervisor_id = ? AND leases.lease_id = ?
+                      AND leases.fencing_epoch = ? AND leases.status = 'active'
+                      AND leases.revoked_at IS NULL AND leases.expires_at > ?
+                      AND births.status = 'active' AND births.stopped_at IS NULL
+                    ORDER BY leases.revision DESC LIMIT 2
+                    """,
+                    [
+                        scope["tenant_id"], scope["federation_id"],
+                        scope["supervisor_id"], current["lease_id"],
+                        current["fencing_epoch"], now,
+                    ],
+                ).fetchall()
+                if len(runtime) != 1 or (
+                    str(runtime[0][0]) != current["process_birth_id"]
+                    or int(runtime[0][1]) != int(runtime[0][5])
+                    or str(runtime[0][2]) != str(runtime[0][6])
+                    or not str(runtime[0][3])
+                    or not str(runtime[0][7])
+                    or not str(runtime[0][8])
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "executable lifecycle lacks current process-bound runtime authority"
+                    )
+            return {
+                "operation": operation,
+                "scope": scope,
+                "supervisor": current,
+                "target_state": target.value,
+            }
+
+        subscription_rows = self._connection.execute(
+            """
+            SELECT revision, consumer_id, status, expires_at
+            FROM event_subscriptions
+            WHERE subscription_id = ? AND tenant_id = ? AND federation_id = ?
+            LIMIT 2
+            """,
+            [scope["subscription_id"], scope["tenant_id"], scope["federation_id"]],
+        ).fetchall()
+        cursor_rows = self._connection.execute(
+            """
+            SELECT subscription_revision, global_sequence, store_generation,
+                   fencing_epoch, revision
+            FROM consumer_cursors
+            WHERE consumer_id = ? AND subscription_id = ?
+              AND tenant_id = ? AND federation_id = ?
+            LIMIT 2
+            """,
+            [
+                scope["consumer_id"], scope["subscription_id"],
+                scope["tenant_id"], scope["federation_id"],
+            ],
+        ).fetchall()
+        if (
+            len(subscription_rows) != 1
+            or len(cursor_rows) != 1
+            or str(subscription_rows[0][1]) != scope["consumer_id"]
+            or str(subscription_rows[0][2]) != "active"
+            or int(cursor_rows[0][0]) != int(subscription_rows[0][0])
+            or int(cursor_rows[0][3]) != command.fence_epoch
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "event consumer authority is stale, inactive, or ambiguous"
+            )
+        expected_subscription_revision = command.parameters.get(
+            "subscription_revision"
+        )
+        expected_fence = command.parameters.get("expected_fencing_epoch")
+        if (
+            (
+                operation == "event.delivery.record"
+                and (
+                    isinstance(expected_subscription_revision, bool)
+                    or not isinstance(expected_subscription_revision, int)
+                    or expected_subscription_revision
+                    != int(subscription_rows[0][0])
+                )
+            )
+            or isinstance(expected_fence, bool)
+            or not isinstance(expected_fence, int)
+            or expected_fence != command.fence_epoch
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "event command subscription revision or fence is stale"
+            )
+        common = {
+            "operation": operation,
+            "scope": scope,
+            "subscription_revision": int(subscription_rows[0][0]),
+            "cursor_sequence": int(cursor_rows[0][1]),
+            "store_generation": int(cursor_rows[0][2]),
+            "cursor_fencing_epoch": int(cursor_rows[0][3]),
+            "cursor_revision": int(cursor_rows[0][4]),
+        }
+        if operation == "event.delivery.record":
+            queue = self._connection.execute(
+                """
+                SELECT queue.delivery_id, queue.outbox_id, queue.attempt_number,
+                       queue.revision, queue.status, events.global_sequence,
+                       events.event_cid, outbox.event_cid
+                FROM event_delivery_queue AS queue
+                INNER JOIN domain_events AS events
+                  ON events.event_id = queue.representative_event_id
+                 AND events.tenant_id = queue.tenant_id
+                 AND events.federation_id = queue.federation_id
+                INNER JOIN transactional_outbox AS outbox
+                  ON outbox.outbox_id = queue.outbox_id
+                 AND outbox.event_id = events.event_id
+                 AND outbox.tenant_id = events.tenant_id
+                 AND outbox.federation_id = events.federation_id
+                WHERE queue.tenant_id = ? AND queue.federation_id = ?
+                  AND queue.subscription_id = ? AND queue.subscription_revision = ?
+                  AND queue.consumer_id = ? AND queue.representative_event_id = ?
+                  AND queue.fencing_epoch = ? AND queue.status IN ('pending','retry')
+                LIMIT 2
+                """,
+                [
+                    scope["tenant_id"], scope["federation_id"],
+                    scope["subscription_id"], common["subscription_revision"],
+                    scope["consumer_id"], scope["event_id"], command.fence_epoch,
+                ],
+            ).fetchall()
+            attempt_id = str(command.parameters.get("attempt_id") or "")
+            existing_attempt = self._connection.execute(
+                "SELECT COUNT(*) FROM delivery_attempts WHERE attempt_id = ?",
+                [attempt_id],
+            ).fetchone()
+            if (
+                len(queue) != 1
+                or not attempt_id
+                or int(existing_attempt[0]) != 0
+                or int(queue[0][5]) <= common["cursor_sequence"]
+                or str(queue[0][6]) != str(queue[0][7])
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "delivery attempt lacks one authoritative route-first queue"
+                )
+            common.update(
+                {
+                    "attempt_id": attempt_id,
+                    "delivery_id": str(queue[0][0]),
+                    "outbox_id": str(queue[0][1]),
+                    "attempt_number": int(queue[0][2]) + 1,
+                    "prior_attempt_number": int(queue[0][2]),
+                    "queue_revision": int(queue[0][3]),
+                    "event_sequence": int(queue[0][5]),
+                }
+            )
+            return common
+
+        expected_cursor_revision = command.parameters.get("expected_cursor_revision")
+        if (
+            isinstance(expected_cursor_revision, bool)
+            or not isinstance(expected_cursor_revision, int)
+            or expected_cursor_revision != common["cursor_revision"]
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "acknowledgement cursor revision is stale"
+            )
+        attempt_id = str(command.parameters.get("delivery_attempt_id") or "")
+        delivery = self._connection.execute(
+            """
+            SELECT attempts.delivery_id, attempts.attempt_number, attempts.status,
+                   queue.revision, queue.status, events.global_sequence
+            FROM delivery_attempts AS attempts
+            INNER JOIN event_delivery_queue AS queue
+              ON queue.delivery_id = attempts.delivery_id
+             AND queue.tenant_id = attempts.tenant_id
+             AND queue.federation_id = attempts.federation_id
+             AND queue.subscription_id = attempts.subscription_id
+             AND queue.subscription_revision = attempts.subscription_revision
+             AND queue.consumer_id = attempts.consumer_id
+            INNER JOIN domain_events AS events
+              ON events.event_id = attempts.event_id
+             AND events.tenant_id = attempts.tenant_id
+             AND events.federation_id = attempts.federation_id
+            WHERE attempts.attempt_id = ? AND attempts.tenant_id = ?
+              AND attempts.federation_id = ? AND attempts.event_id = ?
+              AND attempts.subscription_id = ?
+              AND attempts.subscription_revision = ?
+              AND attempts.consumer_id = ? AND attempts.fencing_epoch = ?
+              AND NOT EXISTS (
+                SELECT 1 FROM delivery_attempts AS newer
+                WHERE newer.event_id = attempts.event_id
+                  AND newer.subscription_id = attempts.subscription_id
+                  AND newer.subscription_revision = attempts.subscription_revision
+                  AND newer.consumer_id = attempts.consumer_id
+                  AND newer.attempt_number > attempts.attempt_number
+              )
+            LIMIT 2
+            """,
+            [
+                attempt_id, scope["tenant_id"], scope["federation_id"],
+                scope["event_id"], scope["subscription_id"],
+                common["subscription_revision"], scope["consumer_id"],
+                command.fence_epoch,
+            ],
+        ).fetchall()
+        next_eligible = self._connection.execute(
+            """
+            SELECT queue.representative_event_id, events.global_sequence
+            FROM event_delivery_queue AS queue
+            INNER JOIN domain_events AS events
+              ON events.event_id = queue.representative_event_id
+             AND events.tenant_id = queue.tenant_id
+             AND events.federation_id = queue.federation_id
+            WHERE queue.tenant_id = ? AND queue.federation_id = ?
+              AND queue.subscription_id = ? AND queue.subscription_revision = ?
+              AND queue.consumer_id = ?
+              AND queue.status IN ('pending','retry','delivered')
+              AND events.global_sequence > ?
+            ORDER BY events.global_sequence, queue.delivery_id LIMIT 1
+            """,
+            [
+                scope["tenant_id"], scope["federation_id"],
+                scope["subscription_id"], common["subscription_revision"],
+                scope["consumer_id"], common["cursor_sequence"],
+            ],
+        ).fetchall()
+        acknowledgement_id = str(command.parameters.get("acknowledgement_id") or "")
+        existing_ack = self._connection.execute(
+            "SELECT COUNT(*) FROM event_acknowledgements WHERE acknowledgement_id = ?",
+            [acknowledgement_id],
+        ).fetchone()
+        if (
+            len(delivery) != 1
+            or not next_eligible
+            or str(next_eligible[0][0]) != scope["event_id"]
+            or int(next_eligible[0][1]) != int(delivery[0][5])
+            or str(delivery[0][2]) != "delivered"
+            or str(delivery[0][4]) != "delivered"
+            or int(delivery[0][5]) <= common["cursor_sequence"]
+            or not acknowledgement_id
+            or int(existing_ack[0]) != 0
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "acknowledgement would skip or forge authoritative delivery work"
+            )
+        common.update(
+            {
+                "attempt_id": attempt_id,
+                "delivery_id": str(delivery[0][0]),
+                "attempt_number": int(delivery[0][1]),
+                "queue_revision": int(delivery[0][3]),
+                "event_sequence": int(delivery[0][5]),
+                "acknowledgement_id": acknowledgement_id,
+                "disposition": str(command.parameters.get("disposition") or ""),
+            }
+        )
+        return common
+
+    @staticmethod
+    def _authorize_mutation(
+        command: StateCommand,
+        operation: OwnerOperation,
+        parameters: Sequence[Any],
+        *,
+        grant: OwnerClientGrant,
+    ) -> None:
+        command_operation = str(command.parameters.get("operation") or "")
+        admitted = (
+            _COMMAND_MUTATION_CATALOG.get(command_operation, frozenset())
+            | _TRANSACTION_MUTATIONS
+            | (
+                _EVENT_MUTATIONS
+                if command_operation in _EVENT_EMITTING_COMMANDS
+                else frozenset()
+            )
+        )
+        if operation.name not in admitted:
+            raise TypedStateOwnerAuthorizationError(
+                "mutation is not admitted for this command operation"
+            )
+        if operation.name not in grant.allowed_operations:
+            raise TypedStateOwnerAuthorizationError(
+                "mutation operation is outside the client grant"
+            )
+        bound = {
+            name: parameters[index]
+            for index, name in enumerate(operation.parameter_names)
+        }
+        if operation.name in {
+            "casf_insert_process_birth_attestation",
+            "casf_insert_supervisor_runtime_lease",
+        }:
+            start_time, parent_pid, boot_id = _process_runtime_facts(
+                grant.peer_pid
+            )
+            expected_process = {
+                "process_id": grant.peer_pid,
+                "process_start_time_ticks": start_time,
+                "process_parent_id": parent_pid,
+                "process_boot_id": boot_id,
+            }
+            if operation.name == "casf_insert_process_birth_attestation":
+                expected_process = {
+                    "process_id": grant.peer_pid,
+                    "start_marker": str(start_time),
+                }
+            if any(
+                str(bound.get(field)) != str(value)
+                for field, value in expected_process.items()
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "supervisor runtime attestation differs from kernel peer facts"
+                )
+        for field in _SCOPE_FIELDS:
+            expected = command.parameters.get(field)
+            if expected in (None, ""):
+                continue
+            candidates = (field, f"scope_{field}", f"unique_{field}")
+            for candidate in candidates:
+                if candidate in bound and str(bound[candidate]) != str(expected):
+                    raise TypedStateOwnerAuthorizationError(
+                        "mutation scope differs from the admitted command"
+                    )
+        if command_operation in _FEDERATION_COMMANDS:
+            for field in ("tenant_id", "federation_id"):
+                candidates = (field, f"scope_{field}")
+                present = [candidate for candidate in candidates if candidate in bound]
+                if present and any(
+                    str(bound[candidate]) != str(command.parameters[field])
+                    for candidate in present
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "mutation tenant/federation scope differs"
+                    )
+
+    @staticmethod
+    def _manifest_bindings(
+        operation: OwnerOperation,
+        parameters: Sequence[Any],
+    ) -> dict[str, Any]:
+        return {
+            name: parameters[index]
+            for index, name in enumerate(operation.parameter_names)
+        }
+
+    @classmethod
+    def _record_manifest_mutation(
+        cls,
+        command: StateCommand,
+        operation: OwnerOperation,
+        parameters: Sequence[Any],
+        manifest: list[tuple[str, dict[str, Any]]],
+    ) -> None:
+        """Admit one mutation into the closed owner-side transaction machine."""
+
+        if len(manifest) >= MAX_TRANSACTION_MUTATIONS:
+            raise TypedStateOwnerAuthorizationError(
+                "transaction mutation manifest exceeds its closed bound"
+            )
+        name = operation.name
+        names = [item[0] for item in manifest]
+        if name not in _REPEATABLE_MUTATIONS and name in names:
+            raise TypedStateOwnerAuthorizationError(
+                "transaction repeats a singleton mutation role"
+            )
+        repeat_limit = _MUTATION_REPEAT_LIMITS.get(name, MAX_PARAMETER_COUNT)
+        if name in _REPEATABLE_MUTATIONS and names.count(name) >= repeat_limit:
+            raise TypedStateOwnerAuthorizationError(
+                "transaction repeats a mutation role beyond its closed bound"
+            )
+        if "txn_record_idempotency" in names:
+            raise TypedStateOwnerAuthorizationError(
+                "transaction mutation follows its idempotency seal"
+            )
+        if "txn_advance_store_revision" in names and name != "txn_record_idempotency":
+            raise TypedStateOwnerAuthorizationError(
+                "transaction mutation follows its store revision seal"
+            )
+        if name == "txn_record_idempotency" and (
+            not names or names[-1] != "txn_advance_store_revision"
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "idempotency seal must immediately follow store revision advance"
+            )
+
+        command_operation = str(command.parameters.get("operation") or "")
+        event_core_seen = [item for item in names if item in _EVENT_CORE_SEQUENCE]
+        if name in _EVENT_CORE_SEQUENCE:
+            expected_index = len(event_core_seen)
+            if (
+                expected_index >= len(_EVENT_CORE_SEQUENCE)
+                or name != _EVENT_CORE_SEQUENCE[expected_index]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "event/outbox mutation roles are missing, duplicated, or out of order"
+                )
+        elif name in {"casf_insert_event_parent", "casf_insert_changed_fact"}:
+            if (
+                "casf_insert_domain_event" not in names
+                or "casf_insert_outbox" in names
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "event lineage must follow its event and precede its outbox"
+                )
+        elif name in _COMMAND_MUTATION_CATALOG.get(
+            command_operation, frozenset()
+        ):
+            if event_core_seen and "casf_insert_outbox" not in names:
+                raise TypedStateOwnerAuthorizationError(
+                    "domain mutation cannot split the event/outbox manifest"
+                )
+            if "casf_insert_outbox" in names and name not in (
+                _POST_EVENT_DOMAIN_MUTATIONS.get(command_operation, frozenset())
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "domain mutation follows the sealed event/outbox pair"
+                )
+
+        bound = cls._manifest_bindings(operation, parameters)
+        if name == "txn_advance_store_revision":
+            expected = {
+                "new_revision": command.expected_revision + 1,
+                "generation": command.expected_generation,
+                "expected_revision": command.expected_revision,
+                "fence_epoch": command.fence_epoch,
+            }
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "store revision mutation differs from the admitted command"
+                )
+        elif name == "txn_record_idempotency":
+            expected = {
+                "idempotency_key": command.idempotency_key,
+                "command_kind": command.command_kind.value,
+                "command_id": command.command_id,
+                "store_id": command.store_id,
+                "session_id": command.session_id,
+            }
+            if any(str(bound.get(field) or "") != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "idempotency mutation differs from the admitted command"
+                )
+        elif name == "txn_cas_task_status":
+            expected_task_revision = command.parameters.get(
+                "expected_task_revision"
+            )
+            expected = {
+                "task_cid": command.parameters.get("task_cid"),
+                "expected_task_revision": expected_task_revision,
+                "new_revision": (
+                    expected_task_revision + 1
+                    if isinstance(expected_task_revision, int)
+                    and not isinstance(expected_task_revision, bool)
+                    else None
+                ),
+                "status": command.parameters.get("status"),
+            }
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "task status mutation differs from the admitted command"
+                )
+        manifest.append((name, bound))
+
+    def _validate_transaction_manifest(
+        self,
+        command: StateCommand,
+        manifest: Sequence[tuple[str, Mapping[str, Any]]],
+        *,
+        semantic_authority: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Reject partial effects; only a complete manifest or replay may commit."""
+
+        if not manifest:
+            row = self._connection.execute(
+                """
+                SELECT command_kind, command_id, store_id
+                FROM idempotency_records
+                WHERE idempotency_key = ? LIMIT 1
+                """,
+                [command.idempotency_key],
+            ).fetchone()
+            if row is None or (
+                str(row[0]) != command.command_kind.value
+                or str(row[1]) != command.command_id
+                or str(row[2]) != command.store_id
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "empty transaction is not an authoritative idempotent replay"
+                )
+            return
+
+        names = [item[0] for item in manifest]
+        command_operation = str(command.parameters.get("operation") or "")
+        required = _COMMAND_REQUIRED_DOMAIN_MUTATIONS.get(
+            command_operation, frozenset()
+        )
+        if not required.issubset(names):
+            raise TypedStateOwnerAuthorizationError(
+                "transaction omits a required domain mutation role"
+            )
+        if names[-2:] != [
+            "txn_advance_store_revision",
+            "txn_record_idempotency",
+        ]:
+            raise TypedStateOwnerAuthorizationError(
+                "transaction lacks its ordered revision and idempotency seals"
+            )
+        for seal in ("txn_advance_store_revision", "txn_record_idempotency"):
+            if names.count(seal) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "transaction seal mutation count differs"
+                )
+
+        if command_operation in _EVENT_EMITTING_COMMANDS:
+            for event_role in _EVENT_CORE_SEQUENCE:
+                if names.count(event_role) != 1:
+                    raise TypedStateOwnerAuthorizationError(
+                        "transaction event/outbox mutation count differs"
+                    )
+            event_positions = [names.index(item) for item in _EVENT_CORE_SEQUENCE]
+            if event_positions != sorted(event_positions):
+                raise TypedStateOwnerAuthorizationError(
+                    "transaction event/outbox mutation order differs"
+                )
+            self._validate_event_outbox_identity(manifest)
+        elif any(name in _EVENT_MUTATIONS for name in names):
+            raise TypedStateOwnerAuthorizationError(
+                "non-event command contains an event mutation"
+            )
+        if command_operation == "supervisor.runtime.attest":
+            self._validate_supervisor_runtime_identity(command, manifest)
+        if command_operation == "event.outbox.disposition":
+            self._validate_outbox_disposition_identity(command, manifest)
+        if semantic_authority:
+            self._validate_semantic_manifest(
+                command,
+                manifest,
+                semantic_authority,
+            )
+
+    def _validate_semantic_manifest(
+        self,
+        command: StateCommand,
+        manifest: Sequence[tuple[str, Mapping[str, Any]]],
+        authority: Mapping[str, Any],
+    ) -> None:
+        """Close semantic identities and post-state before durable commit."""
+
+        operation = str(authority.get("operation") or "")
+        by_name: dict[str, list[Mapping[str, Any]]] = {}
+        for name, bound in manifest:
+            by_name.setdefault(name, []).append(bound)
+
+        def one(name: str) -> Mapping[str, Any]:
+            values = by_name.get(name, [])
+            if len(values) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    f"semantic command requires exactly one {name} mutation"
+                )
+            return values[0]
+
+        def exact(bound: Mapping[str, Any], expected: Mapping[str, Any]) -> None:
+            if any(
+                str(bound.get(field) if bound.get(field) is not None else "")
+                != str(value if value is not None else "")
+                for field, value in expected.items()
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "semantic mutation differs from owner-resolved authority"
+                )
+
+        scope = dict(authority.get("scope") or {})
+        if operation == "supervisor.transition":
+            current = dict(authority["supervisor"])
+            target = str(authority["target_state"])
+            exact(
+                one("casf_update_supervisor_lifecycle"),
+                {
+                    "lifecycle_state": target,
+                    "status": target,
+                    "new_fencing_epoch": current["fencing_epoch"],
+                    "supervisor_id": scope["supervisor_id"],
+                    "tenant_id": scope["tenant_id"],
+                    "federation_id": scope["federation_id"],
+                    "expected_revision": current["revision"],
+                    "expected_fencing_epoch": current["fencing_epoch"],
+                },
+            )
+            event = one("casf_insert_domain_event")
+            exact(
+                event,
+                {
+                    "event_type": "SUPERVISOR_HEALTH_CHANGED",
+                    "stream_id": scope["federation_id"],
+                    "tenant_id": scope["tenant_id"],
+                    "federation_id": scope["federation_id"],
+                    "supervisor_id": scope["supervisor_id"],
+                    "session_id": command.session_id,
+                    "payload_ref": f"state:{target}",
+                    "effect_class": "authoritative_state",
+                },
+            )
+            if not str(event.get("deduplication_key") or "").startswith(
+                "supervisor-transition:"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "supervisor transition event deduplication class differs"
+                )
+            rows = self._connection.execute(
+                """
+                SELECT lifecycle_state, status, revision, fencing_epoch
+                FROM supervisor_instances
+                WHERE supervisor_id = ? AND tenant_id = ? AND federation_id = ?
+                LIMIT 2
+                """,
+                [scope["supervisor_id"], scope["tenant_id"], scope["federation_id"]],
+            ).fetchall()
+            if len(rows) != 1 or (
+                str(rows[0][0]) != target
+                or str(rows[0][1]) != target
+                or int(rows[0][2]) != int(current["revision"]) + 1
+                or int(rows[0][3]) != int(current["fencing_epoch"])
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "supervisor lifecycle CAS did not produce exact post-state"
+                )
+            return
+
+        if operation == "supervisor.runtime.attest":
+            current = dict(authority["supervisor"])
+            process_birth_id = str(authority["expected_process_birth_id"])
+            runtime_revision = int(authority["runtime_revision"])
+            birth = one("casf_insert_process_birth_attestation")
+            lease = one("casf_insert_supervisor_runtime_lease")
+            update = one("casf_update_supervisor_process_birth")
+            exact(
+                birth,
+                {
+                    "process_birth_id": process_birth_id,
+                    "tenant_id": scope["tenant_id"],
+                    "federation_id": scope["federation_id"],
+                    "supervisor_id": scope["supervisor_id"],
+                    "subagent_id": "",
+                },
+            )
+            exact(
+                lease,
+                {
+                    "tenant_id": scope["tenant_id"],
+                    "federation_id": scope["federation_id"],
+                    "supervisor_id": scope["supervisor_id"],
+                    "lease_id": current["lease_id"],
+                    "process_birth_id": process_birth_id,
+                    "process_id": birth["process_id"],
+                    "process_start_time_ticks": birth["start_marker"],
+                    "fencing_epoch": current["fencing_epoch"],
+                    "revision": runtime_revision,
+                },
+            )
+            exact(
+                update,
+                {
+                    "process_birth_id": process_birth_id,
+                    "supervisor_id": scope["supervisor_id"],
+                    "tenant_id": scope["tenant_id"],
+                    "federation_id": scope["federation_id"],
+                    "expected_revision": current["revision"],
+                    "fencing_epoch": current["fencing_epoch"],
+                    "current_process_birth_id": process_birth_id,
+                },
+            )
+            superseded = by_name.get("casf_supersede_supervisor_runtime_lease", [])
+            latest_id = str(authority.get("latest_runtime_lease_id") or "")
+            if latest_id:
+                if len(superseded) != 1:
+                    raise TypedStateOwnerAuthorizationError(
+                        "runtime renewal did not supersede its exact prior lease"
+                    )
+                exact(
+                    superseded[0],
+                    {
+                        "runtime_lease_id": latest_id,
+                        "tenant_id": scope["tenant_id"],
+                        "federation_id": scope["federation_id"],
+                        "supervisor_id": scope["supervisor_id"],
+                        "expected_revision": authority["latest_runtime_revision"],
+                    },
+                )
+            elif superseded:
+                raise TypedStateOwnerAuthorizationError(
+                    "initial runtime attestation cannot supersede a lease"
+                )
+            event = one("casf_insert_domain_event")
+            exact(
+                event,
+                {
+                    "event_type": "SUPERVISOR_HEALTH_CHANGED",
+                    "stream_id": scope["federation_id"],
+                    "tenant_id": scope["tenant_id"],
+                    "federation_id": scope["federation_id"],
+                    "supervisor_id": scope["supervisor_id"],
+                    "session_id": command.session_id,
+                    "payload_ref": lease["evidence_ref"],
+                    "effect_class": "authoritative_state",
+                },
+            )
+            if not str(event.get("deduplication_key") or "").startswith(
+                "supervisor-runtime-attest:"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "runtime attestation event deduplication class differs"
+                )
+            rows = self._connection.execute(
+                """
+                SELECT supervisors.process_birth_id, leases.revision,
+                       leases.status, births.status
+                FROM supervisor_instances AS supervisors
+                INNER JOIN supervisor_runtime_leases AS leases
+                  ON leases.process_birth_id = supervisors.process_birth_id
+                 AND leases.tenant_id = supervisors.tenant_id
+                 AND leases.federation_id = supervisors.federation_id
+                 AND leases.supervisor_id = supervisors.supervisor_id
+                INNER JOIN process_births AS births
+                  ON births.process_birth_id = leases.process_birth_id
+                 AND births.tenant_id = leases.tenant_id
+                 AND births.federation_id = leases.federation_id
+                 AND births.supervisor_id = leases.supervisor_id
+                WHERE supervisors.supervisor_id = ?
+                  AND supervisors.tenant_id = ? AND supervisors.federation_id = ?
+                  AND leases.runtime_lease_id = ?
+                LIMIT 2
+                """,
+                [
+                    scope["supervisor_id"], scope["tenant_id"],
+                    scope["federation_id"], lease["runtime_lease_id"],
+                ],
+            ).fetchall()
+            if len(rows) != 1 or (
+                str(rows[0][0]) != process_birth_id
+                or int(rows[0][1]) != runtime_revision
+                or str(rows[0][2]) != "active"
+                or str(rows[0][3]) != "active"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "runtime attestation did not produce exact process-bound post-state"
+                )
+            return
+
+        if operation == "event.delivery.record":
+            attempt = one("casf_insert_delivery_attempt")
+            queue = one("casf_mark_queue_delivered")
+            exact(
+                attempt,
+                {
+                    "attempt_id": authority["attempt_id"],
+                    "tenant_id": scope["tenant_id"],
+                    "federation_id": scope["federation_id"],
+                    "event_id": scope["event_id"],
+                    "outbox_id": authority["outbox_id"],
+                    "delivery_id": authority["delivery_id"],
+                    "subscription_id": scope["subscription_id"],
+                    "subscription_revision": authority["subscription_revision"],
+                    "consumer_id": scope["consumer_id"],
+                    "attempt_number": authority["attempt_number"],
+                    "fencing_epoch": command.fence_epoch,
+                    "status": "delivered",
+                    "error_code": "",
+                },
+            )
+            exact(
+                queue,
+                {
+                    "attempt_number": authority["attempt_number"],
+                    "delivery_id": authority["delivery_id"],
+                    "tenant_id": scope["tenant_id"],
+                    "federation_id": scope["federation_id"],
+                    "subscription_id": scope["subscription_id"],
+                    "subscription_revision": authority["subscription_revision"],
+                    "consumer_id": scope["consumer_id"],
+                    "prior_attempt_number": authority["prior_attempt_number"],
+                    "expected_revision": authority["queue_revision"],
+                    "fencing_epoch": command.fence_epoch,
+                },
+            )
+            rows = self._connection.execute(
+                """
+                SELECT attempts.status, attempts.attempt_number,
+                       queue.status, queue.attempt_number, queue.revision
+                FROM delivery_attempts AS attempts
+                INNER JOIN event_delivery_queue AS queue
+                  ON queue.delivery_id = attempts.delivery_id
+                 AND queue.tenant_id = attempts.tenant_id
+                 AND queue.federation_id = attempts.federation_id
+                 AND queue.subscription_id = attempts.subscription_id
+                 AND queue.consumer_id = attempts.consumer_id
+                WHERE attempts.attempt_id = ? LIMIT 2
+                """,
+                [authority["attempt_id"]],
+            ).fetchall()
+            if len(rows) != 1 or (
+                str(rows[0][0]) != "delivered"
+                or int(rows[0][1]) != int(authority["attempt_number"])
+                or str(rows[0][2]) != "delivered"
+                or int(rows[0][3]) != int(authority["attempt_number"])
+                or int(rows[0][4]) != int(authority["queue_revision"]) + 1
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "delivery record did not produce exact queue post-state"
+                )
+            return
+
+        if operation != "event.acknowledge":
+            raise TypedStateOwnerAuthorizationError(
+                "semantic authority operation is unsupported"
+            )
+        if str(authority.get("disposition") or "") != "processed":
+            raise TypedStateOwnerAuthorizationError(
+                "runtime acknowledgement disposition is not admitted"
+            )
+        exact(
+            one("casf_mark_delivery_acknowledged"),
+            {
+                "attempt_id": authority["attempt_id"],
+                "tenant_id": scope["tenant_id"],
+                "federation_id": scope["federation_id"],
+                "event_id": scope["event_id"],
+                "subscription_id": scope["subscription_id"],
+                "consumer_id": scope["consumer_id"],
+                "subscription_revision": authority["subscription_revision"],
+                "fencing_epoch": command.fence_epoch,
+            },
+        )
+        exact(
+            one("casf_mark_queue_acknowledged"),
+            {
+                "delivery_id": authority["delivery_id"],
+                "tenant_id": scope["tenant_id"],
+                "federation_id": scope["federation_id"],
+                "subscription_id": scope["subscription_id"],
+                "subscription_revision": authority["subscription_revision"],
+                "consumer_id": scope["consumer_id"],
+                "fencing_epoch": command.fence_epoch,
+                "expected_revision": authority["queue_revision"],
+            },
+        )
+        exact(
+            one("casf_reset_subscription_failures"),
+            {
+                "tenant_id": scope["tenant_id"],
+                "federation_id": scope["federation_id"],
+                "subscription_id": scope["subscription_id"],
+                "subscription_revision": authority["subscription_revision"],
+                "consumer_id": scope["consumer_id"],
+            },
+        )
+        acknowledgement = one("casf_insert_event_acknowledgement")
+        exact(
+            acknowledgement,
+            {
+                "acknowledgement_id": authority["acknowledgement_id"],
+                "tenant_id": scope["tenant_id"],
+                "federation_id": scope["federation_id"],
+                "event_id": scope["event_id"],
+                "subscription_id": scope["subscription_id"],
+                "consumer_id": scope["consumer_id"],
+                "subscription_revision": authority["subscription_revision"],
+                "global_sequence": authority["event_sequence"],
+                "delivery_attempt_id": authority["attempt_id"],
+                "cursor_revision": int(authority["cursor_revision"]) + 1,
+                "fencing_epoch": command.fence_epoch,
+                "disposition": "processed",
+            },
+        )
+        cursor = one("casf_advance_consumer_cursor")
+        exact(
+            cursor,
+            {
+                "global_sequence": authority["event_sequence"],
+                "store_generation": command.expected_generation,
+                "last_event_id": scope["event_id"],
+                "consumer_id": scope["consumer_id"],
+                "subscription_id": scope["subscription_id"],
+                "subscription_revision": authority["subscription_revision"],
+                "expected_revision": authority["cursor_revision"],
+                "expected_fencing_epoch": command.fence_epoch,
+                "upper_global_sequence": authority["event_sequence"],
+            },
+        )
+        rows = self._connection.execute(
+            """
+            SELECT attempts.status, queue.status, queue.revision,
+                   cursors.global_sequence, cursors.last_event_id,
+                   cursors.revision, acknowledgements.global_sequence
+            FROM delivery_attempts AS attempts
+            INNER JOIN event_delivery_queue AS queue
+              ON queue.delivery_id = attempts.delivery_id
+             AND queue.tenant_id = attempts.tenant_id
+             AND queue.federation_id = attempts.federation_id
+             AND queue.subscription_id = attempts.subscription_id
+             AND queue.consumer_id = attempts.consumer_id
+            INNER JOIN consumer_cursors AS cursors
+              ON cursors.consumer_id = attempts.consumer_id
+             AND cursors.subscription_id = attempts.subscription_id
+             AND cursors.tenant_id = attempts.tenant_id
+             AND cursors.federation_id = attempts.federation_id
+            INNER JOIN event_acknowledgements AS acknowledgements
+              ON acknowledgements.delivery_attempt_id = attempts.attempt_id
+             AND acknowledgements.event_id = attempts.event_id
+             AND acknowledgements.consumer_id = attempts.consumer_id
+            WHERE attempts.attempt_id = ?
+              AND acknowledgements.acknowledgement_id = ? LIMIT 2
+            """,
+            [authority["attempt_id"], authority["acknowledgement_id"]],
+        ).fetchall()
+        if len(rows) != 1 or (
+            str(rows[0][0]) != "acknowledged"
+            or str(rows[0][1]) != "acknowledged"
+            or int(rows[0][2]) != int(authority["queue_revision"]) + 1
+            or int(rows[0][3]) != int(authority["event_sequence"])
+            or str(rows[0][4]) != scope["event_id"]
+            or int(rows[0][5]) != int(authority["cursor_revision"]) + 1
+            or int(rows[0][6]) != int(authority["event_sequence"])
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "acknowledgement did not produce exact non-skipping cursor post-state"
+            )
+
+    @staticmethod
+    def _validate_supervisor_runtime_identity(
+        command: StateCommand,
+        manifest: Sequence[tuple[str, Mapping[str, Any]]],
+    ) -> None:
+        by_name: dict[str, list[Mapping[str, Any]]] = {}
+        for name, bound in manifest:
+            by_name.setdefault(name, []).append(bound)
+        birth = by_name["casf_insert_process_birth_attestation"][0]
+        lease = by_name["casf_insert_supervisor_runtime_lease"][0]
+        update = by_name["casf_update_supervisor_process_birth"][0]
+        process_birth_id = str(birth.get("process_birth_id") or "")
+        expected_supervisor = str(command.parameters.get("supervisor_id") or "")
+        if (
+            not process_birth_id
+            or str(lease.get("process_birth_id") or "") != process_birth_id
+            or str(update.get("process_birth_id") or "") != process_birth_id
+            or str(update.get("current_process_birth_id") or "")
+            != process_birth_id
+            or any(
+                str(item.get("supervisor_id") or "") != expected_supervisor
+                for item in (birth, lease, update)
+            )
+            or str(lease.get("process_id")) != str(birth.get("process_id"))
+            or str(lease.get("process_start_time_ticks"))
+            != str(birth.get("start_marker"))
+            or int(lease.get("fencing_epoch") or 0) != command.fence_epoch
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "supervisor runtime mutation identities do not close"
+            )
+        superseded = by_name.get("casf_supersede_supervisor_runtime_lease", [])
+        if len(superseded) > 1:
+            raise TypedStateOwnerAuthorizationError(
+                "supervisor runtime renewal supersedes multiple leases"
+            )
+        if superseded and (
+            str(superseded[0].get("supervisor_id") or "")
+            != expected_supervisor
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "supervisor runtime renewal crosses supervisor identity"
+            )
+
+    @staticmethod
+    def _validate_outbox_disposition_identity(
+        command: StateCommand,
+        manifest: Sequence[tuple[str, Mapping[str, Any]]],
+    ) -> None:
+        by_name: dict[str, list[Mapping[str, Any]]] = {}
+        for name, bound in manifest:
+            by_name.setdefault(name, []).append(bound)
+        disposition = by_name["casf_insert_outbox_routing_disposition"][0]
+        members = by_name["casf_insert_outbox_routing_disposition_event"]
+        marked = by_name["casf_mark_outbox_routed"]
+        event_count = command.parameters.get("event_count")
+        if (
+            isinstance(event_count, bool)
+            or not isinstance(event_count, int)
+            or not 1 <= event_count <= 1_024
+            or len(members) != event_count
+            or len(marked) != event_count
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "outbox disposition event population differs"
+            )
+        disposition_id = str(disposition.get("disposition_id") or "")
+        route_batch_id = str(command.parameters.get("route_batch_id") or "")
+        if (
+            not disposition_id
+            or str(command.parameters.get("disposition_id") or "")
+            != disposition_id
+            or str(disposition.get("route_batch_id") or "") != route_batch_id
+            or int(disposition.get("event_count") or 0) != event_count
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "outbox disposition receipt differs from its command"
+            )
+        member_ids = [str(item.get("event_id") or "") for item in members]
+        marked_ids = [str(item.get("event_id") or "") for item in marked]
+        ordinals = [int(item.get("ordinal") or 0) for item in members]
+        if (
+            len(set(member_ids)) != event_count
+            or member_ids != marked_ids
+            or ordinals != list(range(1, event_count + 1))
+            or any(
+                str(item.get("disposition_id") or "") != disposition_id
+                for item in members
+            )
+            or any(
+                int(member.get("global_sequence") or 0)
+                != int(mark.get("global_sequence") or 0)
+                # Python 3.8 compatibility forbids ``zip(strict=True)``.  The
+                # equal-length predicate above supplies the same safety check.
+                for member, mark in zip(members, marked)  # noqa: B905
+            )
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                "outbox disposition members and CAS mutations differ"
+            )
+
+    @staticmethod
+    def _validate_event_outbox_identity(
+        manifest: Sequence[tuple[str, Mapping[str, Any]]],
+    ) -> None:
+        by_name: dict[str, list[Mapping[str, Any]]] = {}
+        for name, bound in manifest:
+            by_name.setdefault(name, []).append(bound)
+        event = by_name["casf_insert_domain_event"][0]
+        outbox = by_name["casf_insert_outbox"][0]
+        for field in (
+            "event_id",
+            "event_cid",
+            "stream_id",
+            "stream_sequence",
+            "global_sequence",
+            "tenant_id",
+            "federation_id",
+        ):
+            if event.get(field) != outbox.get(field):
+                raise TypedStateOwnerAuthorizationError(
+                    "event and outbox identities differ"
+                )
+        for name in ("casf_insert_event_parent", "casf_insert_changed_fact"):
+            if any(item.get("event_id") != event.get("event_id") for item in by_name.get(name, [])):
+                raise TypedStateOwnerAuthorizationError(
+                    "event lineage identity differs from its event"
+                )
+        for name in ("casf_seed_stream_head", "casf_advance_stream_head"):
+            stream = by_name[name][0]
+            for field in ("stream_id", "tenant_id", "federation_id"):
+                if stream.get(field) != event.get(field):
+                    raise TypedStateOwnerAuthorizationError(
+                        "event stream head scope differs from its event"
+                    )
+
+    def _execute(self, operation: OwnerOperation, parameters: list[Any]) -> dict[str, Any]:
+        result = self._connection.execute(
+            operation.sql,
+            parameters if parameters else None,
+        )
+        return {
+            "ok": True,
+            "columns": list(_result_columns(result)),
+            "rows": _result_rows(result),
+            "rowcount": int(getattr(result, "rowcount", -1) or -1),
+        }
+
+    @staticmethod
+    def _error_code(exc: BaseException) -> str:
+        text = str(exc).casefold()
+        if "unique" in text or "constraint" in text or "duplicate" in text:
+            return "constraint_conflict"
+        if isinstance(exc, TypedStateOwnerAuthorizationError):
+            return "authorization_denied"
+        if isinstance(exc, TypedStateOwnerProtocolError):
+            return "protocol_denied"
+        return "operation_failed"
+
+
+class TypedStateOwnerConnection:
+    """Client-side DB-API compatibility facade over named owner operations."""
+
+    def __init__(
+        self,
+        *,
+        socket_path: Path,
+        token: str,
+        client_id: str,
+        process_birth_id: str,
+        store_id: str,
+        timeout_seconds: float = 30.0,
+        status_bootstrap: bool = False,
+    ) -> None:
+        if not token or len(token) < 16:
+            raise TypedStateOwnerAuthorizationError("typed owner token is unavailable")
+        self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._socket.settimeout(float(timeout_seconds))
+        self._socket.connect(str(socket_path))
+        self._request_lock = threading.RLock()
+        self._closed = False
+        self._active = False
+        self._prepared_command: StateCommand | None = None
+        self._request_index = 0
+        opened = self._request(
+            "open_status" if status_bootstrap else "open",
+            token=token,
+            client_id=client_id,
+            process_birth_id=process_birth_id,
+            store_id=store_id,
+        )
+        self.identity = MappingProxyType(dict(opened.get("identity") or {}))
+        self.catalog_id = str(opened.get("catalog_id") or "")
+        self.session_id = str(opened.get("session_id") or "")
+        self.grant = MappingProxyType(dict(opened.get("grant") or {}))
+        if not self.session_id:
+            raise TypedStateOwnerProtocolError(
+                "typed owner handshake returned no admitted session"
+            )
+
+    @property
+    def supports_event_wait(self) -> bool:
+        """Whether this exact server-issued grant admits typed long waits."""
+
+        operations = self.grant.get("allowed_operations") or ()
+        return "event.wait" in operations
+
+    def wait_for_events(self, request: Any) -> Any:
+        """Execute one bounded long wait inside the exclusive state owner."""
+
+        from ..federation.events import EventBatch, EventWaitRequest
+
+        if not isinstance(request, EventWaitRequest):
+            raise TypedStateOwnerProtocolError(
+                "typed owner event wait requires EventWaitRequest"
+            )
+        response = self._request("wait_events", wait_request=request.to_dict())
+        return EventBatch.from_dict(response.get("batch") or {})
+
+    def cancel_event_wait(self, consumer_id: str) -> None:
+        self._request(
+            "cancel_event_wait",
+            consumer_id=str(consumer_id or "").strip(),
+        )
+
+    def clear_event_wait_cancellation(self, consumer_id: str) -> None:
+        self._request(
+            "clear_event_wait_cancellation",
+            consumer_id=str(consumer_id or "").strip(),
+        )
+
+    def prepare_command(self, command: StateCommand) -> None:
+        if not isinstance(command, StateCommand):
+            raise TypedStateOwnerProtocolError("prepared command must be typed")
+        if self._active:
+            raise TypedStateOwnerProtocolError("cannot replace an active command")
+        self._prepared_command = command
+
+    def execute_operation(self, operation: str, parameters: Sequence[Any] | None = None) -> TypedOwnerResult:
+        response = self._request(
+            "execute",
+            operation=str(operation or ""),
+            parameters=_closed_parameters(parameters),
+        )
+        return TypedOwnerResult(
+            response.get("columns") or (),
+            response.get("rows") or (),
+            int(response.get("rowcount") or -1),
+        )
+
+    def execute(self, sql: str, parameters: Sequence[Any] | None = None) -> TypedOwnerResult:
+        normalized = _normalize_sql(sql).upper()
+        if normalized == "BEGIN TRANSACTION":
+            if self._prepared_command is None:
+                raise TypedStateOwnerAuthorizationError(
+                    "Quack mutations require a typed admitted StateCommand"
+                )
+            self._request("begin", command=self._prepared_command.to_dict())
+            self._active = True
+            return TypedOwnerResult((), (), -1)
+        if normalized == "COMMIT":
+            self.commit()
+            return TypedOwnerResult((), (), -1)
+        if normalized == "ROLLBACK":
+            self.rollback()
+            return TypedOwnerResult((), (), -1)
+        return self.execute_operation(internal_operation_for_sql(sql), parameters)
+
+    def commit(self) -> None:
+        if not self._active:
+            return
+        self._request("commit")
+        self._active = False
+        self._prepared_command = None
+
+    def rollback(self) -> None:
+        if not self._active:
+            self._prepared_command = None
+            return
+        try:
+            self._request("rollback")
+        finally:
+            self._active = False
+            self._prepared_command = None
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        try:
+            self.rollback()
+            self._request("close")
+        except Exception:
+            pass
+        finally:
+            self._closed = True
+            self._socket.close()
+
+    def _request(self, action: str, **fields: Any) -> dict[str, Any]:
+        with self._request_lock:
+            if self._closed:
+                raise TypedStateOwnerProtocolError("typed owner connection is closed")
+            self._request_index += 1
+            request_id = f"request:{os.getpid()}:{self._request_index}:{uuid.uuid4().hex}"
+            _send_frame(
+                self._socket,
+                {
+                    "schema": TYPED_STATE_OWNER_SCHEMA,
+                    "action": action,
+                    "request_id": request_id,
+                    **fields,
+                },
+            )
+            response = _receive_frame(self._socket)
+            allowed = {
+                "schema",
+                "request_id",
+                "ok",
+                "identity",
+                "catalog_id",
+                "session_id",
+                "grant",
+                "batch",
+                "columns",
+                "rows",
+                "rowcount",
+                "error_code",
+                "error_type",
+            }
+            if (
+                set(response) - allowed
+                or response.get("schema") != TYPED_STATE_OWNER_SCHEMA
+                or response.get("request_id") != request_id
+            ):
+                raise TypedStateOwnerProtocolError("typed owner response identity differs")
+            if response.get("ok") is not True:
+                # The exclusive owner rolls back and releases its transaction
+                # lock on every request failure.  Mirror that terminal state
+                # locally so a bounded retry can prepare a fresh command
+                # instead of retaining a phantom active transaction.
+                if self._active:
+                    self._active = False
+                    self._prepared_command = None
+                raise TypedStateOwnerRemoteError(
+                    str(response.get("error_code") or "operation_failed"),
+                    str(response.get("error_type") or ""),
+                )
+            return response
+
+
+def typed_owner_socket_path(store_id: str, explicit: str = "") -> Path:
+    """Resolve the launcher-controlled socket; never accept a database path payload."""
+
+    selected = str(explicit or os.environ.get(TYPED_STATE_OWNER_SOCKET_ENV, "") or "").strip()
+    if selected:
+        path = Path(selected).expanduser().resolve(strict=False)
+    else:
+        store = Path(str(store_id or "")).expanduser().resolve(strict=False)
+        path = store.parent / "quack-owner" / TYPED_STATE_OWNER_SOCKET_FILENAME
+    return path
+
+
+def open_typed_state_owner_connection(
+    *,
+    store_id: str,
+    client_id: str,
+    process_birth_id: str,
+    timeout_seconds: float = 30.0,
+) -> TypedStateOwnerConnection:
+    token = str(os.environ.get(TYPED_STATE_OWNER_TOKEN_ENV, "") or "").strip()
+    return TypedStateOwnerConnection(
+        socket_path=typed_owner_socket_path(store_id),
+        token=token,
+        client_id=client_id,
+        process_birth_id=process_birth_id,
+        store_id=store_id,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+__all__ = [
+    "OwnerOperation",
+    "OwnerClientGrant",
+    "STATUS_BOOTSTRAP_ALLOWED_OPERATIONS",
+    "STATUS_BOOTSTRAP_CLIENT_ID",
+    "STATUS_BOOTSTRAP_GRANT_TTL_SECONDS",
+    "SUPERVISOR_EVENT_CHILD_ALLOWED_OPERATIONS",
+    "SUPERVISOR_RUNTIME_CHILD_ALLOWED_OPERATIONS",
+    "TYPED_STATE_OWNER_INTERFACE",
+    "TYPED_STATE_OWNER_SCHEMA",
+    "TYPED_STATE_OWNER_SOCKET_ENV",
+    "TYPED_STATE_OWNER_SOCKET_FILENAME",
+    "TYPED_STATE_OWNER_TOKEN_ENV",
+    "TYPED_STATE_OWNER_TOKEN_FILENAME",
+    "TypedOwnerResult",
+    "TypedStateOwnerAuthorizationError",
+    "TypedStateOwnerConnection",
+    "TypedStateOwnerError",
+    "TypedStateOwnerGateway",
+    "TypedStateOwnerProtocolError",
+    "TypedStateOwnerRemoteError",
+    "build_control_plane_operation_catalog",
+    "catalog_fingerprint",
+    "internal_operation_for_sql",
+    "open_typed_state_owner_connection",
+    "typed_owner_socket_path",
+]

@@ -42,30 +42,16 @@ GOAL_ID: Final[str] = "VFS-030"
 SECURITY_ANALYSIS_IS_COMPLETION_EVIDENCE: Final[bool] = False
 SECURITY_ANALYSIS_AUTHORIZES_REPAIR: Final[bool] = False
 
-FLOW_NODE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/security-flow-node@1"
-)
-FLOW_EDGE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/security-flow-edge@1"
-)
-SECURITY_PROPERTY_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/security-property@1"
-)
-THREAT_PATH_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/security-threat-path@1"
-)
-SECURITY_EVIDENCE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/security-evidence@1"
-)
-SECURITY_FINDING_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/security-finding@1"
-)
+FLOW_NODE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/security-flow-node@1"
+FLOW_EDGE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/security-flow-edge@1"
+SECURITY_PROPERTY_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/security-property@1"
+THREAT_PATH_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/security-threat-path@1"
+SECURITY_EVIDENCE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/security-evidence@1"
+SECURITY_FINDING_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/security-finding@1"
 SECURITY_ANALYSIS_REPORT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/security-analysis-report@1"
 )
-SECURITY_RULE_SCHEMA: Final[str] = (
-    "ipfs_accelerate_py/agent-supervisor/security-rule@1"
-)
+SECURITY_RULE_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/security-rule@1"
 
 MAX_TEXT_BYTES: Final[int] = 8_192
 MAX_CLAUSE_BYTES: Final[int] = 4_096
@@ -211,13 +197,9 @@ def _text(
     if not isinstance(value, str):
         raise SecurityContractAnalysisError(f"{field_name} must be a string")
     if "\x00" in value:
-        raise SecurityContractAnalysisError(
-            f"{field_name} must not contain NUL"
-        )
+        raise SecurityContractAnalysisError(f"{field_name} must not contain NUL")
     if len(value.encode("utf-8")) > maximum:
-        raise SecurityContractBoundsError(
-            f"{field_name} exceeds {maximum} bytes"
-        )
+        raise SecurityContractBoundsError(f"{field_name} exceeds {maximum} bytes")
     if required and not value.strip():
         raise SecurityContractAnalysisError(f"{field_name} must be non-empty")
     return value
@@ -239,13 +221,9 @@ def _integer(
     if isinstance(value, bool) or not isinstance(value, int):
         raise SecurityContractAnalysisError(f"{field_name} must be an integer")
     if value < minimum:
-        raise SecurityContractAnalysisError(
-            f"{field_name} must be >= {minimum}"
-        )
+        raise SecurityContractAnalysisError(f"{field_name} must be >= {minimum}")
     if maximum is not None and value > maximum:
-        raise SecurityContractBoundsError(
-            f"{field_name} exceeds maximum {maximum}"
-        )
+        raise SecurityContractBoundsError(f"{field_name} exceeds maximum {maximum}")
     return value
 
 
@@ -259,9 +237,7 @@ def _enum(value: Any, enum_type: type[E], *, field_name: str) -> E:
             raise SecurityContractAnalysisError(
                 f"{field_name} is not a valid {enum_type.__name__}"
             ) from exc
-    raise SecurityContractAnalysisError(
-        f"{field_name} must be a {enum_type.__name__} or string"
-    )
+    raise SecurityContractAnalysisError(f"{field_name} must be a {enum_type.__name__} or string")
 
 
 def _strings(
@@ -279,13 +255,9 @@ def _strings(
             raise SecurityContractAnalysisError(f"{field_name} is required")
         return ()
     if isinstance(values, str) or not isinstance(values, Sequence):
-        raise SecurityContractAnalysisError(
-            f"{field_name} must be a sequence of strings"
-        )
+        raise SecurityContractAnalysisError(f"{field_name} must be a sequence of strings")
     if len(values) > maximum:
-        raise SecurityContractBoundsError(
-            f"{field_name} exceeds {maximum} items"
-        )
+        raise SecurityContractBoundsError(f"{field_name} exceeds {maximum} items")
     items: list[str] = []
     seen: set[str] = set()
     for index, raw in enumerate(values):
@@ -296,9 +268,7 @@ def _strings(
             maximum=item_bytes,
         )
         if unique and text in seen:
-            raise SecurityContractAnalysisError(
-                f"{field_name} contains duplicate entry {text!r}"
-            )
+            raise SecurityContractAnalysisError(f"{field_name} contains duplicate entry {text!r}")
         seen.add(text)
         items.append(text)
     if sort:
@@ -318,9 +288,7 @@ def _check_header(payload: Mapping[str, Any], expected_schema: str) -> None:
         )
     version = payload.get("schema_version", payload.get("contract_version"))
     if version is not None and int(version) != SECURITY_CONTRACT_ANALYSIS_VERSION:
-        raise SecurityContractAnalysisError(
-            f"unsupported schema_version {version!r}"
-        )
+        raise SecurityContractAnalysisError(f"unsupported schema_version {version!r}")
 
 
 def _reject_unknown(
@@ -372,9 +340,7 @@ def _reject_body_keys(payload: Mapping[str, Any], *, field_name: str) -> None:
     for key in payload:
         lowered = str(key).lower()
         if lowered in _FORBIDDEN_BODY_KEYS:
-            raise ForbiddenBodyError(
-                f"{field_name} must not include body/secret field {key!r}"
-            )
+            raise ForbiddenBodyError(f"{field_name} must not include body/secret field {key!r}")
 
 
 def _record(
@@ -393,13 +359,9 @@ def _record(
     if isinstance(value, Mapping):
         from_dict = getattr(cls, "from_dict", None)
         if from_dict is None:
-            raise SecurityContractAnalysisError(
-                f"{field_name} cannot be decoded from mapping"
-            )
+            raise SecurityContractAnalysisError(f"{field_name} cannot be decoded from mapping")
         return from_dict(value)
-    raise SecurityContractAnalysisError(
-        f"{field_name} must be a {cls.__name__} or mapping"
-    )
+    raise SecurityContractAnalysisError(f"{field_name} must be a {cls.__name__} or mapping")
 
 
 def _records(
@@ -412,13 +374,9 @@ def _records(
     if values is None:
         return ()
     if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
-        raise SecurityContractAnalysisError(
-            f"{field_name} must be a sequence of {cls.__name__}"
-        )
+        raise SecurityContractAnalysisError(f"{field_name} must be a sequence of {cls.__name__}")
     if len(values) > maximum:
-        raise SecurityContractBoundsError(
-            f"{field_name} exceeds {maximum} items"
-        )
+        raise SecurityContractBoundsError(f"{field_name} exceeds {maximum} items")
     result: list[T] = []
     for index, item in enumerate(values):
         field = f"{field_name}[{index}]"
@@ -455,18 +413,11 @@ _RULE_SPECS: Final[tuple[SecurityRuleSpec, ...]] = (
         rule_id="sec/path-traversal-scope-loss",
         name="Path traversal / scope loss",
         short_description=(
-            "Untrusted path component reaches a filesystem operation "
-            "without scope confinement."
+            "Untrusted path component reaches a filesystem operation without scope confinement."
         ),
-        source_tags=frozenset(
-            {"untrusted_path", "user_path", "request_path", "cli_path"}
-        ),
-        sink_tags=frozenset(
-            {"fs_open", "fs_read", "fs_write", "fs_unlink", "path_resolve"}
-        ),
-        sanitizer_tags=frozenset(
-            {"path_canonicalize", "scope_confine", "root_jail"}
-        ),
+        source_tags=frozenset({"untrusted_path", "user_path", "request_path", "cli_path"}),
+        sink_tags=frozenset({"fs_open", "fs_read", "fs_write", "fs_unlink", "path_resolve"}),
+        sanitizer_tags=frozenset({"path_canonicalize", "scope_confine", "root_jail"}),
         default_impact="Arbitrary file read/write outside the declared root.",
         default_severity="high",
     ),
@@ -474,12 +425,8 @@ _RULE_SPECS: Final[tuple[SecurityRuleSpec, ...]] = (
         family=SecurityRuleFamily.AUTHORIZATION_CAPABILITY_BYPASS,
         rule_id="sec/authorization-capability-bypass",
         name="Authorization / capability bypass",
-        short_description=(
-            "Privileged action is reachable without a matching capability check."
-        ),
-        source_tags=frozenset(
-            {"unauthenticated", "untrusted_principal", "forged_token"}
-        ),
+        short_description=("Privileged action is reachable without a matching capability check."),
+        source_tags=frozenset({"unauthenticated", "untrusted_principal", "forged_token"}),
         sink_tags=frozenset(
             {
                 "privileged_action",
@@ -488,9 +435,7 @@ _RULE_SPECS: Final[tuple[SecurityRuleSpec, ...]] = (
                 "admin_tool",
             }
         ),
-        sanitizer_tags=frozenset(
-            {"authz_check", "capability_check", "principal_bind"}
-        ),
+        sanitizer_tags=frozenset({"authz_check", "capability_check", "principal_bind"}),
         default_impact="Unauthorized privileged action execution.",
         default_severity="critical",
     ),
@@ -498,12 +443,8 @@ _RULE_SPECS: Final[tuple[SecurityRuleSpec, ...]] = (
         family=SecurityRuleFamily.UNSAFE_DESERIALIZATION_COMMAND,
         rule_id="sec/unsafe-deserialization-command",
         name="Unsafe deserialization / command construction",
-        short_description=(
-            "Untrusted data reaches a deserializer or shell/command builder."
-        ),
-        source_tags=frozenset(
-            {"untrusted_bytes", "network_payload", "user_input"}
-        ),
+        short_description=("Untrusted data reaches a deserializer or shell/command builder."),
+        source_tags=frozenset({"untrusted_bytes", "network_payload", "user_input"}),
         sink_tags=frozenset(
             {
                 "pickle_loads",
@@ -513,9 +454,7 @@ _RULE_SPECS: Final[tuple[SecurityRuleSpec, ...]] = (
                 "subprocess_shell",
             }
         ),
-        sanitizer_tags=frozenset(
-            {"safe_deserializer", "command_allowlist", "shell_escape"}
-        ),
+        sanitizer_tags=frozenset({"safe_deserializer", "command_allowlist", "shell_escape"}),
         default_impact="Remote code execution via deserialization or shell.",
         default_severity="critical",
     ),
@@ -523,18 +462,10 @@ _RULE_SPECS: Final[tuple[SecurityRuleSpec, ...]] = (
         family=SecurityRuleFamily.SECRET_FLOW,
         rule_id="sec/secret-flow",
         name="Secret flow",
-        short_description=(
-            "Secret-labelled value reaches a log, export, or remote channel."
-        ),
-        source_tags=frozenset(
-            {"secret_material", "credential", "private_key", "api_token"}
-        ),
-        sink_tags=frozenset(
-            {"log_emit", "http_export", "telemetry", "error_report"}
-        ),
-        sanitizer_tags=frozenset(
-            {"secret_redact", "secret_mask", "secret_hash"}
-        ),
+        short_description=("Secret-labelled value reaches a log, export, or remote channel."),
+        source_tags=frozenset({"secret_material", "credential", "private_key", "api_token"}),
+        sink_tags=frozenset({"log_emit", "http_export", "telemetry", "error_report"}),
+        sanitizer_tags=frozenset({"secret_redact", "secret_mask", "secret_hash"}),
         default_impact="Credential or secret disclosure outside trust boundary.",
         default_severity="high",
     ),
@@ -542,18 +473,10 @@ _RULE_SPECS: Final[tuple[SecurityRuleSpec, ...]] = (
         family=SecurityRuleFamily.CID_INTEGRITY_BYPASS,
         rule_id="sec/cid-integrity-bypass",
         name="CID / integrity bypass",
-        short_description=(
-            "Content is consumed without verifying the declared CID binding."
-        ),
-        source_tags=frozenset(
-            {"unverified_bytes", "mutable_alias", "cache_bytes"}
-        ),
-        sink_tags=frozenset(
-            {"cid_accept", "content_use", "pin_commit", "verify_skip"}
-        ),
-        sanitizer_tags=frozenset(
-            {"cid_verify", "digest_check", "integrity_bind"}
-        ),
+        short_description=("Content is consumed without verifying the declared CID binding."),
+        source_tags=frozenset({"unverified_bytes", "mutable_alias", "cache_bytes"}),
+        sink_tags=frozenset({"cid_accept", "content_use", "pin_commit", "verify_skip"}),
+        sanitizer_tags=frozenset({"cid_verify", "digest_check", "integrity_bind"}),
         default_impact="Tampered content accepted under a trusted identity.",
         default_severity="high",
     ),
@@ -561,18 +484,10 @@ _RULE_SPECS: Final[tuple[SecurityRuleSpec, ...]] = (
         family=SecurityRuleFamily.CACHE_POISONING_STALENESS,
         rule_id="sec/cache-poisoning-staleness",
         name="Cache poisoning / staleness",
-        short_description=(
-            "Stale or unauthenticated cache entry is promoted as current."
-        ),
-        source_tags=frozenset(
-            {"stale_cache", "unpinned_cache", "poisoned_entry"}
-        ),
-        sink_tags=frozenset(
-            {"cache_serve", "authority_promote", "freshness_claim"}
-        ),
-        sanitizer_tags=frozenset(
-            {"freshness_check", "pin_coherence", "cache_invalidate"}
-        ),
+        short_description=("Stale or unauthenticated cache entry is promoted as current."),
+        source_tags=frozenset({"stale_cache", "unpinned_cache", "poisoned_entry"}),
+        sink_tags=frozenset({"cache_serve", "authority_promote", "freshness_claim"}),
+        sanitizer_tags=frozenset({"freshness_check", "pin_coherence", "cache_invalidate"}),
         default_impact="Stale or attacker-controlled data served as current.",
         default_severity="medium",
     ),
@@ -580,18 +495,10 @@ _RULE_SPECS: Final[tuple[SecurityRuleSpec, ...]] = (
         family=SecurityRuleFamily.SYMLINK_ESCAPE,
         rule_id="sec/symlink-escape",
         name="Symlink escape",
-        short_description=(
-            "Symlink or link-following path escapes the declared root."
-        ),
-        source_tags=frozenset(
-            {"symlink_path", "link_target", "user_link"}
-        ),
-        sink_tags=frozenset(
-            {"fs_follow", "fs_open", "fs_read", "fs_write"}
-        ),
-        sanitizer_tags=frozenset(
-            {"no_follow", "lstat_only", "symlink_reject"}
-        ),
+        short_description=("Symlink or link-following path escapes the declared root."),
+        source_tags=frozenset({"symlink_path", "link_target", "user_link"}),
+        sink_tags=frozenset({"fs_follow", "fs_open", "fs_read", "fs_write"}),
+        sanitizer_tags=frozenset({"no_follow", "lstat_only", "symlink_reject"}),
         default_impact="Symlink-based escape from the declared filesystem root.",
         default_severity="high",
     ),
@@ -600,40 +507,22 @@ _RULE_SPECS: Final[tuple[SecurityRuleSpec, ...]] = (
         rule_id="sec/silent-fallback-mock-success",
         name="Silent fallback / mock success",
         short_description=(
-            "Failure path is replaced by a mock or silent success without "
-            "declaring degradation."
+            "Failure path is replaced by a mock or silent success without declaring degradation."
         ),
-        source_tags=frozenset(
-            {"backend_error", "capability_missing", "timeout"}
-        ),
-        sink_tags=frozenset(
-            {"mock_success", "silent_ok", "fabricated_result"}
-        ),
-        sanitizer_tags=frozenset(
-            {"degradation_declare", "error_propagate", "fallback_audit"}
-        ),
-        default_impact=(
-            "Callers treat degraded/mock results as real success authority."
-        ),
+        source_tags=frozenset({"backend_error", "capability_missing", "timeout"}),
+        sink_tags=frozenset({"mock_success", "silent_ok", "fabricated_result"}),
+        sanitizer_tags=frozenset({"degradation_declare", "error_propagate", "fallback_audit"}),
+        default_impact=("Callers treat degraded/mock results as real success authority."),
         default_severity="medium",
     ),
     SecurityRuleSpec(
         family=SecurityRuleFamily.JOURNAL_ATOMICITY_VIOLATION,
         rule_id="sec/journal-atomicity-violation",
         name="Journal / atomicity violation",
-        short_description=(
-            "Mutable state is committed without journal fencing or atomic "
-            "replace."
-        ),
-        source_tags=frozenset(
-            {"partial_write", "unfenced_mutate", "torn_update"}
-        ),
-        sink_tags=frozenset(
-            {"commit_visible", "journal_skip", "alias_swap"}
-        ),
-        sanitizer_tags=frozenset(
-            {"atomic_replace", "journal_fence", "fsync_commit"}
-        ),
+        short_description=("Mutable state is committed without journal fencing or atomic replace."),
+        source_tags=frozenset({"partial_write", "unfenced_mutate", "torn_update"}),
+        sink_tags=frozenset({"commit_visible", "journal_skip", "alias_swap"}),
+        sanitizer_tags=frozenset({"atomic_replace", "journal_fence", "fsync_commit"}),
         default_impact="Torn or non-atomic state becomes externally visible.",
         default_severity="high",
     ),
@@ -661,19 +550,16 @@ _RULE_SPECS: Final[tuple[SecurityRuleSpec, ...]] = (
                 "capability_claim",
             }
         ),
-        sanitizer_tags=frozenset(
-            {"schema_bind", "dispatch_resolve", "path_prove"}
-        ),
+        sanitizer_tags=frozenset({"schema_bind", "dispatch_resolve", "path_prove"}),
         default_impact=(
-            "Wrong tool, schema, or mock implementation is invoked under a "
-            "trusted name."
+            "Wrong tool, schema, or mock implementation is invoked under a trusted name."
         ),
         default_severity="high",
     ),
 )
 
-_RULES_BY_FAMILY: Final[Mapping[SecurityRuleFamily, SecurityRuleSpec]] = (
-    MappingProxyType({spec.family: spec for spec in _RULE_SPECS})
+_RULES_BY_FAMILY: Final[Mapping[SecurityRuleFamily, SecurityRuleSpec]] = MappingProxyType(
+    {spec.family: spec for spec in _RULE_SPECS}
 )
 _RULES_BY_ID: Final[Mapping[str, SecurityRuleSpec]] = MappingProxyType(
     {spec.rule_id: spec for spec in _RULE_SPECS}
@@ -737,15 +623,9 @@ class FlowNode(_SecurityContract):
     column: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "node_id", _text(self.node_id, field_name="node_id")
-        )
-        object.__setattr__(
-            self, "symbol", _text(self.symbol, field_name="symbol")
-        )
-        object.__setattr__(
-            self, "role", _enum(self.role, FlowRole, field_name="role")
-        )
+        object.__setattr__(self, "node_id", _text(self.node_id, field_name="node_id"))
+        object.__setattr__(self, "symbol", _text(self.symbol, field_name="symbol"))
+        object.__setattr__(self, "role", _enum(self.role, FlowRole, field_name="role"))
         object.__setattr__(
             self,
             "tags",
@@ -765,9 +645,7 @@ class FlowNode(_SecurityContract):
         object.__setattr__(
             self,
             "column",
-            _integer(
-                self.column, field_name="column", minimum=0, maximum=1_000_000
-            ),
+            _integer(self.column, field_name="column", minimum=0, maximum=1_000_000),
         )
         _bounded(self, artifact_name="flow node")
 
@@ -844,15 +722,9 @@ class FlowEdge(_SecurityContract):
     kind: str = "dataflow"
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "edge_id", _text(self.edge_id, field_name="edge_id")
-        )
-        object.__setattr__(
-            self, "source_id", _text(self.source_id, field_name="source_id")
-        )
-        object.__setattr__(
-            self, "target_id", _text(self.target_id, field_name="target_id")
-        )
+        object.__setattr__(self, "edge_id", _text(self.edge_id, field_name="edge_id"))
+        object.__setattr__(self, "source_id", _text(self.source_id, field_name="source_id"))
+        object.__setattr__(self, "target_id", _text(self.target_id, field_name="target_id"))
         object.__setattr__(
             self,
             "resolution",
@@ -956,12 +828,8 @@ class SecurityPropertyDeclaration(_SecurityContract):
             "family",
             _enum(self.family, SecurityRuleFamily, field_name="family"),
         )
-        object.__setattr__(
-            self, "resource", _text(self.resource, field_name="resource")
-        )
-        object.__setattr__(
-            self, "statement", _text(self.statement, field_name="statement")
-        )
+        object.__setattr__(self, "resource", _text(self.resource, field_name="resource"))
+        object.__setattr__(self, "statement", _text(self.statement, field_name="statement"))
         object.__setattr__(
             self,
             "constraints",
@@ -995,9 +863,7 @@ class SecurityPropertyDeclaration(_SecurityContract):
         return {**self.to_dict(), "content_id": self.content_id}
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "SecurityPropertyDeclaration":
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SecurityPropertyDeclaration":
         _check_header(payload, cls.SCHEMA)
         _reject_unknown(
             payload,
@@ -1045,9 +911,7 @@ class ThreatPath(_SecurityContract):
     hop_count: int = 0
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "path_id", _text(self.path_id, field_name="path_id")
-        )
+        object.__setattr__(self, "path_id", _text(self.path_id, field_name="path_id"))
         object.__setattr__(
             self,
             "node_ids",
@@ -1075,9 +939,7 @@ class ThreatPath(_SecurityContract):
         object.__setattr__(
             self,
             "has_unknown_dynamic",
-            _boolean(
-                self.has_unknown_dynamic, field_name="has_unknown_dynamic"
-            ),
+            _boolean(self.has_unknown_dynamic, field_name="has_unknown_dynamic"),
         )
         hops = len(self.node_ids) - 1 if self.node_ids else 0
         object.__setattr__(
@@ -1091,9 +953,7 @@ class ThreatPath(_SecurityContract):
             ),
         )
         if len(self.node_ids) < 2:
-            raise SecurityContractAnalysisError(
-                "threat path requires at least two nodes"
-            )
+            raise SecurityContractAnalysisError("threat path requires at least two nodes")
         _bounded(self, artifact_name="threat path")
 
     def _payload(self) -> dict[str, Any]:
@@ -1179,9 +1039,7 @@ class SecurityEvidence(_SecurityContract):
             lowered = note.lower()
             for banned in ("password=", "api_key=", "-----begin", "secret="):
                 if banned in lowered:
-                    raise ForbiddenBodyError(
-                        "evidence notes must not embed secret material"
-                    )
+                    raise ForbiddenBodyError("evidence notes must not embed secret material")
         _bounded(self, artifact_name="security evidence")
 
     @property
@@ -1226,9 +1084,7 @@ class SecurityEvidence(_SecurityContract):
         )
         result = cls(
             artifact_cids=tuple(payload.get("artifact_cids") or ()),
-            counterexample_cids=tuple(
-                payload.get("counterexample_cids") or ()
-            ),
+            counterexample_cids=tuple(payload.get("counterexample_cids") or ()),
             proof_cids=tuple(payload.get("proof_cids") or ()),
             runtime_cids=tuple(payload.get("runtime_cids") or ()),
             graph_slice_cids=tuple(payload.get("graph_slice_cids") or ()),
@@ -1262,9 +1118,7 @@ def vulnerability_requirements_met(
         missing.append("security_property")
     if threat_path is None:
         missing.append("threat_path")
-    elif threat_path.has_unknown_dynamic and threat_path.origin is not (
-        ThreatPathOrigin.DECLARED
-    ):
+    elif threat_path.has_unknown_dynamic and threat_path.origin is not (ThreatPathOrigin.DECLARED):
         # Reachable-but-dynamic paths cannot alone justify vulnerability.
         missing.append("closed_threat_path")
     if not (impact or "").strip():
@@ -1369,12 +1223,8 @@ class SecurityFinding(_SecurityContract):
                 field_name="classification",
             ),
         )
-        object.__setattr__(
-            self, "rule_id", _text(self.rule_id, field_name="rule_id")
-        )
-        object.__setattr__(
-            self, "summary", _text(self.summary, field_name="summary")
-        )
+        object.__setattr__(self, "rule_id", _text(self.rule_id, field_name="rule_id"))
+        object.__setattr__(self, "summary", _text(self.summary, field_name="summary"))
         object.__setattr__(
             self,
             "impact",
@@ -1383,8 +1233,7 @@ class SecurityFinding(_SecurityContract):
         object.__setattr__(
             self,
             "severity",
-            _text(self.severity, field_name="severity", required=False)
-            or "medium",
+            _text(self.severity, field_name="severity", required=False) or "medium",
         )
         object.__setattr__(
             self,
@@ -1451,9 +1300,7 @@ class SecurityFinding(_SecurityContract):
         if not self.analyzer_version:
             object.__setattr__(self, "analyzer_version", ANALYZER_VERSION)
         if not self.root_cause_family:
-            object.__setattr__(
-                self, "root_cause_family", self.family.value
-            )
+            object.__setattr__(self, "root_cause_family", self.family.value)
         object.__setattr__(
             self,
             "missing_requirements",
@@ -1494,8 +1341,7 @@ class SecurityFinding(_SecurityContract):
             )
             if not ok:
                 raise SecurityContractAnalysisError(
-                    "vulnerability classification requires "
-                    f"{', '.join(missing)}"
+                    f"vulnerability classification requires {', '.join(missing)}"
                 )
         _bounded(self, artifact_name="security finding")
 
@@ -1517,15 +1363,9 @@ class SecurityFinding(_SecurityContract):
             "severity": self.severity,
             "confidence_millionths": self.confidence_millionths,
             "security_property": (
-                self.security_property.to_dict()
-                if self.security_property is not None
-                else None
+                self.security_property.to_dict() if self.security_property is not None else None
             ),
-            "threat_path": (
-                self.threat_path.to_dict()
-                if self.threat_path is not None
-                else None
-            ),
+            "threat_path": (self.threat_path.to_dict() if self.threat_path is not None else None),
             "evidence": self.evidence.to_dict(),
             "symbols": self.symbols,
             "interfaces": self.interfaces,
@@ -1591,9 +1431,7 @@ class SecurityFinding(_SecurityContract):
             summary=payload.get("summary", ""),
             impact=payload.get("impact", ""),
             severity=payload.get("severity", "medium"),
-            confidence_millionths=int(
-                payload.get("confidence_millionths") or 0
-            ),
+            confidence_millionths=int(payload.get("confidence_millionths") or 0),
             security_property=payload.get("security_property"),
             threat_path=payload.get("threat_path"),
             evidence=payload.get("evidence") or SecurityEvidence(),
@@ -1602,9 +1440,7 @@ class SecurityFinding(_SecurityContract):
             repositories=tuple(payload.get("repositories") or ()),
             source_node_id=payload.get("source_node_id", ""),
             sink_node_id=payload.get("sink_node_id", ""),
-            missing_requirements=tuple(
-                payload.get("missing_requirements") or ()
-            ),
+            missing_requirements=tuple(payload.get("missing_requirements") or ()),
             assumptions=tuple(payload.get("assumptions") or ()),
             remediation_hints=tuple(payload.get("remediation_hints") or ()),
             tree_id=payload.get("tree_id", ""),
@@ -1731,9 +1567,7 @@ class SecurityAnalysisReport(_SecurityContract):
         }
         for finding in self.findings:
             buckets[finding.classification].append(finding)
-        return MappingProxyType(
-            {k: tuple(v) for k, v in buckets.items()}
-        )
+        return MappingProxyType({k: tuple(v) for k, v in buckets.items()})
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -1893,27 +1727,19 @@ class FlowGraph:
         edges: Sequence[FlowEdge],
     ) -> "FlowGraph":
         if len(nodes) > MAX_GRAPH_NODES:
-            raise SecurityContractBoundsError(
-                f"nodes exceed {MAX_GRAPH_NODES}"
-            )
+            raise SecurityContractBoundsError(f"nodes exceed {MAX_GRAPH_NODES}")
         if len(edges) > MAX_GRAPH_EDGES:
-            raise SecurityContractBoundsError(
-                f"edges exceed {MAX_GRAPH_EDGES}"
-            )
+            raise SecurityContractBoundsError(f"edges exceed {MAX_GRAPH_EDGES}")
         node_map: dict[str, FlowNode] = {}
         for node in nodes:
             if node.node_id in node_map:
-                raise SecurityContractAnalysisError(
-                    f"duplicate node_id {node.node_id!r}"
-                )
+                raise SecurityContractAnalysisError(f"duplicate node_id {node.node_id!r}")
             node_map[node.node_id] = node
         outgoing: dict[str, list[FlowEdge]] = {nid: [] for nid in node_map}
         edges_by_id: dict[str, FlowEdge] = {}
         for edge in edges:
             if edge.edge_id in edges_by_id:
-                raise SecurityContractAnalysisError(
-                    f"duplicate edge_id {edge.edge_id!r}"
-                )
+                raise SecurityContractAnalysisError(f"duplicate edge_id {edge.edge_id!r}")
             if edge.source_id not in node_map or edge.target_id not in node_map:
                 raise SecurityContractAnalysisError(
                     f"edge {edge.edge_id!r} references unknown nodes"
@@ -1972,9 +1798,7 @@ def bounded_source_sink_paths(
         if source_id not in graph.nodes:
             continue
         # state: (node_id, node_path, edge_path, hops, unknown, sanitized)
-        queue: deque[
-            tuple[str, tuple[str, ...], tuple[str, ...], int, bool, bool]
-        ] = deque()
+        queue: deque[tuple[str, tuple[str, ...], tuple[str, ...], int, bool, bool]] = deque()
         queue.append((source_id, (source_id,), (), 0, False, False))
         visited: set[tuple[str, int, bool, bool]] = set()
 
@@ -2012,9 +1836,7 @@ def bounded_source_sink_paths(
                 if nxt in npath:
                     continue  # simple paths only
                 nxt_node = graph.nodes[nxt]
-                nxt_sanitized = sanitized or _node_is_sanitizer(
-                    nxt_node, sanitizer_tags
-                )
+                nxt_sanitized = sanitized or _node_is_sanitizer(nxt_node, sanitizer_tags)
                 nxt_unknown = unknown or edge.is_unknown_dynamic
                 queue.append(
                     (
@@ -2046,9 +1868,7 @@ def _property_for_family(
     return matches[0]
 
 
-def _symbols_for_path(
-    graph: FlowGraph, path: ThreatPath
-) -> tuple[str, ...]:
+def _symbols_for_path(graph: FlowGraph, path: ThreatPath) -> tuple[str, ...]:
     symbols: list[str] = []
     for nid in path.node_ids:
         node = graph.nodes.get(nid)
@@ -2057,9 +1877,7 @@ def _symbols_for_path(
     return tuple(dict.fromkeys(symbols))
 
 
-def _interfaces_for_path(
-    graph: FlowGraph, path: ThreatPath
-) -> tuple[str, ...]:
+def _interfaces_for_path(graph: FlowGraph, path: ThreatPath) -> tuple[str, ...]:
     interfaces: list[str] = []
     for nid in path.node_ids:
         node = graph.nodes.get(nid)
@@ -2068,9 +1886,7 @@ def _interfaces_for_path(
     return tuple(sorted(set(interfaces)))
 
 
-def _repositories_for_path(
-    graph: FlowGraph, path: ThreatPath
-) -> tuple[str, ...]:
+def _repositories_for_path(graph: FlowGraph, path: ThreatPath) -> tuple[str, ...]:
     repos: list[str] = []
     for nid in path.node_ids:
         node = graph.nodes.get(nid)
@@ -2090,11 +1906,7 @@ def _build_finding(
     config: SecurityAnalysisConfig,
     seed_label: str = "",
 ) -> SecurityFinding:
-    impact = (
-        prop.statement
-        if prop is not None and prop.statement
-        else spec.default_impact
-    )
+    impact = prop.statement if prop is not None and prop.statement else spec.default_impact
     # For vulnerability, impact must be non-empty (always true via default).
     if sanitized:
         classification = FindingClassification.CORRECTNESS_DRIFT
@@ -2125,8 +1937,7 @@ def _build_finding(
             conf = 900_000
             severity = spec.default_severity
             summary = (
-                f"Vulnerability: {spec.name} on path "
-                f"{path.node_ids[0]} -> {path.node_ids[-1]}."
+                f"Vulnerability: {spec.name} on path {path.node_ids[0]} -> {path.node_ids[-1]}."
             )
             seed = seed_label or "true_positive"
             # Ensure impact is the concrete one used for the gate.
@@ -2226,11 +2037,8 @@ def analyze_security_contracts(
     *,
     nodes: Sequence[FlowNode | Mapping[str, Any]],
     edges: Sequence[FlowEdge | Mapping[str, Any]],
-    properties: Sequence[
-        SecurityPropertyDeclaration | Mapping[str, Any]
-    ] = (),
-    evidence_by_family: Mapping[str, SecurityEvidence | Mapping[str, Any]]
-    | None = None,
+    properties: Sequence[SecurityPropertyDeclaration | Mapping[str, Any]] = (),
+    evidence_by_family: Mapping[str, SecurityEvidence | Mapping[str, Any]] | None = None,
     declared_paths: Sequence[ThreatPath | Mapping[str, Any]] = (),
     default_evidence: SecurityEvidence | Mapping[str, Any] | None = None,
     config: SecurityAnalysisConfig | None = None,
@@ -2257,12 +2065,8 @@ def analyze_security_contracts(
     """
 
     cfg = config or SecurityAnalysisConfig()
-    decoded_nodes = _records(
-        list(nodes), FlowNode, field_name="nodes", maximum=MAX_GRAPH_NODES
-    )
-    decoded_edges = _records(
-        list(edges), FlowEdge, field_name="edges", maximum=MAX_GRAPH_EDGES
-    )
+    decoded_nodes = _records(list(nodes), FlowNode, field_name="nodes", maximum=MAX_GRAPH_NODES)
+    decoded_edges = _records(list(edges), FlowEdge, field_name="edges", maximum=MAX_GRAPH_EDGES)
     decoded_props = _records(
         list(properties),
         SecurityPropertyDeclaration,
@@ -2302,9 +2106,7 @@ def analyze_security_contracts(
     if families is None:
         specs = list(_RULE_SPECS)
     else:
-        specs = [
-            security_rule_spec(f) for f in families
-        ]
+        specs = [security_rule_spec(f) for f in families]
         specs.sort(key=lambda s: s.rule_id)
 
     findings: list[SecurityFinding] = []
@@ -2321,27 +2123,23 @@ def analyze_security_contracts(
         source_ids = [
             n.node_id
             for n in graph.nodes.values()
-            if n.role is FlowRole.SOURCE
-            or _node_has_tags(n, spec.source_tags)
+            if n.role is FlowRole.SOURCE or _node_has_tags(n, spec.source_tags)
         ]
         sink_ids = [
             n.node_id
             for n in graph.nodes.values()
-            if n.role is FlowRole.SINK
-            or _node_has_tags(n, spec.sink_tags)
+            if n.role is FlowRole.SINK or _node_has_tags(n, spec.sink_tags)
         ]
         if not source_ids or not sink_ids:
             continue
 
-        open_paths, sanitized_paths, explored, path_trunc = (
-            bounded_source_sink_paths(
-                graph,
-                source_ids=source_ids,
-                sink_ids=sink_ids,
-                sanitizer_tags=spec.sanitizer_tags,
-                max_hops=cfg.max_hops,
-                max_paths=cfg.max_paths_per_rule,
-            )
+        open_paths, sanitized_paths, explored, path_trunc = bounded_source_sink_paths(
+            graph,
+            source_ids=source_ids,
+            sink_ids=sink_ids,
+            sanitizer_tags=spec.sanitizer_tags,
+            max_hops=cfg.max_hops,
+            max_paths=cfg.max_paths_per_rule,
         )
         paths_explored += explored
         if path_trunc:
@@ -2452,9 +2250,7 @@ def build_security_finding(
     summary: str,
     impact: str = "",
     evidence: SecurityEvidence | Mapping[str, Any] | None = None,
-    security_property: SecurityPropertyDeclaration
-    | Mapping[str, Any]
-    | None = None,
+    security_property: SecurityPropertyDeclaration | Mapping[str, Any] | None = None,
     threat_path: ThreatPath | Mapping[str, Any] | None = None,
     **kwargs: Any,
 ) -> SecurityFinding:
@@ -2964,7 +2760,7 @@ def evaluate_fixed_point_security(
                 str(e.get("effect_id") if isinstance(e, Mapping) else e)
                 for e in code_effects
             )
-            if str(e).strip()
+            if str(effect).strip()
         )
 
     # Prefer explicit code_effects; fall back to extracted fact effect ids.

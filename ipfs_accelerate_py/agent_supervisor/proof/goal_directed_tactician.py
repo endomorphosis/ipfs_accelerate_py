@@ -51,6 +51,13 @@ from .formal_verification_contracts import (
     canonical_json_bytes,
     content_identity,
 )
+from .proof_directed_retrieval import (
+    PremiseRankingReport,
+    expand_bounded_branches,
+    rank_proof_premises,
+    recall_at_k,
+    select_top_k_ids,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -86,10 +93,30 @@ TACTICIAN_ADMISSION_SCHEMA: Final = (
 TACTICIAN_UTILITY_BINDING_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/goal-directed-tactician-utility@1"
 )
+PROOF_STATE_CLASSIFICATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/proof-state-classification@1"
+)
+TACTIC_PREMISE_TRACE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/tactic-premise-trace@1"
+)
+GOAL_DECOMPOSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/goal-decomposition@1"
+)
+BRANCH_COST_FAILURE_PREDICTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/branch-cost-failure-prediction@1"
+)
+CURRICULUM_PROJECTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/tactician-curriculum-projection@1"
+)
 
 DEFAULT_CHECKPOINT_FILENAME: Final = "goal_directed_tactician_checkpoint.json"
 DEFAULT_MAX_PHASES: Final = 16
 ABSOLUTE_MAX_PHASES: Final = 64
+DEFAULT_TOP_K: Final = 8
+ABSOLUTE_MAX_TOP_K: Final = 64
+DEFAULT_MAX_BRANCH_FACTOR: Final = 8
+ABSOLUTE_MAX_BRANCH_FACTOR: Final = 32
+RANKING_BASIS_POINTS: Final = 10_000
 
 # Nested trust-claim names that model drafts / cache payloads must not use to
 # bypass independent validation (aligned with formal_verification_cache).
@@ -166,6 +193,7 @@ class UtilityRole(str, Enum):
     CORPUS = "corpus"
     ZKP_BINDING = "zkp_binding"
     SUPERVISOR_ADMISSION = "supervisor_admission"
+    CURRICULUM = "curriculum"
 
 
 class UtilityAuthority(str, Enum):
@@ -198,6 +226,11 @@ class TacticianPhase(str, Enum):
     PROVE = "prove"
     CACHE_STORE = "cache_store"
     ZKP_BIND = "zkp_bind"
+    CLASSIFY = "classify"
+    RANK = "rank"
+    DECOMPOSE = "decompose"
+    PREDICT = "predict"
+    CURRICULUM = "curriculum"
     ADMISSION = "admission"
     CHECKPOINT = "checkpoint"
     COMPLETE = "complete"
@@ -238,6 +271,49 @@ class AdmissionDecision(str, Enum):
     DEFERRED = "deferred"
 
 
+class ProofStateClass(str, Enum):
+    """Classification of the current proof-search state (not curriculum authority)."""
+
+    OPEN = "open"
+    PARSED = "parsed"
+    TYPED = "typed"
+    DECOMPOSED = "decomposed"
+    BRANCHING = "branching"
+    CLOSED = "closed"
+    STUCK = "stuck"
+    PARSE_ERROR = "parse_error"
+    TYPE_ERROR = "type_error"
+    TIMEOUT = "timeout"
+    COUNTEREXAMPLE = "counterexample"
+
+
+class CurriculumClass(str, Enum):
+    """Typed curriculum projections produced from traces.
+
+    High curriculum authority is reserved for independently validated
+    ``verified_success`` and checked ``counterexample`` traces.  ``timeout``
+    is never falsehood.  ``parse_type`` never upgrades proof authority.
+    """
+
+    VERIFIED_SUCCESS = "verified_success"
+    PARSE_TYPE = "parse_type"
+    COUNTEREXAMPLE = "counterexample"
+    TIMEOUT = "timeout"
+
+
+class CurriculumAuthority(str, Enum):
+    """Whether a curriculum projection may enter high-authority training."""
+
+    NONE = "none"
+    CANDIDATE = "candidate"
+    HIGH = "high"
+
+
+class RankedKind(str, Enum):
+    TACTIC = "tactic"
+    PREMISE = "premise"
+
+
 class EvidenceSource(str, Enum):
     """Origin of evidence presented for validation / admission."""
 
@@ -250,6 +326,8 @@ class EvidenceSource(str, Enum):
     LEGAL = "legal"
     GUIDANCE = "guidance"
     CHECKPOINT = "checkpoint"
+    CURRICULUM = "curriculum"
+    TRACE = "trace"
 
 
 # ---------------------------------------------------------------------------
@@ -276,9 +354,7 @@ def _strings(value: Any) -> tuple[str, ...]:
         return ()
     if isinstance(value, str):
         values: Iterable[Any] = (value,)
-    elif isinstance(value, Sequence) and not isinstance(
-        value, (bytes, bytearray, memoryview)
-    ):
+    elif isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray, memoryview)):
         values = value
     else:
         raise GoalDirectedTacticianError("expected a sequence of strings")
@@ -292,9 +368,7 @@ def _strings(value: Any) -> tuple[str, ...]:
 
 def _positive(value: Any, name: str, *, minimum: int = 1) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
-        raise GoalDirectedTacticianError(
-            f"{name} must be an integer of at least {minimum}"
-        )
+        raise GoalDirectedTacticianError(f"{name} must be an integer of at least {minimum}")
     return value
 
 
@@ -313,11 +387,7 @@ def _mapping(value: Any, *, field_name: str) -> Mapping[str, Any]:
 def _public_mapping(value: Mapping[str, Any] | None) -> dict[str, Any]:
     if not value:
         return {}
-    return {
-        str(key): item
-        for key, item in value.items()
-        if not str(key).startswith("_")
-    }
+    return {str(key): item for key, item in value.items() if not str(key).startswith("_")}
 
 
 def _enum(value: Any, kind: type[Enum], name: str) -> Any:
@@ -328,9 +398,7 @@ def _enum(value: Any, kind: type[Enum], name: str) -> Any:
         return kind(str(raw).strip().lower())
     except (TypeError, ValueError) as exc:
         allowed = ", ".join(sorted({item.value for item in kind}))
-        raise GoalDirectedTacticianError(
-            f"{name} must be one of: {allowed}"
-        ) from exc
+        raise GoalDirectedTacticianError(f"{name} must be one of: {allowed}") from exc
 
 
 def _assurance(value: Any) -> AssuranceLevel:
@@ -387,10 +455,7 @@ def claims_authority(value: Any) -> bool:
                 return True
             if name in _AUTHORITY_ASSURANCE_CLAIMS:
                 normalized = (
-                    str(getattr(item, "value", item) or "")
-                    .strip()
-                    .casefold()
-                    .replace("-", "_")
+                    str(getattr(item, "value", item) or "").strip().casefold().replace("-", "_")
                 )
                 if normalized not in _UNTRUSTED_CLAIM_VALUES:
                     return True
@@ -416,14 +481,796 @@ def reject_authority_bypass(
     if src not in {EvidenceSource.MODEL_DRAFT, EvidenceSource.CACHE_HIT}:
         return
     if claims_authority(payload):
-        label = (
-            "model draft"
-            if src is EvidenceSource.MODEL_DRAFT
-            else "cache hit"
+        label = "model draft" if src is EvidenceSource.MODEL_DRAFT else "cache hit"
+        raise GoalDirectedTacticianError(f"{label} evidence cannot bypass independent validation")
+
+
+# ---------------------------------------------------------------------------
+# Proof-state classification, ranking, decomposition, curriculum
+# ---------------------------------------------------------------------------
+
+
+def _stage_status(payload: Mapping[str, Any] | None) -> str:
+    if not isinstance(payload, Mapping):
+        return ""
+    return str(payload.get("status") or payload.get("outcome") or "").strip().lower()
+
+
+def _truthy_timeout(payload: Any) -> bool:
+    if payload is True:
+        return True
+    if not isinstance(payload, Mapping):
+        return False
+    if payload.get("occurred") is True or payload.get("timed_out") is True:
+        return True
+    status = str(payload.get("status") or payload.get("outcome") or "").strip().lower()
+    return status in {"timed_out", "timeout", "time_out"}
+
+
+def _has_counterexamples(payload: Mapping[str, Any]) -> bool:
+    examples = payload.get("counterexamples")
+    if isinstance(examples, Sequence) and not isinstance(examples, (str, bytes, bytearray)):
+        return any(bool(item) for item in examples)
+    if payload.get("counterexample"):
+        return True
+    for key in ("prover_outcome", "kernel_outcome", "elaboration_outcome"):
+        if _stage_status(payload.get(key) if isinstance(payload.get(key), Mapping) else None) == (
+            "counterexample"
+        ):
+            return True
+    return False
+
+
+@dataclass(frozen=True)
+class ProofStateClassification:
+    """Typed classification of one proof state. Never itself proof authority."""
+
+    SCHEMA: ClassVar[str] = PROOF_STATE_CLASSIFICATION_SCHEMA
+
+    state_class: ProofStateClass
+    curriculum_class: CurriculumClass
+    independently_validated: bool = False
+    kernel_verified: bool = False
+    timeout_is_falsehood: bool = False
+    reason_code: str = ""
+    details: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "state_class", _enum(self.state_class, ProofStateClass, "state_class")
         )
-        raise GoalDirectedTacticianError(
-            f"{label} evidence cannot bypass independent validation"
+        object.__setattr__(
+            self,
+            "curriculum_class",
+            _enum(self.curriculum_class, CurriculumClass, "curriculum_class"),
         )
+        object.__setattr__(self, "independently_validated", bool(self.independently_validated))
+        object.__setattr__(self, "kernel_verified", bool(self.kernel_verified))
+        # Timeout is observational; it never becomes a falsehood label.
+        object.__setattr__(self, "timeout_is_falsehood", False)
+        object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
+        object.__setattr__(self, "details", _public_mapping(dict(self.details or {})))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": PROOF_STATE_CLASSIFICATION_SCHEMA,
+            "state_class": self.state_class.value,
+            "curriculum_class": self.curriculum_class.value,
+            "independently_validated": self.independently_validated,
+            "kernel_verified": self.kernel_verified,
+            "timeout_is_falsehood": self.timeout_is_falsehood,
+            "reason_code": self.reason_code,
+            "details": dict(self.details),
+            "proof_authority": False,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProofStateClassification":
+        value = _mapping(payload, field_name="proof_state")
+        return cls(
+            state_class=value.get("state_class", ProofStateClass.OPEN),
+            curriculum_class=value.get("curriculum_class", CurriculumClass.PARSE_TYPE),
+            independently_validated=bool(value.get("independently_validated", False)),
+            kernel_verified=bool(value.get("kernel_verified", False)),
+            reason_code=str(value.get("reason_code") or ""),
+            details=dict(value.get("details") or {}),
+        )
+
+
+def classify_proof_state(
+    payload: Mapping[str, Any] | None,
+    *,
+    independently_validated: bool = False,
+    kernel_verified: bool = False,
+) -> ProofStateClassification:
+    """Classify a J2-shaped attempt or tactician context into a proof state."""
+
+    value = dict(payload or {})
+    validated = bool(independently_validated or value.get("independently_validated"))
+    kernel_ok = bool(kernel_verified or value.get("kernel_verified"))
+    kernel_status = _stage_status(value.get("kernel_outcome") if isinstance(value.get("kernel_outcome"), Mapping) else None)
+    if kernel_status == "accepted" and validated:
+        kernel_ok = True
+    parse_status = _stage_status(
+        value.get("parse_outcome") if isinstance(value.get("parse_outcome"), Mapping) else None
+    )
+    elab_status = _stage_status(
+        value.get("elaboration_outcome")
+        if isinstance(value.get("elaboration_outcome"), Mapping)
+        else None
+    )
+    prover_status = _stage_status(
+        value.get("prover_outcome") if isinstance(value.get("prover_outcome"), Mapping) else None
+    )
+
+    if _truthy_timeout(value.get("timeout")) or prover_status in {"timed_out", "timeout"}:
+        return ProofStateClassification(
+            state_class=ProofStateClass.TIMEOUT,
+            curriculum_class=CurriculumClass.TIMEOUT,
+            independently_validated=validated,
+            kernel_verified=False,
+            reason_code="timeout_is_not_falsehood",
+            details={"timeout_is_falsehood": False},
+        )
+    if _has_counterexamples(value) or prover_status == "counterexample" or kernel_status == (
+        "counterexample"
+    ):
+        return ProofStateClassification(
+            state_class=ProofStateClass.COUNTEREXAMPLE,
+            curriculum_class=CurriculumClass.COUNTEREXAMPLE,
+            independently_validated=validated,
+            kernel_verified=kernel_ok,
+            reason_code="checked_counterexample" if validated else "candidate_counterexample",
+        )
+    if parse_status in {"parse_failed", "parse_error", "error"}:
+        return ProofStateClassification(
+            state_class=ProofStateClass.PARSE_ERROR,
+            curriculum_class=CurriculumClass.PARSE_TYPE,
+            independently_validated=validated,
+            kernel_verified=False,
+            reason_code="parse_error",
+        )
+    if elab_status in {"elaboration_failed", "type_error", "rejected"}:
+        return ProofStateClassification(
+            state_class=ProofStateClass.TYPE_ERROR,
+            curriculum_class=CurriculumClass.PARSE_TYPE,
+            independently_validated=validated,
+            kernel_verified=False,
+            reason_code="type_error",
+        )
+    if kernel_ok and validated:
+        return ProofStateClassification(
+            state_class=ProofStateClass.CLOSED,
+            curriculum_class=CurriculumClass.VERIFIED_SUCCESS,
+            independently_validated=True,
+            kernel_verified=True,
+            reason_code="independently_validated_kernel_success",
+        )
+    if parse_status == "parsed" and elab_status in {"elaborated", "typed", ""}:
+        if value.get("decomposition") or value.get("children"):
+            return ProofStateClassification(
+                state_class=ProofStateClass.DECOMPOSED,
+                curriculum_class=CurriculumClass.PARSE_TYPE,
+                independently_validated=validated,
+                reason_code="decomposed_unverified",
+            )
+        return ProofStateClassification(
+            state_class=ProofStateClass.TYPED if elab_status in {"elaborated", "typed"} else ProofStateClass.PARSED,
+            curriculum_class=CurriculumClass.PARSE_TYPE,
+            independently_validated=validated,
+            reason_code="parse_type_candidate",
+        )
+    if value.get("stuck") or prover_status in {"stuck", "saturated"}:
+        return ProofStateClassification(
+            state_class=ProofStateClass.STUCK,
+            curriculum_class=CurriculumClass.PARSE_TYPE,
+            independently_validated=validated,
+            reason_code="stuck",
+        )
+    return ProofStateClassification(
+        state_class=ProofStateClass.OPEN,
+        curriculum_class=CurriculumClass.PARSE_TYPE,
+        independently_validated=validated,
+        kernel_verified=kernel_ok,
+        reason_code="open_unclassified",
+    )
+
+
+def curriculum_authority_for(
+    curriculum_class: CurriculumClass | str,
+    *,
+    independently_validated: bool,
+    kernel_verified: bool = False,
+) -> CurriculumAuthority:
+    """High authority only for validated verified-success or checked counterexamples."""
+
+    cls = _enum(curriculum_class, CurriculumClass, "curriculum_class")
+    if cls is CurriculumClass.TIMEOUT:
+        return CurriculumAuthority.CANDIDATE
+    if cls is CurriculumClass.PARSE_TYPE:
+        return CurriculumAuthority.CANDIDATE
+    if cls is CurriculumClass.VERIFIED_SUCCESS:
+        if independently_validated and kernel_verified:
+            return CurriculumAuthority.HIGH
+        return CurriculumAuthority.CANDIDATE
+    if cls is CurriculumClass.COUNTEREXAMPLE:
+        if independently_validated:
+            return CurriculumAuthority.HIGH
+        return CurriculumAuthority.CANDIDATE
+    return CurriculumAuthority.NONE
+
+
+@dataclass(frozen=True)
+class SubgoalNode:
+    """One bounded child of a goal decomposition. Candidate only."""
+
+    subgoal_id: str
+    statement: str
+    depends_on: tuple[str, ...] = ()
+    predicted_cost_ms: int = 0
+    predicted_failure_bps: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "subgoal_id", _text(self.subgoal_id, field_name="subgoal_id"))
+        object.__setattr__(self, "statement", _text(self.statement, field_name="statement"))
+        object.__setattr__(self, "depends_on", _strings(self.depends_on))
+        object.__setattr__(
+            self,
+            "predicted_cost_ms",
+            _non_negative(self.predicted_cost_ms, "predicted_cost_ms"),
+        )
+        object.__setattr__(
+            self,
+            "predicted_failure_bps",
+            _non_negative(self.predicted_failure_bps, "predicted_failure_bps"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "subgoal_id": self.subgoal_id,
+            "statement": self.statement,
+            "depends_on": list(self.depends_on),
+            "predicted_cost_ms": self.predicted_cost_ms,
+            "predicted_failure_bps": self.predicted_failure_bps,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SubgoalNode":
+        value = _mapping(payload, field_name="subgoal")
+        return cls(
+            subgoal_id=str(value.get("subgoal_id") or value.get("id") or ""),
+            statement=str(value.get("statement") or value.get("text") or ""),
+            depends_on=tuple(value.get("depends_on") or ()),
+            predicted_cost_ms=int(value.get("predicted_cost_ms", 0)),
+            predicted_failure_bps=int(value.get("predicted_failure_bps", 0)),
+        )
+
+
+@dataclass(frozen=True)
+class GoalDecomposition:
+    """Bounded goal decomposition. Never completion or proof authority."""
+
+    SCHEMA: ClassVar[str] = GOAL_DECOMPOSITION_SCHEMA
+
+    parent_goal_id: str
+    children: tuple[SubgoalNode, ...]
+    max_branch_factor: int = DEFAULT_MAX_BRANCH_FACTOR
+    truncated: bool = False
+    reason_code: str = "bounded_decomposition"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "parent_goal_id", _text(self.parent_goal_id, field_name="parent_goal_id")
+        )
+        nodes: list[SubgoalNode] = []
+        for item in self.children or ():
+            if isinstance(item, SubgoalNode):
+                nodes.append(item)
+            else:
+                nodes.append(SubgoalNode.from_dict(_mapping(item, field_name="child")))
+        object.__setattr__(self, "children", tuple(nodes))
+        object.__setattr__(
+            self,
+            "max_branch_factor",
+            min(
+                ABSOLUTE_MAX_BRANCH_FACTOR,
+                _positive(self.max_branch_factor, "max_branch_factor"),
+            ),
+        )
+        object.__setattr__(self, "truncated", bool(self.truncated))
+        object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
+        ids = [item.subgoal_id for item in self.children]
+        if len(ids) != len(set(ids)):
+            raise GoalDirectedTacticianError("decomposition child ids must be unique")
+        known = set(ids)
+        for item in self.children:
+            unknown = [dep for dep in item.depends_on if dep not in known]
+            if unknown:
+                raise GoalDirectedTacticianError(
+                    "decomposition references unknown subgoal: " + ", ".join(unknown)
+                )
+        if len(self.children) > self.max_branch_factor:
+            raise GoalDirectedTacticianError(
+                f"decomposition exceeds max_branch_factor={self.max_branch_factor}"
+            )
+
+    @property
+    def proof_authority(self) -> bool:
+        return False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": GOAL_DECOMPOSITION_SCHEMA,
+            "parent_goal_id": self.parent_goal_id,
+            "children": [item.to_dict() for item in self.children],
+            "max_branch_factor": self.max_branch_factor,
+            "truncated": self.truncated,
+            "reason_code": self.reason_code,
+            "proof_authority": False,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "GoalDecomposition":
+        value = _mapping(payload, field_name="decomposition")
+        return cls(
+            parent_goal_id=str(value.get("parent_goal_id") or value.get("goal_id") or ""),
+            children=tuple(value.get("children") or ()),
+            max_branch_factor=int(value.get("max_branch_factor", DEFAULT_MAX_BRANCH_FACTOR)),
+            truncated=bool(value.get("truncated", False)),
+            reason_code=str(value.get("reason_code") or "bounded_decomposition"),
+        )
+
+
+def decompose_goal(
+    parent_goal_id: str,
+    children: Sequence[SubgoalNode | Mapping[str, Any]],
+    *,
+    max_branch_factor: int = DEFAULT_MAX_BRANCH_FACTOR,
+    statement: str = "",
+) -> GoalDecomposition:
+    """Build a fail-closed bounded decomposition. Over-branching is rejected."""
+
+    del statement
+    bound = min(ABSOLUTE_MAX_BRANCH_FACTOR, _positive(max_branch_factor, "max_branch_factor"))
+    if len(tuple(children or ())) > bound:
+        raise GoalDirectedTacticianError(f"decomposition exceeds max_branch_factor={bound}")
+    return GoalDecomposition(
+        parent_goal_id=parent_goal_id,
+        children=tuple(children or ()),
+        max_branch_factor=bound,
+    )
+
+
+def expand_goal_branches(
+    adjacency: Mapping[str, Sequence[str]],
+    roots: Sequence[str],
+    *,
+    max_branch_factor: int = DEFAULT_MAX_BRANCH_FACTOR,
+    max_depth: int = 8,
+    fail_closed: bool = True,
+) -> Any:
+    """Bounded branch expansion for goal graphs. Fail-closed by default."""
+
+    return expand_bounded_branches(
+        adjacency,
+        roots,
+        max_branch_factor=max_branch_factor,
+        max_depth=max_depth,
+        fail_closed=fail_closed,
+    )
+
+
+@dataclass(frozen=True)
+class BranchCostFailurePrediction:
+    """Guidance-only prediction of branching, cost, and failure. Never authority."""
+
+    SCHEMA: ClassVar[str] = BRANCH_COST_FAILURE_PREDICTION_SCHEMA
+
+    predicted_branch_factor: int
+    predicted_cost_ms: int
+    predicted_failure_bps: int
+    bounded_branch_factor: int = DEFAULT_MAX_BRANCH_FACTOR
+    reason_code: str = "guidance_prediction"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "predicted_branch_factor",
+            _non_negative(self.predicted_branch_factor, "predicted_branch_factor"),
+        )
+        object.__setattr__(
+            self, "predicted_cost_ms", _non_negative(self.predicted_cost_ms, "predicted_cost_ms")
+        )
+        object.__setattr__(
+            self,
+            "predicted_failure_bps",
+            _non_negative(self.predicted_failure_bps, "predicted_failure_bps"),
+        )
+        if self.predicted_failure_bps > RANKING_BASIS_POINTS:
+            raise GoalDirectedTacticianError("predicted_failure_bps cannot exceed 10000")
+        object.__setattr__(
+            self,
+            "bounded_branch_factor",
+            min(
+                ABSOLUTE_MAX_BRANCH_FACTOR,
+                _positive(self.bounded_branch_factor, "bounded_branch_factor"),
+            ),
+        )
+        object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
+
+    @property
+    def proof_authority(self) -> bool:
+        return False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": BRANCH_COST_FAILURE_PREDICTION_SCHEMA,
+            "predicted_branch_factor": self.predicted_branch_factor,
+            "predicted_cost_ms": self.predicted_cost_ms,
+            "predicted_failure_bps": self.predicted_failure_bps,
+            "bounded_branch_factor": self.bounded_branch_factor,
+            "reason_code": self.reason_code,
+            "authority": UtilityAuthority.GUIDANCE.value,
+            "proof_authority": False,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "BranchCostFailurePrediction":
+        value = _mapping(payload, field_name="prediction")
+        return cls(
+            predicted_branch_factor=int(value.get("predicted_branch_factor", 0)),
+            predicted_cost_ms=int(value.get("predicted_cost_ms", 0)),
+            predicted_failure_bps=int(value.get("predicted_failure_bps", 0)),
+            bounded_branch_factor=int(value.get("bounded_branch_factor", DEFAULT_MAX_BRANCH_FACTOR)),
+            reason_code=str(value.get("reason_code") or "guidance_prediction"),
+        )
+
+
+def predict_branch_cost_failure(
+    *,
+    ranking: PremiseRankingReport | None = None,
+    decomposition: GoalDecomposition | None = None,
+    max_branch_factor: int = DEFAULT_MAX_BRANCH_FACTOR,
+) -> BranchCostFailurePrediction:
+    """Predict branch width, cost, and failure from ranking and decomposition."""
+
+    bound = min(ABSOLUTE_MAX_BRANCH_FACTOR, _positive(max_branch_factor, "max_branch_factor"))
+    branch = 1
+    cost = 0
+    failures: list[int] = []
+    if ranking is not None:
+        cost += int(ranking.cost_ms)
+        if ranking.items:
+            branch = max(branch, max(item.predicted_branch_factor for item in ranking.items))
+            failures.extend(item.predicted_failure_bps for item in ranking.items)
+    if decomposition is not None:
+        branch = max(branch, len(decomposition.children))
+        cost += sum(item.predicted_cost_ms for item in decomposition.children)
+        failures.extend(item.predicted_failure_bps for item in decomposition.children)
+    failure = max(failures) if failures else 0
+    return BranchCostFailurePrediction(
+        predicted_branch_factor=min(branch, bound),
+        predicted_cost_ms=cost,
+        predicted_failure_bps=min(failure, RANKING_BASIS_POINTS),
+        bounded_branch_factor=bound,
+        reason_code="guidance_prediction",
+    )
+
+
+@dataclass(frozen=True)
+class TacticPremiseTrace:
+    """Content-addressed tactic or premise trace. Candidate unless independently checked."""
+
+    SCHEMA: ClassVar[str] = TACTIC_PREMISE_TRACE_SCHEMA
+
+    trace_id: str
+    kind: RankedKind
+    goal_id: str
+    state_digest: str
+    item_ids: tuple[str, ...]
+    model_revision: str = ""
+    tool_revision: str = ""
+    outcome: str = "candidate"
+    independently_validated: bool = False
+    source_faithful: bool = False
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "trace_id", _text(self.trace_id, field_name="trace_id"))
+        object.__setattr__(self, "kind", _enum(self.kind, RankedKind, "kind"))
+        object.__setattr__(self, "goal_id", _text(self.goal_id, field_name="goal_id"))
+        object.__setattr__(self, "state_digest", str(self.state_digest or "").strip())
+        object.__setattr__(self, "item_ids", _strings(self.item_ids))
+        object.__setattr__(self, "model_revision", str(self.model_revision or "").strip())
+        object.__setattr__(self, "tool_revision", str(self.tool_revision or "").strip())
+        object.__setattr__(self, "outcome", str(self.outcome or "candidate").strip() or "candidate")
+        object.__setattr__(self, "independently_validated", bool(self.independently_validated))
+        # Tactic success is never source-faithfulness proof.
+        object.__setattr__(self, "source_faithful", False)
+        object.__setattr__(self, "metadata", _public_mapping(dict(self.metadata or {})))
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self.to_dict(include_identity=False))
+
+    def to_dict(self, *, include_identity: bool = True) -> dict[str, Any]:
+        payload = {
+            "schema": TACTIC_PREMISE_TRACE_SCHEMA,
+            "trace_id": self.trace_id,
+            "kind": self.kind.value,
+            "goal_id": self.goal_id,
+            "state_digest": self.state_digest,
+            "item_ids": list(self.item_ids),
+            "model_revision": self.model_revision,
+            "tool_revision": self.tool_revision,
+            "outcome": self.outcome,
+            "independently_validated": self.independently_validated,
+            "source_faithful": self.source_faithful,
+            "metadata": dict(self.metadata),
+            "proof_authority": False,
+        }
+        if include_identity:
+            payload["content_id"] = self.content_id
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "TacticPremiseTrace":
+        value = _mapping(payload, field_name="trace")
+        return cls(
+            trace_id=str(value.get("trace_id") or ""),
+            kind=value.get("kind", RankedKind.TACTIC),
+            goal_id=str(value.get("goal_id") or ""),
+            state_digest=str(value.get("state_digest") or ""),
+            item_ids=tuple(value.get("item_ids") or ()),
+            model_revision=str(value.get("model_revision") or ""),
+            tool_revision=str(value.get("tool_revision") or ""),
+            outcome=str(value.get("outcome") or "candidate"),
+            independently_validated=bool(value.get("independently_validated", False)),
+            metadata=dict(value.get("metadata") or {}),
+        )
+
+
+def build_tactic_premise_trace(
+    *,
+    kind: RankedKind | str,
+    goal_id: str,
+    item_ids: Sequence[str],
+    state_digest: str = "",
+    model_revision: str = "",
+    tool_revision: str = "",
+    outcome: str = "candidate",
+    independently_validated: bool = False,
+    metadata: Mapping[str, Any] | None = None,
+) -> TacticPremiseTrace:
+    kind_enum = _enum(kind, RankedKind, "kind")
+    digest = state_digest or f"sha256:{_sha256_hex({'goal_id': goal_id, 'items': list(item_ids)})}"
+    trace_id = f"trace:{kind_enum.value}:sha256:{_sha256_hex({'goal': goal_id, 'items': list(item_ids), 'state': digest})}"
+    return TacticPremiseTrace(
+        trace_id=trace_id,
+        kind=kind_enum,
+        goal_id=goal_id,
+        state_digest=digest,
+        item_ids=tuple(item_ids),
+        model_revision=model_revision,
+        tool_revision=tool_revision,
+        outcome=outcome,
+        independently_validated=independently_validated,
+        metadata=dict(metadata or {}),
+    )
+
+
+@dataclass(frozen=True)
+class CurriculumProjection:
+    """Typed curriculum projection. High authority is fail-closed."""
+
+    SCHEMA: ClassVar[str] = CURRICULUM_PROJECTION_SCHEMA
+
+    curriculum_class: CurriculumClass
+    authority: CurriculumAuthority
+    independently_validated: bool
+    trace_ids: tuple[str, ...] = ()
+    timeout_is_falsehood: bool = False
+    source_faithful: bool = False
+    reason_code: str = ""
+    classification: ProofStateClassification | None = None
+    ranking: PremiseRankingReport | Mapping[str, Any] | None = None
+    decomposition: GoalDecomposition | None = None
+    prediction: BranchCostFailurePrediction | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "curriculum_class",
+            _enum(self.curriculum_class, CurriculumClass, "curriculum_class"),
+        )
+        object.__setattr__(self, "authority", _enum(self.authority, CurriculumAuthority, "authority"))
+        object.__setattr__(self, "independently_validated", bool(self.independently_validated))
+        object.__setattr__(self, "trace_ids", _strings(self.trace_ids))
+        object.__setattr__(self, "timeout_is_falsehood", False)
+        object.__setattr__(self, "source_faithful", False)
+        object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
+        if self.classification is not None and not isinstance(
+            self.classification, ProofStateClassification
+        ):
+            object.__setattr__(
+                self,
+                "classification",
+                ProofStateClassification.from_dict(
+                    _mapping(self.classification, field_name="classification")
+                ),
+            )
+        if self.decomposition is not None and not isinstance(self.decomposition, GoalDecomposition):
+            object.__setattr__(
+                self,
+                "decomposition",
+                GoalDecomposition.from_dict(_mapping(self.decomposition, field_name="decomposition")),
+            )
+        if self.prediction is not None and not isinstance(
+            self.prediction, BranchCostFailurePrediction
+        ):
+            object.__setattr__(
+                self,
+                "prediction",
+                BranchCostFailurePrediction.from_dict(
+                    _mapping(self.prediction, field_name="prediction")
+                ),
+            )
+        if self.authority is CurriculumAuthority.HIGH:
+            if not self.independently_validated:
+                raise GoalDirectedTacticianError(
+                    "high curriculum authority requires independently validated traces"
+                )
+            if self.curriculum_class not in {
+                CurriculumClass.VERIFIED_SUCCESS,
+                CurriculumClass.COUNTEREXAMPLE,
+            }:
+                raise GoalDirectedTacticianError(
+                    "timeout and parse_type traces cannot upgrade curriculum authority"
+                )
+            if (
+                self.curriculum_class is CurriculumClass.VERIFIED_SUCCESS
+                and self.classification is not None
+                and not self.classification.kernel_verified
+            ):
+                raise GoalDirectedTacticianError(
+                    "verified_success curriculum requires a kernel-verified classification"
+                )
+
+    @property
+    def upgrades_curriculum_authority(self) -> bool:
+        return self.authority is CurriculumAuthority.HIGH
+
+    def to_dict(self) -> dict[str, Any]:
+        ranking_payload: Any = None
+        if self.ranking is not None:
+            ranking_payload = (
+                self.ranking.to_dict()
+                if hasattr(self.ranking, "to_dict")
+                else dict(self.ranking)
+            )
+        return {
+            "schema": CURRICULUM_PROJECTION_SCHEMA,
+            "curriculum_class": self.curriculum_class.value,
+            "authority": self.authority.value,
+            "independently_validated": self.independently_validated,
+            "trace_ids": list(self.trace_ids),
+            "timeout_is_falsehood": self.timeout_is_falsehood,
+            "source_faithful": self.source_faithful,
+            "reason_code": self.reason_code,
+            "upgrades_curriculum_authority": self.upgrades_curriculum_authority,
+            "classification": (
+                self.classification.to_dict() if self.classification is not None else None
+            ),
+            "ranking": ranking_payload,
+            "decomposition": (
+                self.decomposition.to_dict() if self.decomposition is not None else None
+            ),
+            "prediction": (self.prediction.to_dict() if self.prediction is not None else None),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CurriculumProjection":
+        value = _mapping(payload, field_name="curriculum")
+        ranking = value.get("ranking")
+        return cls(
+            curriculum_class=value.get("curriculum_class", CurriculumClass.PARSE_TYPE),
+            authority=value.get("authority", CurriculumAuthority.NONE),
+            independently_validated=bool(value.get("independently_validated", False)),
+            trace_ids=tuple(value.get("trace_ids") or ()),
+            reason_code=str(value.get("reason_code") or ""),
+            classification=value.get("classification"),
+            ranking=dict(ranking) if isinstance(ranking, Mapping) else ranking,
+            decomposition=value.get("decomposition"),
+            prediction=value.get("prediction"),
+        )
+
+
+def project_curriculum(
+    classification: ProofStateClassification,
+    *,
+    traces: Sequence[TacticPremiseTrace] = (),
+    ranking: PremiseRankingReport | Mapping[str, Any] | None = None,
+    decomposition: GoalDecomposition | None = None,
+    prediction: BranchCostFailurePrediction | None = None,
+    independently_validated: bool | None = None,
+) -> CurriculumProjection:
+    """Project a classified trace into a typed curriculum class.
+
+    Only independently validated verified-success and checked counterexample
+    traces receive high curriculum authority. Timeout is never falsehood.
+    Tactic success never implies source-faithfulness.
+    """
+
+    validated = (
+        classification.independently_validated
+        if independently_validated is None
+        else bool(independently_validated)
+    )
+    # Unvalidated traces cannot inherit a high-authority classification.
+    if classification.curriculum_class is CurriculumClass.VERIFIED_SUCCESS and not (
+        validated and classification.kernel_verified
+    ):
+        effective = ProofStateClassification(
+            state_class=classification.state_class,
+            curriculum_class=CurriculumClass.PARSE_TYPE,
+            independently_validated=validated,
+            kernel_verified=False,
+            reason_code="unvalidated_success_is_not_curriculum_authority",
+            details=dict(classification.details),
+        )
+    else:
+        effective = classification
+        if not validated and classification.curriculum_class is CurriculumClass.COUNTEREXAMPLE:
+            effective = ProofStateClassification(
+                state_class=classification.state_class,
+                curriculum_class=CurriculumClass.COUNTEREXAMPLE,
+                independently_validated=False,
+                kernel_verified=False,
+                reason_code="candidate_counterexample",
+                details=dict(classification.details),
+            )
+    authority = curriculum_authority_for(
+        effective.curriculum_class,
+        independently_validated=validated,
+        kernel_verified=effective.kernel_verified,
+    )
+    reason = effective.reason_code
+    if authority is CurriculumAuthority.HIGH:
+        reason = reason or "validated_trace_upgrades_curriculum"
+    elif effective.curriculum_class is CurriculumClass.TIMEOUT:
+        reason = reason or "timeout_is_not_falsehood"
+    else:
+        reason = reason or "candidate_curriculum"
+    return CurriculumProjection(
+        curriculum_class=effective.curriculum_class,
+        authority=authority,
+        independently_validated=validated,
+        trace_ids=tuple(item.trace_id for item in traces),
+        reason_code=reason,
+        classification=effective,
+        ranking=ranking,
+        decomposition=decomposition,
+        prediction=prediction,
+    )
+
+
+def rank_tactics_and_premises(
+    candidates: Sequence[Mapping[str, Any]],
+    *,
+    k: int = DEFAULT_TOP_K,
+    relevant_ids: Sequence[str] = (),
+    kind: RankedKind | str = RankedKind.TACTIC,
+) -> PremiseRankingReport:
+    """Rank tactic or premise candidates with top-k / Recall@k / cost."""
+
+    bound_k = min(ABSOLUTE_MAX_TOP_K, _positive(k, "k"))
+    rank_kind = _enum(kind, RankedKind, "kind")
+    return rank_proof_premises(
+        candidates,
+        k=bound_k,
+        relevant_ids=relevant_ids,
+        kind=rank_kind.value,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -455,12 +1302,8 @@ class ExactTacticianCacheKey:
     obligation_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "tree_id", _text(self.tree_id, field_name="tree_id")
-        )
-        object.__setattr__(
-            self, "target_id", _text(self.target_id, field_name="target_id")
-        )
+        object.__setattr__(self, "tree_id", _text(self.tree_id, field_name="tree_id"))
+        object.__setattr__(self, "target_id", _text(self.target_id, field_name="target_id"))
         object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids))
         object.__setattr__(
             self,
@@ -472,27 +1315,17 @@ class ExactTacticianCacheKey:
             "provider_version",
             _text(self.provider_version, field_name="provider_version"),
         )
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, field_name="policy_id")
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, field_name="policy_id"))
         if not isinstance(self.bounds, Mapping):
             raise GoalDirectedTacticianError("bounds must be an object")
         # Stable projection: reject empty bounds object — bounds must be explicit.
         if not dict(self.bounds):
             raise GoalDirectedTacticianError("bounds must be non-empty")
         object.__setattr__(self, "bounds", dict(self.bounds))
-        object.__setattr__(
-            self, "corpus_id", str(self.corpus_id or "").strip()
-        )
-        object.__setattr__(
-            self, "corpus_version", str(self.corpus_version or "").strip()
-        )
-        object.__setattr__(
-            self, "toolchain_id", str(self.toolchain_id or "").strip()
-        )
-        object.__setattr__(
-            self, "obligation_id", str(self.obligation_id or "").strip()
-        )
+        object.__setattr__(self, "corpus_id", str(self.corpus_id or "").strip())
+        object.__setattr__(self, "corpus_version", str(self.corpus_version or "").strip())
+        object.__setattr__(self, "toolchain_id", str(self.toolchain_id or "").strip())
+        object.__setattr__(self, "obligation_id", str(self.obligation_id or "").strip())
 
     @property
     def bound_digest(self) -> str:
@@ -550,8 +1383,7 @@ class ExactTacticianCacheKey:
             or value.get("goal_id", ""),
             assumption_ids=tuple(value.get("assumption_ids") or ()),
             provider_id=value.get("provider_id", ""),
-            provider_version=value.get("provider_version", "")
-            or value.get("version", ""),
+            provider_version=value.get("provider_version", "") or value.get("version", ""),
             policy_id=value.get("policy_id", ""),
             bounds=dict(value.get("bounds") or {}),
             corpus_id=value.get("corpus_id", ""),
@@ -630,9 +1462,7 @@ class UtilityBinding:
     notes: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "role", _enum(self.role, UtilityRole, "role")
-        )
+        object.__setattr__(self, "role", _enum(self.role, UtilityRole, "role"))
         object.__setattr__(
             self,
             "utility_id",
@@ -643,9 +1473,7 @@ class UtilityBinding:
             "authority",
             _enum(self.authority, UtilityAuthority, "authority"),
         )
-        object.__setattr__(
-            self, "version", _text(self.version, field_name="version")
-        )
+        object.__setattr__(self, "version", _text(self.version, field_name="version"))
         object.__setattr__(self, "available", bool(self.available))
         object.__setattr__(self, "notes", str(self.notes or "").strip())
 
@@ -751,6 +1579,12 @@ def default_utility_bindings() -> tuple[UtilityBinding, ...]:
             utility_id="supervisor-proof-admission@1",
             authority=UtilityAuthority.ORCHESTRATION,
         ),
+        UtilityBinding(
+            role=UtilityRole.CURRICULUM,
+            utility_id="proof-state-curriculum-projection@1",
+            authority=UtilityAuthority.GUIDANCE,
+            notes="only independently validated traces upgrade curriculum authority",
+        ),
     )
 
 
@@ -768,44 +1602,32 @@ class PhaseRecord:
     details: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "phase", _enum(self.phase, TacticianPhase, "phase")
-        )
-        object.__setattr__(
-            self, "status", _enum(self.status, PhaseStatus, "status")
-        )
+        object.__setattr__(self, "phase", _enum(self.phase, TacticianPhase, "phase"))
+        object.__setattr__(self, "status", _enum(self.status, PhaseStatus, "status"))
         if self.utility_role is not None:
             object.__setattr__(
                 self,
                 "utility_role",
                 _enum(self.utility_role, UtilityRole, "utility_role"),
             )
-        object.__setattr__(
-            self, "reason_code", str(self.reason_code or "").strip()
-        )
+        object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
         if self.evidence_source is not None:
             object.__setattr__(
                 self,
                 "evidence_source",
                 _enum(self.evidence_source, EvidenceSource, "evidence_source"),
             )
-        object.__setattr__(
-            self, "details", _public_mapping(dict(self.details or {}))
-        )
+        object.__setattr__(self, "details", _public_mapping(dict(self.details or {})))
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": TACTICIAN_PHASE_RECORD_SCHEMA,
             "phase": self.phase.value,
             "status": self.status.value,
-            "utility_role": (
-                self.utility_role.value if self.utility_role is not None else ""
-            ),
+            "utility_role": (self.utility_role.value if self.utility_role is not None else ""),
             "reason_code": self.reason_code,
             "evidence_source": (
-                self.evidence_source.value
-                if self.evidence_source is not None
-                else ""
+                self.evidence_source.value if self.evidence_source is not None else ""
             ),
             "details": dict(self.details),
         }
@@ -849,23 +1671,15 @@ class ZkpReceiptBinding:
     reason_code: str = "bound_existing_trusted_receipt"
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "receipt_id", _text(self.receipt_id, field_name="receipt_id")
-        )
+        object.__setattr__(self, "receipt_id", _text(self.receipt_id, field_name="receipt_id"))
         object.__setattr__(
             self,
             "receipt_assurance",
             _assurance(self.receipt_assurance),
         )
-        object.__setattr__(
-            self, "bound_assurance", _assurance(self.bound_assurance)
-        )
-        object.__setattr__(
-            self, "circuit_id", _text(self.circuit_id, field_name="circuit_id")
-        )
-        object.__setattr__(
-            self, "backend_id", _text(self.backend_id, field_name="backend_id")
-        )
+        object.__setattr__(self, "bound_assurance", _assurance(self.bound_assurance))
+        object.__setattr__(self, "circuit_id", _text(self.circuit_id, field_name="circuit_id"))
+        object.__setattr__(self, "backend_id", _text(self.backend_id, field_name="backend_id"))
         object.__setattr__(
             self,
             "verification_key_id",
@@ -876,9 +1690,7 @@ class ZkpReceiptBinding:
             "attestation_artifact_id",
             str(self.attestation_artifact_id or "").strip(),
         )
-        object.__setattr__(
-            self, "statement_id", str(self.statement_id or "").strip()
-        )
+        object.__setattr__(self, "statement_id", str(self.statement_id or "").strip())
         # Fail closed: ZKP binding must not increase assurance of the receipt.
         if self.bound_assurance.rank > self.receipt_assurance.rank:
             raise GoalDirectedTacticianError(
@@ -915,20 +1727,14 @@ class ZkpReceiptBinding:
         value = _mapping(payload, field_name="zkp_binding")
         return cls(
             receipt_id=value.get("receipt_id", ""),
-            receipt_assurance=value.get(
-                "receipt_assurance", AssuranceLevel.UNVERIFIED
-            ),
-            bound_assurance=value.get(
-                "bound_assurance", AssuranceLevel.UNVERIFIED
-            ),
+            receipt_assurance=value.get("receipt_assurance", AssuranceLevel.UNVERIFIED),
+            bound_assurance=value.get("bound_assurance", AssuranceLevel.UNVERIFIED),
             circuit_id=value.get("circuit_id", ""),
             backend_id=value.get("backend_id", ""),
             verification_key_id=value.get("verification_key_id", ""),
             attestation_artifact_id=value.get("attestation_artifact_id", ""),
             statement_id=value.get("statement_id", ""),
-            reason_code=value.get(
-                "reason_code", "bound_existing_trusted_receipt"
-            ),
+            reason_code=value.get("reason_code", "bound_existing_trusted_receipt"),
         )
 
 
@@ -957,8 +1763,7 @@ def bind_zkp_to_trusted_receipt(
         circuit_id=circuit_id,
         backend_id=backend_id,
         verification_key_id=verification_key_id,
-        attestation_artifact_id=attestation_artifact_id
-        or f"attestation:{receipt_id}",
+        attestation_artifact_id=attestation_artifact_id or f"attestation:{receipt_id}",
         statement_id=statement_id
         or f"statement:sha256:{_sha256_hex({'receipt_id': receipt_id, 'circuit_id': circuit_id})}",
         reason_code="bound_existing_trusted_receipt",
@@ -996,17 +1801,11 @@ class AdmissionRecord:
             "authoritative_assurance",
             _assurance(self.authoritative_assurance),
         )
-        object.__setattr__(
-            self, "independently_validated", bool(self.independently_validated)
-        )
+        object.__setattr__(self, "independently_validated", bool(self.independently_validated))
         object.__setattr__(self, "legal_compatible", bool(self.legal_compatible))
         object.__setattr__(self, "reason_codes", _strings(self.reason_codes))
-        object.__setattr__(
-            self, "cache_key_id", str(self.cache_key_id or "").strip()
-        )
-        object.__setattr__(
-            self, "receipt_id", str(self.receipt_id or "").strip()
-        )
+        object.__setattr__(self, "cache_key_id", str(self.cache_key_id or "").strip())
+        object.__setattr__(self, "receipt_id", str(self.receipt_id or "").strip())
 
     @property
     def admitted(self) -> bool:
@@ -1031,15 +1830,9 @@ class AdmissionRecord:
         value = _mapping(payload, field_name="admission")
         return cls(
             decision=value.get("decision", AdmissionDecision.REJECTED),
-            required_assurance=value.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
-            authoritative_assurance=value.get(
-                "authoritative_assurance", AssuranceLevel.UNVERIFIED
-            ),
-            independently_validated=bool(
-                value.get("independently_validated", False)
-            ),
+            required_assurance=value.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
+            authoritative_assurance=value.get("authoritative_assurance", AssuranceLevel.UNVERIFIED),
+            independently_validated=bool(value.get("independently_validated", False)),
             legal_compatible=bool(value.get("legal_compatible", True)),
             reason_codes=tuple(value.get("reason_codes") or ()),
             cache_key_id=value.get("cache_key_id", ""),
@@ -1074,42 +1867,26 @@ class TacticianCheckpoint:
             object.__setattr__(
                 self,
                 "cache_key",
-                ExactTacticianCacheKey.from_dict(
-                    _mapping(self.cache_key, field_name="cache_key")
-                ),
+                ExactTacticianCacheKey.from_dict(_mapping(self.cache_key, field_name="cache_key")),
             )
-        object.__setattr__(
-            self, "completed_phases", _strings(self.completed_phases)
-        )
-        object.__setattr__(
-            self, "workflow_id", str(self.workflow_id or "").strip()
-        )
-        object.__setattr__(
-            self, "receipt_id", str(self.receipt_id or "").strip()
-        )
+        object.__setattr__(self, "completed_phases", _strings(self.completed_phases))
+        object.__setattr__(self, "workflow_id", str(self.workflow_id or "").strip())
+        object.__setattr__(self, "receipt_id", str(self.receipt_id or "").strip())
         object.__setattr__(
             self,
             "authoritative_assurance",
             _assurance(self.authoritative_assurance),
         )
-        object.__setattr__(
-            self, "independently_validated", bool(self.independently_validated)
-        )
+        object.__setattr__(self, "independently_validated", bool(self.independently_validated))
         object.__setattr__(self, "legal_compatible", bool(self.legal_compatible))
         records: list[PhaseRecord] = []
         for item in self.phase_records or ():
             if isinstance(item, PhaseRecord):
                 records.append(item)
             else:
-                records.append(
-                    PhaseRecord.from_dict(
-                        _mapping(item, field_name="phase_record")
-                    )
-                )
+                records.append(PhaseRecord.from_dict(_mapping(item, field_name="phase_record")))
         object.__setattr__(self, "phase_records", tuple(records))
-        object.__setattr__(
-            self, "metadata", _public_mapping(dict(self.metadata or {}))
-        )
+        object.__setattr__(self, "metadata", _public_mapping(dict(self.metadata or {})))
 
     @property
     def resumable(self) -> bool:
@@ -1135,23 +1912,15 @@ class TacticianCheckpoint:
     def from_dict(cls, payload: Mapping[str, Any]) -> "TacticianCheckpoint":
         value = _mapping(payload, field_name="checkpoint")
         if value.get("schema") not in {None, TACTICIAN_CHECKPOINT_SCHEMA}:
-            raise GoalDirectedTacticianError(
-                "unsupported tactician checkpoint schema"
-            )
+            raise GoalDirectedTacticianError("unsupported tactician checkpoint schema")
         return cls(
             checkpoint_id=value.get("checkpoint_id", ""),
-            cache_key=ExactTacticianCacheKey.from_dict(
-                value.get("cache_key") or {}
-            ),
+            cache_key=ExactTacticianCacheKey.from_dict(value.get("cache_key") or {}),
             completed_phases=tuple(value.get("completed_phases") or ()),
             workflow_id=value.get("workflow_id", ""),
             receipt_id=value.get("receipt_id", ""),
-            authoritative_assurance=value.get(
-                "authoritative_assurance", AssuranceLevel.UNVERIFIED
-            ),
-            independently_validated=bool(
-                value.get("independently_validated", False)
-            ),
+            authoritative_assurance=value.get("authoritative_assurance", AssuranceLevel.UNVERIFIED),
+            independently_validated=bool(value.get("independently_validated", False)),
             legal_compatible=bool(value.get("legal_compatible", True)),
             phase_records=tuple(value.get("phase_records") or ()),
             metadata=dict(value.get("metadata") or {}),
@@ -1161,9 +1930,7 @@ class TacticianCheckpoint:
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_suffix(target.suffix + ".tmp")
-        payload = json.dumps(
-            self.to_dict(), indent=2, sort_keys=True, separators=(",", ": ")
-        )
+        payload = json.dumps(self.to_dict(), indent=2, sort_keys=True, separators=(",", ": "))
         tmp.write_text(payload + "\n", encoding="utf-8")
         tmp.replace(target)
         return target
@@ -1174,9 +1941,7 @@ class TacticianCheckpoint:
         try:
             raw = json.loads(target.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            raise GoalDirectedTacticianError(
-                f"checkpoint is unreadable: {exc}"
-            ) from exc
+            raise GoalDirectedTacticianError(f"checkpoint is unreadable: {exc}") from exc
         if not isinstance(raw, Mapping):
             raise GoalDirectedTacticianError("checkpoint must be a JSON object")
         return cls.from_dict(raw)
@@ -1213,12 +1978,8 @@ class GoalDirectedTacticianRequest:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "tree_id", _text(self.tree_id, field_name="tree_id")
-        )
-        object.__setattr__(
-            self, "target_id", _text(self.target_id, field_name="target_id")
-        )
+        object.__setattr__(self, "tree_id", _text(self.tree_id, field_name="tree_id"))
+        object.__setattr__(self, "target_id", _text(self.target_id, field_name="target_id"))
         object.__setattr__(
             self,
             "provider_id",
@@ -1229,26 +1990,16 @@ class GoalDirectedTacticianRequest:
             "provider_version",
             _text(self.provider_version, field_name="provider_version"),
         )
-        object.__setattr__(
-            self, "policy_id", _text(self.policy_id, field_name="policy_id")
-        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, field_name="policy_id"))
         if not isinstance(self.bounds, Mapping) or not dict(self.bounds):
             raise GoalDirectedTacticianError("bounds must be a non-empty object")
         object.__setattr__(self, "bounds", dict(self.bounds))
         object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids))
-        object.__setattr__(
-            self, "formal_goal_id", str(self.formal_goal_id or "").strip()
-        )
-        object.__setattr__(
-            self, "obligation_id", str(self.obligation_id or "").strip()
-        )
+        object.__setattr__(self, "formal_goal_id", str(self.formal_goal_id or "").strip())
+        object.__setattr__(self, "obligation_id", str(self.obligation_id or "").strip())
         object.__setattr__(self, "corpus_id", str(self.corpus_id or "").strip())
-        object.__setattr__(
-            self, "corpus_version", str(self.corpus_version or "").strip()
-        )
-        object.__setattr__(
-            self, "toolchain_id", str(self.toolchain_id or "").strip()
-        )
+        object.__setattr__(self, "corpus_version", str(self.corpus_version or "").strip())
+        object.__setattr__(self, "toolchain_id", str(self.toolchain_id or "").strip())
         object.__setattr__(
             self,
             "required_assurance",
@@ -1264,16 +2015,10 @@ class GoalDirectedTacticianRequest:
             object.__setattr__(
                 self,
                 "model_draft",
-                _public_mapping(
-                    dict(_mapping(self.model_draft, field_name="model_draft"))
-                ),
+                _public_mapping(dict(_mapping(self.model_draft, field_name="model_draft"))),
             )
-        object.__setattr__(
-            self, "workflow_id", str(self.workflow_id or "").strip()
-        )
-        object.__setattr__(
-            self, "metadata", _public_mapping(dict(self.metadata or {}))
-        )
+        object.__setattr__(self, "workflow_id", str(self.workflow_id or "").strip())
+        object.__setattr__(self, "metadata", _public_mapping(dict(self.metadata or {})))
 
     def cache_key(self) -> ExactTacticianCacheKey:
         return build_exact_tactician_cache_key(
@@ -1318,9 +2063,7 @@ class GoalDirectedTacticianRequest:
     def from_dict(cls, payload: Mapping[str, Any]) -> "GoalDirectedTacticianRequest":
         value = _mapping(payload, field_name="request")
         if value.get("schema") not in {None, TACTICIAN_REQUEST_SCHEMA}:
-            raise GoalDirectedTacticianError(
-                "unsupported goal-directed tactician request schema"
-            )
+            raise GoalDirectedTacticianError("unsupported goal-directed tactician request schema")
         draft = value.get("model_draft")
         return cls(
             tree_id=value.get("tree_id", ""),
@@ -1328,8 +2071,7 @@ class GoalDirectedTacticianRequest:
             or value.get("goal_id", "")
             or value.get("obligation_id", ""),
             provider_id=value.get("provider_id", ""),
-            provider_version=value.get("provider_version", "")
-            or value.get("version", ""),
+            provider_version=value.get("provider_version", "") or value.get("version", ""),
             policy_id=value.get("policy_id", ""),
             bounds=dict(value.get("bounds") or {}),
             assumption_ids=tuple(value.get("assumption_ids") or ()),
@@ -1338,12 +2080,8 @@ class GoalDirectedTacticianRequest:
             corpus_id=value.get("corpus_id", ""),
             corpus_version=value.get("corpus_version", ""),
             toolchain_id=value.get("toolchain_id", ""),
-            required_assurance=value.get(
-                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
-            ),
-            require_legal_compatibility=bool(
-                value.get("require_legal_compatibility", False)
-            ),
+            required_assurance=value.get("required_assurance", AssuranceLevel.KERNEL_VERIFIED),
+            require_legal_compatibility=bool(value.get("require_legal_compatibility", False)),
             enable_zkp=bool(value.get("enable_zkp", True)),
             model_draft=dict(draft) if isinstance(draft, Mapping) else None,
             workflow_id=value.get("workflow_id", ""),
@@ -1372,6 +2110,12 @@ class GoalDirectedTacticianResult:
     workflow_id: str = ""
     reason_code: str = ""
     details: Mapping[str, Any] = field(default_factory=dict)
+    proof_state: ProofStateClassification | None = None
+    ranking: PremiseRankingReport | Mapping[str, Any] | None = None
+    decomposition: GoalDecomposition | None = None
+    prediction: BranchCostFailurePrediction | None = None
+    traces: tuple[TacticPremiseTrace, ...] = ()
+    curriculum: CurriculumProjection | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1383,9 +2127,7 @@ class GoalDirectedTacticianResult:
             object.__setattr__(
                 self,
                 "cache_key",
-                ExactTacticianCacheKey.from_dict(
-                    _mapping(self.cache_key, field_name="cache_key")
-                ),
+                ExactTacticianCacheKey.from_dict(_mapping(self.cache_key, field_name="cache_key")),
             )
         object.__setattr__(self, "phases", tuple(self.phases or ()))
         object.__setattr__(self, "utilities", tuple(self.utilities or ()))
@@ -1393,52 +2135,73 @@ class GoalDirectedTacticianResult:
             object.__setattr__(
                 self,
                 "admission",
-                AdmissionRecord.from_dict(
-                    _mapping(self.admission, field_name="admission")
-                ),
+                AdmissionRecord.from_dict(_mapping(self.admission, field_name="admission")),
             )
-        object.__setattr__(
-            self, "independently_validated", bool(self.independently_validated)
-        )
+        object.__setattr__(self, "independently_validated", bool(self.independently_validated))
         object.__setattr__(self, "legal_compatible", bool(self.legal_compatible))
         object.__setattr__(self, "resumable", bool(self.resumable))
-        if self.checkpoint is not None and not isinstance(
-            self.checkpoint, TacticianCheckpoint
-        ):
+        if self.checkpoint is not None and not isinstance(self.checkpoint, TacticianCheckpoint):
             object.__setattr__(
                 self,
                 "checkpoint",
-                TacticianCheckpoint.from_dict(
-                    _mapping(self.checkpoint, field_name="checkpoint")
-                ),
+                TacticianCheckpoint.from_dict(_mapping(self.checkpoint, field_name="checkpoint")),
             )
-        if self.zkp_binding is not None and not isinstance(
-            self.zkp_binding, ZkpReceiptBinding
-        ):
+        if self.zkp_binding is not None and not isinstance(self.zkp_binding, ZkpReceiptBinding):
             object.__setattr__(
                 self,
                 "zkp_binding",
-                ZkpReceiptBinding.from_dict(
-                    _mapping(self.zkp_binding, field_name="zkp_binding")
-                ),
+                ZkpReceiptBinding.from_dict(_mapping(self.zkp_binding, field_name="zkp_binding")),
             )
-        object.__setattr__(
-            self, "receipt_id", str(self.receipt_id or "").strip()
-        )
+        object.__setattr__(self, "receipt_id", str(self.receipt_id or "").strip())
         object.__setattr__(
             self,
             "authoritative_assurance",
             _assurance(self.authoritative_assurance),
         )
-        object.__setattr__(
-            self, "workflow_id", str(self.workflow_id or "").strip()
-        )
-        object.__setattr__(
-            self, "reason_code", str(self.reason_code or "").strip()
-        )
-        object.__setattr__(
-            self, "details", _public_mapping(dict(self.details or {}))
-        )
+        object.__setattr__(self, "workflow_id", str(self.workflow_id or "").strip())
+        object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
+        object.__setattr__(self, "details", _public_mapping(dict(self.details or {})))
+        if self.proof_state is not None and not isinstance(
+            self.proof_state, ProofStateClassification
+        ):
+            object.__setattr__(
+                self,
+                "proof_state",
+                ProofStateClassification.from_dict(
+                    _mapping(self.proof_state, field_name="proof_state")
+                ),
+            )
+        if self.decomposition is not None and not isinstance(self.decomposition, GoalDecomposition):
+            object.__setattr__(
+                self,
+                "decomposition",
+                GoalDecomposition.from_dict(
+                    _mapping(self.decomposition, field_name="decomposition")
+                ),
+            )
+        if self.prediction is not None and not isinstance(
+            self.prediction, BranchCostFailurePrediction
+        ):
+            object.__setattr__(
+                self,
+                "prediction",
+                BranchCostFailurePrediction.from_dict(
+                    _mapping(self.prediction, field_name="prediction")
+                ),
+            )
+        traces: list[TacticPremiseTrace] = []
+        for item in self.traces or ():
+            if isinstance(item, TacticPremiseTrace):
+                traces.append(item)
+            else:
+                traces.append(TacticPremiseTrace.from_dict(_mapping(item, field_name="trace")))
+        object.__setattr__(self, "traces", tuple(traces))
+        if self.curriculum is not None and not isinstance(self.curriculum, CurriculumProjection):
+            object.__setattr__(
+                self,
+                "curriculum",
+                CurriculumProjection.from_dict(_mapping(self.curriculum, field_name="curriculum")),
+            )
 
     @property
     def admitted(self) -> bool:
@@ -1461,18 +2224,26 @@ class GoalDirectedTacticianResult:
             "independently_validated": self.independently_validated,
             "legal_compatible": self.legal_compatible,
             "resumable": self.resumable,
-            "checkpoint": (
-                self.checkpoint.to_dict() if self.checkpoint is not None else None
-            ),
-            "zkp_binding": (
-                self.zkp_binding.to_dict() if self.zkp_binding is not None else None
-            ),
+            "checkpoint": (self.checkpoint.to_dict() if self.checkpoint is not None else None),
+            "zkp_binding": (self.zkp_binding.to_dict() if self.zkp_binding is not None else None),
             "receipt_id": self.receipt_id,
             "authoritative_assurance": self.authoritative_assurance.value,
             "workflow_id": self.workflow_id,
             "reason_code": self.reason_code,
             "details": dict(self.details),
             "admitted": self.admitted,
+            "proof_state": (self.proof_state.to_dict() if self.proof_state is not None else None),
+            "ranking": (
+                self.ranking.to_dict()
+                if self.ranking is not None and hasattr(self.ranking, "to_dict")
+                else (dict(self.ranking) if isinstance(self.ranking, Mapping) else None)
+            ),
+            "decomposition": (
+                self.decomposition.to_dict() if self.decomposition is not None else None
+            ),
+            "prediction": (self.prediction.to_dict() if self.prediction is not None else None),
+            "traces": [item.to_dict() for item in self.traces],
+            "curriculum": (self.curriculum.to_dict() if self.curriculum is not None else None),
         }
         if include_identity:
             payload["content_id"] = content_identity(
@@ -1484,28 +2255,18 @@ class GoalDirectedTacticianResult:
     def from_dict(cls, payload: Mapping[str, Any]) -> "GoalDirectedTacticianResult":
         value = _mapping(payload, field_name="result")
         if value.get("schema") not in {None, TACTICIAN_RESULT_SCHEMA}:
-            raise GoalDirectedTacticianError(
-                "unsupported goal-directed tactician result schema"
-            )
+            raise GoalDirectedTacticianError("unsupported goal-directed tactician result schema")
         checkpoint = value.get("checkpoint")
         zkp = value.get("zkp_binding")
         return cls(
             stop_reason=value.get("stop_reason", TacticianStopReason.OPEN),
-            cache_key=ExactTacticianCacheKey.from_dict(
-                value.get("cache_key") or {}
-            ),
-            phases=tuple(
-                PhaseRecord.from_dict(item)
-                for item in (value.get("phases") or ())
-            ),
+            cache_key=ExactTacticianCacheKey.from_dict(value.get("cache_key") or {}),
+            phases=tuple(PhaseRecord.from_dict(item) for item in (value.get("phases") or ())),
             utilities=tuple(
-                UtilityBinding.from_dict(item)
-                for item in (value.get("utilities") or ())
+                UtilityBinding.from_dict(item) for item in (value.get("utilities") or ())
             ),
             admission=AdmissionRecord.from_dict(value.get("admission") or {}),
-            independently_validated=bool(
-                value.get("independently_validated", False)
-            ),
+            independently_validated=bool(value.get("independently_validated", False)),
             legal_compatible=bool(value.get("legal_compatible", True)),
             resumable=bool(value.get("resumable", False)),
             checkpoint=(
@@ -1513,18 +2274,18 @@ class GoalDirectedTacticianResult:
                 if isinstance(checkpoint, Mapping)
                 else None
             ),
-            zkp_binding=(
-                ZkpReceiptBinding.from_dict(zkp)
-                if isinstance(zkp, Mapping)
-                else None
-            ),
+            zkp_binding=(ZkpReceiptBinding.from_dict(zkp) if isinstance(zkp, Mapping) else None),
             receipt_id=value.get("receipt_id", ""),
-            authoritative_assurance=value.get(
-                "authoritative_assurance", AssuranceLevel.UNVERIFIED
-            ),
+            authoritative_assurance=value.get("authoritative_assurance", AssuranceLevel.UNVERIFIED),
             workflow_id=value.get("workflow_id", ""),
             reason_code=value.get("reason_code", ""),
             details=dict(value.get("details") or {}),
+            proof_state=value.get("proof_state"),
+            ranking=value.get("ranking"),
+            decomposition=value.get("decomposition"),
+            prediction=value.get("prediction"),
+            traces=tuple(value.get("traces") or ()),
+            curriculum=value.get("curriculum"),
         )
 
 
@@ -1544,9 +2305,7 @@ LegalProvider = Callable[[Mapping[str, Any]], Mapping[str, Any]]
 ValidateProvider = Callable[[Mapping[str, Any]], Mapping[str, Any]]
 ProveProvider = Callable[[Mapping[str, Any]], Mapping[str, Any]]
 CacheLookupProvider = Callable[[ExactTacticianCacheKey], Mapping[str, Any] | None]
-CacheStoreProvider = Callable[
-    [ExactTacticianCacheKey, Mapping[str, Any]], Mapping[str, Any] | None
-]
+CacheStoreProvider = Callable[[ExactTacticianCacheKey, Mapping[str, Any]], Mapping[str, Any] | None]
 ZkpProvider = Callable[[Mapping[str, Any]], Mapping[str, Any]]
 
 
@@ -1591,9 +2350,7 @@ def _default_schedule(context: Mapping[str, Any]) -> Mapping[str, Any]:
 def _default_plan(context: Mapping[str, Any]) -> Mapping[str, Any]:
     workflow_id = str(context.get("workflow_id") or "").strip()
     if not workflow_id:
-        workflow_id = (
-            f"workflow:sha256:{_sha256_hex({'target': context.get('target_id')})}"
-        )
+        workflow_id = f"workflow:sha256:{_sha256_hex({'target': context.get('target_id')})}"
     return {
         "status": "ok",
         "reason_code": "proof_carrying_plan_ready",
@@ -1688,9 +2445,7 @@ def _default_validate(context: Mapping[str, Any]) -> Mapping[str, Any]:
     if isinstance(cache_payload, Mapping) and cache_payload:
         if cache_payload.get("independently_validated") is True:
             assurance = _assurance(
-                cache_payload.get(
-                    "authoritative_assurance", AssuranceLevel.UNVERIFIED
-                )
+                cache_payload.get("authoritative_assurance", AssuranceLevel.UNVERIFIED)
             )
             return {
                 "status": "ok",
@@ -1716,9 +2471,7 @@ def _default_validate(context: Mapping[str, Any]) -> Mapping[str, Any]:
 
     kernel = context.get("kernel_result") or {}
     if isinstance(kernel, Mapping):
-        k_assurance = _assurance(
-            kernel.get("assurance", AssuranceLevel.UNVERIFIED)
-        )
+        k_assurance = _assurance(kernel.get("assurance", AssuranceLevel.UNVERIFIED))
         if (
             str(kernel.get("status") or "") == "ok"
             and k_assurance.rank >= AssuranceLevel.KERNEL_VERIFIED.rank
@@ -1738,9 +2491,7 @@ def _default_validate(context: Mapping[str, Any]) -> Mapping[str, Any]:
 
     prove = context.get("prove_result") or {}
     if isinstance(prove, Mapping) and str(prove.get("status") or "") == "ok":
-        p_assurance = _assurance(
-            prove.get("assurance", AssuranceLevel.UNVERIFIED)
-        )
+        p_assurance = _assurance(prove.get("assurance", AssuranceLevel.UNVERIFIED))
         if prove.get("independently_validated") is True and p_assurance.rank > 0:
             return {
                 "status": "ok",
@@ -1772,9 +2523,7 @@ def _default_prove(context: Mapping[str, Any]) -> Mapping[str, Any]:
 
 def _default_zkp(context: Mapping[str, Any]) -> Mapping[str, Any]:
     receipt_id = str(context.get("receipt_id") or "").strip()
-    assurance = _assurance(
-        context.get("authoritative_assurance", AssuranceLevel.UNVERIFIED)
-    )
+    assurance = _assurance(context.get("authoritative_assurance", AssuranceLevel.UNVERIFIED))
     if not receipt_id:
         return {
             "status": "skipped",
@@ -1791,9 +2540,7 @@ def _default_zkp(context: Mapping[str, Any]) -> Mapping[str, Any]:
         receipt_assurance=assurance,
         circuit_id=str(context.get("circuit_id") or "circuit:receipt-binding@1"),
         backend_id=str(context.get("backend_id") or "backend:simulated-public"),
-        verification_key_id=str(
-            context.get("verification_key_id") or "vk:receipt-binding@1"
-        ),
+        verification_key_id=str(context.get("verification_key_id") or "vk:receipt-binding@1"),
     )
     return {
         "status": "ok",
@@ -1860,9 +2607,7 @@ class GoalDirectedProofTactician:
         self.cache_lookup = cache_lookup
         self.cache_store = cache_store
         self.utilities = tuple(utilities or default_utility_bindings())
-        self.checkpoint_dir = (
-            Path(checkpoint_dir) if checkpoint_dir is not None else None
-        )
+        self.checkpoint_dir = Path(checkpoint_dir) if checkpoint_dir is not None else None
 
     def run(
         self,
@@ -2018,9 +2763,7 @@ class GoalDirectedProofTactician:
                     TacticianPhase.FORMALIZE,
                     PhaseStatus.REJECTED,
                     utility_role=UtilityRole.FORMALIZATION,
-                    reason_code=str(
-                        formal.get("reason_code") or "formalization_required"
-                    ),
+                    reason_code=str(formal.get("reason_code") or "formalization_required"),
                 )
                 return self._terminal(
                     stop_reason=TacticianStopReason.FORMALIZATION_REQUIRED,
@@ -2031,9 +2774,7 @@ class GoalDirectedProofTactician:
                     resumable=True,
                     required_assurance=req.required_assurance,
                     authoritative_assurance=assurance,
-                    reason_code=str(
-                        formal.get("reason_code") or "formalization_required"
-                    ),
+                    reason_code=str(formal.get("reason_code") or "formalization_required"),
                     workflow_id=workflow_id,
                 )
             record(
@@ -2081,9 +2822,7 @@ class GoalDirectedProofTactician:
             )
             base_context[key] = dict(outcome)
             if phase is TacticianPhase.PLAN:
-                workflow_id = str(
-                    outcome.get("workflow_id") or workflow_id or ""
-                ).strip()
+                workflow_id = str(outcome.get("workflow_id") or workflow_id or "").strip()
                 base_context["workflow_id"] = workflow_id
             if status is PhaseStatus.FAILED:
                 return self._terminal(
@@ -2132,9 +2871,7 @@ class GoalDirectedProofTactician:
                     TacticianPhase.LEANSTRAL,
                     PhaseStatus.REJECTED,
                     utility_role=UtilityRole.LEANSTRAL,
-                    reason_code=str(
-                        lean.get("reason_code") or "leanstral_rejected"
-                    ),
+                    reason_code=str(lean.get("reason_code") or "leanstral_rejected"),
                 )
             else:
                 record(
@@ -2168,9 +2905,7 @@ class GoalDirectedProofTactician:
                     TacticianPhase.LEGAL,
                     PhaseStatus.REJECTED,
                     utility_role=UtilityRole.LEGAL_ADAPTER,
-                    reason_code=str(
-                        legal.get("reason_code") or "legal_incompatible"
-                    ),
+                    reason_code=str(legal.get("reason_code") or "legal_incompatible"),
                     evidence_source=EvidenceSource.LEGAL,
                     details=_public_mapping(dict(legal)),
                 )
@@ -2216,9 +2951,7 @@ class GoalDirectedProofTactician:
                     utility_role=UtilityRole.CACHE,
                     reason_code="cache_miss",
                 )
-            base_context["cache_payload"] = (
-                dict(cache_payload) if cache_payload is not None else {}
-            )
+            base_context["cache_payload"] = dict(cache_payload) if cache_payload is not None else {}
 
         # Prove when no validated evidence yet.
         if TacticianPhase.PROVE.value not in completed:
@@ -2286,9 +3019,7 @@ class GoalDirectedProofTactician:
                     reason_code=reason,
                     workflow_id=workflow_id,
                 )
-            if status is PhaseStatus.REJECTED or not validation.get(
-                "independently_validated"
-            ):
+            if status is PhaseStatus.REJECTED or not validation.get("independently_validated"):
                 record(
                     TacticianPhase.VALIDATE,
                     PhaseStatus.REJECTED,
@@ -2335,9 +3066,7 @@ class GoalDirectedProofTactician:
                     checkpoint=checkpoint,
                 )
             independently_validated = True
-            assurance = _assurance(
-                validation.get("authoritative_assurance", assurance)
-            )
+            assurance = _assurance(validation.get("authoritative_assurance", assurance))
             receipt_id = str(validation.get("receipt_id") or receipt_id)
             source = validation.get("evidence_source") or None
             record(
@@ -2385,9 +3114,7 @@ class GoalDirectedProofTactician:
                     binding_payload = zkp_result.get("binding") or {}
                     zkp_binding = ZkpReceiptBinding.from_dict(binding_payload)
                     if zkp_binding.assurance_increased:
-                        raise GoalDirectedTacticianError(
-                            "ZKP binding increased receipt assurance"
-                        )
+                        raise GoalDirectedTacticianError("ZKP binding increased receipt assurance")
                     # Bound assurance must equal receipt assurance projection.
                     assurance = zkp_binding.receipt_assurance
                     record(
@@ -2395,8 +3122,7 @@ class GoalDirectedProofTactician:
                         PhaseStatus.OK,
                         utility_role=UtilityRole.ZKP_BINDING,
                         reason_code=str(
-                            zkp_result.get("reason_code")
-                            or "zkp_bound_without_assurance_increase"
+                            zkp_result.get("reason_code") or "zkp_bound_without_assurance_increase"
                         ),
                         evidence_source=EvidenceSource.ZKP_BINDING,
                         details=zkp_binding.to_dict(),
@@ -2406,9 +3132,7 @@ class GoalDirectedProofTactician:
                         TacticianPhase.ZKP_BIND,
                         self._status_from_payload(zkp_result),
                         utility_role=UtilityRole.ZKP_BINDING,
-                        reason_code=str(
-                            zkp_result.get("reason_code") or "zkp_skipped"
-                        ),
+                        reason_code=str(zkp_result.get("reason_code") or "zkp_skipped"),
                         details=_public_mapping(dict(zkp_result)),
                     )
             else:
@@ -2418,6 +3142,17 @@ class GoalDirectedProofTactician:
                     utility_role=UtilityRole.ZKP_BINDING,
                     reason_code="zkp_not_applicable",
                 )
+
+        proof_state, ranking, decomposition, prediction, traces, curriculum = (
+            self._project_proof_state(
+                request=req,
+                context=base_context,
+                independently_validated=independently_validated,
+                kernel_verified=assurance.rank >= AssuranceLevel.KERNEL_VERIFIED.rank,
+                record=record,
+                completed=completed,
+            )
+        )
 
         # Supervisor admission (fail-closed).
         admission = self._admit(
@@ -2433,9 +3168,7 @@ class GoalDirectedProofTactician:
             PhaseStatus.OK if admission.admitted else PhaseStatus.REJECTED,
             utility_role=UtilityRole.SUPERVISOR_ADMISSION,
             reason_code=(
-                "admitted"
-                if admission.admitted
-                else ",".join(admission.reason_codes) or "rejected"
+                "admitted" if admission.admitted else ",".join(admission.reason_codes) or "rejected"
             ),
             details=admission.to_dict(),
         )
@@ -2485,25 +3218,224 @@ class GoalDirectedProofTactician:
             receipt_id=receipt_id,
             authoritative_assurance=assurance,
             workflow_id=workflow_id,
-            reason_code=(
-                "admitted" if admission.admitted else "admission_rejected"
-            ),
+            reason_code=("admitted" if admission.admitted else "admission_rejected"),
             details={
                 "interface": GOAL_DIRECTED_PROOF_TACTICIAN_INTERFACE,
                 "version": GOAL_DIRECTED_PROOF_TACTICIAN_VERSION,
             },
+            proof_state=proof_state,
+            ranking=ranking,
+            decomposition=decomposition,
+            prediction=prediction,
+            traces=traces,
+            curriculum=curriculum,
         )
 
     # -- internals -----------------------------------------------------------
+
+    def _project_proof_state(
+        self,
+        *,
+        request: GoalDirectedTacticianRequest,
+        context: Mapping[str, Any],
+        independently_validated: bool,
+        kernel_verified: bool,
+        record: Callable[..., None],
+        completed: Sequence[str],
+    ) -> tuple[
+        ProofStateClassification,
+        PremiseRankingReport | None,
+        GoalDecomposition | None,
+        BranchCostFailurePrediction | None,
+        tuple[TacticPremiseTrace, ...],
+        CurriculumProjection,
+    ]:
+        """Classify, rank, decompose, predict, and project curriculum (guidance)."""
+
+        ranking: PremiseRankingReport | None = None
+        decomposition: GoalDecomposition | None = None
+        retrieve_result = context.get("retrieve_result") or {}
+        candidates = []
+        if isinstance(retrieve_result, Mapping):
+            raw = retrieve_result.get("candidates") or retrieve_result.get("premises") or ()
+            if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray)):
+                candidates = [item for item in raw if isinstance(item, Mapping)]
+        extra_candidates = context.get("ranking_candidates") or request.metadata.get(
+            "ranking_candidates"
+        )
+        if isinstance(extra_candidates, Sequence) and not isinstance(
+            extra_candidates, (str, bytes, bytearray)
+        ):
+            candidates.extend(item for item in extra_candidates if isinstance(item, Mapping))
+        relevant = context.get("relevant_ids") or request.metadata.get("relevant_ids") or ()
+        top_k = int(context.get("top_k") or request.bounds.get("top_k") or DEFAULT_TOP_K)
+        if TacticianPhase.RANK.value not in completed:
+            if candidates:
+                ranking = rank_tactics_and_premises(
+                    candidates,
+                    k=top_k,
+                    relevant_ids=tuple(relevant) if isinstance(relevant, Sequence) else (),
+                    kind=context.get("rank_kind") or RankedKind.PREMISE,
+                )
+                record(
+                    TacticianPhase.RANK,
+                    PhaseStatus.OK,
+                    utility_role=UtilityRole.RETRIEVAL,
+                    reason_code="ranked_candidates",
+                    details=ranking.to_dict(),
+                )
+            else:
+                record(
+                    TacticianPhase.RANK,
+                    PhaseStatus.SKIPPED,
+                    utility_role=UtilityRole.RETRIEVAL,
+                    reason_code="no_rankable_candidates",
+                )
+
+        raw_decomp = (
+            context.get("decomposition")
+            or (context.get("leanstral_result") or {}).get("decomposition")
+            or request.metadata.get("decomposition")
+        )
+        if TacticianPhase.DECOMPOSE.value not in completed:
+            if isinstance(raw_decomp, Mapping) or isinstance(raw_decomp, Sequence):
+                try:
+                    if isinstance(raw_decomp, Mapping) and raw_decomp.get("children") is not None:
+                        decomposition = decompose_goal(
+                            str(raw_decomp.get("parent_goal_id") or request.target_id),
+                            tuple(raw_decomp.get("children") or ()),
+                            max_branch_factor=int(
+                                raw_decomp.get("max_branch_factor")
+                                or request.bounds.get("max_branch_factor")
+                                or DEFAULT_MAX_BRANCH_FACTOR
+                            ),
+                        )
+                    else:
+                        decomposition = decompose_goal(
+                            request.target_id,
+                            tuple(raw_decomp or ()),
+                            max_branch_factor=int(
+                                request.bounds.get("max_branch_factor") or DEFAULT_MAX_BRANCH_FACTOR
+                            ),
+                        )
+                    record(
+                        TacticianPhase.DECOMPOSE,
+                        PhaseStatus.OK,
+                        utility_role=UtilityRole.LEANSTRAL,
+                        reason_code="bounded_decomposition",
+                        details=decomposition.to_dict(),
+                    )
+                except GoalDirectedTacticianError as exc:
+                    record(
+                        TacticianPhase.DECOMPOSE,
+                        PhaseStatus.REJECTED,
+                        utility_role=UtilityRole.LEANSTRAL,
+                        reason_code="bounded_branching_rejected",
+                        details={"message": str(exc)},
+                    )
+                    decomposition = None
+            else:
+                record(
+                    TacticianPhase.DECOMPOSE,
+                    PhaseStatus.SKIPPED,
+                    utility_role=UtilityRole.LEANSTRAL,
+                    reason_code="no_decomposition",
+                )
+
+        prediction = predict_branch_cost_failure(
+            ranking=ranking,
+            decomposition=decomposition,
+            max_branch_factor=int(
+                request.bounds.get("max_branch_factor") or DEFAULT_MAX_BRANCH_FACTOR
+            ),
+        )
+        if TacticianPhase.PREDICT.value not in completed:
+            record(
+                TacticianPhase.PREDICT,
+                PhaseStatus.OK,
+                utility_role=UtilityRole.SYMAI,
+                reason_code="guidance_prediction",
+                evidence_source=EvidenceSource.GUIDANCE,
+                details=prediction.to_dict(),
+            )
+
+        classify_payload = {
+            **dict(context.get("attempt_trace") or request.metadata.get("attempt_trace") or {}),
+            "kernel_outcome": context.get("kernel_result") or {},
+            "prover_outcome": context.get("prove_result") or {},
+            "independently_validated": independently_validated,
+            "kernel_verified": kernel_verified,
+            "timeout": context.get("timeout") or request.metadata.get("timeout") or {},
+            "counterexamples": context.get("counterexamples")
+            or request.metadata.get("counterexamples")
+            or (),
+            "decomposition": decomposition.to_dict() if decomposition is not None else None,
+        }
+        proof_state = classify_proof_state(
+            classify_payload,
+            independently_validated=independently_validated,
+            kernel_verified=kernel_verified,
+        )
+        if TacticianPhase.CLASSIFY.value not in completed:
+            record(
+                TacticianPhase.CLASSIFY,
+                PhaseStatus.OK,
+                utility_role=UtilityRole.CURRICULUM,
+                reason_code=proof_state.reason_code,
+                details=proof_state.to_dict(),
+            )
+
+        traces: list[TacticPremiseTrace] = []
+        if ranking is not None:
+            traces.append(
+                build_tactic_premise_trace(
+                    kind=RankedKind.PREMISE,
+                    goal_id=request.target_id,
+                    item_ids=ranking.ranked_ids,
+                    model_revision=request.provider_version,
+                    tool_revision=request.toolchain_id,
+                    outcome=proof_state.curriculum_class.value,
+                    independently_validated=independently_validated,
+                )
+            )
+        if decomposition is not None:
+            traces.append(
+                build_tactic_premise_trace(
+                    kind=RankedKind.TACTIC,
+                    goal_id=request.target_id,
+                    item_ids=tuple(item.subgoal_id for item in decomposition.children),
+                    model_revision=request.provider_version,
+                    tool_revision=request.toolchain_id,
+                    outcome=proof_state.curriculum_class.value,
+                    independently_validated=independently_validated,
+                    metadata={"decomposition": True},
+                )
+            )
+        curriculum = project_curriculum(
+            proof_state,
+            traces=tuple(traces),
+            ranking=ranking,
+            decomposition=decomposition,
+            prediction=prediction,
+            independently_validated=independently_validated,
+        )
+        if TacticianPhase.CURRICULUM.value not in completed:
+            record(
+                TacticianPhase.CURRICULUM,
+                PhaseStatus.OK,
+                utility_role=UtilityRole.CURRICULUM,
+                reason_code=curriculum.reason_code,
+                evidence_source=EvidenceSource.CURRICULUM,
+                details=curriculum.to_dict(),
+            )
+        return proof_state, ranking, decomposition, prediction, tuple(traces), curriculum
 
     def _request(
         self, value: GoalDirectedTacticianRequest | Mapping[str, Any]
     ) -> GoalDirectedTacticianRequest:
         if isinstance(value, GoalDirectedTacticianRequest):
             return value
-        return GoalDirectedTacticianRequest.from_dict(
-            _mapping(value, field_name="request")
-        )
+        return GoalDirectedTacticianRequest.from_dict(_mapping(value, field_name="request"))
 
     def _call(
         self,
@@ -2542,9 +3474,7 @@ class GoalDirectedProofTactician:
             return PhaseStatus.RESUMED
         return PhaseStatus.FAILED
 
-    def _lookup_cache(
-        self, cache_key: ExactTacticianCacheKey
-    ) -> Mapping[str, Any] | None:
+    def _lookup_cache(self, cache_key: ExactTacticianCacheKey) -> Mapping[str, Any] | None:
         if self.cache_lookup is not None:
             try:
                 return self.cache_lookup(cache_key)
@@ -2577,9 +3507,7 @@ class GoalDirectedProofTactician:
         if checkpoint is not None:
             if isinstance(checkpoint, TacticianCheckpoint):
                 return checkpoint
-            return TacticianCheckpoint.from_dict(
-                _mapping(checkpoint, field_name="checkpoint")
-            )
+            return TacticianCheckpoint.from_dict(_mapping(checkpoint, field_name="checkpoint"))
         path: Path | None = None
         if checkpoint_path is not None:
             path = Path(checkpoint_path)
@@ -2781,9 +3709,17 @@ def create_goal_directed_proof_tactician(
 
 
 __all__ = [
+    "ABSOLUTE_MAX_BRANCH_FACTOR",
+    "ABSOLUTE_MAX_TOP_K",
+    "CURRICULUM_PROJECTION_SCHEMA",
+    "DEFAULT_MAX_BRANCH_FACTOR",
+    "DEFAULT_TOP_K",
+    "GOAL_DECOMPOSITION_SCHEMA",
     "GOAL_DIRECTED_PROOF_TACTICIAN_INTERFACE",
     "GOAL_DIRECTED_PROOF_TACTICIAN_SCHEMA",
     "GOAL_DIRECTED_PROOF_TACTICIAN_VERSION",
+    "PROOF_STATE_CLASSIFICATION_SCHEMA",
+    "RANKING_BASIS_POINTS",
     "TACTICIAN_ADMISSION_SCHEMA",
     "TACTICIAN_CACHE_KEY_SCHEMA",
     "TACTICIAN_CHECKPOINT_SCHEMA",
@@ -2792,10 +3728,16 @@ __all__ = [
     "TACTICIAN_RESULT_SCHEMA",
     "TACTICIAN_UTILITY_BINDING_SCHEMA",
     "TACTICIAN_ZKP_BINDING_SCHEMA",
+    "TACTIC_PREMISE_TRACE_SCHEMA",
     "AdmissionDecision",
     "AdmissionRecord",
+    "BranchCostFailurePrediction",
+    "CurriculumAuthority",
+    "CurriculumClass",
+    "CurriculumProjection",
     "EvidenceSource",
     "ExactTacticianCacheKey",
+    "GoalDecomposition",
     "GoalDirectedProofTactician",
     "GoalDirectedTacticianCancelled",
     "GoalDirectedTacticianError",
@@ -2803,6 +3745,11 @@ __all__ = [
     "GoalDirectedTacticianResult",
     "PhaseRecord",
     "PhaseStatus",
+    "ProofStateClass",
+    "ProofStateClassification",
+    "RankedKind",
+    "SubgoalNode",
+    "TacticPremiseTrace",
     "TacticianCheckpoint",
     "TacticianPhase",
     "TacticianStopReason",
@@ -2812,9 +3759,19 @@ __all__ = [
     "ZkpReceiptBinding",
     "bind_zkp_to_trusted_receipt",
     "build_exact_tactician_cache_key",
+    "build_tactic_premise_trace",
     "claims_authority",
+    "classify_proof_state",
     "create_goal_directed_proof_tactician",
+    "curriculum_authority_for",
+    "decompose_goal",
     "default_utility_bindings",
+    "expand_goal_branches",
+    "predict_branch_cost_failure",
+    "project_curriculum",
+    "rank_tactics_and_premises",
+    "recall_at_k",
     "reject_authority_bypass",
     "run_goal_directed_tactician",
+    "select_top_k_ids",
 ]

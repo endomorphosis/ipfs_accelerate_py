@@ -235,7 +235,7 @@ from test.api_client.predictive_performance_client import (
     PredictivePerformanceClient,
     HardwarePlatform,
     PrecisionType,
-    ModelMode
+    ModelMode,
 )
 
 # Create client
@@ -247,7 +247,7 @@ result = client.predict_hardware(
     batch_size=8,
     available_hardware=[HardwarePlatform.CPU, HardwarePlatform.CUDA],
     predict_performance=True,
-    wait=True  # Wait for task completion
+    wait=True,  # Wait for task completion
 )
 print(f"Hardware recommendation: {result['result']['primary_recommendation']}")
 
@@ -259,7 +259,7 @@ client.record_measurement(
     throughput=120.5,
     latency=8.3,
     memory_usage=1024.0,
-    wait=True
+    wait=True,
 )
 
 # List recommendations
@@ -273,17 +273,17 @@ The library also provides an asynchronous client for use with AnyIO:
 import anyio
 from test.api_client.predictive_performance_client import AsyncPredictivePerformanceClient
 
+
 async def main():
     client = AsyncPredictivePerformanceClient()
     try:
         result = await client.predict_hardware(
-            model_name="bert-base-uncased",
-            batch_size=8,
-            wait=True
+            model_name="bert-base-uncased", batch_size=8, wait=True
         )
         print(result)
     finally:
         await client.close()
+
 
 anyio.run(main)
 ```
@@ -351,10 +351,7 @@ results = {}
 
 for batch in batch_sizes:
     result = client.predict_performance(
-        model_name="bert-base-uncased",
-        hardware=HardwarePlatform.CUDA,
-        batch_size=batch,
-        wait=True
+        model_name="bert-base-uncased", hardware=HardwarePlatform.CUDA, batch_size=batch, wait=True
     )
     if "result" in result and "predictions" in result["result"]:
         results[batch] = result["result"]["predictions"]["cuda"]["throughput"]
@@ -375,23 +372,23 @@ result = client.predict_hardware(
         HardwarePlatform.CPU,
         HardwarePlatform.CUDA,
         HardwarePlatform.ROCM,
-        HardwarePlatform.WEBGPU
+        HardwarePlatform.WEBGPU,
     ],
     predict_performance=True,
-    wait=True
+    wait=True,
 )
 
 # Print recommendations
 if "result" in result:
     primary = result["result"]["primary_recommendation"]
     print(f"Primary recommendation: {primary}")
-    
+
     alternatives = result["result"].get("alternative_recommendations", [])
     if alternatives:
         print("Alternative recommendations:")
         for alt in alternatives:
             print(f"- {alt}")
-    
+
     if "performance" in result["result"]:
         perf = result["result"]["performance"]
         print(f"Predicted performance on {primary}:")
@@ -418,10 +415,7 @@ predictive_client = PredictivePerformanceClient(base_url="http://localhost:8080"
 
 # Run a benchmark
 benchmark_result = benchmark_client.run_benchmark(
-    model_name="bert-base-uncased",
-    hardware="cuda",
-    batch_size=8,
-    wait=True
+    model_name="bert-base-uncased", hardware="cuda", batch_size=8, wait=True
 )
 
 # Record the benchmark result in the Predictive Performance system
@@ -435,7 +429,7 @@ if benchmark_result["status"] == "completed":
         latency=metrics["latency"],
         memory_usage=metrics["memory_usage"],
         source="benchmark",
-        wait=True
+        wait=True,
     )
 ```
 
@@ -452,19 +446,13 @@ test_client = ApiClient(base_url="http://localhost:8080")
 predictive_client = PredictivePerformanceClient(base_url="http://localhost:8080")
 
 # Get hardware recommendation
-hw_result = predictive_client.predict_hardware(
-    model_name="bert-base-uncased",
-    wait=True
-)
+hw_result = predictive_client.predict_hardware(model_name="bert-base-uncased", wait=True)
 
 if "result" in hw_result:
     recommended_hw = hw_result["result"]["primary_recommendation"]
-    
+
     # Run test on recommended hardware
-    test_response = test_client.run_test(
-        model_name="bert-base-uncased",
-        hardware=recommended_hw
-    )
+    test_response = test_client.run_test(model_name="bert-base-uncased", hardware=recommended_hw)
 ```
 
 ### Cross-Component Database Queries
@@ -476,22 +464,23 @@ import requests
 
 # Query the unified database view for a specific model
 response = requests.get(
-    "http://localhost:8080/api/db/model/bert-base-uncased",
-    headers={"X-API-Key": "your-api-key"}
+    "http://localhost:8080/api/db/model/bert-base-uncased", headers={"X-API-Key": "your-api-key"}
 )
 
 if response.status_code == 200:
     data = response.json()
-    
+
     # Access data from different components
     test_data = data["recent_test_runs"]
     benchmark_data = data["recent_benchmark_runs"]
     prediction_data = data["recent_predictions"]
-    
+
     # Use the combined data for analysis
     print(f"Test success rate: {data['overview']['test_success_rate']:.2f}")
     print(f"Benchmark performance: {benchmark_data[0]['throughput'] if benchmark_data else 'N/A'}")
-    print(f"Predicted performance: {prediction_data[0]['throughput'] if prediction_data else 'N/A'}")
+    print(
+        f"Predicted performance: {prediction_data[0]['throughput'] if prediction_data else 'N/A'}"
+    )
 ```
 
 ## Next Steps

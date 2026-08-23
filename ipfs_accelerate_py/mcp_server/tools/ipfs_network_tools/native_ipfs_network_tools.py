@@ -340,7 +340,10 @@ def register_native_ipfs_network_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "cid": {"type": "string", "description": "Content identifier to find providers for."},
+                "cid": {
+                    "type": "string",
+                    "description": "Content identifier to find providers for.",
+                },
                 "num_providers": {
                     "type": "integer",
                     "description": "Maximum number of providers to return.",

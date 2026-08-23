@@ -78,7 +78,9 @@ class RuntimeMetrics:
             "error_count": self.error_count,
             "timeout_count": self.timeout_count,
             "avg_latency_ms": round(self.avg_latency_ms, 2),
-            "min_latency_ms": round(self.min_latency_ms, 2) if self.min_latency_ms != float("inf") else 0.0,
+            "min_latency_ms": round(self.min_latency_ms, 2)
+            if self.min_latency_ms != float("inf")
+            else 0.0,
             "max_latency_ms": round(self.max_latency_ms, 2),
             "p95_latency_ms": round(self.p95_latency_ms, 2),
         }
@@ -124,7 +126,9 @@ class RuntimeRouter:
             raise RuntimeNotFoundError(runtime)
         self._tool_runtimes[tool_name] = runtime
 
-    def resolve_runtime(self, tool_name: str, tool_func: Optional[Callable[..., Any]] = None) -> str:
+    def resolve_runtime(
+        self, tool_name: str, tool_func: Optional[Callable[..., Any]] = None
+    ) -> str:
         """Resolve runtime from explicit map, metadata attributes, or defaults."""
         runtime = self._tool_runtimes.get(tool_name)
         if runtime:
@@ -136,13 +140,17 @@ class RuntimeRouter:
 
         if tool_func is not None:
             # Supports future metadata decorators that attach runtime attributes.
-            fn_runtime = getattr(tool_func, "runtime", None) or getattr(tool_func, "__mcp_runtime__", None)
+            fn_runtime = getattr(tool_func, "runtime", None) or getattr(
+                tool_func, "__mcp_runtime__", None
+            )
             if isinstance(fn_runtime, str) and fn_runtime in _SUPPORTED_RUNTIMES:
                 return fn_runtime
 
         return self.default_runtime
 
-    def resolve_timeout_seconds(self, tool_name: str, tool_func: Optional[Callable[..., Any]] = None) -> Optional[float]:
+    def resolve_timeout_seconds(
+        self, tool_name: str, tool_func: Optional[Callable[..., Any]] = None
+    ) -> Optional[float]:
         """Resolve per-tool timeout from metadata or function attributes.
 
         Precedence:
@@ -199,7 +207,9 @@ class RuntimeRouter:
         except TimeoutError as exc:
             error = True
             timed_out = True
-            raise RuntimeExecutionError(runtime, registered_tool_name, f"timed out after {timeout_seconds}s") from exc
+            raise RuntimeExecutionError(
+                runtime, registered_tool_name, f"timed out after {timeout_seconds}s"
+            ) from exc
         except Exception as exc:
             error = True
             if isinstance(exc, RuntimeRoutingError):
@@ -226,9 +236,7 @@ class RuntimeRouter:
             return await run_in_trio(func, *args, **kwargs)
 
         if self.trio_bridge_required:
-            raise RuntimeRoutingError(
-                "Trio bridge unavailable and trio_bridge_required=True"
-            )
+            raise RuntimeRoutingError("Trio bridge unavailable and trio_bridge_required=True")
         # Backward-compatible fallback keeps routing functional in environments
         # without trio extras.
         logger.warning("Trio bridge unavailable; falling back to standard execution")

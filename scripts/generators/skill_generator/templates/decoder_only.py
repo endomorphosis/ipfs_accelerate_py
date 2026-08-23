@@ -11,29 +11,31 @@ from templates.base_architecture import BaseArchitectureTemplate
 
 class DecoderOnlyArchitectureTemplate(BaseArchitectureTemplate):
     """Decoder-only architecture template implementation for models like GPT-2, LLaMA, etc."""
-    
+
     def __init__(self):
         """Initialize the decoder-only architecture template."""
         super().__init__()
         self.architecture_type = "decoder-only"
         self.architecture_name = "Decoder-Only"
-        self.model_description = "This model uses a unidirectional (causal) Transformer decoder architecture."
+        self.model_description = (
+            "This model uses a unidirectional (causal) Transformer decoder architecture."
+        )
         self.supported_task_types = ["text_generation", "causal_lm"]
         self.default_task_type = "text_generation"
         self.hidden_size = 768  # Default hidden size (varies by model)
         self.test_input = "Once upon a time in a land far away,"
-    
+
     def get_model_class(self, task_type: str) -> str:
         """Get the model class for this architecture and task type."""
         if task_type == "text_generation" or task_type == "causal_lm":
             return "AutoModelForCausalLM"
         else:
             return "AutoModelForCausalLM"
-    
+
     def get_processor_class(self, task_type: str) -> str:
         """Get the processor class for this architecture and task type."""
         return "AutoTokenizer"
-    
+
     def get_input_processing_code(self, task_type: str) -> str:
         """Get the input processing code for this architecture and task type."""
         return """
@@ -43,7 +45,7 @@ inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max
 # Move inputs to the correct device
 inputs = {k: v.to(device) for k, v in inputs.items()}
 """
-    
+
     def get_output_processing_code(self, task_type: str) -> str:
         """Get the output processing code for this architecture and task type."""
         if task_type == "text_generation" or task_type == "causal_lm":
@@ -73,7 +75,7 @@ generated_texts = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
 # Generic output processing
 result = outputs
 """
-    
+
     def get_mock_processor_code(self) -> str:
         """Get code for creating a mock tokenizer."""
         return """
@@ -104,7 +106,7 @@ def mock_tokenize(text, return_tensors=None, padding=None, truncation=None, max_
             "attention_mask": attention_mask.numpy()
         }
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get code for creating mock outputs."""
         return """
@@ -144,7 +146,7 @@ else:
     
     return mock_outputs
 """
-    
+
     def get_model_config(self, model_name: str) -> str:
         """Get model-specific configuration code."""
         return f"""

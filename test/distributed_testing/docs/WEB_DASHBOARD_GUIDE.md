@@ -90,25 +90,27 @@ from result_aggregator.integrated_analysis_system import IntegratedAnalysisSyste
 from datetime import timedelta
 
 # Initialize the coordinator
-coordinator = DistributedTestingCoordinator(db_path='./test_db.duckdb')
+coordinator = DistributedTestingCoordinator(db_path="./test_db.duckdb")
 
 # Initialize the integrated analysis system
 analysis_system = IntegratedAnalysisSystem(
-    db_path='./test_db.duckdb',
+    db_path="./test_db.duckdb",
     enable_ml=True,
     enable_visualization=True,
     enable_real_time_analysis=True,
-    analysis_interval=timedelta(minutes=5)
+    analysis_interval=timedelta(minutes=5),
 )
 
 # Register with coordinator
 analysis_system.register_with_coordinator(coordinator)
 
+
 # Register notification handler (optional)
 def notification_handler(notification):
     print(f"Notification: {notification['type']} - {notification['severity']}")
     print(f"Message: {notification['message']}")
-    
+
+
 analysis_system.register_notification_handler(notification_handler)
 ```
 
@@ -119,7 +121,7 @@ from coordinator import DistributedTestingCoordinator
 from result_aggregator.coordinator_integration import ResultAggregatorIntegration
 
 # Initialize the coordinator
-coordinator = DistributedTestingCoordinator(db_path='./test_db.duckdb')
+coordinator = DistributedTestingCoordinator(db_path="./test_db.duckdb")
 
 # Initialize the result aggregator integration
 integration = ResultAggregatorIntegration(
@@ -127,7 +129,7 @@ integration = ResultAggregatorIntegration(
     enable_ml=True,
     enable_visualization=True,
     enable_real_time_analysis=True,
-    enable_notifications=True
+    enable_notifications=True,
 )
 
 # Register with coordinator

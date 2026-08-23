@@ -131,7 +131,10 @@ SDPA is used by default for `torch>=2.1.1` when an implementation is available, 
 
 ```python
 from transformers import OPTForCausalLM
-model = OPTForCausalLM.from_pretrained("facebook/opt-350m", torch_dtype=torch.float16, attn_implementation="sdpa")
+
+model = OPTForCausalLM.from_pretrained(
+    "facebook/opt-350m", torch_dtype=torch.float16, attn_implementation="sdpa"
+)
 ...
 ```
 

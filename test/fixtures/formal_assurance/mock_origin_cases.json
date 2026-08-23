@@ -1,0 +1,290 @@
+{
+  "schema": "facp/accelerate-mock-flow@1",
+  "schema_version": 1,
+  "task_id": "FACP-024",
+  "goal_id": "FACP-G220",
+  "bundle": "facp/migration/accelerate-mock",
+  "title": "Accelerate mock-origin rejection cases (pre-repair)",
+  "policy": {
+    "phase": "before_repair",
+    "fixture_completion_is_not_live_evidence": true,
+    "execute_real_provider": false,
+    "distinguish_decoys_by_provenance_not_naming": true,
+    "expected_origin": "simulated",
+    "expected_closed_outcome": "Simulated",
+    "production_supported_for_simulated": false
+  },
+  "evidence_subset": [
+    "mock_worker",
+    "hardware",
+    "inference_handler",
+    "fallback",
+    "dependency_injection",
+    "compatibility_namespace",
+    "production_registry"
+  ],
+  "inventory_binding": {
+    "accelerate_claims": "implementation_plan/formal_assurance_control_plane/baseline/accelerate_claims.json",
+    "defect_corpus": "implementation_plan/formal_assurance_control_plane/baseline/defect_corpus.jsonl"
+  },
+  "cases": [
+    {
+      "case_id": "case:mock-worker-cuda-true",
+      "seed_id": "seed:mock-worker-cuda-true",
+      "defect_id": "defect:accelerate-mock-worker-cuda-true",
+      "evidence_bucket": "mock_worker",
+      "shared_surface_name": "test_hardware",
+      "mock_source": {
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/ipfs_accelerate.py",
+        "start_line": 139,
+        "end_line": 143,
+        "markers": ["type('MockWorker'", "'cuda': True", "'openvino': True"]
+      },
+      "legacy_sink": {
+        "id": "sink:acceleration_get_hardware_info",
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/mcp_server/tools/acceleration_tools/native_acceleration_tools.py",
+        "markers": ["acceleration_get_hardware_info"],
+        "intermediate_markers": {
+          "path": "external/ipfs_accelerate/ipfs_accelerate_py/ipfs_accelerate.py",
+          "markers": ["self.hwtest = self.test_hardware()", "get_capabilities"]
+        }
+      },
+      "expected_origin": "simulated",
+      "expected_outcome": "Simulated",
+      "production_supported": false,
+      "decoys": [
+        {"role": "mock", "provenance": "simulated", "expected_origin": "simulated"},
+        {"role": "fixture", "provenance": "fixture", "expected_origin": "fixture"},
+        {"role": "real", "provenance": "live_observed", "expected_origin": "live_observed"}
+      ],
+      "runtime_probe": null
+    },
+    {
+      "case_id": "case:mock-handler-real-label",
+      "seed_id": "seed:mock-handler-real-label",
+      "defect_id": "defect:accelerate-mock-handler-labeled-real",
+      "evidence_bucket": "inference_handler",
+      "shared_surface_name": "endpoint_handler",
+      "mock_source": {
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/ipfs_accelerate.py",
+        "start_line": 693,
+        "end_line": 804,
+        "markers": ["_create_mock_handler", "(REAL implementation type)", "mock_embedding_handler"]
+      },
+      "legacy_sink": {
+        "id": "sink:endpoint_handler_registry",
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/ipfs_accelerate.py",
+        "markers": ["resources[\"endpoint_handler\"]", "local_endpoints", "self._create_mock_handler"],
+        "registry": "production_registry"
+      },
+      "expected_origin": "simulated",
+      "expected_outcome": "Simulated",
+      "production_supported": false,
+      "decoys": [
+        {"role": "mock", "provenance": "simulated", "expected_origin": "simulated", "label": "REAL"},
+        {"role": "fixture", "provenance": "fixture", "expected_origin": "fixture", "label": "REAL"},
+        {"role": "real", "provenance": "live_observed", "expected_origin": "live_observed", "label": "REAL"}
+      ],
+      "runtime_probe": null
+    },
+    {
+      "case_id": "case:legacy-mock-hardware",
+      "seed_id": "seed:legacy-mock-hardware",
+      "defect_id": "defect:accelerate-legacy-mock-hardware-detection",
+      "evidence_bucket": "hardware",
+      "shared_surface_name": "detect_all_hardware",
+      "mock_source": {
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
+        "start_line": 214,
+        "end_line": 241,
+        "markers": ["_create_mock_hardware_detection", "detect_all_hardware"]
+      },
+      "legacy_sink": {
+        "id": "sink:legacy_hardware_available_flags",
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
+        "markers": ["detect_all_hardware", "available"]
+      },
+      "expected_origin": "simulated",
+      "expected_outcome": "Simulated",
+      "production_supported": false,
+      "decoys": [
+        {"role": "mock", "provenance": "simulated", "expected_origin": "simulated"},
+        {"role": "fixture", "provenance": "fixture", "expected_origin": "fixture"},
+        {"role": "real", "provenance": "live_observed", "expected_origin": "live_observed"}
+      ],
+      "runtime_probe": null
+    },
+    {
+      "case_id": "case:cuda-mock-available-true",
+      "seed_id": "seed:cuda-mock-available-true",
+      "defect_id": "defect:accelerate-cuda-utils-mock-device-available",
+      "evidence_bucket": "hardware",
+      "shared_surface_name": "cuda_device",
+      "mock_source": {
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/worker/cuda_utils.py",
+        "start_line": 417,
+        "end_line": 457,
+        "markers": ["create_cuda_mock_implementation", "is_available\": MagicMock(return_value=True)", "implementation_type\": \"MOCK\""]
+      },
+      "legacy_sink": {
+        "id": "sink:cuda_mock_handler_device",
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/worker/cuda_utils.py",
+        "markers": ["\"device\": \"cuda:0\"", "implementation_type\": \"MOCK\""]
+      },
+      "expected_origin": "simulated",
+      "expected_outcome": "Simulated",
+      "production_supported": false,
+      "decoys": [
+        {"role": "mock", "provenance": "simulated", "expected_origin": "simulated"},
+        {"role": "fixture", "provenance": "fixture", "expected_origin": "fixture"},
+        {"role": "real", "provenance": "live_observed", "expected_origin": "live_observed"}
+      ],
+      "runtime_probe": null
+    },
+    {
+      "case_id": "case:cuda-utils-magicmock-torch",
+      "seed_id": "seed:cuda-utils-magicmock-torch",
+      "defect_id": "defect:accelerate-cuda-utils-magicmock-torch",
+      "evidence_bucket": "dependency_injection",
+      "shared_surface_name": "torch.cuda.is_available",
+      "mock_source": {
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/worker/cuda_utils.py",
+        "start_line": 47,
+        "end_line": 55,
+        "markers": ["MagicMock", "using mock"]
+      },
+      "legacy_sink": {
+        "id": "sink:get_cuda_device",
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/worker/cuda_utils.py",
+        "markers": ["self.torch.cuda.is_available()"]
+      },
+      "expected_origin": "simulated",
+      "expected_outcome": "Simulated",
+      "production_supported": false,
+      "decoys": [
+        {"role": "mock", "provenance": "simulated", "expected_origin": "simulated"},
+        {"role": "fixture", "provenance": "fixture", "expected_origin": "fixture"},
+        {"role": "real", "provenance": "live_observed", "expected_origin": "live_observed"}
+      ],
+      "runtime_probe": null
+    },
+    {
+      "case_id": "case:skillset-mock-fallback-success",
+      "seed_id": "seed:skillset-mock-fallback-success",
+      "defect_id": "defect:accelerate-skillset-mock-model-fallback",
+      "evidence_bucket": "fallback",
+      "shared_surface_name": "create_mock_model",
+      "mock_source": {
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/worker/skillset/hf_t5.py",
+        "start_line": 370,
+        "end_line": 416,
+        "markers": ["create_mock_model", "is_mock"]
+      },
+      "legacy_sink": {
+        "id": "sink:skillset_endpoint_handler",
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/worker/skillset/hf_t5.py",
+        "markers": ["create_mock_model()", "init_cpu"]
+      },
+      "expected_origin": "simulated",
+      "expected_outcome": "Simulated",
+      "production_supported": false,
+      "decoys": [
+        {"role": "mock", "provenance": "simulated", "expected_origin": "simulated"},
+        {"role": "fixture", "provenance": "fixture", "expected_origin": "fixture"},
+        {"role": "real", "provenance": "live_observed", "expected_origin": "live_observed"}
+      ],
+      "runtime_probe": null
+    },
+    {
+      "case_id": "case:compat-mock-namespace",
+      "seed_id": "seed:compat-mock-namespace",
+      "defect_id": "defect:accelerate-fallback-compat-mock-namespaces",
+      "evidence_bucket": "compatibility_namespace",
+      "shared_surface_name": "MockIPFSClient",
+      "mock_source": {
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/mcp/tools/mock_ipfs.py",
+        "start_line": 1,
+        "end_line": 48,
+        "markers": ["compatibility shim", "class MockIPFSClient", "random_cid"]
+      },
+      "legacy_sink": {
+        "id": "sink:storage_tools_fallback_mock",
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/mcp_server/tools/storage_tools/native_storage_tools.py",
+        "markers": ["MockStorageManager", "_FallbackMockStorageManager"],
+        "intermediate_markers": {
+          "path": "external/ipfs_accelerate/ipfs_accelerate_py/mcp_server/tools/ipfs/__init__.py",
+          "markers": ["_load_mock_ipfs_client", "from ipfs_accelerate_py.mcp.tools.mock_ipfs import MockIPFSClient"]
+        }
+      },
+      "expected_origin": "simulated",
+      "expected_outcome": "Simulated",
+      "production_supported": false,
+      "decoys": [
+        {"role": "mock", "provenance": "simulated", "expected_origin": "simulated"},
+        {"role": "fixture", "provenance": "fixture", "expected_origin": "fixture"},
+        {"role": "real", "provenance": "live_observed", "expected_origin": "live_observed"}
+      ],
+      "runtime_probe": {
+        "kind": "mock_ipfs_random_cid"
+      }
+    },
+    {
+      "case_id": "case:legacy-mock-handler",
+      "seed_id": "seed:legacy-mock-handler",
+      "defect_id": "defect:accelerate-legacy-mock-inference-handler",
+      "evidence_bucket": "inference_handler",
+      "shared_surface_name": "endpoint_handler",
+      "mock_source": {
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
+        "start_line": 306,
+        "end_line": 320,
+        "markers": ["_create_mock_handler", "mock handler"]
+      },
+      "legacy_sink": {
+        "id": "sink:legacy_process_async_success",
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
+        "markers": ["_create_mock_handler"]
+      },
+      "expected_origin": "simulated",
+      "expected_outcome": "Simulated",
+      "production_supported": false,
+      "decoys": [
+        {"role": "mock", "provenance": "simulated", "expected_origin": "simulated"},
+        {"role": "fixture", "provenance": "fixture", "expected_origin": "fixture"},
+        {"role": "real", "provenance": "live_observed", "expected_origin": "live_observed"}
+      ],
+      "runtime_probe": null
+    },
+    {
+      "case_id": "case:ai-model-server-mock-classify",
+      "seed_id": "seed:ai-model-server-mock-classify",
+      "defect_id": "defect:accelerate-ai-model-server-mock-inference",
+      "evidence_bucket": "production_registry",
+      "shared_surface_name": "classify_text",
+      "mock_source": {
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/mcp/ai_model_server.py",
+        "start_line": 315,
+        "end_line": 340,
+        "markers": ["mock_classify_text", "Mock text generation", "confidence\": 0.85"]
+      },
+      "legacy_sink": {
+        "id": "sink:ai_model_server_mock_classify_return",
+        "path": "external/ipfs_accelerate/ipfs_accelerate_py/mcp/ai_model_server.py",
+        "markers": ["\"prediction\": \"POSITIVE\"", "\"confidence\": 0.85"]
+      },
+      "expected_origin": "simulated",
+      "expected_outcome": "Simulated",
+      "production_supported": false,
+      "decoys": [
+        {"role": "mock", "provenance": "simulated", "expected_origin": "simulated"},
+        {"role": "fixture", "provenance": "fixture", "expected_origin": "fixture"},
+        {"role": "real", "provenance": "live_observed", "expected_origin": "live_observed"}
+      ],
+      "runtime_probe": {
+        "kind": "ai_model_server_classify",
+        "inputs": {"text": "anything"},
+        "expect": {"prediction": "POSITIVE", "confidence": 0.85}
+      }
+    }
+  ]
+}

@@ -290,15 +290,12 @@ capabilities = detector.get_capabilities()
 profile = detector.get_optimization_profile()
 
 # Create handler with detected capabilities
-handler = WebPlatformHandler(
-    model_path="bert-base-uncased",
-    optimization_profile=profile
-)
+handler = WebPlatformHandler(model_path="bert-base-uncased", optimization_profile=profile)
 
 # Run inference
 result = handler(
     inputs="Machine learning is a field of inquiry dedicated to understanding and building methods that 'learn'.",
-    max_length=50
+    max_length=50,
 )
 ```
 
@@ -307,7 +304,7 @@ result = handler(
 ```python
 from fixed_web_platform.webgpu_ultra_low_precision import (
     setup_ultra_low_precision,
-    quantize_model_mixed_precision
+    quantize_model_mixed_precision,
 )
 
 # Configure ultra-low precision
@@ -315,13 +312,13 @@ config = setup_ultra_low_precision(model, bits=2, adaptive=True)
 
 # Create mixed precision configuration
 precision_config = {
-    "embedding": 8,       # 8-bit for embeddings
-    "attention.query": 3, # 3-bit for queries and keys
-    "attention.key": 3,   
-    "attention.value": 3, 
-    "feed_forward": 2,    # 2-bit for feed forward
-    "layer_norm": 8,      # 8-bit for layer normalization
-    "lm_head": 4          # 4-bit for output projection
+    "embedding": 8,  # 8-bit for embeddings
+    "attention.query": 3,  # 3-bit for queries and keys
+    "attention.key": 3,
+    "attention.value": 3,
+    "feed_forward": 2,  # 2-bit for feed forward
+    "layer_norm": 8,  # 8-bit for layer normalization
+    "lm_head": 4,  # 4-bit for output projection
 }
 
 # Quantize model with mixed precision
@@ -347,9 +344,9 @@ wasm_capabilities = check_browser_wasm_capabilities()
 webgpu_available = detector.get_feature_support("webgpu")
 result = dispatch_operation(
     operation="matmul",
-    inputs={"a": input_tensor, "b": weight_tensor}, 
+    inputs={"a": input_tensor, "b": weight_tensor},
     webgpu_available=webgpu_available,
-    performance_history=performance_tracker.get_history()
+    performance_history=performance_tracker.get_history(),
 )
 ```
 
@@ -358,15 +355,12 @@ result = dispatch_operation(
 ```python
 from fixed_web_platform.progressive_model_loader import (
     ProgressiveModelLoader,
-    optimize_loading_strategy
+    optimize_loading_strategy,
 )
 
 # Create loading strategy based on device constraints
 loading_strategy = optimize_loading_strategy(
-    model_name="llama-7b",
-    platform="webgpu",
-    device_memory_mb=4096,
-    target_startup_time_ms=1500
+    model_name="llama-7b", platform="webgpu", device_memory_mb=4096, target_startup_time_ms=1500
 )
 
 # Create progressive loader
@@ -376,12 +370,14 @@ loader = ProgressiveModelLoader(
     prioritize_components=["embeddings", "lm_head", "first_layer"],
     max_chunk_size_mb=loading_strategy["max_chunk_size_mb"],
     memory_optimization_level=loading_strategy["memory_optimization_level"],
-    cache_strategy=loading_strategy["cache_strategy"]
+    cache_strategy=loading_strategy["cache_strategy"],
 )
+
 
 # Progress tracker
 def report_progress(progress, component):
-    print(f"Loading {component}: {progress*100:.2f}%")
+    print(f"Loading {component}: {progress * 100:.2f}%")
+
 
 # Load with progress reporting
 model = loader.load(on_progress=report_progress)

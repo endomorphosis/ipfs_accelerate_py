@@ -65,6 +65,17 @@ PORTFOLIO_ATTEMPT_SCHEMA = (
 PORTFOLIO_RESULT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/prover-portfolio-result@1"
 )
+AUTHORITY_LATTICE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/authority-lattice@1"
+)
+HAMMER_TRACE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/hammer-trace@1"
+COUNTEREXAMPLE_TRACE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/counterexample-trace@1"
+)
+CHECKER_TRACE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/checker-trace@1"
+AUTHORITATIVE_DISPOSITION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/authoritative-disposition@1"
+)
 DEFAULT_PORTFOLIO_TIMEOUT_SECONDS = 60.0
 DEFAULT_MAX_PARALLEL_PROVERS = 8
 DEFAULT_MAX_EVIDENCE_BYTES = 256 * 1024
@@ -1992,3 +2003,439 @@ __all__ = [
     "route_dcr032_local_prover",
     "to_canonical_property_kind",
 ]
+
+class AuthorityClass(str, Enum):
+    """Closed authority lattice.  Candidates never author a proof."""
+
+    CANDIDATE = "candidate"
+    INDEPENDENT_CHECKER = "independent_checker"
+    KERNEL = "kernel"
+
+    @property
+    def can_author_proof(self) -> bool:
+        return self in (AuthorityClass.INDEPENDENT_CHECKER, AuthorityClass.KERNEL)
+
+
+def authority_class_for_role(role: ProverRole | str) -> AuthorityClass:
+    normalized = _enum(role, ProverRole, "role")
+    if normalized is ProverRole.KERNEL:
+        return AuthorityClass.KERNEL
+    if normalized is ProverRole.MODEL_CHECKER:
+        return AuthorityClass.INDEPENDENT_CHECKER
+    return AuthorityClass.CANDIDATE
+
+
+def obligation_scope_ids(obligation: PropertyObligation) -> tuple[str, ...]:
+    """Deterministic scope identity retained with every solver counterexample."""
+
+    metadata = obligation.metadata
+    raw = (
+        metadata.get("ast_scope_ids")
+        or metadata.get("scope_ids")
+        or metadata.get("changed_scope_set")
+        or obligation.premise_ids
+    )
+    if isinstance(raw, str):
+        raw = (raw,)
+    if raw is None:
+        raw = ()
+    return _strings(raw, "ast_scope_ids")
+
+
+def obligation_finite_bounds(obligation: PropertyObligation) -> dict[str, Any]:
+    """Finite solver bounds bound to the obligation, possibly empty."""
+
+    metadata = obligation.metadata
+    raw = metadata.get("finite_bounds")
+    if raw is None:
+        raw = metadata.get("bounds")
+    if raw is None:
+        return {}
+    return _mapping(raw, "finite_bounds")
+
+
+def project_counterexample_evidence(
+    obligation: PropertyObligation,
+    evidence: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], str]:
+    """Retain scope/bounds and fail closed on obligation disagreement."""
+
+    projected = _mapping(evidence, "evidence")
+    supplied_scope = projected.get("ast_scope_ids")
+    if supplied_scope is None:
+        supplied_scope = projected.get("scope_ids")
+    expected_scope = obligation_scope_ids(obligation)
+    if supplied_scope in (None, "", ()):
+        scope = expected_scope
+    else:
+        scope = _strings(supplied_scope, "ast_scope_ids")
+        extra = set(scope) - set(expected_scope)
+        if expected_scope and extra:
+            return projected, "counterexample_scope_escapes_obligation"
+    supplied_bounds = projected.get("finite_bounds")
+    if supplied_bounds is None:
+        supplied_bounds = projected.get("bounds")
+    expected_bounds = obligation_finite_bounds(obligation)
+    if supplied_bounds is None:
+        bounds = expected_bounds
+    else:
+        bounds = _mapping(supplied_bounds, "finite_bounds")
+        if expected_bounds and bounds != expected_bounds:
+            return projected, "counterexample_bounds_disagree_with_obligation"
+    projected["ast_scope_ids"] = list(scope)
+    projected["finite_bounds"] = dict(bounds)
+    return projected, ""
+
+
+def _binding_version_failure(
+    obligation: PropertyObligation, evidence: Mapping[str, Any]
+) -> str:
+    """Reject stale environment or version certificates on a claimed success."""
+
+    metadata = obligation.metadata
+    expected_lock = str(
+        metadata.get("environment_lock_id") or metadata.get("toolchain_id") or ""
+    ).strip()
+    claimed_lock = str(
+        evidence.get("environment_lock_id") or evidence.get("toolchain_id") or ""
+    ).strip()
+    if expected_lock and claimed_lock and expected_lock != claimed_lock:
+        return "stale_environment_lock"
+    expected_version = str(
+        metadata.get("kernel_version") or metadata.get("itp_version") or ""
+    ).strip()
+    claimed_version = str(
+        evidence.get("kernel_version") or evidence.get("itp_version") or ""
+    ).strip()
+    if expected_version and claimed_version and expected_version != claimed_version:
+        return "stale_kernel_version"
+    expected_statement = str(metadata.get("statement_digest") or "").strip()
+    claimed_statement = str(evidence.get("statement_digest") or "").strip()
+    if expected_statement and claimed_statement and expected_statement != claimed_statement:
+        return "stale_statement_receipt"
+    return ""
+
+
+@dataclass(frozen=True)
+class HammerTrace(CanonicalContract):
+    """Non-authoritative datasets-hammer / ATP / SMT candidate trace."""
+
+    SCHEMA = HAMMER_TRACE_SCHEMA
+
+    request_id: str
+    obligation_id: str
+    prover_id: str
+    role: ProverRole
+    outcome: AttemptOutcome
+    environment_lock_id: str = ""
+    solver_versions: Mapping[str, Any] = field(default_factory=dict)
+    candidate_id: str = ""
+    evidence: Mapping[str, Any] = field(default_factory=dict)
+    authoritative: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "request_id", _text(self.request_id, "request_id"))
+        object.__setattr__(self, "obligation_id", _text(self.obligation_id, "obligation_id"))
+        object.__setattr__(self, "prover_id", _text(self.prover_id, "prover_id"))
+        object.__setattr__(self, "role", _enum(self.role, ProverRole, "role"))
+        object.__setattr__(self, "outcome", _enum(self.outcome, AttemptOutcome, "outcome"))
+        object.__setattr__(
+            self,
+            "environment_lock_id",
+            _text(self.environment_lock_id, "environment_lock_id", required=False),
+        )
+        object.__setattr__(
+            self, "solver_versions", _mapping(self.solver_versions, "solver_versions")
+        )
+        object.__setattr__(
+            self, "candidate_id", _text(self.candidate_id, "candidate_id", required=False)
+        )
+        object.__setattr__(self, "evidence", _mapping(self.evidence, "evidence"))
+        if not isinstance(self.authoritative, bool):
+            raise ContractValidationError("authoritative must be boolean")
+        if self.authoritative or self.role.authoritative:
+            raise ContractValidationError("hammer traces cannot carry proof authority")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "request_id": self.request_id,
+            "obligation_id": self.obligation_id,
+            "prover_id": self.prover_id,
+            "role": self.role,
+            "outcome": self.outcome,
+            "environment_lock_id": self.environment_lock_id,
+            "solver_versions": self.solver_versions,
+            "candidate_id": self.candidate_id,
+            "evidence": self.evidence,
+            "authoritative": False,
+            "authority_class": AuthorityClass.CANDIDATE.value,
+        }
+
+
+@dataclass(frozen=True)
+class CounterexampleTrace(CanonicalContract):
+    """Solver or checker counterexample that retains obligation scope/bounds."""
+
+    SCHEMA = COUNTEREXAMPLE_TRACE_SCHEMA
+
+    attempt_id: str
+    obligation_id: str
+    prover_id: str
+    role: ProverRole
+    ast_scope_ids: tuple[str, ...]
+    finite_bounds: Mapping[str, Any]
+    conclusive: bool
+    evidence: Mapping[str, Any] = field(default_factory=dict)
+    environment_lock_id: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "attempt_id", _text(self.attempt_id, "attempt_id"))
+        object.__setattr__(self, "obligation_id", _text(self.obligation_id, "obligation_id"))
+        object.__setattr__(self, "prover_id", _text(self.prover_id, "prover_id"))
+        object.__setattr__(self, "role", _enum(self.role, ProverRole, "role"))
+        object.__setattr__(self, "ast_scope_ids", _strings(self.ast_scope_ids, "ast_scope_ids"))
+        object.__setattr__(self, "finite_bounds", _mapping(self.finite_bounds, "finite_bounds"))
+        if not isinstance(self.conclusive, bool):
+            raise ContractValidationError("conclusive must be boolean")
+        object.__setattr__(self, "evidence", _mapping(self.evidence, "evidence"))
+        object.__setattr__(
+            self,
+            "environment_lock_id",
+            _text(self.environment_lock_id, "environment_lock_id", required=False),
+        )
+        if "ast_scope_ids" not in self.evidence or "finite_bounds" not in self.evidence:
+            raise ContractValidationError("counterexample evidence must retain scope and bounds")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "attempt_id": self.attempt_id,
+            "obligation_id": self.obligation_id,
+            "prover_id": self.prover_id,
+            "role": self.role,
+            "ast_scope_ids": self.ast_scope_ids,
+            "finite_bounds": self.finite_bounds,
+            "conclusive": self.conclusive,
+            "evidence": self.evidence,
+            "environment_lock_id": self.environment_lock_id,
+        }
+
+
+@dataclass(frozen=True)
+class CheckerTrace(CanonicalContract):
+    """Independent kernel or reviewed model-checker acceptance trace."""
+
+    SCHEMA = CHECKER_TRACE_SCHEMA
+
+    attempt_id: str
+    obligation_id: str
+    prover_id: str
+    role: ProverRole
+    outcome: AttemptOutcome
+    accepted: bool
+    environment_lock_id: str = ""
+    kernel_version: str = ""
+    receipt_id: str = ""
+    evidence: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "attempt_id", _text(self.attempt_id, "attempt_id"))
+        object.__setattr__(self, "obligation_id", _text(self.obligation_id, "obligation_id"))
+        object.__setattr__(self, "prover_id", _text(self.prover_id, "prover_id"))
+        object.__setattr__(self, "role", _enum(self.role, ProverRole, "role"))
+        object.__setattr__(self, "outcome", _enum(self.outcome, AttemptOutcome, "outcome"))
+        if not isinstance(self.accepted, bool):
+            raise ContractValidationError("accepted must be boolean")
+        object.__setattr__(
+            self,
+            "environment_lock_id",
+            _text(self.environment_lock_id, "environment_lock_id", required=False),
+        )
+        object.__setattr__(
+            self, "kernel_version", _text(self.kernel_version, "kernel_version", required=False)
+        )
+        object.__setattr__(
+            self, "receipt_id", _text(self.receipt_id, "receipt_id", required=False)
+        )
+        object.__setattr__(self, "evidence", _mapping(self.evidence, "evidence"))
+        if self.accepted and not self.role.authoritative:
+            raise ContractValidationError("only independent checkers may accept a proof")
+        if self.accepted != (self.outcome is AttemptOutcome.VERIFIED and self.role.authoritative):
+            raise ContractValidationError("checker acceptance and outcome disagree")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "attempt_id": self.attempt_id,
+            "obligation_id": self.obligation_id,
+            "prover_id": self.prover_id,
+            "role": self.role,
+            "outcome": self.outcome,
+            "accepted": self.accepted,
+            "environment_lock_id": self.environment_lock_id,
+            "kernel_version": self.kernel_version,
+            "receipt_id": self.receipt_id,
+            "evidence": self.evidence,
+            "authority_class": authority_class_for_role(self.role).value,
+        }
+
+
+@dataclass(frozen=True)
+class AuthoritativeDisposition(CanonicalContract):
+    """Fail-closed proof disposition derived from the authority lattice."""
+
+    SCHEMA = AUTHORITATIVE_DISPOSITION_SCHEMA
+
+    result_id: str
+    obligation_id: str
+    verdict: PortfolioVerdict
+    assurance: AssuranceLevel
+    reason: str
+    authority_attempt_ids: tuple[str, ...] = ()
+    counterexample_attempt_id: str = ""
+    hammer_trace_ids: tuple[str, ...] = ()
+    checker_trace_ids: tuple[str, ...] = ()
+    counterexample_trace_ids: tuple[str, ...] = ()
+    fail_closed: bool = True
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "result_id", _text(self.result_id, "result_id"))
+        object.__setattr__(self, "obligation_id", _text(self.obligation_id, "obligation_id"))
+        object.__setattr__(self, "verdict", _enum(self.verdict, PortfolioVerdict, "verdict"))
+        object.__setattr__(self, "assurance", _enum(self.assurance, AssuranceLevel, "assurance"))
+        object.__setattr__(self, "reason", _text(self.reason, "reason"))
+        object.__setattr__(
+            self,
+            "authority_attempt_ids",
+            _strings(self.authority_attempt_ids, "authority_attempt_ids"),
+        )
+        object.__setattr__(
+            self,
+            "counterexample_attempt_id",
+            _text(self.counterexample_attempt_id, "counterexample_attempt_id", required=False),
+        )
+        object.__setattr__(
+            self, "hammer_trace_ids", _strings(self.hammer_trace_ids, "hammer_trace_ids")
+        )
+        object.__setattr__(
+            self, "checker_trace_ids", _strings(self.checker_trace_ids, "checker_trace_ids")
+        )
+        object.__setattr__(
+            self,
+            "counterexample_trace_ids",
+            _strings(self.counterexample_trace_ids, "counterexample_trace_ids"),
+        )
+        if not isinstance(self.fail_closed, bool) or not self.fail_closed:
+            raise ContractValidationError("authoritative dispositions must fail closed")
+        if self.verdict is PortfolioVerdict.PROVED and not self.authority_attempt_ids:
+            raise ContractValidationError("proved disposition requires independent checker authority")
+        if self.verdict is PortfolioVerdict.PROVED and not self.assurance.satisfies(
+            AssuranceLevel.SOLVER_CHECKED
+        ):
+            raise ContractValidationError("proved disposition has insufficient assurance")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "authority_lattice": AUTHORITY_LATTICE_SCHEMA,
+            "result_id": self.result_id,
+            "obligation_id": self.obligation_id,
+            "verdict": self.verdict,
+            "assurance": self.assurance,
+            "reason": self.reason,
+            "authority_attempt_ids": self.authority_attempt_ids,
+            "counterexample_attempt_id": self.counterexample_attempt_id,
+            "hammer_trace_ids": self.hammer_trace_ids,
+            "checker_trace_ids": self.checker_trace_ids,
+            "counterexample_trace_ids": self.counterexample_trace_ids,
+            "fail_closed": True,
+        }
+
+
+def project_portfolio_traces(
+    result: PortfolioResult,
+) -> tuple[tuple[HammerTrace, ...], tuple[CounterexampleTrace, ...], tuple[CheckerTrace, ...]]:
+    """Project hammer, counterexample, and independent-checker traces from a result."""
+
+    if not isinstance(result, PortfolioResult):
+        raise ContractValidationError("result must be a PortfolioResult")
+    obligation = result.plan.obligation
+    hammer: list[HammerTrace] = []
+    counterexamples: list[CounterexampleTrace] = []
+    checkers: list[CheckerTrace] = []
+    lock_id = str(obligation.metadata.get("environment_lock_id") or "")
+    solver_versions = obligation.metadata.get("solver_versions") or {}
+    if not isinstance(solver_versions, Mapping):
+        solver_versions = {}
+    for attempt in result.attempts:
+        authority = authority_class_for_role(attempt.role)
+        evidence = dict(attempt.evidence)
+        if authority is AuthorityClass.CANDIDATE:
+            hammer.append(
+                HammerTrace(
+                    request_id=result.plan.plan_id,
+                    obligation_id=obligation.obligation_id,
+                    prover_id=attempt.prover_id,
+                    role=attempt.role,
+                    outcome=attempt.effective_outcome,
+                    environment_lock_id=str(evidence.get("environment_lock_id") or lock_id),
+                    solver_versions=dict(solver_versions),
+                    candidate_id=str(evidence.get("candidate_id") or ""),
+                    evidence=evidence,
+                )
+            )
+        if attempt.effective_outcome is AttemptOutcome.COUNTEREXAMPLE or attempt.conclusive:
+            projected, failure = project_counterexample_evidence(obligation, evidence)
+            if failure:
+                continue
+            counterexamples.append(
+                CounterexampleTrace(
+                    attempt_id=attempt.attempt_id,
+                    obligation_id=obligation.obligation_id,
+                    prover_id=attempt.prover_id,
+                    role=attempt.role,
+                    ast_scope_ids=tuple(projected.get("ast_scope_ids") or ()),
+                    finite_bounds=projected.get("finite_bounds") or {},
+                    conclusive=attempt.conclusive,
+                    evidence=projected,
+                    environment_lock_id=str(projected.get("environment_lock_id") or lock_id),
+                )
+            )
+        if authority.can_author_proof:
+            checkers.append(
+                CheckerTrace(
+                    attempt_id=attempt.attempt_id,
+                    obligation_id=obligation.obligation_id,
+                    prover_id=attempt.prover_id,
+                    role=attempt.role,
+                    outcome=attempt.effective_outcome,
+                    accepted=(
+                        attempt.authoritative
+                        and attempt.effective_outcome is AttemptOutcome.VERIFIED
+                    ),
+                    environment_lock_id=str(evidence.get("environment_lock_id") or lock_id),
+                    kernel_version=str(
+                        evidence.get("kernel_version") or evidence.get("itp_version") or ""
+                    ),
+                    receipt_id=str(
+                        evidence.get("kernel_receipt_id") or attempt.capability_receipt_id
+                    ),
+                    evidence=evidence,
+                )
+            )
+    return tuple(hammer), tuple(counterexamples), tuple(checkers)
+
+
+def derive_authoritative_disposition(result: PortfolioResult) -> AuthoritativeDisposition:
+    """Bind hammer/counterexample/checker traces to one fail-closed disposition."""
+
+    hammer, counterexamples, checkers = project_portfolio_traces(result)
+    return AuthoritativeDisposition(
+        result_id=result.result_id,
+        obligation_id=result.plan.obligation.obligation_id,
+        verdict=result.verdict,
+        assurance=result.assurance,
+        reason=result.reason,
+        authority_attempt_ids=result.authority_attempt_ids,
+        counterexample_attempt_id=result.counterexample_attempt_id,
+        hammer_trace_ids=tuple(item.content_id for item in hammer),
+        checker_trace_ids=tuple(item.content_id for item in checkers),
+        counterexample_trace_ids=tuple(item.content_id for item in counterexamples),
+    )

@@ -58,9 +58,7 @@ from ....agent_supervisor.formal_verification_contracts import content_identity
 
 
 AGENT_SUPERVISOR_MCP_CATEGORY = "agent_supervisor"
-AGENT_SUPERVISOR_REPOSITORY_ALLOWLIST_ENV = (
-    "IPFS_ACCELERATE_AGENT_REPOSITORY_ALLOWLIST"
-)
+AGENT_SUPERVISOR_REPOSITORY_ALLOWLIST_ENV = "IPFS_ACCELERATE_AGENT_REPOSITORY_ALLOWLIST"
 AGENT_SUPERVISOR_STATE_ALLOWLIST_ENV = "IPFS_ACCELERATE_AGENT_STATE_ALLOWLIST"
 AGENT_SUPERVISOR_MCP_DISPATCH_MODE = "direct_service"
 
@@ -96,9 +94,7 @@ def configure_agent_supervisor_control(
         raise TypeError("service must be a SupervisorControlService")
     if service_factory is not None and not callable(service_factory):
         raise TypeError("service_factory must be callable")
-    if usage_control is not None and not isinstance(
-        usage_control, ProviderUsageControl
-    ):
+    if usage_control is not None and not isinstance(usage_control, ProviderUsageControl):
         raise TypeError("usage_control must be a ProviderUsageControl")
     global _configured_service, _configured_factory, _configured_usage_control
     with _configuration_lock:
@@ -134,21 +130,16 @@ def get_provider_usage_control_service() -> ProviderUsageControl | None:
 
 def _environment_allowlist(name: str) -> tuple[str, ...]:
     return tuple(
-        item.strip()
-        for item in str(os.environ.get(name, "")).split(os.pathsep)
-        if item.strip()
+        item.strip() for item in str(os.environ.get(name, "")).split(os.pathsep) if item.strip()
     )
 
 
 def _environment_service(_request: OperationRequest) -> SupervisorControlService:
-    repositories = _environment_allowlist(
-        AGENT_SUPERVISOR_REPOSITORY_ALLOWLIST_ENV
-    )
+    repositories = _environment_allowlist(AGENT_SUPERVISOR_REPOSITORY_ALLOWLIST_ENV)
     states = _environment_allowlist(AGENT_SUPERVISOR_STATE_ALLOWLIST_ENV)
     if not repositories or not states:
         raise AgentSupervisorMCPConfigurationError(
-            "agent-supervisor MCP tools require server-configured repository "
-            "and state allowlists"
+            "agent-supervisor MCP tools require server-configured repository and state allowlists"
         )
     return SupervisorControlService(
         repository_allowlist=repositories,
@@ -170,6 +161,67 @@ def _resolve_service(request: OperationRequest) -> SupervisorControlService:
     return selected
 
 
+_configured_autonomy_surface: Any = None
+
+
+def configure_autonomy_control(surface: Any | None = None) -> None:
+    """Bind the process-local APMC-017 autonomy adapter for MCP dispatch."""
+
+    global _configured_autonomy_surface
+    with _configuration_lock:
+        _configured_autonomy_surface = surface
+
+
+async def execute_autonomy_control(
+    operation: str,
+    request: Mapping[str, Any] | None = None,
+    *,
+    confirmation_id: str = "",
+    level: str = "",
+    authorization: Any = None,
+) -> dict[str, Any]:
+    """Typed MCP adapter for autonomy operations.  Never shells out."""
+
+    from ....agent_supervisor.autonomy.cli import (
+        AUTONOMY_CONTROL_OPERATION_NAMES,
+        AutonomyControlError,
+        AutonomyControlSurface,
+    )
+
+    name = str(operation or "").strip()
+    if name not in AUTONOMY_CONTROL_OPERATION_NAMES:
+        raise AutonomyControlError(f"unknown autonomy operation {name}")
+    mapped = {
+        "capabilities": Operation.CAPABILITIES,
+        "status": Operation.STATUS,
+        "metrics": Operation.METRICS,
+        "pause": Operation.PAUSE,
+        "resume": Operation.RESUME,
+        "cancel": Operation.CANCEL,
+    }.get(name)
+    if mapped is not None:
+        if not isinstance(request, Mapping):
+            raise AutonomyControlError(
+                f"{name} requires a canonical OperationRequest record"
+            )
+        return await execute_agent_supervisor_operation(request, mapped)
+    with _configuration_lock:
+        surface = _configured_autonomy_surface
+    if surface is None or not isinstance(surface, AutonomyControlSurface):
+        raise AgentSupervisorMCPConfigurationError(
+            "autonomy MCP tools require a configured AutonomyControlSurface"
+        )
+    result = surface.execute(
+        name,
+        confirmation_id=confirmation_id,
+        level=level,
+        authorization=authorization,
+    )
+    if hasattr(result, "to_record"):
+        return dict(result.to_record())
+    return dict(result)
+
+
 async def execute_agent_supervisor_operation(
     request: Mapping[str, Any],
     operation: Operation | str,
@@ -181,15 +233,11 @@ async def execute_agent_supervisor_operation(
     # payloads therefore cannot trigger a service factory or backend.
     decoded = decode_operation_request(request)
     if decoded.operation is not selected:
-        raise ValueError(
-            "request operation does not match the selected MCP tool"
-        )
+        raise ValueError("request operation does not match the selected MCP tool")
     service = _resolve_service(decoded)
     result = service.execute(decoded)
     if not isinstance(result, OperationResult):
-        raise ControlContractError(
-            "shared control service returned a non-canonical result"
-        )
+        raise ControlContractError("shared control service returned a non-canonical result")
     result.validate_against(decoded)
     record = result.to_record()
     # Re-decode the transport record before publishing it.  This catches a
@@ -198,9 +246,7 @@ async def execute_agent_supervisor_operation(
     canonical = OperationResult.from_dict(record)
     canonical.validate_against(decoded)
     if canonical.canonical_bytes() != result.canonical_bytes():
-        raise ControlContractError(
-            "shared control service result is not canonically stable"
-        )
+        raise ControlContractError("shared control service result is not canonically stable")
     return record
 
 
@@ -210,9 +256,7 @@ async def agent_supervisor_control(
     """Generic canonical adapter, useful for direct embedding and tests."""
 
     decoded = decode_operation_request(request)
-    return await execute_agent_supervisor_operation(
-        decoded.to_record(), decoded.operation
-    )
+    return await execute_agent_supervisor_operation(decoded.to_record(), decoded.operation)
 
 
 def _operation_tool(operation: Operation) -> Callable[..., Any]:
@@ -221,9 +265,7 @@ def _operation_tool(operation: Operation) -> Callable[..., Any]:
 
     tool.__name__ = f"agent_supervisor_{operation.value}"
     tool.__qualname__ = tool.__name__
-    tool.__doc__ = (
-        f"Execute the canonical agent-supervisor {operation.value} operation."
-    )
+    tool.__doc__ = f"Execute the canonical agent-supervisor {operation.value} operation."
     # Publication validation uses immutable semantic markers instead of
     # trusting a callable's display name.  This proves that every generated
     # MCP endpoint is bound to the selected catalog operation and goes
@@ -238,9 +280,7 @@ def _operation_tool(operation: Operation) -> Callable[..., Any]:
     return tool
 
 
-AGENT_SUPERVISOR_OPERATION_TOOLS: Mapping[
-    Operation, Callable[..., Any]
-] = MappingProxyType(
+AGENT_SUPERVISOR_OPERATION_TOOLS: Mapping[Operation, Callable[..., Any]] = MappingProxyType(
     {
         operation: _operation_tool(operation)
         for operation in sorted(Operation, key=lambda item: item.value)
@@ -283,22 +323,13 @@ def _validated_mcp_operations(
     published catalog.
     """
 
-    selected_catalog = (
-        get_operation_catalog() if catalog is None else catalog
-    )
+    selected_catalog = get_operation_catalog() if catalog is None else catalog
     if not isinstance(selected_catalog, OperationCatalog):
-        raise ControlContractError(
-            "MCP publication catalog must be an OperationCatalog"
-        )
+        raise ControlContractError("MCP publication catalog must be an OperationCatalog")
     expected = selected_catalog.operations
     actual_keys = tuple(AGENT_SUPERVISOR_OPERATION_TOOLS)
-    actual_operations = tuple(
-        item for item in actual_keys if isinstance(item, Operation)
-    )
-    missing = sorted(
-        operation.value
-        for operation in set(expected).difference(actual_operations)
-    )
+    actual_operations = tuple(item for item in actual_keys if isinstance(item, Operation))
+    missing = sorted(operation.value for operation in set(expected).difference(actual_operations))
     extra = sorted(
         str(getattr(operation, "value", operation))
         for operation in set(actual_keys).difference(expected)
@@ -319,39 +350,29 @@ def _validated_mcp_operations(
         descriptor = selected_catalog.operation(operation)
         tool = AGENT_SUPERVISOR_OPERATION_TOOLS[operation]
         if not callable(tool):
-            raise ControlContractError(
-                f"MCP tool for {operation.value} is not callable"
-            )
+            raise ControlContractError(f"MCP tool for {operation.value} is not callable")
         if id(tool) in seen_tools:
             raise ControlContractError(
-                f"MCP tool for {operation.value} reuses another operation's "
-                "callable"
+                f"MCP tool for {operation.value} reuses another operation's callable"
             )
         seen_tools.add(id(tool))
         if (
             tool.__name__ != f"agent_supervisor_{operation.value}"
-            or getattr(tool, "__agent_supervisor_operation__", None)
-            is not operation
+            or getattr(tool, "__agent_supervisor_operation__", None) is not operation
             or getattr(tool, "__agent_supervisor_dispatch_mode__", None)
             != AGENT_SUPERVISOR_MCP_DISPATCH_MODE
             or getattr(tool, "__agent_supervisor_executor__", None)
             is not execute_agent_supervisor_operation
         ):
-            raise ControlContractError(
-                f"MCP tool behavior drift for {operation.value}"
-            )
+            raise ControlContractError(f"MCP tool behavior drift for {operation.value}")
 
         schema = _tool_input_schema(operation)
         request_schema = schema["properties"]["request"]
         result_schema = schema["x-output-schema"]
         if content_identity(request_schema) != descriptor.request_schema_id:
-            raise ControlContractError(
-                f"MCP request schema drift for {operation.value}"
-            )
+            raise ControlContractError(f"MCP request schema drift for {operation.value}")
         if content_identity(result_schema) != descriptor.result_schema_id:
-            raise ControlContractError(
-                f"MCP result schema drift for {operation.value}"
-            )
+            raise ControlContractError(f"MCP result schema drift for {operation.value}")
     return expected
 
 
@@ -360,9 +381,7 @@ def validate_agent_supervisor_mcp_catalog(
 ) -> ControlDiscoveryManifest:
     """Validate the static MCP catalog without resolving runtime state."""
 
-    selected_catalog = (
-        get_operation_catalog() if catalog is None else catalog
-    )
+    selected_catalog = get_operation_catalog() if catalog is None else catalog
     publication = mcp_control_surface_publication(selected_catalog)
     return ControlDiscoveryManifest(
         surface=ControlSurface.MCP,
@@ -375,38 +394,31 @@ def mcp_control_surface_publication(
 ) -> ControlSurfacePublication:
     """Return the validated, side-effect-free MCP surface publication."""
 
-    selected_catalog = (
-        get_operation_catalog() if catalog is None else catalog
-    )
+    selected_catalog = get_operation_catalog() if catalog is None else catalog
     operations = _validated_mcp_operations(selected_catalog)
     publication = ControlSurfacePublication(
         surface=ControlSurface.MCP,
         catalog_id=selected_catalog.catalog_id,
         operations=operations,
         request_schema_ids={
-            descriptor.operation: descriptor.request_schema_id
-            for descriptor in selected_catalog
+            descriptor.operation: descriptor.request_schema_id for descriptor in selected_catalog
         },
         result_schema_ids={
-            descriptor.operation: descriptor.result_schema_id
-            for descriptor in selected_catalog
+            descriptor.operation: descriptor.result_schema_id for descriptor in selected_catalog
         },
         behavior_ids={
             descriptor.operation: control_operation_behavior_id(descriptor)
             for descriptor in selected_catalog
         },
         dispatcher_ids={
-            operation: DIRECT_CONTROL_SERVICE_DISPATCHER_ID
-            for operation in operations
+            operation: DIRECT_CONTROL_SERVICE_DISPATCHER_ID for operation in operations
         },
         dispatch_mode=AGENT_SUPERVISOR_MCP_DISPATCH_MODE,
         catalog_version=selected_catalog.catalog_version,
         provider_free=True,
         process_free=True,
     )
-    return validate_control_surface_publication(
-        publication, catalog=selected_catalog
-    )
+    return validate_control_surface_publication(publication, catalog=selected_catalog)
 
 
 def agent_supervisor_service_resolution_count() -> int:
@@ -430,18 +442,10 @@ def agent_supervisor_discovery_manifest() -> ControlDiscoveryManifest:
         schema = _tool_input_schema(operation)
         request_schema = schema["properties"]["request"]
         result_schema = schema["x-output-schema"]
-        if content_identity(request_schema) != manifest.request_schema_ids[
-            operation.value
-        ]:
-            raise ControlContractError(
-                f"MCP request schema drift for {operation.value}"
-            )
-        if content_identity(result_schema) != manifest.result_schema_ids[
-            operation.value
-        ]:
-            raise ControlContractError(
-                f"MCP result schema drift for {operation.value}"
-            )
+        if content_identity(request_schema) != manifest.request_schema_ids[operation.value]:
+            raise ControlContractError(f"MCP request schema drift for {operation.value}")
+        if content_identity(result_schema) != manifest.result_schema_ids[operation.value]:
+            raise ControlContractError(f"MCP result schema drift for {operation.value}")
     return manifest
 
 
@@ -696,7 +700,9 @@ __all__ = [
     "agent_supervisor_control",
     "agent_supervisor_usage",
     "configure_agent_supervisor_control",
+    "configure_autonomy_control",
     "execute_agent_supervisor_operation",
+    "execute_autonomy_control",
     "get_provider_usage_control_service",
     "mcp_control_surface_publication",
     "mcp_v2_control_surface_publication",

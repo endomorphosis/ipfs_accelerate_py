@@ -131,10 +131,7 @@ from ipfs_accelerate_py.cli_integrations import ClaudeCodeCLIIntegration
 claude = ClaudeCodeCLIIntegration()
 
 # Use the integration (automatically handles CLI/SDK fallback)
-response = claude.chat(
-    message="Explain Python decorators",
-    model="claude-3-sonnet-20240229"
-)
+response = claude.chat(message="Explain Python decorators", model="claude-3-sonnet-20240229")
 
 print(response["response"])
 print(f"Mode used: {response.get('mode', 'SDK')}")

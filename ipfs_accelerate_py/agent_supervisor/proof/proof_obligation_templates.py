@@ -24,9 +24,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from .formal_verification_contracts import canonical_json, content_identity
 
 
-PROOF_OBLIGATION_TEMPLATE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/proof-obligation-template@1"
-)
+PROOF_OBLIGATION_TEMPLATE_SCHEMA = "ipfs_accelerate_py/agent-supervisor/proof-obligation-template@1"
 PROOF_OBLIGATION_TEMPLATE_REGISTRY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/proof-obligation-template-registry@1"
 )
@@ -67,14 +65,10 @@ class ReviewedCodeShape(str, Enum):
 ReferencePredicate = Callable[..., bool]
 
 
-def _strings(
-    values: Iterable[Any], *, field_name: str, required: bool = True
-) -> tuple[str, ...]:
+def _strings(values: Iterable[Any], *, field_name: str, required: bool = True) -> tuple[str, ...]:
     if isinstance(values, (str, bytes, bytearray)):
         values = (values,)
-    result = tuple(
-        sorted({str(value).strip() for value in values if str(value).strip()})
-    )
+    result = tuple(sorted({str(value).strip() for value in values if str(value).strip()}))
     if required and not result:
         raise TemplateValidationError(f"{field_name} must not be empty")
     return result
@@ -90,9 +84,7 @@ def _strict_mapping(value: Mapping[str, Any], *, field_name: str) -> dict[str, A
     try:
         result = json.loads(canonical_json(dict(value)))
     except (TypeError, ValueError) as exc:
-        raise TemplateValidationError(
-            f"{field_name} must contain canonical JSON values"
-        ) from exc
+        raise TemplateValidationError(f"{field_name} must contain canonical JSON values") from exc
     if not isinstance(result, dict):  # pragma: no cover - guarded by dict()
         raise TemplateValidationError(f"{field_name} must be an object")
     return result
@@ -220,9 +212,7 @@ def cache_key_is_complete(
 ) -> bool:
     """Whether every semantic input is represented exactly in a cache key."""
 
-    if not isinstance(semantic_inputs, Mapping) or not isinstance(
-        cache_key_inputs, Mapping
-    ):
+    if not isinstance(semantic_inputs, Mapping) or not isinstance(cache_key_inputs, Mapping):
         return False
     try:
         return all(
@@ -353,6 +343,7 @@ class TemplateMutationCase:
             expected=value.get("expected"),  # type: ignore[arg-type]
         )
 
+
 # Compatibility spelling used by callers describing fixture mutations.
 MutationCase = TemplateMutationCase
 
@@ -381,9 +372,7 @@ class ProofObligationTemplate:
         predicate = self.python_reference_predicate
         _predicate_semantics(predicate)
         cases = tuple(
-            case
-            if isinstance(case, TemplateMutationCase)
-            else TemplateMutationCase.from_dict(case)
+            case if isinstance(case, TemplateMutationCase) else TemplateMutationCase.from_dict(case)
             for case in self.mutation_cases
         )
         case_ids = [case.case_id for case in cases]
@@ -391,7 +380,9 @@ class ProofObligationTemplate:
             raise TemplateValidationError(
                 "mutation_cases must be non-empty and have unique case ids"
             )
-        object.__setattr__(self, "mutation_cases", tuple(sorted(cases, key=lambda item: item.case_id)))
+        object.__setattr__(
+            self, "mutation_cases", tuple(sorted(cases, key=lambda item: item.case_id))
+        )
         for name in (
             "supported_backends",
             "assumptions",
@@ -427,9 +418,7 @@ class ProofObligationTemplate:
             "invariant_class": self.invariant_class,
             "canonical_statement": self.canonical_statement,
             "python_reference_predicate_id": self.python_reference_predicate_id,
-            "python_reference_semantics": _predicate_semantics(
-                self.python_reference_predicate
-            ),
+            "python_reference_semantics": _predicate_semantics(self.python_reference_predicate),
             "supported_backends": self.supported_backends,
             "assumptions": self.assumptions,
             "mutation_cases": tuple(case.to_dict() for case in self.mutation_cases),
@@ -502,9 +491,7 @@ class ProofObligationTemplate:
         schema = str(payload.get("schema") or PROOF_OBLIGATION_TEMPLATE_SCHEMA)
         if schema != PROOF_OBLIGATION_TEMPLATE_SCHEMA:
             raise TemplateValidationError(f"unsupported template schema: {schema}")
-        predicate_id = str(
-            payload.get("python_reference_predicate_id") or ""
-        ).strip()
+        predicate_id = str(payload.get("python_reference_predicate_id") or "").strip()
         predicate_index = REFERENCE_PREDICATES if predicates is None else predicates
         predicate = predicate_index.get(predicate_id)
         if predicate is None:
@@ -513,37 +500,26 @@ class ProofObligationTemplate:
             )
         result = cls(
             template_id=str(payload.get("template_id") or ""),
-            version=str(
-                payload.get("version") or payload.get("template_version") or ""
-            ),
+            version=str(payload.get("version") or payload.get("template_version") or ""),
             invariant_class=str(payload.get("invariant_class") or ""),
             canonical_statement=str(payload.get("canonical_statement") or ""),
             python_reference_predicate=predicate,
             supported_backends=tuple(payload.get("supported_backends") or ()),
             assumptions=tuple(payload.get("assumptions") or ()),
             mutation_cases=tuple(
-                TemplateMutationCase.from_dict(case)
-                for case in payload.get("mutation_cases") or ()
+                TemplateMutationCase.from_dict(case) for case in payload.get("mutation_cases") or ()
             ),
             fallback_tests=tuple(payload.get("fallback_tests") or ()),
-            supported_code_shapes=tuple(
-                payload.get("supported_code_shapes") or ()
-            ),
+            supported_code_shapes=tuple(payload.get("supported_code_shapes") or ()),
         )
         claimed_hash = str(
-            payload.get("semantic_hash")
-            or payload.get("template_semantic_hash")
-            or ""
+            payload.get("semantic_hash") or payload.get("template_semantic_hash") or ""
         )
         if claimed_hash and claimed_hash != result.semantic_hash:
-            raise TemplateValidationError(
-                "template semantic hash does not match declaration"
-            )
+            raise TemplateValidationError("template semantic hash does not match declaration")
         claimed_id = str(payload.get("content_id") or "")
         if claimed_id and claimed_id != result.content_id:
-            raise TemplateValidationError(
-                "template content identity does not match declaration"
-            )
+            raise TemplateValidationError("template content identity does not match declaration")
         return result
 
     @classmethod
@@ -611,12 +587,8 @@ class ProofObligationTemplateRegistry:
         keys = [(item.template_id, item.version) for item in values]
         if len(keys) != len(set(keys)):
             raise TemplateValidationError("template id/version pairs must be unique")
-        self._templates = tuple(
-            sorted(values, key=lambda item: (item.template_id, item.version))
-        )
-        self._by_key = {
-            (item.template_id, item.version): item for item in self._templates
-        }
+        self._templates = tuple(sorted(values, key=lambda item: (item.template_id, item.version)))
+        self._by_key = {(item.template_id, item.version): item for item in self._templates}
 
     @property
     def templates(self) -> tuple[ProofObligationTemplate, ...]:
@@ -643,9 +615,7 @@ class ProofObligationTemplateRegistry:
             }
         )
 
-    def get(
-        self, template_id: str, version: str | None = None
-    ) -> ProofObligationTemplate | None:
+    def get(self, template_id: str, version: str | None = None) -> ProofObligationTemplate | None:
         template_id = str(template_id or "").strip()
         if not template_id:
             return None
@@ -654,23 +624,17 @@ class ProofObligationTemplateRegistry:
         matches = [item for item in self._templates if item.template_id == template_id]
         return matches[0] if len(matches) == 1 else None
 
-    def require(
-        self, template_id: str, version: str | None = None
-    ) -> ProofObligationTemplate:
+    def require(self, template_id: str, version: str | None = None) -> ProofObligationTemplate:
         template = self.get(template_id, version)
         if template is not None:
             return template
-        versions = [
-            item.version for item in self._templates if item.template_id == template_id
-        ]
+        versions = [item.version for item in self._templates if item.template_id == template_id]
         if len(versions) > 1 and version is None:
             raise AmbiguousProofTemplateError(
                 f"template {template_id!r} has multiple versions; select one exactly"
             )
         suffix = f" version {version!r}" if version is not None else ""
-        raise UnsupportedProofTemplateError(
-            f"unknown reviewed template {template_id!r}{suffix}"
-        )
+        raise UnsupportedProofTemplateError(f"unknown reviewed template {template_id!r}{suffix}")
 
     def select_for_code_shape(
         self,
@@ -726,9 +690,7 @@ class ProofObligationTemplateRegistry:
         *,
         predicates: Mapping[str, ReferencePredicate] | None = None,
     ) -> "ProofObligationTemplateRegistry":
-        schema = str(
-            payload.get("schema") or PROOF_OBLIGATION_TEMPLATE_REGISTRY_SCHEMA
-        )
+        schema = str(payload.get("schema") or PROOF_OBLIGATION_TEMPLATE_REGISTRY_SCHEMA)
         if schema != PROOF_OBLIGATION_TEMPLATE_REGISTRY_SCHEMA:
             raise TemplateValidationError(f"unsupported registry schema: {schema}")
         raw_templates = payload.get("templates")
@@ -751,9 +713,7 @@ class ProofObligationTemplateRegistry:
             raise TemplateValidationError("registry template entries must be objects")
         claimed_id = str(payload.get("registry_id") or "")
         if claimed_id and claimed_id != result.registry_id:
-            raise TemplateValidationError(
-                "template registry identity does not match declaration"
-            )
+            raise TemplateValidationError("template registry identity does not match declaration")
         return result
 
     @classmethod
@@ -777,9 +737,7 @@ class ProofObligationTemplateRegistry:
 TemplateRegistry = ProofObligationTemplateRegistry
 
 
-def _case(
-    case_id: str, description: str, expected: bool, **arguments: Any
-) -> TemplateMutationCase:
+def _case(case_id: str, description: str, expected: bool, **arguments: Any) -> TemplateMutationCase:
     return TemplateMutationCase(case_id, description, arguments, expected)
 
 
@@ -844,9 +802,7 @@ DEFAULT_PROOF_OBLIGATION_TEMPLATES: tuple[ProofObligationTemplate, ...] = (
                 "unique-current-token",
                 "Unique leases with the current token are accepted.",
                 True,
-                active_leases=[
-                    {"resource_id": "r1", "fencing_token": 4, "active": True}
-                ],
+                active_leases=[{"resource_id": "r1", "fencing_token": 4, "active": True}],
                 mutation_fencing_token=4,
                 current_fencing_token=4,
             ),
@@ -874,9 +830,7 @@ DEFAULT_PROOF_OBLIGATION_TEMPLATES: tuple[ProofObligationTemplate, ...] = (
             "pytest:lease-single-winner",
             "pytest:lease-stale-fencing-token-rejected",
         ),
-        supported_code_shapes=(
-            ReviewedCodeShape.LEASE_UNIQUENESS_AND_FENCING.value,
-        ),
+        supported_code_shapes=(ReviewedCodeShape.LEASE_UNIQUENESS_AND_FENCING.value,),
     ),
     ProofObligationTemplate(
         template_id="dag-acyclicity",
@@ -914,8 +868,7 @@ DEFAULT_PROOF_OBLIGATION_TEMPLATES: tuple[ProofObligationTemplate, ...] = (
         version="1.0.0",
         invariant_class="merge_idempotence",
         canonical_statement=(
-            "Reapplying the same merge to its result does not change the canonical "
-            "merged value."
+            "Reapplying the same merge to its result does not change the canonical merged value."
         ),
         python_reference_predicate=merge_is_idempotent,
         supported_backends=_BACKENDS,
@@ -1116,15 +1069,11 @@ DEFAULT_PROOF_OBLIGATION_TEMPLATES: tuple[ProofObligationTemplate, ...] = (
             "pytest:unknown-code-shape-is-unsupported",
             "pytest:ambiguous-code-shape-is-unsupported",
         ),
-        supported_code_shapes=(
-            ReviewedCodeShape.UNSUPPORTED_PROOF_FAIL_CLOSED.value,
-        ),
+        supported_code_shapes=(ReviewedCodeShape.UNSUPPORTED_PROOF_FAIL_CLOSED.value,),
     ),
 )
 
-DEFAULT_TEMPLATE_REGISTRY = ProofObligationTemplateRegistry(
-    DEFAULT_PROOF_OBLIGATION_TEMPLATES
-)
+DEFAULT_TEMPLATE_REGISTRY = ProofObligationTemplateRegistry(DEFAULT_PROOF_OBLIGATION_TEMPLATES)
 DEFAULT_PROOF_OBLIGATION_TEMPLATE_REGISTRY = DEFAULT_TEMPLATE_REGISTRY
 
 

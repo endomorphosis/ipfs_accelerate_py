@@ -16,13 +16,16 @@ from typing import List, Dict, Set, Optional, Tuple, Any
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(f'improved_ts_converter_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
-    ]
+        logging.FileHandler(
+            f"improved_ts_converter_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        ),
+    ],
 )
 logger = logging.getLogger(__name__)
+
 
 class Config:
     TARGET_DIR = "../ipfs_accelerate_js"
@@ -36,31 +39,35 @@ class Config:
         "files_fixed": 0,
         "files_backed_up": 0,
         "error_count": 0,
-        "special_files_replaced": 0
+        "special_files_replaced": 0,
     }
+
 
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="Improved TypeScript converter")
     parser.add_argument("--target-dir", help="Target directory", default="../ipfs_accelerate_js")
-    parser.add_argument("--source-dir", help="Source directory with Python files", default="../fixed_web_platform")
+    parser.add_argument(
+        "--source-dir", help="Source directory with Python files", default="../fixed_web_platform"
+    )
     parser.add_argument("--dry-run", action="store_true", help="Don't make changes, just report")
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
     parser.add_argument("--no-backups", action="store_true", help="Don't create backup files")
     parser.add_argument("--skip-special", action="store_true", help="Skip special file replacement")
     args = parser.parse_args()
-    
+
     Config.TARGET_DIR = os.path.abspath(args.target_dir)
     Config.SOURCE_DIR = os.path.abspath(args.source_dir)
     Config.DRY_RUN = args.dry_run
     Config.VERBOSE = args.verbose
     Config.SKIP_SPECIAL_FILES = args.skip_special
     Config.CREATE_BACKUPS = not args.no_backups
-    
+
     logger.info(f"Target directory: {Config.TARGET_DIR}")
     logger.info(f"Source directory: {Config.SOURCE_DIR}")
     logger.info(f"Dry run: {Config.DRY_RUN}")
     logger.info(f"Creating backups: {Config.CREATE_BACKUPS}")
+
 
 def create_backup(file_path: str):
     """Create a backup of the original file"""
@@ -76,225 +83,259 @@ def create_backup(file_path: str):
     except Exception as e:
         logger.error(f"Failed to create backup for {file_path}: {e}")
 
+
 def fix_typescript_syntax(content: str) -> str:
     """Fix common TypeScript syntax issues"""
     # Original content for comparison
     original_content = content
-    
+
     # Fix 1: Python style imports
-    content = re.sub(r'from\s+([\'"])([^\'"]+)[\'"]\s+import\s+(.+)', r'import { \3 } from "\2"', content)
-    
+    content = re.sub(
+        r'from\s+([\'"])([^\'"]+)[\'"]\s+import\s+(.+)', r'import { \3 } from "\2"', content
+    )
+
     # Fix 2: Python self -> JavaScript this
-    content = re.sub(r'\bself\b(?!\s*:)', r'this', content)
-    
+    content = re.sub(r"\bself\b(?!\s*:)", r"this", content)
+
     # Fix 3: Python None -> JavaScript null
-    content = re.sub(r'\bNone\b', r'null', content)
-    
+    content = re.sub(r"\bNone\b", r"null", content)
+
     # Fix 4: Python True/False -> JavaScript true/false
-    content = re.sub(r'\bTrue\b', r'true', content)
-    content = re.sub(r'\bFalse\b', r'false', content)
-    
+    content = re.sub(r"\bTrue\b", r"true", content)
+    content = re.sub(r"\bFalse\b", r"false", content)
+
     # Fix 5: Python docstrings to JSDoc
-    content = re.sub(r'"""([^"]*)"""', r'/**\n * \1\n */', content)
-    content = re.sub(r"'''([^']*)'''", r'/**\n * \1\n */', content)
-    
+    content = re.sub(r'"""([^"]*)"""', r"/**\n * \1\n */", content)
+    content = re.sub(r"'''([^']*)'''", r"/**\n * \1\n */", content)
+
     # Fix 6: Python list comprehensions (simple cases)
-    content = re.sub(r'\[(.*?) for (.*?) in (.*?)\]', r'(\3).map((\2) => \1)', content)
-    
+    content = re.sub(r"\[(.*?) for (.*?) in (.*?)\]", r"(\3).map((\2) => \1)", content)
+
     # Fix 7: Python dictionary comprehensions
-    content = re.sub(r'\{(.*?):(.*?) for (.*?) in (.*?)\}', r'Object.fromEntries((\4).map((\3) => [\1, \2]))', content)
-    
+    content = re.sub(
+        r"\{(.*?):(.*?) for (.*?) in (.*?)\}",
+        r"Object.fromEntries((\4).map((\3) => [\1, \2]))",
+        content,
+    )
+
     # Fix 8: Python try/except/finally
-    content = re.sub(r'try\s*:', r'try {', content)
-    content = re.sub(r'except\s+([^:]+):', r'} catch(\1) {', content)
-    content = re.sub(r'except\s*:', r'} catch(error) {', content)
-    content = re.sub(r'finally\s*:', r'} finally {', content)
-    
+    content = re.sub(r"try\s*:", r"try {", content)
+    content = re.sub(r"except\s+([^:]+):", r"} catch(\1) {", content)
+    content = re.sub(r"except\s*:", r"} catch(error) {", content)
+    content = re.sub(r"finally\s*:", r"} finally {", content)
+
     # Fix 9: Python if/elif/else
-    content = re.sub(r'if\s+([^:]+):', r'if (\1) {', content)
-    content = re.sub(r'elif\s+([^:]+):', r'} else if (\1) {', content)
-    content = re.sub(r'else\s*:', r'} else {', content)
-    
+    content = re.sub(r"if\s+([^:]+):", r"if (\1) {", content)
+    content = re.sub(r"elif\s+([^:]+):", r"} else if (\1) {", content)
+    content = re.sub(r"else\s*:", r"} else {", content)
+
     # Fix 10: Python for loops
-    content = re.sub(r'for\s+([^:]+):', r'for (\1) {', content)
-    
+    content = re.sub(r"for\s+([^:]+):", r"for (\1) {", content)
+
     # Fix 11: Python while loops
-    content = re.sub(r'while\s+([^:]+):', r'while (\1) {', content)
-    
+    content = re.sub(r"while\s+([^:]+):", r"while (\1) {", content)
+
     # Fix 12: Python raise -> JavaScript throw
-    content = re.sub(r'raise\s+(\w+)\((.*?)\)', r'throw new \1(\2)', content)
-    content = re.sub(r'raise\s+(\w+)', r'throw new \1()', content)
-    
+    content = re.sub(r"raise\s+(\w+)\((.*?)\)", r"throw new \1(\2)", content)
+    content = re.sub(r"raise\s+(\w+)", r"throw new \1()", content)
+
     # Fix 13: Python dict.get() -> TypeScript safe access
-    content = re.sub(r'(\w+)\.get\(([^,)]+)(?:,\s*([^)]+))?\)', r'(\1[\2] !== undefined ? \1[\2] : \3)', content)
-    
+    content = re.sub(
+        r"(\w+)\.get\(([^,)]+)(?:,\s*([^)]+))?\)", r"(\1[\2] !== undefined ? \1[\2] : \3)", content
+    )
+
     # Fix 14: Python f-strings -> JavaScript template literals
     # This is a simplified approach, more complex f-strings need manual conversion
-    content = re.sub(r'f(["\'])(.*?)\\1', lambda m: '`' + re.sub(r'\{([^}]+)\}', r'${\1}', m.group(2)) + '`', content)
-    
+    content = re.sub(
+        r'f(["\'])(.*?)\\1',
+        lambda m: "`" + re.sub(r"\{([^}]+)\}", r"${\1}", m.group(2)) + "`",
+        content,
+    )
+
     # Fix 15: Python class definitions
-    content = re.sub(r'class\s+(\w+)([^{]*):', r'class \1\2 {', content)
-    
+    content = re.sub(r"class\s+(\w+)([^{]*):", r"class \1\2 {", content)
+
     # Fix 16: Python function definitions
-    content = re.sub(r'def\s+(\w+)\((.*?)\)(?:\s*->\s*([^:]*))?:', r'function \1(\2): \3 {', content)
-    
+    content = re.sub(
+        r"def\s+(\w+)\((.*?)\)(?:\s*->\s*([^:]*))?:", r"function \1(\2): \3 {", content
+    )
+
     # Fix 17: Python comments -> JavaScript comments
-    content = re.sub(r'(?m)^\s*#\s*(.*?)$', r'// \1', content)
-    
+    content = re.sub(r"(?m)^\s*#\s*(.*?)$", r"// \1", content)
+
     # Fix 18: Python list syntax for empty lists
-    content = re.sub(r'\[\s*\]', r'[]', content)
-    
+    content = re.sub(r"\[\s*\]", r"[]", content)
+
     # Fix 19: Python dict syntax for empty dicts
-    content = re.sub(r'\{\s*\}', r'{}', content)
-    
+    content = re.sub(r"\{\s*\}", r"{}", content)
+
     # Fix 20: Python inline dict syntax
-    content = re.sub(r'{\s*([^{}]*?)\s*}', lambda m: '{' + re.sub(r'\'([^\']+)\':', r'"\1":', m.group(1)) + '}', content)
-    
+    content = re.sub(
+        r"{\s*([^{}]*?)\s*}",
+        lambda m: "{" + re.sub(r"\'([^\']+)\':", r'"\1":', m.group(1)) + "}",
+        content,
+    )
+
     # Fix 21: Python method definitions in classes
-    content = re.sub(r'def\s+(\w+)\(self(?:,\s*(.*?))?\)(?:\s*->\s*([^:]*))?:', 
-                     lambda m: f'\1({m.group(2) or ""}): {m.group(3) or "any"} {{', content)
-    
+    content = re.sub(
+        r"def\s+(\w+)\(self(?:,\s*(.*?))?\)(?:\s*->\s*([^:]*))?:",
+        lambda m: f"\1({m.group(2) or ''}): {m.group(3) or 'any'} {{",
+        content,
+    )
+
     # Fix 22: Add missing semicolons after variable assignments
-    content = re.sub(r'(\s+)(\w+)\s*=\s*([^;{}\n]+)(?:\n|$)', r'\1\2 = \3;\n', content)
-    
+    content = re.sub(r"(\s+)(\w+)\s*=\s*([^;{}\n]+)(?:\n|$)", r"\1\2 = \3;\n", content)
+
     # Fix 23: Convert Python-style string concatenation
-    content = re.sub(r'(\w+)\s*\+\s*=\s*([^;]+)', r'\1 += \2;', content)
-    
+    content = re.sub(r"(\w+)\s*\+\s*=\s*([^;]+)", r"\1 += \2;", content)
+
     # Fix 24: Add proper return types to methods and functions
-    content = re.sub(r'function\s+(\w+)\(([^)]*)\)(?!\s*:)', r'function \1(\2): any', content)
-    
+    content = re.sub(r"function\s+(\w+)\(([^)]*)\)(?!\s*:)", r"function \1(\2): any", content)
+
     # Fix 25: Fix class method return types
-    content = re.sub(r'(\s+)(\w+)\(([^)]*)\)(?!\s*:)\s*{', r'\1\2(\3): any {', content)
-    
+    content = re.sub(r"(\s+)(\w+)\(([^)]*)\)(?!\s*:)\s*{", r"\1\2(\3): any {", content)
+
     # Fix 26: Add types to class properties
-    content = re.sub(r'(\s+)(\w+)\s*=\s*', r'\1\2: any = ', content)
-    
+    content = re.sub(r"(\s+)(\w+)\s*=\s*", r"\1\2: any = ", content)
+
     # Fix 27: Fix import statement syntax
-    content = re.sub(r'import\s+\*\s+as\s+(\w+)\s+from', r'import * as \1 from', content)
-    
+    content = re.sub(r"import\s+\*\s+as\s+(\w+)\s+from", r"import * as \1 from", content)
+
     # Fix 28: Add proper parameter types
-    content = re.sub(r'([(,]\s*)(\w+)(?!\s*:)(\s*[,)])', r'\1\2: any\3', content)
-    
+    content = re.sub(r"([(,]\s*)(\w+)(?!\s*:)(\s*[,)])", r"\1\2: any\3", content)
+
     # Fix 29: Convert Python dictionary access to JavaScript
-    content = re.sub(r'(\w+)\[\'([^\']+)\'\]', r'\1["\2"]', content)
-    
+    content = re.sub(r"(\w+)\[\'([^\']+)\'\]", r'\1["\2"]', content)
+
     # Fix 30: Fix return statements
-    content = re.sub(r'return\s+([^;{}\n]+)(?:\n|$)', r'return \1;\n', content)
-    
+    content = re.sub(r"return\s+([^;{}\n]+)(?:\n|$)", r"return \1;\n", content)
+
     # Fix 31: Fix missing braces
-    content = re.sub(r'(if|else if|for|while)\s*\(([^)]+)\)(?!\s*{)', r'\1 (\2) {', content)
-    
+    content = re.sub(r"(if|else if|for|while)\s*\(([^)]+)\)(?!\s*{)", r"\1 (\2) {", content)
+
     # Fix 32: Fix Python staticmethod decorator
-    content = re.sub(r'@staticmethod\s+def\s+(\w+)\((.*?)\)(?:\s*->\s*([^:]*))?:', 
-                     r'static \1(\2): \3 {', content)
-    
+    content = re.sub(
+        r"@staticmethod\s+def\s+(\w+)\((.*?)\)(?:\s*->\s*([^:]*))?:",
+        r"static \1(\2): \3 {",
+        content,
+    )
+
     # Fix 33: Fix Python classmethod decorator
-    content = re.sub(r'@classmethod\s+def\s+(\w+)\(cls(?:,\s*(.*?))?\)(?:\s*->\s*([^:]*))?:', 
-                     lambda m: f'static \1({m.group(2) or ""}): {m.group(3) or "any"} {{', content)
-    
+    content = re.sub(
+        r"@classmethod\s+def\s+(\w+)\(cls(?:,\s*(.*?))?\)(?:\s*->\s*([^:]*))?:",
+        lambda m: f"static \1({m.group(2) or ''}): {m.group(3) or 'any'} {{",
+        content,
+    )
+
     # Fix 34: Fix Python property decorator
-    content = re.sub(r'@property\s+def\s+(\w+)\(self\)(?:\s*->\s*([^:]*))?:', 
-                     r'get \1(): \2 {', content)
-    
+    content = re.sub(
+        r"@property\s+def\s+(\w+)\(self\)(?:\s*->\s*([^:]*))?:", r"get \1(): \2 {", content
+    )
+
     # Fix 35: Fix len() function calls
-    content = re.sub(r'len\(([^)]+)\)', r'\1.length', content)
-    
+    content = re.sub(r"len\(([^)]+)\)", r"\1.length", content)
+
     # Fix 36: Fix dict and list type annotations
-    content = re.sub(r': Dict\[([^,\]]+),\s*([^\]]+)\]', r': Record<\1, \2>', content)
-    content = re.sub(r': List\[([^\]]+)\]', r': \1[]', content)
-    
+    content = re.sub(r": Dict\[([^,\]]+),\s*([^\]]+)\]", r": Record<\1, \2>", content)
+    content = re.sub(r": List\[([^\]]+)\]", r": \1[]", content)
+
     # Fix 37: Fix Optional type annotations
-    content = re.sub(r': Optional\[([^\]]+)\]', r': \1 | null', content)
-    
+    content = re.sub(r": Optional\[([^\]]+)\]", r": \1 | null", content)
+
     # Fix 38: Convert Python string literal types
-    content = re.sub(r': \'([^\']+)\'', r': "\1"', content)
-    
+    content = re.sub(r": \'([^\']+)\'", r': "\1"', content)
+
     # Fix 39: Fix Python's enumerate()
-    content = re.sub(r'enumerate\(([^)]+)\)', r'Array.from(\1.entries())', content)
-    
+    content = re.sub(r"enumerate\(([^)]+)\)", r"Array.from(\1.entries())", content)
+
     # Fix 40: Fix Python's zip()
-    content = re.sub(r'zip\(([^)]+)\)', r'Array.from(\1[0].map((_, i) => \1.map(arr => arr[i])))', content)
-    
+    content = re.sub(
+        r"zip\(([^)]+)\)", r"Array.from(\1[0].map((_, i) => \1.map(arr => arr[i])))", content
+    )
+
     # Fix 41: Fix Python's range()
-    content = re.sub(r'range\((\d+)\)', r'Array.from({length: \1}, (_, i) => i)', content)
-    content = re.sub(r'range\((\d+),\s*(\d+)\)', r'Array.from({length: \2 - \1}, (_, i) => i + \1)', content)
-    
+    content = re.sub(r"range\((\d+)\)", r"Array.from({length: \1}, (_, i) => i)", content)
+    content = re.sub(
+        r"range\((\d+),\s*(\d+)\)", r"Array.from({length: \2 - \1}, (_, i) => i + \1)", content
+    )
+
     # Fix 42: Fix Python's list() constructor
-    content = re.sub(r'list\(([^)]+)\)', r'Array.from(\1)', content)
-    
+    content = re.sub(r"list\(([^)]+)\)", r"Array.from(\1)", content)
+
     # Fix 43: Fix Python's dict() constructor
-    content = re.sub(r'dict\(([^)]+)\)', r'Object.fromEntries(\1)', content)
-    
+    content = re.sub(r"dict\(([^)]+)\)", r"Object.fromEntries(\1)", content)
+
     # Fix 44: Fix Python's str() constructor
-    content = re.sub(r'str\(([^)]+)\)', r'String(\1)', content)
-    
+    content = re.sub(r"str\(([^)]+)\)", r"String(\1)", content)
+
     # Fix 45: Fix Python's int() constructor
-    content = re.sub(r'int\(([^)]+)\)', r'parseInt(\1, 10)', content)
-    
+    content = re.sub(r"int\(([^)]+)\)", r"parseInt(\1, 10)", content)
+
     # Fix 46: Fix Python's float() constructor
-    content = re.sub(r'float\(([^)]+)\)', r'parseFloat(\1)', content)
-    
+    content = re.sub(r"float\(([^)]+)\)", r"parseFloat(\1)", content)
+
     # Fix 47: Convert any remaining semicolon-less statements
-    content = re.sub(r'([^;{}\n\s])$', r'\1;', content, flags=re.MULTILINE)
-    
+    content = re.sub(r"([^;{}\n\s])$", r"\1;", content, flags=re.MULTILINE)
+
     # Fix 48: Fix class constructors
-    content = re.sub(r'def\s+__init__\(self(?:,\s*(.*?))?\):', r'constructor(\1) {', content)
-    
+    content = re.sub(r"def\s+__init__\(self(?:,\s*(.*?))?\):", r"constructor(\1) {", content)
+
     # Fix 49: Fix class inheritance
-    content = re.sub(r'class\s+(\w+)\(([^)]+)\)', r'class \1 extends \2', content)
-    
+    content = re.sub(r"class\s+(\w+)\(([^)]+)\)", r"class \1 extends \2", content)
+
     # Fix 50: Fix Python's super() calls
-    content = re.sub(r'super\(\s*\)\.([^(]+)\((.*?)\)', r'super.\1(\2)', content)
-    
+    content = re.sub(r"super\(\s*\)\.([^(]+)\((.*?)\)", r"super.\1(\2)", content)
+
     return content
+
 
 def fix_typescript_errors(file_path: str) -> bool:
     """Fix TypeScript errors in a file"""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
-        
+
         original_content = content
-        
+
         # Run the syntax fixer
         content = fix_typescript_syntax(content)
-        
+
         # Additional specific fixes for remaining issues
-        
+
         # Fix missing imports
-        if 'webgpu' in file_path.lower() and 'import' not in content:
+        if "webgpu" in file_path.lower() and "import" not in content:
             imports = '// Auto-added WebGPU imports\nimport { GPUDevice, GPUBuffer } from "../types/webgpu";\n\n'
             content = imports + content
-        
-        if 'webnn' in file_path.lower() and 'import' not in content:
+
+        if "webnn" in file_path.lower() and "import" not in content:
             imports = '// Auto-added WebNN imports\nimport { MLContext, MLGraphBuilder } from "../types/webnn";\n\n'
             content = imports + content
-        
+
         # Check for problematic patterns and add a comment for manual review
         problematic_patterns = [
-            (r'\$\{', '// FIXME: Complex template literal'),
-            (r'Dict\[', '// FIXME: Python Dict type annotation'),
-            (r'List\[', '// FIXME: Python List type annotation'),
-            (r'Optional\[', '// FIXME: Python Optional type annotation'),
-            (r'Tuple\[', '// FIXME: Python Tuple type annotation'),
-            (r'def\s+', '// FIXME: Python function definition'),
-            (r'@(\w+)', '// FIXME: Python decorator'),
-            (r'__(\w+)__', '// FIXME: Python special method'),
+            (r"\$\{", "// FIXME: Complex template literal"),
+            (r"Dict\[", "// FIXME: Python Dict type annotation"),
+            (r"List\[", "// FIXME: Python List type annotation"),
+            (r"Optional\[", "// FIXME: Python Optional type annotation"),
+            (r"Tuple\[", "// FIXME: Python Tuple type annotation"),
+            (r"def\s+", "// FIXME: Python function definition"),
+            (r"@(\w+)", "// FIXME: Python decorator"),
+            (r"__(\w+)__", "// FIXME: Python special method"),
         ]
-        
+
         for pattern, comment in problematic_patterns:
             if re.search(pattern, content):
-                content = comment + '\n' + content
+                content = comment + "\n" + content
                 break
-        
+
         if content != original_content:
             if not Config.DRY_RUN:
                 # Create backup if requested
                 if Config.CREATE_BACKUPS:
                     create_backup(file_path)
-                
+
                 # Write the fixed content
-                with open(file_path, 'w', encoding='utf-8') as f:
+                with open(file_path, "w", encoding="utf-8") as f:
                     f.write(content)
             return True
         return False
@@ -303,6 +344,7 @@ def fix_typescript_errors(file_path: str) -> bool:
         Config.STATS["error_count"] += 1
         return False
 
+
 def create_index_files():
     """Create index.ts files in directories that need them"""
     # Find all directories in target
@@ -310,28 +352,35 @@ def create_index_files():
     for root, dirs, files in os.walk(os.path.join(Config.TARGET_DIR, "src")):
         for dir in dirs:
             dir_path = os.path.join(root, dir)
-            has_ts_files = any(f.endswith('.ts') and not f.endswith('.d.ts') for f in os.listdir(dir_path))
-            has_index = 'index.ts' in os.listdir(dir_path)
-            
+            has_ts_files = any(
+                f.endswith(".ts") and not f.endswith(".d.ts") for f in os.listdir(dir_path)
+            )
+            has_index = "index.ts" in os.listdir(dir_path)
+
             if has_ts_files and not has_index:
                 dirs_to_process.append(dir_path)
-    
+
     logger.info(f"Creating index.ts files in {len(dirs_to_process)} directories")
-    
+
     for dir_path in dirs_to_process:
-        ts_files = [f for f in os.listdir(dir_path) if f.endswith('.ts') and f != 'index.ts' and not f.endswith('.d.ts')]
+        ts_files = [
+            f
+            for f in os.listdir(dir_path)
+            if f.endswith(".ts") and f != "index.ts" and not f.endswith(".d.ts")
+        ]
         if not ts_files:
             continue
-            
-        index_path = os.path.join(dir_path, 'index.ts')
+
+        index_path = os.path.join(dir_path, "index.ts")
         if not Config.DRY_RUN:
-            with open(index_path, 'w', encoding='utf-8') as f:
+            with open(index_path, "w", encoding="utf-8") as f:
                 f.write("// Auto-generated index file\n\n")
                 for ts_file in ts_files:
                     module_name = os.path.splitext(ts_file)[0]
                     f.write(f'export * from "./{module_name}";\n')
-        
+
         logger.info(f"Created index file: {index_path}")
+
 
 def create_interface_file():
     """Create a central interfaces.ts file with common interfaces"""
@@ -464,14 +513,15 @@ export interface OptimizationConfig {
   specialOptimizations: string[];
 }
 """
-    
+
     interfaces_path = os.path.join(Config.TARGET_DIR, "src/interfaces.ts")
     if not Config.DRY_RUN:
         os.makedirs(os.path.dirname(interfaces_path), exist_ok=True)
-        with open(interfaces_path, 'w', encoding='utf-8') as f:
+        with open(interfaces_path, "w", encoding="utf-8") as f:
             f.write(interfaces_content)
-    
+
     logger.info(f"Created interfaces file: {interfaces_path}")
+
 
 def create_special_implementations():
     """Create special implementations for problematic files"""
@@ -557,7 +607,7 @@ export class ResourcePoolBridge {
     this.initialized = false;
   }
 }
-"""
+""",
         },
         {
             "path": "src/browser/resource_pool/verify_web_resource_pool.ts",
@@ -612,7 +662,7 @@ export class VerifyWebResourcePool {
     };
   }
 }
-"""
+""",
         },
         {
             "path": "src/browser/optimizations/browser_automation.ts",
@@ -689,7 +739,7 @@ export class BrowserAutomation {
     };
   }
 }
-"""
+""",
         },
         {
             "path": "src/browser/optimizations/browser_capability_detection.ts",
@@ -1283,30 +1333,31 @@ if (typeof window !== 'undefined') {
     }
   }
 }
-"""
-        }
+""",
+        },
     ]
-    
+
     for spec in special_files:
         file_path = os.path.join(Config.TARGET_DIR, spec["path"])
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        
+
         if not Config.DRY_RUN and not Config.SKIP_SPECIAL_FILES:
             # Create backup if the file exists
             if os.path.exists(file_path) and Config.CREATE_BACKUPS:
                 create_backup(file_path)
-            
-            with open(file_path, 'w', encoding='utf-8') as f:
+
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(spec["content"])
-            
+
             Config.STATS["special_files_replaced"] += 1
             logger.info(f"Created special implementation: {spec['path']}")
+
 
 def create_declaration_files():
     """Create TypeScript declaration files for WebGPU and WebNN"""
     types_dir = os.path.join(Config.TARGET_DIR, "src/types")
     os.makedirs(types_dir, exist_ok=True)
-    
+
     # WebGPU declaration file
     webgpu_path = os.path.join(types_dir, "webgpu.d.ts")
     webgpu_content = """/**
@@ -1407,7 +1458,7 @@ export interface Navigator {
   gpu: NavigatorGPU;
 }
 """
-    
+
     # WebNN declaration file
     webnn_path = os.path.join(types_dir, "webnn.d.ts")
     webnn_content = """/**
@@ -1454,15 +1505,16 @@ export interface Navigator {
   ml: NavigatorML;
 }
 """
-    
+
     if not Config.DRY_RUN:
-        with open(webgpu_path, 'w', encoding='utf-8') as f:
+        with open(webgpu_path, "w", encoding="utf-8") as f:
             f.write(webgpu_content)
-        
-        with open(webnn_path, 'w', encoding='utf-8') as f:
+
+        with open(webnn_path, "w", encoding="utf-8") as f:
             f.write(webnn_content)
-        
+
         logger.info("Created TypeScript declaration files in src/types/")
+
 
 def create_tsconfig():
     """Create TypeScript configuration file"""
@@ -1481,26 +1533,27 @@ def create_tsconfig():
             "skipLibCheck": True,
             "forceConsistentCasingInFileNames": True,
             "lib": ["dom", "dom.iterable", "esnext", "webworker"],
-            "jsx": "react"
+            "jsx": "react",
         },
         "include": ["src/**/*"],
-        "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts"]
+        "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/*.test.ts"],
     }
-    
+
     if not Config.DRY_RUN:
-        with open(tsconfig_path, 'w', encoding='utf-8') as f:
+        with open(tsconfig_path, "w", encoding="utf-8") as f:
             json.dump(tsconfig_content, f, indent=2)
-        
+
         logger.info(f"Created TypeScript configuration file: {tsconfig_path}")
+
 
 def create_package_json():
     """Create package.json file if it doesn't exist"""
     package_path = os.path.join(Config.TARGET_DIR, "package.json")
-    
+
     if os.path.exists(package_path):
         logger.info(f"package.json already exists: {package_path}")
         return
-    
+
     package_content = {
         "name": "ipfs-accelerate",
         "version": "0.1.0",
@@ -1508,29 +1561,20 @@ def create_package_json():
         "main": "dist/index.js",
         "module": "dist/index.esm.js",
         "types": "dist/types/index.d.ts",
-        "files": [
-            "dist",
-            "src"
-        ],
+        "files": ["dist", "src"],
         "scripts": {
             "build": "rollup -c",
             "dev": "rollup -c -w",
             "type-check": "tsc --noEmit",
             "lint": "eslint src --ext .ts,.tsx",
             "test": "jest",
-            "prepublishOnly": "npm run build"
+            "prepublishOnly": "npm run build",
         },
         "repository": {
             "type": "git",
-            "url": "git+https://github.com/yourusername/ipfs-accelerate.git"
+            "url": "git+https://github.com/yourusername/ipfs-accelerate.git",
         },
-        "keywords": [
-            "ipfs",
-            "ai",
-            "webgpu",
-            "webnn",
-            "machine-learning"
-        ],
+        "keywords": ["ipfs", "ai", "webgpu", "webnn", "machine-learning"],
         "author": "Your Name",
         "license": "MIT",
         "devDependencies": {
@@ -1549,23 +1593,18 @@ def create_package_json():
             "rollup-plugin-peer-deps-external": "^2.2.4",
             "rollup-plugin-terser": "^7.0.2",
             "ts-jest": "^27.1.3",
-            "typescript": "^4.5.5"
+            "typescript": "^4.5.5",
         },
-        "peerDependencies": {
-            "react": "^16.8.0 || ^17.0.0 || ^18.0.0"
-        },
-        "peerDependenciesMeta": {
-            "react": {
-                "optional": True
-            }
-        }
+        "peerDependencies": {"react": "^16.8.0 || ^17.0.0 || ^18.0.0"},
+        "peerDependenciesMeta": {"react": {"optional": True}},
     }
-    
+
     if not Config.DRY_RUN:
-        with open(package_path, 'w', encoding='utf-8') as f:
+        with open(package_path, "w", encoding="utf-8") as f:
             json.dump(package_content, f, indent=2)
-        
+
         logger.info(f"Created package.json file: {package_path}")
+
 
 def process_all_files():
     """Process all TypeScript files in the target directory"""
@@ -1573,35 +1612,41 @@ def process_all_files():
     ts_files = []
     for root, _, files in os.walk(Config.TARGET_DIR):
         for file in files:
-            if file.endswith(('.ts', '.tsx')) and not file.endswith('.d.ts'):
+            if file.endswith((".ts", ".tsx")) and not file.endswith(".d.ts"):
                 ts_files.append(os.path.join(root, file))
-    
+
     logger.info(f"Found {len(ts_files)} TypeScript files to process")
-    
+
     # Process each file
     for file_path in ts_files:
         Config.STATS["files_processed"] += 1
-        
+
         # Skip special files that are replaced manually
-        if Config.SKIP_SPECIAL_FILES and any(spec["path"] in file_path for spec in [
-            "src/browser/resource_pool/resource_pool_bridge.ts",
-            "src/browser/resource_pool/verify_web_resource_pool.ts",
-            "src/browser/optimizations/browser_automation.ts",
-            "src/browser/optimizations/browser_capability_detection.ts"
-        ]):
+        if Config.SKIP_SPECIAL_FILES and any(
+            spec["path"] in file_path
+            for spec in [
+                "src/browser/resource_pool/resource_pool_bridge.ts",
+                "src/browser/resource_pool/verify_web_resource_pool.ts",
+                "src/browser/optimizations/browser_automation.ts",
+                "src/browser/optimizations/browser_capability_detection.ts",
+            ]
+        ):
             logger.info(f"Skipping special file: {file_path}")
             continue
-        
+
         if fix_typescript_errors(file_path):
             Config.STATS["files_fixed"] += 1
             logger.info(f"Fixed: {os.path.relpath(file_path, Config.TARGET_DIR)}")
         elif Config.VERBOSE:
             logger.debug(f"No fixes needed: {os.path.relpath(file_path, Config.TARGET_DIR)}")
 
+
 def generate_conversion_report():
     """Generate a conversion report markdown file"""
-    report_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "WEBGPU_WEBNN_TYPESCRIPT_CONVERSION_REPORT.md")
-    
+    report_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "WEBGPU_WEBNN_TYPESCRIPT_CONVERSION_REPORT.md"
+    )
+
     content = f"""# WebGPU/WebNN TypeScript Conversion Report
 
 ## Summary
@@ -1685,41 +1730,42 @@ TypeScript conversion was performed on {datetime.now().strftime("%Y-%m-%d %H:%M:
 
 The TypeScript conversion has been largely successful, with {Config.STATS["files_fixed"]} out of {Config.STATS["files_processed"]} files fixed automatically. The remaining files may require some manual tweaks, but the foundation is solid for a complete TypeScript implementation.
 """
-    
+
     if not Config.DRY_RUN:
-        with open(report_path, 'w', encoding='utf-8') as f:
+        with open(report_path, "w", encoding="utf-8") as f:
             f.write(content)
-        
+
         logger.info(f"Generated conversion report: {report_path}")
+
 
 def main():
     """Main function"""
     parse_args()
-    
+
     # Create special implementations for problematic files
     create_special_implementations()
-    
+
     # Create declaration files
     create_declaration_files()
-    
+
     # Create tsconfig.json
     create_tsconfig()
-    
+
     # Create package.json if needed
     create_package_json()
-    
+
     # Create index files
     create_index_files()
-    
+
     # Create interface file
     create_interface_file()
-    
+
     # Process all TypeScript files
     process_all_files()
-    
+
     # Generate conversion report
     generate_conversion_report()
-    
+
     # Print summary
     logger.info("\nSummary:")
     logger.info(f"Files processed: {Config.STATS['files_processed']}")
@@ -1727,8 +1773,9 @@ def main():
     logger.info(f"Files backed up: {Config.STATS['files_backed_up']}")
     logger.info(f"Special files replaced: {Config.STATS['special_files_replaced']}")
     logger.info(f"Errors encountered: {Config.STATS['error_count']}")
-    
+
     logger.info("TypeScript conversion completed")
+
 
 if __name__ == "__main__":
     main()

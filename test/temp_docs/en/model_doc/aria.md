@@ -47,13 +47,13 @@ from transformers import AriaProcessor, AriaForConditionalGeneration
 
 model_id_or_path = "rhymes-ai/Aria"
 
-model = AriaForConditionalGeneration.from_pretrained(
-    model_id_or_path, device_map="auto"
-)
+model = AriaForConditionalGeneration.from_pretrained(model_id_or_path, device_map="auto")
 
 processor = AriaProcessor.from_pretrained(model_id_or_path)
 
-image = Image.open(requests.get("http://images.cocodataset.org/val2017/000000039769.jpg", stream=True).raw)
+image = Image.open(
+    requests.get("http://images.cocodataset.org/val2017/000000039769.jpg", stream=True).raw
+)
 
 messages = [
     {
@@ -77,7 +77,7 @@ output = model.generate(
     do_sample=True,
     temperature=0.9,
 )
-output_ids = output[0][inputs["input_ids"].shape[1]:]
+output_ids = output[0][inputs["input_ids"].shape[1] :]
 response = processor.decode(output_ids, skip_special_tokens=True)
 ```
 

@@ -29,6 +29,7 @@ if _EXPORTS:
     globals().update(_EXPORTS)
     __all__ = sorted(_EXPORTS.keys())
 else:
+
     class GrpcTransportUnavailable(RuntimeError):
         """Raised when gRPC transport surface is unavailable in this environment."""
 

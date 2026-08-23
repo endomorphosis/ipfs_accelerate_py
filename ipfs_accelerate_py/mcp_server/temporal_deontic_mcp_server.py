@@ -27,8 +27,12 @@ class TemporalDeonticMCPServer:
         for name, record in getattr(server, "tools", {}).items():
             schema = record.get("input_schema") if isinstance(record, dict) else None
             schemas[str(name)] = {
-                "description": str(record.get("description", "") if isinstance(record, dict) else ""),
-                "input_schema": schema if isinstance(schema, dict) else {"type": "object", "properties": {}},
+                "description": str(
+                    record.get("description", "") if isinstance(record, dict) else ""
+                ),
+                "input_schema": schema
+                if isinstance(schema, dict)
+                else {"type": "object", "properties": {}},
             }
         return schemas
 
@@ -36,8 +40,12 @@ class TemporalDeonticMCPServer:
         """Dispatch a tool by name through canonical meta-tool path."""
         server = self.setup_server()
         tools = getattr(server, "tools", {})
-        list_tools = tools.get("tools_list_tools", {}).get("function") if isinstance(tools, dict) else None
-        dispatch = tools.get("tools_dispatch", {}).get("function") if isinstance(tools, dict) else None
+        list_tools = (
+            tools.get("tools_list_tools", {}).get("function") if isinstance(tools, dict) else None
+        )
+        dispatch = (
+            tools.get("tools_dispatch", {}).get("function") if isinstance(tools, dict) else None
+        )
 
         if not callable(list_tools) or not callable(dispatch):
             return {

@@ -72,9 +72,7 @@ hw_recommender = HardwareRecommender(predictor=predictor)
 
 # Generate integrated recommendations
 results = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=10,
-    optimize_for="throughput"
+    hardware_recommender=hw_recommender, test_budget=10, optimize_for="throughput"
 )
 
 # Access recommended configurations
@@ -168,9 +166,7 @@ Example:
 ```python
 # Identify key tests for new WebGPU hardware
 results = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=15,
-    optimize_for="throughput"
+    hardware_recommender=hw_recommender, test_budget=15, optimize_for="throughput"
 )
 ```
 
@@ -182,9 +178,7 @@ Example:
 ```python
 # Find configurations with potential hardware mismatches
 results = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=20,
-    optimize_for="latency"
+    hardware_recommender=hw_recommender, test_budget=20, optimize_for="latency"
 )
 
 # Filter for hardware mismatches
@@ -201,7 +195,7 @@ Example:
 daily_plan = active_learner.integrate_with_hardware_recommender(
     hardware_recommender=hw_recommender,
     test_budget=5,  # Limited daily capacity
-    optimize_for="throughput"
+    optimize_for="throughput",
 )
 ```
 
@@ -214,27 +208,28 @@ For cases where multiple optimization metrics are important (e.g., throughput an
 ```python
 # Get recommendations optimized for throughput
 throughput_recs = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=20,
-    optimize_for="throughput"
+    hardware_recommender=hw_recommender, test_budget=20, optimize_for="throughput"
 )
 
 # Get recommendations optimized for power efficiency
 power_recs = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=20,
-    optimize_for="power"
+    hardware_recommender=hw_recommender, test_budget=20, optimize_for="power"
 )
 
 # Combine and deduplicate
 combined_configs = {}
-for config in (throughput_recs["recommendations"] + power_recs["recommendations"]):
+for config in throughput_recs["recommendations"] + power_recs["recommendations"]:
     key = (config["model_name"], config["hardware"], config["batch_size"])
-    if key not in combined_configs or config["combined_score"] > combined_configs[key]["combined_score"]:
+    if (
+        key not in combined_configs
+        or config["combined_score"] > combined_configs[key]["combined_score"]
+    ):
         combined_configs[key] = config
 
 # Get top configurations respecting budget
-final_configs = sorted(combined_configs.values(), key=lambda x: x["combined_score"], reverse=True)[:10]
+final_configs = sorted(combined_configs.values(), key=lambda x: x["combined_score"], reverse=True)[
+    :10
+]
 ```
 
 ### Sequential Testing Strategy
@@ -244,9 +239,7 @@ For iterative testing, implement a sequential strategy that updates models betwe
 ```python
 # Initial integration
 results = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=5,
-    optimize_for="throughput"
+    hardware_recommender=hw_recommender, test_budget=5, optimize_for="throughput"
 )
 
 # Run benchmarks for recommended configurations...
@@ -258,9 +251,7 @@ predictor.update_models(benchmark_results)
 
 # Next round of integration with updated models
 updated_results = active_learner.integrate_with_hardware_recommender(
-    hardware_recommender=hw_recommender,
-    test_budget=5,
-    optimize_for="throughput"
+    hardware_recommender=hw_recommender, test_budget=5, optimize_for="throughput"
 )
 ```
 
@@ -346,14 +337,11 @@ recommendation_schema = {
             "type": "array",
             "items": {
                 "type": "object",
-                "properties": {
-                    "hardware": {"type": "string"},
-                    "score": {"type": "number"}
-                }
-            }
-        }
+                "properties": {"hardware": {"type": "string"}, "score": {"type": "number"}},
+            },
+        },
     },
-    "required": ["model_name", "model_type", "hardware", "batch_size", "combined_score"]
+    "required": ["model_name", "model_type", "hardware", "batch_size", "combined_score"],
 }
 ```
 
@@ -363,18 +351,20 @@ recommendation_schema = {
 result_schema = {
     "type": "object",
     "properties": {
-        "recommendations": {
-            "type": "array",
-            "items": recommendation_schema
-        },
+        "recommendations": {"type": "array", "items": recommendation_schema},
         "total_candidates": {"type": "integer"},
         "enhanced_candidates": {"type": "integer"},
         "final_recommendations": {"type": "integer"},
         "optimization_metric": {"type": "string"},
         "strategy": {"type": "string"},
-        "timestamp": {"type": "string"}
+        "timestamp": {"type": "string"},
     },
-    "required": ["recommendations", "total_candidates", "final_recommendations", "optimization_metric"]
+    "required": [
+        "recommendations",
+        "total_candidates",
+        "final_recommendations",
+        "optimization_metric",
+    ],
 }
 ```
 

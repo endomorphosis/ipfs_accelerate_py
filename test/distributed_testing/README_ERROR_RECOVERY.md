@@ -71,21 +71,23 @@ try:
     return web.json_response(result)
 except Exception as e:
     # Let enhanced error handling system handle it
-    success, recovery_info = await self.enhanced_error_handling.handle_error(e, {
-        "component": "api",
-        "operation": "perform_operation"
-    })
-    
+    success, recovery_info = await self.enhanced_error_handling.handle_error(
+        e, {"component": "api", "operation": "perform_operation"}
+    )
+
     if success:
         # Retry the operation if recovery was successful
         return await self.handle_request(request)
     else:
         # Return error if recovery failed
-        return web.json_response({
-            "error": str(e),
-            "recovery_attempted": True,
-            "recovery_level": recovery_info["recovery_level"]
-        }, status=500)
+        return web.json_response(
+            {
+                "error": str(e),
+                "recovery_attempted": True,
+                "recovery_level": recovery_info["recovery_level"],
+            },
+            status=500,
+        )
 ```
 
 ### Retrieving Performance Metrics
@@ -248,21 +250,14 @@ from distributed_testing.browser_failure_injector import BrowserFailureInjector
 
 # Create circuit breaker
 circuit_breaker = CircuitBreaker(
-    failure_threshold=5,
-    recovery_timeout=60,
-    half_open_after=30,
-    name="browser_circuit"
+    failure_threshold=5, recovery_timeout=60, half_open_after=30, name="browser_circuit"
 )
 
 # Create recovery manager with circuit breaker
 recovery_manager = EnhancedErrorRecoveryManager(circuit_breaker=circuit_breaker)
 
 # Create browser failure injector with circuit breaker
-injector = BrowserFailureInjector(
-    bridge,
-    circuit_breaker=circuit_breaker,
-    use_circuit_breaker=True
-)
+injector = BrowserFailureInjector(bridge, circuit_breaker=circuit_breaker, use_circuit_breaker=True)
 
 # Attempt operation with integrated recovery
 try:
@@ -271,7 +266,7 @@ try:
 except Exception as e:
     # Check circuit state before recovery
     circuit_state = circuit_breaker.get_state()
-    
+
     # Determine starting recovery level based on circuit state
     if circuit_state == "open":
         starting_level = RecoveryLevel.HIGH
@@ -279,19 +274,22 @@ except Exception as e:
         starting_level = RecoveryLevel.MEDIUM
     else:
         starting_level = RecoveryLevel.LOW
-    
+
     # Attempt recovery with appropriate starting level
-    success, info = await recovery_manager.recover(e, {
-        "component": "browser",
-        "operation": "perform_browser_operation",
-        "starting_level": starting_level
-    })
-    
+    success, info = await recovery_manager.recover(
+        e,
+        {
+            "component": "browser",
+            "operation": "perform_browser_operation",
+            "starting_level": starting_level,
+        },
+    )
+
     if success:
         # Record success in circuit breaker if in half-open state
         if circuit_breaker.get_state() == "half-open":
             circuit_breaker.record_success()
-        
+
         logger.info("Recovery successful")
     else:
         # Record failure in circuit breaker

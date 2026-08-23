@@ -21,30 +21,32 @@ The `ConverterImprovements` class contains the central improvements to the conve
 ```python
 class ConverterImprovements:
     """Contains the improved patterns and templates for the Python to TypeScript converter"""
-    
+
     # Improved pattern mapping for better conversion accuracy
     IMPROVED_PATTERN_MAP = [
         # 50+ regex patterns for Python to TypeScript conversion
     ]
-    
+
     # Enhanced class templates
-    WEBGPU_CLASS_TEMPLATE = { ... }
-    WEBNN_CLASS_TEMPLATE = { ... }
-    HARDWARE_ABSTRACTION_TEMPLATE = { ... }
-    
+    WEBGPU_CLASS_TEMPLATE = {...}
+    WEBNN_CLASS_TEMPLATE = {...}
+    HARDWARE_ABSTRACTION_TEMPLATE = {...}
+
     # Enhanced class conversions mapping
-    IMPROVED_CLASS_CONVERSIONS = { ... }
-    
+    IMPROVED_CLASS_CONVERSIONS = {...}
+
     # TypeScript interfaces for common types
-    TS_INTERFACES = { ... }
-    
+    TS_INTERFACES = {...}
+
     @staticmethod
     def create_improved_interfaces(file_content: str) -> str:
         """Extract interfaces from Python types and create TypeScript interfaces"""
         # Implementation details
-    
+
     @staticmethod
-    def fix_import_paths(original_content: str, ts_content: str, file_path: str, target_dir: str) -> str:
+    def fix_import_paths(
+        original_content: str, ts_content: str, file_path: str, target_dir: str
+    ) -> str:
         """Fix import paths in the converted TypeScript content"""
         # Implementation details
 ```
@@ -57,11 +59,11 @@ The pattern mapping system uses regular expressions to transform Python syntax t
 # Pattern is a tuple containing (python_pattern, typescript_replacement)
 IMPROVED_PATTERN_MAP = [
     # Import statements with better handling of paths and relative imports
-    (r'import\s+(\w+)', r'import * as $1'),
-    (r'from\s+(\w+)\s+import\s+\{([^}]+)\}', r'import { $2 } from "$1"'),
-    
+    (r"import\s+(\w+)", r"import * as $1"),
+    (r"from\s+(\w+)\s+import\s+\{([^}]+)\}", r'import { $2 } from "$1"'),
     # Many more patterns for different syntax elements...
 ]
+
 
 # Application of patterns
 def apply_patterns(python_code: str) -> str:
@@ -77,23 +79,24 @@ The class template system provides specialized templates for key classes:
 
 ```python
 WEBGPU_CLASS_TEMPLATE = {
-    'signature': 'class WebGPUBackend implements HardwareBackend',
-    'methods': {
-        'initialize': 'async initialize(): Promise<boolean> { ... }',
-        'createBuffer': 'createBuffer(size: number, usage: GPUBufferUsage): GPUBuffer { ... }',
+    "signature": "class WebGPUBackend implements HardwareBackend",
+    "methods": {
+        "initialize": "async initialize(): Promise<boolean> { ... }",
+        "createBuffer": "createBuffer(size: number, usage: GPUBufferUsage): GPUBuffer { ... }",
         # More methods...
     },
-    'properties': {
-        'device': 'device: GPUDevice | null = null',
-        'adapter': 'adapter: GPUAdapter | null = null',
+    "properties": {
+        "device": "device: GPUDevice | null = null",
+        "adapter": "adapter: GPUAdapter | null = null",
         # More properties...
-    }
+    },
 }
+
 
 # Application of template
 def _generate_class_from_template(class_name: str, content: str) -> str:
     template = IMPROVED_CLASS_CONVERSIONS[class_name]
-    
+
     # Extract properties and methods from Python class
     # Create TypeScript class with proper typing
     # Return the generated TypeScript class
@@ -139,34 +142,32 @@ def create_improved_interfaces(file_content: str) -> str:
 The import path resolution system intelligently maps import paths based on content analysis:
 
 ```python
-def fix_import_paths(original_content: str, ts_content: str, file_path: str, target_dir: str) -> str:
+def fix_import_paths(
+    original_content: str, ts_content: str, file_path: str, target_dir: str
+) -> str:
     # Extract Python imports
-    py_imports = re.findall(r'(?:from|import)\s+([.\w]+)', original_content)
-    
+    py_imports = re.findall(r"(?:from|import)\s+([.\w]+)", original_content)
+
     # Extract TypeScript imports
     ts_imports = re.findall(r'import.*?from\s+[\'"]([^\'"]+)[\'"]', ts_content)
-    
+
     # Create mapping from Python module to TypeScript path
     import_mapping = {}
     for py_import in py_imports:
         # Skip standard lib imports
-        if py_import in ('os', 'sys', 're', 'json', 'logging', 'datetime', 'pathlib', 'typing'):
+        if py_import in ("os", "sys", "re", "json", "logging", "datetime", "pathlib", "typing"):
             continue
-            
+
         # Map Python import to TypeScript path
         # Implementation details...
-    
+
     # Fix imports in TypeScript content
     for py_import, ts_path in import_mapping.items():
-        ts_content = re.sub(
-            fr'from\s+[\'"]({py_import})[\'"]',
-            f'from "{ts_path}"',
-            ts_content
-        )
-        
+        ts_content = re.sub(rf'from\s+[\'"]({py_import})[\'"]', f'from "{ts_path}"', ts_content)
+
         # Handle relative imports and other cases
         # Implementation details...
-    
+
     return ts_content
 ```
 
@@ -179,13 +180,13 @@ def map_file_to_destination(file_path: str) -> str:
     # Get basename and extension
     basename = os.path.basename(file_path)
     _, src_ext = os.path.splitext(basename)
-    output_ext = '.ts'  # TypeScript output
-    
+    output_ext = ".ts"  # TypeScript output
+
     # Content-based mapping logic
     try:
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read(10000)  # Read first 10KB
-            
+
             # Map file based on content patterns
             if "class HardwareAbstraction" in content:
                 return os.path.join(target_dir, "src/hardware/hardware_abstraction" + output_ext)
@@ -194,7 +195,7 @@ def map_file_to_destination(file_path: str) -> str:
             # Many more content-based rules...
     except Exception:
         pass
-    
+
     # Default location
     return os.path.join(target_dir, "src/utils", os.path.splitext(basename)[0] + output_ext)
 ```
@@ -214,10 +215,10 @@ When designing regex patterns, we follow these principles:
 Example:
 ```python
 # Bad pattern - too general
-(r'def\s+(\w+)', r'$1')
+(r"def\s+(\w+)", r"$1")
 
 # Good pattern - more specific with context
-(r'def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\)\s*->\s*(\w+):', r'$1($3): $4 {')
+(r"def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\)\s*->\s*(\w+):", r"$1($3): $4 {")
 ```
 
 ### 2. Class Template Design
@@ -329,7 +330,7 @@ const b = values[1];
 Solution:
 ```python
 # Pattern for tuple unpacking
-(r'(\w+),\s*(\w+)\s*=\s*([^;]+)', r'const _tmp = $3;\nconst $1 = _tmp[0];\nconst $2 = _tmp[1];')
+(r"(\w+),\s*(\w+)\s*=\s*([^;]+)", r"const _tmp = $3;\nconst $1 = _tmp[0];\nconst $2 = _tmp[1];")
 ```
 
 ### 2. Async/Await
@@ -352,10 +353,10 @@ async function get_data(): Promise<any> {
 Solution:
 ```python
 # Pattern for async functions with return type
-(r'async\s+def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\)\s*->\s*(\w+):', r'async $1($3): Promise<$4> {')
+(r"async\s+def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\)\s*->\s*(\w+):", r"async $1($3): Promise<$4> {")
 
 # Pattern for async functions without return type
-(r'async\s+def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\):', r'async $1($3): Promise<any> {')
+(r"async\s+def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\):", r"async $1($3): Promise<any> {")
 ```
 
 ### 3. Class Methods vs. Functions
@@ -376,7 +377,7 @@ process_data(data: any, options?: any): void {
 Solution:
 ```python
 # Pattern for methods with parameters
-(r'def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\):', r'$1($3) {')
+(r"def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\):", r"$1($3) {")
 ```
 
 ### 4. Property Type Annotations
@@ -388,14 +389,14 @@ Python's type annotations for class properties differ from TypeScript:
 self.device: Optional[GPUDevice] = None
 
 # TypeScript
-device: GPUDevice | null = null;
+device: GPUDevice | null = null
 ```
 
 Solution:
 ```python
 # Patterns for property type annotations
-(r'(\w+):\s*Optional\[(\w+)\]', r'$1: $2 | null'),
-(r'(\w+):\s*List\[(\w+)\]', r'$1: $2[]'),
+((r"(\w+):\s*Optional\[(\w+)\]", r"$1: $2 | null"),)
+((r"(\w+):\s*List\[(\w+)\]", r"$1: $2[]"),)
 ```
 
 ## Testing and Validation
@@ -453,28 +454,33 @@ To extend the converter with new patterns or templates:
 Example of adding a new pattern:
 ```python
 # Add new pattern to IMPROVED_PATTERN_MAP
-IMPROVED_PATTERN_MAP.append((r'with\s+(\w+)\s+as\s+(\w+):', r'// With statement converted to try-finally\ntry {\n  const $2 = $1;'))
-IMPROVED_PATTERN_MAP.append((r'# End of with block', r'} finally {\n  // Cleanup code\n}'))
+IMPROVED_PATTERN_MAP.append(
+    (
+        r"with\s+(\w+)\s+as\s+(\w+):",
+        r"// With statement converted to try-finally\ntry {\n  const $2 = $1;",
+    )
+)
+IMPROVED_PATTERN_MAP.append((r"# End of with block", r"} finally {\n  // Cleanup code\n}"))
 ```
 
 Example of adding a new template:
 ```python
 # Add new template to IMPROVED_CLASS_CONVERSIONS
 TENSORFLOW_MODEL_TEMPLATE = {
-    'signature': 'class TensorflowModel implements Model',
-    'methods': {
-        'initialize': 'async initialize(): Promise<boolean> { ... }',
-        'predict': 'async predict(inputs: any): Promise<any> { ... }',
+    "signature": "class TensorflowModel implements Model",
+    "methods": {
+        "initialize": "async initialize(): Promise<boolean> { ... }",
+        "predict": "async predict(inputs: any): Promise<any> { ... }",
         # More methods...
     },
-    'properties': {
-        'model': 'model: tf.GraphModel | null = null',
-        'initialized': 'initialized: boolean = false',
+    "properties": {
+        "model": "model: tf.GraphModel | null = null",
+        "initialized": "initialized: boolean = false",
         # More properties...
-    }
+    },
 }
 
-IMPROVED_CLASS_CONVERSIONS['TensorflowModel'] = TENSORFLOW_MODEL_TEMPLATE
+IMPROVED_CLASS_CONVERSIONS["TensorflowModel"] = TENSORFLOW_MODEL_TEMPLATE
 ```
 
 ## Conclusion

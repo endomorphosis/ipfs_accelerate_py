@@ -1,0 +1,146 @@
+"""Proof-carrying procedure compiler contracts and deterministic IR."""
+
+from . import contracts as _contracts
+from .contracts import *  # noqa: F401,F403 - the package is the public contract surface
+from .interpreter import (
+    AdmissionDecision,
+    AdmissionKind,
+    BudgetReservation,
+    CheckpointPhase,
+    ExecutionMode,
+    InMemoryCheckpointStore,
+    InMemoryIdempotencyStore,
+    InterpreterAdmissionPorts,
+    InterpreterCheckpoint,
+    IsolationReservation,
+    IsolationReservationRequest,
+    OperationExecutionError,
+    OperationRequest,
+    OperationResult,
+    ProcedureExecution,
+    ProcedureInterpreter,
+    ProcedureInterpreterError,
+    RuntimeCost,
+    RuntimeFailureCode,
+    RuntimeIdentity,
+    TrustedOperation,
+    TrustedOperationCatalog,
+)
+from .procedure_ir import (
+    ProcedureDataflowError,
+    ProcedureEffectError,
+    ProcedureGraphError,
+    ProcedureIRParser,
+    ProcedureIRValidationError,
+    ProcedureScopeError,
+    ProcedureValidationRetentionError,
+    parse_procedure_ir,
+    parse_procedure_spec,
+    validate_procedure_spec,
+)
+from .runtime import (
+    PRINCIPAL_SUBSYSTEM,
+    PROGRAM_ID,
+    ROOT_OBJECTIVE_ID,
+    TASK_PREFIX,
+    ProcedureCompilerCapabilities,
+    ProcedureCompilerCapabilityError,
+    ProofCarryingProcedureCompiler,
+    compiler_capabilities,
+)
+from .task_family import (
+    TaskFamilyContractError,
+    parse_task_family,
+    parse_task_family_membership,
+    validate_task_family_contract,
+    validate_task_family_membership,
+)
+from .trajectory import (
+    TrajectoryContractError,
+    parse_execution_trajectory,
+    validate_execution_trajectory_contract,
+)
+from .transition_model import (
+    PredictionCalibration,
+    TransitionModel,
+    TransitionObservation,
+    TransitionPrediction,
+)
+from .world_model import (
+    AbstractRepositoryState,
+    RepositoryWorldState,
+    WorldStateDelta,
+)
+
+# Register the richer canonical world/transition owners after their modules
+# have finished importing the shared contract primitives.  This preserves one
+# decoder without making contracts.py depend cyclically on projection code.
+for _artifact_type in (
+    RepositoryWorldState,
+    AbstractRepositoryState,
+    WorldStateDelta,
+    TransitionObservation,
+    TransitionModel,
+    TransitionPrediction,
+    PredictionCalibration,
+):
+    _contracts.ARTIFACT_TYPES_BY_SCHEMA[_artifact_type.SCHEMA] = _artifact_type
+
+__all__ = [
+    *_contracts.__all__,
+    "ProcedureDataflowError",
+    "ProcedureEffectError",
+    "ProcedureGraphError",
+    "ProcedureIRParser",
+    "ProcedureIRValidationError",
+    "ProcedureScopeError",
+    "ProcedureValidationRetentionError",
+    "parse_procedure_ir",
+    "parse_procedure_spec",
+    "validate_procedure_spec",
+    "RepositoryWorldState",
+    "AbstractRepositoryState",
+    "WorldStateDelta",
+    "TransitionObservation",
+    "TransitionModel",
+    "TransitionPrediction",
+    "PredictionCalibration",
+    "TrajectoryContractError",
+    "parse_execution_trajectory",
+    "validate_execution_trajectory_contract",
+    "TaskFamilyContractError",
+    "parse_task_family",
+    "parse_task_family_membership",
+    "validate_task_family_contract",
+    "validate_task_family_membership",
+    "AdmissionDecision",
+    "AdmissionKind",
+    "BudgetReservation",
+    "CheckpointPhase",
+    "ExecutionMode",
+    "InMemoryCheckpointStore",
+    "InMemoryIdempotencyStore",
+    "InterpreterAdmissionPorts",
+    "InterpreterCheckpoint",
+    "IsolationReservation",
+    "IsolationReservationRequest",
+    "OperationExecutionError",
+    "OperationRequest",
+    "OperationResult",
+    "PRINCIPAL_SUBSYSTEM",
+    "PROGRAM_ID",
+    "ROOT_OBJECTIVE_ID",
+    "TASK_PREFIX",
+    "ProofCarryingProcedureCompiler",
+    "ProcedureCompilerCapabilities",
+    "ProcedureCompilerCapabilityError",
+    "ProcedureExecution",
+    "ProcedureInterpreter",
+    "ProcedureInterpreterError",
+    "RuntimeCost",
+    "RuntimeFailureCode",
+    "RuntimeIdentity",
+    "TrustedOperation",
+    "TrustedOperationCatalog",
+    "compiler_capabilities",
+]

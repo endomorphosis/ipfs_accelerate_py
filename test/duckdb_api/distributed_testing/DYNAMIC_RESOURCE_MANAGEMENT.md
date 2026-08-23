@@ -123,14 +123,14 @@ orchestrator = MultiDeviceOrchestrator(
     coordinator=coordinator,
     task_manager=task_manager,
     worker_manager=worker_manager,
-    resource_manager=resource_manager
+    resource_manager=resource_manager,
 )
 
 # Orchestrate a task with data parallelism
 task_data = {
     "type": "data_processing",
     "input_data": large_dataset,
-    "config": {"processing_type": "transform"}
+    "config": {"processing_type": "transform"},
 }
 task_id = orchestrator.orchestrate_task(task_data, SplitStrategy.DATA_PARALLEL)
 
@@ -173,19 +173,14 @@ resource_manager.register_worker_resources(
     {
         "cpu": {"cores": 8, "memory_gb": 16},
         "gpu": {"count": 2, "memory_gb": 24, "type": "cuda"},
-        "disk_gb": 100
-    }
+        "disk_gb": 100,
+    },
 )
 
 # Allocate resources for a task
 task_id = "task-456"
 allocation = resource_manager.allocate_resources(
-    task_id,
-    {
-        "cpu_cores": 2,
-        "memory_gb": 4,
-        "gpu_memory_gb": 8
-    }
+    task_id, {"cpu_cores": 2, "memory_gb": 4, "gpu_memory_gb": 8}
 )
 
 # Check if allocation was successful
@@ -224,11 +219,7 @@ predictor = ResourcePerformancePredictor()
 
 # Predict resource requirements for a task
 task_type = "bert_inference"
-task_params = {
-    "model_size": "base",
-    "batch_size": 4,
-    "sequence_length": 128
-}
+task_params = {"model_size": "base", "batch_size": 4, "sequence_length": 128}
 prediction = predictor.predict_resources(task_type, task_params)
 
 print(f"Predicted resources: CPU: {prediction['cpu_cores']}, Memory: {prediction['memory_gb']}GB")
@@ -262,28 +253,17 @@ The CloudProviderIntegration enables dynamic scaling of worker nodes using cloud
 
 ```python
 # Initialize the cloud provider manager
-cloud_manager = CloudProviderManager(
-    providers=["aws", "gcp"],
-    config=cloud_config
-)
+cloud_manager = CloudProviderManager(providers=["aws", "gcp"], config=cloud_config)
 
 # Scale up resources based on demand
-scaling_request = {
-    "cpu_cores": 16,
-    "memory_gb": 64,
-    "gpu_count": 4,
-    "max_cost_per_hour": 2.5
-}
+scaling_request = {"cpu_cores": 16, "memory_gb": 64, "gpu_count": 4, "max_cost_per_hour": 2.5}
 scaling_result = cloud_manager.scale_up(scaling_request)
 
 print(f"Provisioned {scaling_result['node_count']} new worker nodes")
 print(f"Estimated cost per hour: ${scaling_result['cost_per_hour']}")
 
 # Scale down underutilized resources
-cloud_manager.scale_down(
-    idle_threshold_minutes=30,
-    utilization_threshold=0.2
-)
+cloud_manager.scale_down(idle_threshold_minutes=30, utilization_threshold=0.2)
 ```
 
 ### CoordinatorOrchestratorIntegration
@@ -322,14 +302,13 @@ The ResourceOptimizer integrates the DynamicResourceManager and ResourcePerforma
 optimizer = ResourceOptimizer(
     resource_manager=dynamic_resource_manager,
     performance_predictor=resource_predictor,
-    cloud_manager=cloud_provider_manager
+    cloud_manager=cloud_provider_manager,
 )
 
 # Get optimized resource allocation for a batch of tasks
 task_batch = [task1, task2, task3]
 allocation = optimizer.allocate_resources(
-    task_batch=task_batch,
-    available_workers=["worker1", "worker2"]
+    task_batch=task_batch, available_workers=["worker1", "worker2"]
 )
 
 # Get worker type recommendations for pending tasks
@@ -344,13 +323,9 @@ optimizer.record_task_result(
     worker_id="worker-1",
     result={
         "task_data": {...},
-        "metrics": {
-            "cpu_cores_used": 3.6,
-            "memory_mb_used": 5120,
-            "execution_time_ms": 850
-        },
-        "success": True
-    }
+        "metrics": {"cpu_cores_used": 3.6, "memory_mb_used": 5120, "execution_time_ms": 850},
+        "success": True,
+    },
 )
 ```
 
@@ -463,27 +438,29 @@ In function parallelism, different functions or operations are distributed acros
 
 ```python
 class MultiDeviceOrchestrator:
-    def __init__(self, coordinator=None, task_manager=None, worker_manager=None, resource_manager=None):
+    def __init__(
+        self, coordinator=None, task_manager=None, worker_manager=None, resource_manager=None
+    ):
         """Initialize the orchestrator."""
-        
+
     def orchestrate_task(self, task_data, strategy):
         """Orchestrate a task for multi-device execution."""
-        
+
     def get_task_status(self, task_id):
         """Get the status of an orchestrated task."""
-        
+
     def cancel_task(self, task_id):
         """Cancel an orchestrated task and all its subtasks."""
-        
+
     def process_subtask_result(self, subtask_id, result, success=True):
         """Process the result of a completed subtask."""
-        
+
     def get_subtask_result(self, subtask_id):
         """Get the result of a completed subtask."""
-        
+
     def get_task_result(self, task_id):
         """Get the merged result of a completed task."""
-        
+
     def stop(self):
         """Stop the orchestrator and clean up resources."""
 ```
@@ -546,14 +523,14 @@ orchestrator = MultiDeviceOrchestrator(
     coordinator=coordinator,
     task_manager=task_manager,
     worker_manager=worker_manager,
-    resource_manager=resource_manager
+    resource_manager=resource_manager,
 )
 
 # Define a task with data parallelism
 task_data = {
     "type": "data_processing",
     "input_data": [{"id": i, "value": f"item_{i}"} for i in range(100)],
-    "config": {"processing_type": "transform"}
+    "config": {"processing_type": "transform"},
 }
 
 # Orchestrate the task
@@ -563,14 +540,14 @@ task_id = orchestrator.orchestrate_task(task_data, SplitStrategy.DATA_PARALLEL)
 while True:
     status = orchestrator.get_task_status(task_id)
     print(f"Status: {status['status']}, Completion: {status['completion_percentage']}%")
-    
-    if status['status'] in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+
+    if status["status"] in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
         break
-        
+
     time.sleep(5)
 
 # Get the result if completed
-if status['status'] == TaskStatus.COMPLETED:
+if status["status"] == TaskStatus.COMPLETED:
     result = orchestrator.get_task_result(task_id)
     print(f"Task completed with result: {result}")
 else:
@@ -601,28 +578,26 @@ await coordinator.stop()
 # Using the HTTP API for orchestration
 
 # 1. Orchestrate a task
-POST /api/orchestrate
+POST / api / orchestrate
 {
     "task_data": {
         "type": "benchmark",
         "model_name": "bert-base-uncased",
-        "functions": ["latency", "throughput", "memory"]
+        "functions": ["latency", "throughput", "memory"],
     },
-    "strategy": "function_parallel"
+    "strategy": "function_parallel",
 }
 
 # Response
 {
     "success": true,
     "task_id": "task-123",
-    "message": "Task orchestrated with strategy: function_parallel"
+    "message": "Task orchestrated with strategy: function_parallel",
 }
 
 # 2. Get task status
-POST /api/orchestrated_task
-{
-    "task_id": "task-123"
-}
+POST / api / orchestrated_task
+{"task_id": "task-123"}
 
 # Response
 {
@@ -633,20 +608,14 @@ POST /api/orchestrated_task
         "subtasks": [
             {"subtask_id": "task-123_0", "status": "completed"},
             {"subtask_id": "task-123_1", "status": "running"},
-            {"subtask_id": "task-123_2", "status": "pending"}
-        ]
-    }
+            {"subtask_id": "task-123_2", "status": "pending"},
+        ],
+    },
 }
 
 # 3. List all orchestrated tasks
-POST /api/orchestrated_tasks
-{
-    "filters": {
-        "limit": 10,
-        "offset": 0,
-        "status": "in_progress"
-    }
-}
+POST / api / orchestrated_tasks
+{"filters": {"limit": 10, "offset": 0, "status": "in_progress"}}
 
 # Response
 {
@@ -656,24 +625,19 @@ POST /api/orchestrated_tasks
             "task_id": "task-123",
             "status": "in_progress",
             "completion_percentage": 33,
-            "strategy": "function_parallel"
+            "strategy": "function_parallel",
         }
     ],
     "total": 1,
-    "returned": 1
+    "returned": 1,
 }
 
 # 4. Cancel an orchestrated task
-POST /api/cancel_orchestrated_task
-{
-    "task_id": "task-123"
-}
+POST / api / cancel_orchestrated_task
+{"task_id": "task-123"}
 
 # Response
-{
-    "success": true,
-    "message": "Task canceled: task-123"
-}
+{"success": true, "message": "Task canceled: task-123"}
 ```
 
 ## Advanced Features

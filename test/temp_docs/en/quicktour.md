@@ -88,7 +88,9 @@ When you load a model, configure the following parameters to ensure the model is
 ```py
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf", torch_dtype="auto", device_map="auto")
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Llama-2-7b-hf", torch_dtype="auto", device_map="auto"
+)
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
 ```
 
@@ -105,7 +107,7 @@ For inference, pass the tokenized inputs to [`~GenerationMixin.generate`] to gen
 ```py
 generated_ids = model.generate(**model_inputs, max_length=30)
 tokenizer.batch_decode(generated_ids)[0]
-'<s> The secret to baking a good cake is 100% in the preparation. There are so many recipes out there,'
+"<s> The secret to baking a good cake is 100% in the preparation. There are so many recipes out there,"
 ```
 
 </hfoption>
@@ -131,7 +133,7 @@ For inference, pass the tokenized inputs to [`~GenerationMixin.generate`] to gen
 ```py
 generated_ids = model.generate(**model_inputs, max_length=30)
 tokenizer.batch_decode(generated_ids)[0]
-'The secret to baking a good cake is \xa0to use the right ingredients. \xa0The secret to baking a good cake is to use the right'
+"The secret to baking a good cake is \xa0to use the right ingredients. \xa0The secret to baking a good cake is to use the right"
 ```
 
 </hfoption>
@@ -164,7 +166,11 @@ Prompt [`Pipeline`] with some initial text to generate more text.
 
 ```py
 pipeline("The secret to baking a good cake is ", max_length=50)
-[{'generated_text': 'The secret to baking a good cake is 100% in the batter. The secret to a great cake is the icing.\nThis is why we’ve created the best buttercream frosting reci'}]
+[
+    {
+        "generated_text": "The secret to baking a good cake is 100% in the batter. The secret to a great cake is the icing.\nThis is why we’ve created the best buttercream frosting reci"
+    }
+]
 ```
 
 </hfoption>
@@ -187,9 +193,9 @@ Pass an image - a URL or local path to the image - to [`Pipeline`].
 ```py
 segments = pipeline("https://huggingface.co/datasets/Narsil/image_dummy/raw/main/parrots.png")
 segments[0]["label"]
-'bird'
+"bird"
 segments[1]["label"]
-'bird'
+"bird"
 ```
 
 </hfoption>
@@ -207,7 +213,9 @@ Pass an audio file to [`Pipeline`].
 
 ```py
 pipeline("https://huggingface.co/datasets/Narsil/asr_dummy/resolve/main/1.flac")
-{'text': ' He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered flour-fatten sauce.'}
+{
+    "text": " He hoped there would be stew for dinner, turnips and carrots and bruised potatoes and fat mutton pieces to be ladled out in thick, peppered flour-fatten sauce."
+}
 ```
 
 </hfoption>
@@ -235,6 +243,8 @@ Create a function to tokenize the text and convert it into PyTorch tensors. Appl
 ```py
 def tokenize_dataset(dataset):
     return tokenizer(dataset["text"])
+
+
 dataset = dataset.map(tokenize_dataset, batched=True)
 ```
 
@@ -307,6 +317,8 @@ Create a function to tokenize the text and convert it into TensorFlow tensors. A
 ```py
 def tokenize_dataset(dataset):
     return tokenizer(dataset["text"])
+
+
 dataset = dataset.map(tokenize_dataset)
 ```
 

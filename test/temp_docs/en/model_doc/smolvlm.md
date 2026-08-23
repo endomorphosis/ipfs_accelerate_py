@@ -39,7 +39,9 @@ The default resizing behavior can be customized by passing a dictionary to the `
 
 Here’s how to control resizing and set a custom size:
 ```python
-image_processor = SmolVLMImageProcessor(do_resize=True, size={"longest_edge": 2 * 512}, max_image_size=512)
+image_processor = SmolVLMImageProcessor(
+    do_resize=True, size={"longest_edge": 2 * 512}, max_image_size=512
+)
 ```
 
 Additionally, the `max_image_size` parameter, which controls the size of each square patch the image is decomposed into, is set to 512 by default but can be adjusted as needed. After resizing (if applicable), the image processor decomposes the images into square patches based on the `max_image_size` parameter.
@@ -60,18 +62,16 @@ from transformers import AutoProcessor, AutoModelForImageTextToText
 
 processor = AutoProcessor.from_pretrained("HuggingFaceTB/SmolVLM2-256M-Video-Instruct")
 model = AutoModelForImageTextToText.from_pretrained(
-    "HuggingFaceTB/SmolVLM2-256M-Video-Instruct",
-    torch_dtype=torch.bfloat16,
-    device_map="cuda"
+    "HuggingFaceTB/SmolVLM2-256M-Video-Instruct", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
 conversation = [
     {
         "role": "user",
-        "content":[
+        "content": [
             {"type": "image", "url": "http://images.cocodataset.org/val2017/000000039769.jpg"},
-            {"type": "text", "text": "Describe this image."}
-        ]
+            {"type": "text", "text": "Describe this image."},
+        ],
     }
 ]
 
@@ -94,8 +94,8 @@ conversation = [
         "role": "user",
         "content": [
             {"type": "video", "path": "/path/to/video.mp4"},
-            {"type": "text", "text": "Describe this video in detail"}
-        ]
+            {"type": "text", "text": "Describe this video in detail"},
+        ],
     },
 ]
 
@@ -122,9 +122,7 @@ from transformers import AutoProcessor, AutoModelForImageTextToText
 
 processor = AutoProcessor.from_pretrained("HuggingFaceTB/SmolVLM2-256M-Video-Instruct")
 model = AutoModelForImageTextToText.from_pretrained(
-    "HuggingFaceTB/SmolVLM2-256M-Video-Instruct",
-    torch_dtype=torch.bfloat16,
-    device_map="cuda"
+    "HuggingFaceTB/SmolVLM2-256M-Video-Instruct", torch_dtype=torch.bfloat16, device_map="cuda"
 )
 
 # Conversation for the first image
@@ -133,8 +131,8 @@ conversation1 = [
         "role": "user",
         "content": [
             {"type": "image", "path": "/path/to/image.jpg"},
-            {"type": "text", "text": "Describe this image."}
-        ]
+            {"type": "text", "text": "Describe this image."},
+        ],
     }
 ]
 
@@ -145,15 +143,13 @@ conversation2 = [
         "content": [
             {"type": "image", "path": "/path/to/image.jpg"},
             {"type": "image", "path": "/path/to/image.jpg"},
-            {"type": "text", "text": "What is written in the pictures?"}
-        ]
+            {"type": "text", "text": "What is written in the pictures?"},
+        ],
     }
 ]
 
 # Conversation with pure text
-conversation3 = [
-    {"role": "user","content": "who are you?"}
-]
+conversation3 = [{"role": "user", "content": "who are you?"}]
 
 
 conversations = [conversation1, conversation2, conversation3]

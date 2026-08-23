@@ -89,7 +89,7 @@ print(f"Memory: {hardware_info['memory']['total_gb']} GB")
 config = {
     "coordinator_url": "http://coordinator.example.com:8080",
     "api_key": "api_key_123",
-    "worker_id": "worker_abc123"
+    "worker_id": "worker_abc123",
 }
 script_path = support.create_deployment_script(config, "deploy_worker.sh")
 
@@ -97,7 +97,7 @@ script_path = support.create_deployment_script(config, "deploy_worker.sh")
 startup_script = support.get_startup_script(
     coordinator_url="http://coordinator.example.com:8080",
     api_key="api_key_123",
-    worker_id="worker_abc123"
+    worker_id="worker_abc123",
 )
 ```
 

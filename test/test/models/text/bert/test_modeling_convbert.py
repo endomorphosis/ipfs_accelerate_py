@@ -31,7 +31,12 @@ from transformers.models.auto import get_values
 from transformers.testing_utils import require_torch, require_torch_accelerator, slow, torch_device
 
 from test.test_configuration_common import ConfigTester
-from test.test_modeling_common import ModelTesterMixin, floats_tensor, ids_tensor, random_attention_mask
+from test.test_modeling_common import (
+    ModelTesterMixin,
+    floats_tensor,
+    ids_tensor,
+    random_attention_mask,
+)
 from test.test_pipeline_mixin import PipelineTesterMixin
 
 
@@ -119,7 +124,15 @@ class ConvBertModelTester:
 
         config = self.get_config()
 
-        return config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        return (
+            config,
+            input_ids,
+            token_type_ids,
+            input_mask,
+            sequence_labels,
+            token_labels,
+            choice_labels,
+        )
 
     def get_config(self):
         return ConvBertConfig(
@@ -165,7 +178,14 @@ class ConvBertModelTester:
         )
 
     def create_and_check_model(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         model = ConvBertModel(config=config)
         model.to(torch_device)
@@ -173,19 +193,39 @@ class ConvBertModelTester:
         result = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids)
         result = model(input_ids, token_type_ids=token_type_ids)
         result = model(input_ids)
-        self.parent.assertEqual(result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size))
+        self.parent.assertEqual(
+            result.last_hidden_state.shape, (self.batch_size, self.seq_length, self.hidden_size)
+        )
 
     def create_and_check_for_masked_lm(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         model = ConvBertForMaskedLM(config=config)
         model.to(torch_device)
         model.eval()
-        result = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, labels=token_labels)
-        self.parent.assertEqual(result.logits.shape, (self.batch_size, self.seq_length, self.vocab_size))
+        result = model(
+            input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, labels=token_labels
+        )
+        self.parent.assertEqual(
+            result.logits.shape, (self.batch_size, self.seq_length, self.vocab_size)
+        )
 
     def create_and_check_for_question_answering(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         model = ConvBertForQuestionAnswering(config=config)
         model.to(torch_device)
@@ -201,35 +241,71 @@ class ConvBertModelTester:
         self.parent.assertEqual(result.end_logits.shape, (self.batch_size, self.seq_length))
 
     def create_and_check_for_sequence_classification(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         config.num_labels = self.num_labels
         model = ConvBertForSequenceClassification(config)
         model.to(torch_device)
         model.eval()
-        result = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, labels=sequence_labels)
+        result = model(
+            input_ids,
+            attention_mask=input_mask,
+            token_type_ids=token_type_ids,
+            labels=sequence_labels,
+        )
         self.parent.assertEqual(result.logits.shape, (self.batch_size, self.num_labels))
 
     def create_and_check_for_token_classification(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         config.num_labels = self.num_labels
         model = ConvBertForTokenClassification(config=config)
         model.to(torch_device)
         model.eval()
-        result = model(input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, labels=token_labels)
-        self.parent.assertEqual(result.logits.shape, (self.batch_size, self.seq_length, self.num_labels))
+        result = model(
+            input_ids, attention_mask=input_mask, token_type_ids=token_type_ids, labels=token_labels
+        )
+        self.parent.assertEqual(
+            result.logits.shape, (self.batch_size, self.seq_length, self.num_labels)
+        )
 
     def create_and_check_for_multiple_choice(
-        self, config, input_ids, token_type_ids, input_mask, sequence_labels, token_labels, choice_labels
+        self,
+        config,
+        input_ids,
+        token_type_ids,
+        input_mask,
+        sequence_labels,
+        token_labels,
+        choice_labels,
     ):
         config.num_choices = self.num_choices
         model = ConvBertForMultipleChoice(config=config)
         model.to(torch_device)
         model.eval()
-        multiple_choice_inputs_ids = input_ids.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
-        multiple_choice_token_type_ids = token_type_ids.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
-        multiple_choice_input_mask = input_mask.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
+        multiple_choice_inputs_ids = (
+            input_ids.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
+        )
+        multiple_choice_token_type_ids = (
+            token_type_ids.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
+        )
+        multiple_choice_input_mask = (
+            input_mask.unsqueeze(1).expand(-1, self.num_choices, -1).contiguous()
+        )
         result = model(
             multiple_choice_inputs_ids,
             attention_mask=multiple_choice_input_mask,
@@ -249,7 +325,11 @@ class ConvBertModelTester:
             token_labels,
             choice_labels,
         ) = config_and_inputs
-        inputs_dict = {"input_ids": input_ids, "token_type_ids": token_type_ids, "attention_mask": input_mask}
+        inputs_dict = {
+            "input_ids": input_ids,
+            "token_type_ids": token_type_ids,
+            "attention_mask": input_mask,
+        }
         return config, inputs_dict
 
 
@@ -341,7 +421,9 @@ class ConvBertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase
             model.eval()
             with torch.no_grad():
                 outputs = model(**self._prepare_for_class(inputs_dict, model_class))
-            attentions = outputs.encoder_attentions if config.is_encoder_decoder else outputs.attentions
+            attentions = (
+                outputs.encoder_attentions if config.is_encoder_decoder else outputs.attentions
+            )
             self.assertEqual(len(attentions), self.model_tester.num_hidden_layers)
 
             # check that output_attentions also work using config
@@ -352,18 +434,29 @@ class ConvBertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase
             model.eval()
             with torch.no_grad():
                 outputs = model(**self._prepare_for_class(inputs_dict, model_class))
-            attentions = outputs.encoder_attentions if config.is_encoder_decoder else outputs.attentions
+            attentions = (
+                outputs.encoder_attentions if config.is_encoder_decoder else outputs.attentions
+            )
             self.assertEqual(len(attentions), self.model_tester.num_hidden_layers)
 
             if chunk_length is not None:
                 self.assertListEqual(
                     list(attentions[0].shape[-4:]),
-                    [self.model_tester.num_attention_heads / 2, encoder_seq_length, chunk_length, encoder_key_length],
+                    [
+                        self.model_tester.num_attention_heads / 2,
+                        encoder_seq_length,
+                        chunk_length,
+                        encoder_key_length,
+                    ],
                 )
             else:
                 self.assertListEqual(
                     list(attentions[0].shape[-3:]),
-                    [self.model_tester.num_attention_heads / 2, encoder_seq_length, encoder_key_length],
+                    [
+                        self.model_tester.num_attention_heads / 2,
+                        encoder_seq_length,
+                        encoder_key_length,
+                    ],
                 )
             out_len = len(outputs)
 
@@ -420,18 +513,29 @@ class ConvBertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase
                 added_hidden_states = 1
             self.assertEqual(out_len + added_hidden_states, len(outputs))
 
-            self_attentions = outputs.encoder_attentions if config.is_encoder_decoder else outputs.attentions
+            self_attentions = (
+                outputs.encoder_attentions if config.is_encoder_decoder else outputs.attentions
+            )
 
             self.assertEqual(len(self_attentions), self.model_tester.num_hidden_layers)
             if chunk_length is not None:
                 self.assertListEqual(
                     list(self_attentions[0].shape[-4:]),
-                    [self.model_tester.num_attention_heads / 2, encoder_seq_length, chunk_length, encoder_key_length],
+                    [
+                        self.model_tester.num_attention_heads / 2,
+                        encoder_seq_length,
+                        chunk_length,
+                        encoder_key_length,
+                    ],
                 )
             else:
                 self.assertListEqual(
                     list(self_attentions[0].shape[-3:]),
-                    [self.model_tester.num_attention_heads / 2, encoder_seq_length, encoder_key_length],
+                    [
+                        self.model_tester.num_attention_heads / 2,
+                        encoder_seq_length,
+                        encoder_key_length,
+                    ],
                 )
 
     @slow
@@ -441,7 +545,9 @@ class ConvBertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase
         for model_class in self.all_model_classes:
             # ConvBertForMultipleChoice behaves incorrectly in JIT environments.
             if model_class == ConvBertForMultipleChoice:
-                self.skipTest(reason="ConvBertForMultipleChoice behaves incorrectly in JIT environments.")
+                self.skipTest(
+                    reason="ConvBertForMultipleChoice behaves incorrectly in JIT environments."
+                )
 
             config.torchscript = True
             model = model_class(config=config)
@@ -453,8 +559,13 @@ class ConvBertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase
 
             with tempfile.TemporaryDirectory() as tmp:
                 torch.jit.save(traced_model, os.path.join(tmp, "traced_model.pt"))
-                loaded = torch.jit.load(os.path.join(tmp, "traced_model.pt"), map_location=torch_device)
-                loaded(inputs_dict["input_ids"].to(torch_device), inputs_dict["attention_mask"].to(torch_device))
+                loaded = torch.jit.load(
+                    os.path.join(tmp, "traced_model.pt"), map_location=torch_device
+                )
+                loaded(
+                    inputs_dict["input_ids"].to(torch_device),
+                    inputs_dict["attention_mask"].to(torch_device),
+                )
 
     def test_model_for_input_embeds(self):
         batch_size = 2
@@ -465,7 +576,9 @@ class ConvBertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.TestCase
         model.to(torch_device)
         model.eval()
         result = model(inputs_embeds=inputs_embeds)
-        self.assertEqual(result.last_hidden_state.shape, (batch_size, seq_length, config.hidden_size))
+        self.assertEqual(
+            result.last_hidden_state.shape, (batch_size, seq_length, config.hidden_size)
+        )
 
     def test_reducing_attention_heads(self):
         config, *inputs_dict = self.model_tester.prepare_config_and_inputs()

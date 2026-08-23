@@ -2,8 +2,8 @@
 """
 Multimodal Pipeline Template for IPFS Accelerate Python.
 
-This module implements a pipeline template for multimodal models like FLAVA, LLaVA, 
-ImageBind, IDEFICS, PaliGemma, etc. It handles multiple modality inputs (text, 
+This module implements a pipeline template for multimodal models like FLAVA, LLaVA,
+ImageBind, IDEFICS, PaliGemma, etc. It handles multiple modality inputs (text,
 images, audio) and implements task-specific processing for multimodal understanding
 and generation tasks.
 """
@@ -14,7 +14,7 @@ from .base_pipeline import BasePipelineTemplate
 
 class MultimodalPipelineTemplate(BasePipelineTemplate):
     """Template for multimodal pipelines."""
-    
+
     def __init__(self):
         """Initialize the multimodal pipeline template."""
         super().__init__()
@@ -25,7 +25,7 @@ class MultimodalPipelineTemplate(BasePipelineTemplate):
         self.requires_postprocessing = True
         self.supports_batching = True
         self.max_batch_size = 4  # Smaller batch size due to memory requirements
-    
+
     def get_import_statements(self) -> str:
         """Get multimodal pipeline import statements."""
         return """
@@ -39,7 +39,7 @@ from PIL import Image
 import io
 import tempfile
 """
-    
+
     def get_preprocessing_code(self, task_type: str) -> str:
         """Get multimodal preprocessing code for specific task types."""
         if task_type == "multimodal_classification":
@@ -860,7 +860,7 @@ except Exception as e:
 # Move inputs to device
 inputs = {k: v.to(device) for k, v in inputs.items()}
 """
-    
+
     def get_postprocessing_code(self, task_type: str) -> str:
         """Get multimodal postprocessing code for specific task types."""
         if task_type == "multimodal_classification":
@@ -1099,7 +1099,7 @@ with self.torch.no_grad():
             "error": str(e)
         }
 """
-    
+
     def get_result_formatting_code(self, task_type: str) -> str:
         """Get multimodal result formatting code for specific task types."""
         if task_type == "multimodal_classification":
@@ -1203,7 +1203,7 @@ return {
     "hardware": hardware_label
 }
 """
-    
+
     def get_mock_input_code(self) -> str:
         """Get multimodal mock input code."""
         return """
@@ -1243,7 +1243,7 @@ mock_input = {
     "audio": mock_audio_path
 }
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get multimodal mock output code."""
         return """
@@ -1267,7 +1267,7 @@ mock_output = {
     "hardware": "mock"
 }
 """
-    
+
     def get_pipeline_utilities(self) -> str:
         """Get multimodal utility functions."""
         return """
@@ -1327,16 +1327,16 @@ def compute_similarity(embedding1, embedding2):
     # Compute similarity (1 - cosine distance)
     return 1 - cosine(embedding1, embedding2)
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check multimodal pipeline compatibility with architecture type."""
         # Multimodal pipeline is compatible with multimodal architectures
         return arch_type in [
             "multimodal",
             "vision-encoder-text-decoder",  # Some vision-text models can work with this pipeline too
-            "speech"  # Some speech models can be treated as multimodal
+            "speech",  # Some speech models can be treated as multimodal
         ]
-    
+
     def is_compatible_with_task(self, task_type: str) -> bool:
         """Check multimodal pipeline compatibility with task type."""
         # Multimodal pipeline is compatible with multimodal tasks
@@ -1348,5 +1348,5 @@ def compute_similarity(embedding1, embedding2):
             "image_text_matching",  # For backward compatibility
             "visual_question_answering",  # For backward compatibility
             "audio_classification",  # For some multimodal models
-            "speech_recognition"  # For some multimodal models
+            "speech_recognition",  # For some multimodal models
         ]

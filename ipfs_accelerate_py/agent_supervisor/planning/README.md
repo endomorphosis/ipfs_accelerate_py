@@ -18,6 +18,7 @@ Adaptive and formal planning: compile, validate, replan, metrics, and rollout he
 | Module | Path |
 | --- | --- |
 | `adaptive_planner` | `planning/adaptive_planner.py` |
+| `campaign_prompt_handoff` | `planning/campaign_prompt_handoff.py` |
 | `formal_plan_compiler` | `planning/formal_plan_compiler.py` |
 | `formal_plan_conformance` | `planning/formal_plan_conformance.py` |
 | `formal_plan_context` | `planning/formal_plan_context.py` |
@@ -27,6 +28,7 @@ Adaptive and formal planning: compile, validate, replan, metrics, and rollout he
 | `formal_planning_metrics` | `planning/formal_planning_metrics.py` |
 | `formal_planning_rollout` | `planning/formal_planning_rollout.py` |
 | `formal_replanner` | `planning/formal_replanner.py` |
+| `ir_learning_campaign_planner` | `planning/ir_learning_campaign_planner.py` |
 | `plan_evaluator` | `planning/plan_evaluator.py` |
 | `plan_failure_memory` | `planning/plan_failure_memory.py` |
 | `proof_carrying_planner` | `planning/proof_carrying_planner.py` |

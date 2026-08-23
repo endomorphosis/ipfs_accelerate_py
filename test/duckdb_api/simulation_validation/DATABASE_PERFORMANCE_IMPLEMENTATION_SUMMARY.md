@@ -104,10 +104,7 @@ The implementation seamlessly integrates with the Monitoring Dashboard Connector
 ```python
 # Initialize the optimizer
 optimizer = DBPerformanceOptimizer(
-    db_path="./benchmark_db.duckdb",
-    enable_caching=True,
-    cache_size=100,
-    cache_ttl=300
+    db_path="./benchmark_db.duckdb", enable_caching=True, cache_size=100, cache_ttl=300
 )
 
 # Get all performance metrics
@@ -122,11 +119,13 @@ index_efficiency = metrics["index_efficiency"]["value"]
 status = optimizer.get_overall_status()
 if status != "good":
     print(f"Database performance issue detected: {status}")
-    
+
     # Check which metrics are problematic
     for metric_name, metric_data in metrics.items():
         if metric_data["status"] != "good":
-            print(f"  - {metric_name}: {metric_data['status']} ({metric_data['value']} {metric_data['unit']})")
+            print(
+                f"  - {metric_name}: {metric_data['status']} ({metric_data['value']} {metric_data['unit']})"
+            )
 ```
 
 ## Testing
@@ -150,7 +149,9 @@ The implementation includes seamless integration with the monitoring dashboard f
 ### Creating a Database Performance Dashboard
 
 ```python
-from duckdb_api.simulation_validation.visualization.monitoring_dashboard_connector import MonitoringDashboardConnector
+from duckdb_api.simulation_validation.visualization.monitoring_dashboard_connector import (
+    MonitoringDashboardConnector,
+)
 from duckdb_api.simulation_validation.db_performance_optimizer import DBPerformanceOptimizer
 
 # Initialize components
@@ -158,18 +159,24 @@ db_optimizer = DBPerformanceOptimizer(db_path="./benchmark_db.duckdb")
 dashboard_connector = MonitoringDashboardConnector(
     dashboard_url="http://monitoring.example.com/api",
     dashboard_api_key="your_api_key",
-    db_optimizer=db_optimizer
+    db_optimizer=db_optimizer,
 )
 
 # Create a dedicated database performance dashboard
 dashboard_result = dashboard_connector.create_database_performance_dashboard(
     dashboard_title="Database Performance Monitoring",
-    metrics=["query_time", "storage_size", "index_efficiency", "vacuum_status", "compression_ratio"],
+    metrics=[
+        "query_time",
+        "storage_size",
+        "index_efficiency",
+        "vacuum_status",
+        "compression_ratio",
+    ],
     refresh_interval=300,  # 5 minutes
     visualization_style="detailed",  # Options: "detailed", "compact", "overview"
     create_alerts=True,
     auto_update=True,
-    update_interval=3600  # 1 hour
+    update_interval=3600,  # 1 hour
 )
 
 print(f"Dashboard created at: {dashboard_result['dashboard_url']}")
@@ -188,9 +195,7 @@ The implementation supports three visualization styles:
 ```python
 # Update metrics on demand
 update_result = dashboard_connector.update_database_performance_metrics(
-    dashboard_id=dashboard_result["dashboard_id"],
-    include_history=True,
-    format_values=True
+    dashboard_id=dashboard_result["dashboard_id"], include_history=True, format_values=True
 )
 
 print(f"Updated {update_result['updated_panels']} panels with latest metrics")
@@ -212,7 +217,7 @@ combined_dashboard = dashboard_connector.create_complete_monitoring_solution(
     database_metrics=["query_time", "storage_size", "index_efficiency"],
     refresh_interval=300,
     create_alerts=True,
-    visualization_style="detailed"
+    visualization_style="detailed",
 )
 
 print(f"Complete monitoring solution created: {combined_dashboard['dashboard_url']}")
@@ -265,9 +270,7 @@ db_optimizer = get_db_optimizer(db_path="./benchmark_db.duckdb")
 
 # Create the automated optimization manager with custom configuration
 auto_manager = get_optimization_manager(
-    db_optimizer=db_optimizer,
-    config_file="./config.json",
-    auto_apply=True
+    db_optimizer=db_optimizer, config_file="./config.json", auto_apply=True
 )
 
 # Start continuous monitoring
@@ -278,7 +281,7 @@ issues = auto_manager.check_performance()
 if issues:
     # Optimize specific issues
     optimization_result = auto_manager.optimize_now(issues)
-    
+
     # Print optimization results
     for metric_name, result in optimization_result["results"].items():
         print(f"{metric_name}: {result['before_value']} → {result['after_value']}")

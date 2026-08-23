@@ -196,12 +196,10 @@ def test_untrusted_drafts_are_physically_and_logically_separate_from_receipts(
 
     connection = duckdb.connect(str(cache.db_path))
     try:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM proof_draft_cache_entries"
-        ).fetchone()[0] == 1
-        assert connection.execute(
-            "SELECT COUNT(*) FROM proof_cache_entries"
-        ).fetchone()[0] == 0
+        assert (
+            connection.execute("SELECT COUNT(*) FROM proof_draft_cache_entries").fetchone()[0] == 1
+        )
+        assert connection.execute("SELECT COUNT(*) FROM proof_cache_entries").fetchone()[0] == 0
     finally:
         connection.close()
 
@@ -231,10 +229,7 @@ def test_explicit_draft_context_bindings_must_match_the_route_aware_key(
         },
     )
     assert not mismatch.stored
-    assert (
-        mismatch.reason_code
-        == CacheRejectionReason.DRAFT_BINDING_MISMATCH.value
-    )
+    assert mismatch.reason_code == CacheRejectionReason.DRAFT_BINDING_MISMATCH.value
 
 
 @pytest.mark.parametrize(
@@ -258,9 +253,7 @@ def test_draft_cache_rejects_nested_authority_and_completion_claims(
         {"draft_id": "draft:unsafe", **claim},
     )
     assert not result.stored
-    assert result.reason_codes == (
-        CacheRejectionReason.DRAFT_TRUST_CLAIM.value,
-    )
+    assert result.reason_codes == (CacheRejectionReason.DRAFT_TRUST_CLAIM.value,)
     assert cache.lookup_draft(_draft_key()).status is CacheLookupStatus.MISS
 
 
@@ -278,9 +271,7 @@ def test_draft_ttl_size_bound_and_corruption_fail_closed(tmp_path: Path) -> None
     assert not oversized.stored
     assert oversized.reason_code == CacheRejectionReason.DRAFT_TOO_LARGE.value
 
-    assert cache.put_draft(
-        _draft_key(), {"draft_id": "draft:1"}, ttl_seconds=2
-    )
+    assert cache.put_draft(_draft_key(), {"draft_id": "draft:1"}, ttl_seconds=2)
     now[0] += 3
     stale = cache.lookup_draft(_draft_key())
     assert stale.status is CacheLookupStatus.REJECTED
@@ -293,9 +284,7 @@ def test_draft_ttl_size_bound_and_corruption_fail_closed(tmp_path: Path) -> None
     assert cache.put_draft(_draft_key(), {"draft_id": "draft:2"})
     connection = duckdb.connect(str(cache.db_path))
     try:
-        raw = connection.execute(
-            "SELECT entry_json FROM proof_draft_cache_entries"
-        ).fetchone()[0]
+        raw = connection.execute("SELECT entry_json FROM proof_draft_cache_entries").fetchone()[0]
         payload = json.loads(raw)
         payload["draft"]["draft_id"] = "draft:tampered"
         connection.execute(
@@ -318,29 +307,19 @@ def test_only_current_receipts_meeting_requested_assurance_are_hits(
     stored = cache.put(_key(), _receipt(), ttl_seconds=60)
     assert stored.stored
 
-    hit = cache.lookup(
-        _key(), required_assurance=AssuranceLevel.KERNEL_VERIFIED
-    )
+    hit = cache.lookup(_key(), required_assurance=AssuranceLevel.KERNEL_VERIFIED)
     assert hit.status is CacheLookupStatus.HIT
     assert hit.receipt is not None
     assert hit.receipt.authoritative_assurance is AssuranceLevel.KERNEL_VERIFIED
 
-    too_weak = cache.lookup(
-        _key(), required_assurance=AssuranceLevel.ATTESTED
-    )
+    too_weak = cache.lookup(_key(), required_assurance=AssuranceLevel.ATTESTED)
     assert too_weak.status is CacheLookupStatus.REJECTED
-    assert (
-        CacheRejectionReason.INSUFFICIENT_ASSURANCE.value
-        in too_weak.reason_codes
-    )
+    assert CacheRejectionReason.INSUFFICIENT_ASSURANCE.value in too_weak.reason_codes
 
     now[0] += 61
     stale = cache.lookup(_key())
     assert CacheRejectionReason.STALE_ENTRY.value in stale.reason_codes
-    assert (
-        CacheRejectionReason.FRESHNESS_NOT_SATISFIED.value
-        in stale.reason_codes
-    )
+    assert CacheRejectionReason.FRESHNESS_NOT_SATISFIED.value in stale.reason_codes
 
 
 def test_maximum_age_is_stric_even_before_entry_ttl(tmp_path: Path) -> None:
@@ -359,9 +338,7 @@ def test_partial_solver_only_and_simulated_attestation_are_not_stored(
 ) -> None:
     cache = FormalVerificationCache(tmp_path)
 
-    partial = cache.put(
-        _key(), _receipt(verdict=ProofVerdict.INCONCLUSIVE)
-    )
+    partial = cache.put(_key(), _receipt(verdict=ProofVerdict.INCONCLUSIVE))
     assert not partial.stored
     assert CacheRejectionReason.PARTIAL_ENTRY.value in partial.reason_codes
 
@@ -376,10 +353,7 @@ def test_partial_solver_only_and_simulated_attestation_are_not_stored(
     )
     solver_only = cache.put(_key(), _receipt(evidence=(solver_evidence,)))
     assert not solver_only.stored
-    assert (
-        CacheRejectionReason.SOLVER_ONLY_ENTRY.value
-        in solver_only.reason_codes
-    )
+    assert CacheRejectionReason.SOLVER_ONLY_ENTRY.value in solver_only.reason_codes
 
     simulated = ProofEvidence(
         kind=EvidenceKind.CRYPTOGRAPHIC_ATTESTATION,
@@ -391,14 +365,9 @@ def test_partial_solver_only_and_simulated_attestation_are_not_stored(
         independent=True,
         simulated=True,
     )
-    simulated_result = cache.put(
-        _key(), _receipt(evidence=(_kernel_evidence(), simulated))
-    )
+    simulated_result = cache.put(_key(), _receipt(evidence=(_kernel_evidence(), simulated)))
     assert not simulated_result.stored
-    assert (
-        CacheRejectionReason.SIMULATED_ATTESTATION.value
-        in simulated_result.reason_codes
-    )
+    assert CacheRejectionReason.SIMULATED_ATTESTATION.value in simulated_result.reason_codes
 
 
 def test_malformed_and_binding_poisoned_entries_have_reason_codes(
@@ -407,17 +376,12 @@ def test_malformed_and_binding_poisoned_entries_have_reason_codes(
     cache = FormalVerificationCache(tmp_path)
     malformed = cache.put(_key(), {"not": "a receipt"})
     assert not malformed.stored
-    assert (
-        CacheRejectionReason.MALFORMED_ENTRY.value
-        in malformed.reason_codes
-    )
+    assert CacheRejectionReason.MALFORMED_ENTRY.value in malformed.reason_codes
 
     assert cache.put(_key(), _receipt())
     connection = duckdb.connect(str(cache.db_path))
     try:
-        raw = connection.execute(
-            "SELECT entry_json FROM proof_cache_entries"
-        ).fetchone()[0]
+        raw = connection.execute("SELECT entry_json FROM proof_cache_entries").fetchone()[0]
         payload = json.loads(raw)
         payload["receipt"]["attempt_id"] = "tampered-attempt"
         connection.execute(
@@ -430,10 +394,7 @@ def test_malformed_and_binding_poisoned_entries_have_reason_codes(
 
     poisoned = cache.lookup(_key())
     assert poisoned.status is CacheLookupStatus.REJECTED
-    assert (
-        CacheRejectionReason.POISONED_ENTRY.value
-        in poisoned.reason_codes
-    )
+    assert CacheRejectionReason.POISONED_ENTRY.value in poisoned.reason_codes
 
 
 def test_mismatched_receipt_binding_is_rejected_before_persistence(
@@ -442,9 +403,7 @@ def test_mismatched_receipt_binding_is_rejected_before_persistence(
     cache = FormalVerificationCache(tmp_path)
     result = cache.put(_key(candidate_tree="other-tree"), _receipt())
     assert not result.stored
-    assert (
-        CacheRejectionReason.BINDING_MISMATCH.value in result.reason_codes
-    )
+    assert CacheRejectionReason.BINDING_MISMATCH.value in result.reason_codes
 
 
 def test_single_flight_deduplicates_threads(tmp_path: Path) -> None:
@@ -506,9 +465,7 @@ def test_draft_single_flight_uses_the_route_aware_namespace(
 
     assert all(not thread.is_alive() for thread in threads)
     assert counter == [1]
-    assert results == [
-        {"draft_id": "draft:shared", "trust": "untrusted"}
-    ] * 6
+    assert results == [{"draft_id": "draft:shared", "trust": "untrusted"}] * 6
 
 
 def test_draft_single_flight_rejects_authority_before_publishing(
@@ -547,9 +504,7 @@ def test_single_flight_heartbeats_long_running_leader(tmp_path: Path) -> None:
         return {"proof": "heartbeat-shared"}
 
     leader = threading.Thread(
-        target=lambda: results.append(
-            cache.single_flight(_key(), execute, lease_seconds=1)
-        )
+        target=lambda: results.append(cache.single_flight(_key(), execute, lease_seconds=1))
     )
     leader.start()
     assert started.wait(timeout=1)
@@ -557,9 +512,7 @@ def test_single_flight_heartbeats_long_running_leader(tmp_path: Path) -> None:
     # must keep it a follower of the same active proof execution.
     time.sleep(1.05)
     follower = threading.Thread(
-        target=lambda: results.append(
-            cache.single_flight(_key(), execute, lease_seconds=1)
-        )
+        target=lambda: results.append(cache.single_flight(_key(), execute, lease_seconds=1))
     )
     follower.start()
     leader.join(timeout=5)
@@ -629,9 +582,7 @@ def test_expired_lease_is_fenced_and_can_be_taken_over(tmp_path: Path) -> None:
     assert follower.fencing_token == first.fencing_token
 
     now[0] += 3
-    replacement = cache.acquire_lease(
-        _key(), owner_id="second", lease_seconds=2
-    )
+    replacement = cache.acquire_lease(_key(), owner_id="second", lease_seconds=2)
     assert replacement.acquired
     assert replacement.fencing_token == first.fencing_token + 1
     assert not first.release()

@@ -112,12 +112,12 @@ else:
 # Use with fallback
 if self._storage and self._storage.is_distributed:
     try:
-        self._storage.write_file(data, cache_key, pin=True/False)
+        self._storage.write_file(data, cache_key, pin=True / False)
     except Exception:
         pass
 
 # Always maintain local filesystem
-with open(filepath, 'w') as f:
+with open(filepath, "w") as f:
     f.write(data)
 ```
 

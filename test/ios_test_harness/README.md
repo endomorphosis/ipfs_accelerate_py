@@ -61,7 +61,7 @@ results = harness.run_benchmark(
     model_name="my_model",
     model_type="coreml",
     batch_sizes=[1, 2, 4],
-    iterations=50
+    iterations=50,
 )
 
 # Generate a report
@@ -150,9 +150,7 @@ The iOS Test Harness integrates with the benchmark database system, allowing:
 # Store results in database
 harness = IOSTestHarness(db_path="/path/to/benchmark.db")
 results = harness.run_benchmark(
-    model_path="/path/to/model.mlmodel",
-    model_name="my_model",
-    save_to_db=True
+    model_path="/path/to/model.mlmodel", model_name="my_model", save_to_db=True
 )
 ```
 

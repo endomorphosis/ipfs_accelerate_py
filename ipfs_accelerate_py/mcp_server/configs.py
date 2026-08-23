@@ -122,25 +122,39 @@ class UnifiedMCPServerConfig:
         """
         return cls(
             enable_unified_bridge=env_enabled("IPFS_MCP_ENABLE_UNIFIED_BRIDGE", default=False),
-            enable_unified_bootstrap=env_enabled("IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP", default=False),
-            enable_cid_artifact_emission=env_enabled("IPFS_MCP_SERVER_ENABLE_CID_ARTIFACTS", default=False),
+            enable_unified_bootstrap=env_enabled(
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP", default=False
+            ),
+            enable_cid_artifact_emission=env_enabled(
+                "IPFS_MCP_SERVER_ENABLE_CID_ARTIFACTS", default=False
+            ),
             artifact_store_backend=normalize_artifact_store_backend(
                 env_text("IPFS_MCP_SERVER_ARTIFACT_STORE_BACKEND", "memory")
             ),
             artifact_store_path=env_text("IPFS_MCP_SERVER_ARTIFACT_STORE_PATH", ""),
-            enable_ucan_validation=env_enabled("IPFS_MCP_SERVER_ENABLE_UCAN_VALIDATION", default=False),
-            enable_policy_evaluation=env_enabled("IPFS_MCP_SERVER_ENABLE_POLICY_EVALUATION", default=False),
+            enable_ucan_validation=env_enabled(
+                "IPFS_MCP_SERVER_ENABLE_UCAN_VALIDATION", default=False
+            ),
+            enable_policy_evaluation=env_enabled(
+                "IPFS_MCP_SERVER_ENABLE_POLICY_EVALUATION", default=False
+            ),
             enable_policy_audit=env_enabled("IPFS_MCP_SERVER_ENABLE_POLICY_AUDIT", default=False),
             enable_monitoring=env_enabled("IPFS_MCP_SERVER_ENABLE_MONITORING", default=False),
             enable_otel_tracing=env_enabled("IPFS_MCP_SERVER_ENABLE_OTEL_TRACING", default=False),
-            enable_prometheus_exporter=env_enabled("IPFS_MCP_SERVER_ENABLE_PROMETHEUS_EXPORTER", default=False),
+            enable_prometheus_exporter=env_enabled(
+                "IPFS_MCP_SERVER_ENABLE_PROMETHEUS_EXPORTER", default=False
+            ),
             enable_prometheus_http_server=env_enabled(
                 "IPFS_MCP_SERVER_ENABLE_PROMETHEUS_HTTP_SERVER",
                 default=False,
             ),
             enable_secrets_vault=env_enabled("IPFS_MCP_SERVER_ENABLE_SECRETS_VAULT", default=False),
-            enable_secrets_env_autoload=env_enabled("IPFS_MCP_SERVER_ENABLE_SECRETS_ENV_AUTOLOAD", default=False),
-            enable_secrets_env_overwrite=env_enabled("IPFS_MCP_SERVER_ENABLE_SECRETS_ENV_OVERWRITE", default=False),
+            enable_secrets_env_autoload=env_enabled(
+                "IPFS_MCP_SERVER_ENABLE_SECRETS_ENV_AUTOLOAD", default=False
+            ),
+            enable_secrets_env_overwrite=env_enabled(
+                "IPFS_MCP_SERVER_ENABLE_SECRETS_ENV_OVERWRITE", default=False
+            ),
             enable_risk_scoring=env_enabled("IPFS_MCP_SERVER_ENABLE_RISK_SCORING", default=False),
             enable_risk_frontier_execution=env_enabled(
                 "IPFS_MCP_SERVER_ENABLE_RISK_FRONTIER_EXECUTION",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import threading
@@ -2015,14 +2016,16 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
     queue_outcomes: list[int] = []
     diagnostics: list[str] = []
     verification_deferred = False
+    provider_inheritance: list[bool] = []
+
+    def provider_runner(*_args, **kwargs):
+        provider_inheritance.append(bool(kwargs["inherit_environment"]))
+        return subprocess.CompletedProcess(["fake-agent"], 0)
 
     monkeypatch.setattr(
         implementation_daemon_module,
         "run_process_group_stream",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(
-            ["fake-agent"],
-            0,
-        ),
+        provider_runner,
     )
 
     def defer_verification(**_kwargs):
@@ -2130,6 +2133,7 @@ def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
         state_dir=str(daemon.state_path.parent),
     )
     assert retry_lifecycle.state.value == "preparing"
+    assert provider_inheritance == [False]
     assert queue_outcomes == []
     assert diagnostics == []
     assert state.implementation_attempts == {task.task_id: 2}
@@ -2732,7 +2736,6 @@ def test_auto_clears_workspace_only_protected_deletions_when_shared_intact(
     workspace = worktrees / "workspace-ephemeral"
     repo.mkdir()
     worktrees.mkdir()
-    # Workspace is gone (typical after failed agent cleanup).
     protected = repo / POLICY_PATH
     protected.parent.mkdir(parents=True)
     protected.write_text("authoritative\n", encoding="utf-8")
@@ -2748,23 +2751,24 @@ def test_auto_clears_workspace_only_protected_deletions_when_shared_intact(
         implementation_command="implementation-command-that-must-not-run",
         implementation_protected_paths=(POLICY_PATH,),
     )
-    daemon._latch_implementation_protected_incident(
-        {
-            "reason": "implementation_protected_path_mutated",
-            "task_id": "EX-001",
-            "attempt": 1,
-            "workspace_path": str(workspace),
-            "mutations": [
-                {
-                    "scope": "workspace",
-                    "path": POLICY_PATH,
-                    "change": "deleted",
-                    "before": {"state": "present"},
-                    "after": {"state": "missing"},
-                }
-            ],
-        }
+    workspace_protected = workspace / POLICY_PATH
+    workspace_protected.parent.mkdir(parents=True)
+    workspace_protected.write_text("authoritative\n", encoding="utf-8")
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
     )
+    workspace_protected.unlink()
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    shutil.rmtree(workspace)
 
     result = daemon._reconcile_implementation_protected_path_fence()
 
@@ -2808,7 +2812,7 @@ def test_auto_clear_refuses_shared_checkout_deletions(tmp_path: Path) -> None:
     assert daemon._implementation_protected_incident_path().exists()
 
 
-def test_auto_clears_shared_checkout_content_change_when_head_is_clean(
+def test_clean_head_does_not_authorize_shared_checkout_content_change(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -2852,10 +2856,9 @@ def test_auto_clears_shared_checkout_content_change_when_head_is_clean(
 
     result = daemon._reconcile_implementation_protected_path_fence()
 
-    assert result.get("cleared") is True
-    assert result.get("auto") is True
-    assert result.get("reason") == "shared_checkout_matches_head"
-    assert not daemon._implementation_protected_incident_path().exists()
+    assert result.get("blocked") is True
+    assert result.get("reason") == "implementation_protected_path_incident_latched"
+    assert daemon._implementation_protected_incident_path().exists()
 
 
 def test_auto_clear_refuses_shared_plan_content_changes(tmp_path: Path) -> None:
@@ -2897,8 +2900,8 @@ def test_auto_clear_refuses_shared_plan_content_changes(tmp_path: Path) -> None:
     assert result.get("reason") == "implementation_protected_path_incident_latched"
 
 
-def test_auto_clears_shared_todo_board_content_change(tmp_path: Path) -> None:
-    """Supervisor-owned board rewrites must not permanently stall lanes."""
+def test_todo_suffix_does_not_authorize_shared_content_change(tmp_path: Path) -> None:
+    """A filename convention is not durable control-plane provenance."""
 
     todo_rel = "docs/architecture/example.todo.md"
     worktrees = tmp_path / "worktrees"
@@ -2948,14 +2951,15 @@ def test_auto_clears_shared_todo_board_content_change(tmp_path: Path) -> None:
 
     result = daemon._reconcile_implementation_protected_path_fence()
 
-    assert result.get("cleared") is True
-    assert result.get("auto") is True
-    assert result.get("reason") == "shared_todo_board_content_change_accepted"
-    assert not daemon._implementation_protected_incident_path().exists()
+    assert result.get("blocked") is True
+    assert result.get("reason") == "protected_path_recovery_guard_mismatch"
+    assert daemon._implementation_protected_incident_path().exists()
 
 
-def test_auto_clears_content_preserving_identity_thrash(tmp_path: Path) -> None:
-    """Hardlink/nlink thrash with identical content must not stall lanes."""
+def test_content_identity_alone_does_not_authorize_identity_thrash(
+    tmp_path: Path,
+) -> None:
+    """Content identity alone cannot prove mutation authority."""
 
     worktrees = tmp_path / "worktrees"
     workspace = worktrees / "workspace-ephemeral"
@@ -3006,14 +3010,13 @@ def test_auto_clears_content_preserving_identity_thrash(tmp_path: Path) -> None:
 
     result = daemon._reconcile_implementation_protected_path_fence()
 
-    assert result.get("cleared") is True
-    assert result.get("auto") is True
-    assert result.get("reason") == "content_preserving_identity_thrash_accepted"
-    assert not daemon._implementation_protected_incident_path().exists()
+    assert result.get("blocked") is True
+    assert result.get("reason") == "protected_path_recovery_guard_mismatch"
+    assert daemon._implementation_protected_incident_path().exists()
 
 
-def test_auto_clears_mixed_identity_and_todo_board_thrash(tmp_path: Path) -> None:
-    """Live multi-lane pattern: identity thrash on plan + board content rewrite."""
+def test_mixed_unproved_protected_changes_remain_latched(tmp_path: Path) -> None:
+    """Mixed filename and identity signals remain non-authoritative."""
 
     plan_rel = "docs/architecture/PLAN.md"
     todo_rel = "docs/architecture/board.todo.md"
@@ -3097,15 +3100,9 @@ def test_auto_clears_mixed_identity_and_todo_board_thrash(tmp_path: Path) -> Non
 
     result = daemon._reconcile_implementation_protected_path_fence()
 
-    assert result.get("cleared") is True
-    assert result.get("auto") is True
-    assert result.get("reason") == "protected_path_stall_auto_cleared"
-    assert set(result.get("class_codes") or []) == {
-        "content_preserving_identity_thrash",
-        "shared_todo_board_content_change",
-        "workspace_todo_board_content_change",
-    }
-    assert not daemon._implementation_protected_incident_path().exists()
+    assert result.get("blocked") is True
+    assert result.get("reason") == "protected_path_recovery_guard_mismatch"
+    assert daemon._implementation_protected_incident_path().exists()
 
 
 def test_latched_incident_checkpoint_acknowledges_wake_and_stops_replay(
@@ -3313,6 +3310,141 @@ def test_generated_board_same_producer_retry_releases_retained_lease(
     ) == ["recovered"]
     assert not checkout_mutation_lock_path(repo).exists()
     assert supervisor._current_supervisor_checkout_lease() is None
+
+
+def test_generated_board_release_ignores_unrelated_protected_code_history(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Fixture")
+    _git(repo, "config", "user.email", "fixture@example.invalid")
+    todo_path = repo / "tasks.todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    script_path = repo / "scripts" / "run_operator.py"
+    script_path.parent.mkdir()
+    script_path.write_text("print('seed')\n", encoding="utf-8")
+    _git(repo, "add", "tasks.todo.md", "scripts/run_operator.py")
+    _git(repo, "commit", "-m", "initial")
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implementation-protected-path",
+            "tasks.todo.md",
+            "--implementation-protected-path",
+            "scripts/run_operator.py",
+        ]
+    )
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(args, repo_root=repo)
+    )
+
+    def dirty_producer() -> list[str]:
+        todo_path.write_text("# Tasks\n\n## EX-002 Retry\n", encoding="utf-8")
+        return ["dirty"]
+
+    with pytest.raises(RuntimeError, match="protected_generated_outputs_dirty"):
+        supervisor._run_generated_board_producer(
+            producer="retry-test",
+            commit_outputs=True,
+            callback=dirty_producer,
+        )
+
+    script_path.write_text("print('later operator fix')\n", encoding="utf-8")
+    _git(repo, "add", "scripts/run_operator.py")
+    _git(repo, "commit", "-m", "untrusted operator script")
+
+    def trusted_retry() -> list[str]:
+        _git(repo, "add", "tasks.todo.md")
+        _git(
+            repo,
+            "-c",
+            "user.name=Agent Supervisor",
+            "-c",
+            f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
+            "commit",
+            "-m",
+            generated_protected_board_commit_subject("retry generated output"),
+        )
+        return ["recovered"]
+
+    assert supervisor._run_generated_board_producer(
+        producer="retry-test",
+        commit_outputs=True,
+        callback=trusted_retry,
+    ) == ["recovered"]
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert supervisor._current_supervisor_checkout_lease() is None
+
+
+def test_successful_worktree_merge_releases_shared_lock(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed")
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_protected_paths=("todo.md",),
+    )
+
+    def merge_cb() -> dict[str, object]:
+        daemon._checkout_mutation_context.retain_until_protected_clean = True
+        return {"merged": True}
+
+    result = daemon._run_checkout_mutation_transaction(
+        task_id="PCCE-022",
+        operation="merge_branch_to_main",
+        callback=merge_cb,
+        failure_fields={"merged": False},
+    )
+    assert result["merged"] is True
+    assert result.get("checkout_mutation_lease_retained") is not True
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert daemon._current_checkout_mutation_lease() is None
+
+
+def test_supervisor_does_not_freeze_on_peer_worktree_merge_lock(
+    tmp_path: Path,
+) -> None:
+    supervisor, repo, _todo_path = _generated_protected_supervisor(tmp_path)
+    lock_path = checkout_mutation_lock_path(repo)
+    metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="PCCE-022",
+        extra={"operation": "merge_branch_to_main"},
+    )
+    metadata.update(
+        {
+            "operation": "merge_branch_to_main",
+            "pid": 2_147_483_647,
+            "protected_recovery_required": True,
+            "protected_recovery_owner": "implementation_daemon",
+            "owner_script": "implementation_daemon.py",
+        }
+    )
+    lock_path.write_text(json.dumps(metadata, sort_keys=True), encoding="utf-8")
+    lock_path.chmod(0o600)
+    result = supervisor._recover_retained_generated_checkout_lease()
+    assert result.get("retained_lease") is False
+    assert result.get("peer_merge_lock") is True
+    assert result.get("released_stale_merge_lock") is True
+    assert not lock_path.exists()
 
 
 def test_generated_dirty_repair_recovers_retained_lease_when_disabled(

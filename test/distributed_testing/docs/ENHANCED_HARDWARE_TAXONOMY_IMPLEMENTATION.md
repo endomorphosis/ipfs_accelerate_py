@@ -37,15 +37,12 @@ taxonomy.register_capability(
     name="Tensor Core Acceleration",
     description="Hardware-accelerated tensor operations using specialized cores",
     scope=CapabilityScope.CLASS,
-    properties={
-        "acceleration_factor": 4.0,
-        "supported_operations": ["matmul", "conv"]
-    },
+    properties={"acceleration_factor": 4.0, "supported_operations": ["matmul", "conv"]},
     supported_hardware_classes={HardwareClass.GPU, HardwareClass.TPU},
     supported_vendors={HardwareVendor.NVIDIA, HardwareVendor.GOOGLE},
     requires_capabilities={"matrix_multiplication"},
     performance_impact={"throughput": 4.0, "latency": 0.5},
-    power_impact=0.8
+    power_impact=0.8,
 )
 ```
 
@@ -56,9 +53,7 @@ Explicit modeling of relationships between hardware types:
 ```python
 # Hierarchical relationship (for capability inheritance)
 taxonomy.define_hardware_hierarchy(
-    parent_hardware=HardwareClass.CPU,
-    child_hardware=HardwareClass.GPU,
-    inheritance_factor=0.7
+    parent_hardware=HardwareClass.CPU, child_hardware=HardwareClass.GPU, inheritance_factor=0.7
 )
 
 # General relationship (for compatibility, data transfer, etc.)
@@ -70,7 +65,7 @@ taxonomy.register_hardware_relationship(
     relationship_type="accelerates",
     compatibility_score=0.9,
     data_transfer_efficiency=0.8,
-    shared_memory=False
+    shared_memory=False,
 )
 ```
 
@@ -84,9 +79,9 @@ context = OperationContext(
     operation_type="matmul",
     precision=PrecisionType.FP16,
     required_capabilities={"tensor_core_acceleration"},
-    memory_requirement_bytes=1024*1024*1024,  # 1GB
+    memory_requirement_bytes=1024 * 1024 * 1024,  # 1GB
     batch_size=16,
-    prefer_throughput=True
+    prefer_throughput=True,
 )
 
 # Find the best hardware for an operation
@@ -117,7 +112,7 @@ browser_factors = {
     "chrome": {"webgpu": 1.0, "webnn": 0.7, "audio": 0.7},
     "edge": {"webgpu": 0.8, "webnn": 1.0, "audio": 0.6},
     "firefox": {"webgpu": 0.8, "webnn": 0.6, "audio": 1.0},
-    "safari": {"webgpu": 0.9, "webnn": 0.8, "audio": 0.7}
+    "safari": {"webgpu": 0.9, "webnn": 0.8, "audio": 0.7},
 }
 ```
 

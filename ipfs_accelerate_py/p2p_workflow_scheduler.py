@@ -34,11 +34,13 @@ except ImportError:
         def get_storage_wrapper(*args, **kwargs):
             return None
 
+
 logger = logging.getLogger(__name__)
 
 
 class WorkflowTag(Enum):
     """Tags for workflow execution mode"""
+
     GITHUB_API = "github-api"  # Standard GitHub API workflows
     P2P_ELIGIBLE = "p2p-eligible"  # Can be executed via P2P network
     P2P_ONLY = "p2p-only"  # Must be executed via P2P network (bypasses GitHub)
@@ -56,6 +58,7 @@ class MerkleClock:
     Uses a vector clock combined with merkle tree hashing to determine
     the canonical state of the distributed system at any point in time.
     """
+
     node_id: str
     vector: Dict[str, int] = field(default_factory=dict)
     merkle_root: Optional[str] = None
@@ -69,7 +72,7 @@ class MerkleClock:
         self.vector[self.node_id] = self.vector.get(self.node_id, 0) + 1
         self._update_merkle_root()
 
-    def update(self, other: 'MerkleClock') -> None:
+    def update(self, other: "MerkleClock") -> None:
         """Update clock by merging with another clock (Lamport-style)"""
         for node_id, timestamp in other.vector.items():
             self.vector[node_id] = max(self.vector.get(node_id, 0), timestamp)
@@ -88,7 +91,7 @@ class MerkleClock:
             self._update_merkle_root()
         return self.merkle_root
 
-    def compare(self, other: 'MerkleClock') -> int:
+    def compare(self, other: "MerkleClock") -> int:
         """
         Compare two merkle clocks.
 
@@ -120,17 +123,13 @@ class MerkleClock:
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary"""
-        return {
-            'node_id': self.node_id,
-            'vector': self.vector,
-            'merkle_root': self.get_hash()
-        }
+        return {"node_id": self.node_id, "vector": self.vector, "merkle_root": self.get_hash()}
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'MerkleClock':
+    def from_dict(cls, data: Dict[str, Any]) -> "MerkleClock":
         """Deserialize from dictionary"""
-        clock = cls(node_id=data['node_id'], vector=data.get('vector', {}))
-        clock.merkle_root = data.get('merkle_root')
+        clock = cls(node_id=data["node_id"], vector=data.get("vector", {}))
+        clock.merkle_root = data.get("merkle_root")
         return clock
 
 
@@ -256,7 +255,7 @@ class FibonacciHeap:
             return
 
         # Calculate max degree
-        max_degree = int(self.total_nodes ** 0.5) + 1
+        max_degree = int(self.total_nodes**0.5) + 1
         degree_table = [None] * (max_degree + 1)
 
         # Collect all root nodes
@@ -351,6 +350,7 @@ def calculate_hamming_distance(hash1: str, hash2: str) -> int:
 @dataclass
 class P2PTask:
     """A task to be scheduled in the P2P network"""
+
     task_id: str
     workflow_id: str
     name: str
@@ -404,10 +404,10 @@ class P2PWorkflowScheduler:
         if bootstrap_peers:
             for peer in bootstrap_peers:
                 self.known_peers[peer] = {
-                    'peer_id': peer,
-                    'peer_id_hash': hashlib.sha256(peer.encode()).hexdigest(),
-                    'last_seen': time.time(),
-                    'clock': None
+                    "peer_id": peer,
+                    "peer_id_hash": hashlib.sha256(peer.encode()).hexdigest(),
+                    "last_seen": time.time(),
+                    "clock": None,
                 }
 
         # Track tasks
@@ -427,8 +427,7 @@ class P2PWorkflowScheduler:
         Returns:
             True if workflow should bypass GitHub API
         """
-        return (WorkflowTag.P2P_ONLY in tags or
-                WorkflowTag.P2P_ELIGIBLE in tags)
+        return WorkflowTag.P2P_ONLY in tags or WorkflowTag.P2P_ELIGIBLE in tags
 
     def is_p2p_only(self, tags: List[WorkflowTag]) -> bool:
         """Check if workflow must use P2P (cannot use GitHub API)"""
@@ -480,9 +479,9 @@ class P2PWorkflowScheduler:
 
         # Calculate hamming distance to all known peers (including self)
         all_peers = {self.peer_id: self.peer_id_hash}
-        all_peers.update({pid: info['peer_id_hash'] for pid, info in self.known_peers.items()})
+        all_peers.update({pid: info["peer_id_hash"] for pid, info in self.known_peers.items()})
 
-        min_distance = float('inf')
+        min_distance = float("inf")
         selected_peer = self.peer_id
 
         for peer_id, peer_hash in all_peers.items():
@@ -491,7 +490,9 @@ class P2PWorkflowScheduler:
                 min_distance = distance
                 selected_peer = peer_id
 
-        logger.debug(f"Task {task.task_id} assigned to peer {selected_peer} (distance: {min_distance})")
+        logger.debug(
+            f"Task {task.task_id} assigned to peer {selected_peer} (distance: {min_distance})"
+        )
         return selected_peer
 
     def check_peer_failure(self, peer_id: str, timeout_seconds: int = 300) -> bool:
@@ -509,7 +510,7 @@ class P2PWorkflowScheduler:
             return True
 
         peer_info = self.known_peers[peer_id]
-        time_since_seen = time.time() - peer_info.get('last_seen', 0)
+        time_since_seen = time.time() - peer_info.get("last_seen", 0)
 
         return time_since_seen > timeout_seconds
 
@@ -580,14 +581,14 @@ class P2PWorkflowScheduler:
         """
         if peer_id not in self.known_peers:
             self.known_peers[peer_id] = {
-                'peer_id': peer_id,
-                'peer_id_hash': hashlib.sha256(peer_id.encode()).hexdigest(),
-                'last_seen': time.time(),
-                'clock': clock
+                "peer_id": peer_id,
+                "peer_id_hash": hashlib.sha256(peer_id.encode()).hexdigest(),
+                "last_seen": time.time(),
+                "clock": clock,
             }
         else:
-            self.known_peers[peer_id]['last_seen'] = time.time()
-            self.known_peers[peer_id]['clock'] = clock
+            self.known_peers[peer_id]["last_seen"] = time.time()
+            self.known_peers[peer_id]["clock"] = clock
 
         # Update our merkle clock
         self.merkle_clock.update(clock)
@@ -595,17 +596,21 @@ class P2PWorkflowScheduler:
     def get_status(self) -> Dict[str, Any]:
         """Get scheduler status information"""
         status = {
-            'peer_id': self.peer_id,
-            'merkle_clock': self.merkle_clock.to_dict(),
-            'pending_tasks': len(self.pending_tasks),
-            'assigned_tasks': len(self.assigned_tasks),
-            'completed_tasks': len(self.completed_tasks),
-            'queue_size': self.task_queue.size(),
-            'known_peers': len(self.known_peers)
+            "peer_id": self.peer_id,
+            "merkle_clock": self.merkle_clock.to_dict(),
+            "pending_tasks": len(self.pending_tasks),
+            "assigned_tasks": len(self.assigned_tasks),
+            "completed_tasks": len(self.completed_tasks),
+            "queue_size": self.task_queue.size(),
+            "known_peers": len(self.known_peers),
         }
 
         # Try to store scheduler status in distributed storage
-        if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+        if (
+            self._storage
+            and hasattr(self._storage, "is_distributed")
+            and self._storage.is_distributed
+        ):
             try:
                 cache_key = f"p2p_scheduler_status_{self.peer_id}_{int(time.time())}"
                 self._storage.write_file(json.dumps(status, indent=2), cache_key, pin=False)

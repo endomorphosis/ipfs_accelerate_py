@@ -89,7 +89,7 @@ platform = UnifiedWebPlatform(
     model_name="bert-base-uncased",
     model_type="text",
     platform="webgpu",
-    enable_shader_precompilation=True  # Enable precompilation
+    enable_shader_precompilation=True,  # Enable precompilation
 )
 
 # Load model (shaders will be precompiled during this step)
@@ -109,11 +109,11 @@ from fixed_web_platform.webgpu_shader_precompilation import ShaderPrecompiler
 # Create precompiler with advanced options
 precompiler = ShaderPrecompiler(
     model_type="vision",
-    cache_to_indexeddb=True,          # Enable persistent caching
-    precompile_all_variants=False,     # Only precompile essential variants
+    cache_to_indexeddb=True,  # Enable persistent caching
+    precompile_all_variants=False,  # Only precompile essential variants
     priority_operations=["matmul", "attention", "layernorm"],  # Prioritize critical operations
-    compilation_batch_size=5,          # Number of shaders to compile in parallel
-    timeout_ms=30000                   # Maximum time to spend on precompilation
+    compilation_batch_size=5,  # Number of shaders to compile in parallel
+    timeout_ms=30000,  # Maximum time to spend on precompilation
 )
 
 # Precompile essential shaders
@@ -123,8 +123,7 @@ await precompiler.precompile_essential_shaders()
 await precompiler.precompile_operation("attention")
 
 # Track precompilation progress
-precompiler.on_progress(lambda operation, progress: 
-    print(f"Precompiling {operation}: {progress}%"))
+precompiler.on_progress(lambda operation, progress: print(f"Precompiling {operation}: {progress}%"))
 
 # Get precompilation statistics
 stats = precompiler.get_statistics()
@@ -141,7 +140,7 @@ from fixed_web_platform.webgpu_shader_precompilation import BrowserOptimizedPrec
 # Create browser-specific precompiler
 precompiler = BrowserOptimizedPrecompiler(
     model_type="text",
-    browser_detection=True  # Automatically detect and optimize for browser
+    browser_detection=True,  # Automatically detect and optimize for browser
 )
 
 # Get browser-specific compilation strategy
@@ -212,23 +211,24 @@ platform = UnifiedWebPlatform(
     model_name="bert-base-uncased",
     model_type="text_embedding",
     platform="webgpu",
-    enable_shader_precompilation=True
+    enable_shader_precompilation=True,
 )
 
 # Create specialized precompiler for text models
 precompiler = TextModelPrecompiler(
-    model=platform,
-    operations=["embedding", "attention", "feedforward", "layernorm"]
+    model=platform, operations=["embedding", "attention", "feedforward", "layernorm"]
 )
+
 
 # Precompile text-specific operations with progress tracking
 async def load_with_progress():
     progress_callback = lambda operation, progress: print(f"Precompiling {operation}: {progress}%")
     await precompiler.precompile_with_progress(progress_callback)
-    
+
     # Run inference without compilation delay
     result = await platform.run_inference({"input_text": "Example text for embedding"})
     print(f"Embedding shape: {result.shape}")
+
 
 # Execute the loading with progress
 await load_with_progress()
@@ -245,13 +245,13 @@ platform = UnifiedWebPlatform(
     model_name="vit-base-patch16-224",
     model_type="image_classification",
     platform="webgpu",
-    enable_shader_precompilation=True
+    enable_shader_precompilation=True,
 )
 
 # Create specialized precompiler for vision models
 precompiler = VisionModelPrecompiler(
     model=platform,
-    image_sizes=[(224, 224), (384, 384)]  # Precompile for multiple image sizes
+    image_sizes=[(224, 224), (384, 384)],  # Precompile for multiple image sizes
 )
 
 # Precompile vision-specific operations
@@ -281,7 +281,7 @@ from fixed_web_platform.webgpu_shader_precompilation import ShaderPrecompiler
 # Create precompiler with fallbacks
 precompiler = ShaderPrecompiler(
     model_type="vision",
-    enable_fallbacks=True  # Automatically use appropriate fallbacks
+    enable_fallbacks=True,  # Automatically use appropriate fallbacks
 )
 
 # Detect capabilities
@@ -354,7 +354,7 @@ await precompiler.precompile_essential_shaders()
 debug_report = debugger.generate_report()
 print(f"Successful compilations: {debug_report['successful_compilations']}")
 print(f"Failed compilations: {debug_report['failed_compilations']}")
-for failure in debug_report['failure_details']:
+for failure in debug_report["failure_details"]:
     print(f"Failed shader: {failure['operation']}")
     print(f"Error: {failure['error']}")
 

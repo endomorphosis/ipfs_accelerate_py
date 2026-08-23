@@ -22,13 +22,17 @@ class TestMCPServerUNI287LegacyMcpDispatchCompat(unittest.TestCase):
         return response["result"]
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_legacy_mcp_dispatch_infers_error_status_from_contradictory_delegate_payloads(self, mock_wrapper) -> None:
+    def test_legacy_mcp_dispatch_infers_error_status_from_contradictory_delegate_payloads(
+        self, mock_wrapper
+    ) -> None:
         class DummyServer:
             def __init__(self):
                 self.tools = {}
                 self.mcp = None
 
-            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+            def register_tool(
+                self, name, function, description, input_schema, execution_context=None, tags=None
+            ):
                 self.tools[name] = {
                     "function": function,
                     "description": description,
@@ -40,17 +44,25 @@ class TestMCPServerUNI287LegacyMcpDispatchCompat(unittest.TestCase):
         mock_wrapper.return_value = DummyServer()
 
         async def _run_flow() -> None:
-            with patch.dict(
-                os.environ,
-                {
-                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
-                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
-                },
-                clear=False,
-            ), patch.object(
-                native_legacy_mcp_tools,
-                "_normalize_payload",
-                return_value={"status": "error", "success": False, "deprecated": True, "error": "delegate failure"},
+            with (
+                patch.dict(
+                    os.environ,
+                    {
+                        "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                        "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    },
+                    clear=False,
+                ),
+                patch.object(
+                    native_legacy_mcp_tools,
+                    "_normalize_payload",
+                    return_value={
+                        "status": "error",
+                        "success": False,
+                        "deprecated": True,
+                        "error": "delegate failure",
+                    },
+                ),
             ):
                 server = create_mcp_server(name="legacy-mcp-dispatch-compat-errors")
                 dispatch = server.tools["tools_dispatch"]["function"]

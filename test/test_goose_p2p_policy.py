@@ -438,7 +438,9 @@ def test_no_cross_provider_fallback_after_goose_chat_failure(monkeypatch):
     import ipfs_accelerate_py.llm_router as llm_router
 
     monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_CLI", "1")
-    monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS", "goose_cli,codex_cli,copilot_cli")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS", "goose_cli,codex_cli,copilot_cli"
+    )
     monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_WORKER_LLM_GENERATE_LOCAL_FALLBACK", "1")
     attempts: list[str] = []
 
@@ -738,9 +740,7 @@ def test_llm_generate_task_type_advertised_when_goose_enabled(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_matrix_worker_agent_denial_and_no_fallback_after_side_effects(
-    monkeypatch, tmp_path
-):
+def test_matrix_worker_agent_denial_and_no_fallback_after_side_effects(monkeypatch, tmp_path):
     """Worker chat enablement, agent denial, and no cross-provider fallback."""
     from ipfs_accelerate_py.p2p_tasks import worker as p2p_worker
     import ipfs_accelerate_py.llm_router as llm_router
@@ -797,7 +797,6 @@ def test_matrix_worker_agent_denial_and_no_fallback_after_side_effects(
         )
     assert "openai" not in seen
     assert all("goose" in p for p in seen)
-
 
 
 # ---------------------------------------------------------------------------

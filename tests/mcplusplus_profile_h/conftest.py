@@ -27,7 +27,9 @@ def calls():
 def facilitator(calls):
     def verify(_payload, _requirement):
         calls["verify"] += 1
-        return VerificationResult(True, "H_PAYMENT_VERIFIED", verifier_did="did:web:facilitator.test")
+        return VerificationResult(
+            True, "H_PAYMENT_VERIFIED", verifier_did="did:web:facilitator.test"
+        )
 
     def settle(_payload, requirement):
         calls["settle"] += 1
@@ -46,17 +48,30 @@ def config():
         catalog_version="2026-07-12",
         tiers={
             "interactive-cpu": ComputeTier(
-                "50", unit="inference", operations=("inference/run",),
-                models=("text-small",), hardware=("cpu",),
+                "50",
+                unit="inference",
+                operations=("inference/run",),
+                models=("text-small",),
+                hardware=("cpu",),
             ),
             "batch-gpu": ComputeTier(
-                "500", units=100, unit="inference", max_duration_seconds=3600,
-                operations=("jobs/submit",), models=("text-small",), hardware=("cuda",),
+                "500",
+                units=100,
+                unit="inference",
+                max_duration_seconds=3600,
+                operations=("jobs/submit",),
+                models=("text-small",),
+                hardware=("cuda",),
                 allow_partial_results=True,
             ),
             "gpu-hour": ComputeTier(
-                "1000", units=60, unit="accelerator-minute", max_duration_seconds=3600,
-                operations=("reservations/create",), models=("*",), hardware=("cuda",),
+                "1000",
+                units=60,
+                unit="accelerator-minute",
+                max_duration_seconds=3600,
+                operations=("reservations/create",),
+                models=("*",),
+                hardware=("cuda",),
                 unused_amount_rule="credit-unused",
             ),
         },
@@ -73,7 +88,7 @@ def request_context():
     from mcplusplus_profile_h import RequestContext
 
     return RequestContext(
-        cid_for({"request": "job-1"}), "job-1",
+        cid_for({"request": "job-1"}),
+        "job-1",
         attributes={"subject": "buyer-1", "models": ("text-small",), "hardware": ("cpu", "cuda")},
     )
-

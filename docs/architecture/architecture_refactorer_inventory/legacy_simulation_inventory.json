@@ -1,0 +1,406 @@
+{
+  "authority": false,
+  "closed_reachability": [
+    "production_reachable",
+    "test_only",
+    "compatibility_only",
+    "dead",
+    "unknown"
+  ],
+  "dead_classification_policy": "static_reachability_alone_never_proves_dead_where_dynamic_loading_is_possible",
+  "inspection": {
+    "method": "static_and_hermetic_dynamic_reachability",
+    "nonclaim": "static reachability alone never proves dead code where dynamic loading is possible"
+  },
+  "paths": [
+    {
+      "dynamic_uncertainty": false,
+      "kind": "deprecated coordinators",
+      "nominated_symbol": "WorkflowCoordinator",
+      "origin_taint": "compatibility",
+      "path": "ipfs_accelerate_py/datasets_integration/workflow.py",
+      "path_id": "deprecated-workflow-coordinator",
+      "present": true,
+      "production_authority": false,
+      "reachability": "production_reachable",
+      "source_span": {
+        "end_line": 13,
+        "path": "ipfs_accelerate_py/datasets_integration/workflow.py",
+        "start_line": 13
+      },
+      "uncertainty": "p2p_workflow_coordinator_falls_back_to_a_local_queue"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "fake or compatibility CIDs",
+      "nominated_symbol": "_generate_cid",
+      "origin_taint": "compatibility",
+      "path": "ipfs_accelerate_py/ipfs_backend_router.py",
+      "path_id": "fake-cid-hf-cache",
+      "present": true,
+      "production_authority": false,
+      "reachability": "production_reachable",
+      "source_span": {
+        "end_line": 502,
+        "path": "ipfs_accelerate_py/ipfs_backend_router.py",
+        "start_line": 502
+      },
+      "uncertainty": "synthetic_bafy_cache_keys_are_not_multiformats_cids"
+    },
+    {
+      "dynamic_uncertainty": true,
+      "kind": "fake or compatibility CIDs",
+      "nominated_symbol": "_load_mock_ipfs_client",
+      "origin_taint": "unknown",
+      "path": "ipfs_accelerate_py/mcp_server/tools/ipfs/__init__.py",
+      "path_id": "mock-ipfs-dynamic-loader",
+      "present": true,
+      "production_authority": false,
+      "reachability": "unknown",
+      "source_span": {
+        "end_line": 20,
+        "path": "ipfs_accelerate_py/mcp_server/tools/ipfs/__init__.py",
+        "start_line": 20
+      },
+      "uncertainty": "dynamic_import_of_legacy_or_stub_mock_client"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "fake or compatibility CIDs",
+      "nominated_symbol": "random_cid",
+      "origin_taint": "simulation",
+      "path": "ipfs_accelerate_py/mcp/tools/mock_ipfs.py",
+      "path_id": "mock-ipfs-random-cid",
+      "present": true,
+      "production_authority": false,
+      "reachability": "compatibility_only",
+      "source_span": {
+        "end_line": 26,
+        "path": "ipfs_accelerate_py/mcp/tools/mock_ipfs.py",
+        "start_line": 26
+      },
+      "uncertainty": "deprecated_mock_ipfs_client_emits_random_qm_strings"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "fallback success paths",
+      "nominated_symbol": "_test_hardware_fallback",
+      "origin_taint": "simulation",
+      "path": "ipfs_accelerate_py/mcp_server/tools/hardware_tools/native_hardware_tools.py",
+      "path_id": "fallback-hardware-success",
+      "present": true,
+      "production_authority": false,
+      "reachability": "production_reachable",
+      "source_span": {
+        "end_line": 50,
+        "path": "ipfs_accelerate_py/mcp_server/tools/hardware_tools/native_hardware_tools.py",
+        "start_line": 50
+      },
+      "uncertainty": "fallback_returns_overall_passed_true_without_a_live_probe"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "fallback success paths",
+      "nominated_symbol": "main",
+      "origin_taint": "production",
+      "path": "ipfs_accelerate_py/agent_supervisor/provider_fallback_runner.py",
+      "path_id": "provider-fallback-runner",
+      "present": true,
+      "production_authority": false,
+      "reachability": "production_reachable",
+      "source_span": {
+        "end_line": 481,
+        "path": "ipfs_accelerate_py/agent_supervisor/provider_fallback_runner.py",
+        "start_line": 481
+      },
+      "uncertainty": "typed_quota_fallback_is_not_a_simulated_success"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "fixture providers",
+      "nominated_symbol": "ShadowProposal",
+      "origin_taint": "simulation",
+      "path": "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_shadow.py",
+      "path_id": "dcr-shadow-simulation",
+      "present": true,
+      "production_authority": false,
+      "reachability": "test_only",
+      "source_span": {
+        "end_line": 97,
+        "path": "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_shadow.py",
+        "start_line": 97
+      },
+      "uncertainty": "static_reachability_does_not_prove_production_isolation"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "fixture providers",
+      "nominated_symbol": "campaign_id",
+      "origin_taint": "fixture",
+      "path": "test/fixtures/adversarial_assurance/manifest.json",
+      "path_id": "fixture-adversarial",
+      "present": true,
+      "production_authority": false,
+      "reachability": "test_only",
+      "source_span": {
+        "end_line": 1,
+        "path": "test/fixtures/adversarial_assurance/manifest.json",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "fixture providers",
+      "nominated_symbol": "_MockProvider",
+      "origin_taint": "fixture",
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "path_id": "fixture-mock-provider",
+      "present": true,
+      "production_authority": false,
+      "reachability": "production_reachable",
+      "source_span": {
+        "end_line": 7748,
+        "path": "ipfs_accelerate_py/llm_router.py",
+        "start_line": 7748
+      },
+      "uncertainty": "offline_and_unit_test_provider_must_not_prove_live_capability"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "fixture providers",
+      "nominated_symbol": "default_inventory",
+      "origin_taint": "fixture",
+      "path": "ipfs_accelerate_py/agent_supervisor/verification/model_route.py",
+      "path_id": "hermetic-model-inventory",
+      "present": true,
+      "production_authority": false,
+      "reachability": "test_only",
+      "source_span": {
+        "end_line": 1461,
+        "path": "ipfs_accelerate_py/agent_supervisor/verification/model_route.py",
+        "start_line": 1461
+      },
+      "uncertainty": "hermetic_provider_neutral_inventory_for_tests_and_local_runs"
+    },
+    {
+      "dynamic_uncertainty": true,
+      "kind": "historical provider routers",
+      "nominated_symbol": "_load_landed_module",
+      "origin_taint": "unknown",
+      "path": "ipfs_accelerate_py/agent_supervisor/__init__.py",
+      "path_id": "dynamic-landed-alias",
+      "present": true,
+      "production_authority": false,
+      "reachability": "unknown",
+      "source_span": {
+        "end_line": 632,
+        "path": "ipfs_accelerate_py/agent_supervisor/__init__.py",
+        "start_line": 632
+      },
+      "uncertainty": "landed_module_alias_membership_depends_on_AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "historical provider routers",
+      "nominated_symbol": "embeddings_router",
+      "origin_taint": "compatibility",
+      "path": "ipfs_accelerate_py/embedding_router.py",
+      "path_id": "historical-embedding-router",
+      "present": true,
+      "production_authority": false,
+      "reachability": "compatibility_only",
+      "source_span": {
+        "end_line": 7,
+        "path": "ipfs_accelerate_py/embedding_router.py",
+        "start_line": 7
+      },
+      "uncertainty": "compatibility_alias_must_not_be_treated_as_canonical_authority"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "historical provider routers",
+      "nominated_symbol": "IPFS_BACKEND",
+      "origin_taint": "compatibility",
+      "path": "ipfs_accelerate_py/ipfs_backend_router.py",
+      "path_id": "historical-ipfs-backend-router",
+      "present": true,
+      "production_authority": false,
+      "reachability": "production_reachable",
+      "source_span": {
+        "end_line": 19,
+        "path": "ipfs_accelerate_py/ipfs_backend_router.py",
+        "start_line": 19
+      },
+      "uncertainty": "pluggable_backend_router_must_not_treat_synthetic_cids_as_live"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "historical provider routers",
+      "nominated_symbol": "voice_router",
+      "origin_taint": "compatibility",
+      "path": "ipfs_accelerate_py/tts_router.py",
+      "path_id": "historical-tts-router",
+      "present": true,
+      "production_authority": false,
+      "reachability": "compatibility_only",
+      "source_span": {
+        "end_line": 3,
+        "path": "ipfs_accelerate_py/tts_router.py",
+        "start_line": 3
+      },
+      "uncertainty": "historical_tts_router_is_a_backward_compatibility_shim"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "legacy endpoint registries",
+      "nominated_symbol": "CLIEndpointRegistry",
+      "origin_taint": "production",
+      "path": "ipfs_accelerate_py/cli_runtime/endpoints.py",
+      "path_id": "cli-endpoint-registry",
+      "present": true,
+      "production_authority": false,
+      "reachability": "production_reachable",
+      "source_span": {
+        "end_line": 703,
+        "path": "ipfs_accelerate_py/cli_runtime/endpoints.py",
+        "start_line": 703
+      },
+      "uncertainty": "current_registry_retains_a_legacy_compatible_adapter_view"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "legacy endpoint registries",
+      "nominated_symbol": "ENDPOINTS",
+      "origin_taint": "compatibility",
+      "path": "ipfs_accelerate_py/mcp/tools/endpoints.py",
+      "path_id": "legacy-mcp-endpoints",
+      "present": true,
+      "production_authority": false,
+      "reachability": "compatibility_only",
+      "source_span": {
+        "end_line": 26,
+        "path": "ipfs_accelerate_py/mcp/tools/endpoints.py",
+        "start_line": 26
+      },
+      "uncertainty": "deprecated_in_memory_endpoint_registry_is_a_compatibility_shim"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "mock inference handlers",
+      "nominated_symbol": "_create_mock_handler",
+      "origin_taint": "mock",
+      "path": "ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
+      "path_id": "mock-handler-legacy",
+      "present": true,
+      "production_authority": false,
+      "reachability": "compatibility_only",
+      "source_span": {
+        "end_line": 327,
+        "path": "ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
+        "start_line": 327
+      },
+      "uncertainty": "legacy_compatibility_surface_must_not_be_canonical_authority"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "mock inference handlers",
+      "nominated_symbol": "_create_mock_handler",
+      "origin_taint": "mock",
+      "path": "ipfs_accelerate_py/ipfs_accelerate.py",
+      "path_id": "mock-inference-handler",
+      "present": true,
+      "production_authority": false,
+      "reachability": "production_reachable",
+      "source_span": {
+        "end_line": 785,
+        "path": "ipfs_accelerate_py/ipfs_accelerate.py",
+        "start_line": 785
+      },
+      "uncertainty": "production_endpoint_registration_falls_back_to_mock_handler"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "mock inference handlers",
+      "nominated_symbol": "_mock_inference",
+      "origin_taint": "mock",
+      "path": "ipfs_accelerate_py/mcp/inference_tools.py",
+      "path_id": "mock-inference-mcp",
+      "present": true,
+      "production_authority": false,
+      "reachability": "production_reachable",
+      "source_span": {
+        "end_line": 109,
+        "path": "ipfs_accelerate_py/mcp/inference_tools.py",
+        "start_line": 109
+      },
+      "uncertainty": "mcp_inference_tools_return_mock_inference_results"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "mock workers",
+      "nominated_symbol": "MockWorker",
+      "origin_taint": "mock",
+      "path": "ipfs_accelerate_py/ipfs_accelerate.py",
+      "path_id": "mock-worker-accelerate",
+      "present": true,
+      "production_authority": false,
+      "reachability": "production_reachable",
+      "source_span": {
+        "end_line": 141,
+        "path": "ipfs_accelerate_py/ipfs_accelerate.py",
+        "start_line": 141
+      },
+      "uncertainty": "production_constructor_substitutes_simulated_worker"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "simulated hardware",
+      "nominated_symbol": "create_cuda_mock_implementation",
+      "origin_taint": "simulation",
+      "path": "ipfs_accelerate_py/worker/cuda_utils.py",
+      "path_id": "cuda-mock-impl",
+      "present": true,
+      "production_authority": false,
+      "reachability": "production_reachable",
+      "source_span": {
+        "end_line": 433,
+        "path": "ipfs_accelerate_py/worker/cuda_utils.py",
+        "start_line": 433
+      },
+      "uncertainty": "cuda_mock_implementation_must_not_prove_device_capability"
+    },
+    {
+      "dynamic_uncertainty": false,
+      "kind": "simulated hardware",
+      "nominated_symbol": "_create_mock_hardware_detection",
+      "origin_taint": "simulation",
+      "path": "ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
+      "path_id": "simulated-hw-legacy",
+      "present": true,
+      "production_authority": false,
+      "reachability": "compatibility_only",
+      "source_span": {
+        "end_line": 223,
+        "path": "ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
+        "start_line": 223
+      },
+      "uncertainty": "legacy_mock_hardware_detection_is_not_a_live_probe"
+    }
+  ],
+  "production_flow_invariant": "No compatibility, fixture, or simulation origin may satisfy a production capability, execution-success, proof, completion, or release predicate.",
+  "repository_tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}",
+  "required_categories": [
+    "mock workers",
+    "mock inference handlers",
+    "simulated hardware",
+    "fake or compatibility CIDs",
+    "fixture providers",
+    "fallback success paths",
+    "deprecated coordinators",
+    "legacy endpoint registries",
+    "historical provider routers"
+  ],
+  "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.legacy-simulation-inventory@1",
+  "task_id": "PCAR-015"
+}

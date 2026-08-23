@@ -17,6 +17,7 @@ Self-improvement program support: epoch contracts, refill, v2 evaluation/metrics
 
 | Module | Path |
 | --- | --- |
+| `campaign_refill_policy` | `self_improvement/campaign_refill_policy.py` |
 | `self_improvement` | `self_improvement/self_improvement.py` |
 | `self_improvement_completion` | `self_improvement/self_improvement_completion.py` |
 | `self_improvement_rollout` | `self_improvement/self_improvement_rollout.py` |

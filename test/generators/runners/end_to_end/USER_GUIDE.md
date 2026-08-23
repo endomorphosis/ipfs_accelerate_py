@@ -368,7 +368,7 @@ Use the DuckDB API to query the database:
 import duckdb
 
 # Connect to the database
-conn = duckdb.connect('./benchmark_db.duckdb')
+conn = duckdb.connect("./benchmark_db.duckdb")
 
 # Query test results
 results = conn.execute("""

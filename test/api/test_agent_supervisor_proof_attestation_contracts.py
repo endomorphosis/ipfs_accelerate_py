@@ -362,9 +362,7 @@ def test_real_independent_verification_can_satisfy_attestation_gates() -> None:
     assert verification.authoritative_assurance is AssuranceLevel.ATTESTED
     assert verification.satisfies_production_gate()
     assert verification.satisfies_completion_gate()
-    assert attestation_satisfies_gate(
-        verification, AttestationGate.COMPLETION
-    )
+    assert attestation_satisfies_gate(verification, AttestationGate.COMPLETION)
     assert AttestationVerification.from_dict(verification.to_dict()) == verification
 
 

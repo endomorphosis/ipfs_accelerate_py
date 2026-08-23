@@ -35,7 +35,11 @@ from typing import Any, Dict
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_ANNOUNCE = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "ipfs_accelerate_py" / "task_p2p_announce.json"
+DEFAULT_ANNOUNCE = (
+    Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache"))
+    / "ipfs_accelerate_py"
+    / "task_p2p_announce.json"
+)
 
 
 @dataclass
@@ -99,7 +103,9 @@ async def _run_one(*, remote, provider: str, prompt: str, timeout_s: float) -> J
     t_submit_wall = time.time()
     t_submit_mono = time.monotonic()
 
-    info = await submit_task_with_info(remote=remote, task_type="llm.generate", model_name="", payload=payload)
+    info = await submit_task_with_info(
+        remote=remote, task_type="llm.generate", model_name="", payload=payload
+    )
     task_id = str(info.get("task_id") or "").strip()
     if not task_id:
         return JobResult(
@@ -163,7 +169,9 @@ async def _run_one(*, remote, provider: str, prompt: str, timeout_s: float) -> J
     )
 
 
-async def _run_all(*, remote, jobs: int, concurrency: int, provider: str, prompt: str, timeout_s: float) -> list[JobResult]:
+async def _run_all(
+    *, remote, jobs: int, concurrency: int, provider: str, prompt: str, timeout_s: float
+) -> list[JobResult]:
     import anyio
 
     results: list[JobResult] = []
@@ -171,7 +179,9 @@ async def _run_all(*, remote, jobs: int, concurrency: int, provider: str, prompt
 
     async def _wrapped() -> None:
         async with sem:
-            res = await _run_one(remote=remote, provider=provider, prompt=prompt, timeout_s=timeout_s)
+            res = await _run_one(
+                remote=remote, provider=provider, prompt=prompt, timeout_s=timeout_s
+            )
             results.append(res)
 
     async with anyio.create_task_group() as tg:
@@ -183,13 +193,19 @@ async def _run_all(*, remote, jobs: int, concurrency: int, provider: str, prompt
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--announce", type=str, default="", help="Path to TaskQueue service announce JSON")
+    ap.add_argument(
+        "--announce", type=str, default="", help="Path to TaskQueue service announce JSON"
+    )
     ap.add_argument("--peer-id", type=str, default="", help="Service peer_id (overrides announce)")
-    ap.add_argument("--multiaddr", type=str, default="", help="Service multiaddr (overrides announce)")
+    ap.add_argument(
+        "--multiaddr", type=str, default="", help="Service multiaddr (overrides announce)"
+    )
     ap.add_argument("--jobs", type=int, default=12, help="Total llm.generate tasks to submit")
     ap.add_argument("--concurrency", type=int, default=6, help="Max in-flight submissions")
     ap.add_argument("--timeout-s", type=float, default=120.0, help="Per-task wait timeout")
-    ap.add_argument("--provider", type=str, default="copilot_cli", help="LLM provider for llm.generate")
+    ap.add_argument(
+        "--provider", type=str, default="copilot_cli", help="LLM provider for llm.generate"
+    )
     ap.add_argument("--prompt", type=str, default="Return exactly: OK", help="Prompt to send")
     ap.add_argument(
         "--transcript-jsonl",
@@ -254,6 +270,7 @@ def main() -> int:
     import anyio
 
     t0 = time.time()
+
     async def _do() -> list[JobResult]:
         return await _run_all(
             remote=remote,
@@ -291,7 +308,9 @@ def main() -> int:
                     "session_id": str(meta.get("session_id") or ""),
                     "chat_session_id": str(meta.get("chat_session_id") or ""),
                     "resume_session_id": str(meta.get("resume_session_id") or ""),
-                    "executor_worker_id": str(meta.get("executor_worker_id") or r.executor_worker_id or ""),
+                    "executor_worker_id": str(
+                        meta.get("executor_worker_id") or r.executor_worker_id or ""
+                    ),
                     "executor_peer_id": str(meta.get("executor_peer_id") or ""),
                     "executor_multiaddr": str(meta.get("executor_multiaddr") or ""),
                     "service_peer_id": peer_id,
@@ -319,7 +338,9 @@ def main() -> int:
 
     expect = max(1, int(args.expect_workers))
     if len(distinct_workers) < expect:
-        print(f"\nDID NOT MEET EXPECTATION: observed {len(distinct_workers)} distinct executor_worker_id values; expected >= {expect}.")
+        print(
+            f"\nDID NOT MEET EXPECTATION: observed {len(distinct_workers)} distinct executor_worker_id values; expected >= {expect}."
+        )
         return 2
 
     print("\nPASS")

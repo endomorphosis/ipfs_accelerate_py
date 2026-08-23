@@ -98,9 +98,7 @@ def test_selects_smallest_dependency_complete_closure_with_audit_reasons():
 def test_missing_dependency_and_incomplete_graph_slice_fail_closed():
     request = ProofContextRequest(
         obligation_id="obl",
-        items=(
-            _item("obl", ProofContextItemKind.OBLIGATION, ("missing",)),
-        ),
+        items=(_item("obl", ProofContextItemKind.OBLIGATION, ("missing",)),),
         program_graph_slice={
             "slice_id": "slice:1",
             "complete": False,
@@ -157,9 +155,7 @@ def test_changed_dependency_invalidates_old_receipt():
     original = _request()
     first = compiler.compile(original)
     changed_items = tuple(
-        replace(item, payload={"symbol": "definition-v2"})
-        if item.item_id == "definition"
-        else item
+        replace(item, payload={"symbol": "definition-v2"}) if item.item_id == "definition" else item
         for item in original.items
     )
     changed = replace(original, items=changed_items)
@@ -176,9 +172,7 @@ def test_changed_dependency_invalidates_old_receipt():
 
 
 def test_delta_retry_only_sends_new_counterexample_and_requested_evidence():
-    counterexample = _item(
-        "cex", ProofContextItemKind.COUNTEREXAMPLE, ("cex-rule",)
-    )
+    counterexample = _item("cex", ProofContextItemKind.COUNTEREXAMPLE, ("cex-rule",))
     cex_rule = _item("cex-rule", ProofContextItemKind.RULE)
     evidence = _item("evidence", ProofContextItemKind.EVIDENCE)
     compiler = CodeContractProofContextCompiler()
@@ -226,9 +220,7 @@ def test_delta_rejects_stale_base_after_required_dependency_changes():
     changed = replace(
         original,
         items=tuple(
-            replace(item, payload={"changed": True})
-            if item.item_id == "rule"
-            else item
+            replace(item, payload={"changed": True}) if item.item_id == "rule" else item
             for item in original.items
         ),
     )
@@ -306,9 +298,7 @@ def test_obligation_kind_is_enforced_but_cycles_are_closed():
 
     invalid = replace(
         cyclic,
-        items=(
-            _item("obl", ProofContextItemKind.RULE),
-        ),
+        items=(_item("obl", ProofContextItemKind.RULE),),
     )
     with pytest.raises(CodeContractProofContextError, match="obligation item"):
         CodeContractProofContextCompiler().compile(invalid)

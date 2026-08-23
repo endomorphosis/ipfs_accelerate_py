@@ -13,7 +13,7 @@ from .base_pipeline import BasePipelineTemplate
 
 class AudioPipelineTemplate(BasePipelineTemplate):
     """Template for audio/speech pipelines."""
-    
+
     def __init__(self):
         """Initialize the audio pipeline template."""
         super().__init__()
@@ -24,7 +24,7 @@ class AudioPipelineTemplate(BasePipelineTemplate):
         self.requires_postprocessing = True
         self.supports_batching = True
         self.max_batch_size = 4  # Smaller batch size due to memory requirements
-    
+
     def get_import_statements(self) -> str:
         """Get audio pipeline import statements."""
         return """
@@ -38,7 +38,7 @@ import io
 import wave
 import tempfile
 """
-    
+
     def get_preprocessing_code(self, task_type: str) -> str:
         """Get audio preprocessing code for specific task types."""
         if task_type == "speech_recognition":
@@ -277,7 +277,7 @@ inputs = tokenizer(audio_path, return_tensors="pt")
 # Move inputs to device
 inputs = {k: v.to(device) for k, v in inputs.items()}
 """
-    
+
     def get_postprocessing_code(self, task_type: str) -> str:
         """Get audio postprocessing code for specific task types."""
         if task_type == "speech_recognition":
@@ -353,7 +353,7 @@ else:
         "data": str(outputs)
     }
 """
-    
+
     def get_result_formatting_code(self, task_type: str) -> str:
         """Get audio result formatting code for specific task types."""
         if task_type == "speech_recognition":
@@ -434,7 +434,7 @@ return {
     "hardware": hardware_label
 }
 """
-    
+
     def get_mock_input_code(self) -> str:
         """Get audio mock input code."""
         return """
@@ -461,7 +461,7 @@ with wave.open(mock_audio_path, 'wb') as wf:
 # Create mock audio input
 mock_input = mock_audio_path
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get audio mock output code."""
         return """
@@ -476,7 +476,7 @@ mock_output = {
     "hardware": "mock"
 }
 """
-    
+
     def get_pipeline_utilities(self) -> str:
         """Get audio utility functions."""
         return """
@@ -508,21 +508,18 @@ def save_audio_to_file(audio_array, sample_rate, output_path):
             print(f"Error saving audio: {e}")
             return False
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check audio pipeline compatibility with architecture type."""
         # Audio pipeline is compatible with speech architectures
-        return arch_type in [
-            "speech",
-            "multimodal"
-        ]
-    
+        return arch_type in ["speech", "multimodal"]
+
     def is_compatible_with_task(self, task_type: str) -> bool:
         """Check audio pipeline compatibility with task type."""
         # Audio pipeline is compatible with speech/audio tasks
         return task_type in [
             "speech_recognition",
-            "audio_classification", 
+            "audio_classification",
             "text_to_speech",
-            "audio_embedding"
+            "audio_embedding",
         ]

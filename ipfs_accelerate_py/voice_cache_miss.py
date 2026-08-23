@@ -88,9 +88,7 @@ def _text(value: Any, *, field_name: str, required: bool = True) -> str:
 def _digest(value: Any, *, field_name: str, required: bool = True) -> str:
     result = _text(value, field_name=field_name, required=required).casefold()
     if result and not _SHA256_RE.fullmatch(result):
-        raise VoiceCacheMissEventError(
-            f"{field_name} must be a full lowercase SHA-256"
-        )
+        raise VoiceCacheMissEventError(f"{field_name} must be a full lowercase SHA-256")
     return result
 
 
@@ -104,9 +102,7 @@ def _redacted_json(value: Any, *, path: str = "value") -> Any:
         for key, item in value.items():
             name = str(key)
             if any(marker in name.casefold() for marker in _SECRET_KEY_MARKERS):
-                raise VoiceCacheMissEventError(
-                    f"{path}.{name} must not contain credentials"
-                )
+                raise VoiceCacheMissEventError(f"{path}.{name} must not contain credentials")
             if name.casefold() in _PRIVATE_TEXT_KEYS:
                 raise VoiceCacheMissEventError(
                     f"{path}.{name} must not contain private turn content"
@@ -114,32 +110,22 @@ def _redacted_json(value: Any, *, path: str = "value") -> Any:
             result[name] = _redacted_json(item, path=f"{path}.{name}")
         return result
     if isinstance(value, Sequence) and not isinstance(value, str):
-        return [
-            _redacted_json(item, path=f"{path}[{index}]")
-            for index, item in enumerate(value)
-        ]
+        return [_redacted_json(item, path=f"{path}[{index}]") for index, item in enumerate(value)]
     to_dict = getattr(value, "to_dict", None)
     if callable(to_dict):
         return _redacted_json(to_dict(), path=path)
-    raise VoiceCacheMissEventError(
-        f"{path} must contain only deterministic JSON values"
-    )
+    raise VoiceCacheMissEventError(f"{path} must contain only deterministic JSON values")
 
 
 def _safe_synthesis_identity(value: Any) -> Mapping[str, Any]:
     """Retain routing identity while hashing free-form generation settings."""
 
     if not isinstance(value, Mapping) or not value:
-        raise VoiceCacheMissEventError(
-            "synthesis_identity must be a non-empty mapping"
-        )
+        raise VoiceCacheMissEventError("synthesis_identity must be a non-empty mapping")
     safe = _redacted_json(value, path="synthesis_identity")
     if not isinstance(safe, Mapping):
         raise VoiceCacheMissEventError("synthesis_identity must be a mapping")
-    already_safe = (
-        "identity_sha256" in safe
-        and set(safe).issubset(_SYNTHESIS_IDENTITY_FIELDS)
-    )
+    already_safe = "identity_sha256" in safe and set(safe).issubset(_SYNTHESIS_IDENTITY_FIELDS)
     selected = {
         str(key): item
         for key, item in safe.items()
@@ -147,9 +133,7 @@ def _safe_synthesis_identity(value: Any) -> Mapping[str, Any]:
     }
     settings = safe.get("generation_settings")
     if settings not in (None, {}, []):
-        selected["generation_settings_sha256"] = sha256(
-            _canonical_bytes(settings)
-        ).hexdigest()
+        selected["generation_settings_sha256"] = sha256(_canonical_bytes(settings)).hexdigest()
     # Bind omitted/extension fields without placing their possibly free-form
     # values in the event payload.
     identity_digest = safe.get("identity_sha256") if already_safe else None
@@ -163,9 +147,7 @@ def _safe_synthesis_identity(value: Any) -> Mapping[str, Any]:
             field_name="synthesis_identity.generation_settings_sha256",
         )
     if not any(key in selected for key in ("provider", "model", "voice")):
-        raise VoiceCacheMissEventError(
-            "synthesis_identity requires provider, model, or voice"
-        )
+        raise VoiceCacheMissEventError("synthesis_identity requires provider, model, or voice")
     return selected
 
 
@@ -224,16 +206,10 @@ class VoiceCacheMissEvent:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        rendered_digest = _digest(
-            self.rendered_text_sha256, field_name="rendered_text_sha256"
-        )
-        audio_digest = _digest(
-            self.output_audio_sha256, field_name="output_audio_sha256"
-        )
+        rendered_digest = _digest(self.rendered_text_sha256, field_name="rendered_text_sha256")
+        audio_digest = _digest(self.output_audio_sha256, field_name="output_audio_sha256")
         identity = _safe_synthesis_identity(self.synthesis_identity)
-        miss_reason = _text(
-            self.resolver_miss_reason, field_name="resolver_miss_reason"
-        )
+        miss_reason = _text(self.resolver_miss_reason, field_name="resolver_miss_reason")
         provider = _text(self.live_tts_provider, field_name="live_tts_provider")
         if self.schema_version != VOICE_CACHE_MISS_EVENT_SCHEMA_VERSION:
             raise VoiceCacheMissEventError(
@@ -247,9 +223,7 @@ class VoiceCacheMissEvent:
             required=False,
         )
         if self.validation_passed and not validation_id:
-            raise VoiceCacheMissEventError(
-                "validated cache miss requires validation_receipt_id"
-            )
+            raise VoiceCacheMissEventError("validated cache miss requires validation_receipt_id")
         receipts = tuple(
             _redacted_json(receipt, path=f"stage_receipts[{index}]")
             for index, receipt in enumerate(self.stage_receipts)
@@ -321,9 +295,7 @@ class VoiceCacheMissEvent:
                 "metadata": dict(self.metadata),
                 "ready_for_dag_append": self.ready_for_dag_append,
                 "request_id": self.request_id,
-                "stage_receipts": [
-                    dict(receipt) for receipt in self.stage_receipts
-                ],
+                "stage_receipts": [dict(receipt) for receipt in self.stage_receipts],
                 "validation_passed": self.validation_passed,
                 "validation_receipt_id": self.validation_receipt_id,
             }
@@ -361,8 +333,7 @@ def build_voice_cache_miss_event(
             and str(details.get("resolver_reason") or "").strip()
             and (
                 str(trace.get("status") or "") == "skipped"
-                or details.get("resolver_reason")
-                == "precomputed_audio_validation_failed"
+                or details.get("resolver_reason") == "precomputed_audio_validation_failed"
             )
         ):
             miss_trace = trace
@@ -385,12 +356,8 @@ def build_voice_cache_miss_event(
     miss_details = miss_details if isinstance(miss_details, Mapping) else {}
     synthesis_identity = miss_details.get("synthesis_identity")
     if not isinstance(synthesis_identity, Mapping) or not synthesis_identity:
-        raise VoiceCacheMissEventError(
-            "precomputed miss trace lacks synthesis_identity"
-        )
-    response_text = _text(
-        getattr(result, "response_text", ""), field_name="response_text"
-    )
+        raise VoiceCacheMissEventError("precomputed miss trace lacks synthesis_identity")
+    response_text = _text(getattr(result, "response_text", ""), field_name="response_text")
     rendered_digest = sha256(response_text.encode("utf-8")).hexdigest()
     provenance_digest = getattr(provenance, "response_text_sha256", None)
     if provenance_digest and str(provenance_digest) != rendered_digest:
@@ -402,16 +369,10 @@ def build_voice_cache_miss_event(
     if isinstance(audio, bytes):
         actual_output_digest = sha256(audio).hexdigest()
         if output_digest and output_digest != actual_output_digest:
-            raise VoiceCacheMissEventError(
-                "voice result audio does not match provenance digest"
-            )
+            raise VoiceCacheMissEventError("voice result audio does not match provenance digest")
         output_digest = actual_output_digest
     metadata_value = getattr(provenance, "metadata", {}) or {}
-    intent = (
-        str(metadata_value.get("intent") or "")
-        if isinstance(metadata_value, Mapping)
-        else ""
-    )
+    intent = str(metadata_value.get("intent") or "") if isinstance(metadata_value, Mapping) else ""
     return VoiceCacheMissEvent(
         rendered_text_sha256=rendered_digest,
         synthesis_identity=synthesis_identity,

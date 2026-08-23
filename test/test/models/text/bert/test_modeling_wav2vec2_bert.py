@@ -131,7 +131,9 @@ class Wav2Vec2BertModelTester:
         self.adapter_output_seq_length = self.output_seq_length
 
         for _ in range(num_adapter_layers):
-            self.adapter_output_seq_length = (self.adapter_output_seq_length - 1) // adapter_stride + 1
+            self.adapter_output_seq_length = (
+                self.adapter_output_seq_length - 1
+            ) // adapter_stride + 1
 
     # Ignore copy
     def prepare_config_and_inputs(self, position_embeddings_type="relative"):
@@ -177,7 +179,8 @@ class Wav2Vec2BertModelTester:
         model.eval()
         result = model(input_features, attention_mask=attention_mask)
         self.parent.assertEqual(
-            result.last_hidden_state.shape, (self.batch_size, self.output_seq_length, self.hidden_size)
+            result.last_hidden_state.shape,
+            (self.batch_size, self.output_seq_length, self.hidden_size),
         )
 
     def create_and_check_model_with_adapter(self, config, input_features, attention_mask):
@@ -187,7 +190,8 @@ class Wav2Vec2BertModelTester:
         model.eval()
         result = model(input_features, attention_mask=attention_mask)
         self.parent.assertEqual(
-            result.last_hidden_state.shape, (self.batch_size, self.adapter_output_seq_length, self.hidden_size)
+            result.last_hidden_state.shape,
+            (self.batch_size, self.adapter_output_seq_length, self.hidden_size),
         )
 
     def create_and_check_model_with_adapter_for_ctc(self, config, input_features, attention_mask):
@@ -202,7 +206,9 @@ class Wav2Vec2BertModelTester:
         )
 
     # Ignore copy
-    def create_and_check_model_with_intermediate_ffn_before_adapter(self, config, input_features, attention_mask):
+    def create_and_check_model_with_intermediate_ffn_before_adapter(
+        self, config, input_features, attention_mask
+    ):
         config.add_adapter = True
         config.use_intermediate_ffn_before_adapter = True
         model = Wav2Vec2BertModel(config=config)
@@ -251,7 +257,8 @@ class Wav2Vec2BertModelTester:
             result = model(input_features.type(dtype=torch.float16), attention_mask=attention_mask)
 
         self.parent.assertEqual(
-            result.last_hidden_state.shape, (self.batch_size, self.output_seq_length, self.hidden_size)
+            result.last_hidden_state.shape,
+            (self.batch_size, self.output_seq_length, self.hidden_size),
         )
 
     def create_and_check_batch_inference(self, config, input_features, *args):
@@ -293,7 +300,9 @@ class Wav2Vec2BertModelTester:
 
         input_lengths = [input_features.shape[1] // i for i in [4, 2, 1]]
         max_length_labels = model._get_feat_extract_output_lengths(torch.tensor(input_lengths))
-        labels = ids_tensor((input_features.shape[0], min(max_length_labels) - 1), model.config.vocab_size)
+        labels = ids_tensor(
+            (input_features.shape[0], min(max_length_labels) - 1), model.config.vocab_size
+        )
 
         # pad input
         for i in range(len(input_lengths)):
@@ -328,7 +337,9 @@ class Wav2Vec2BertModelTester:
             input_features[i, input_lengths[i] :] = 0.0
             attention_mask[i, input_lengths[i] :] = 0
 
-        masked_loss = model(input_features, attention_mask=attention_mask, labels=labels).loss.item()
+        masked_loss = model(
+            input_features, attention_mask=attention_mask, labels=labels
+        ).loss.item()
         unmasked_loss = model(input_features, labels=labels).loss.item()
 
         self.parent.assertTrue(isinstance(masked_loss, float))
@@ -346,7 +357,9 @@ class Wav2Vec2BertModelTester:
 
         input_lengths = [input_features.shape[1] // i for i in [4, 2, 1]]
         max_length_labels = model._get_feat_extract_output_lengths(torch.tensor(input_lengths))
-        labels = ids_tensor((input_features.shape[0], max(max_length_labels) - 2), model.config.vocab_size)
+        labels = ids_tensor(
+            (input_features.shape[0], max(max_length_labels) - 2), model.config.vocab_size
+        )
 
         # pad input
         for i in range(len(input_lengths)):
@@ -418,7 +431,9 @@ class Wav2Vec2BertModelTester:
 
         input_lengths = [input_features.shape[-1] // i for i in [4, 2, 1]]
         max_length_labels = model._get_feat_extract_output_lengths(torch.tensor(input_lengths))
-        labels = ids_tensor((input_features.shape[0], max(max_length_labels) - 2), model.config.vocab_size + 100)
+        labels = ids_tensor(
+            (input_features.shape[0], max(max_length_labels) - 2), model.config.vocab_size + 100
+        )
 
         with self.parent.assertRaises(ValueError):
             model(input_features, labels=labels)
@@ -470,20 +485,28 @@ class Wav2Vec2BertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.Test
         self.model_tester.create_and_check_model(*config_and_inputs)
 
     def test_model_with_relative(self):
-        config_and_inputs = self.model_tester.prepare_config_and_inputs(position_embeddings_type="relative")
+        config_and_inputs = self.model_tester.prepare_config_and_inputs(
+            position_embeddings_type="relative"
+        )
         self.model_tester.create_and_check_model(*config_and_inputs)
 
     # Ignore copy
     def test_model_with_relative_key(self):
-        config_and_inputs = self.model_tester.prepare_config_and_inputs(position_embeddings_type="relative_key")
+        config_and_inputs = self.model_tester.prepare_config_and_inputs(
+            position_embeddings_type="relative_key"
+        )
         self.model_tester.create_and_check_model(*config_and_inputs)
 
     def test_model_with_rotary(self):
-        config_and_inputs = self.model_tester.prepare_config_and_inputs(position_embeddings_type="rotary")
+        config_and_inputs = self.model_tester.prepare_config_and_inputs(
+            position_embeddings_type="rotary"
+        )
         self.model_tester.create_and_check_model(*config_and_inputs)
 
     def test_model_with_no_rel_pos(self):
-        config_and_inputs = self.model_tester.prepare_config_and_inputs(position_embeddings_type=None)
+        config_and_inputs = self.model_tester.prepare_config_and_inputs(
+            position_embeddings_type=None
+        )
         self.model_tester.create_and_check_model(*config_and_inputs)
 
     def test_model_with_adapter(self):
@@ -497,7 +520,9 @@ class Wav2Vec2BertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.Test
     # Ignore copy
     def test_model_with_intermediate_ffn_before_adapter(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
-        self.model_tester.create_and_check_model_with_intermediate_ffn_before_adapter(*config_and_inputs)
+        self.model_tester.create_and_check_model_with_intermediate_ffn_before_adapter(
+            *config_and_inputs
+        )
 
     def test_model_with_adapter_proj_dim(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
@@ -506,20 +531,26 @@ class Wav2Vec2BertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.Test
     @require_torch_accelerator
     @require_torch_fp16
     def test_model_float16_with_relative(self):
-        config_and_inputs = self.model_tester.prepare_config_and_inputs(position_embeddings_type="relative")
+        config_and_inputs = self.model_tester.prepare_config_and_inputs(
+            position_embeddings_type="relative"
+        )
         self.model_tester.create_and_check_model_float16(*config_and_inputs)
 
     # Ignore copy
     @require_torch_accelerator
     @require_torch_fp16
     def test_model_float16_with_relative_key(self):
-        config_and_inputs = self.model_tester.prepare_config_and_inputs(position_embeddings_type="relative_key")
+        config_and_inputs = self.model_tester.prepare_config_and_inputs(
+            position_embeddings_type="relative_key"
+        )
         self.model_tester.create_and_check_model_float16(*config_and_inputs)
 
     @require_torch_accelerator
     @require_torch_fp16
     def test_model_float16_with_rotary(self):
-        config_and_inputs = self.model_tester.prepare_config_and_inputs(position_embeddings_type="rotary")
+        config_and_inputs = self.model_tester.prepare_config_and_inputs(
+            position_embeddings_type="rotary"
+        )
         self.model_tester.create_and_check_model_float16(*config_and_inputs)
 
     def test_ctc_loss_inference(self):
@@ -582,11 +613,15 @@ class Wav2Vec2BertModelTest(ModelTesterMixin, PipelineTesterMixin, unittest.Test
         input_features = inputs_dict["input_features"]
 
         input_lengths = torch.tensor(
-            [input_features.shape[1] for _ in range(input_features.shape[0])], dtype=torch.long, device=torch_device
+            [input_features.shape[1] for _ in range(input_features.shape[0])],
+            dtype=torch.long,
+            device=torch_device,
         )
         output_lengths = model._get_feat_extract_output_lengths(input_lengths)
 
-        labels = ids_tensor((input_features.shape[0], output_lengths[0] - 2), self.model_tester.vocab_size)
+        labels = ids_tensor(
+            (input_features.shape[0], output_lengths[0] - 2), self.model_tester.vocab_size
+        )
         inputs_dict["attention_mask"] = torch.ones_like(inputs_dict["attention_mask"])
         inputs_dict["labels"] = labels
 
@@ -696,7 +731,9 @@ class Wav2Vec2BertUtilsTest(unittest.TestCase):
         mask = _compute_mask_indices((batch_size, sequence_length), mask_prob, mask_length)
         mask = torch.from_numpy(mask).to(torch_device)
 
-        self.assertListEqual(mask.sum(axis=-1).tolist(), [mask_prob * sequence_length for _ in range(batch_size)])
+        self.assertListEqual(
+            mask.sum(axis=-1).tolist(), [mask_prob * sequence_length for _ in range(batch_size)]
+        )
 
     def test_compute_mask_indices_low_prob(self):
         # with these settings num_masked_spans=0.5, which means probabilistic rounding
@@ -747,7 +784,9 @@ class Wav2Vec2BertUtilsTest(unittest.TestCase):
         mask_prob = 0.5
         mask_length = 4
 
-        attention_mask = torch.ones((batch_size, sequence_length), dtype=torch.long, device=torch_device)
+        attention_mask = torch.ones(
+            (batch_size, sequence_length), dtype=torch.long, device=torch_device
+        )
         attention_mask[:2, sequence_length // 2 :] = 0
 
         mask = _compute_mask_indices(
@@ -766,19 +805,27 @@ class Wav2Vec2BertUtilsTest(unittest.TestCase):
         mask_prob = 0.05
         mask_length = 10
 
-        attention_mask = torch.ones((batch_size, sequence_length), dtype=torch.long, device=torch_device)
+        attention_mask = torch.ones(
+            (batch_size, sequence_length), dtype=torch.long, device=torch_device
+        )
         # force one example to be heavily padded
         attention_mask[0, 5:] = 0
 
         mask = _compute_mask_indices(
-            (batch_size, sequence_length), mask_prob, mask_length, attention_mask=attention_mask, min_masks=2
+            (batch_size, sequence_length),
+            mask_prob,
+            mask_length,
+            attention_mask=attention_mask,
+            min_masks=2,
         )
 
         # make sure that non-padded examples cannot be padded
         self.assertFalse(mask[0][attention_mask[0].to(torch.bool).cpu()].any())
 
     # Ignore copy
-    @unittest.skip(reason="Kept to make #Copied from working. Test a class used for pretraining, not yet supported.")
+    @unittest.skip(
+        reason="Kept to make #Copied from working. Test a class used for pretraining, not yet supported."
+    )
     def test_compute_perplexity(self):
         pass
 
@@ -788,24 +835,30 @@ class Wav2Vec2BertUtilsTest(unittest.TestCase):
         hidden_size = 4
         num_negatives = 3
 
-        features = (torch.arange(sequence_length * hidden_size, device=torch_device) // hidden_size).view(
-            sequence_length, hidden_size
-        )  # each value in vector consists of same value
+        features = (
+            torch.arange(sequence_length * hidden_size, device=torch_device) // hidden_size
+        ).view(sequence_length, hidden_size)  # each value in vector consists of same value
         features = features[None, :].expand(batch_size, sequence_length, hidden_size).contiguous()
 
         # sample negative indices
-        sampled_negative_indices = _sample_negative_indices((batch_size, sequence_length), num_negatives, None)
+        sampled_negative_indices = _sample_negative_indices(
+            (batch_size, sequence_length), num_negatives, None
+        )
         sampled_negative_indices = torch.from_numpy(sampled_negative_indices).to(torch_device)
         negatives = features.view(-1, hidden_size)[sampled_negative_indices.long().view(-1)]
         negatives = negatives.view(batch_size, sequence_length, -1, hidden_size).permute(2, 0, 1, 3)
-        self.assertTrue(negatives.shape == (num_negatives, batch_size, sequence_length, hidden_size))
+        self.assertTrue(
+            negatives.shape == (num_negatives, batch_size, sequence_length, hidden_size)
+        )
 
         # make sure no negatively sampled vector is actually a positive one
         for negative in negatives:
             self.assertTrue(((negative - features) == 0).sum() == 0.0)
 
         # make sure that full vectors are sampled and not values of vectors => this means that `unique()` yields a single value for `hidden_size` dim
-        self.assertTrue(negatives.unique(dim=-1).shape, (num_negatives, batch_size, sequence_length, 1))
+        self.assertTrue(
+            negatives.unique(dim=-1).shape, (num_negatives, batch_size, sequence_length, 1)
+        )
 
     def test_sample_negatives_with_mask(self):
         batch_size = 2
@@ -817,9 +870,9 @@ class Wav2Vec2BertUtilsTest(unittest.TestCase):
         mask = torch.ones((batch_size, sequence_length), dtype=torch.long, device=torch_device)
         mask[-1, sequence_length // 2 :] = 0
 
-        features = (torch.arange(sequence_length * hidden_size, device=torch_device) // hidden_size).view(
-            sequence_length, hidden_size
-        )  # each value in vector consists of same value
+        features = (
+            torch.arange(sequence_length * hidden_size, device=torch_device) // hidden_size
+        ).view(sequence_length, hidden_size)  # each value in vector consists of same value
         features = features[None, :].expand(batch_size, sequence_length, hidden_size).contiguous()
 
         # replace masked feature vectors with -100 to test that those are not sampled
@@ -835,14 +888,18 @@ class Wav2Vec2BertUtilsTest(unittest.TestCase):
 
         self.assertTrue((negatives >= 0).all().item())
 
-        self.assertTrue(negatives.shape == (num_negatives, batch_size, sequence_length, hidden_size))
+        self.assertTrue(
+            negatives.shape == (num_negatives, batch_size, sequence_length, hidden_size)
+        )
 
         # make sure no negatively sampled vector is actually a positive one
         for negative in negatives:
             self.assertTrue(((negative - features) == 0).sum() == 0.0)
 
         # make sure that full vectors are sampled and not values of vectors => this means that `unique()` yields a single value for `hidden_size` dim
-        self.assertTrue(negatives.unique(dim=-1).shape, (num_negatives, batch_size, sequence_length, 1))
+        self.assertTrue(
+            negatives.unique(dim=-1).shape, (num_negatives, batch_size, sequence_length, 1)
+        )
 
 
 @require_torch
@@ -851,7 +908,9 @@ class Wav2Vec2BertModelIntegrationTest(unittest.TestCase):
     def _load_datasamples(self, num_samples):
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         # automatic decoding with librispeech
-        speech_samples = ds.sort("id").filter(lambda x: x["id"] in [f"1272-141231-000{i}" for i in range(num_samples)])
+        speech_samples = ds.sort("id").filter(
+            lambda x: x["id"] in [f"1272-141231-000{i}" for i in range(num_samples)]
+        )
         speech_samples = speech_samples[:num_samples]["audio"]
 
         return [x["array"] for x in speech_samples]
@@ -899,8 +958,12 @@ class Wav2Vec2BertModelIntegrationTest(unittest.TestCase):
         ).to(torch_device)
         # fmt: on
 
-        self.assertTrue((outputs.last_hidden_state[0, 25:35, 4:10] - expected_slice_0).abs().max() <= 1e-4)
-        self.assertTrue((outputs.last_hidden_state[1, 25:35, 4:10] - expected_slice_1).abs().max() <= 1e-4)
+        self.assertTrue(
+            (outputs.last_hidden_state[0, 25:35, 4:10] - expected_slice_0).abs().max() <= 1e-4
+        )
+        self.assertTrue(
+            (outputs.last_hidden_state[1, 25:35, 4:10] - expected_slice_1).abs().max() <= 1e-4
+        )
 
         self.assertAlmostEqual(outputs.last_hidden_state[1].mean().item(), 3.3123e-05)
         self.assertAlmostEqual(outputs.last_hidden_state[1].std().item(), 0.1545, delta=2e-5)

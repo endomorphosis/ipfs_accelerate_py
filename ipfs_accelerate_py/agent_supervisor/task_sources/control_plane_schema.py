@@ -34,14 +34,24 @@ from .duckdb_state import open_duckdb_connection
 # ---------------------------------------------------------------------------
 
 CONTROL_PLANE_SCHEMA_INTERFACE: Final = "ControlPlaneSchema@1"
-CONTROL_PLANE_SCHEMA_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/control-plane-schema@1"
-)
+CONTROL_PLANE_SCHEMA_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/control-plane-schema@1"
 CONTROL_PLANE_SCHEMA_VERSION: Final[int] = 1
 CONTROL_PLANE_SCHEMA_REVISION: Final[int] = 1
 CONTROL_PLANE_MIGRATION_ID: Final = "0001_control_plane"
 CONTROL_PLANE_MIGRATION_VERSION: Final[int] = 1
 CONTROL_PLANE_SQL_FILENAME: Final = "0001_control_plane.sql"
+
+# Additive extension identity.  The ControlPlaneSchema@1 constants above are
+# intentionally immutable: the datasets-authoritative operational profile is
+# checksum-derived from 0001 and must not silently acquire federation tables.
+CAUSAL_EVENT_FEDERATION_SCHEMA_EXTENSION_INTERFACE: Final = "CausalEventFederationSchemaExtension@1"
+CAUSAL_EVENT_FEDERATION_SCHEMA_EXTENSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/causal-event-federation-schema-extension@1"
+)
+CAUSAL_EVENT_FEDERATION_SCHEMA_REVISION: Final[int] = 2
+CAUSAL_EVENT_FEDERATION_MIGRATION_ID: Final = "0002_causal_event_federation_core"
+CAUSAL_EVENT_FEDERATION_MIGRATION_VERSION: Final[int] = 2
+CAUSAL_EVENT_FEDERATION_SQL_FILENAME: Final = "0002_causal_event_federation_core.sql"
 
 # A constrained schema profile for deployments where ipfs_datasets_py is the
 # sole semantic-truth authority.  This is deliberately a profile of the
@@ -226,6 +236,270 @@ DOMAIN_TABLES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
     {key: tuple(value) for key, value in _DOMAIN_TABLES.items()}
 )
 
+# Migration-2 tables are a separately versioned extension inventory.  Keeping
+# them out of DOMAIN_TABLES is deliberate: ControlPlaneSchema@1 and the
+# datasets-authoritative 0001-derived profile retain their exact historical
+# meaning, while full control-plane installation advances to migration 2.
+CAUSAL_EVENT_FEDERATION_TABLES: Final[tuple[str, ...]] = (
+    "domain_event_causal_parents",
+    "domain_event_changed_facts",
+    "federations",
+    "federation_revisions",
+    "federation_policies",
+    "federation_plans",
+    "federation_receipts",
+    "programs",
+    "program_revisions",
+    "subgoals",
+    "plan_branches",
+    "task_conflicts",
+    "task_resolutions",
+    "federation_task_bindings",
+    "process_births",
+    "supervisor_runtime_leases",
+    "repository_trees",
+    "fencing_epochs",
+    "task_checkpoints",
+    "provider_reservations",
+    "supervisor_definitions",
+    "supervisor_assignments",
+    "supervisor_capabilities",
+    "supervisor_checkpoints",
+    "supervisor_receipts",
+    "subagent_definitions",
+    "subagent_instances",
+    "subagent_assignments",
+    "subagent_capabilities",
+    "subagent_execution_slots",
+    "subagent_slot_ledger",
+    "subagent_outcomes",
+    "supervisor_shards",
+    "shard_boundaries",
+    "shard_assignments",
+    "shard_revisions",
+    "shard_rebalance_plans",
+    "shard_rebalance_receipts",
+    "federation_budgets",
+    "supervisor_budgets",
+    "agent_budgets",
+    "token_budgets",
+    "resource_budgets",
+    "budget_ledger",
+    "federation_admission_budget_reservations",
+    "federation_admission_budget_dimensions",
+    "stream_sequence_heads",
+    "global_sequence_head",
+    "transactional_outbox",
+    "outbox_routing_dispositions",
+    "outbox_routing_disposition_events",
+    "event_subscriptions",
+    "event_subscription_selectors",
+    "consumer_cursors",
+    "supervisor_inbox",
+    "delivery_attempts",
+    "dead_letters",
+    "event_delivery_queue",
+    "event_coalescing",
+    "event_coalescing_coverage",
+    "event_coalescing_inputs",
+    "event_acknowledgements",
+    "causal_nodes",
+    "causal_edges",
+    "causal_evidence",
+    "causal_abstraction_maps",
+    "causal_abstraction_validations",
+    "causal_intervention_tests",
+    "causal_slices",
+    "causal_frontiers",
+    "causal_frontier_members",
+    "causal_invalidations",
+    "semantic_root_references",
+    "semantic_capsule_references",
+    "semantic_effect_references",
+    "semantic_relationship_references",
+    "semantic_capsule_dependencies",
+    "semantic_contract_references",
+    "environment_binding_references",
+    "world_snapshot_references",
+    "proof_reference_projections",
+    "proof_units",
+    "proof_receipts",
+    "proof_cache_entries",
+    "proof_seals",
+    "test_reference_projections",
+    "test_selections",
+    "test_attempts",
+    "test_receipts",
+    "validation_plans",
+    "retrieval_indexes",
+    "retrieval_index_partitions",
+    "retrieval_receipts",
+    "retrieval_nominations",
+    "documents",
+    "document_chunks",
+    "bm25_terms",
+    "bm25_postings",
+    "vectors",
+    "vector_metadata",
+    "knowledge_graph_nodes",
+    "knowledge_graph_edges",
+    "federation_commands",
+    "federation_authorization_decisions",
+    "federation_policy_decisions",
+    "federation_confirmation_receipts",
+    "federation_effect_reservations",
+    "federation_effect_observations",
+    "federation_audit_receipts",
+)
+
+CAUSAL_EVENT_FEDERATION_REFERENCE_TABLES: Final[tuple[str, ...]] = (
+    "semantic_root_references",
+    "semantic_capsule_references",
+    "semantic_effect_references",
+    "semantic_relationship_references",
+    "semantic_capsule_dependencies",
+    "semantic_contract_references",
+    "environment_binding_references",
+    "world_snapshot_references",
+    "proof_reference_projections",
+    "proof_units",
+    "proof_receipts",
+    "proof_cache_entries",
+    "proof_seals",
+    "test_reference_projections",
+    "test_selections",
+    "test_receipts",
+    "validation_plans",
+    "retrieval_indexes",
+    "retrieval_index_partitions",
+    "retrieval_receipts",
+    "retrieval_nominations",
+    "documents",
+    "document_chunks",
+    "vector_metadata",
+    "knowledge_graph_nodes",
+    "knowledge_graph_edges",
+)
+
+# Closed audit map for every conceptual representation required by the CASF
+# Section 9 schema contract.  An alias names the existing canonical normalized
+# relation; it does not create a second authority.  Semantic entries point only
+# to source-root-bound references/projections owned by ipfs_datasets_py.
+CAUSAL_EVENT_FEDERATION_SECTION_9_RELATIONS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "meta.store_generations": "store_generations",
+        "meta.schema_migrations": "schema_migrations",
+        "meta.federations": "federations",
+        "meta.supervisors": "supervisor_instances",
+        "meta.subagents": "subagent_instances",
+        "meta.sessions": "client_sessions",
+        "meta.process_births": "process_births",
+        "meta.repository_identities": "repositories",
+        "meta.tree_identities": "repository_trees",
+        "meta.policy_identities": "federation_policies",
+        "meta.capability_snapshots": "capability_snapshots",
+        "intent.programs": "programs",
+        "intent.program_revisions": "program_revisions",
+        "intent.objectives": "objectives",
+        "intent.objective_revisions": "objective_revisions",
+        "intent.goals": "goals",
+        "intent.subgoals": "subgoals",
+        "intent.goal_edges": "goal_edges",
+        "intent.formal_plans": "plans",
+        "intent.plan_revisions": "plan_revisions",
+        "intent.plan_branches": "plan_branches",
+        "intent.acceptance_criteria": "task_acceptance",
+        "scheduling.tasks": "tasks",
+        "scheduling.task_revisions": "task_revisions",
+        "scheduling.task_dependencies": "task_dependencies",
+        "scheduling.task_conflicts": "task_conflicts",
+        "scheduling.task_claims": "task_claims",
+        "scheduling.task_resolutions": "task_resolutions",
+        "scheduling.leases": "leases",
+        "scheduling.fencing_epochs": "fencing_epochs",
+        "scheduling.attempts": "task_attempts",
+        "scheduling.checkpoints": "task_checkpoints",
+        "scheduling.resource_reservations": "budget_reservations",
+        "scheduling.federation_admission_reservations": (
+            "federation_admission_budget_reservations"
+        ),
+        "scheduling.federation_admission_reservation_dimensions": (
+            "federation_admission_budget_dimensions"
+        ),
+        "scheduling.provider_reservations": "provider_reservations",
+        "scheduling.merge_queue_entries": "merge_queue_entries",
+        "scheduling.federation_task_scope": "federation_task_bindings",
+        "semantic.repositories": "repositories",
+        "semantic.trees": "repository_trees",
+        "semantic.files": "source_files",
+        "semantic.symbols": "symbols",
+        "semantic.ast_nodes": "ast_nodes",
+        "semantic.ast_edges": "ast_edges",
+        "semantic.imports": "imports",
+        "semantic.calls": "calls",
+        "semantic.effects": "semantic_effect_references",
+        "semantic.relationships": "semantic_relationship_references",
+        "semantic.symbol_versions": "symbol_versions",
+        "semantic.capsules": "semantic_capsule_references",
+        "semantic.capsule_dependencies": "semantic_capsule_dependencies",
+        "semantic.contracts": "semantic_contract_references",
+        "semantic.proof_obligations": "proof_obligations",
+        "semantic.environment_bindings": "environment_binding_references",
+        "semantic.semantic_roots": "semantic_root_references",
+        "semantic.world_snapshots": "world_snapshot_references",
+        "proof.proof_units": "proof_units",
+        "proof.proof_obligations": "proof_obligations",
+        "proof.proof_attempts": "proof_attempts",
+        "proof.proof_receipts": "proof_receipts",
+        "proof.proof_cache_entries": "proof_cache_entries",
+        "proof.proof_seals": "proof_seals",
+        "proof.test_selections": "test_selections",
+        "proof.test_attempts": "test_attempts",
+        "proof.test_receipts": "test_receipts",
+        "proof.validation_plans": "validation_plans",
+        "proof.validation_results": "validation_results",
+        "proof.counterexamples": "counterexamples",
+        "proof.adversarial_findings": "findings",
+        "retrieval.documents": "documents",
+        "retrieval.document_chunks": "document_chunks",
+        "retrieval.bm25_terms": "bm25_terms",
+        "retrieval.bm25_postings": "bm25_postings",
+        "retrieval.vectors": "vectors",
+        "retrieval.vector_metadata": "vector_metadata",
+        "retrieval.knowledge_graph_nodes": "knowledge_graph_nodes",
+        "retrieval.knowledge_graph_edges": "knowledge_graph_edges",
+        "retrieval.retrieval_receipts": "retrieval_receipts",
+        "retrieval.index_roots": "retrieval_indexes",
+        "retrieval.index_revisions": "retrieval_indexes",
+        "causal.nodes": "causal_nodes",
+        "causal.edges": "causal_edges",
+        "causal.evidence": "causal_evidence",
+        "causal.abstraction_maps": "causal_abstraction_maps",
+        "causal.abstraction_validations": "causal_abstraction_validations",
+        "causal.intervention_tests": "causal_intervention_tests",
+        "causal.slices": "causal_slices",
+        "causal.frontiers": "causal_frontiers",
+        "causal.invalidations": "causal_invalidations",
+        "events.domain_events": "domain_events",
+        "events.transactional_outbox": "transactional_outbox",
+        "events.supervisor_inbox": "supervisor_inbox",
+        "events.subscriptions": "event_subscriptions",
+        "events.consumer_cursors": "consumer_cursors",
+        "events.dead_letters": "dead_letters",
+        "events.delivery_attempts": "delivery_attempts",
+        "events.coalescing": "event_coalescing",
+        "events.acknowledgements": "event_acknowledgements",
+        "control.commands": "federation_commands",
+        "control.idempotency_records": "idempotency_records",
+        "control.authorization_decisions": "federation_authorization_decisions",
+        "control.policy_decisions": "federation_policy_decisions",
+        "control.confirmation_receipts": "federation_confirmation_receipts",
+        "control.effect_reservations": "federation_effect_reservations",
+        "control.effect_observations": "federation_effect_observations",
+        "control.audit_receipts": "federation_audit_receipts",
+    }
+)
+
 # These relations are owned by ipfs_datasets_py semantic truth and must never
 # be created in a datasets-authoritative accelerator control plane.  Keeping a
 # closed, exported deny-list makes both installation and external audit fail
@@ -353,6 +627,302 @@ JOIN_CRITICAL_IDENTITIES: Final[tuple[tuple[str, str], ...]] = (
     ("artifacts", "cid"),
 )
 
+# Join-critical identities introduced by migration 2.  These are verified
+# separately so the ControlPlaneSchema@1 profile remains stable.
+CAUSAL_EVENT_FEDERATION_JOIN_CRITICAL_IDENTITIES: Final[tuple[tuple[str, str], ...]] = (
+    ("supervisor_instances", "tenant_id"),
+    ("supervisor_instances", "federation_id"),
+    ("supervisor_instances", "parent_supervisor_id"),
+    ("supervisor_instances", "fencing_epoch"),
+    ("idempotency_records", "tenant_id"),
+    ("idempotency_records", "federation_id"),
+    ("budget_reservations", "federation_id"),
+    ("budget_reservations", "budget_id"),
+    ("budget_reservations", "parent_reservation_id"),
+    ("domain_events", "event_cid"),
+    ("domain_events", "tenant_id"),
+    ("domain_events", "federation_id"),
+    ("domain_events", "supervisor_id"),
+    ("domain_events", "repository_id"),
+    ("domain_events", "tree_id"),
+    ("domain_events", "goal_id"),
+    ("domain_events", "subgoal_id"),
+    ("domain_events", "symbol_id"),
+    ("domain_events", "contract_id"),
+    ("domain_events", "proof_obligation_id"),
+    ("domain_events", "correlation_id"),
+    ("domain_events", "causation_id"),
+    ("domain_event_causal_parents", "event_id"),
+    ("domain_event_causal_parents", "parent_event_id"),
+    ("domain_event_changed_facts", "event_id"),
+    ("domain_event_changed_facts", "fact_ref"),
+    ("federations", "federation_id"),
+    ("federations", "tenant_id"),
+    ("federations", "program_id"),
+    ("federations", "objective_ref"),
+    ("federations", "policy_id"),
+    ("federation_revisions", "federation_id"),
+    ("federation_policies", "policy_id"),
+    ("federation_policies", "federation_id"),
+    ("federation_plans", "federation_plan_id"),
+    ("federation_plans", "federation_id"),
+    ("federation_receipts", "federation_receipt_id"),
+    ("federation_receipts", "federation_id"),
+    ("supervisor_definitions", "supervisor_definition_id"),
+    ("supervisor_definitions", "federation_id"),
+    ("supervisor_assignments", "assignment_id"),
+    ("supervisor_assignments", "federation_id"),
+    ("supervisor_assignments", "supervisor_id"),
+    ("supervisor_assignments", "repository_id"),
+    ("supervisor_assignments", "tree_id"),
+    ("supervisor_capabilities", "capability_record_id"),
+    ("supervisor_capabilities", "supervisor_id"),
+    ("supervisor_checkpoints", "checkpoint_id"),
+    ("supervisor_checkpoints", "supervisor_id"),
+    ("supervisor_receipts", "supervisor_receipt_id"),
+    ("supervisor_receipts", "supervisor_id"),
+    ("subagent_definitions", "subagent_definition_id"),
+    ("subagent_definitions", "federation_id"),
+    ("subagent_instances", "subagent_id"),
+    ("subagent_instances", "supervisor_id"),
+    ("subagent_assignments", "subagent_assignment_id"),
+    ("subagent_assignments", "subagent_id"),
+    ("subagent_assignments", "task_cid"),
+    ("subagent_capabilities", "subagent_capability_id"),
+    ("subagent_capabilities", "subagent_id"),
+    ("subagent_execution_slots", "tenant_id"),
+    ("subagent_execution_slots", "federation_id"),
+    ("subagent_execution_slots", "slot_number"),
+    ("subagent_execution_slots", "subagent_id"),
+    ("subagent_slot_ledger", "slot_ledger_id"),
+    ("subagent_slot_ledger", "federation_id"),
+    ("subagent_slot_ledger", "subagent_id"),
+    ("subagent_slot_ledger", "event_id"),
+    ("subagent_outcomes", "outcome_id"),
+    ("subagent_outcomes", "subagent_id"),
+    ("subagent_outcomes", "task_id"),
+    ("supervisor_shards", "shard_id"),
+    ("supervisor_shards", "federation_id"),
+    ("shard_boundaries", "shard_boundary_id"),
+    ("shard_boundaries", "shard_id"),
+    ("shard_assignments", "shard_assignment_id"),
+    ("shard_assignments", "shard_id"),
+    ("shard_assignments", "supervisor_id"),
+    ("shard_revisions", "shard_id"),
+    ("shard_rebalance_plans", "rebalance_plan_id"),
+    ("shard_rebalance_plans", "shard_id"),
+    ("shard_rebalance_receipts", "rebalance_receipt_id"),
+    ("shard_rebalance_receipts", "rebalance_plan_id"),
+    ("federation_budgets", "federation_budget_id"),
+    ("federation_budgets", "federation_id"),
+    ("supervisor_budgets", "supervisor_budget_id"),
+    ("supervisor_budgets", "federation_budget_id"),
+    ("agent_budgets", "agent_budget_id"),
+    ("agent_budgets", "supervisor_budget_id"),
+    ("agent_budgets", "subagent_id"),
+    ("token_budgets", "token_budget_id"),
+    ("token_budgets", "parent_budget_id"),
+    ("resource_budgets", "resource_budget_id"),
+    ("resource_budgets", "parent_budget_id"),
+    ("budget_ledger", "budget_ledger_entry_id"),
+    ("budget_ledger", "budget_id"),
+    ("budget_ledger", "event_id"),
+    ("federation_admission_budget_reservations", "reservation_id"),
+    ("federation_admission_budget_reservations", "tenant_id"),
+    ("federation_admission_budget_reservations", "federation_id"),
+    ("federation_admission_budget_reservations", "request_cid"),
+    ("federation_admission_budget_reservations", "idempotency_key"),
+    ("federation_admission_budget_reservations", "policy_id"),
+    ("federation_admission_budget_reservations", "resource_budget_id"),
+    ("federation_admission_budget_reservations", "token_budget_id"),
+    ("federation_admission_budget_dimensions", "reservation_id"),
+    ("federation_admission_budget_dimensions", "tenant_id"),
+    ("federation_admission_budget_dimensions", "federation_id"),
+    ("federation_admission_budget_dimensions", "dimension_name"),
+    ("stream_sequence_heads", "stream_id"),
+    ("global_sequence_head", "head_id"),
+    ("transactional_outbox", "outbox_id"),
+    ("transactional_outbox", "event_id"),
+    ("transactional_outbox", "federation_id"),
+    ("outbox_routing_dispositions", "disposition_id"),
+    ("outbox_routing_dispositions", "federation_id"),
+    ("outbox_routing_dispositions", "route_batch_id"),
+    ("outbox_routing_disposition_events", "disposition_id"),
+    ("outbox_routing_disposition_events", "event_id"),
+    ("event_subscriptions", "subscription_id"),
+    ("event_subscriptions", "consumer_id"),
+    ("event_subscription_selectors", "selector_id"),
+    ("event_subscription_selectors", "subscription_id"),
+    ("consumer_cursors", "consumer_id"),
+    ("consumer_cursors", "subscription_id"),
+    ("supervisor_inbox", "inbox_entry_id"),
+    ("supervisor_inbox", "supervisor_id"),
+    ("supervisor_inbox", "event_id"),
+    ("delivery_attempts", "attempt_id"),
+    ("delivery_attempts", "event_id"),
+    ("delivery_attempts", "subscription_id"),
+    ("delivery_attempts", "subscription_revision"),
+    ("delivery_attempts", "consumer_id"),
+    ("dead_letters", "dead_letter_id"),
+    ("dead_letters", "event_id"),
+    ("event_delivery_queue", "delivery_id"),
+    ("event_delivery_queue", "subscription_id"),
+    ("event_delivery_queue", "consumer_id"),
+    ("event_delivery_queue", "representative_event_id"),
+    ("event_delivery_queue", "outbox_id"),
+    ("event_coalescing", "coalescing_id"),
+    ("event_coalescing", "current_event_id"),
+    ("event_coalescing_coverage", "coverage_id"),
+    ("event_coalescing_coverage", "decision_id"),
+    ("event_coalescing_coverage", "representative_event_id"),
+    ("event_coalescing_inputs", "coverage_id"),
+    ("event_coalescing_inputs", "event_id"),
+    ("event_acknowledgements", "acknowledgement_id"),
+    ("event_acknowledgements", "event_id"),
+    ("causal_nodes", "causal_node_id"),
+    ("causal_nodes", "subject_ref"),
+    ("causal_edges", "causal_edge_id"),
+    ("causal_edges", "source_node_id"),
+    ("causal_edges", "target_node_id"),
+    ("causal_evidence", "causal_evidence_id"),
+    ("causal_evidence", "causal_edge_id"),
+    ("causal_abstraction_maps", "abstraction_map_id"),
+    ("causal_abstraction_validations", "abstraction_validation_id"),
+    ("causal_abstraction_validations", "abstraction_map_id"),
+    ("causal_intervention_tests", "intervention_test_id"),
+    ("causal_intervention_tests", "abstraction_map_id"),
+    ("causal_slices", "causal_slice_id"),
+    ("causal_slices", "root_event_id"),
+    ("causal_frontiers", "causal_frontier_id"),
+    ("causal_frontiers", "event_id"),
+    ("causal_frontier_members", "causal_frontier_id"),
+    ("causal_frontier_members", "subject_ref"),
+    ("causal_invalidations", "causal_invalidation_id"),
+    ("causal_invalidations", "event_id"),
+    ("semantic_root_references", "semantic_root_reference_id"),
+    ("semantic_root_references", "repository_id"),
+    ("semantic_root_references", "tree_id"),
+    ("semantic_capsule_references", "semantic_capsule_reference_id"),
+    ("semantic_capsule_references", "subject_ref"),
+    ("world_snapshot_references", "world_snapshot_reference_id"),
+    ("world_snapshot_references", "federation_id"),
+    ("proof_reference_projections", "proof_reference_id"),
+    ("proof_reference_projections", "obligation_ref"),
+    ("test_reference_projections", "test_reference_id"),
+    ("test_reference_projections", "test_ref"),
+    ("retrieval_indexes", "retrieval_index_id"),
+    ("retrieval_indexes", "repository_id"),
+    ("retrieval_index_partitions", "retrieval_partition_id"),
+    ("retrieval_index_partitions", "retrieval_index_id"),
+    ("retrieval_receipts", "retrieval_receipt_id"),
+    ("retrieval_receipts", "retrieval_index_id"),
+    ("retrieval_nominations", "retrieval_nomination_id"),
+    ("retrieval_nominations", "retrieval_receipt_id"),
+    ("federation_commands", "federation_command_id"),
+    ("federation_commands", "federation_id"),
+    ("federation_authorization_decisions", "authorization_decision_id"),
+    ("federation_authorization_decisions", "federation_id"),
+    ("federation_policy_decisions", "policy_decision_id"),
+    ("federation_policy_decisions", "policy_id"),
+    ("federation_confirmation_receipts", "confirmation_receipt_id"),
+    ("federation_confirmation_receipts", "federation_command_id"),
+    ("federation_effect_reservations", "effect_reservation_id"),
+    ("federation_effect_reservations", "task_cid"),
+    ("federation_effect_observations", "effect_observation_id"),
+    ("federation_effect_observations", "effect_reservation_id"),
+    ("federation_audit_receipts", "audit_receipt_id"),
+    ("federation_audit_receipts", "subject_ref"),
+    ("programs", "program_id"),
+    ("programs", "tenant_id"),
+    ("programs", "objective_ref"),
+    ("program_revisions", "program_revision_id"),
+    ("program_revisions", "program_id"),
+    ("subgoals", "subgoal_id"),
+    ("subgoals", "federation_id"),
+    ("subgoals", "goal_cid"),
+    ("plan_branches", "plan_branch_id"),
+    ("plan_branches", "plan_cid"),
+    ("plan_branches", "plan_revision_id"),
+    ("task_conflicts", "task_conflict_id"),
+    ("task_conflicts", "left_task_cid"),
+    ("task_conflicts", "right_task_cid"),
+    ("task_resolutions", "task_resolution_id"),
+    ("task_resolutions", "task_cid"),
+    ("federation_task_bindings", "federation_task_binding_id"),
+    ("federation_task_bindings", "tenant_id"),
+    ("federation_task_bindings", "federation_id"),
+    ("federation_task_bindings", "task_cid"),
+    ("federation_task_bindings", "repository_id"),
+    ("federation_task_bindings", "tree_id"),
+    ("process_births", "process_birth_id"),
+    ("process_births", "federation_id"),
+    ("supervisor_runtime_leases", "runtime_lease_id"),
+    ("supervisor_runtime_leases", "federation_id"),
+    ("supervisor_runtime_leases", "supervisor_id"),
+    ("supervisor_runtime_leases", "lease_id"),
+    ("supervisor_runtime_leases", "process_birth_id"),
+    ("repository_trees", "repository_tree_id"),
+    ("repository_trees", "repository_id"),
+    ("repository_trees", "tree_id"),
+    ("fencing_epochs", "fencing_epoch_id"),
+    ("fencing_epochs", "subject_id"),
+    ("fencing_epochs", "lease_id"),
+    ("task_checkpoints", "task_checkpoint_id"),
+    ("task_checkpoints", "task_cid"),
+    ("task_checkpoints", "attempt_id"),
+    ("provider_reservations", "provider_reservation_id"),
+    ("provider_reservations", "task_cid"),
+    ("provider_reservations", "provider_id"),
+    ("semantic_effect_references", "semantic_effect_id"),
+    ("semantic_effect_references", "symbol_ref"),
+    ("semantic_relationship_references", "semantic_relationship_id"),
+    ("semantic_relationship_references", "source_ref"),
+    ("semantic_relationship_references", "target_ref"),
+    ("semantic_capsule_dependencies", "capsule_dependency_id"),
+    ("semantic_capsule_dependencies", "capsule_ref"),
+    ("semantic_capsule_dependencies", "dependency_capsule_ref"),
+    ("semantic_contract_references", "semantic_contract_id"),
+    ("semantic_contract_references", "contract_ref"),
+    ("environment_binding_references", "environment_binding_id"),
+    ("environment_binding_references", "environment_ref"),
+    ("proof_units", "proof_unit_id"),
+    ("proof_units", "obligation_ref"),
+    ("proof_receipts", "proof_receipt_id"),
+    ("proof_receipts", "proof_unit_id"),
+    ("proof_cache_entries", "proof_cache_entry_id"),
+    ("proof_cache_entries", "obligation_ref"),
+    ("proof_seals", "proof_seal_id"),
+    ("proof_seals", "proof_receipt_id"),
+    ("test_selections", "test_selection_id"),
+    ("test_selections", "task_cid"),
+    ("test_attempts", "test_attempt_id"),
+    ("test_attempts", "test_selection_id"),
+    ("test_receipts", "test_receipt_id"),
+    ("test_receipts", "test_attempt_id"),
+    ("validation_plans", "validation_plan_id"),
+    ("validation_plans", "task_cid"),
+    ("documents", "document_id"),
+    ("documents", "repository_id"),
+    ("documents", "tree_id"),
+    ("document_chunks", "document_chunk_id"),
+    ("document_chunks", "document_id"),
+    ("bm25_terms", "bm25_term_id"),
+    ("bm25_terms", "retrieval_index_id"),
+    ("bm25_postings", "bm25_posting_id"),
+    ("bm25_postings", "bm25_term_id"),
+    ("bm25_postings", "document_chunk_id"),
+    ("vectors", "vector_id"),
+    ("vectors", "retrieval_index_id"),
+    ("vectors", "document_chunk_id"),
+    ("vector_metadata", "vector_metadata_id"),
+    ("vector_metadata", "vector_id"),
+    ("knowledge_graph_nodes", "knowledge_graph_node_id"),
+    ("knowledge_graph_nodes", "subject_ref"),
+    ("knowledge_graph_edges", "knowledge_graph_edge_id"),
+    ("knowledge_graph_edges", "source_node_id"),
+    ("knowledge_graph_edges", "target_node_id"),
+)
+
 _OPAQUE_JSON_COLUMN_RE: Final = re.compile(
     r"(?:_json|payload_json|body_json|identity_json|extension_json|"
     r"effect_json|policy_json|argv_json|provenance_json)$",
@@ -428,14 +998,10 @@ class ControlPlaneSchema:
         if int(self.schema_revision) < 1:
             raise ControlPlaneSchemaError("schema_revision must be >= 1")
         if tuple(self.domains) != SCHEMA_DOMAINS:
-            raise ControlPlaneSchemaError(
-                "domains must match the closed SCHEMA_DOMAINS vocabulary"
-            )
+            raise ControlPlaneSchemaError("domains must match the closed SCHEMA_DOMAINS vocabulary")
         missing = [name for name in SCHEMA_DOMAINS if name not in self.domain_tables]
         if missing:
-            raise ControlPlaneSchemaError(
-                f"domain_tables missing domains: {missing}"
-            )
+            raise ControlPlaneSchemaError(f"domain_tables missing domains: {missing}")
 
     @property
     def all_domain_tables(self) -> tuple[str, ...]:
@@ -454,9 +1020,7 @@ class ControlPlaneSchema:
     def sql_text(self) -> str:
         path = self.sql_path()
         if not path.is_file():
-            raise ControlPlaneSchemaInstallError(
-                f"control-plane schema SQL is missing: {path}"
-            )
+            raise ControlPlaneSchemaInstallError(f"control-plane schema SQL is missing: {path}")
         return path.read_text(encoding="utf-8")
 
     def to_dict(self) -> dict[str, Any]:
@@ -483,10 +1047,77 @@ class ControlPlaneSchema:
         }
 
 
+@dataclass(frozen=True)
+class CausalEventFederationSchemaExtension:
+    """Additive migration-2 inventory layered on ControlPlaneSchema@1."""
+
+    INTERFACE: ClassVar[str] = CAUSAL_EVENT_FEDERATION_SCHEMA_EXTENSION_INTERFACE
+    SCHEMA: ClassVar[str] = CAUSAL_EVENT_FEDERATION_SCHEMA_EXTENSION_SCHEMA
+
+    schema_revision: int = CAUSAL_EVENT_FEDERATION_SCHEMA_REVISION
+    migration_id: str = CAUSAL_EVENT_FEDERATION_MIGRATION_ID
+    migration_version: int = CAUSAL_EVENT_FEDERATION_MIGRATION_VERSION
+    tables: tuple[str, ...] = CAUSAL_EVENT_FEDERATION_TABLES
+    join_critical_identities: tuple[tuple[str, str], ...] = (
+        CAUSAL_EVENT_FEDERATION_JOIN_CRITICAL_IDENTITIES
+    )
+    reference_tables: tuple[str, ...] = CAUSAL_EVENT_FEDERATION_REFERENCE_TABLES
+    section_9_relations: Mapping[str, str] = CAUSAL_EVENT_FEDERATION_SECTION_9_RELATIONS
+
+    def __post_init__(self) -> None:
+        if self.schema_revision != CAUSAL_EVENT_FEDERATION_SCHEMA_REVISION:
+            raise ControlPlaneSchemaError("unsupported causal-event federation schema revision")
+        if self.migration_version != CAUSAL_EVENT_FEDERATION_MIGRATION_VERSION:
+            raise ControlPlaneSchemaError("unsupported causal-event federation migration version")
+        if not self.tables or len(set(self.tables)) != len(self.tables):
+            raise ControlPlaneSchemaError(
+                "causal-event federation table inventory is empty or duplicated"
+            )
+        if not self.section_9_relations or any(
+            not concept or not relation for concept, relation in self.section_9_relations.items()
+        ):
+            raise ControlPlaneSchemaError("Section 9 relation map is empty or invalid")
+
+    def sql_path(self) -> Path:
+        return Path(__file__).resolve().parent / "sql" / CAUSAL_EVENT_FEDERATION_SQL_FILENAME
+
+    def sql_text(self) -> str:
+        path = self.sql_path()
+        if not path.is_file():
+            raise ControlPlaneSchemaInstallError(
+                f"causal-event federation migration SQL is missing: {path}"
+            )
+        return path.read_text(encoding="utf-8")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "interface": self.INTERFACE,
+            "schema_revision": self.schema_revision,
+            "migration_id": self.migration_id,
+            "migration_version": self.migration_version,
+            "tables": list(self.tables),
+            "join_critical_identities": [
+                {"table": table, "column": column}
+                for table, column in self.join_critical_identities
+            ],
+            "reference_tables": list(self.reference_tables),
+            "section_9_relations": dict(sorted(self.section_9_relations.items())),
+            "sql_filename": CAUSAL_EVENT_FEDERATION_SQL_FILENAME,
+            "base_interface": CONTROL_PLANE_SCHEMA_INTERFACE,
+        }
+
+
 def default_control_plane_schema() -> ControlPlaneSchema:
     """Return the package ControlPlaneSchema@1 inventory."""
 
     return ControlPlaneSchema()
+
+
+def default_causal_event_federation_schema_extension() -> CausalEventFederationSchemaExtension:
+    """Return the additive federation schema inventory without changing @1."""
+
+    return CausalEventFederationSchemaExtension()
 
 
 def default_dependency_profile() -> DuckDBQuackDependencyProfile:
@@ -502,7 +1133,7 @@ def package_sql_directory() -> Path:
 def load_control_plane_catalog(
     sql_directory: Path | str | None = None,
 ) -> MigrationCatalog:
-    """Load the default migration catalog (includes 0001_control_plane)."""
+    """Load the contiguous package control-plane migration catalog."""
 
     return load_default_catalog(sql_directory or package_sql_directory())
 
@@ -785,14 +1416,22 @@ def install_control_plane_schema(
     resolved_catalog = catalog or load_control_plane_catalog()
     if resolved_catalog.latest_version < CONTROL_PLANE_MIGRATION_VERSION:
         raise ControlPlaneSchemaInstallError(
-            "control-plane catalog is missing migration "
-            f"{CONTROL_PLANE_MIGRATION_ID}"
+            f"control-plane catalog is missing migration {CONTROL_PLANE_MIGRATION_ID}"
         )
     migration = resolved_catalog.get(CONTROL_PLANE_MIGRATION_VERSION)
     if migration.migration_id != CONTROL_PLANE_MIGRATION_ID:
         raise ControlPlaneSchemaInstallError(
-            f"expected migration_id {CONTROL_PLANE_MIGRATION_ID}, "
-            f"got {migration.migration_id}"
+            f"expected migration_id {CONTROL_PLANE_MIGRATION_ID}, got {migration.migration_id}"
+        )
+    if resolved_catalog.latest_version < CAUSAL_EVENT_FEDERATION_MIGRATION_VERSION:
+        raise ControlPlaneSchemaInstallError(
+            f"control-plane catalog is missing migration {CAUSAL_EVENT_FEDERATION_MIGRATION_ID}"
+        )
+    federation_migration = resolved_catalog.get(CAUSAL_EVENT_FEDERATION_MIGRATION_VERSION)
+    if federation_migration.migration_id != CAUSAL_EVENT_FEDERATION_MIGRATION_ID:
+        raise ControlPlaneSchemaInstallError(
+            f"expected migration_id {CAUSAL_EVENT_FEDERATION_MIGRATION_ID}, "
+            f"got {federation_migration.migration_id}"
         )
     runner = ControlPlaneMigrationRunner.for_database(
         database_path,
@@ -1086,9 +1725,7 @@ def verify_datasets_authoritative_operational_schema(
             else root_contract[0]
         )
         description = str(
-            root_contract["description"]
-            if isinstance(root_contract, Mapping)
-            else root_contract[1]
+            root_contract["description"] if isinstance(root_contract, Mapping) else root_contract[1]
         )
         if payload_schema != DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA:
             raise ControlPlaneSchemaInstallError(
@@ -1100,9 +1737,7 @@ def verify_datasets_authoritative_operational_schema(
                 "semantic/proof authority boundary"
             )
         report["authority_contract"] = {
-            "contract_id": (
-                "contract:DatasetsAuthoritativeOperationalControlPlane@1"
-            ),
+            "contract_id": ("contract:DatasetsAuthoritativeOperationalControlPlane@1"),
             "payload_schema": payload_schema,
             "operational_authority": "ipfs_accelerate_py",
             "semantic_and_proof_authority": "ipfs_datasets_py",
@@ -1164,21 +1799,15 @@ def verify_installed_schema(
     with open_duckdb_connection(database_path) as connection:
         for table in inventory.bookkeeping_tables:
             if not _relation_exists(connection, table):
-                raise ControlPlaneSchemaInstallError(
-                    f"bookkeeping table missing: {table}"
-                )
+                raise ControlPlaneSchemaInstallError(f"bookkeeping table missing: {table}")
             report["tables_ok"].append(table)
         for table in inventory.all_domain_tables:
             if not _relation_exists(connection, table):
-                raise ControlPlaneSchemaInstallError(
-                    f"domain table missing: {table}"
-                )
+                raise ControlPlaneSchemaInstallError(f"domain table missing: {table}")
             report["tables_ok"].append(table)
         for view in inventory.diagnostic_views:
             if not _relation_exists(connection, view):
-                raise ControlPlaneSchemaInstallError(
-                    f"diagnostic view missing: {view}"
-                )
+                raise ControlPlaneSchemaInstallError(f"diagnostic view missing: {view}")
             report["views_ok"].append(view)
 
         for table, column in inventory.join_critical_identities:
@@ -1189,8 +1818,7 @@ def verify_installed_schema(
                 )
             if _OPAQUE_JSON_COLUMN_RE.search(column):
                 raise ControlPlaneSchemaIdentityError(
-                    f"join-critical identity {table}.{column} must not be "
-                    "an opaque JSON column"
+                    f"join-critical identity {table}.{column} must not be an opaque JSON column"
                 )
             report["join_critical_ok"].append(f"{table}.{column}")
 
@@ -1223,10 +1851,140 @@ def verify_installed_schema(
 
         # task_cid must be the lease primary key surface (unique identity).
         if "task_cid" not in lease_columns:
-            raise ControlPlaneSchemaCompatibilityError(
-                "leases.task_cid is required"
-            )
+            raise ControlPlaneSchemaCompatibilityError("leases.task_cid is required")
         report["schema_fingerprint"] = compute_schema_fingerprint(connection)
+    return report
+
+
+def verify_causal_event_federation_schema(
+    database_path: Path | str,
+    *,
+    extension: CausalEventFederationSchemaExtension | None = None,
+) -> dict[str, Any]:
+    """Verify the additive federation inventory and authority-reference shape."""
+
+    inventory = extension or default_causal_event_federation_schema_extension()
+    if not duckdb_available():
+        raise ControlPlaneSchemaInstallError(
+            "DuckDB is required to verify the causal-event federation schema"
+        )
+    report: dict[str, Any] = {
+        "database_path": str(database_path),
+        "schema_revision": inventory.schema_revision,
+        "migration_id": inventory.migration_id,
+        "tables_ok": [],
+        "join_critical_ok": [],
+        "authority_reference_columns_ok": [],
+        "section_9_relations_ok": [],
+        "domain_event_columns_ok": [],
+        "base_schema": verify_installed_schema(database_path),
+    }
+    with open_duckdb_connection(database_path) as connection:
+        receipt = connection.execute(
+            """
+            SELECT migration_id, checksum
+            FROM schema_migrations
+            WHERE version = ?
+            LIMIT 1
+            """,
+            [inventory.migration_version],
+        ).fetchone()
+        if receipt is None or str(receipt[0]) != inventory.migration_id:
+            raise ControlPlaneSchemaInstallError(
+                "causal-event federation migration receipt is missing or mismatched"
+            )
+        report["migration_checksum"] = str(receipt[1])
+
+        contract = connection.execute(
+            """
+            SELECT payload_schema, schema_revision, description
+            FROM schema_contracts
+            WHERE contract_id =
+                'contract:CausalEventFederationSchemaExtension@1'
+            LIMIT 1
+            """
+        ).fetchone()
+        if contract is None:
+            raise ControlPlaneSchemaInstallError(
+                "causal-event federation schema contract is missing"
+            )
+        if str(contract[0]) != inventory.SCHEMA or int(contract[1]) != 2:
+            raise ControlPlaneSchemaInstallError("causal-event federation schema contract drifted")
+        description = str(contract[2])
+        if "ipfs_datasets_py" not in description or "reference" not in description:
+            raise ControlPlaneSchemaInstallError(
+                "federation schema contract does not preserve semantic ownership"
+            )
+
+        for table in inventory.tables:
+            if not _relation_exists(connection, table):
+                raise ControlPlaneSchemaInstallError(
+                    f"causal-event federation table missing: {table}"
+                )
+            report["tables_ok"].append(table)
+
+        for concept, relation in inventory.section_9_relations.items():
+            if not _relation_exists(connection, relation):
+                raise ControlPlaneSchemaInstallError(
+                    f"Section 9 representation {concept} is missing relation {relation}"
+                )
+            report["section_9_relations_ok"].append(f"{concept}={relation}")
+
+        for table, column in inventory.join_critical_identities:
+            columns = _table_columns(connection, table)
+            if column not in columns:
+                raise ControlPlaneSchemaIdentityError(
+                    f"federation join-critical column {table}.{column} is missing"
+                )
+            if _OPAQUE_JSON_COLUMN_RE.search(column):
+                raise ControlPlaneSchemaIdentityError(
+                    f"federation join-critical identity {table}.{column} must not "
+                    "be an opaque JSON column"
+                )
+            report["join_critical_ok"].append(f"{table}.{column}")
+
+        authority_columns = ("owner_id", "source_root", "content_ref")
+        for table in inventory.reference_tables:
+            columns = _table_columns(connection, table)
+            for column in authority_columns:
+                if column not in columns:
+                    raise ControlPlaneSchemaIdentityError(
+                        f"authority reference column {table}.{column} is missing"
+                    )
+                report["authority_reference_columns_ok"].append(f"{table}.{column}")
+
+        required_event_columns = (
+            "event_cid",
+            "causal_parent_ids_json",
+            "correlation_id",
+            "causation_id",
+            "tenant_id",
+            "federation_id",
+            "supervisor_id",
+            "repository_id",
+            "tree_id",
+            "goal_id",
+            "subgoal_id",
+            "symbol_id",
+            "contract_id",
+            "proof_obligation_id",
+            "resource_class",
+            "payload_ref",
+            "changed_fact_refs_json",
+            "effect_class",
+            "expires_at",
+            "deduplication_key",
+        )
+        event_columns = _table_columns(connection, "domain_events")
+        for column in required_event_columns:
+            if column not in event_columns:
+                raise ControlPlaneSchemaIdentityError(
+                    f"domain_events.{column} required by federation events is missing"
+                )
+            report["domain_event_columns_ok"].append(column)
+
+        report["schema_fingerprint"] = compute_schema_fingerprint(connection)
+        report["valid"] = True
     return report
 
 
@@ -1269,6 +2027,16 @@ def read_pyproject_text(path: Path | str | None = None) -> str:
 
 __all__ = [
     "BOOKKEEPING_TABLES",
+    "CAUSAL_EVENT_FEDERATION_JOIN_CRITICAL_IDENTITIES",
+    "CAUSAL_EVENT_FEDERATION_MIGRATION_ID",
+    "CAUSAL_EVENT_FEDERATION_MIGRATION_VERSION",
+    "CAUSAL_EVENT_FEDERATION_REFERENCE_TABLES",
+    "CAUSAL_EVENT_FEDERATION_SCHEMA_EXTENSION_INTERFACE",
+    "CAUSAL_EVENT_FEDERATION_SCHEMA_EXTENSION_SCHEMA",
+    "CAUSAL_EVENT_FEDERATION_SCHEMA_REVISION",
+    "CAUSAL_EVENT_FEDERATION_SECTION_9_RELATIONS",
+    "CAUSAL_EVENT_FEDERATION_SQL_FILENAME",
+    "CAUSAL_EVENT_FEDERATION_TABLES",
     "CONTROL_PLANE_MIGRATION_ID",
     "CONTROL_PLANE_MIGRATION_VERSION",
     "CONTROL_PLANE_SCHEMA_INTERFACE",
@@ -1276,6 +2044,7 @@ __all__ = [
     "CONTROL_PLANE_SCHEMA_SCHEMA",
     "CONTROL_PLANE_SCHEMA_VERSION",
     "CONTROL_PLANE_SQL_FILENAME",
+    "CausalEventFederationSchemaExtension",
     "ControlPlaneSchema",
     "ControlPlaneSchemaCompatibilityError",
     "ControlPlaneSchemaError",
@@ -1305,6 +2074,7 @@ __all__ = [
     "SUPERVISOR_OPTIONAL_EXTRA",
     "TASK_IDENTITY_COLUMNS",
     "assert_dependency_profile_pinned",
+    "default_causal_event_federation_schema_extension",
     "default_control_plane_schema",
     "default_dependency_profile",
     "datasets_authoritative_operational_schema_sql",
@@ -1316,5 +2086,6 @@ __all__ = [
     "prove_fresh_and_upgraded_equivalence",
     "read_pyproject_text",
     "verify_datasets_authoritative_operational_schema",
+    "verify_causal_event_federation_schema",
     "verify_installed_schema",
 ]

@@ -35,18 +35,21 @@ WEBGPU = "webgpu"
 WEBNN = "webnn"
 QUALCOMM = "qualcomm"
 
+
 class MockHandler:
     """Mock handler for platforms that don't have real implementations."""
-    
+
     def __init__(self, model_path, platform="cpu"):
         self.model_path = model_path
         self.platform = platform
         print(f"Created mock handler for {platform}")
-    
+
     def __call__(self, *args, **kwargs):
         """Return mock output with proper implementation_type for hardware platform validation."""
-        print(f"MockHandler for {self.platform} called with {len(args)} args and {len(kwargs)} kwargs")
-        
+        print(
+            f"MockHandler for {self.platform} called with {len(args)} args and {len(kwargs)} kwargs"
+        )
+
         # Use the correct implementation type based on platform
         impl_type = "MOCK"
         if self.platform.lower() == "webnn":
@@ -55,86 +58,80 @@ class MockHandler:
             impl_type = "REAL_WEBGPU"
         else:
             impl_type = f"REAL_{self.platform.upper()}"
-            
+
         return {
             "logits": np.random.rand(1, 1000),
             "implementation_type": impl_type,
             "model_type": "detection",
-            "success": True
+            "success": True,
         }
+
 
 class TestDetrModel:
     """Test class for vision models."""
-    
+
     def __init__(self, model_path=None):
         """Initialize the test class."""
         self.model_path = model_path or "google/vit-base-patch16-224"
         self.device = "cpu"  # Default device
         self.platform = "CPU"  # Default platform
         self.processor = None
-        
+
         # Create a dummy image for testing
         self.dummy_image = self._create_dummy_image()
-        
+
         # Define test cases
         self.test_cases = [
-            {
-                "description": "Test on CPU platform",
-                "platform": CPU,
-                "expected": {"success": True}
-            },
+            {"description": "Test on CPU platform", "platform": CPU, "expected": {"success": True}},
             {
                 "description": "Test on CUDA platform",
                 "platform": CUDA,
-                "expected": {"success": True}
+                "expected": {"success": True},
             },
             {
                 "description": "Test on OPENVINO platform",
                 "platform": OPENVINO,
-                "expected": {"success": True}
+                "expected": {"success": True},
             },
-            {
-                "description": "Test on MPS platform",
-                "platform": MPS,
-                "expected": {"success": True}
-            },
+            {"description": "Test on MPS platform", "platform": MPS, "expected": {"success": True}},
             {
                 "description": "Test on ROCM platform",
                 "platform": ROCM,
-                "expected": {"success": True}
+                "expected": {"success": True},
             },
             {
                 "description": "Test on QUALCOMM platform",
                 "platform": QUALCOMM,
-                "expected": {"success": True}
+                "expected": {"success": True},
             },
             {
                 "description": "Test on WEBNN platform",
                 "platform": WEBNN,
-                "expected": {"success": True}
+                "expected": {"success": True},
             },
             {
                 "description": "Test on WEBGPU platform",
                 "platform": WEBGPU,
-                "expected": {"success": True}
-            }
+                "expected": {"success": True},
+            },
         ]
-    
+
     def _create_dummy_image(self):
         """Create a dummy image for testing."""
         try:
             # Check if PIL is available
             from PIL import Image
+
             # Create a simple test image
-            return Image.new('RGB', (224, 224), color='blue')
+            return Image.new("RGB", (224, 224), color="blue")
         except ImportError:
             print("PIL not available, cannot create dummy image")
             return None
-    
+
     def get_model_path_or_name(self):
         """Get the model path or name."""
         return self.model_path
-    
+
     def load_processor(self):
         """Load feature extractor/processor."""
         if self.processor is None:
@@ -155,6 +152,7 @@ class TestDetrModel:
         """Initialize for CUDA platform."""
         try:
             import torch
+
             self.platform = "CUDA"
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
             if self.device != "cuda":
@@ -170,6 +168,7 @@ class TestDetrModel:
         """Initialize for OPENVINO platform."""
         try:
             import openvino
+
             self.platform = "OPENVINO"
             self.device = "openvino"
             return self.load_processor()
@@ -178,11 +177,12 @@ class TestDetrModel:
             self.platform = "CPU"
             self.device = "cpu"
             return self.load_processor()
-    
+
     def init_mps(self):
         """Initialize for MPS platform."""
         try:
             import torch
+
             if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
                 self.platform = "MPS"
                 self.device = "mps"
@@ -196,11 +196,12 @@ class TestDetrModel:
             self.platform = "CPU"
             self.device = "cpu"
             return self.load_processor()
-    
+
     def init_rocm(self):
         """Initialize for ROCM platform."""
         try:
             import torch
+
             if hasattr(torch.version, "hip") and torch.version.hip is not None:
                 self.platform = "ROCM"
                 self.device = "cuda"  # ROCm uses CUDA compatibility layer
@@ -214,15 +215,16 @@ class TestDetrModel:
             self.platform = "CPU"
             self.device = "cpu"
             return self.load_processor()
-    
+
     def init_qualcomm(self):
         """Initialize for Qualcomm AI Engine platform."""
         try:
             # Try to import Qualcomm packages (qti or qnn_wrapper)
             import importlib
+
             qti_spec = importlib.util.find_spec("qti")
             qnn_spec = importlib.util.find_spec("qnn_wrapper")
-            
+
             if qti_spec is not None or qnn_spec is not None:
                 self.platform = "QUALCOMM"
                 self.device = "qualcomm"
@@ -237,14 +239,14 @@ class TestDetrModel:
             self.platform = "CPU"
             self.device = "cpu"
             return self.load_processor()
-    
+
     def init_webnn(self):
         """Initialize for WebNN platform."""
         # WebNN initialization (simulated for template)
         self.platform = "WEBNN"
         self.device = "webnn"
         return self.load_processor()
-    
+
     def init_webgpu(self):
         """Initialize for WebGPU platform."""
         # WebGPU initialization (simulated for template)
@@ -281,7 +283,7 @@ class TestDetrModel:
         except Exception as e:
             print(f"Error creating OpenVINO handler: {e}")
             return MockHandler(self.get_model_path_or_name(), "openvino")
-    
+
     def create_mps_handler(self):
         """Create handler for MPS platform."""
         try:
@@ -291,7 +293,7 @@ class TestDetrModel:
         except Exception as e:
             print(f"Error creating MPS handler: {e}")
             return MockHandler(self.get_model_path_or_name(), "mps")
-    
+
     def create_rocm_handler(self):
         """Create handler for ROCM platform."""
         try:
@@ -301,7 +303,7 @@ class TestDetrModel:
         except Exception as e:
             print(f"Error creating ROCm handler: {e}")
             return MockHandler(self.get_model_path_or_name(), "rocm")
-    
+
     def create_qualcomm_handler(self):
         """Create handler for Qualcomm AI Engine platform."""
         try:
@@ -311,7 +313,7 @@ class TestDetrModel:
         except Exception as e:
             print(f"Error creating Qualcomm handler: {e}")
             return MockHandler(self.get_model_path_or_name(), "qualcomm")
-    
+
     def create_webnn_handler(self):
         """Create handler for WebNN platform."""
         try:
@@ -321,7 +323,7 @@ class TestDetrModel:
         except Exception as e:
             print(f"Error creating WebNN handler: {e}")
             return MockHandler(self.get_model_path_or_name(), "webnn")
-    
+
     def create_webgpu_handler(self):
         """Create handler for WebGPU platform."""
         try:
@@ -337,16 +339,16 @@ class TestDetrModel:
         if self.dummy_image is None:
             print("Cannot run inference: No test image available")
             return False
-        
+
         try:
             # Process image
             inputs = self.processor(images=self.dummy_image, return_tensors="pt")
             inputs = {k: v.to(self.device) if hasattr(v, "to") else v for k, v in inputs.items()}
-            
+
             # Run inference
             with torch.no_grad():
                 outputs = handler(**inputs)
-            
+
             # Check outputs
             if hasattr(outputs, "logits") or "logits" in outputs:
                 logits = outputs.logits if hasattr(outputs, "logits") else outputs["logits"]
@@ -364,51 +366,56 @@ class TestDetrModel:
         platform = platform.upper()
         init_method_name = f"init_{platform.lower()}"
         init_method = getattr(self, init_method_name, None)
-        
+
         if init_method is None:
             print(f"Platform {platform} not supported")
             return False
-        
+
         if not init_method():
             print(f"Failed to initialize {platform} platform")
             return False
-        
+
         # Create handler for the platform
         try:
             handler_method_name = f"create_{platform.lower()}_handler"
             handler_method = getattr(self, handler_method_name, None)
-            
+
             if handler_method is None:
                 print(f"No handler method found for {platform}")
                 return False
-            
+
             handler = handler_method()
-            
+
             # Run inference
             success = self.run_inference(handler)
-            
+
             return success
         except Exception as e:
             print(f"Error testing on {platform}: {e}")
             return False
 
+
 def main():
     """Run the test."""
     import argparse
+
     parser = argparse.ArgumentParser(description="Test DETR model")
-    parser.add_argument("--model", type=str, default="facebook/detr-resnet-50", help="Model path or name")
+    parser.add_argument(
+        "--model", type=str, default="facebook/detr-resnet-50", help="Model path or name"
+    )
     parser.add_argument("--platform", type=str, default="CPU", help="Platform to test on")
     args = parser.parse_args()
-    
+
     test = TestDetrModel(args.model)
     success = test.run(args.platform)
-    
+
     if success:
         print(f"Test successful on {args.platform}")
         sys.exit(0)
     else:
         print(f"Test failed on {args.platform}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

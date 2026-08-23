@@ -67,9 +67,9 @@ All model weight loading operations across:
 **Gating Mechanisms**:
 ```python
 # Multiple levels of control
-IPFS_KIT_DISABLE=1      # Explicit disable
-STORAGE_FORCE_LOCAL=1   # Force local mode
-CI=1                    # Auto-detected (GitHub Actions, GitLab CI, etc.)
+IPFS_KIT_DISABLE = 1  # Explicit disable
+STORAGE_FORCE_LOCAL = 1  # Force local mode
+CI = 1  # Auto-detected (GitHub Actions, GitLab CI, etc.)
 ```
 
 ### 2. Core Integrations Completed ✅
@@ -133,7 +133,7 @@ export STORAGE_FORCE_LOCAL=1
 # Can also be controlled in code
 storage = StorageWrapper(
     enable_distributed=False,  # Explicit disable
-    force_fallback=True        # Force local mode
+    force_fallback=True,  # Force local mode
 )
 ```
 
@@ -155,7 +155,7 @@ if self._storage_wrapper and self._storage_wrapper.is_distributed:
 ```python
 # Automatic fallback to standard filesystem operations
 os.makedirs(dirname, exist_ok=True)
-with open(path, 'w') as f:
+with open(path, "w") as f:
     f.write(data)
 ```
 
@@ -243,10 +243,12 @@ All integrations follow this pattern:
 # 1. Import with availability check
 try:
     from .common.storage_wrapper import get_storage_wrapper
+
     HAVE_STORAGE_WRAPPER = True
 except ImportError:
     HAVE_STORAGE_WRAPPER = False
     get_storage_wrapper = None
+
 
 # 2. Initialize with gating
 class MyComponent:
@@ -259,7 +261,7 @@ class MyComponent:
                     logger.info("Using distributed storage")
             except Exception as e:
                 logger.debug(f"Storage wrapper init skipped: {e}")
-    
+
     # 3. Use with fallback
     def save_data(self, data, filename):
         # Try distributed storage
@@ -270,9 +272,9 @@ class MyComponent:
                 return cid
             except Exception as e:
                 logger.debug(f"Distributed storage failed, using local: {e}")
-        
+
         # Fallback to local filesystem
-        with open(filename, 'w') as f:
+        with open(filename, "w") as f:
             f.write(data)
         return filename
 ```
@@ -296,19 +298,20 @@ Can be integrated using the same pattern:
 # In each worker/skillset/*.py file
 from ..common.storage_wrapper import get_storage_wrapper
 
+
 class ModelLoader:
     def __init__(self):
         self._storage = get_storage_wrapper(auto_detect_ci=True)
-    
+
     def load_model_weights(self, path):
         # Try distributed storage first
         if self._storage.is_distributed:
             data = self._storage.read_file(path)
             if data:
                 return data
-        
+
         # Fallback to local filesystem
-        return open(path, 'rb').read()
+        return open(path, "rb").read()
 ```
 
 ### Priority Assessment

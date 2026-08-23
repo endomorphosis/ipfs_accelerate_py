@@ -619,10 +619,13 @@ def test_precomputed_resolver_failure_does_not_emit_cache_miss_event() -> None:
     )
 
     assert result.audio == speech.audio
-    assert result.validated_cache_miss_event(
-        validation_receipt_id="round-trip-asr-pass-resolver-outage",
-        response_id="response-food",
-    ) is None
+    assert (
+        result.validated_cache_miss_event(
+            validation_receipt_id="round-trip-asr-pass-resolver-outage",
+            response_id="response-food",
+        )
+        is None
+    )
 
 
 def test_runtime_resolution_text_only_fallback_receipt_on_total_audio_failure() -> None:

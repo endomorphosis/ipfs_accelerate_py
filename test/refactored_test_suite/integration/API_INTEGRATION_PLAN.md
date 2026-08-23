@@ -187,6 +187,7 @@ class OperationRequest(BaseModel):
     param2: List[str]
     param3: Optional[int] = None
 
+
 # Response models include operation ID, status, and relevant data
 class OperationResponse(BaseModel):
     operation_id: str
@@ -202,22 +203,16 @@ Long-running operations will be handled as background tasks:
 
 ```python
 @app.post("/api/component/operation")
-async def start_operation(
-    request: OperationRequest,
-    background_tasks: BackgroundTasks
-):
+async def start_operation(request: OperationRequest, background_tasks: BackgroundTasks):
     operation_id = generate_id()
     background_tasks.add_task(
-        perform_operation_in_background,
-        operation_id,
-        request.param1,
-        request.param2
+        perform_operation_in_background, operation_id, request.param1, request.param2
     )
     return OperationResponse(
         operation_id=operation_id,
         status="initializing",
         message="Operation started",
-        started_at=datetime.now().isoformat()
+        started_at=datetime.now().isoformat(),
     )
 ```
 

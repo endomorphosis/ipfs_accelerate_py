@@ -32,9 +32,7 @@ from typing import Any, Final, TextIO
 from ..control.control_contracts import EventCursor
 
 
-PATH_METADATA_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/path-metadata@1"
-)
+PATH_METADATA_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/path-metadata@1"
 PROJECTION_DELTA_CHECKPOINT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/projection-delta-checkpoint@1"
 )
@@ -47,9 +45,7 @@ TASKBOARD_MATERIALIZATION_TRANSACTION_SCHEMA: Final = (
 TASKBOARD_MATERIALIZATION_PREVIEW_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/taskboard-materialization-preview@1"
 )
-EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID: Final = (
-    "asi-117:event-driven-delta-checkpoint-runtime"
-)
+EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID: Final = "asi-117:event-driven-delta-checkpoint-runtime"
 DEFAULT_METADATA_ENTRY_LIMIT: Final = 256
 DEFAULT_METADATA_DEPTH_LIMIT: Final = 6
 DEFAULT_SAFETY_INTERVAL_SECONDS: Final = 300.0
@@ -61,9 +57,7 @@ _MAX_TASKBOARD_JOURNAL_BYTES: Final = 4 * 1024 * 1024
 TASKBOARD_STORE_SNAPSHOT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/taskboard-store-snapshot@1"
 )
-TASKBOARD_STORE_EVENT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/taskboard-store-event@1"
-)
+TASKBOARD_STORE_EVENT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/taskboard-store-event@1"
 DEFAULT_TASKBOARD_QUERY_LIMIT: Final = 256
 MAX_TASKBOARD_QUERY_LIMIT: Final = 1024
 DEFAULT_TASKBOARD_BYTES_LIMIT: Final = 4 * 1024 * 1024
@@ -104,9 +98,7 @@ def _content_id(prefix: str, value: Any) -> str:
 
 def _atomic_write(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", dir=path.parent
-    )
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(payload)
@@ -221,13 +213,9 @@ class TaskboardMaterializationEntry:
         if len(rendered_block.encode("utf-8")) > _MAX_TASKBOARD_ENTRY_BYTES:
             raise ValueError("rendered_block exceeds its persistence bound")
         if len(_task_heading_pattern(task_id).findall(rendered_block)) != 1:
-            raise ValueError(
-                "rendered_block must contain exactly one matching task heading"
-            )
+            raise ValueError("rendered_block must contain exactly one matching task heading")
         if len(_goal_metadata_pattern(goal_id).findall(rendered_block)) != 1:
-            raise ValueError(
-                "rendered_block must contain exactly one matching goal metadata line"
-            )
+            raise ValueError("rendered_block must contain exactly one matching goal metadata line")
         object.__setattr__(self, "task_id", task_id)
         object.__setattr__(self, "goal_id", goal_id)
         object.__setattr__(self, "rendered_block", rendered_block)
@@ -267,15 +255,11 @@ class TaskboardMaterializationPreview:
     def __post_init__(self) -> None:
         if self.schema != TASKBOARD_MATERIALIZATION_PREVIEW_SCHEMA:
             raise ValueError("unsupported taskboard materialization preview schema")
-        if not isinstance(self.base_text, str) or not isinstance(
-            self.candidate_text, str
-        ):
+        if not isinstance(self.base_text, str) or not isinstance(self.candidate_text, str):
             raise TypeError("taskboard preview content must be text")
         entries = tuple(self.entries)
         if len(entries) > MAX_TASKBOARD_MATERIALIZATION_ENTRIES:
-            raise ValueError(
-                "taskboard materialization exceeds the 24-task epoch limit"
-            )
+            raise ValueError("taskboard materialization exceeds the 24-task epoch limit")
         if any(not isinstance(item, TaskboardMaterializationEntry) for item in entries):
             raise TypeError(
                 "taskboard preview entries must be TaskboardMaterializationEntry values"
@@ -296,40 +280,24 @@ class TaskboardMaterializationPreview:
         for entry in entries:
             entries_by_goal.setdefault(entry.goal_id, []).append(entry)
             if _task_heading_pattern(entry.task_id).search(self.base_text):
-                raise ValueError(
-                    f"taskboard already contains task ID {entry.task_id}"
-                )
+                raise ValueError(f"taskboard already contains task ID {entry.task_id}")
             if _goal_metadata_pattern(entry.goal_id).search(self.base_text):
-                raise ValueError(
-                    f"taskboard already maps admitted goal {entry.goal_id}"
-                )
-            if (
-                len(
-                    _task_heading_pattern(entry.task_id).findall(
-                        self.candidate_text
-                    )
-                )
-                != 1
+                raise ValueError(f"taskboard already maps admitted goal {entry.goal_id}")
+            if len(_task_heading_pattern(entry.task_id).findall(self.candidate_text)) != 1:
+                raise ValueError(f"candidate taskboard must map task {entry.task_id} exactly once")
+        for goal_id, owned_entries in entries_by_goal.items():
+            if len(_goal_metadata_pattern(goal_id).findall(self.candidate_text)) != len(
+                owned_entries
             ):
                 raise ValueError(
-                    f"candidate taskboard must map task {entry.task_id} exactly once"
-                )
-        for goal_id, owned_entries in entries_by_goal.items():
-            if len(
-                _goal_metadata_pattern(goal_id).findall(self.candidate_text)
-            ) != len(owned_entries):
-                raise ValueError(
-                    "candidate taskboard must map only the declared tasks for "
-                    f"goal {goal_id}"
+                    f"candidate taskboard must map only the declared tasks for goal {goal_id}"
                 )
         expected_preview_id = _content_id(
             "taskboard-materialization-preview",
             self._identity_payload(),
         )
         if self.preview_id != expected_preview_id:
-            raise ValueError(
-                "taskboard materialization preview identity does not match"
-            )
+            raise ValueError("taskboard materialization preview identity does not match")
         object.__setattr__(self, "entries", entries)
 
     @property
@@ -349,10 +317,7 @@ class TaskboardMaterializationPreview:
         mappings: dict[str, list[str]] = {}
         for item in self.entries:
             mappings.setdefault(item.goal_id, []).append(item.task_id)
-        return {
-            goal_id: tuple(task_ids)
-            for goal_id, task_ids in mappings.items()
-        }
+        return {goal_id: tuple(task_ids) for goal_id, task_ids in mappings.items()}
 
     def _identity_payload(self) -> dict[str, Any]:
         return {
@@ -393,9 +358,7 @@ def preview_taskboard_materialization(
                 )
             )
         else:
-            raise TypeError(
-                "entries must contain taskboard materialization entries"
-            )
+            raise TypeError("entries must contain taskboard materialization entries")
     normalized = tuple(normalized_items)
     if len(normalized) > MAX_TASKBOARD_MATERIALIZATION_ENTRIES:
         raise ValueError("taskboard materialization exceeds the 24-task epoch limit")
@@ -416,9 +379,7 @@ def preview_taskboard_materialization(
         entries=normalized,
         base_board_revision=base_revision,
         candidate_board_revision=candidate_revision,
-        preview_id=_content_id(
-            "taskboard-materialization-preview", identity_payload
-        ),
+        preview_id=_content_id("taskboard-materialization-preview", identity_payload),
     )
 
 
@@ -439,9 +400,7 @@ class TaskboardMaterializationTransactionResult:
     transaction_id: str
     state: TaskboardMaterializationTransactionState
     epoch_id: str = ""
-    goal_task_mappings: Mapping[str, tuple[str, ...]] = field(
-        default_factory=dict
-    )
+    goal_task_mappings: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     base_board_revision: str = ""
     candidate_board_revision: str = ""
     changed: bool = False
@@ -461,8 +420,7 @@ class TaskboardMaterializationTransactionResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "taskboard-materialization-transaction-result@1"
+                "ipfs_accelerate_py/agent-supervisor/taskboard-materialization-transaction-result@1"
             ),
             "taskboard_path": str(self.taskboard_path),
             "journal_path": str(self.journal_path),
@@ -470,8 +428,7 @@ class TaskboardMaterializationTransactionResult:
             "state": self.state.value,
             "epoch_id": self.epoch_id,
             "goal_task_mappings": {
-                goal_id: list(task_ids)
-                for goal_id, task_ids in self.goal_task_mappings.items()
+                goal_id: list(task_ids) for goal_id, task_ids in self.goal_task_mappings.items()
             },
             "base_board_revision": self.base_board_revision,
             "candidate_board_revision": self.candidate_board_revision,
@@ -495,9 +452,7 @@ def _load_taskboard_materialization_journal(path: Path) -> dict[str, Any]:
             "latest_transaction_id": "",
         }
     except OSError as exc:
-        raise ValueError(
-            f"cannot read taskboard materialization journal: {exc}"
-        ) from exc
+        raise ValueError(f"cannot read taskboard materialization journal: {exc}") from exc
     if len(raw) > _MAX_TASKBOARD_JOURNAL_BYTES:
         raise ValueError("taskboard materialization journal exceeds persistence bound")
     try:
@@ -548,10 +503,8 @@ def _taskboard_transaction_matches(
         record.get("schema") == TASKBOARD_MATERIALIZATION_TRANSACTION_SCHEMA
         and str(record.get("epoch_id") or "") == epoch_id
         and str(record.get("preview_id") or "") == preview.preview_id
-        and str(record.get("base_board_revision") or "")
-        == preview.base_board_revision
-        and str(record.get("candidate_board_revision") or "")
-        == preview.candidate_board_revision
+        and str(record.get("base_board_revision") or "") == preview.base_board_revision
+        and str(record.get("candidate_board_revision") or "") == preview.candidate_board_revision
         and stored_mappings == preview.goal_task_mappings
     )
 
@@ -586,9 +539,7 @@ def _taskboard_prefix_count(
     preview: TaskboardMaterializationPreview,
 ) -> int:
     for count in range(0, len(preview.entries) + 1):
-        candidate = _append_taskboard_entries(
-            preview.base_text, preview.entries[:count]
-        )
+        candidate = _append_taskboard_entries(preview.base_text, preview.entries[:count])
         if taskboard_revision(candidate) == current_revision:
             return count
     return -1
@@ -697,9 +648,7 @@ def commit_taskboard_materialization(
                     reason_codes=("transaction_record_malformed",),
                 )
             resumed = prior is not None
-            if prior is not None and not _taskboard_transaction_matches(
-                prior, preview, epoch
-            ):
+            if prior is not None and not _taskboard_transaction_matches(prior, preview, epoch):
                 return _taskboard_transaction_result(
                     taskboard_path=board,
                     journal_path=journal_file,
@@ -777,9 +726,7 @@ def commit_taskboard_materialization(
                 )
                 encoded = _canonical_json_bytes(journal) + b"\n"
                 if len(encoded) > _MAX_TASKBOARD_JOURNAL_BYTES:
-                    raise ValueError(
-                        "taskboard materialization journal exceeds persistence bound"
-                    )
+                    raise ValueError("taskboard materialization journal exceeds persistence bound")
                 _atomic_write(journal_file, encoded)
                 journal_write_count += 1
             else:
@@ -823,9 +770,7 @@ def commit_taskboard_materialization(
             )
             encoded = _canonical_json_bytes(journal) + b"\n"
             if len(encoded) > _MAX_TASKBOARD_JOURNAL_BYTES:
-                raise ValueError(
-                    "taskboard materialization journal exceeds persistence bound"
-                )
+                raise ValueError("taskboard materialization journal exceeds persistence bound")
             _atomic_write(journal_file, encoded)
             journal_write_count += 1
             return _taskboard_transaction_result(
@@ -891,10 +836,7 @@ class TaskboardTaskRecord:
         ):
             raise ValueError("projection_revision must be a positive integer")
         for name in ("dependency_task_ids", "dependency_task_cids"):
-            values = tuple(
-                _taskboard_identifier(item, name=name)
-                for item in getattr(self, name)
-            )
+            values = tuple(_taskboard_identifier(item, name=name) for item in getattr(self, name))
             if len(values) != len(set(values)):
                 raise ValueError(f"{name} contains duplicates")
             object.__setattr__(self, name, values)
@@ -949,9 +891,7 @@ class TaskboardTaskRecord:
 
 
 def _assert_taskboard_acyclic(tasks: Sequence[TaskboardTaskRecord]) -> None:
-    dependencies = {
-        item.task_cid: tuple(item.dependency_task_cids) for item in tasks
-    }
+    dependencies = {item.task_cid: tuple(item.dependency_task_cids) for item in tasks}
     visiting: set[str] = set()
     visited: set[str] = set()
 
@@ -963,9 +903,7 @@ def _assert_taskboard_acyclic(tasks: Sequence[TaskboardTaskRecord]) -> None:
         visiting.add(task_cid)
         for dependency in dependencies[task_cid]:
             if dependency not in dependencies:
-                raise ValueError(
-                    f"taskboard task references unknown dependency CID {dependency}"
-                )
+                raise ValueError(f"taskboard task references unknown dependency CID {dependency}")
             visit(dependency)
         visiting.remove(task_cid)
         visited.add(task_cid)
@@ -1094,9 +1032,7 @@ class TaskboardIntegrityReport:
 
     def require_valid(self) -> "TaskboardIntegrityReport":
         if not self.valid:
-            raise ValueError(
-                "taskboard integrity failed: " + ", ".join(self.reason_codes)
-            )
+            raise ValueError("taskboard integrity failed: " + ", ".join(self.reason_codes))
         return self
 
 
@@ -1135,9 +1071,7 @@ class TaskboardStore:
             or max_tasks < 1
             or max_tasks > MAX_TASKBOARD_MATERIALIZATION_ENTRIES
         ):
-            raise ValueError(
-                "max_tasks must be within the taskboard population bound"
-            )
+            raise ValueError("max_tasks must be within the taskboard population bound")
         selected_path = Path(path).absolute()
         selected_root = (
             Path(root).resolve(strict=False)
@@ -1232,9 +1166,7 @@ class TaskboardStore:
             or limit < 1
             or limit > MAX_TASKBOARD_QUERY_LIMIT
         ):
-            raise ValueError(
-                f"limit must be in [1, {MAX_TASKBOARD_QUERY_LIMIT}]"
-            )
+            raise ValueError(f"limit must be in [1, {MAX_TASKBOARD_QUERY_LIMIT}]")
         return limit
 
     def query(
@@ -1259,9 +1191,7 @@ class TaskboardStore:
                 if index >= len(TASKBOARD_STATUSES):
                     raise ValueError("status filter exceeds its configured bound")
                 statuses.add(str(item).strip().lower())
-        if statuses is not None and (
-            not statuses or not statuses.issubset(TASKBOARD_STATUSES)
-        ):
+        if statuses is not None and (not statuses or not statuses.issubset(TASKBOARD_STATUSES)):
             raise ValueError("status filter contains an unsupported status")
         if isinstance(task_cids, (str, bytes, bytearray, memoryview)):
             raise TypeError("task_cids must be an iterable of task CIDs")
@@ -1269,20 +1199,14 @@ class TaskboardStore:
         for index, item in enumerate(task_cids):
             if index >= MAX_TASKBOARD_QUERY_LIMIT:
                 raise ValueError("task_cids filter exceeds its configured bound")
-            selected_cids.add(
-                _taskboard_identifier(item, name="task_cids")
-            )
-        selected_goal = (
-            _taskboard_identifier(goal_id, name="goal_id") if goal_id else ""
-        )
+            selected_cids.add(_taskboard_identifier(item, name="task_cids"))
+        selected_goal = _taskboard_identifier(goal_id, name="goal_id") if goal_id else ""
         records = (
             item
             for item in self.snapshot().tasks
             if (statuses is None or item.status.lower() in statuses)
             and (
-                not selected_goal
-                or item.goal_id == selected_goal
-                or item.goal_cid == selected_goal
+                not selected_goal or item.goal_id == selected_goal or item.goal_cid == selected_goal
             )
             and (not selected_cids or item.task_cid in selected_cids)
         )
@@ -1330,8 +1254,7 @@ class TaskboardStore:
         ready = tuple(
             item
             for item in snapshot.tasks
-            if item.status.lower()
-            in {"todo", "ready", "queued", "proposed", "admitted"}
+            if item.status.lower() in {"todo", "ready", "queued", "proposed", "admitted"}
             and all(dependency in completed for dependency in item.dependency_task_cids)
             and all(dependency in by_cid for dependency in item.dependency_task_cids)
         )
@@ -1362,23 +1285,16 @@ class TaskboardStore:
         if not expected or not replacement:
             raise ValueError("status CAS requires expected and replacement status")
         if any(
-            not value
-            or "\n" in value
-            or "\r" in value
-            or "\x00" in value
+            not value or "\n" in value or "\r" in value or "\x00" in value
             for value in (*expected, replacement)
         ):
             raise ValueError("status values must be safe single-line tokens")
-        if not expected.issubset(TASKBOARD_STATUSES) or replacement not in (
-            TASKBOARD_STATUSES
-        ):
+        if not expected.issubset(TASKBOARD_STATUSES) or replacement not in (TASKBOARD_STATUSES):
             raise ValueError("status CAS contains an unsupported status")
         if not expected_revision:
             raise ValueError("expected_revision is required")
         selected_task_id = _taskboard_identifier(task_id, name="task_id")
-        selected_revision = _taskboard_identifier(
-            expected_revision, name="expected_revision"
-        )
+        selected_revision = _taskboard_identifier(expected_revision, name="expected_revision")
         with self._guard():
             snapshot = self.snapshot()
             if snapshot.board_revision != selected_revision:
@@ -1386,8 +1302,7 @@ class TaskboardStore:
             matches = [
                 item
                 for item in snapshot.tasks
-                if item.task_id == selected_task_id
-                or item.task_cid == selected_task_id
+                if item.task_id == selected_task_id or item.task_cid == selected_task_id
             ]
             if len(matches) != 1:
                 raise KeyError(f"unknown or ambiguous task {selected_task_id!r}")
@@ -1476,9 +1391,7 @@ class TaskboardStore:
         selected_limit = self._bounded_limit(limit)
         from ..runtime.event_log import read_jsonl_event_page
 
-        return read_jsonl_event_page(
-            self.events_path, cursor, limit=selected_limit
-        )
+        return read_jsonl_event_page(self.events_path, cursor, limit=selected_limit)
 
     read_events = events
 
@@ -1497,9 +1410,7 @@ class TaskboardStore:
             or timeout < 0
             or timeout > DEFAULT_SAFETY_INTERVAL_SECONDS
         ):
-            raise ValueError(
-                "timeout must be between zero and the safety interval"
-            )
+            raise ValueError("timeout must be between zero and the safety interval")
         selected_event_limit = self._bounded_limit(event_limit)
         watcher = create_directory_watcher((self.path, self.events_path))
         try:
@@ -1715,9 +1626,7 @@ class PathMetadata:
                             truncated = True
                             break
                         relative = (
-                            f"{relative_parent}/{child.name}"
-                            if relative_parent
-                            else child.name
+                            f"{relative_parent}/{child.name}" if relative_parent else child.name
                         )
                         try:
                             child_stat = child.stat(follow_symlinks=False)
@@ -1745,9 +1654,7 @@ class PathMetadata:
                                 and depth < max_depth
                                 and len(entries) < max_entries
                             ):
-                                pending.append(
-                                    (Path(child.path), relative, depth + 1)
-                                )
+                                pending.append((Path(child.path), relative, depth + 1))
                         except OSError as exc:
                             entries.append(
                                 (
@@ -1960,21 +1867,13 @@ class ProjectionDeltaCheckpointStore:
 
         with self._guard():
             previous = self._read_unlocked()
-            previous_projection = (
-                dict(previous.get("projection") or {}) if previous else {}
-            )
-            previous_cursor = (
-                EventCursor.from_dict(previous["cursor"]) if previous else None
-            )
+            previous_projection = dict(previous.get("projection") or {}) if previous else {}
+            previous_cursor = EventCursor.from_dict(previous["cursor"]) if previous else None
             if previous_cursor is not None:
                 if canonical_cursor.stream_id != previous_cursor.stream_id:
-                    raise ValueError(
-                        "projection checkpoint cursor belongs to a different stream"
-                    )
+                    raise ValueError("projection checkpoint cursor belongs to a different stream")
                 if canonical_cursor.position < previous_cursor.position:
-                    raise ValueError(
-                        "projection checkpoint cursor cannot move backwards"
-                    )
+                    raise ValueError("projection checkpoint cursor cannot move backwards")
                 if (
                     canonical_cursor.position == previous_cursor.position
                     and canonical_cursor != previous_cursor
@@ -1982,19 +1881,13 @@ class ProjectionDeltaCheckpointStore:
                     raise ValueError(
                         "projection checkpoint cursor anchor changed at the same position"
                     )
-            projection_changed = (
-                previous is None or previous_projection != canonical_projection
-            )
-            cursor_changed = (
-                previous_cursor is None or previous_cursor != canonical_cursor
-            )
+            projection_changed = previous is None or previous_projection != canonical_projection
+            cursor_changed = previous_cursor is None or previous_cursor != canonical_cursor
             delta = _projection_delta(
                 previous_projection,
                 canonical_projection,
             )
-            projection_id = _content_id(
-                "runtime-projection", canonical_projection
-            )
+            projection_id = _content_id("runtime-projection", canonical_projection)
             if not projection_changed and not cursor_changed:
                 return ProjectionCheckpointResult(
                     changed=False,
@@ -2014,9 +1907,7 @@ class ProjectionDeltaCheckpointStore:
                 "cursor": canonical_cursor.to_record(),
                 "delta": delta,
             }
-            record["checkpoint_id"] = _content_id(
-                "projection-checkpoint", record
-            )
+            record["checkpoint_id"] = _content_id("projection-checkpoint", record)
             encoded = _canonical_json_bytes(record) + b"\n"
             if len(encoded) > self.max_bytes:
                 raise ValueError("projection checkpoint exceeds persistence bound")
@@ -2070,9 +1961,7 @@ class BlockingTimerWatcher:
             return False
         selected_timeout = None if timeout is None else max(0.0, float(timeout))
         try:
-            ready, _writable, _errors = select.select(
-                [self._read_fd], [], [], selected_timeout
-            )
+            ready, _writable, _errors = select.select([self._read_fd], [], [], selected_timeout)
         except InterruptedError:
             return True
         if not ready:
@@ -2133,9 +2022,7 @@ class LinuxDirectoryWatcher:
         initializer = getattr(libc, "inotify_init1", None)
         add_watch = getattr(libc, "inotify_add_watch", None)
         if initializer is None or add_watch is None:
-            raise NativeWatcherUnavailable(
-                errno.ENOSYS, "inotify is unavailable"
-            )
+            raise NativeWatcherUnavailable(errno.ENOSYS, "inotify is unavailable")
         initializer.argtypes = [ctypes.c_int]
         initializer.restype = ctypes.c_int
         add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
@@ -2143,9 +2030,7 @@ class LinuxDirectoryWatcher:
         fd = initializer(self._IN_NONBLOCK | self._IN_CLOEXEC)
         if fd < 0:
             error_number = ctypes.get_errno()
-            raise NativeWatcherUnavailable(
-                error_number, os.strerror(error_number)
-            )
+            raise NativeWatcherUnavailable(error_number, os.strerror(error_number))
         self._fd = fd
         self._read_fd, self._write_fd = os.pipe()
         os.set_blocking(self._read_fd, False)
@@ -2153,9 +2038,7 @@ class LinuxDirectoryWatcher:
         self._closed = False
         self._watch_descriptors: dict[int, Path] = {}
         try:
-            directories = self._watch_directories(
-                paths, max_directories=max_directories
-            )
+            directories = self._watch_directories(paths, max_directories=max_directories)
             if not directories:
                 directories = [Path.cwd()]
             for directory in directories:
@@ -2192,8 +2075,7 @@ class LinuxDirectoryWatcher:
         directories: list[Path] = []
         seen: set[Path] = set()
         pending: deque[Path] = deque(
-            cls._nearest_existing_directory(Path(path).absolute())
-            for path in paths
+            cls._nearest_existing_directory(Path(path).absolute()) for path in paths
         )
         while pending and len(directories) < max_directories:
             directory = pending.popleft()
@@ -2330,9 +2212,7 @@ class RuntimeWakeEvent:
     @property
     def cursor_ids(self) -> tuple[str, ...]:
         values = [item.cursor for item in self.metadata]
-        values.extend(
-            self.semantic_cursors[key] for key in sorted(self.semantic_cursors)
-        )
+        values.extend(self.semantic_cursors[key] for key in sorted(self.semantic_cursors))
         return tuple(values)
 
 
@@ -2349,7 +2229,8 @@ class RuntimeWakeCoordinator:
         targets: Mapping[
             RuntimeWakeKind | str,
             Path | str | Iterable[Path | str],
-        ] | None = None,
+        ]
+        | None = None,
         *,
         safety_interval_seconds: float = DEFAULT_SAFETY_INTERVAL_SECONDS,
         prefer_native: bool = True,
@@ -2372,12 +2253,8 @@ class RuntimeWakeCoordinator:
             else:
                 paths = tuple(Path(path) for path in raw_paths)
             self._targets[kind] = paths
-        all_paths = tuple(
-            path for paths in self._targets.values() for path in paths
-        )
-        self.watcher = watcher or create_directory_watcher(
-            all_paths, prefer_native=prefer_native
-        )
+        all_paths = tuple(path for paths in self._targets.values() for path in paths)
+        self.watcher = watcher or create_directory_watcher(all_paths, prefer_native=prefer_native)
         self._acknowledged_metadata = self._capture_all()
         self._pending_hints: dict[RuntimeWakeKind, str] = {}
         self._acknowledged_semantic: dict[RuntimeWakeKind, str] = {}

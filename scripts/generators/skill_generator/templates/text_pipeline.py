@@ -11,7 +11,7 @@ from templates.base_pipeline import BasePipelineTemplate
 
 class TextPipelineTemplate(BasePipelineTemplate):
     """Text pipeline template implementation."""
-    
+
     def __init__(self):
         """Initialize the text pipeline template."""
         super().__init__()
@@ -22,7 +22,7 @@ class TextPipelineTemplate(BasePipelineTemplate):
         self.requires_postprocessing = True
         self.supports_batching = True
         self.max_batch_size = 32
-    
+
     def get_import_statements(self) -> str:
         """Get text-specific import statements."""
         return """
@@ -33,7 +33,7 @@ import numpy as np
 import re
 from typing import List, Dict, Union, Any
 """
-    
+
     def get_preprocessing_code(self, task_type: str) -> str:
         """Get text-specific preprocessing code."""
         if task_type == "text_embedding":
@@ -126,7 +126,7 @@ inputs = tokenizer(
 # Move inputs to the correct device
 inputs = {k: v.to(device) for k, v in inputs.items()}
 """
-    
+
     def get_postprocessing_code(self, task_type: str) -> str:
         """Get text-specific postprocessing code."""
         if task_type == "text_embedding":
@@ -155,7 +155,7 @@ predicted_texts = tokenizer.batch_decode(predicted_token_ids, skip_special_token
 # Default postprocessing for {task_type}
 result = outputs
 """
-    
+
     def get_result_formatting_code(self, task_type: str) -> str:
         """Get text-specific result formatting code."""
         if task_type == "text_embedding":
@@ -197,14 +197,14 @@ return {{"success": True,
     "device": device,
     "hardware": hardware_label}}
 """
-    
+
     def get_mock_input_code(self) -> str:
         """Get text-specific mock input code."""
         return """
 # Mock text input
 mock_input = "This is a mock text input for testing purposes."
 """
-    
+
     def get_mock_output_code(self) -> str:
         """Get text-specific mock output code."""
         return """
@@ -228,16 +228,12 @@ def truncate_text(text, max_length=100):
 def format_generated_text(text, prefix="", suffix=""):
     return f"{prefix}{text}{suffix}"
 """
-    
+
     def is_compatible_with_architecture(self, arch_type: str) -> bool:
         """Check text pipeline compatibility with architecture type."""
         # Text pipeline is compatible with text-based architectures
-        return arch_type in [
-            "encoder-only",
-            "decoder-only",
-            "encoder-decoder"
-        ]
-    
+        return arch_type in ["encoder-only", "decoder-only", "encoder-decoder"]
+
     def is_compatible_with_task(self, task_type: str) -> bool:
         """Check text pipeline compatibility with task type."""
         # Text pipeline is compatible with text-based tasks
@@ -247,5 +243,5 @@ def format_generated_text(text, prefix="", suffix=""):
             "text2text_generation",
             "masked_lm",
             "causal_lm",
-            "seq2seq_lm"
+            "seq2seq_lm",
         ]

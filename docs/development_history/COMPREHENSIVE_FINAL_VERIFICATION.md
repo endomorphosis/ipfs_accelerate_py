@@ -71,7 +71,7 @@ if self._storage and self._storage.is_distributed:
         pass  # Falls through to local filesystem
 
 # Always maintain local filesystem path
-with open(filepath, 'w') as f:
+with open(filepath, "w") as f:
     f.write(data)
 ```
 

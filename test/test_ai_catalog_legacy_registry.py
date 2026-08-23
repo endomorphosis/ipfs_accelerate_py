@@ -49,9 +49,7 @@ EXPECTED_BACKEND_COUNTS = {
     "ovms": 19,
 }
 
-GENERATED_PROJECTION_SHA256 = (
-    "c521d83265b34bf684e5d0839b92c7468a4f4569d36e8484759bae42df6ea64c"
-)
+GENERATED_PROJECTION_SHA256 = "c521d83265b34bf684e5d0839b92c7468a4f4569d36e8484759bae42df6ea64c"
 
 
 def _legacy_dict(model):
@@ -63,9 +61,7 @@ def test_rich_legacy_fields_are_exact_catalog_projections():
 
     assert len(RICH_FIXTURES) == 15
     for expected in RICH_FIXTURES:
-        actual = registry.get_model(
-            "%s/%s" % (expected.provider.value, expected.model_id)
-        )
+        actual = registry.get_model("%s/%s" % (expected.provider.value, expected.model_id))
         assert isinstance(actual, APIModel)
         assert _legacy_dict(actual) == _legacy_dict(expected)
 
@@ -76,12 +72,8 @@ def test_canonical_seed_has_unique_catalog_identities_and_provider_metadata():
 
     assert len(API_MODEL_SEED_ROWS) > len(snapshot.models)
     assert len(snapshot.models) == 159
-    assert len({model.model_id for model in snapshot.models}) == len(
-        snapshot.models
-    )
-    assert len({provider.provider_id for provider in snapshot.providers}) == len(
-        snapshot.providers
-    )
+    assert len({model.model_id for model in snapshot.models}) == len(snapshot.models)
+    assert len({provider.provider_id for provider in snapshot.providers}) == len(snapshot.providers)
 
     providers = {provider.name: provider for provider in snapshot.providers}
     assert set(providers) == {
@@ -106,10 +98,7 @@ def test_generated_projection_fixture_detects_any_legacy_field_drift():
     payload = {
         "models": registry.export_models(),
         "backend_models": registry.get_backend_model_lists(),
-        "providers": [
-            provider.to_dict()
-            for provider in registry.catalog.snapshot().providers
-        ],
+        "providers": [provider.to_dict() for provider in registry.catalog.snapshot().providers],
     }
     encoded = json.dumps(
         payload,
@@ -124,21 +113,13 @@ def test_generated_projection_fixture_detects_any_legacy_field_drift():
 def test_provider_and_model_aliases_resolve_to_canonical_ids():
     registry = APIModelRegistry()
 
-    assert registry.resolve_provider_id("gemini") == registry.resolve_provider_id(
-        "google"
-    )
+    assert registry.resolve_provider_id("gemini") == registry.resolve_provider_id("google")
     assert registry.resolve_provider_id("claude") == registry.resolve_provider_id(
         APIProviderType.ANTHROPIC
     )
-    assert registry.resolve_provider_id("openvino") == registry.resolve_provider_id(
-        "ovms"
-    )
-    assert registry.resolve_provider_id("hf-tgi") == registry.resolve_provider_id(
-        "huggingface"
-    )
-    assert registry.resolve_provider_id("openai-api") == (
-        registry.resolve_provider_id("openai")
-    )
+    assert registry.resolve_provider_id("openvino") == registry.resolve_provider_id("ovms")
+    assert registry.resolve_provider_id("hf-tgi") == registry.resolve_provider_id("huggingface")
+    assert registry.resolve_provider_id("openai-api") == (registry.resolve_provider_id("openai"))
 
     dated = registry.resolve_model_id("claude-3-opus-20240229")
     assert dated is not None
@@ -150,9 +131,7 @@ def test_provider_and_model_aliases_resolve_to_canonical_ids():
     assert registry.resolve_model_id("ovms/bert-base-uncased") == (
         registry.resolve_model_id("openvino/bert-base-uncased")
     )
-    assert registry.resolve_model_name("claude-3-opus") == (
-        "claude-3-opus-20240229"
-    )
+    assert registry.resolve_model_name("claude-3-opus") == ("claude-3-opus-20240229")
     assert registry.get_model(dated).model_id == "claude-3-opus-20240229"
 
 
@@ -169,9 +148,7 @@ def test_legacy_list_search_recommend_validate_get_and_export_shapes():
     assert registry.validate_model(
         "openai/gpt-4", provider="openai", pipeline_type="text-generation"
     )
-    assert not registry.validate_model(
-        "openai/gpt-4", provider="anthropic"
-    )
+    assert not registry.validate_model("openai/gpt-4", provider="anthropic")
     assert isinstance(registry.recommend_models("text-generation"), list)
     assert isinstance(registry.recommend_model("text-generation"), APIModel)
 
@@ -205,13 +182,9 @@ def test_runtime_additions_publish_through_runtime_catalog_source():
     assert registry.catalog_revision != before_revision
     assert registry.get_model("openai/acme-chat-v1") == custom
     stable_id = registry.resolve_model_id("openai/acme-chat-v1")
-    claims = registry.catalog.claims(
-        stable_id, record_type="models", source=RUNTIME_SOURCE_NAME
-    )
+    claims = registry.catalog.claims(stable_id, record_type="models", source=RUNTIME_SOURCE_NAME)
     assert len(claims) == 1
-    assert backend_registry.get_backend_for_model("openai/acme-chat-v1") == (
-        "openai_api"
-    )
+    assert backend_registry.get_backend_for_model("openai/acme-chat-v1") == ("openai_api")
     assert "openai/acme-chat-v1" in backend_registry.get_models("openai")
     provider_after = registry.catalog.get("openai", record_type="providers")
     assert provider_after.aliases == provider_before.aliases
@@ -247,16 +220,13 @@ def test_backend_inventory_is_a_deterministic_projection():
 
     assert isinstance(legacy, api_models)
     assert {
-        backend: len(models)
-        for backend, models in legacy.model_lists.items()
+        backend: len(models) for backend, models in legacy.model_lists.items()
     } == EXPECTED_BACKEND_COUNTS
     assert legacy.model_lists == legacy.export_models()
     assert legacy.get_backend_for_model("openai/gpt-4") == "openai_api"
     assert legacy.get_backend_for_model("openai_api/gpt-4") == "openai_api"
     assert legacy.get_backend_for_model("anthropic/claude-3-opus") == "claude"
-    assert legacy.get_backend_for_model(
-        "huggingface/all-mpnet-base-v2"
-    ) == "hf_tei"
+    assert legacy.get_backend_for_model("huggingface/all-mpnet-base-v2") == "hf_tei"
     assert legacy.get_backend_for_model("meta-llama/example") == "meta_ai"
     assert legacy.get_backend_for_model("meta-spark/example") == "meta_ai"
     assert legacy.get_backend_for_model("unknown/example") is None
@@ -285,7 +255,8 @@ def test_deprecation_is_documented_reversible_and_has_no_removal_version():
     ),
 )
 def test_cold_import_does_not_attempt_network_discovery(module_name):
-    script = """
+    script = (
+        """
 import importlib
 import sys
 
@@ -295,7 +266,9 @@ def audit(event, args):
 
 sys.addaudithook(audit)
 importlib.import_module(%r)
-""" % module_name
+"""
+        % module_name
+    )
     completed = subprocess.run(
         [sys.executable, "-c", script],
         cwd=os.getcwd(),

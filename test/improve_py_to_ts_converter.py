@@ -15,13 +15,16 @@ from typing import Dict, List, Tuple, Set, Optional, Any, Union
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(f'improve_py_to_ts_converter_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
-    ]
+        logging.FileHandler(
+            f"improve_py_to_ts_converter_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        ),
+    ],
 )
 logger = logging.getLogger(__name__)
+
 
 # Global configuration
 class Config:
@@ -32,194 +35,191 @@ class Config:
     TEST_MODE = False
     VERBOSE = False
 
+
 def setup_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="Improve the Python to TypeScript converter")
-    parser.add_argument("--source", default="setup_ipfs_accelerate_js_py_converter.py", 
-                        help="Source converter script path")
-    parser.add_argument("--output", help="Output path for improved converter (defaults to source with _improved suffix)")
+    parser.add_argument(
+        "--source",
+        default="setup_ipfs_accelerate_js_py_converter.py",
+        help="Source converter script path",
+    )
+    parser.add_argument(
+        "--output",
+        help="Output path for improved converter (defaults to source with _improved suffix)",
+    )
     parser.add_argument("--test-file", help="Test a specific Python file conversion")
-    parser.add_argument("--apply", action="store_true", help="Apply changes directly to source file")
+    parser.add_argument(
+        "--apply", action="store_true", help="Apply changes directly to source file"
+    )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     args = parser.parse_args()
-    
+
     Config.SOURCE_CONVERTER_PATH = os.path.abspath(args.source)
     if not os.path.exists(Config.SOURCE_CONVERTER_PATH):
         logger.error(f"Source converter not found: {Config.SOURCE_CONVERTER_PATH}")
         sys.exit(1)
-    
+
     if args.output:
         Config.OUTPUT_CONVERTER_PATH = os.path.abspath(args.output)
     else:
         base, ext = os.path.splitext(Config.SOURCE_CONVERTER_PATH)
         Config.OUTPUT_CONVERTER_PATH = f"{base}_improved{ext}"
-    
+
     Config.TEST_FILE = args.test_file
     if Config.TEST_FILE and os.path.exists(Config.TEST_FILE):
         Config.TEST_MODE = True
-    
+
     Config.APPLY_CHANGES = args.apply
     Config.VERBOSE = args.verbose
-    
+
     logger.info(f"Source converter: {Config.SOURCE_CONVERTER_PATH}")
     logger.info(f"Output path: {Config.OUTPUT_CONVERTER_PATH}")
     logger.info(f"Test mode: {Config.TEST_MODE}")
     logger.info(f"Apply changes: {Config.APPLY_CHANGES}")
 
+
 class ConverterImprovements:
     """Contains the improved patterns and templates for the Python to TypeScript converter"""
-    
+
     # Improved pattern mapping for better conversion accuracy
     IMPROVED_PATTERN_MAP = [
         # Import statements with better handling of paths and relative imports
-        (r'import\s+(\w+)', r'import * as $1'),
-        (r'from\s+(\w+)\s+import\s+\{([^}]+)\}', r'import { $2 } from "$1"'),
-        (r'from\s+(\w+)\s+import\s+(.+)', r'import { $2 } from "$1"'),
-        (r'from\s+\.(\w+)\s+import\s+(.+)', r'import { $2 } from "./$1"'),
-        (r'from\s+\.\.\s+import\s+(.+)', r'import { $1 } from ".."'),
-        
+        (r"import\s+(\w+)", r"import * as $1"),
+        (r"from\s+(\w+)\s+import\s+\{([^}]+)\}", r'import { $2 } from "$1"'),
+        (r"from\s+(\w+)\s+import\s+(.+)", r'import { $2 } from "$1"'),
+        (r"from\s+\.(\w+)\s+import\s+(.+)", r'import { $2 } from "./$1"'),
+        (r"from\s+\.\.\s+import\s+(.+)", r'import { $1 } from ".."'),
         # Class definitions with inheritance and interfaces
-        (r'class\s+(\w+)(?:\((\w+)\))?:', r'class $1 extends $2 {'),
-        (r'class\s+(\w+):', r'class $1 {'),
-        
+        (r"class\s+(\w+)(?:\((\w+)\))?:", r"class $1 extends $2 {"),
+        (r"class\s+(\w+):", r"class $1 {"),
         # Constructor handling
-        (r'def\s+__init__\s*\(self(?:,\s*([^)]+))?\):', r'constructor($1) {'),
-        
+        (r"def\s+__init__\s*\(self(?:,\s*([^)]+))?\):", r"constructor($1) {"),
         # Method definitions with proper return types
-        (r'def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\)\s*->\s*(\w+):', r'$1($3): $4 {'),
-        (r'def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\):', r'$1($3) {'),
-        (r'async\s+def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\)\s*->\s*(\w+):', r'async $1($3): Promise<$4> {'),
-        (r'async\s+def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\):', r'async $1($3): Promise<any> {'),
-        
+        (r"def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\)\s*->\s*(\w+):", r"$1($3): $4 {"),
+        (r"def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\):", r"$1($3) {"),
+        (
+            r"async\s+def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\)\s*->\s*(\w+):",
+            r"async $1($3): Promise<$4> {",
+        ),
+        (r"async\s+def\s+(\w+)\s*\((self)(?:,\s*([^)]+))?\):", r"async $1($3): Promise<any> {"),
         # Static method handling
-        (r'@staticmethod\s+def\s+(\w+)\s*\(([^)]*)\)\s*->\s*(\w+):', r'static $1($2): $3 {'),
-        (r'@staticmethod\s+def\s+(\w+)\s*\(([^)]*)\):', r'static $1($2): any {'),
-        
+        (r"@staticmethod\s+def\s+(\w+)\s*\(([^)]*)\)\s*->\s*(\w+):", r"static $1($2): $3 {"),
+        (r"@staticmethod\s+def\s+(\w+)\s*\(([^)]*)\):", r"static $1($2): any {"),
         # Property and getter/setter handling
-        (r'@property\s+def\s+(\w+)\s*\(self\)\s*->\s*(\w+):', r'get $1(): $2 {'),
-        (r'@property\s+def\s+(\w+)\s*\(self\):', r'get $1(): any {'),
-        (r'@(\w+)\.setter\s+def\s+\1\s*\(self,\s*(\w+)(?:\s*:\s*([^)]+))?\):', r'set $1($2: $3) {'),
-        
+        (r"@property\s+def\s+(\w+)\s*\(self\)\s*->\s*(\w+):", r"get $1(): $2 {"),
+        (r"@property\s+def\s+(\w+)\s*\(self\):", r"get $1(): any {"),
+        (r"@(\w+)\.setter\s+def\s+\1\s*\(self,\s*(\w+)(?:\s*:\s*([^)]+))?\):", r"set $1($2: $3) {"),
         # Type hints with better handling of complex types
-        (r'(\w+):\s*str', r'$1: string'),
-        (r'(\w+):\s*int', r'$1: number'),
-        (r'(\w+):\s*float', r'$1: number'),
-        (r'(\w+):\s*bool', r'$1: boolean'),
-        (r'(\w+):\s*List\[(\w+)\]', r'$1: $2[]'),
-        (r'(\w+):\s*List\[([\w\[\]\.]+)\]', r'$1: $2[]'),
-        (r'(\w+):\s*Dict\[(\w+),\s*(\w+)\]', r'$1: Record<$2, $3>'),
-        (r'(\w+):\s*Dict\[([\w\[\]\.]+),\s*([\w\[\]\.]+)\]', r'$1: Record<$2, $3>'),
-        (r'(\w+):\s*Optional\[(\w+)\]', r'$1: $2 | null'),
-        (r'(\w+):\s*Optional\[([\w\[\]\.]+)\]', r'$1: $2 | null'),
-        (r'(\w+):\s*Union\[([^\]]+)\]', r'$1: $2'),
-        (r'(\w+):\s*Tuple\[([^\]]+)\]', r'$1: [$2]'),
-        (r'(\w+):\s*Any', r'$1: any'),
-        (r'(\w+):\s*Callable\[\[([\w\s,]+)\],\s*(\w+)\]', r'$1: ($2) => $3'),
-        
+        (r"(\w+):\s*str", r"$1: string"),
+        (r"(\w+):\s*int", r"$1: number"),
+        (r"(\w+):\s*float", r"$1: number"),
+        (r"(\w+):\s*bool", r"$1: boolean"),
+        (r"(\w+):\s*List\[(\w+)\]", r"$1: $2[]"),
+        (r"(\w+):\s*List\[([\w\[\]\.]+)\]", r"$1: $2[]"),
+        (r"(\w+):\s*Dict\[(\w+),\s*(\w+)\]", r"$1: Record<$2, $3>"),
+        (r"(\w+):\s*Dict\[([\w\[\]\.]+),\s*([\w\[\]\.]+)\]", r"$1: Record<$2, $3>"),
+        (r"(\w+):\s*Optional\[(\w+)\]", r"$1: $2 | null"),
+        (r"(\w+):\s*Optional\[([\w\[\]\.]+)\]", r"$1: $2 | null"),
+        (r"(\w+):\s*Union\[([^\]]+)\]", r"$1: $2"),
+        (r"(\w+):\s*Tuple\[([^\]]+)\]", r"$1: [$2]"),
+        (r"(\w+):\s*Any", r"$1: any"),
+        (r"(\w+):\s*Callable\[\[([\w\s,]+)\],\s*(\w+)\]", r"$1: ($2) => $3"),
         # Literal type conversion (for enum-like values)
-        (r'(\w+):\s*Literal\[([^\]]+)\]', r'$1: $2'),
-        
+        (r"(\w+):\s*Literal\[([^\]]+)\]", r"$1: $2"),
         # Self reference conversion
-        (r'self\.', r'this.'),
-        (r'super\(\)\.(\w+)', r'super.$1'),
-        
+        (r"self\.", r"this."),
+        (r"super\(\)\.(\w+)", r"super.$1"),
         # Control structures with improved handling
-        (r'if\s+(.*?):', r'if ($1) {'),
-        (r'elif\s+(.*?):', r'} else if ($1) {'),
-        (r'else:', r'} else {'),
-        (r'for\s+(\w+)\s+in\s+range\((\w+)\):', r'for (let $1 = 0; $1 < $2; $1++) {'),
-        (r'for\s+(\w+)\s+in\s+range\((\w+),\s*(\w+)\):', r'for (let $1 = $2; $1 < $3; $1++) {'),
-        (r'for\s+(\w+)\s+in\s+range\((\w+),\s*(\w+),\s*(\w+)\):', r'for (let $1 = $2; $1 < $3; $1 += $4) {'),
-        (r'for\s+(\w+)\s+in\s+(\w+):', r'for (const $1 of $2) {'),
-        (r'while\s+(.*?):', r'while ($1) {'),
-        (r'try:', r'try {'),
-        (r'except\s+(\w+)(?:\s+as\s+(\w+))?:', r'} catch($2: $1) {'),
-        (r'except:', r'} catch(error) {'),
-        (r'finally:', r'} finally {'),
-        
+        (r"if\s+(.*?):", r"if ($1) {"),
+        (r"elif\s+(.*?):", r"} else if ($1) {"),
+        (r"else:", r"} else {"),
+        (r"for\s+(\w+)\s+in\s+range\((\w+)\):", r"for (let $1 = 0; $1 < $2; $1++) {"),
+        (r"for\s+(\w+)\s+in\s+range\((\w+),\s*(\w+)\):", r"for (let $1 = $2; $1 < $3; $1++) {"),
+        (
+            r"for\s+(\w+)\s+in\s+range\((\w+),\s*(\w+),\s*(\w+)\):",
+            r"for (let $1 = $2; $1 < $3; $1 += $4) {",
+        ),
+        (r"for\s+(\w+)\s+in\s+(\w+):", r"for (const $1 of $2) {"),
+        (r"while\s+(.*?):", r"while ($1) {"),
+        (r"try:", r"try {"),
+        (r"except\s+(\w+)(?:\s+as\s+(\w+))?:", r"} catch($2: $1) {"),
+        (r"except:", r"} catch(error) {"),
+        (r"finally:", r"} finally {"),
         # List operations
-        (r'(\w+)\.append\((.*?)\)', r'$1.push($2)'),
-        (r'\[(.*?) for (.*?) in (.*?)\]', r'$3.map(($2) => $1)'),
-        (r'\[(.*?) for (.*?) in (.*?) if (.*?)\]', r'$3.filter(($2) => $4).map(($2) => $1)'),
-        
+        (r"(\w+)\.append\((.*?)\)", r"$1.push($2)"),
+        (r"\[(.*?) for (.*?) in (.*?)\]", r"$3.map(($2) => $1)"),
+        (r"\[(.*?) for (.*?) in (.*?) if (.*?)\]", r"$3.filter(($2) => $4).map(($2) => $1)"),
         # Dictionary operations
-        (r'(\w+)\.items\(\)', r'Object.entries($1)'),
-        (r'(\w+)\.keys\(\)', r'Object.keys($1)'),
-        (r'(\w+)\.values\(\)', r'Object.values($1)'),
-        (r'(\w+)\.get\((.*?), (.*?)\)', r'$1[$2] ?? $3'),
-        (r'(\w+)\.get\((.*?)\)', r'$1[$2]'),
-        
+        (r"(\w+)\.items\(\)", r"Object.entries($1)"),
+        (r"(\w+)\.keys\(\)", r"Object.keys($1)"),
+        (r"(\w+)\.values\(\)", r"Object.values($1)"),
+        (r"(\w+)\.get\((.*?), (.*?)\)", r"$1[$2] ?? $3"),
+        (r"(\w+)\.get\((.*?)\)", r"$1[$2]"),
         # Boolean operators
-        (r' and ', r' && '),
-        (r' or ', r' || '),
-        (r'not ', r'!'),
-        
+        (r" and ", r" && "),
+        (r" or ", r" || "),
+        (r"not ", r"!"),
         # None/null
-        (r'None', r'null'),
-        (r'True', r'true'),
-        (r'False', r'false'),
-        
+        (r"None", r"null"),
+        (r"True", r"true"),
+        (r"False", r"false"),
         # f-strings with improved handling of expressions
-        (r'f[\'"](.+?)[\'"]', r'`$1`'),
-        (r'{([^{}]+?)}', r'${$1}'),
-        
+        (r'f[\'"](.+?)[\'"]', r"`$1`"),
+        (r"{([^{}]+?)}", r"${$1}"),
         # Comments
-        (r'#\s*(.*?)$', r'// $1'),
-        
+        (r"#\s*(.*?)$", r"// $1"),
         # Print statements
-        (r'print\((.*?)\)', r'console.log($1)'),
-        
+        (r"print\((.*?)\)", r"console.log($1)"),
         # Async/await with better Promise handling
-        (r'async\s+def', r'async'),
-        (r'await\s+', r'await '),
-        
+        (r"async\s+def", r"async"),
+        (r"await\s+", r"await "),
         # Return statement with proper semicolon
-        (r'return\s+(.*)', r'return $1;'),
-        (r'return;', r'return;'),
-        
+        (r"return\s+(.*)", r"return $1;"),
+        (r"return;", r"return;"),
         # Assert statement
-        (r'assert\s+(.*?)(,\s*[\'"](.+)[\'"])?', r'if (!($1)) { throw new Error($3 || "Assertion failed"); }'),
-        
+        (
+            r'assert\s+(.*?)(,\s*[\'"](.+)[\'"])?',
+            r'if (!($1)) { throw new Error($3 || "Assertion failed"); }',
+        ),
         # WebGPU specific conversions with camelCase
-        (r'navigator\.gpu\.request_adapter', r'navigator.gpu.requestAdapter'),
-        (r'create_buffer', r'createBuffer'),
-        (r'create_compute_pipeline', r'createComputePipeline'),
-        (r'create_shader_module', r'createShaderModule'),
-        (r'create_bind_group', r'createBindGroup'),
-        (r'create_command_encoder', r'createCommandEncoder'),
-        (r'begin_compute_pass', r'beginComputePass'),
-        (r'set_pipeline', r'setPipeline'),
-        (r'set_bind_group', r'setBindGroup'),
-        (r'dispatch_workgroups', r'dispatchWorkgroups'),
-        (r'submit_command_buffer', r'submitCommandBuffer'),
-        
+        (r"navigator\.gpu\.request_adapter", r"navigator.gpu.requestAdapter"),
+        (r"create_buffer", r"createBuffer"),
+        (r"create_compute_pipeline", r"createComputePipeline"),
+        (r"create_shader_module", r"createShaderModule"),
+        (r"create_bind_group", r"createBindGroup"),
+        (r"create_command_encoder", r"createCommandEncoder"),
+        (r"begin_compute_pass", r"beginComputePass"),
+        (r"set_pipeline", r"setPipeline"),
+        (r"set_bind_group", r"setBindGroup"),
+        (r"dispatch_workgroups", r"dispatchWorkgroups"),
+        (r"submit_command_buffer", r"submitCommandBuffer"),
         # WebNN specific conversions with camelCase
-        (r'navigator\.ml\.create_context', r'navigator.ml.createContext'),
-        (r'create_graph_builder', r'createGraphBuilder'),
-        (r'create_graph', r'createGraph'),
-        (r'create_model', r'createModel'),
-        (r'build_graph', r'buildGraph'),
-        (r'create_operand', r'createOperand'),
-        
+        (r"navigator\.ml\.create_context", r"navigator.ml.createContext"),
+        (r"create_graph_builder", r"createGraphBuilder"),
+        (r"create_graph", r"createGraph"),
+        (r"create_model", r"createModel"),
+        (r"build_graph", r"buildGraph"),
+        (r"create_operand", r"createOperand"),
         # More Python to JavaScript conversions
-        (r'str\((.*?)\)', r'String($1)'),
-        (r'len\((.*?)\)', r'$1.length'),
-        (r'isinstance\((.*?), (.*?)\)', r'$1 instanceof $2'),
-        (r'(\w+)\.split\((.*?)\)', r'$1.split($2)'),
-        (r'(\w+)\.strip\(\)', r'$1.trim()'),
-        (r'(\w+)\.lower\(\)', r'$1.toLowerCase()'),
-        (r'(\w+)\.upper\(\)', r'$1.toUpperCase()'),
-        (r'(\w+)\.startswith\((.*?)\)', r'$1.startsWith($2)'),
-        (r'(\w+)\.endswith\((.*?)\)', r'$1.endsWith($2)'),
-        (r'(\w+)\.replace\((.*?), (.*?)\)', r'$1.replace($2, $3)'),
-        (r'(\w+)\.join\((.*?)\)', r'$2.join($1)'),
+        (r"str\((.*?)\)", r"String($1)"),
+        (r"len\((.*?)\)", r"$1.length"),
+        (r"isinstance\((.*?), (.*?)\)", r"$1 instanceof $2"),
+        (r"(\w+)\.split\((.*?)\)", r"$1.split($2)"),
+        (r"(\w+)\.strip\(\)", r"$1.trim()"),
+        (r"(\w+)\.lower\(\)", r"$1.toLowerCase()"),
+        (r"(\w+)\.upper\(\)", r"$1.toUpperCase()"),
+        (r"(\w+)\.startswith\((.*?)\)", r"$1.startsWith($2)"),
+        (r"(\w+)\.endswith\((.*?)\)", r"$1.endsWith($2)"),
+        (r"(\w+)\.replace\((.*?), (.*?)\)", r"$1.replace($2, $3)"),
+        (r"(\w+)\.join\((.*?)\)", r"$2.join($1)"),
     ]
-    
+
     # Enhanced WebGPU class template with proper TypeScript typing
     WEBGPU_CLASS_TEMPLATE = {
-        'signature': 'class WebGPUBackend implements HardwareBackend',
-        'methods': {
-            'initialize': '''async initialize(): Promise<boolean> {
+        "signature": "class WebGPUBackend implements HardwareBackend",
+        "methods": {
+            "initialize": """async initialize(): Promise<boolean> {
     try {
       // Request adapter from navigator.gpu
       this.adapter = await navigator.gpu.requestAdapter();
@@ -243,8 +243,8 @@ class ConverterImprovements:
       console.error("WebGPU initialization error:", error);
       return false;
     }
-  }''',
-            'createBuffer': '''createBuffer(size: number, usage: GPUBufferUsageFlags): GPUBuffer | null {
+  }""",
+            "createBuffer": """createBuffer(size: number, usage: GPUBufferUsageFlags): GPUBuffer | null {
     if (!this.device) {
       console.error("WebGPU device not initialized");
       return null;
@@ -260,8 +260,8 @@ class ConverterImprovements:
       console.error("Error creating WebGPU buffer:", error);
       return null;
     }
-  }''',
-            'createComputePipeline': '''async createComputePipeline(shader: string): Promise<GPUComputePipeline | null> {
+  }""",
+            "createComputePipeline": """async createComputePipeline(shader: string): Promise<GPUComputePipeline | null> {
     if (!this.device) {
       console.error("WebGPU device not initialized");
       return null;
@@ -283,8 +283,8 @@ class ConverterImprovements:
       console.error("Error creating compute pipeline:", error);
       return null;
     }
-  }''',
-            'runCompute': '''async runCompute(
+  }""",
+            "runCompute": """async runCompute(
     pipeline: GPUComputePipeline,
     bindings: GPUBindGroup[],
     workgroups: [number, number?, number?]
@@ -316,8 +316,8 @@ class ConverterImprovements:
       console.error("Error running compute operation:", error);
       throw error;
     }
-  }''',
-            'destroy': '''destroy(): void {
+  }""",
+            "destroy": """destroy(): void {
     if (this.adapter) {
       // Clean up any resources
       this.adapter = null;
@@ -329,22 +329,22 @@ class ConverterImprovements:
     }
     
     this.initialized = false;
-  }'''
+  }""",
         },
-        'properties': {
-            'device': 'device: GPUDevice | null = null',
-            'adapter': 'adapter: GPUAdapter | null = null',
-            'initialized': 'initialized: boolean = false',
-            'features': 'features: Set<string> = new Set()',
-            'limits': 'limits: Record<string, number> = {}'
-        }
+        "properties": {
+            "device": "device: GPUDevice | null = null",
+            "adapter": "adapter: GPUAdapter | null = null",
+            "initialized": "initialized: boolean = false",
+            "features": "features: Set<string> = new Set()",
+            "limits": "limits: Record<string, number> = {}",
+        },
     }
-    
+
     # Enhanced WebNN class template with proper TypeScript typing
     WEBNN_CLASS_TEMPLATE = {
-        'signature': 'class WebNNBackend implements HardwareBackend',
-        'methods': {
-            'initialize': '''async initialize(): Promise<boolean> {
+        "signature": "class WebNNBackend implements HardwareBackend",
+        "methods": {
+            "initialize": """async initialize(): Promise<boolean> {
     try {
       if (!navigator.ml) {
         console.error("WebNN not supported in this browser");
@@ -364,8 +364,8 @@ class ConverterImprovements:
       console.error("WebNN initialization error:", error);
       return false;
     }
-  }''',
-            'createGraphBuilder': '''createGraphBuilder(): MLGraphBuilder | null {
+  }""",
+            "createGraphBuilder": """createGraphBuilder(): MLGraphBuilder | null {
     if (!this.context) {
       console.error("WebNN context not initialized");
       return null;
@@ -377,8 +377,8 @@ class ConverterImprovements:
       console.error("Error creating graph builder:", error);
       return null;
     }
-  }''',
-            'buildGraph': '''async buildGraph(
+  }""",
+            "buildGraph": """async buildGraph(
     graphBuilder: MLGraphBuilder,
     outputs: Record<string, MLOperand>
   ): Promise<MLGraph | null> {
@@ -393,8 +393,8 @@ class ConverterImprovements:
       console.error("Error building graph:", error);
       return null;
     }
-  }''',
-            'runInference': '''async runInference(
+  }""",
+            "runInference": """async runInference(
     graph: MLGraph,
     inputs: Record<string, MLOperand>
   ): Promise<Record<string, MLOperand>> {
@@ -408,24 +408,24 @@ class ConverterImprovements:
       console.error("Error running inference:", error);
       throw error;
     }
-  }''',
-            'destroy': '''destroy(): void {
+  }""",
+            "destroy": """destroy(): void {
     this.context = null;
     this.initialized = false;
-  }'''
+  }""",
         },
-        'properties': {
-            'context': 'context: MLContext | null = null',
-            'initialized': 'initialized: boolean = false',
-            'capabilities': 'capabilities: string[] = []'
-        }
+        "properties": {
+            "context": "context: MLContext | null = null",
+            "initialized": "initialized: boolean = false",
+            "capabilities": "capabilities: string[] = []",
+        },
     }
-    
+
     # Enhanced HardwareAbstraction class template with proper TypeScript typing
     HARDWARE_ABSTRACTION_TEMPLATE = {
-        'signature': 'class HardwareAbstraction',
-        'methods': {
-            'initialize': '''async initialize(): Promise<boolean> {
+        "signature": "class HardwareAbstraction",
+        "methods": {
+            "initialize": """async initialize(): Promise<boolean> {
     try {
       // Initialize hardware detection
       const hardwareDetection = new HardwareDetection();
@@ -461,8 +461,8 @@ class ConverterImprovements:
       console.error("Error initializing hardware abstraction:", error);
       return false;
     }
-  }''',
-            'getBestBackend': '''getBestBackend(modelType: string): HardwareBackend {
+  }""",
+            "getBestBackend": """getBestBackend(modelType: string): HardwareBackend {
     // Check if we have a preference for this model type
     if (
       this.preferences &&
@@ -485,20 +485,20 @@ class ConverterImprovements:
     
     // Always have CPU as fallback
     return this.backends.get('cpu')!;
-  }''',
-            'runModel': '''async runModel<T = any, U = any>(model: Model, inputs: T): Promise<U> {
+  }""",
+            "runModel": """async runModel<T = any, U = any>(model: Model, inputs: T): Promise<U> {
     const backend = this.getBestBackend(model.type);
     return model.execute(inputs, backend);
-  }''',
-            'destroy': '''destroy(): void {
+  }""",
+            "destroy": """destroy(): void {
     // Destroy all backends
     for (const backend of this.backends.values()) {
       backend.destroy();
     }
     
     this.backends.clear();
-  }''',
-            'applyPreferences': '''private applyPreferences(): void {
+  }""",
+            "applyPreferences": """private applyPreferences(): void {
     // Apply any hardware preferences from configuration
     if (this.preferences && this.preferences.backendOrder) {
       // Reorder backends based on preferences
@@ -511,76 +511,78 @@ class ConverterImprovements:
         backend => this.backends.has(backend)
       );
     }
-  }'''
+  }""",
         },
-        'properties': {
-            'backends': 'backends: Map<string, HardwareBackend> = new Map()',
-            'preferences': 'preferences: HardwarePreferences',
-            'backendOrder': 'backendOrder: string[] = []'
-        }
+        "properties": {
+            "backends": "backends: Map<string, HardwareBackend> = new Map()",
+            "preferences": "preferences: HardwarePreferences",
+            "backendOrder": "backendOrder: string[] = []",
+        },
     }
-    
+
     # Enhanced class conversions mapping
     IMPROVED_CLASS_CONVERSIONS = {
-        'WebGPUBackend': WEBGPU_CLASS_TEMPLATE,
-        'WebNNBackend': WEBNN_CLASS_TEMPLATE,
-        'HardwareAbstraction': HARDWARE_ABSTRACTION_TEMPLATE,
+        "WebGPUBackend": WEBGPU_CLASS_TEMPLATE,
+        "WebNNBackend": WEBNN_CLASS_TEMPLATE,
+        "HardwareAbstraction": HARDWARE_ABSTRACTION_TEMPLATE,
     }
-    
+
     # TypeScript interfaces for common types
     TS_INTERFACES = {
-        'HardwareBackend': '''interface HardwareBackend {
+        "HardwareBackend": """interface HardwareBackend {
   initialize(): Promise<boolean>;
   destroy(): void;
-}''',
-        'HardwarePreferences': '''interface HardwarePreferences {
+}""",
+        "HardwarePreferences": """interface HardwarePreferences {
   backendOrder?: string[];
   modelPreferences?: Record<string, string[]>;
   options?: Record<string, any>;
-}''',
-        'ModelConfig': '''interface ModelConfig {
+}""",
+        "ModelConfig": """interface ModelConfig {
   id: string;
   type: string;
   path?: string;
   options?: Record<string, any>;
-}''',
-        'Model': '''interface Model {
+}""",
+        "Model": """interface Model {
   id: string;
   type: string;
   execute<T = any, U = any>(inputs: T, backend: HardwareBackend): Promise<U>;
-}'''
+}""",
     }
-    
+
     @staticmethod
     def create_improved_interfaces(file_content: str) -> str:
         """Extract interfaces from Python types and create TypeScript interfaces"""
         interfaces = []
-        
+
         # Look for type annotations for classes
-        class_matches = re.finditer(r'class\s+(\w+)(?:\(([^)]+)\))?:', file_content)
+        class_matches = re.finditer(r"class\s+(\w+)(?:\(([^)]+)\))?:", file_content)
         for match in class_matches:
             class_name = match.group(1)
             # Extract property annotations from the class
             props = {}
-            prop_matches = re.finditer(r'self\.(\w+)(?:\s*:\s*([^=\n]+))?(?:\s*=\s*([^#\n]+))?', file_content)
+            prop_matches = re.finditer(
+                r"self\.(\w+)(?:\s*:\s*([^=\n]+))?(?:\s*=\s*([^#\n]+))?", file_content
+            )
             for prop_match in prop_matches:
                 prop_name = prop_match.group(1)
                 prop_type = prop_match.group(2)
                 prop_default = prop_match.group(3)
-                
+
                 if prop_type:
                     # Convert Python type to TypeScript
                     ts_type = prop_type.strip()
-                    ts_type = re.sub(r'str', 'string', ts_type)
-                    ts_type = re.sub(r'int|float', 'number', ts_type)
-                    ts_type = re.sub(r'bool', 'boolean', ts_type)
-                    ts_type = re.sub(r'List\[(\w+)\]', r'$1[]', ts_type)
-                    ts_type = re.sub(r'Dict\[(\w+),\s*(\w+)\]', r'Record<$1, $2>', ts_type)
-                    ts_type = re.sub(r'Optional\[(\w+)\]', r'$1 | null', ts_type)
-                    ts_type = re.sub(r'Any', 'any', ts_type)
-                    
+                    ts_type = re.sub(r"str", "string", ts_type)
+                    ts_type = re.sub(r"int|float", "number", ts_type)
+                    ts_type = re.sub(r"bool", "boolean", ts_type)
+                    ts_type = re.sub(r"List\[(\w+)\]", r"$1[]", ts_type)
+                    ts_type = re.sub(r"Dict\[(\w+),\s*(\w+)\]", r"Record<$1, $2>", ts_type)
+                    ts_type = re.sub(r"Optional\[(\w+)\]", r"$1 | null", ts_type)
+                    ts_type = re.sub(r"Any", "any", ts_type)
+
                     props[prop_name] = ts_type
-            
+
             # If we found properties, create an interface
             if props:
                 interface = f"interface {class_name}Props {{\n"
@@ -588,132 +590,129 @@ class ConverterImprovements:
                     interface += f"  {prop_name}: {prop_type};\n"
                 interface += "}\n\n"
                 interfaces.append(interface)
-        
+
         # Add standard interfaces
         for interface_name, interface_def in ConverterImprovements.TS_INTERFACES.items():
             interfaces.append(interface_def + "\n")
-        
+
         return "\n".join(interfaces) if interfaces else ""
-    
+
     @staticmethod
-    def fix_import_paths(original_content: str, ts_content: str, file_path: str, target_dir: str) -> str:
+    def fix_import_paths(
+        original_content: str, ts_content: str, file_path: str, target_dir: str
+    ) -> str:
         """Fix import paths in the converted TypeScript content"""
         # Extract Python imports
-        py_imports = re.findall(r'(?:from|import)\s+([.\w]+)', original_content)
-        
+        py_imports = re.findall(r"(?:from|import)\s+([.\w]+)", original_content)
+
         # Extract TypeScript imports
         ts_imports = re.findall(r'import.*?from\s+[\'"]([^\'"]+)[\'"]', ts_content)
-        
+
         # Create a mapping from Python module to TypeScript path
         import_mapping = {}
         for py_import in py_imports:
             # Skip standard lib imports
-            if py_import in ('os', 'sys', 're', 'json', 'logging', 'datetime', 'pathlib', 'typing'):
+            if py_import in ("os", "sys", "re", "json", "logging", "datetime", "pathlib", "typing"):
                 continue
-                
+
             # Convert Python import to potential TypeScript path
-            if '.' in py_import:
-                parts = py_import.split('.')
-                ts_path = '/'.join(parts)
-                import_mapping[py_import] = f'./{ts_path}'
+            if "." in py_import:
+                parts = py_import.split(".")
+                ts_path = "/".join(parts)
+                import_mapping[py_import] = f"./{ts_path}"
             else:
                 # For single module imports, map to ./modulename
-                import_mapping[py_import] = f'./{py_import}'
-        
+                import_mapping[py_import] = f"./{py_import}"
+
         # Fix the imports in TypeScript content
         for py_import, ts_path in import_mapping.items():
             # Replace simple imports
-            ts_content = re.sub(
-                fr'from\s+[\'"]({py_import})[\'"]',
-                f'from "{ts_path}"',
-                ts_content
-            )
-            
+            ts_content = re.sub(rf'from\s+[\'"]({py_import})[\'"]', f'from "{ts_path}"', ts_content)
+
             # Handle relative imports that might not match exactly
             for ts_import in ts_imports:
                 if py_import in ts_import:
                     ts_content = re.sub(
-                        fr'from\s+[\'"]({ts_import})[\'"]',
-                        f'from "{ts_path}"',
-                        ts_content
+                        rf'from\s+[\'"]({ts_import})[\'"]', f'from "{ts_path}"', ts_content
                     )
-        
+
         return ts_content
+
 
 def update_pattern_map(source_content: str) -> str:
     """Update the pattern mapping in the source converter code"""
     # Find PATTERN_MAP in source
-    pattern_map_match = re.search(r'PATTERN_MAP\s*=\s*\[(.*?)\]', source_content, re.DOTALL)
-    
+    pattern_map_match = re.search(r"PATTERN_MAP\s*=\s*\[(.*?)\]", source_content, re.DOTALL)
+
     if not pattern_map_match:
         logger.error("Could not find PATTERN_MAP in source code")
         return source_content
-    
+
     # Replace with improved pattern map
     improved_pattern_map = "PATTERN_MAP = [\n        # Import statements with better handling of paths and relative imports\n"
     for pattern, replacement in ConverterImprovements.IMPROVED_PATTERN_MAP:
         improved_pattern_map += f"        (r'{pattern}', r'{replacement}'),\n"
     improved_pattern_map += "    ]"
-    
-    updated_content = source_content.replace(
-        pattern_map_match.group(0),
-        improved_pattern_map
-    )
-    
+
+    updated_content = source_content.replace(pattern_map_match.group(0), improved_pattern_map)
+
     return updated_content
+
 
 def update_class_conversions(source_content: str) -> str:
     """Update the class templates in the source converter code"""
     # Find CLASS_CONVERSIONS in source
-    class_conv_match = re.search(r'CLASS_CONVERSIONS\s*=\s*\{(.*?)\}', source_content, re.DOTALL)
-    
+    class_conv_match = re.search(r"CLASS_CONVERSIONS\s*=\s*\{(.*?)\}", source_content, re.DOTALL)
+
     if not class_conv_match:
         logger.error("Could not find CLASS_CONVERSIONS in source code")
         return source_content
-    
+
     # Create improved class conversions
     improved_class_conversions = "CLASS_CONVERSIONS = {\n"
-    
+
     for class_name, template in ConverterImprovements.IMPROVED_CLASS_CONVERSIONS.items():
         improved_class_conversions += f"        '{class_name}': {{\n"
         improved_class_conversions += f"            'signature': '{template['signature']}',\n"
-        
+
         # Add methods
         improved_class_conversions += "            'methods': {\n"
-        for method_name, method_body in template['methods'].items():
+        for method_name, method_body in template["methods"].items():
             # Escape single quotes in the method body
             method_body_escaped = method_body.replace("'", "\\'")
             # Add proper indentation
             method_body_formatted = method_body_escaped.replace("\n", "\\n")
-            improved_class_conversions += f"                '{method_name}': '{method_body_formatted}',\n"
+            improved_class_conversions += (
+                f"                '{method_name}': '{method_body_formatted}',\n"
+            )
         improved_class_conversions += "            },\n"
-        
+
         # Add properties
         improved_class_conversions += "            'properties': {\n"
-        for prop_name, prop_def in template['properties'].items():
+        for prop_name, prop_def in template["properties"].items():
             improved_class_conversions += f"                '{prop_name}': '{prop_def}',\n"
         improved_class_conversions += "            }\n"
-        
+
         improved_class_conversions += "        },\n"
-    
+
     improved_class_conversions += "    }"
-    
-    updated_content = source_content.replace(
-        class_conv_match.group(0),
-        improved_class_conversions
-    )
-    
+
+    updated_content = source_content.replace(class_conv_match.group(0), improved_class_conversions)
+
     return updated_content
+
 
 def enhance_generate_class_method(source_content: str) -> str:
     """Enhance the _generate_class_from_template method"""
     # Find _generate_class_from_template method
-    method_match = re.search(r'def\s+_generate_class_from_template.*?return\s+result', source_content, re.DOTALL)
-    
+    method_match = re.search(
+        r"def\s+_generate_class_from_template.*?return\s+result", source_content, re.DOTALL
+    )
+
     if not method_match:
         logger.error("Could not find _generate_class_from_template method")
         return source_content
-    
+
     # Create improved method
     improved_method = '''    @staticmethod
     def _generate_class_from_template(class_name: str, content: str) -> str:
@@ -838,24 +837,24 @@ def enhance_generate_class_method(source_content: str) -> str:
         
         result += "}\\n"
         return result'''
-    
+
     # Replace the original method
-    updated_content = source_content.replace(
-        method_match.group(0),
-        improved_method
-    )
-    
+    updated_content = source_content.replace(method_match.group(0), improved_method)
+
     return updated_content
+
 
 def enhance_extract_interfaces(source_content: str) -> str:
     """Enhance the _extract_interfaces method to generate better TypeScript interfaces"""
     # Find _extract_interfaces method
-    method_match = re.search(r'def\s+_extract_interfaces.*?return\s+interfaces', source_content, re.DOTALL)
-    
+    method_match = re.search(
+        r"def\s+_extract_interfaces.*?return\s+interfaces", source_content, re.DOTALL
+    )
+
     if not method_match:
         logger.error("Could not find _extract_interfaces method")
         return source_content
-    
+
     # Create improved method
     improved_method = '''    @staticmethod
     def _extract_interfaces(content: str) -> str:
@@ -974,26 +973,28 @@ interface Model {
                     interfaces += param_interface
         
         return interfaces'''
-    
+
     # Replace the original method
-    updated_content = source_content.replace(
-        method_match.group(0),
-        improved_method
-    )
-    
+    updated_content = source_content.replace(method_match.group(0), improved_method)
+
     return updated_content
+
 
 def enhance_map_file_to_destination(source_content: str) -> str:
     """Enhance the map_file_to_destination method for better import path handling"""
     # Find map_file_to_destination method
-    method_match = re.search(r'def\s+map_file_to_destination.*?return\s+os\.path\.join\(Config\.TARGET_DIR,\s*"src/utils",\s*os\.path\.splitext\(basename\)\[0\]\s*\+\s*output_ext\)', source_content, re.DOTALL)
-    
+    method_match = re.search(
+        r'def\s+map_file_to_destination.*?return\s+os\.path\.join\(Config\.TARGET_DIR,\s*"src/utils",\s*os\.path\.splitext\(basename\)\[0\]\s*\+\s*output_ext\)',
+        source_content,
+        re.DOTALL,
+    )
+
     if not method_match:
         logger.error("Could not find map_file_to_destination method")
         return source_content
-    
+
     # Create improved method ending (keep the beginning part unchanged)
-    method_end = '''        # Special file types
+    method_end = """        # Special file types
         elif src_ext.lower() in [".md", ".markdown"]:
             return os.path.join(Config.TARGET_DIR, "docs", basename)
         elif src_ext.lower() in [".json"]:
@@ -1076,33 +1077,35 @@ def enhance_map_file_to_destination(source_content: str) -> str:
                     logger.warning(f"Could not analyze content for {file_path}: {e}")
             
             # Default case - place in utils directory
-            return os.path.join(Config.TARGET_DIR, "src/utils", os.path.splitext(basename)[0] + output_ext)'''
-    
+            return os.path.join(Config.TARGET_DIR, "src/utils", os.path.splitext(basename)[0] + output_ext)"""
+
     # Extract the beginning of the method (keep it unchanged)
-    method_start_match = re.search(r'def\s+map_file_to_destination.*?# Special file types', source_content, re.DOTALL)
+    method_start_match = re.search(
+        r"def\s+map_file_to_destination.*?# Special file types", source_content, re.DOTALL
+    )
     if not method_start_match:
         logger.error("Could not find the beginning of map_file_to_destination method")
         return source_content
-    
+
     method_start = method_start_match.group(0)
-    
+
     # Replace the method
-    updated_content = source_content.replace(
-        method_match.group(0),
-        method_start + method_end
-    )
-    
+    updated_content = source_content.replace(method_match.group(0), method_start + method_end)
+
     return updated_content
+
 
 def improve_add_closing_braces(source_content: str) -> str:
     """Improve the _add_closing_braces method to handle nested blocks better"""
     # Find _add_closing_braces method
-    method_match = re.search(r'def\s+_add_closing_braces.*?return\s+content', source_content, re.DOTALL)
-    
+    method_match = re.search(
+        r"def\s+_add_closing_braces.*?return\s+content", source_content, re.DOTALL
+    )
+
     if not method_match:
         logger.error("Could not find _add_closing_braces method")
         return source_content
-    
+
     # Create improved method
     improved_method = '''    @staticmethod
     def _add_closing_braces(content: str) -> str:
@@ -1190,86 +1193,86 @@ def improve_add_closing_braces(source_content: str) -> str:
         content = re.sub(r'const\\s*\\[([^=]+)\\]\\s*=\\s*([^;]+);', r'const _tmp = \\2;\\nconst \\1 = _tmp;', content)
         
         return content'''
-    
+
     # Replace the original method
-    updated_content = source_content.replace(
-        method_match.group(0),
-        improved_method
-    )
-    
+    updated_content = source_content.replace(method_match.group(0), improved_method)
+
     return updated_content
+
 
 def test_conversion(python_file: str, converter_path: str) -> str:
     """Test the conversion process on a sample Python file"""
     logger.info(f"Testing conversion of {python_file} with {converter_path}")
-    
+
     try:
         # Load the Python file
-        with open(python_file, 'r', encoding='utf-8') as f:
+        with open(python_file, "r", encoding="utf-8") as f:
             py_content = f.read()
-        
+
         # Load the converter module
         import importlib.util
+
         spec = importlib.util.spec_from_file_location("py_to_ts_converter", converter_path)
         converter_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(converter_module)
-        
+
         # Get the converter class
         PyToTsConverter = converter_module.PyToTsConverter
-        
+
         # Convert the Python file
         ts_content = PyToTsConverter.convert_py_to_ts(py_content, python_file)
-        
+
         # Save the result to a temporary file
         ts_file = os.path.splitext(python_file)[0] + "_converted.ts"
-        with open(ts_file, 'w', encoding='utf-8') as f:
+        with open(ts_file, "w", encoding="utf-8") as f:
             f.write(ts_content)
-        
+
         logger.info(f"Conversion test completed. Result saved to {ts_file}")
         return ts_file
     except Exception as e:
         logger.error(f"Error testing conversion: {e}")
         return None
 
+
 def main():
     """Main function"""
     setup_args()
-    
+
     # Read the source converter file
     try:
-        with open(Config.SOURCE_CONVERTER_PATH, 'r', encoding='utf-8') as f:
+        with open(Config.SOURCE_CONVERTER_PATH, "r", encoding="utf-8") as f:
             source_content = f.read()
     except Exception as e:
         logger.error(f"Error reading source file: {e}")
         sys.exit(1)
-    
+
     # Apply improvements
     logger.info("Applying improvements to the converter...")
-    
+
     # Update PATTERN_MAP
     logger.info("Updating pattern mapping...")
     updated_content = update_pattern_map(source_content)
-    
+
     # Update CLASS_CONVERSIONS
     logger.info("Updating class templates...")
     updated_content = update_class_conversions(updated_content)
-    
+
     # Enhance _generate_class_from_template method
     logger.info("Enhancing class generation method...")
     updated_content = enhance_generate_class_method(updated_content)
-    
+
     # Enhance _extract_interfaces method
     logger.info("Enhancing interface extraction method...")
     updated_content = enhance_extract_interfaces(updated_content)
-    
+
     # Enhance map_file_to_destination method
     logger.info("Enhancing file mapping method...")
     updated_content = enhance_map_file_to_destination(updated_content)
-    
+
     # Improve _add_closing_braces method
     logger.info("Improving brace handling method...")
     updated_content = improve_add_closing_braces(updated_content)
-    
+
     # Save the improved converter
     if Config.APPLY_CHANGES:
         output_path = Config.SOURCE_CONVERTER_PATH
@@ -1277,63 +1280,62 @@ def main():
     else:
         output_path = Config.OUTPUT_CONVERTER_PATH
         logger.info(f"Saving improved converter to {output_path}")
-    
+
     try:
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write(updated_content)
         logger.info("Improvements applied successfully!")
     except Exception as e:
         logger.error(f"Error saving improved converter: {e}")
         sys.exit(1)
-    
+
     # Test the conversion if a test file is provided
     if Config.TEST_MODE and Config.TEST_FILE:
         logger.info(f"Testing conversion with file: {Config.TEST_FILE}")
         test_conversion(Config.TEST_FILE, output_path)
-    
+
     logger.info("Done!")
+
 
 # Direct conversion function for testing
 def convert_file(input_path, output_path):
     """Convert a Python file to TypeScript directly"""
     try:
-        with open(input_path, 'r', encoding='utf-8') as f:
+        with open(input_path, "r", encoding="utf-8") as f:
             python_code = f.read()
-        
+
         # Create interfaces
         interfaces = ConverterImprovements.create_improved_interfaces(python_code)
-        
+
         # Apply all pattern conversions
         typescript_code = python_code
         for pattern, replacement in ConverterImprovements.IMPROVED_PATTERN_MAP:
             typescript_code = re.sub(pattern, replacement, typescript_code)
-        
+
         # Add interfaces at the beginning
         typescript_code = interfaces + typescript_code
-        
+
         # Fix import paths
         typescript_code = ConverterImprovements.fix_import_paths(
-            python_code,
-            typescript_code,
-            input_path,
-            os.path.dirname(output_path)
+            python_code, typescript_code, input_path, os.path.dirname(output_path)
         )
-        
+
         # Add TypeScript header
-        header = '/**\n'
-        header += f' * Converted from Python: {os.path.basename(input_path)}\n'
-        header += f' * Conversion date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n'
-        header += ' * Generated with improved Python-to-TypeScript converter\n'
-        header += ' */\n\n'
-        
+        header = "/**\n"
+        header += f" * Converted from Python: {os.path.basename(input_path)}\n"
+        header += f" * Conversion date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        header += " * Generated with improved Python-to-TypeScript converter\n"
+        header += " */\n\n"
+
         # Write the output file
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             f.write(header + typescript_code)
-        
+
         return True
     except Exception as e:
         logger.error(f"Error converting file: {e}")
         return False
+
 
 if __name__ == "__main__":
     main()

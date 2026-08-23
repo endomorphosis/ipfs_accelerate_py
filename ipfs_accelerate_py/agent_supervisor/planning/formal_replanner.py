@@ -65,40 +65,22 @@ from .plan_failure_memory import (
 
 
 FORMAL_REPLANNER_VERSION: Final = 1
-REPAIR_TRANSITION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/formal-repair-transition@1"
-)
-REPAIR_CANDIDATE_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/formal-repair-candidate@1"
-)
-REPLAN_RESULT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/formal-replan-result@1"
-)
-CODEX_REPAIR_PACKET_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/codex-repair-packet@1"
-)
+REPAIR_TRANSITION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/formal-repair-transition@1"
+REPAIR_CANDIDATE_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/formal-repair-candidate@1"
+REPLAN_RESULT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/formal-replan-result@1"
+CODEX_REPAIR_PACKET_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/codex-repair-packet@1"
 RESPONSIVE_REPLAN_DECISION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/responsive-replan-decision@1"
 )
-DIAGNOSTIC_RECEIPT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/retry-diagnostic-receipt@1"
-)
-DELTA_PLAN_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/delta-plan-snapshot@1"
-)
-DELTA_REPLAN_DECISION_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/delta-replan-decision@1"
-)
+DIAGNOSTIC_RECEIPT_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/retry-diagnostic-receipt@1"
+DELTA_PLAN_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/delta-plan-snapshot@1"
+DELTA_REPLAN_DECISION_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/delta-replan-decision@1"
 VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/verifier-backed-repair-closure@1"
 )
 # Objective-heap evidence identity for one bounded changed-evidence refinement.
-BOUNDED_REFINEMENT_EVIDENCE_ID: Final = (
-    "003778425160038348524906247302938706902"
-)
-UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID: Final = (
-    "312819945606360295782005228058369235550"
-)
+BOUNDED_REFINEMENT_EVIDENCE_ID: Final = "003778425160038348524906247302938706902"
+UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID: Final = "312819945606360295782005228058369235550"
 # These are deliberately absent from ResponsiveReplanDecision.  Naming the
 # roles makes the trust boundary machine-readable: deterministic routing
 # metadata cannot be submitted as completion analyzer health, completion
@@ -168,9 +150,7 @@ def _cancelled(value: Any) -> bool:
     checker = getattr(value, "is_set", None)
     if callable(checker):
         return bool(checker())
-    raise ReplannerValidationError(
-        "cancelled must be a boolean, predicate, event, or None"
-    )
+    raise ReplannerValidationError("cancelled must be a boolean, predicate, event, or None")
 
 
 class RepairRuleKind(str, Enum):
@@ -278,15 +258,10 @@ class ReplanLimits:
         _positive(self.max_prompt_bytes, "max_prompt_bytes", minimum=1024)
         _positive(self.max_prompt_tokens, "max_prompt_tokens", minimum=256)
         if self.max_capsule_bytes > self.max_prompt_bytes:
-            raise ReplannerValidationError(
-                "max_capsule_bytes cannot exceed max_prompt_bytes"
-            )
+            raise ReplannerValidationError("max_capsule_bytes cannot exceed max_prompt_bytes")
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
 
 ReplanBudget = ReplanLimits
@@ -315,9 +290,7 @@ class RepairOperation:
         object.__setattr__(self, "target_task_id", target)
         params = _public_mapping(self.parameters)
         object.__setattr__(self, "parameters", params)
-        object.__setattr__(
-            self, "counterexample_id", str(self.counterexample_id or "").strip()
-        )
+        object.__setattr__(self, "counterexample_id", str(self.counterexample_id or "").strip())
         required = {
             RepairRuleKind.ADD_DEPENDENCY: ("dependency_task_id",),
             RepairRuleKind.SPLIT_EFFECTS: ("split_index", "generated_task_id"),
@@ -330,9 +303,7 @@ class RepairOperation:
         }[self.kind]
         missing = [name for name in required if params.get(name) in (None, "", [], {})]
         if missing:
-            raise ReplannerValidationError(
-                f"{self.kind.value} requires {', '.join(missing)}"
-            )
+            raise ReplannerValidationError(f"{self.kind.value} requires {', '.join(missing)}")
 
     @property
     def semantic_id(self) -> str:
@@ -471,29 +442,19 @@ class VerifierClosureReceipt:
     available: bool = True
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "receipt_id", str(self.receipt_id or "").strip()
-        )
-        object.__setattr__(
-            self, "counterexample_id", str(self.counterexample_id or "").strip()
-        )
+        object.__setattr__(self, "receipt_id", str(self.receipt_id or "").strip())
+        object.__setattr__(self, "counterexample_id", str(self.counterexample_id or "").strip())
         object.__setattr__(
             self,
             "repository_tree_id",
             str(self.repository_tree_id or "").strip(),
         )
-        object.__setattr__(
-            self, "property_id", str(self.property_id or "").strip()
-        )
+        object.__setattr__(self, "property_id", str(self.property_id or "").strip())
         object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids))
-        object.__setattr__(
-            self, "bound_digest", str(self.bound_digest or "").strip()
-        )
+        object.__setattr__(self, "bound_digest", str(self.bound_digest or "").strip())
         object.__setattr__(self, "tool_id", str(self.tool_id or "").strip())
         object.__setattr__(self, "policy_id", str(self.policy_id or "").strip())
-        object.__setattr__(
-            self, "repaired_plan_id", str(self.repaired_plan_id or "").strip()
-        )
+        object.__setattr__(self, "repaired_plan_id", str(self.repaired_plan_id or "").strip())
         freshness = str(self.freshness or "current").strip().lower()
         object.__setattr__(self, "freshness", freshness or "current")
         outcome = str(self.outcome or "").strip().lower()
@@ -522,32 +483,18 @@ class VerifierClosureReceipt:
         return cls(
             receipt_id=str(value.get("receipt_id") or ""),
             counterexample_id=str(value.get("counterexample_id") or ""),
-            repository_tree_id=str(
-                value.get("repository_tree_id") or value.get("tree_id") or ""
-            ),
-            property_id=str(
-                value.get("property_id") or value.get("violated_property") or ""
-            ),
+            repository_tree_id=str(value.get("repository_tree_id") or value.get("tree_id") or ""),
+            property_id=str(value.get("property_id") or value.get("violated_property") or ""),
             assumption_ids=tuple(value.get("assumption_ids") or ()),
-            bound_digest=str(
-                value.get("bound_digest") or value.get("bounds_digest") or ""
-            ),
+            bound_digest=str(value.get("bound_digest") or value.get("bounds_digest") or ""),
             tool_id=str(
-                value.get("tool_id")
-                or value.get("solver_id")
-                or value.get("provider_id")
-                or ""
+                value.get("tool_id") or value.get("solver_id") or value.get("provider_id") or ""
             ),
             policy_id=str(value.get("policy_id") or ""),
-            repaired_plan_id=str(
-                value.get("repaired_plan_id") or value.get("plan_id") or ""
-            ),
+            repaired_plan_id=str(value.get("repaired_plan_id") or value.get("plan_id") or ""),
             freshness=str(value.get("freshness") or "current"),
             outcome=str(
-                value.get("outcome")
-                or value.get("verdict")
-                or value.get("status")
-                or "verified"
+                value.get("outcome") or value.get("verdict") or value.get("status") or "verified"
             ),
             available=bool(value.get("available", True)),
         )
@@ -580,30 +527,20 @@ class VerifierBackedRepairClosure:
     repaired_plan_id: str = ""
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "counterexample_id", str(self.counterexample_id or "").strip()
-        )
+        object.__setattr__(self, "counterexample_id", str(self.counterexample_id or "").strip())
         if not self.counterexample_id:
             raise ReplannerValidationError(
                 "counterexample_id is required for verifier-backed closure"
             )
-        object.__setattr__(
-            self, "status", WitnessClosureStatus(self.status)
-        )
+        object.__setattr__(self, "status", WitnessClosureStatus(self.status))
         if (
             isinstance(self.open_counterexamples, bool)
             or not isinstance(self.open_counterexamples, int)
             or self.open_counterexamples < 0
         ):
-            raise ReplannerValidationError(
-                "open_counterexamples must be a non-negative integer"
-            )
-        object.__setattr__(
-            self, "structural_addressed", bool(self.structural_addressed)
-        )
-        object.__setattr__(
-            self, "reason_code", str(self.reason_code or "").strip()
-        )
+            raise ReplannerValidationError("open_counterexamples must be a non-negative integer")
+        object.__setattr__(self, "structural_addressed", bool(self.structural_addressed))
+        object.__setattr__(self, "reason_code", str(self.reason_code or "").strip())
         if not self.reason_code:
             raise ReplannerValidationError("reason_code is required")
         object.__setattr__(
@@ -616,18 +553,12 @@ class VerifierBackedRepairClosure:
             "repository_tree_id",
             str(self.repository_tree_id or "").strip(),
         )
-        object.__setattr__(
-            self, "property_id", str(self.property_id or "").strip()
-        )
+        object.__setattr__(self, "property_id", str(self.property_id or "").strip())
         object.__setattr__(self, "assumption_ids", _strings(self.assumption_ids))
-        object.__setattr__(
-            self, "bound_digest", str(self.bound_digest or "").strip()
-        )
+        object.__setattr__(self, "bound_digest", str(self.bound_digest or "").strip())
         object.__setattr__(self, "tool_id", str(self.tool_id or "").strip())
         object.__setattr__(self, "policy_id", str(self.policy_id or "").strip())
-        object.__setattr__(
-            self, "repaired_plan_id", str(self.repaired_plan_id or "").strip()
-        )
+        object.__setattr__(self, "repaired_plan_id", str(self.repaired_plan_id or "").strip())
         if self.status is WitnessClosureStatus.CLOSED:
             if self.open_counterexamples != 0:
                 raise ReplannerValidationError(
@@ -638,9 +569,7 @@ class VerifierBackedRepairClosure:
                     "closed witnesses must name a fresh matching verifier receipt"
                 )
             if not self.structural_addressed:
-                raise ReplannerValidationError(
-                    "closure requires a structurally addressed repair"
-                )
+                raise ReplannerValidationError("closure requires a structurally addressed repair")
         else:
             if self.open_counterexamples < 1:
                 raise ReplannerValidationError(
@@ -680,9 +609,7 @@ class VerifierBackedRepairClosure:
             None,
             VERIFIER_BACKED_REPAIR_CLOSURE_SCHEMA,
         }:
-            raise ReplannerValidationError(
-                "unsupported verifier-backed repair closure schema"
-            )
+            raise ReplannerValidationError("unsupported verifier-backed repair closure schema")
         return cls(
             counterexample_id=str(payload.get("counterexample_id") or ""),
             status=payload.get("status", WitnessClosureStatus.OPEN),
@@ -720,8 +647,7 @@ def _closure_binding(
     if not tree and counterexample.bindings.tree_ids:
         tree = counterexample.bindings.tree_ids[0]
     assumptions = _strings(
-        tuple(counterexample.assumption_ids)
-        + tuple(counterexample.bindings.assumption_ids)
+        tuple(counterexample.assumption_ids) + tuple(counterexample.bindings.assumption_ids)
     )
     property_id = str(counterexample.violated_property or "").strip()
     if not property_id and counterexample.bindings.obligation_ids:
@@ -736,9 +662,7 @@ def _closure_binding(
         if isinstance(policies, Sequence) and policies:
             first = policies[0]
             if isinstance(first, Mapping):
-                policy = str(
-                    first.get("policy_id") or first.get("id") or ""
-                ).strip()
+                policy = str(first.get("policy_id") or first.get("id") or "").strip()
     tool = str(tool_id or "").strip()
     if not tool and counterexample.bindings.provider_ids:
         tool = counterexample.bindings.provider_ids[0]
@@ -852,9 +776,10 @@ def evaluate_verifier_backed_closure(
         return _open("counterexample_mismatch", receipt_id=claimed.receipt_id)
 
     mismatches: list[str] = []
-    if binding["repository_tree_id"] and claimed.repository_tree_id != binding[
-        "repository_tree_id"
-    ]:
+    if (
+        binding["repository_tree_id"]
+        and claimed.repository_tree_id != binding["repository_tree_id"]
+    ):
         mismatches.append("tree")
     if binding["property_id"] and claimed.property_id != binding["property_id"]:
         mismatches.append("property")
@@ -866,9 +791,7 @@ def evaluate_verifier_backed_closure(
         mismatches.append("tool")
     if binding["policy_id"] and claimed.policy_id != binding["policy_id"]:
         mismatches.append("policy")
-    if binding["repaired_plan_id"] and claimed.repaired_plan_id != binding[
-        "repaired_plan_id"
-    ]:
+    if binding["repaired_plan_id"] and claimed.repaired_plan_id != binding["repaired_plan_id"]:
         mismatches.append("plan")
     if mismatches:
         return _open(
@@ -1023,13 +946,9 @@ class RepairTransition:
                 "unknown repair transition fields: " + ", ".join(unknown)
             )
         if payload.get("schema") != REPAIR_TRANSITION_SCHEMA:
-            raise ReplannerValidationError(
-                "unsupported repair transition schema"
-            )
+            raise ReplannerValidationError("unsupported repair transition schema")
         if payload.get("replanner_version") != FORMAL_REPLANNER_VERSION:
-            raise ReplannerValidationError(
-                "unsupported formal replanner version"
-            )
+            raise ReplannerValidationError("unsupported formal replanner version")
         progress = payload.get("progress") or {}
         before = progress.get("before") or {}
         after = progress.get("after") or {}
@@ -1046,19 +965,13 @@ class RepairTransition:
             }
         )
         before_unknown = sorted(
-            str(key)
-            for key in before
-            if key not in {"open_counterexamples", "validation_findings"}
+            str(key) for key in before if key not in {"open_counterexamples", "validation_findings"}
         )
         after_unknown = sorted(
-            str(key)
-            for key in after
-            if key not in {"open_counterexamples", "validation_findings"}
+            str(key) for key in after if key not in {"open_counterexamples", "validation_findings"}
         )
         if progress_unknown or before_unknown or after_unknown:
-            raise ReplannerValidationError(
-                "unknown repair transition progress fields"
-            )
+            raise ReplannerValidationError("unknown repair transition progress fields")
         result = cls(
             original_plan_id=str(payload.get("original_plan_id") or ""),
             repaired_plan_id=str(payload.get("repaired_plan_id") or ""),
@@ -1077,14 +990,10 @@ class RepairTransition:
             ),
         )
         if progress.get("improved") is not result.progress.improved:
-            raise ReplannerValidationError(
-                "repair transition progress projection is inconsistent"
-            )
+            raise ReplannerValidationError("repair transition progress projection is inconsistent")
         claimed = payload.get("transition_id") or payload.get("semantic_id")
         if not claimed:
-            raise ReplannerValidationError(
-                "repair transition identity is required"
-            )
+            raise ReplannerValidationError("repair transition identity is required")
         if claimed != result.transition_id:
             raise ReplannerValidationError("repair transition identity does not match")
         return result
@@ -1107,12 +1016,8 @@ class RepairCandidate:
             "rejection_reasons",
             tuple(str(item).strip() for item in self.rejection_reasons if str(item).strip()),
         )
-        if self.closure is not None and not isinstance(
-            self.closure, VerifierBackedRepairClosure
-        ):
-            raise ReplannerValidationError(
-                "closure must be VerifierBackedRepairClosure or None"
-            )
+        if self.closure is not None and not isinstance(self.closure, VerifierBackedRepairClosure):
+            raise ReplannerValidationError("closure must be VerifierBackedRepairClosure or None")
         if self.status in {
             RepairCandidateStatus.ADMISSIBLE,
             RepairCandidateStatus.ADMITTED,
@@ -1155,15 +1060,9 @@ class RepairCandidate:
             "candidate_id": self.candidate_id,
             "repair": self.repair.to_dict(),
             "status": self.status.value,
-            "compilation_status": (
-                self.compilation.status.value if self.compilation else None
-            ),
-            "validation_status": (
-                self.validation.status.value if self.validation else None
-            ),
-            "transition_id": (
-                self.transition.transition_id if self.transition else None
-            ),
+            "compilation_status": (self.compilation.status.value if self.compilation else None),
+            "validation_status": (self.validation.status.value if self.validation else None),
+            "transition_id": (self.transition.transition_id if self.transition else None),
             "rejection_reasons": list(self.rejection_reasons),
             "closure": self.closure.to_dict() if self.closure else None,
             "verifier_confirmed": self.verifier_confirmed,
@@ -1234,10 +1133,7 @@ class ReplanResult:
 
     @property
     def admitted(self) -> bool:
-        return (
-            self.selected is not None
-            and self.selected.status is RepairCandidateStatus.ADMITTED
-        )
+        return self.selected is not None and self.selected.status is RepairCandidateStatus.ADMITTED
 
     @property
     def selected_transition(self) -> RepairTransition | None:
@@ -1250,14 +1146,10 @@ class ReplanResult:
             "counterexample_id": self.counterexample_id,
             "original_plan_id": self.original_compilation.plan_id,
             "original_validation_status": (
-                self.original_validation.status.value
-                if self.original_validation
-                else None
+                self.original_validation.status.value if self.original_validation else None
             ),
             "candidates": [item.to_dict() for item in self.candidates],
-            "selected_candidate_id": (
-                self.selected.candidate_id if self.selected else None
-            ),
+            "selected_candidate_id": (self.selected.candidate_id if self.selected else None),
             "codex_packet": self.codex_packet.to_dict() if self.codex_packet else None,
             "stop_reason": self.stop_reason.value,
             "retry_attempt": self.retry_attempt,
@@ -1325,18 +1217,14 @@ class DiagnosticReceipt(CanonicalContract):
             "repository_tree_id",
         }
         if not isinstance(payload, Mapping) or set(payload).difference(allowed):
-            raise ReplannerValidationError(
-                "diagnostic receipt contains unsupported fields"
-            )
+            raise ReplannerValidationError("diagnostic receipt contains unsupported fields")
         if payload.get("schema") not in (None, "", cls.SCHEMA):
             raise ReplannerValidationError("diagnostic receipt schema is unsupported")
         if payload.get("replanner_version") not in (
             None,
             FORMAL_REPLANNER_VERSION,
         ):
-            raise ReplannerValidationError(
-                "diagnostic receipt replanner version is unsupported"
-            )
+            raise ReplannerValidationError("diagnostic receipt replanner version is unsupported")
         result = cls(
             prior_decision_id=str(payload.get("prior_decision_id") or ""),
             counterexample_id=str(payload.get("counterexample_id") or ""),
@@ -1346,9 +1234,7 @@ class DiagnosticReceipt(CanonicalContract):
         )
         claimed = payload.get("content_id")
         if claimed not in (None, "", result.content_id):
-            raise ReplannerValidationError(
-                "diagnostic receipt identity does not match payload"
-            )
+            raise ReplannerValidationError("diagnostic receipt identity does not match payload")
         return result
 
 
@@ -1384,15 +1270,11 @@ class ResponsiveReplanDecision:
         object.__setattr__(self, "counterexample_id", current)
         object.__setattr__(self, "previous_counterexample_id", previous)
         trigger = str(self.trigger_evidence_id or current).strip()
-        previous_trigger = str(
-            self.previous_trigger_evidence_id or previous
-        ).strip()
+        previous_trigger = str(self.previous_trigger_evidence_id or previous).strip()
         if not trigger:
             raise ReplannerValidationError("trigger_evidence_id is required")
         object.__setattr__(self, "trigger_evidence_id", trigger)
-        object.__setattr__(
-            self, "previous_trigger_evidence_id", previous_trigger
-        )
+        object.__setattr__(self, "previous_trigger_evidence_id", previous_trigger)
         trigger_kind = str(self.trigger_signal_kind or "").strip()
         if trigger_kind not in RESPONSIVE_REPLAN_SIGNAL_KINDS:
             raise ReplannerValidationError("trigger_signal_kind is unsupported")
@@ -1400,9 +1282,7 @@ class ResponsiveReplanDecision:
         receipt = self.diagnostic_receipt
         if receipt is not None and not isinstance(receipt, DiagnosticReceipt):
             if not isinstance(receipt, Mapping):
-                raise ReplannerValidationError(
-                    "diagnostic_receipt must be a DiagnosticReceipt"
-                )
+                raise ReplannerValidationError("diagnostic_receipt must be a DiagnosticReceipt")
             receipt = DiagnosticReceipt.from_dict(receipt)
         if receipt is not None and (
             receipt.counterexample_id != current
@@ -1416,9 +1296,7 @@ class ResponsiveReplanDecision:
         if not isinstance(self.diagnostic_reused, bool):
             raise ReplannerValidationError("diagnostic_reused must be boolean")
         if self.diagnostic_reused and receipt is None:
-            raise ReplannerValidationError(
-                "diagnostic reuse requires the reused receipt"
-            )
+            raise ReplannerValidationError("diagnostic reuse requires the reused receipt")
         if not isinstance(self.changed, bool):
             raise ReplannerValidationError("changed must be boolean")
         object.__setattr__(self, "stop_reason", ReplanStopReason(self.stop_reason))
@@ -1446,21 +1324,14 @@ class ResponsiveReplanDecision:
                 )
         elif self.changed:
             if self.result is None:
-                raise ReplannerValidationError(
-                    "changed evidence requires one replanning result"
-                )
+                raise ReplannerValidationError("changed evidence requires one replanning result")
             if self.stop_reason is ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF:
-                raise ReplannerValidationError(
-                    "changed evidence cannot return unchanged backoff"
-                )
+                raise ReplannerValidationError("changed evidence cannot return unchanged backoff")
             if self.backoff_seconds:
-                raise ReplannerValidationError(
-                    "changed evidence cannot request backoff"
-                )
+                raise ReplannerValidationError("changed evidence cannot request backoff")
         elif (
             self.result is not None
-            or self.stop_reason
-            is not ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF
+            or self.stop_reason is not ReplanStopReason.UNCHANGED_COUNTEREXAMPLE_BACKOFF
             or self.backoff_seconds <= 0
         ):
             raise ReplannerValidationError(
@@ -1491,11 +1362,7 @@ class ResponsiveReplanDecision:
 
     @property
     def diagnostic_receipt_id(self) -> str:
-        return (
-            self.diagnostic_receipt.receipt_id
-            if self.diagnostic_receipt is not None
-            else ""
-        )
+        return self.diagnostic_receipt.receipt_id if self.diagnostic_receipt is not None else ""
 
     @property
     def evidence_ids(self) -> tuple[str, ...]:
@@ -1545,9 +1412,7 @@ class ResponsiveReplanDecision:
             "replanner_version": FORMAL_REPLANNER_VERSION,
             "requirement_ids": list(self.requirement_ids),
             "evidence_ids": list(self.evidence_ids),
-            "completion_evidence_roles": list(
-                self.completion_evidence_roles
-            ),
+            "completion_evidence_roles": list(self.completion_evidence_roles),
             "completion_authority": False,
             "safe_for_completion_reasoning": False,
             "counterexample_id": self.counterexample_id,
@@ -1556,9 +1421,7 @@ class ResponsiveReplanDecision:
             "previous_trigger_evidence_id": self.previous_trigger_evidence_id,
             "trigger_signal_kind": self.trigger_signal_kind,
             "diagnostic_receipt": (
-                self.diagnostic_receipt.to_record()
-                if self.diagnostic_receipt is not None
-                else None
+                self.diagnostic_receipt.to_record() if self.diagnostic_receipt is not None else None
             ),
             "diagnostic_receipt_id": self.diagnostic_receipt_id,
             "diagnostic_reused": self.diagnostic_reused,
@@ -1578,23 +1441,15 @@ _DELTA_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@=-]{0,255}$")
 
 
 def _delta_identifier(value: Any, name: str) -> str:
-    if not isinstance(value, str) or not _DELTA_IDENTIFIER.fullmatch(
-        value.strip()
-    ):
-        raise ReplannerValidationError(
-            f"{name} must be a bounded typed identifier"
-        )
+    if not isinstance(value, str) or not _DELTA_IDENTIFIER.fullmatch(value.strip()):
+        raise ReplannerValidationError(f"{name} must be a bounded typed identifier")
     return value.strip()
 
 
-def _delta_identifiers(
-    value: Iterable[Any], name: str
-) -> tuple[str, ...]:
+def _delta_identifiers(value: Iterable[Any], name: str) -> tuple[str, ...]:
     if isinstance(value, (str, bytes, bytearray)):
         raise ReplannerValidationError(f"{name} must be an array")
-    return tuple(
-        sorted({_delta_identifier(item, name) for item in value})
-    )
+    return tuple(sorted({_delta_identifier(item, name) for item in value}))
 
 
 @dataclass(frozen=True)
@@ -1615,12 +1470,8 @@ class DeltaPlanStep:
     resource_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "step_id", _delta_identifier(self.step_id, "step_id")
-        )
-        object.__setattr__(
-            self, "branch_id", _delta_identifier(self.branch_id, "branch_id")
-        )
+        object.__setattr__(self, "step_id", _delta_identifier(self.step_id, "step_id"))
+        object.__setattr__(self, "branch_id", _delta_identifier(self.branch_id, "branch_id"))
         if not isinstance(self.accepted, bool):
             raise ReplannerValidationError("accepted must be boolean")
         for name in (
@@ -1657,12 +1508,8 @@ class DeltaPlanStep:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "DeltaPlanStep":
-        if not isinstance(payload, Mapping) or set(payload) != set(
-            cls.__dataclass_fields__
-        ):
-            raise ReplannerValidationError(
-                "delta plan step must use the closed schema"
-            )
+        if not isinstance(payload, Mapping) or set(payload) != set(cls.__dataclass_fields__):
+            raise ReplannerValidationError("delta plan step must use the closed schema")
         return cls(**dict(payload))
 
 
@@ -1676,9 +1523,7 @@ class DeltaPlan:
     def __post_init__(self) -> None:
         if not isinstance(self.scope, FailureMemoryScope):
             if not isinstance(self.scope, Mapping):
-                raise ReplannerValidationError(
-                    "delta plan scope must be FailureMemoryScope"
-                )
+                raise ReplannerValidationError("delta plan scope must be FailureMemoryScope")
             try:
                 object.__setattr__(
                     self,
@@ -1688,36 +1533,24 @@ class DeltaPlan:
             except PlanFailureMemoryError as exc:
                 raise ReplannerValidationError(str(exc)) from exc
         steps = tuple(
-            item
-            if isinstance(item, DeltaPlanStep)
-            else DeltaPlanStep.from_dict(item)
+            item if isinstance(item, DeltaPlanStep) else DeltaPlanStep.from_dict(item)
             for item in self.steps
         )
         if not steps:
-            raise ReplannerValidationError(
-                "delta plan requires at least one step"
-            )
+            raise ReplannerValidationError("delta plan requires at least one step")
         ids = [item.step_id for item in steps]
         if len(ids) != len(set(ids)):
-            raise ReplannerValidationError(
-                "delta plan step identities must be unique"
-            )
+            raise ReplannerValidationError("delta plan step identities must be unique")
         known = set(ids)
-        if any(
-            set(item.dependency_ids).difference(known) for item in steps
-        ):
-            raise ReplannerValidationError(
-                "delta plan contains a dangling dependency"
-            )
+        if any(set(item.dependency_ids).difference(known) for item in steps):
+            raise ReplannerValidationError("delta plan contains a dangling dependency")
         by_id = {item.step_id: item for item in steps}
         visiting: set[str] = set()
         visited: set[str] = set()
 
         def visit(step_id: str) -> None:
             if step_id in visiting:
-                raise ReplannerValidationError(
-                    "delta plan dependency graph contains a cycle"
-                )
+                raise ReplannerValidationError("delta plan dependency graph contains a cycle")
             if step_id in visited:
                 return
             visiting.add(step_id)
@@ -1728,9 +1561,7 @@ class DeltaPlan:
 
         for step_id in sorted(known):
             visit(step_id)
-        object.__setattr__(
-            self, "steps", tuple(sorted(steps, key=lambda item: item.step_id))
-        )
+        object.__setattr__(self, "steps", tuple(sorted(steps, key=lambda item: item.step_id)))
 
     @property
     def plan_id(self) -> str:
@@ -1757,27 +1588,18 @@ class DeltaPlan:
             "steps",
         }
         if not isinstance(payload, Mapping) or set(payload) != expected:
-            raise ReplannerValidationError(
-                "delta plan must use the closed schema"
-            )
+            raise ReplannerValidationError("delta plan must use the closed schema")
         if (
             payload.get("schema") != DELTA_PLAN_SCHEMA
             or payload.get("replanner_version") != FORMAL_REPLANNER_VERSION
         ):
-            raise ReplannerValidationError(
-                "delta plan version is unsupported"
-            )
+            raise ReplannerValidationError("delta plan version is unsupported")
         result = cls(
             scope=payload.get("scope") or {},
-            steps=tuple(
-                DeltaPlanStep.from_dict(item)
-                for item in payload.get("steps") or ()
-            ),
+            steps=tuple(DeltaPlanStep.from_dict(item) for item in payload.get("steps") or ()),
         )
         if payload.get("plan_id") != result.plan_id:
-            raise ReplannerValidationError(
-                "delta plan identity does not match content"
-            )
+            raise ReplannerValidationError("delta plan identity does not match content")
         return result
 
 
@@ -1799,19 +1621,12 @@ class DeltaReplanLimits:
             _positive(getattr(self, name), name)
 
     def to_dict(self) -> dict[str, int]:
-        return {
-            name: getattr(self, name)
-            for name in self.__dataclass_fields__
-        }
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "DeltaReplanLimits":
-        if not isinstance(payload, Mapping) or set(payload) != set(
-            cls.__dataclass_fields__
-        ):
-            raise ReplannerValidationError(
-                "delta replan limits must use the closed schema"
-            )
+        if not isinstance(payload, Mapping) or set(payload) != set(cls.__dataclass_fields__):
+            raise ReplannerValidationError("delta replan limits must use the closed schema")
         return cls(**dict(payload))
 
 
@@ -1856,21 +1671,15 @@ class DeltaReplanDecision:
         )
         if not isinstance(self.resulting_plan, DeltaPlan):
             if not isinstance(self.resulting_plan, Mapping):
-                raise ReplannerValidationError(
-                    "resulting_plan must be DeltaPlan"
-                )
+                raise ReplannerValidationError("resulting_plan must be DeltaPlan")
             object.__setattr__(
                 self,
                 "resulting_plan",
                 DeltaPlan.from_dict(self.resulting_plan),
             )
-        object.__setattr__(
-            self, "stop_reason", DeltaReplanStopReason(self.stop_reason)
-        )
+        object.__setattr__(self, "stop_reason", DeltaReplanStopReason(self.stop_reason))
         for name in ("failure_event_id", "diagnostic_id"):
-            object.__setattr__(
-                self, name, _delta_identifier(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _delta_identifier(getattr(self, name), name))
         for name in (
             "direct_failure_step_ids",
             "invalidated_step_ids",
@@ -1885,9 +1694,7 @@ class DeltaReplanDecision:
                 _delta_identifiers(getattr(self, name), name),
             )
         if not isinstance(self.diagnostic_reused, bool):
-            raise ReplannerValidationError(
-                "diagnostic_reused must be boolean"
-            )
+            raise ReplannerValidationError("diagnostic_reused must be boolean")
         for name in (
             "backoff_attempt",
             "backoff_milliseconds",
@@ -1895,43 +1702,30 @@ class DeltaReplanDecision:
         ):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise ReplannerValidationError(
-                    f"{name} must be a non-negative integer"
-                )
+                raise ReplannerValidationError(f"{name} must be a non-negative integer")
         if not isinstance(self.limits, DeltaReplanLimits):
             if not isinstance(self.limits, Mapping):
-                raise ReplannerValidationError(
-                    "limits must be DeltaReplanLimits"
-                )
-            object.__setattr__(
-                self, "limits", DeltaReplanLimits.from_dict(self.limits)
-            )
+                raise ReplannerValidationError("limits must be DeltaReplanLimits")
+            object.__setattr__(self, "limits", DeltaReplanLimits.from_dict(self.limits))
         known = {item.step_id for item in self.resulting_plan.steps}
         if (
             set(self.direct_failure_step_ids).difference(known)
             or set(self.invalidated_step_ids).difference(known)
             or set(self.preserved_step_ids).difference(known)
         ):
-            raise ReplannerValidationError(
-                "delta decision names a step outside the resulting plan"
-            )
+            raise ReplannerValidationError("delta decision names a step outside the resulting plan")
         if set(self.invalidated_step_ids) & set(self.preserved_step_ids):
-            raise ReplannerValidationError(
-                "invalidated and preserved step sets must be disjoint"
-            )
+            raise ReplannerValidationError("invalidated and preserved step sets must be disjoint")
         by_id = {item.step_id: item for item in self.resulting_plan.steps}
         expected_preserved = tuple(
             sorted(
                 item.step_id
                 for item in self.resulting_plan.steps
-                if item.accepted
-                and item.step_id not in self.invalidated_step_ids
+                if item.accepted and item.step_id not in self.invalidated_step_ids
             )
         )
         if self.preserved_step_ids != expected_preserved:
-            raise ReplannerValidationError(
-                "preserved step projection is inconsistent"
-            )
+            raise ReplannerValidationError("preserved step projection is inconsistent")
         by_branch: dict[str, list[DeltaPlanStep]] = {}
         for item in self.resulting_plan.steps:
             by_branch.setdefault(item.branch_id, []).append(item)
@@ -1939,10 +1733,7 @@ class DeltaReplanDecision:
             sorted(
                 branch_id
                 for branch_id, items in by_branch.items()
-                if any(
-                    item.step_id in self.invalidated_step_ids
-                    for item in items
-                )
+                if any(item.step_id in self.invalidated_step_ids for item in items)
             )
         )
         expected_preserved_branches = tuple(
@@ -1950,8 +1741,7 @@ class DeltaReplanDecision:
                 branch_id
                 for branch_id, items in by_branch.items()
                 if all(
-                    item.accepted
-                    and item.step_id not in self.invalidated_step_ids
+                    item.accepted and item.step_id not in self.invalidated_step_ids
                     for item in items
                 )
             )
@@ -1960,28 +1750,18 @@ class DeltaReplanDecision:
             self.reopened_branch_ids != expected_reopened
             or self.preserved_branch_ids != expected_preserved_branches
         ):
-            raise ReplannerValidationError(
-                "branch preservation projection is inconsistent"
-            )
+            raise ReplannerValidationError("branch preservation projection is inconsistent")
         if self.stale_dependency_step_ids != tuple(
-            sorted(
-                set(self.invalidated_step_ids).difference(
-                    self.direct_failure_step_ids
-                )
-            )
+            sorted(set(self.invalidated_step_ids).difference(self.direct_failure_step_ids))
         ):
-            raise ReplannerValidationError(
-                "stale dependency projection is inconsistent"
-            )
+            raise ReplannerValidationError("stale dependency projection is inconsistent")
         if self.stop_reason is DeltaReplanStopReason.REPLAN_REQUIRED:
             if (
                 not self.invalidated_step_ids
                 or self.repair_attempts != 1
                 or self.backoff_milliseconds
             ):
-                raise ReplannerValidationError(
-                    "active delta repair projection is inconsistent"
-                )
+                raise ReplannerValidationError("active delta repair projection is inconsistent")
             if any(
                 by_id[item].accepted or by_id[item].evidence_ids
                 for item in self.invalidated_step_ids
@@ -1994,24 +1774,17 @@ class DeltaReplanDecision:
             while changed:
                 changed = False
                 for item in self.resulting_plan.steps:
-                    if (
-                        item.step_id not in expected_suffix
-                        and set(item.dependency_ids).intersection(expected_suffix)
-                    ):
+                    if item.step_id not in expected_suffix and set(
+                        item.dependency_ids
+                    ).intersection(expected_suffix):
                         expected_suffix.add(item.step_id)
                         changed = True
             if self.invalidated_step_ids != tuple(sorted(expected_suffix)):
-                raise ReplannerValidationError(
-                    "invalidated suffix is not dependency-minimal"
-                )
+                raise ReplannerValidationError("invalidated suffix is not dependency-minimal")
         elif self.repair_attempts:
-            raise ReplannerValidationError(
-                "non-repair decisions cannot consume repair attempts"
-            )
+            raise ReplannerValidationError("non-repair decisions cannot consume repair attempts")
         if self.repair_attempts > self.limits.max_repair_attempts:
-            raise ReplannerValidationError(
-                "delta decision exceeds its repair-attempt bound"
-            )
+            raise ReplannerValidationError("delta decision exceeds its repair-attempt bound")
 
     @property
     def changed(self) -> bool:
@@ -2052,9 +1825,7 @@ class DeltaReplanDecision:
             "stop_reason": self.stop_reason.value,
             "direct_failure_step_ids": list(self.direct_failure_step_ids),
             "invalidated_step_ids": list(self.invalidated_step_ids),
-            "stale_dependency_step_ids": list(
-                self.stale_dependency_step_ids
-            ),
+            "stale_dependency_step_ids": list(self.stale_dependency_step_ids),
             "preserved_step_ids": list(self.preserved_step_ids),
             "reopened_branch_ids": list(self.reopened_branch_ids),
             "preserved_branch_ids": list(self.preserved_branch_ids),
@@ -2094,58 +1865,34 @@ class DeltaReplanDecision:
             "requirement_ids",
         }
         if not isinstance(payload, Mapping) or set(payload) != expected:
-            raise ReplannerValidationError(
-                "delta replan decision must use the closed schema"
-            )
+            raise ReplannerValidationError("delta replan decision must use the closed schema")
         if (
             payload.get("schema") != DELTA_REPLAN_DECISION_SCHEMA
             or payload.get("replanner_version") != FORMAL_REPLANNER_VERSION
         ):
-            raise ReplannerValidationError(
-                "delta replan decision version is unsupported"
-            )
+            raise ReplannerValidationError("delta replan decision version is unsupported")
         result = cls(
             original_plan_id=payload.get("original_plan_id", ""),
-            resulting_plan=DeltaPlan.from_dict(
-                payload.get("resulting_plan") or {}
-            ),
+            resulting_plan=DeltaPlan.from_dict(payload.get("resulting_plan") or {}),
             failure_event_id=payload.get("failure_event_id", ""),
             diagnostic_id=payload.get("diagnostic_id", ""),
             stop_reason=payload.get("stop_reason", ""),
-            direct_failure_step_ids=tuple(
-                payload.get("direct_failure_step_ids") or ()
-            ),
-            invalidated_step_ids=tuple(
-                payload.get("invalidated_step_ids") or ()
-            ),
-            stale_dependency_step_ids=tuple(
-                payload.get("stale_dependency_step_ids") or ()
-            ),
-            preserved_step_ids=tuple(
-                payload.get("preserved_step_ids") or ()
-            ),
-            reopened_branch_ids=tuple(
-                payload.get("reopened_branch_ids") or ()
-            ),
-            preserved_branch_ids=tuple(
-                payload.get("preserved_branch_ids") or ()
-            ),
+            direct_failure_step_ids=tuple(payload.get("direct_failure_step_ids") or ()),
+            invalidated_step_ids=tuple(payload.get("invalidated_step_ids") or ()),
+            stale_dependency_step_ids=tuple(payload.get("stale_dependency_step_ids") or ()),
+            preserved_step_ids=tuple(payload.get("preserved_step_ids") or ()),
+            reopened_branch_ids=tuple(payload.get("reopened_branch_ids") or ()),
+            preserved_branch_ids=tuple(payload.get("preserved_branch_ids") or ()),
             diagnostic_reused=payload.get("diagnostic_reused"),
             backoff_attempt=payload.get("backoff_attempt", -1),
-            backoff_milliseconds=payload.get(
-                "backoff_milliseconds", -1
-            ),
+            backoff_milliseconds=payload.get("backoff_milliseconds", -1),
             repair_attempts=payload.get("repair_attempts", -1),
             limits=DeltaReplanLimits.from_dict(payload.get("limits") or {}),
         )
         if payload.get("requirement_ids") != list(result.requirement_ids):
-            raise ReplannerValidationError(
-                "delta replan requirement projection is inconsistent"
-            )
+            raise ReplannerValidationError("delta replan requirement projection is inconsistent")
         if payload.get("decision_id") != result.decision_id:
-            raise ReplannerValidationError(
-                "delta replan decision identity does not match content"
-            )
+            raise ReplannerValidationError("delta replan decision identity does not match content")
         return result
 
 
@@ -2214,9 +1961,7 @@ def _source_bundle(source: Mapping[str, Any]) -> dict[str, Any]:
         if section:
             bundle[section].extend(_record_values(value))
     records = source.get("records")
-    if isinstance(records, Sequence) and not isinstance(
-        records, (str, bytes, bytearray)
-    ):
+    if isinstance(records, Sequence) and not isinstance(records, (str, bytes, bytearray)):
         for wrapped in records:
             if not isinstance(wrapped, Mapping):
                 continue
@@ -2241,11 +1986,21 @@ def _source_bundle(source: Mapping[str, Any]) -> dict[str, Any]:
 def _identity(record: Mapping[str, Any], kind: str) -> str:
     names = {
         "task": (
-            "task_cid", "canonical_task_cid", "content_id", "cid",
-            "canonical_task_id", "task_id", "id",
+            "task_cid",
+            "canonical_task_cid",
+            "content_id",
+            "cid",
+            "canonical_task_id",
+            "task_id",
+            "id",
         ),
         "goal": (
-            "goal_cid", "content_id", "cid", "canonical_goal_id", "goal_id", "id",
+            "goal_cid",
+            "content_id",
+            "cid",
+            "canonical_goal_id",
+            "goal_id",
+            "id",
         ),
     }[kind]
     return next(
@@ -2256,7 +2011,15 @@ def _identity(record: Mapping[str, Any], kind: str) -> str:
 
 def _aliases(record: Mapping[str, Any], kind: str) -> set[str]:
     names = (
-        ("task_cid", "canonical_task_cid", "content_id", "cid", "canonical_task_id", "task_id", "id")
+        (
+            "task_cid",
+            "canonical_task_cid",
+            "content_id",
+            "cid",
+            "canonical_task_id",
+            "task_id",
+            "id",
+        )
         if kind == "task"
         else ("goal_cid", "content_id", "cid", "canonical_goal_id", "goal_id", "id")
     )
@@ -2515,8 +2278,7 @@ class FormalReplanner:
         counterexample: FormalCounterexample | Mapping[str, Any],
         *,
         previous_counterexample_id: str | None,
-        candidate_repairs: Iterable[RepairOperation | Mapping[str, Any]]
-        | None = None,
+        candidate_repairs: Iterable[RepairOperation | Mapping[str, Any]] | None = None,
         prior_semantic_ids: Iterable[str] = (),
         retry_attempt: int | None = None,
         refinement_depth: int = 0,
@@ -2544,9 +2306,7 @@ class FormalReplanner:
         previous = str(previous_counterexample_id or "").strip()
         trigger = str(trigger_evidence_id or value.semantic_id).strip()
         previous_trigger = str(
-            previous_trigger_evidence_id
-            if previous_trigger_evidence_id is not None
-            else previous
+            previous_trigger_evidence_id if previous_trigger_evidence_id is not None else previous
         ).strip()
         trigger_kind = str(trigger_signal_kind or "").strip()
         if not trigger:
@@ -2558,26 +2318,18 @@ class FormalReplanner:
             or not isinstance(max_identical_failures, int)
             or max_identical_failures < 1
         ):
-            raise ReplannerValidationError(
-                "max_identical_failures must be a positive integer"
-            )
+            raise ReplannerValidationError("max_identical_failures must be a positive integer")
         for name, item, minimum in (
             ("backoff_attempt", backoff_attempt, 0),
             ("base_backoff_seconds", base_backoff_seconds, 1),
             ("max_backoff_seconds", max_backoff_seconds, 1),
         ):
             if isinstance(item, bool) or not isinstance(item, int) or item < minimum:
-                raise ReplannerValidationError(
-                    f"{name} must be an integer of at least {minimum}"
-                )
+                raise ReplannerValidationError(f"{name} must be an integer of at least {minimum}")
         if base_backoff_seconds > max_backoff_seconds:
-            raise ReplannerValidationError(
-                "base_backoff_seconds cannot exceed max_backoff_seconds"
-            )
+            raise ReplannerValidationError("base_backoff_seconds cannot exceed max_backoff_seconds")
         default_decision_id = (
-            value.bindings.plan_ids[0]
-            if value.bindings.plan_ids
-            else value.semantic_id
+            value.bindings.plan_ids[0] if value.bindings.plan_ids else value.semantic_id
         )
         diagnostic = DiagnosticReceipt(
             prior_decision_id=str(prior_decision_id or default_decision_id),
@@ -2597,9 +2349,7 @@ class FormalReplanner:
             and previous_trigger
             and previous_trigger == trigger
         )
-        supplied_diagnostic_id = str(
-            previous_diagnostic_receipt_id or ""
-        ).strip()
+        supplied_diagnostic_id = str(previous_diagnostic_receipt_id or "").strip()
         if (
             same_failure
             and supplied_diagnostic_id
@@ -2609,8 +2359,7 @@ class FormalReplanner:
                 "previous diagnostic receipt does not match identical failure"
             )
         diagnostic_reused = bool(
-            same_failure
-            and supplied_diagnostic_id in ("", diagnostic.receipt_id)
+            same_failure and supplied_diagnostic_id in ("", diagnostic.receipt_id)
         )
         if _cancelled(cancelled):
             return ResponsiveReplanDecision(
@@ -2647,7 +2396,7 @@ class FormalReplanner:
             exponent = min(backoff_attempt, 30)
             seconds = min(
                 max_backoff_seconds,
-                base_backoff_seconds * (2 ** exponent),
+                base_backoff_seconds * (2**exponent),
             )
             return ResponsiveReplanDecision(
                 counterexample_id=value.semantic_id,
@@ -2712,8 +2461,7 @@ class FormalReplanner:
         *,
         previous_signal_id: str | None,
         previous_counterexample_id: str | None = None,
-        candidate_repairs: Iterable[RepairOperation | Mapping[str, Any]]
-        | None = None,
+        candidate_repairs: Iterable[RepairOperation | Mapping[str, Any]] | None = None,
         prior_semantic_ids: Iterable[str] = (),
         retry_attempt: int | None = None,
         refinement_depth: int = 0,
@@ -2738,9 +2486,7 @@ class FormalReplanner:
         from ..objectives.adaptive_goal_refiner import RefinementSignal
 
         if not isinstance(signal, RefinementSignal):
-            raise ReplannerValidationError(
-                "signal must be a typed RefinementSignal"
-            )
+            raise ReplannerValidationError("signal must be a typed RefinementSignal")
         return self.replan_if_changed(
             source,
             counterexample,
@@ -3048,14 +2794,10 @@ class FormalReplanner:
 
         bundle = _source_bundle(source)
         value = _counterexample(counterexample)
-        bound_ids = [
-            item for item in value.bindings.task_ids if _task(bundle, item) is not None
-        ]
+        bound_ids = [item for item in value.bindings.task_ids if _task(bundle, item) is not None]
         target = bound_ids[0] if bound_ids else ""
         if not target:
-            target = _first_string(
-                value.payload, "task_id", "target_task_id", "successor_task_id"
-            )
+            target = _first_string(value.payload, "task_id", "target_task_id", "successor_task_id")
         if not target or _task(bundle, target) is None:
             return ()
 
@@ -3091,41 +2833,71 @@ class FormalReplanner:
         compilation = self.compiler.compile(bundle)
         if compilation.status is not CompilationStatus.COMPILED or compilation.plan is None:
             return ReplanResult(
-                compilation, None, value.semantic_id, (), None, None,
+                compilation,
+                None,
+                value.semantic_id,
+                (),
+                None,
+                None,
                 ReplanStopReason.ORIGINAL_PLAN_INVALID,
-                retry_attempt or 0, refinement_depth,
+                retry_attempt or 0,
+                refinement_depth,
             )
 
-        original_validation = self.validator.validate(
-            compilation.plan, compilation.formulas
-        )
+        original_validation = self.validator.validate(compilation.plan, compilation.formulas)
         if _cancelled(cancelled):
             raise ReplanCancelled("formal replanning was cancelled")
         if retry_attempt is None:
             retry_attempt = self._attempts.get(value.semantic_id, 0)
-        if isinstance(retry_attempt, bool) or not isinstance(retry_attempt, int) or retry_attempt < 0:
+        if (
+            isinstance(retry_attempt, bool)
+            or not isinstance(retry_attempt, int)
+            or retry_attempt < 0
+        ):
             raise ReplannerValidationError("retry_attempt must be non-negative")
-        if isinstance(refinement_depth, bool) or not isinstance(refinement_depth, int) or refinement_depth < 0:
+        if (
+            isinstance(refinement_depth, bool)
+            or not isinstance(refinement_depth, int)
+            or refinement_depth < 0
+        ):
             raise ReplannerValidationError("refinement_depth must be non-negative")
         if retry_attempt >= self.limits.max_retry_attempts:
             return ReplanResult(
-                compilation, original_validation, value.semantic_id, (), None, None,
+                compilation,
+                original_validation,
+                value.semantic_id,
+                (),
+                None,
+                None,
                 ReplanStopReason.RETRY_BUDGET_EXHAUSTED,
-                retry_attempt, refinement_depth,
+                retry_attempt,
+                refinement_depth,
             )
         if refinement_depth >= self.limits.max_refinement_depth:
             return ReplanResult(
-                compilation, original_validation, value.semantic_id, (), None, None,
+                compilation,
+                original_validation,
+                value.semantic_id,
+                (),
+                None,
+                None,
                 ReplanStopReason.REFINEMENT_DEPTH_EXHAUSTED,
-                retry_attempt, refinement_depth,
+                retry_attempt,
+                refinement_depth,
             )
         bound_plan_ids = set(value.bindings.plan_ids)
         accepted_plan_ids = {compilation.plan_id, compilation.source_identity}
         if bound_plan_ids and not (bound_plan_ids & accepted_plan_ids):
             return ReplanResult(
-                compilation, original_validation, value.semantic_id, (), None, None,
+                compilation,
+                original_validation,
+                value.semantic_id,
+                (),
+                None,
+                None,
                 ReplanStopReason.COUNTEREXAMPLE_PLAN_MISMATCH,
-                retry_attempt, refinement_depth,
+                retry_attempt,
+                refinement_depth,
             )
 
         self._attempts[value.semantic_id] = retry_attempt + 1
@@ -3135,21 +2907,15 @@ class FormalReplanner:
             parsed_operations: list[RepairOperation] = []
             for item in candidate_repairs:
                 operation = (
-                    item
-                    if isinstance(item, RepairOperation)
-                    else RepairOperation.from_dict(item)
+                    item if isinstance(item, RepairOperation) else RepairOperation.from_dict(item)
                 )
                 if not operation.counterexample_id:
-                    operation = replace(
-                        operation, counterexample_id=value.semantic_id
-                    )
+                    operation = replace(operation, counterexample_id=value.semantic_id)
                 parsed_operations.append(operation)
             operations = tuple(parsed_operations)
         operations = operations[: self.limits.max_candidates]
         known = {
-            str(item).strip()
-            for item in prior_semantic_ids
-            if str(item).strip()
+            str(item).strip() for item in prior_semantic_ids if str(item).strip()
         } | self._seen_semantic_ids
         candidates: list[RepairCandidate] = []
         for operation in operations:
@@ -3179,9 +2945,7 @@ class FormalReplanner:
             try:
                 if _cancelled(cancelled):
                     raise ReplanCancelled("formal replanning was cancelled")
-                prospective_packet = self._codex_packet(
-                    selected.transition, value
-                )
+                prospective_packet = self._codex_packet(selected.transition, value)
             except ReplanCancelled:
                 raise
             except (ReplannerValidationError, CounterexampleValidationError) as exc:
@@ -3299,9 +3063,7 @@ class FormalReplanner:
                 )
             return result
         if repair_class is RepairClass.TIGHTEN_AUTHORITY:
-            actor = _first_string(
-                payload, "authorized_actor_id", "required_actor_id", "actor_id"
-            )
+            actor = _first_string(payload, "authorized_actor_id", "required_actor_id", "actor_id")
             actors = _strings((actor,) if actor else task.get("actor_ids") or task.get("actor_id"))
             if not actors:
                 actors = ("supervisor",)
@@ -3309,7 +3071,13 @@ class FormalReplanner:
                 iter(_payload_values(payload, "fencing_token", "required_fencing_token")),
                 1,
             )
-            token = token_value if isinstance(token_value, int) and not isinstance(token_value, bool) and token_value >= 0 else 1
+            token = (
+                token_value
+                if isinstance(token_value, int)
+                and not isinstance(token_value, bool)
+                and token_value >= 0
+                else 1
+            )
             return [
                 RepairOperation(
                     RepairRuleKind.TIGHTEN_AUTHORITY,
@@ -3319,9 +3087,7 @@ class FormalReplanner:
                 )
             ]
         if repair_class is RepairClass.ADD_OBLIGATION:
-            proof_template = _first_string(
-                payload, "proof_template_id", "obligation_template_id"
-            )
+            proof_template = _first_string(payload, "proof_template_id", "obligation_template_id")
             command = _first_string(
                 payload, "test_command", "validation_command", "fallback_check_id"
             )
@@ -3329,10 +3095,7 @@ class FormalReplanner:
                 kind, checks = "code_proof", (proof_template,)
             else:
                 kind = "test"
-                checks = (
-                    command
-                    or f"counterexample-regression:{counterexample.semantic_id}",
-                )
+                checks = (command or f"counterexample-regression:{counterexample.semantic_id}",)
             return [
                 RepairOperation(
                     RepairRuleKind.ADD_EVIDENCE,
@@ -3386,9 +3149,14 @@ class FormalReplanner:
             allowed = {
                 str(key): value
                 for key, value in bounds.items()
-                if str(key) in {
-                    "cpu", "memory_mb", "timeout_ms", "portfolio_width",
-                    "trace_bound", "deadline",
+                if str(key)
+                in {
+                    "cpu",
+                    "memory_mb",
+                    "timeout_ms",
+                    "portfolio_width",
+                    "trace_bound",
+                    "deadline",
                 }
                 and isinstance(value, int)
                 and not isinstance(value, bool)
@@ -3437,19 +3205,25 @@ class FormalReplanner:
     ) -> RepairCandidate:
         if operation.semantic_id in known:
             return RepairCandidate(
-                operation, RepairCandidateStatus.DUPLICATE,
+                operation,
+                RepairCandidateStatus.DUPLICATE,
                 rejection_reasons=("semantic repair identity was already attempted",),
             )
-        if operation.counterexample_id and operation.counterexample_id != counterexample.semantic_id:
+        if (
+            operation.counterexample_id
+            and operation.counterexample_id != counterexample.semantic_id
+        ):
             return RepairCandidate(
-                operation, RepairCandidateStatus.COUNTEREXAMPLE_REJECTED,
+                operation,
+                RepairCandidateStatus.COUNTEREXAMPLE_REJECTED,
                 rejection_reasons=("repair is bound to a different counterexample",),
             )
         try:
             repaired, changed, generated, taskboard = self._apply(bundle, operation)
         except ReplannerValidationError as exc:
             return RepairCandidate(
-                operation, RepairCandidateStatus.COUNTEREXAMPLE_REJECTED,
+                operation,
+                RepairCandidateStatus.COUNTEREXAMPLE_REJECTED,
                 rejection_reasons=(str(exc),),
             )
         immutable_history = _accepted_history(bundle)
@@ -3463,7 +3237,8 @@ class FormalReplanner:
             )
         if changed > self.limits.max_changed_records or generated > self.limits.max_generated_tasks:
             return RepairCandidate(
-                operation, RepairCandidateStatus.NO_PROGRESS,
+                operation,
+                RepairCandidateStatus.NO_PROGRESS,
                 rejection_reasons=("repair exceeds changed-record or generated-task bound",),
             )
         compilation = self.compiler.compile(repaired)
@@ -3472,12 +3247,15 @@ class FormalReplanner:
                 "candidate did not compile",
             )
             return RepairCandidate(
-                operation, RepairCandidateStatus.COMPILE_REJECTED,
-                compilation=compilation, rejection_reasons=reasons[:8],
+                operation,
+                RepairCandidateStatus.COMPILE_REJECTED,
+                compilation=compilation,
+                rejection_reasons=reasons[:8],
             )
         if not self._same_goals(original, compilation, bundle, repaired):
             return RepairCandidate(
-                operation, RepairCandidateStatus.GOAL_REJECTED,
+                operation,
+                RepairCandidateStatus.GOAL_REJECTED,
                 compilation=compilation,
                 rejection_reasons=("candidate changed or removed the original goal",),
             )
@@ -3491,8 +3269,10 @@ class FormalReplanner:
         validation = self.validator.validate(compilation.plan, compilation.formulas)
         if validation.status is not PlanValidationStatus.CONSISTENT:
             return RepairCandidate(
-                operation, RepairCandidateStatus.CHECK_REJECTED,
-                compilation=compilation, validation=validation,
+                operation,
+                RepairCandidateStatus.CHECK_REJECTED,
+                compilation=compilation,
+                validation=validation,
                 rejection_reasons=tuple(item.message for item in validation.findings)[:8]
                 or ("candidate plan is not bounded-consistent",),
             )
@@ -3505,8 +3285,10 @@ class FormalReplanner:
                 structural_addressed=False,
             )
             return RepairCandidate(
-                operation, RepairCandidateStatus.COUNTEREXAMPLE_REJECTED,
-                compilation=compilation, validation=validation,
+                operation,
+                RepairCandidateStatus.COUNTEREXAMPLE_REJECTED,
+                compilation=compilation,
+                validation=validation,
                 rejection_reasons=("typed postcondition did not address the counterexample",),
                 closure=closure,
             )
@@ -3528,8 +3310,10 @@ class FormalReplanner:
         )
         if not progress.improved:
             return RepairCandidate(
-                operation, RepairCandidateStatus.NO_PROGRESS,
-                compilation=compilation, validation=validation,
+                operation,
+                RepairCandidateStatus.NO_PROGRESS,
+                compilation=compilation,
+                validation=validation,
                 rejection_reasons=("explicit progress measure did not decrease",),
                 closure=closure,
             )
@@ -3595,7 +3379,11 @@ class FormalReplanner:
             original_id = _identity(task, "task")
             second = copy.deepcopy(task)
             for field_name in (
-                "id", "task_id", "content_id", "cid", "canonical_task_id",
+                "id",
+                "task_id",
+                "content_id",
+                "cid",
+                "canonical_task_id",
                 "canonical_task_cid",
             ):
                 second.pop(field_name, None)
@@ -3607,13 +3395,12 @@ class FormalReplanner:
             for downstream in bundle["tasks"]:
                 if downstream is task:
                     continue
-                deps = list(_strings(downstream.get("depends_on") or downstream.get("dependencies")))
-                if original_id in deps or any(
-                    alias in deps for alias in _aliases(task, "task")
-                ):
+                deps = list(
+                    _strings(downstream.get("depends_on") or downstream.get("dependencies"))
+                )
+                if original_id in deps or any(alias in deps for alias in _aliases(task, "task")):
                     downstream["depends_on"] = sorted(
-                        generated_id if item in _aliases(task, "task") else item
-                        for item in deps
+                        generated_id if item in _aliases(task, "task") else item for item in deps
                     )
                     changed += 1
             bundle["tasks"].append(second)
@@ -3622,9 +3409,7 @@ class FormalReplanner:
         elif kind is RepairRuleKind.TIGHTEN_AUTHORITY:
             actors = _strings(params["actor_ids"])
             if len(actors) != 1:
-                raise ReplannerValidationError(
-                    "authority repair must select exactly one actor"
-                )
+                raise ReplannerValidationError("authority repair must select exactly one actor")
             task["actor_ids"] = list(actors)
             for field_name in ("actor_id", "assigned_to", "assignee"):
                 task.pop(field_name, None)
@@ -3689,7 +3474,9 @@ class FormalReplanner:
             goals = _aliases(task, "goal")
             review = {
                 "task_cid": generated_id,
-                "goal_id": str(task.get("goal_cid") or task.get("goal_id") or next(iter(goals), "")),
+                "goal_id": str(
+                    task.get("goal_cid") or task.get("goal_id") or next(iter(goals), "")
+                ),
                 "actor_id": str(params["reviewer_actor_id"]),
                 "depends_on": [_identity(task, "task")],
                 "ast_scope_ids": list(_strings(params["scope_ids"])),
@@ -3739,17 +3526,11 @@ class FormalReplanner:
     ) -> bool:
         if original.plan is None or repaired.plan is None:
             return False
-        before_records = {
-            canonical_json(item) for item in before_source.get("objectives", ())
-        }
-        after_records = {
-            canonical_json(item) for item in after_source.get("objectives", ())
-        }
-        return (
-            before_records == after_records
-            and {item.goal_id for item in original.plan.goals}
-            == {item.goal_id for item in repaired.plan.goals}
-        )
+        before_records = {canonical_json(item) for item in before_source.get("objectives", ())}
+        after_records = {canonical_json(item) for item in after_source.get("objectives", ())}
+        return before_records == after_records and {
+            item.goal_id for item in original.plan.goals
+        } == {item.goal_id for item in repaired.plan.goals}
 
     def _evaluate_verifier_closure(
         self,
@@ -3877,14 +3658,11 @@ class FormalReplanner:
         if operation.kind is RepairRuleKind.CHANGE_RESOURCE_BOUNDS:
             bounds = params["resource_bounds"]
             return bool(bounds) and (
-                bool(task.get("resource_needs"))
-                or "deadline" in bounds
-                or "trace_bound" in bounds
+                bool(task.get("resource_needs")) or "deadline" in bounds or "trace_bound" in bounds
             )
         if operation.kind is RepairRuleKind.HUMAN_REVIEW:
             return any(
-                operation.counterexample_id
-                in canonical_json(item.get("acceptance_criteria") or ())
+                operation.counterexample_id in canonical_json(item.get("acceptance_criteria") or ())
                 for item in source["tasks"]
                 if item is not task
             )
@@ -3948,25 +3726,17 @@ class FormalDeltaReplanner:
         elif isinstance(limits, Mapping):
             limits = DeltaReplanLimits.from_dict(limits)
         if not isinstance(limits, DeltaReplanLimits):
-            raise ReplannerValidationError(
-                "limits must be DeltaReplanLimits or an object"
-            )
+            raise ReplannerValidationError("limits must be DeltaReplanLimits or an object")
         self.limits = limits
 
     @staticmethod
-    def _anchors(
-        plan: DeltaPlan, observation: BranchFailureObservation
-    ) -> tuple[str, ...]:
+    def _anchors(plan: DeltaPlan, observation: BranchFailureObservation) -> tuple[str, ...]:
         features = observation.features
         by_id = {item.step_id: item for item in plan.steps}
-        explicit = tuple(
-            sorted(set(features.step_ids).intersection(by_id))
-        )
+        explicit = tuple(sorted(set(features.step_ids).intersection(by_id)))
         if explicit:
             return explicit
-        candidates = [
-            item for item in plan.steps if item.branch_id == features.branch_id
-        ]
+        candidates = [item for item in plan.steps if item.branch_id == features.branch_id]
         if not candidates:
             return ()
         bindings = (
@@ -4001,12 +3771,8 @@ class FormalDeltaReplanner:
         return tuple(sorted(item.step_id for item in candidates))
 
     @staticmethod
-    def _dependent_suffix(
-        plan: DeltaPlan, anchors: Iterable[str]
-    ) -> tuple[str, ...]:
-        reverse: dict[str, set[str]] = {
-            item.step_id: set() for item in plan.steps
-        }
+    def _dependent_suffix(plan: DeltaPlan, anchors: Iterable[str]) -> tuple[str, ...]:
+        reverse: dict[str, set[str]] = {item.step_id: set() for item in plan.steps}
         for item in plan.steps:
             for dependency_id in item.dependency_ids:
                 reverse[dependency_id].add(item.step_id)
@@ -4045,10 +3811,7 @@ class FormalDeltaReplanner:
             sorted(
                 branch_id
                 for branch_id, items in by_branch.items()
-                if all(
-                    item.accepted and item.step_id not in invalidated
-                    for item in items
-                )
+                if all(item.accepted and item.step_id not in invalidated for item in items)
             )
         )
         return accepted_preserved, reopened, preserved
@@ -4062,9 +3825,7 @@ class FormalDeltaReplanner:
         memory: FailureMemoryDecision | None = None,
         anchors: tuple[str, ...] = (),
     ) -> DeltaReplanDecision:
-        preserved, reopened, preserved_branches = self._branch_projection(
-            plan, set()
-        )
+        preserved, reopened, preserved_branches = self._branch_projection(plan, set())
         return DeltaReplanDecision(
             original_plan_id=plan.plan_id,
             resulting_plan=plan,
@@ -4077,15 +3838,9 @@ class FormalDeltaReplanner:
             preserved_step_ids=preserved,
             reopened_branch_ids=(),
             preserved_branch_ids=preserved_branches,
-            diagnostic_reused=(
-                memory.diagnostic_reused if memory is not None else False
-            ),
-            backoff_attempt=(
-                memory.backoff_attempt if memory is not None else 0
-            ),
-            backoff_milliseconds=(
-                memory.backoff_milliseconds if memory is not None else 0
-            ),
+            diagnostic_reused=(memory.diagnostic_reused if memory is not None else False),
+            backoff_attempt=(memory.backoff_attempt if memory is not None else 0),
+            backoff_milliseconds=(memory.backoff_milliseconds if memory is not None else 0),
             repair_attempts=0,
             limits=self.limits,
         )
@@ -4107,9 +3862,7 @@ class FormalDeltaReplanner:
             else BranchFailureObservation.from_dict(observation)
         )
         if value.scope != failure.features.scope:
-            raise ReplannerValidationError(
-                "failure scope does not match the delta plan"
-            )
+            raise ReplannerValidationError("failure scope does not match the delta plan")
         observed = (
             observed_at_milliseconds
             if isinstance(observed_at_milliseconds, int)
@@ -4118,44 +3871,26 @@ class FormalDeltaReplanner:
             else None
         )
         if observed is None:
-            raise ReplannerValidationError(
-                "observed_at_milliseconds must be a positive integer"
-            )
+            raise ReplannerValidationError("observed_at_milliseconds must be a positive integer")
         current = observed if now_milliseconds is None else now_milliseconds
-        if (
-            isinstance(current, bool)
-            or not isinstance(current, int)
-            or current < observed
-        ):
-            raise ReplannerValidationError(
-                "now_milliseconds must not precede the observation"
-            )
+        if isinstance(current, bool) or not isinstance(current, int) or current < observed:
+            raise ReplannerValidationError("now_milliseconds must not precede the observation")
         if deadline_milliseconds is not None and (
             isinstance(deadline_milliseconds, bool)
             or not isinstance(deadline_milliseconds, int)
             or deadline_milliseconds < 1
         ):
-            raise ReplannerValidationError(
-                "deadline_milliseconds must be a positive integer"
-            )
+            raise ReplannerValidationError("deadline_milliseconds must be a positive integer")
         if _cancelled(cancelled):
-            return self._unchanged_decision(
-                value, failure, DeltaReplanStopReason.CANCELLED
-            )
+            return self._unchanged_decision(value, failure, DeltaReplanStopReason.CANCELLED)
         effective_deadline = observed + self.limits.max_repair_milliseconds
         if deadline_milliseconds is not None:
-            effective_deadline = min(
-                effective_deadline, deadline_milliseconds
-            )
+            effective_deadline = min(effective_deadline, deadline_milliseconds)
         if current >= effective_deadline:
-            return self._unchanged_decision(
-                value, failure, DeltaReplanStopReason.DEADLINE_EXCEEDED
-            )
+            return self._unchanged_decision(value, failure, DeltaReplanStopReason.DEADLINE_EXCEEDED)
         anchors = self._anchors(value, failure)
         if not anchors:
-            return self._unchanged_decision(
-                value, failure, DeltaReplanStopReason.UNBOUND_FAILURE
-            )
+            return self._unchanged_decision(value, failure, DeltaReplanStopReason.UNBOUND_FAILURE)
         suffix = self._dependent_suffix(value, anchors)
         _, reopened, _ = self._branch_projection(value, set(suffix))
         if (
@@ -4169,9 +3904,7 @@ class FormalDeltaReplanner:
                 anchors=anchors,
             )
         try:
-            memory = self.failure_memory.observe(
-                failure, observed_at_milliseconds=observed
-            )
+            memory = self.failure_memory.observe(failure, observed_at_milliseconds=observed)
         except PlanFailureMemoryError as exc:
             raise ReplannerValidationError(str(exc)) from exc
         reason_by_disposition = {
@@ -4208,15 +3941,10 @@ class FormalDeltaReplanner:
         resulting = DeltaPlan(
             scope=value.scope,
             steps=tuple(
-                item.invalidate()
-                if item.step_id in invalidated
-                else item
-                for item in value.steps
+                item.invalidate() if item.step_id in invalidated else item for item in value.steps
             ),
         )
-        preserved, reopened, preserved_branches = self._branch_projection(
-            value, invalidated
-        )
+        preserved, reopened, preserved_branches = self._branch_projection(value, invalidated)
         return DeltaReplanDecision(
             original_plan_id=value.plan_id,
             resulting_plan=resulting,
@@ -4225,9 +3953,7 @@ class FormalDeltaReplanner:
             stop_reason=DeltaReplanStopReason.REPLAN_REQUIRED,
             direct_failure_step_ids=anchors,
             invalidated_step_ids=suffix,
-            stale_dependency_step_ids=tuple(
-                sorted(invalidated.difference(anchors))
-            ),
+            stale_dependency_step_ids=tuple(sorted(invalidated.difference(anchors))),
             preserved_step_ids=preserved,
             reopened_branch_ids=reopened,
             preserved_branch_ids=preserved_branches,
@@ -4366,8 +4092,7 @@ def replan_for_signal(
     previous_counterexample_id: str | None = None,
     limits: ReplanLimits | Mapping[str, Any] | None = None,
     admission_callback: Callable[[RepairTransition], bool | None] | None = None,
-    candidate_repairs: Iterable[RepairOperation | Mapping[str, Any]]
-    | None = None,
+    candidate_repairs: Iterable[RepairOperation | Mapping[str, Any]] | None = None,
     prior_semantic_ids: Iterable[str] = (),
     retry_attempt: int | None = None,
     refinement_depth: int = 0,

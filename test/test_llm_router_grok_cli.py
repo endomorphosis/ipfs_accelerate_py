@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -67,6 +68,7 @@ def test_grok_cli_discovery_survives_systemd_minimal_path(
     assert llm_router._grok_cli_command() == str(fake_grok)
     assert llm_router._grok_cli_auth_available() is True
     assert llm_router._get_grok_cli_provider() is not None
+    assert llm_router.get_llm_provider("grok_cli") is not None
 
 
 def test_grok_cli_provider_uses_bounded_headless_json_mode(monkeypatch) -> None:
@@ -96,7 +98,7 @@ def test_grok_cli_provider_uses_bounded_headless_json_mode(monkeypatch) -> None:
     assert captured["prompt"] == 'Reply to "quoted text".'
     cmd = captured["cmd"]
     assert isinstance(cmd, list)
-    assert cmd[0] == "grok"
+    assert Path(cmd[0]).name == "grok"
     assert cmd[cmd.index("--model") + 1] == "grok-4.6"
     assert cmd[cmd.index("--output-format") + 1] == "json"
     assert cmd[cmd.index("--max-turns") + 1] == "1"
@@ -488,10 +490,13 @@ def test_grok_cli_auto_discovery_requires_auth(monkeypatch) -> None:
 
     calls.clear()
     monkeypatch.setattr(llm_router, "_grok_cli_auth_available", lambda: True)
-    assert llm_router._resolve_provider_uncached(
-        None,
-        deps=llm_router.get_default_router_deps(),
-    ) is grok
+    assert (
+        llm_router._resolve_provider_uncached(
+            None,
+            deps=llm_router.get_default_router_deps(),
+        )
+        is grok
+    )
     assert "grok_cli" in calls
 
 

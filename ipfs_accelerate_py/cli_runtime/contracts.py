@@ -162,9 +162,9 @@ def _bounded_metadata(raw: Any) -> dict[str, str]:
             out[key_text] = "[redacted]"
         else:
             out[key_text] = _clip_text(value, MAX_METADATA_VALUE_CHARS)
-    encoded = json.dumps(
-        out, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    encoded = json.dumps(out, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     if len(encoded) > MAX_METADATA_BYTES:
         raise BoundsExceededError(
             f"metadata exceeds {MAX_METADATA_BYTES} bytes when serialized",
@@ -175,25 +175,20 @@ def _bounded_metadata(raw: Any) -> dict[str, str]:
 
 def _json_safe(value: Any) -> Any:
     if value is None or isinstance(value, (bool, int, float, str)):
-        if isinstance(value, float) and (
-            value != value or value in (float("inf"), float("-inf"))
-        ):
+        if isinstance(value, float) and (value != value or value in (float("inf"), float("-inf"))):
             raise ContractValidationError("non-finite float is not JSON-safe")
         return value
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Mapping):
         return {
-            str(k): _json_safe(v)
-            for k, v in sorted(value.items(), key=lambda item: str(item[0]))
+            str(k): _json_safe(v) for k, v in sorted(value.items(), key=lambda item: str(item[0]))
         }
     if isinstance(value, (list, tuple)):
         return [_json_safe(item) for item in value]
     if hasattr(value, "to_dict") and callable(value.to_dict):
         return _json_safe(value.to_dict())
-    raise ContractValidationError(
-        f"value of type {type(value).__name__} is not JSON-safe"
-    )
+    raise ContractValidationError(f"value of type {type(value).__name__} is not JSON-safe")
 
 
 def canonical_json(value: Any) -> str:
@@ -256,9 +251,7 @@ class CLICapabilities:
             "chat_mode",
             "agent_mode",
         ):
-            object.__setattr__(
-                self, name, _require_bool(getattr(self, name), name)
-            )
+            object.__setattr__(self, name, _require_bool(getattr(self, name), name))
         self.validate()
 
     def validate(self) -> None:
@@ -310,9 +303,7 @@ class CLICapabilities:
         }
 
     @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any] | None
-    ) -> CLICapabilities:
+    def from_dict(cls, payload: Mapping[str, Any] | None) -> CLICapabilities:
         if payload is None:
             return cls()
         if not isinstance(payload, Mapping):
@@ -367,18 +358,14 @@ def _normalize_execution_mode(value: Any) -> ExecutionMode:
         raw = str(value).strip().lower()
         return ExecutionMode(raw)
     except ValueError as exc:
-        raise ContractValidationError(
-            f"unknown execution mode: {value!r}"
-        ) from exc
+        raise ContractValidationError(f"unknown execution mode: {value!r}") from exc
 
 
 def _normalize_tool_names(tools: Any) -> tuple[str, ...]:
     if tools is None:
         return ()
     if isinstance(tools, (str, bytes)):
-        raise ContractValidationError(
-            "tools must be a sequence of names, not a string"
-        )
+        raise ContractValidationError("tools must be a sequence of names, not a string")
     names: list[str] = []
     seen: set[str] = set()
     for item in tools:
@@ -423,9 +410,7 @@ class CLIRequest:
     timeout_seconds: Optional[float] = None
     workspace: Optional[str] = None
     metadata: Mapping[str, str] = field(default_factory=dict)
-    capabilities: CLICapabilities = field(
-        default_factory=CLICapabilities.chat_defaults
-    )
+    capabilities: CLICapabilities = field(default_factory=CLICapabilities.chat_defaults)
 
     def __post_init__(self) -> None:
         if not isinstance(self.prompt, str):
@@ -509,9 +494,7 @@ class CLIRequest:
 
         model_name = self.model_name
         if model_name is not None:
-            model_name = _require_non_empty_name(
-                model_name, "model_name", maximum=MAX_MODEL_CHARS
-            )
+            model_name = _require_non_empty_name(model_name, "model_name", maximum=MAX_MODEL_CHARS)
         provider_name = self.provider_name
         if provider_name is not None:
             provider_name = _normalize_identifier(
@@ -530,15 +513,11 @@ class CLIRequest:
 
         timeout_seconds = self.timeout_seconds
         if timeout_seconds is not None:
-            if not isinstance(timeout_seconds, (int, float)) or isinstance(
-                timeout_seconds, bool
-            ):
+            if not isinstance(timeout_seconds, (int, float)) or isinstance(timeout_seconds, bool):
                 raise ContractValidationError("timeout_seconds must be a number")
             timeout_seconds = float(timeout_seconds)
             if timeout_seconds < MIN_TIMEOUT_SECONDS:
-                raise ContractValidationError(
-                    f"timeout_seconds must be >= {MIN_TIMEOUT_SECONDS}"
-                )
+                raise ContractValidationError(f"timeout_seconds must be >= {MIN_TIMEOUT_SECONDS}")
             if timeout_seconds > MAX_TIMEOUT_SECONDS:
                 raise BoundsExceededError(
                     f"timeout_seconds exceeds {MAX_TIMEOUT_SECONDS}",
@@ -551,9 +530,7 @@ class CLIRequest:
         workspace = self.workspace
         if workspace is not None:
             if not isinstance(workspace, str) or not workspace.strip():
-                raise ContractValidationError(
-                    "workspace must be a non-empty string"
-                )
+                raise ContractValidationError("workspace must be a non-empty string")
             workspace = workspace.strip()
 
         capabilities = self.capabilities
@@ -561,9 +538,7 @@ class CLIRequest:
             if isinstance(capabilities, Mapping):
                 capabilities = CLICapabilities.from_dict(capabilities)
             else:
-                raise ContractValidationError(
-                    "capabilities must be a CLICapabilities"
-                )
+                raise ContractValidationError("capabilities must be a CLICapabilities")
         if mode is ExecutionMode.CHAT and capabilities.side_effecting:
             raise InvalidStateError(
                 "chat request capabilities cannot be side-effecting",
@@ -634,9 +609,7 @@ class CLIRequest:
             tools = tuple(tools)
         caps_raw = payload.get("capabilities")
         if caps_raw is None:
-            mode = _normalize_execution_mode(
-                payload.get("mode", ExecutionMode.CHAT)
-            )
+            mode = _normalize_execution_mode(payload.get("mode", ExecutionMode.CHAT))
             capabilities = (
                 CLICapabilities.agent_defaults()
                 if mode is ExecutionMode.AGENT
@@ -644,9 +617,7 @@ class CLIRequest:
             )
         else:
             capabilities = CLICapabilities.from_dict(caps_raw)
-            mode = _normalize_execution_mode(
-                payload.get("mode", ExecutionMode.CHAT)
-            )
+            mode = _normalize_execution_mode(payload.get("mode", ExecutionMode.CHAT))
         return cls(
             prompt=str(payload.get("prompt", "")),
             mode=mode,
@@ -654,17 +625,13 @@ class CLIRequest:
             provider_name=payload.get("provider_name"),
             provider_override=payload.get("provider_override"),
             model_override=payload.get("model_override"),
-            side_effecting=bool(
-                payload.get("side_effecting", capabilities.side_effecting)
-            ),
+            side_effecting=bool(payload.get("side_effecting", capabilities.side_effecting)),
             cacheable=bool(payload.get("cacheable", capabilities.cacheable)),
             retryable=bool(payload.get("retryable", capabilities.retryable)),
             streaming=bool(payload.get("streaming", False)),
             session_id=payload.get("session_id"),
             tools=tools,
-            cancellation_requested=bool(
-                payload.get("cancellation_requested", False)
-            ),
+            cancellation_requested=bool(payload.get("cancellation_requested", False)),
             timeout_seconds=payload.get("timeout_seconds"),
             workspace=payload.get("workspace"),
             metadata=payload.get("metadata") or {},
@@ -688,9 +655,7 @@ class CLIEvent:
             try:
                 kind = EventKind(kind)
             except ValueError as exc:
-                raise ContractValidationError(
-                    f"unknown event kind: {self.kind!r}"
-                ) from exc
+                raise ContractValidationError(f"unknown event kind: {self.kind!r}") from exc
         elif not isinstance(kind, EventKind):
             raise ContractValidationError("event kind must be EventKind or str")
         object.__setattr__(self, "kind", kind)
@@ -785,9 +750,7 @@ class CLIResult:
         streaming = _require_bool(self.streaming, "streaming")
         truncated = _require_bool(self.truncated, "truncated")
         cancelled = _require_bool(self.cancelled, "cancelled")
-        had_side_effect = _require_bool(
-            self.had_side_effect_event, "had_side_effect_event"
-        )
+        had_side_effect = _require_bool(self.had_side_effect_event, "had_side_effect_event")
 
         provider_name = self.provider_name
         if provider_name is not None:
@@ -796,30 +759,20 @@ class CLIResult:
             )
         model_name = self.model_name
         if model_name is not None:
-            model_name = _require_non_empty_name(
-                model_name, "model_name", maximum=MAX_MODEL_CHARS
-            )
+            model_name = _require_non_empty_name(model_name, "model_name", maximum=MAX_MODEL_CHARS)
 
         exit_code = self.exit_code
         if exit_code is not None:
             if not isinstance(exit_code, int) or isinstance(exit_code, bool):
-                raise ContractValidationError(
-                    "exit_code must be an integer or None"
-                )
+                raise ContractValidationError("exit_code must be an integer or None")
 
         elapsed_seconds = self.elapsed_seconds
         if elapsed_seconds is not None:
-            if not isinstance(elapsed_seconds, (int, float)) or isinstance(
-                elapsed_seconds, bool
-            ):
-                raise ContractValidationError(
-                    "elapsed_seconds must be a number or None"
-                )
+            if not isinstance(elapsed_seconds, (int, float)) or isinstance(elapsed_seconds, bool):
+                raise ContractValidationError("elapsed_seconds must be a number or None")
             elapsed_seconds = float(elapsed_seconds)
             if elapsed_seconds < 0:
-                raise ContractValidationError(
-                    "elapsed_seconds must be non-negative"
-                )
+                raise ContractValidationError("elapsed_seconds must be non-negative")
 
         events = self.events
         if events is None:
@@ -833,9 +786,7 @@ class CLIResult:
             elif isinstance(item, Mapping):
                 normalized_events.append(CLIEvent.from_dict(item))
             else:
-                raise ContractValidationError(
-                    "events must contain CLIEvent records"
-                )
+                raise ContractValidationError("events must contain CLIEvent records")
         if len(normalized_events) > MAX_EVENT_COUNT:
             raise BoundsExceededError(
                 f"events exceeds {MAX_EVENT_COUNT} entries",
@@ -861,9 +812,7 @@ class CLIResult:
             if isinstance(error, Mapping):
                 error = CLIErrorRecord.from_dict(error)
             elif not isinstance(error, CLIErrorRecord):
-                raise ContractValidationError(
-                    "error must be a CLIErrorRecord or mapping"
-                )
+                raise ContractValidationError("error must be a CLIErrorRecord or mapping")
         elif not ok:
             error = CLIErrorRecord(
                 code=CLIRuntimeErrorCode.INTERNAL,
@@ -940,9 +889,7 @@ class CLIResult:
             events=events,
             error=error,
             metadata=payload.get("metadata") or {},
-            had_side_effect_event=bool(
-                payload.get("had_side_effect_event", False)
-            ),
+            had_side_effect_event=bool(payload.get("had_side_effect_event", False)),
         )
 
     @classmethod
@@ -974,9 +921,7 @@ class ProviderSpec:
     name: str
     aliases: tuple[str, ...] = ()
     description: str = ""
-    capabilities: CLICapabilities = field(
-        default_factory=CLICapabilities.chat_defaults
-    )
+    capabilities: CLICapabilities = field(default_factory=CLICapabilities.chat_defaults)
     streaming: CapabilitySupport = CapabilitySupport.UNKNOWN
     tools: CapabilitySupport = CapabilitySupport.NOT_SUPPORTED
     sessions: CapabilitySupport = CapabilitySupport.NOT_SUPPORTED
@@ -987,22 +932,16 @@ class ProviderSpec:
     metadata: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        name = _normalize_identifier(
-            self.name, "name", maximum=MAX_PROVIDER_CHARS
-        )
+        name = _normalize_identifier(self.name, "name", maximum=MAX_PROVIDER_CHARS)
         object.__setattr__(self, "name", name)
 
         aliases_raw = self.aliases
         if isinstance(aliases_raw, (str, bytes)):
-            raise ContractValidationError(
-                "aliases must be a sequence, not a string"
-            )
+            raise ContractValidationError("aliases must be a sequence, not a string")
         aliases: list[str] = []
         seen: set[str] = {name}
         for item in aliases_raw or ():
-            alias = _normalize_identifier(
-                item, "alias", maximum=MAX_PROVIDER_CHARS
-            )
+            alias = _normalize_identifier(item, "alias", maximum=MAX_PROVIDER_CHARS)
             if alias in seen:
                 continue
             seen.add(alias)
@@ -1034,9 +973,7 @@ class ProviderSpec:
             raise ContractValidationError("capabilities must be a CLICapabilities")
         object.__setattr__(self, "capabilities", capabilities)
 
-        def _support(
-            value: Any, default: CapabilitySupport
-        ) -> CapabilitySupport:
+        def _support(value: Any, default: CapabilitySupport) -> CapabilitySupport:
             if value is None:
                 return default
             if isinstance(value, CapabilitySupport):
@@ -1044,16 +981,10 @@ class ProviderSpec:
             try:
                 return CapabilitySupport(str(value).strip().lower())
             except ValueError as exc:
-                raise ContractValidationError(
-                    f"unknown capability support: {value!r}"
-                ) from exc
+                raise ContractValidationError(f"unknown capability support: {value!r}") from exc
 
-        object.__setattr__(
-            self, "streaming", _support(self.streaming, CapabilitySupport.UNKNOWN)
-        )
-        object.__setattr__(
-            self, "tools", _support(self.tools, CapabilitySupport.NOT_SUPPORTED)
-        )
+        object.__setattr__(self, "streaming", _support(self.streaming, CapabilitySupport.UNKNOWN))
+        object.__setattr__(self, "tools", _support(self.tools, CapabilitySupport.NOT_SUPPORTED))
         object.__setattr__(
             self,
             "sessions",
@@ -1112,9 +1043,7 @@ class ProviderSpec:
             aliases = tuple(aliases)
         caps = payload.get("capabilities")
         capabilities = (
-            CLICapabilities.from_dict(caps)
-            if caps is not None
-            else CLICapabilities.chat_defaults()
+            CLICapabilities.from_dict(caps) if caps is not None else CLICapabilities.chat_defaults()
         )
         return cls(
             name=str(payload.get("name", "")),
@@ -1124,15 +1053,9 @@ class ProviderSpec:
             streaming=payload.get("streaming", CapabilitySupport.UNKNOWN),
             tools=payload.get("tools", CapabilitySupport.NOT_SUPPORTED),
             sessions=payload.get("sessions", CapabilitySupport.NOT_SUPPORTED),
-            cancellation=payload.get(
-                "cancellation", CapabilitySupport.SUPPORTED
-            ),
-            provider_override=payload.get(
-                "provider_override", CapabilitySupport.SUPPORTED
-            ),
-            model_override=payload.get(
-                "model_override", CapabilitySupport.SUPPORTED
-            ),
+            cancellation=payload.get("cancellation", CapabilitySupport.SUPPORTED),
+            provider_override=payload.get("provider_override", CapabilitySupport.SUPPORTED),
+            model_override=payload.get("model_override", CapabilitySupport.SUPPORTED),
             locality=str(payload.get("locality", "unknown")),
             metadata=payload.get("metadata") or {},
         )

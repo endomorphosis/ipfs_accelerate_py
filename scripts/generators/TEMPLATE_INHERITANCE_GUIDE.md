@@ -107,7 +107,7 @@ from templates.model_template_registry import select_template
 template_name = select_template(
     model_family="embedding",
     hardware_info={"cuda": True, "mps": False},
-    model_requirements={"embedding_dim": 768}
+    model_requirements={"embedding_dim": 768},
 )
 ```
 
@@ -125,7 +125,7 @@ context = {
     "model_description": "BERT model for text embeddings",
     "modality": "text",
     "supports_quantization": "True",
-    "requires_gpu": "False"
+    "requires_gpu": "False",
 }
 
 # Render the template with the context
@@ -194,7 +194,7 @@ context = {
     "model_description": "BERT base uncased model for text embeddings",
     "modality": "text",
     "supports_quantization": "True",
-    "requires_gpu": "False"
+    "requires_gpu": "False",
 }
 
 # Render implementation
@@ -206,6 +206,7 @@ implementation = render_template(template_name, context)
 ```python
 # Get hardware info
 from hardware_detection import detect_available_hardware
+
 hardware_info = detect_available_hardware()
 
 # Select template appropriate for the hardware

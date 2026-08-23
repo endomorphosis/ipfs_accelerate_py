@@ -19,6 +19,9 @@ The output deliberately separates three identities:
 This module is report-only.  It grants no repair or mutation authority.
 """
 
+# Python 3.8 remains supported; keep ``str, Enum`` rather than ``StrEnum``.
+# ruff: noqa: UP037, UP042
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -26,7 +29,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, ClassVar, Final, TYPE_CHECKING
+from typing import Any, ClassVar, Final
 
 from ..proof.formal_verification_contracts import CanonicalContract, content_identity
 from .doctor_repository_diagnostics import (
@@ -36,10 +39,6 @@ from .doctor_repository_diagnostics import (
     FindingDisposition,
     FindingKind,
 )
-
-if TYPE_CHECKING:  # Avoid importing the large impact compiler at module import time.
-    from .deterministic_doctor_impact import DoctorImpactClosureReceipt
-
 
 DOCTOR_CAUSAL_LOCALIZATION_INTERFACE: Final[str] = "DoctorCausalLocalization@1"
 DOCTOR_CAUSAL_LOCALIZATION_VERSION: Final[int] = 1
@@ -180,6 +179,32 @@ _KIND_DOMAIN: Final[Mapping[CausalEvidenceKind, str]] = MappingProxyType(
         CausalEvidenceKind.GRAPHRAG: "nomination",
         CausalEvidenceKind.CACHE: "nomination",
         CausalEvidenceKind.MODEL_NOMINATION: "nomination",
+    }
+)
+
+# Compact federation kind names only.  This module stays report-only and never
+# imports the federation package, so it cannot mint graph authority.
+FEDERATION_KIND_FOR_DOCTOR_KIND: Final[Mapping[CausalEvidenceKind, str]] = MappingProxyType(
+    {
+        CausalEvidenceKind.CONTRACT_DELTA: "contract_dependency",
+        CausalEvidenceKind.STATIC_SLICE: "exact_static_dependency",
+        CausalEvidenceKind.CALL_GRAPH: "exact_static_dependency",
+        CausalEvidenceKind.DEPENDENCY_GRAPH: "exact_static_dependency",
+        CausalEvidenceKind.AST_FACT: "exact_static_dependency",
+        CausalEvidenceKind.TYPE_FACT: "exact_static_dependency",
+        CausalEvidenceKind.VALUE_GRAPH: "effect_observation",
+        CausalEvidenceKind.DATAFLOW: "effect_observation",
+        CausalEvidenceKind.DYNAMIC_SLICE: "dynamic_trace",
+        CausalEvidenceKind.RUNTIME_FACT: "dynamic_trace",
+        CausalEvidenceKind.FAILING_TRACE: "dynamic_trace",
+        CausalEvidenceKind.DELTA_DEBUG: "delta_debugging",
+        CausalEvidenceKind.UNSAT_CORE: "unsat_core",
+        CausalEvidenceKind.COUNTEREXAMPLE: "counterexample",
+        CausalEvidenceKind.RETRIEVAL: "retrieval_nomination",
+        CausalEvidenceKind.VECTOR_NEAREST: "retrieval_nomination",
+        CausalEvidenceKind.GRAPHRAG: "retrieval_nomination",
+        CausalEvidenceKind.CACHE: "retrieval_nomination",
+        CausalEvidenceKind.MODEL_NOMINATION: "retrieval_nomination",
     }
 )
 
@@ -674,6 +699,12 @@ class DoctorCausalLocalizationReceipt(CanonicalContract):
     def localized(self) -> bool:
         return self.disposition is CausalLocalizationDisposition.LOCALIZED
 
+    @property
+    def federation_authority_admitted(self) -> bool:
+        """Doctor localization never grants federation graph authority."""
+
+        return False
+
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "DoctorCausalLocalizationReceipt":
         if not isinstance(payload, Mapping) or payload.get("schema") != cls.SCHEMA:
@@ -1042,6 +1073,27 @@ def localize_doctor_cause(
     return DoctorCausalLocalizer().localize(request)
 
 
+def federation_kind_for_doctor_evidence(kind: CausalEvidenceKind | str) -> str:
+    """Return the compact federation evidence-kind name for one doctor kind.
+
+    The mapping is informational.  It does not admit federation authority.
+    """
+
+    closed = _enum(kind, CausalEvidenceKind, "kind")
+    try:
+        return FEDERATION_KIND_FOR_DOCTOR_KIND[closed]
+    except KeyError as exc:
+        raise DoctorCausalLocalizationError(
+            "doctor evidence kind has no federation projection"
+        ) from exc
+
+
+def doctor_kind_is_federation_nomination(kind: CausalEvidenceKind | str) -> bool:
+    """Return whether a doctor kind can only nominate, never dispose cause."""
+
+    return _enum(kind, CausalEvidenceKind, "kind") in _NOMINATION_KINDS
+
+
 # Friendly aliases for plan terminology and adjacent adapters.
 DoctorCausalLocalization = DoctorCausalLocalizer
 DoctorCausalLocalizationResult = DoctorCausalLocalizationReceipt
@@ -1071,7 +1123,10 @@ __all__ = [
     "DoctorCausalLocalizationRequest",
     "DoctorCausalLocalizationResult",
     "DoctorCausalLocalizer",
+    "FEDERATION_KIND_FOR_DOCTOR_KIND",
     "MinimalMismatchSlice",
+    "doctor_kind_is_federation_nomination",
+    "federation_kind_for_doctor_evidence",
     "localize_cause",
     "localize_doctor_cause",
 ]

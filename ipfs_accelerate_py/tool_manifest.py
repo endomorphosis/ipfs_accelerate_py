@@ -58,7 +58,12 @@ def extract_mcp_manifest(mcp_like: Any, *, include_schemas: bool = True) -> Dict
     """
 
     if mcp_like is None:
-        return {"tools": [], "resources": [], "prompts": [], "counts": {"tools": 0, "resources": 0, "prompts": 0}}
+        return {
+            "tools": [],
+            "resources": [],
+            "prompts": [],
+            "counts": {"tools": 0, "resources": 0, "prompts": 0},
+        }
 
     server = getattr(mcp_like, "mcp", None) or mcp_like
 
@@ -94,7 +99,9 @@ def extract_mcp_manifest(mcp_like: Any, *, include_schemas: bool = True) -> Dict
             path = _string(r.get("path") or r.get("uri") or r.get("name"))
             desc = _string(r.get("description"))
         else:
-            path = _string(getattr(r, "path", "") or getattr(r, "uri", "") or getattr(r, "name", ""))
+            path = _string(
+                getattr(r, "path", "") or getattr(r, "uri", "") or getattr(r, "name", "")
+            )
             desc = _string(getattr(r, "description", ""))
         if not path:
             continue
@@ -109,7 +116,11 @@ def extract_mcp_manifest(mcp_like: Any, *, include_schemas: bool = True) -> Dict
         else:
             pname = _string(getattr(p, "name", ""))
             pdesc = _string(getattr(p, "description", ""))
-            schema = _as_dict(getattr(p, "input_schema", None) or getattr(p, "schema", None)) if include_schemas else {}
+            schema = (
+                _as_dict(getattr(p, "input_schema", None) or getattr(p, "schema", None))
+                if include_schemas
+                else {}
+            )
         if not pname:
             continue
         entry = {"name": pname, "description": pdesc}
@@ -296,7 +307,12 @@ async def invoke_mcp_tool(
                 res = fn(**dict(args))
                 if inspect.isawaitable(res):
                     res = await res
-            return {"ok": True, "tool": str(tool_name), "description": desc, "result": jsonable(res)}
+            return {
+                "ok": True,
+                "tool": str(tool_name),
+                "description": desc,
+                "result": jsonable(res),
+            }
         except Exception:
             return {"ok": False, "tool": str(tool_name), "error": f"type_error: {exc}"}
     except Exception as exc:

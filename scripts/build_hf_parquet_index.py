@@ -15,7 +15,9 @@ import pyarrow.parquet as pq
 
 from ipfs_accelerate_py.embeddings_router import embed_texts
 from ipfs_accelerate_py.embeddings.ipfs_knn_index import IPFSKnnIndex
-from ipfs_datasets_py.processors.legal_scrapers.canonical_legal_corpora import get_canonical_legal_corpus
+from ipfs_datasets_py.processors.legal_scrapers.canonical_legal_corpora import (
+    get_canonical_legal_corpus,
+)
 
 
 _STATE_LAWS_CORPUS = get_canonical_legal_corpus("state_laws")
@@ -31,9 +33,7 @@ def _pick_text_column(schema: pa.Schema) -> str:
     for field in schema:
         if pa.types.is_string(field.type) or pa.types.is_large_string(field.type):
             return field.name
-    raise ValueError(
-        "No string-like column found. Pass --text-column to select a column manually."
-    )
+    raise ValueError("No string-like column found. Pass --text-column to select a column manually.")
 
 
 def _iter_parquet_texts(
@@ -95,7 +95,9 @@ def build_index(args: argparse.Namespace) -> None:
     if not parquet_files:
         raise FileNotFoundError(f"No parquet files found under {parquet_root}")
 
-    model_name = args.model_name or os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL") or "thenlper/gte-small"
+    model_name = (
+        args.model_name or os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_MODEL") or "thenlper/gte-small"
+    )
     provider = args.provider or os.getenv("IPFS_ACCELERATE_PY_EMBEDDINGS_PROVIDER")
 
     index: Optional[IPFSKnnIndex] = None

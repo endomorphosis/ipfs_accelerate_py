@@ -442,9 +442,9 @@ def test_control_script_is_executable_and_present() -> None:
 
 def test_static_contract_deterministic_shards_and_one_refill_owner() -> None:
     text = CONTROL_SCRIPT.read_text(encoding="utf-8")
-    assert 'readonly TASK_SHARD_COUNT=2' in text
-    assert 'readonly GROK_SHARD_INDEX=0' in text
-    assert 'readonly CODEX_SHARD_INDEX=1' in text
+    assert "readonly TASK_SHARD_COUNT=2" in text
+    assert "readonly GROK_SHARD_INDEX=0" in text
+    assert "readonly CODEX_SHARD_INDEX=1" in text
     assert 'readonly REFILL_OWNER_LANE="${GROK_LANE}"' in text
     assert text.count('"--objective-refill-scan"') == 1
     assert text.count('"--codebase-refill-scan"') == 1
@@ -665,12 +665,8 @@ def test_stale_pid_recovery_and_pid_ownership(control_harness) -> None:
         stderr=subprocess.DEVNULL,
     )
     try:
-        (runtime / "vfs_grok_supervisor.pid").write_text(
-            f"{foreign.pid}\n", encoding="utf-8"
-        )
-        (runtime / "vfs_codex_supervisor.pid").write_text(
-            "999999\n", encoding="utf-8"
-        )  # dead pid
+        (runtime / "vfs_grok_supervisor.pid").write_text(f"{foreign.pid}\n", encoding="utf-8")
+        (runtime / "vfs_codex_supervisor.pid").write_text("999999\n", encoding="utf-8")  # dead pid
 
         # Stop must clear stale records without killing the foreign process.
         stop = _run_control("stop", env=env)
@@ -769,13 +765,13 @@ def test_authenticated_provider_probe_fail_closed_when_both_missing(
     env["PATH"] = f"/usr/bin:/bin:{empty_bin}"
     env.pop("IPFS_ACCELERATE_AGENT_GROK_BIN", None)
     # Point Grok bin at a non-executable path.
-    env["IPFS_ACCELERATE_AGENT_GROK_BIN"] = str(
-        control_harness["state_root"] / "missing-grok"
-    )
+    env["IPFS_ACCELERATE_AGENT_GROK_BIN"] = str(control_harness["state_root"] / "missing-grok")
     result = _run_control("start", env=env)
     assert result.returncode != 0
     combined = result.stdout + result.stderr
-    assert "No authenticated providers" in combined or "no authenticated providers" in combined.lower()
+    assert (
+        "No authenticated providers" in combined or "no authenticated providers" in combined.lower()
+    )
 
 
 def test_provider_probe_writes_receipt_without_secrets(control_harness) -> None:
@@ -889,9 +885,10 @@ def test_provider_shard_receipt_degraded_admission_without_authority_expansion(
         assert receipt["shards"]["1"]["refill_owner"] is False
         assert receipt["authority"]["shards_never_reassign_on_provider_loss"] is True
         assert receipt["authority"]["refill_exclusive_to_owner_lane"] is True
-        assert receipt["authority"][
-            "provider_preference_never_changes_validation_or_completion"
-        ] is True
+        assert (
+            receipt["authority"]["provider_preference_never_changes_validation_or_completion"]
+            is True
+        )
 
         grok = _lane_argv(state_root, "vfs_grok")
         assert grok["task_shard_index"] == "0"
@@ -936,7 +933,11 @@ def test_bounded_timeout_flags_present_on_both_lanes(control_harness) -> None:
             as_map = {}
             i = 0
             while i < len(argv):
-                if argv[i].startswith("--") and i + 1 < len(argv) and not argv[i + 1].startswith("--"):
+                if (
+                    argv[i].startswith("--")
+                    and i + 1 < len(argv)
+                    and not argv[i + 1].startswith("--")
+                ):
                     as_map[argv[i]] = argv[i + 1]
                     i += 2
                 else:
@@ -964,7 +965,10 @@ def test_status_schema_includes_lane_isolation_metadata(control_harness) -> None
         assert status["lanes"]["vfs_codex"]["task_shard_index"] == 1
         assert status["lanes"]["vfs_grok"]["refill_owner"] is True
         assert status["lanes"]["vfs_codex"]["refill_owner"] is False
-        assert status["lanes"]["vfs_grok"]["worktree_root"] != status["lanes"]["vfs_codex"]["worktree_root"]
+        assert (
+            status["lanes"]["vfs_grok"]["worktree_root"]
+            != status["lanes"]["vfs_codex"]["worktree_root"]
+        )
         assert status["protected_paths"] == list(PROTECTED_PATHS)
         assert status["provider_shard_receipt_evidence"] == "vfs/provider-shard-receipt@1"
         assert status["provider_shard_receipt"]["schema"] == "vfs/provider-shard-receipt@1"

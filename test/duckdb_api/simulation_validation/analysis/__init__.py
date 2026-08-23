@@ -11,7 +11,9 @@ This package provides advanced analysis capabilities for the framework, includin
 """
 
 from data.duckdb.simulation_validation.analysis.base import AnalysisMethod
-from data.duckdb.simulation_validation.analysis.advanced_statistical_analysis import AdvancedStatisticalAnalysis
+from data.duckdb.simulation_validation.analysis.advanced_statistical_analysis import (
+    AdvancedStatisticalAnalysis,
+)
 from data.duckdb.simulation_validation.analysis.ml_pattern_analysis import MLPatternAnalysis
 from data.duckdb.simulation_validation.analysis.anomaly_detection import AnomalyDetection
 from data.duckdb.simulation_validation.analysis.predictive_modeling import PredictiveModeling

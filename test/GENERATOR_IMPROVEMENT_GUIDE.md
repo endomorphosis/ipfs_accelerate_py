@@ -140,9 +140,7 @@ Add entries to the `IMPROVED_PATTERN_MAP` list for additional Python-to-TypeScri
 
 ```python
 # Add a new pattern mapping
-IMPROVED_PATTERN_MAP.append(
-    (r'your_python_pattern', r'your_typescript_replacement')
-)
+IMPROVED_PATTERN_MAP.append((r"your_python_pattern", r"your_typescript_replacement"))
 ```
 
 ### Adding Class Templates
@@ -152,20 +150,18 @@ Create new specialized class templates for common classes:
 ```python
 # Add a new class template
 NEW_CLASS_TEMPLATE = {
-    'signature': 'class YourClass implements YourInterface',
-    'methods': {
-        'yourMethod': '''yourMethod(param: Type): ReturnType {
+    "signature": "class YourClass implements YourInterface",
+    "methods": {
+        "yourMethod": """yourMethod(param: Type): ReturnType {
     // Method implementation
     return result;
-  }'''
+  }"""
     },
-    'properties': {
-        'yourProperty': 'yourProperty: PropertyType = defaultValue'
-    }
+    "properties": {"yourProperty": "yourProperty: PropertyType = defaultValue"},
 }
 
 # Add to the IMPROVED_CLASS_CONVERSIONS map
-IMPROVED_CLASS_CONVERSIONS['YourClass'] = NEW_CLASS_TEMPLATE
+IMPROVED_CLASS_CONVERSIONS["YourClass"] = NEW_CLASS_TEMPLATE
 ```
 
 ### Adding Interface Definitions
@@ -174,10 +170,10 @@ Add standard TypeScript interfaces that should be included in the generated code
 
 ```python
 # Add a new interface definition
-TS_INTERFACES['YourInterface'] = '''interface YourInterface {
+TS_INTERFACES["YourInterface"] = """interface YourInterface {
   requiredMethod(): ReturnType;
   optionalProperty?: PropertyType;
-}'''
+}"""
 ```
 
 ## Best Practices

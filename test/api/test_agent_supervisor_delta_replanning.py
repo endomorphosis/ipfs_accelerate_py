@@ -137,13 +137,9 @@ def test_each_typed_failure_invalidates_only_smallest_dependent_suffix(
     )
     assert decision.requirement_ids == (DELTA_REPLAN_REQUIREMENT_ID,)
     result = {item.step_id: item for item in decision.resulting_plan.steps}
-    assert result["step:base"] == {
-        item.step_id: item for item in plan.steps
-    }["step:base"]
+    assert result["step:base"] == {item.step_id: item for item in plan.steps}["step:base"]
     assert result["step:independent"].accepted
-    assert result["step:independent"].evidence_ids == (
-        "evidence:independent",
-    )
+    assert result["step:independent"].evidence_ids == ("evidence:independent",)
     assert not result["step:target"].accepted
     assert not result["step:suffix"].accepted
     assert result["step:target"].evidence_ids == ()
@@ -165,9 +161,7 @@ def test_unchanged_delivery_noise_backs_off_but_changed_evidence_reopens(
         ),
     )
     replanner = FormalDeltaReplanner(failure_memory=memory)
-    first = replanner.replan(
-        _plan(), _observation(), observed_at_milliseconds=100
-    )
+    first = replanner.replan(_plan(), _observation(), observed_at_milliseconds=100)
     noise = replanner.replan(
         _plan(),
         _observation(delivery_id="delivery:transport-redelivery"),
@@ -176,18 +170,14 @@ def test_unchanged_delivery_noise_backs_off_but_changed_evidence_reopens(
 
     assert first.changed
     assert not noise.changed
-    assert noise.stop_reason is (
-        DeltaReplanStopReason.UNCHANGED_FAILURE_BACKOFF
-    )
+    assert noise.stop_reason is (DeltaReplanStopReason.UNCHANGED_FAILURE_BACKOFF)
     assert noise.backoff_milliseconds == 10
     assert noise.failure_event_id == first.failure_event_id
     assert noise.diagnostic_id == first.diagnostic_id
     assert noise.diagnostic_reused
     assert noise.requirement_ids == ()
 
-    restarted = FormalDeltaReplanner(
-        failure_memory=PlanFailureMemory(state)
-    )
+    restarted = FormalDeltaReplanner(failure_memory=PlanFailureMemory(state))
     still_same = restarted.replan(
         _plan(),
         _observation(delivery_id="delivery:after-restart"),
@@ -222,20 +212,12 @@ def test_identical_failure_has_finite_backoff_and_exhausts() -> None:
     )
     replanner = FormalDeltaReplanner(failure_memory=memory)
 
-    assert replanner.replan(
-        _plan(), _observation(), observed_at_milliseconds=1
-    ).changed
-    backed_off = replanner.replan(
-        _plan(), _observation(), observed_at_milliseconds=2
-    )
-    exhausted = replanner.replan(
-        _plan(), _observation(), observed_at_milliseconds=3
-    )
+    assert replanner.replan(_plan(), _observation(), observed_at_milliseconds=1).changed
+    backed_off = replanner.replan(_plan(), _observation(), observed_at_milliseconds=2)
+    exhausted = replanner.replan(_plan(), _observation(), observed_at_milliseconds=3)
 
     assert backed_off.backoff_milliseconds == 2
-    assert exhausted.stop_reason is (
-        DeltaReplanStopReason.IDENTICAL_FAILURE_EXHAUSTED
-    )
+    assert exhausted.stop_reason is (DeltaReplanStopReason.IDENTICAL_FAILURE_EXHAUSTED)
     assert exhausted.backoff_milliseconds == 0
     assert not exhausted.should_replan
 
@@ -250,21 +232,30 @@ def test_memory_is_exactly_scoped_and_foreign_failures_do_not_poison_scores() ->
     memory.observe(local, observed_at_milliseconds=1)
     memory.observe(foreign, observed_at_milliseconds=2)
 
-    assert memory.historical_failure_millionths(
-        scope=_scope(), branch_id="branch:target"
-    ) == 125_000
-    assert memory.historical_failure_millionths(
-        scope=_scope(policy="policy:other"),
-        branch_id="branch:target",
-    ) == 0
-    assert memory.historical_failure_millionths(
-        scope=_scope(environment="environment:other"),
-        branch_id="branch:target",
-    ) == 0
-    assert memory.historical_failure_millionths(
-        scope=_scope(planner="and-or-planner-v2"),
-        branch_id="branch:target",
-    ) == 0
+    assert (
+        memory.historical_failure_millionths(scope=_scope(), branch_id="branch:target") == 125_000
+    )
+    assert (
+        memory.historical_failure_millionths(
+            scope=_scope(policy="policy:other"),
+            branch_id="branch:target",
+        )
+        == 0
+    )
+    assert (
+        memory.historical_failure_millionths(
+            scope=_scope(environment="environment:other"),
+            branch_id="branch:target",
+        )
+        == 0
+    )
+    assert (
+        memory.historical_failure_millionths(
+            scope=_scope(planner="and-or-planner-v2"),
+            branch_id="branch:target",
+        )
+        == 0
+    )
 
 
 def test_persistence_and_delta_receipts_fail_closed_on_tampering(tmp_path) -> None:
@@ -313,9 +304,7 @@ def test_memory_rejects_prompt_transcripts_and_untyped_poisoning() -> None:
 def test_deadline_and_repair_bounds_stop_before_memory_mutation(tmp_path) -> None:
     deadline_state = tmp_path / "deadline.json"
     deadline_memory = PlanFailureMemory(deadline_state)
-    deadline = FormalDeltaReplanner(
-        failure_memory=deadline_memory
-    ).replan(
+    deadline = FormalDeltaReplanner(failure_memory=deadline_memory).replan(
         _plan(),
         _observation(),
         observed_at_milliseconds=100,
@@ -367,9 +356,7 @@ def test_scope_mismatch_and_unbound_failure_fail_closed() -> None:
         ),
         evidence_id="evidence:unbound",
     )
-    decision = FormalDeltaReplanner().replan(
-        _plan(), unbound, observed_at_milliseconds=1
-    )
+    decision = FormalDeltaReplanner().replan(_plan(), unbound, observed_at_milliseconds=1)
 
     assert decision.stop_reason is DeltaReplanStopReason.UNBOUND_FAILURE
     assert not decision.changed

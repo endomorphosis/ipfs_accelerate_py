@@ -56,17 +56,12 @@ from distributed_testing.ci.register_providers import register_all_providers
 register_all_providers()
 
 # Create a CI provider
-ci_config = {
-    "token": "YOUR_GITHUB_TOKEN",
-    "repository": "your-username/your-repo"
-}
+ci_config = {"token": "YOUR_GITHUB_TOKEN", "repository": "your-username/your-repo"}
 ci_provider = await CIProviderFactory.create_provider("github", ci_config)
 
 # Create a test result reporter
 reporter = TestResultReporter(
-    ci_provider=ci_provider,
-    report_dir="./reports",
-    artifact_dir="./artifacts"
+    ci_provider=ci_provider, report_dir="./reports", artifact_dir="./artifacts"
 )
 
 # Create a test result
@@ -77,27 +72,20 @@ test_result = TestRunResult(
     passed_tests=40,
     failed_tests=1,
     skipped_tests=1,
-    duration_seconds=125.7
+    duration_seconds=125.7,
 )
 
 # Add metadata
 test_result.metadata = {
-    "performance_metrics": {
-        "average_throughput": 124.5,
-        "average_latency_ms": 8.7
-    }
+    "performance_metrics": {"average_throughput": 124.5, "average_latency_ms": 8.7}
 }
 
 # Generate reports
-report_files = await reporter.report_test_result(
-    test_result,
-    formats=["markdown", "html", "json"]
-)
+report_files = await reporter.report_test_result(test_result, formats=["markdown", "html", "json"])
 
 # Collect and upload artifacts
 artifacts = await reporter.collect_and_upload_artifacts(
-    test_result.test_run_id,
-    ["./artifacts/*.json", "./artifacts/*.log"]
+    test_result.test_run_id, ["./artifacts/*.json", "./artifacts/*.log"]
 )
 
 # Retrieve artifact URLs for inclusion in reports or notifications
@@ -106,7 +94,7 @@ for artifact_name in artifacts:
     url = await ci_provider.get_artifact_url(test_result.test_run_id, artifact_name)
     if url:
         artifact_urls[artifact_name] = url
-        
+
 # Use the URLs in reports, notifications, or dashboards
 for name, url in artifact_urls.items():
     print(f"Artifact '{name}' available at: {url}")
@@ -123,7 +111,7 @@ coordinator = DistributedTestingCoordinator(
     enable_batch_processing=True,
     batch_size_limit=5,
     model_grouping=True,
-    hardware_grouping=True
+    hardware_grouping=True,
 )
 
 # Create tasks and submit them to the coordinator
@@ -179,10 +167,10 @@ The CI/CD integration system can be combined with the worker auto-discovery feat
 # Create coordinator with worker auto-discovery
 coordinator = DistributedTestingCoordinator(
     db_path="./coordinator.db",
-    worker_auto_discovery=True,      # Enable worker auto-discovery
-    discovery_interval=5,            # Check for new workers every 5 seconds
-    auto_register_workers=True,      # Allow workers to auto-register
-    enable_batch_processing=True     # Enable batch processing for efficiency
+    worker_auto_discovery=True,  # Enable worker auto-discovery
+    discovery_interval=5,  # Check for new workers every 5 seconds
+    auto_register_workers=True,  # Allow workers to auto-register
+    enable_batch_processing=True,  # Enable batch processing for efficiency
 )
 
 # Workers will automatically register with their hardware capabilities
@@ -190,7 +178,7 @@ worker = Worker(
     coordinator_url="http://coordinator-host:8080",
     worker_id="worker-1",
     capabilities=detect_hardware_capabilities(),  # Auto-detect capabilities
-    auto_register=True                           # Enable auto-registration
+    auto_register=True,  # Enable auto-registration
 )
 
 # Tasks will be automatically assigned to workers with matching capabilities
@@ -356,30 +344,24 @@ The `TestResultReporter` class now fully integrates with the artifact URL retrie
 ```python
 # Create a reporter
 reporter = TestResultReporter(
-    ci_provider=ci_provider,
-    report_dir="./reports",
-    artifact_dir="./artifacts"
+    ci_provider=ci_provider, report_dir="./reports", artifact_dir="./artifacts"
 )
 
 # Collect and upload artifacts with automatic URL retrieval
 artifacts = await reporter.collect_and_upload_artifacts(
-    test_run_id="test-123",
-    artifact_patterns=["./results/*.json", "./logs/*.log"]
+    test_run_id="test-123", artifact_patterns=["./results/*.json", "./logs/*.log"]
 )
 
 # Add artifacts to test result metadata
 test_result.metadata["artifacts"] = artifacts
 
 # Generate reports with artifact URLs included
-report_files = await reporter.report_test_result(
-    test_result,
-    formats=["markdown", "html", "json"]
-)
+report_files = await reporter.report_test_result(test_result, formats=["markdown", "html", "json"])
 
 # Bulk retrieve multiple artifact URLs in a single operation
 artifact_urls = await reporter.get_artifact_urls(
     test_run_id="test-123",
-    artifact_names=["test_results.json", "performance_metrics.csv", "test_log.txt"]
+    artifact_names=["test_results.json", "performance_metrics.csv", "test_log.txt"],
 )
 ```
 
@@ -388,30 +370,32 @@ artifact_urls = await reporter.get_artifact_urls(
 The `get_artifact_urls` method retrieves multiple URLs in parallel using AnyIO tasks:
 
 ```python
-async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str]) -> Dict[str, Optional[str]]:
+async def get_artifact_urls(
+    self, test_run_id: str, artifact_names: List[str]
+) -> Dict[str, Optional[str]]:
     """
     Retrieve URLs for multiple artifacts in bulk.
-    
+
     This method efficiently retrieves URLs for multiple artifacts in a single operation,
     which is more efficient than retrieving them one by one.
-    
+
     Args:
         test_run_id: Test run ID
         artifact_names: List of artifact names
-        
+
     Returns:
         Dictionary mapping artifact names to their URLs (or None if not found)
     """
-    if not self.ci_provider or not hasattr(self.ci_provider, 'get_artifact_url'):
+    if not self.ci_provider or not hasattr(self.ci_provider, "get_artifact_url"):
         logger.warning("CI provider doesn't support get_artifact_url method")
         return {name: None for name in artifact_names}
-    
+
     # Create tasks for retrieving URLs in parallel
     tasks = []
     for name in artifact_names:
         task = anyio.create_task_group()
         tasks.append((name, task))
-    
+
     # Wait for all tasks to complete
     urls = {}
     for name, task in tasks:
@@ -421,7 +405,7 @@ async def get_artifact_urls(self, test_run_id: str, artifact_names: List[str]) -
         except Exception as e:
             logger.error(f"Error retrieving artifact URL for {name}: {str(e)}")
             urls[name] = None
-    
+
     return urls
 ```
 
@@ -526,27 +510,21 @@ from distributed_testing.ci.register_providers import register_all_providers
 register_all_providers()
 
 # Create a provider
-provider = await CIProviderFactory.create_provider("github", {
-    "token": "YOUR_GITHUB_TOKEN",
-    "repository": "owner/repo"
-})
+provider = await CIProviderFactory.create_provider(
+    "github", {"token": "YOUR_GITHUB_TOKEN", "repository": "owner/repo"}
+)
 
 # Upload an artifact
 await provider.upload_artifact(
-    test_run_id="test-123",
-    artifact_path="./results.json",
-    artifact_name="test_results.json"
+    test_run_id="test-123", artifact_path="./results.json", artifact_name="test_results.json"
 )
 
 # Get the artifact URL
-url = await provider.get_artifact_url(
-    test_run_id="test-123",
-    artifact_name="test_results.json"
-)
+url = await provider.get_artifact_url(test_run_id="test-123", artifact_name="test_results.json")
 
 if url:
     print(f"Artifact URL: {url}")
-    
+
     # URL can be used in reports, notifications, etc.
     report_html = f"""
     <html>
@@ -601,19 +579,13 @@ from distributed_testing.ci.artifact_discovery import discover_artifacts
 artifacts = await discover_artifacts(
     test_run_id="test-123",
     provider="github",
-    config={
-        "token": "YOUR_GITHUB_TOKEN",
-        "repository": "owner/repo"
-    }
+    config={"token": "YOUR_GITHUB_TOKEN", "repository": "owner/repo"},
 )
 
 # Get URLs for all discovered artifacts
 for artifact in artifacts:
-    url = await provider.get_artifact_url(
-        test_run_id="test-123",
-        artifact_name=artifact["name"]
-    )
-    
+    url = await provider.get_artifact_url(test_run_id="test-123", artifact_name=artifact["name"])
+
     if url:
         artifact["url"] = url
 ```

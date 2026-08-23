@@ -16,7 +16,10 @@ A new adapter for Visual Studio Code CLI with GitHub Copilot integration.
 
 ### Usage:
 ```python
-from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import VSCodeCLIAdapter, register_cli_endpoint
+from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import (
+    VSCodeCLIAdapter,
+    register_cli_endpoint,
+)
 
 # Register VSCode CLI
 vscode = VSCodeCLIAdapter("vscode_copilot", config={"model": "copilot-chat"})
@@ -25,7 +28,7 @@ register_cli_endpoint(vscode)
 # Use in multiplexed inference
 result = multiplex_inference(
     prompt="Write a Python function to sort a list",
-    model_preferences=["vscode_cli/copilot-code", "claude_cli/claude-3-sonnet"]
+    model_preferences=["vscode_cli/copilot-code", "claude_cli/claude-3-sonnet"],
 )
 ```
 
@@ -210,7 +213,7 @@ from ipfs_accelerate_py.mcp.tools.cli_endpoint_adapters import (
     ClaudeCodeAdapter,
     OpenAICodexAdapter,
     GeminiCLIAdapter,
-    VSCodeCLIAdapter
+    VSCodeCLIAdapter,
 )
 
 # Create and use directly
@@ -280,7 +283,7 @@ result = mcp.call_tool(
     "register_cli_endpoint_tool",
     cli_type="vscode_cli",
     endpoint_id="vscode_primary",
-    model="copilot-chat"
+    model="copilot-chat",
 )
 
 # 3. Validate configuration
@@ -292,11 +295,7 @@ version = mcp.call_tool("check_cli_version", endpoint_id="vscode_primary")
 # 5. Use in inference with automatic fallback
 result = multiplex_inference(
     prompt="Write a function to calculate fibonacci",
-    model_preferences=[
-        "vscode_cli/copilot-code",
-        "claude_cli/claude-3-sonnet",
-        "openai/gpt-4"
-    ]
+    model_preferences=["vscode_cli/copilot-code", "claude_cli/claude-3-sonnet", "openai/gpt-4"],
 )
 ```
 

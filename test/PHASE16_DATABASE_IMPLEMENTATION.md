@@ -178,8 +178,11 @@ python test/scripts/benchmark_db_migration.py --migrate-all --db ./benchmark_db.
 ```python
 # Programmatic usage
 from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+
 api = BenchmarkDBAPI()
-api.store_performance_result(model_name="bert-base-uncased", hardware_type="cuda", throughput=123.4, latency_avg=10.5)
+api.store_performance_result(
+    model_name="bert-base-uncased", hardware_type="cuda", throughput=123.4, latency_avg=10.5
+)
 ```
 
 ### Benchmarking with Direct Database Storage

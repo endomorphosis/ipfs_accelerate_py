@@ -1,0 +1,78 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-baseline@1",
+  "program_identifier": "agent-supervisor-verified-residual-intelligence-foundry-v1",
+  "objective": "VRIF-G000",
+  "observed_at": "2026-08-21T00:00:00Z",
+  "source": {
+    "remote": "https://github.com/endomorphosis/ipfs_accelerate_py",
+    "ref": "origin/main",
+    "commit": "84a056e41e48a81d4484be43840196578d6c87da",
+    "tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
+    "package_version": "0.0.45",
+    "worktree": "/home/barberb/lift_coding/.worktrees/verified-residual-intelligence-foundry-v1",
+    "branch": "codex/verified-residual-intelligence-foundry-v1",
+    "original_dirty_checkout_modified": false
+  },
+  "environment": {
+    "python": "3.12.3",
+    "platform": "Linux aarch64",
+    "duckdb": "1.5.5",
+    "duckdb_extensions": ["ducklake", "httpfs", "quack"],
+    "quack_capability": {
+      "interface": "quack@1",
+      "status": "compatible",
+      "available": true,
+      "passes_health_check": true,
+      "experimental_profile": true,
+      "production_qualification_inferred": false
+    },
+    "hardware": {
+      "cpu_qualified_by_focused_probe": true,
+      "gpu_detected": "NVIDIA GB10",
+      "driver": "580.142",
+      "torch": "2.13.0+cu130",
+      "cuda_tensor_probe": "failed_cudaErrorMemoryAllocation",
+      "local_cuda_inference_qualified": false,
+      "reason": "hardware detection is not live qualification"
+    },
+    "provider_cli_executables": ["grok", "codex", "goose"],
+    "provider_capability_inferred_from_executable": false
+  },
+  "dependency_lock_sha256": {
+    "pyproject.toml": "97d579283d42b5a0877821f6c6cab2cd1985e11579ffc8854685bef8b05b6bf9",
+    "requirements.txt": "339d20df3ae8524661c3b26503486d246b24f7c024cea1ff86fa5b5693555848",
+    "requirements-hf-server.txt": "3c9d34aa69517ef270232c602342482db5bf1a7c53d4f7a1658e8462191709a7",
+    "requirements-phase3.txt": "2563b16eb3d42adbccb4ceef123a0cdb4185eae892513ddfca7d5071c5c3d432",
+    "requirements-proof-reuse.txt": "4809b7012f515cfaea30140a117c86e47ada29f96fff9045eff57e390cf2fc8b",
+    "requirements_dashboard.txt": "9e6eca5a5daa1625f3354ee5bf2283fe64cac72eeed380af462891906df37821",
+    "requirements_enhanced_scraper.txt": "f1de1c89b4c607ebb1d2e3322090b733632b6e918142e3164d9e4630d2a6d77a",
+    "requirements_webnn_webgpu.txt": "3dfbe4cc38dc9cd9df8699367189d0d2ab07d0cf582c03dbec57918ed0d6923e",
+    "setup.py": "108943142eb5b4b2211b9e70818a1ffe0dd565536423a0cbda618aca67c0c6e6"
+  },
+  "gitlinks": [
+    {"path": "docs/fastmcp", "commit": "1d932abf84ef8755bc22093772278475280ea04e", "initialized": false},
+    {"path": "docs/mcp-python-sdk", "commit": "0da9e475ae315e3258bb2ec74b0d3f357c1f6324", "initialized": false},
+    {"path": "ipfs_accelerate_py/mcplusplus", "commit": "5ac0ab162f420264fd224073a5df3f2d7c054ae3", "initialized": false},
+    {"path": "ipfs_datasets_py", "commit": "480a1666f144ad606fcb3cacb66e59775f28d0d1", "initialized": false},
+    {"path": "ipfs_kit_py", "commit": "2564aea1ae35061f2165872aff91e8a40801ab7e", "initialized": false},
+    {"path": "ipfs_model_manager_py", "commit": "f615fc869bb6c6ddfebde62850e8114e6c75af9d", "initialized": false},
+    {"path": "ipfs_transformers_py", "commit": "b3972ed0842873a8db6fbf5a3b59ebaff963065b", "initialized": false}
+  ],
+  "shared_authorities": {
+    "content_identity": "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts.content_identity",
+    "control_plane_schema": "ControlPlaneSchema@1",
+    "control_plane_schema_revision": "1",
+    "learning_checkpoint": "LearningCheckpointBinding@1",
+    "model_serving": ["model_catalog", "endpoint_usage", "llm_router.generate_text", "InferenceBackendManager"],
+    "provider_batching": "runtime/provider_batch_scheduler.py",
+    "worktree_and_resource_authority_reused": true
+  },
+  "qualification_caveats": [
+    "required gitlinks are uninitialized",
+    "the historical PGIR verifier cannot replay fully because its source commit and datasets gitlink are absent from this checkout; immutable no-go records remain observable",
+    "provider batching focused selection has failures",
+    "broader model routing and catalog selection is not green",
+    "CUDA was detected but failed a live tensor allocation",
+    "importability and executable presence do not authorize production use"
+  ]
+}

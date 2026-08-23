@@ -39,9 +39,7 @@ PROVIDER_VERSION = (
     "release-profile:c2381586678d0bceb908c39354f2cf1f47be00ea"
     "+9ecca0d440939e08fea1292bccf31d6724616312"
 )
-REFERENCE_AUDIO_SHA256 = (
-    "f871893eeafa806c9a7734d46e0159ca606155bebcf047d284389fd10fc843c8"
-)
+REFERENCE_AUDIO_SHA256 = "f871893eeafa806c9a7734d46e0159ca606155bebcf047d284389fd10fc843c8"
 GENERATION_SETTINGS = {
     "do_sample": True,
     "emotion_control_method": "Same as the voice reference",
@@ -98,9 +96,7 @@ def _manifest(*, audio_url: str = "../assets/audio/audio-1.mp3") -> bytes:
                     }
                 ],
                 "schemaVersion": "abby_voice_runtime_precomputed_audio_manifest_v2",
-                "synthesisProfileScope": (
-                    "validated_cache_compatibility_profile"
-                ),
+                "synthesisProfileScope": ("validated_cache_compatibility_profile"),
             },
             sort_keys=True,
         )
@@ -248,9 +244,7 @@ def test_runtime_manifest_rejects_audio_outside_pinned_release(
 def test_audio_digest_or_length_mismatch_is_a_cache_miss() -> None:
     resolver = load_pinned_voice_runtime_resolver(
         MANIFEST_URL,
-        fetch_bytes=lambda url: (
-            _manifest() if url == MANIFEST_URL else b"x" * len(AUDIO)
-        ),
+        fetch_bytes=lambda url: _manifest() if url == MANIFEST_URL else b"x" * len(AUDIO),
     )
 
     resolution = resolver.resolve(TEXT, _identity())
@@ -313,8 +307,8 @@ def test_runtime_manifest_accepts_future_revision_profile_structurally() -> None
     payload = json.loads(_manifest())
     future_revisions = ["b" * 40, "d" * 64]
     payload["generationProviderRevisions"] = future_revisions
-    payload["responses"][0]["synthesisIdentity"]["providerVersion"] = (
-        "release-profile:" + "+".join(future_revisions)
+    payload["responses"][0]["synthesisIdentity"]["providerVersion"] = "release-profile:" + "+".join(
+        future_revisions
     )
 
     resolver = load_pinned_voice_runtime_resolver(

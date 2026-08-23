@@ -53,13 +53,9 @@ from .provider_usage import (
 )
 
 
-COMPLETE_PROVIDER_CALLSITE_REQUIREMENT_ID: Final[str] = (
-    "requirement:complete-provider-callsite.v1"
-)
+COMPLETE_PROVIDER_CALLSITE_REQUIREMENT_ID: Final[str] = "requirement:complete-provider-callsite.v1"
 COMPLETE_PROVIDER_CALLSITE_GOAL_ID: Final[str] = "ASI-G520"
-PROVIDER_USAGE_MIGRATION_CONTRACT_VERSION: Final[str] = (
-    "supervisor-provider-usage-migration/v1"
-)
+PROVIDER_USAGE_MIGRATION_CONTRACT_VERSION: Final[str] = "supervisor-provider-usage-migration/v1"
 PROVIDER_USAGE_MIGRATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/provider-usage-migration@1"
 )
@@ -150,9 +146,7 @@ IN_SCOPE_CONSUMER_MODULES: Final[Mapping[ConsumerId, str]] = {
     ConsumerId.PROMPT_GOAL_PLANNER: (
         "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py"
     ),
-    ConsumerId.RESCUE_PLANNER: (
-        "ipfs_accelerate_py/agent_supervisor/rescue/rescue_planner.py"
-    ),
+    ConsumerId.RESCUE_PLANNER: ("ipfs_accelerate_py/agent_supervisor/rescue/rescue_planner.py"),
     ConsumerId.LEANSTRAL_PROOF_PROVIDER: (
         "ipfs_accelerate_py/agent_supervisor/proof/leanstral_proof_provider.py"
     ),
@@ -346,9 +340,7 @@ class ConsumerCallContext:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "consumer_id", ConsumerId(self.consumer_id)
-        )
+        object.__setattr__(self, "consumer_id", ConsumerId(self.consumer_id))
         for name in (
             "repository_id",
             "state_id",
@@ -431,22 +423,16 @@ class NonMeterableProviderResult:
                 reason_codes=("ceiling_out_of_bounds",),
             )
         object.__setattr__(self, "ceiling_requests", ceiling)
-        object.__setattr__(
-            self, "reason_code", _text(self.reason_code, "reason_code")
-        )
+        object.__setattr__(self, "reason_code", _text(self.reason_code, "reason_code"))
         object.__setattr__(
             self,
             "usage_metadata",
-            dict(self.usage_metadata)
-            if isinstance(self.usage_metadata, Mapping)
-            else {},
+            dict(self.usage_metadata) if isinstance(self.usage_metadata, Mapping) else {},
         )
         object.__setattr__(
             self,
             "reset_metadata",
-            dict(self.reset_metadata)
-            if isinstance(self.reset_metadata, Mapping)
-            else {},
+            dict(self.reset_metadata) if isinstance(self.reset_metadata, Mapping) else {},
         )
 
     def to_record(self) -> dict[str, Any]:
@@ -463,9 +449,7 @@ class NonMeterableProviderResult:
             "is_correctness_evidence": False,
             # Never embed model output in the durable record.
             "output_bytes": len(self.output_text.encode("utf-8")),
-            "output_sha256": hashlib.sha256(
-                self.output_text.encode("utf-8")
-            ).hexdigest(),
+            "output_sha256": hashlib.sha256(self.output_text.encode("utf-8")).hexdigest(),
         }
         payload["content_id"] = _content_id(payload)
         return payload
@@ -495,9 +479,7 @@ class MigratedProviderCallResult:
                 reason_codes=("authority_boundary",),
             )
         object.__setattr__(self, "mode", SupervisorUsageMode(self.mode))
-        object.__setattr__(
-            self, "consumer_id", ConsumerId(self.consumer_id)
-        )
+        object.__setattr__(self, "consumer_id", ConsumerId(self.consumer_id))
         object.__setattr__(self, "reason_codes", tuple(self.reason_codes))
 
     def to_record(self) -> dict[str, Any]:
@@ -511,26 +493,18 @@ class MigratedProviderCallResult:
             "phase": self.phase,
             "reason_codes": list(self.reason_codes),
             "usage_receipt": (
-                self.usage_receipt.to_record()
-                if self.usage_receipt is not None
-                else None
+                self.usage_receipt.to_record() if self.usage_receipt is not None else None
             ),
             "execution_result": (
-                self.execution_result.to_record()
-                if self.execution_result is not None
-                else None
+                self.execution_result.to_record() if self.execution_result is not None else None
             ),
             "non_meterable": (
-                self.non_meterable.to_record()
-                if self.non_meterable is not None
-                else None
+                self.non_meterable.to_record() if self.non_meterable is not None else None
             ),
             "is_completion_evidence": False,
             "is_correctness_evidence": False,
             "output_bytes": len(self.text.encode("utf-8")),
-            "output_sha256": hashlib.sha256(
-                self.text.encode("utf-8")
-            ).hexdigest(),
+            "output_sha256": hashlib.sha256(self.text.encode("utf-8")).hexdigest(),
         }
         payload["content_id"] = _content_id(payload)
         return payload
@@ -631,27 +605,13 @@ def build_request_lineage_envelope(
         fence_id=context.fence_id,
     )
     # Rebuild nested tree bottom-up so parent validation sees children.
-    lane = SupervisorUsageEnvelope(
-        scope=lane.scope, budget=lane.budget, children=(request,)
-    )
-    stage = SupervisorUsageEnvelope(
-        scope=stage.scope, budget=stage.budget, children=(lane,)
-    )
-    attempt = SupervisorUsageEnvelope(
-        scope=attempt.scope, budget=attempt.budget, children=(stage,)
-    )
-    task = SupervisorUsageEnvelope(
-        scope=task.scope, budget=task.budget, children=(attempt,)
-    )
-    goal = SupervisorUsageEnvelope(
-        scope=goal.scope, budget=goal.budget, children=(task,)
-    )
-    run = SupervisorUsageEnvelope(
-        scope=run.scope, budget=run.budget, children=(goal,)
-    )
-    return SupervisorUsageEnvelope(
-        scope=root.scope, budget=root.budget, children=(run,)
-    )
+    lane = SupervisorUsageEnvelope(scope=lane.scope, budget=lane.budget, children=(request,))
+    stage = SupervisorUsageEnvelope(scope=stage.scope, budget=stage.budget, children=(lane,))
+    attempt = SupervisorUsageEnvelope(scope=attempt.scope, budget=attempt.budget, children=(stage,))
+    task = SupervisorUsageEnvelope(scope=task.scope, budget=task.budget, children=(attempt,))
+    goal = SupervisorUsageEnvelope(scope=goal.scope, budget=goal.budget, children=(task,))
+    run = SupervisorUsageEnvelope(scope=run.scope, budget=run.budget, children=(goal,))
+    return SupervisorUsageEnvelope(scope=root.scope, budget=root.budget, children=(run,))
 
 
 def request_leaf_envelope(
@@ -741,6 +701,7 @@ def extract_child_usage_metadata(
         usage = {}
     if not isinstance(reset, Mapping):
         reset = {}
+
     # Redact secret-shaped keys only (exact / suffix match — not "input_tokens").
     def _is_secret_key(key: str) -> bool:
         lowered = str(key).casefold()
@@ -761,16 +722,8 @@ def extract_child_usage_metadata(
             or lowered.endswith("_token")
         )
 
-    safe_usage = {
-        str(key): value
-        for key, value in usage.items()
-        if not _is_secret_key(str(key))
-    }
-    safe_reset = {
-        str(key): value
-        for key, value in reset.items()
-        if not _is_secret_key(str(key))
-    }
+    safe_usage = {str(key): value for key, value in usage.items() if not _is_secret_key(str(key))}
+    safe_reset = {str(key): value for key, value in reset.items() if not _is_secret_key(str(key))}
     return safe_usage, safe_reset
 
 
@@ -783,11 +736,7 @@ def non_meterable_from_child(
     ceiling_requests: int = DEFAULT_NON_METERABLE_ENFORCE_CEILING_REQUESTS,
 ) -> NonMeterableProviderResult:
     usage, reset = extract_child_usage_metadata(payload)
-    reason = (
-        "structured_usage_present"
-        if usage or reset
-        else "usage_metadata_unavailable"
-    )
+    reason = "structured_usage_present" if usage or reset else "usage_metadata_unavailable"
     return NonMeterableProviderResult(
         reason_code=reason,
         consumer_id=ConsumerId(consumer_id).value,
@@ -977,9 +926,7 @@ def dispatch_migrated_provider_call(
             "endpoint": context.endpoint_scope_id,
             "status": "ok",
             "output_kind": context.expected_output_kind,
-            "units": UsageVector.of(
-                requests=max(1, context.estimated_requests)
-            ).to_dict(),
+            "units": UsageVector.of(requests=max(1, context.estimated_requests)).to_dict(),
         }
         usage, reset = extract_child_usage_metadata(child_payload)
         if usage:
@@ -1043,9 +990,7 @@ def dispatch_migrated_provider_call(
     # Observe/shadow may continue without a hard receipt; assist/enforce require it.
     receipt: Optional[SupervisorUsageReceipt] = None
     if execution.phase is ProviderExecutionPhase.SETTLED:
-        receipt = consume_usage_receipt(
-            execution, expected_request_id=context.request_id
-        )
+        receipt = consume_usage_receipt(execution, expected_request_id=context.request_id)
     elif mode_requires_receipt(resolved_mode):
         if execution.phase in {
             ProviderExecutionPhase.DENIED,
@@ -1281,9 +1226,7 @@ def scan_module_callsites(
             for alias in node.names:
                 name = alias.name
                 asname = alias.asname or name
-                if name in _FORBIDDEN_PROVIDER_IMPORT_MODULES or name.endswith(
-                    ".llm_router"
-                ):
+                if name in _FORBIDDEN_PROVIDER_IMPORT_MODULES or name.endswith(".llm_router"):
                     records.append(
                         CallsiteRecord(
                             module_path=module_path,
@@ -1319,9 +1262,7 @@ def scan_module_callsites(
                         )
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
-            if module in _FORBIDDEN_PROVIDER_IMPORT_MODULES or module.endswith(
-                ".llm_router"
-            ):
+            if module in _FORBIDDEN_PROVIDER_IMPORT_MODULES or module.endswith(".llm_router"):
                 for alias in node.names:
                     symbol = f"{module}.{alias.name}"
                     records.append(
@@ -1353,14 +1294,10 @@ def scan_module_callsites(
                                 lineno=getattr(node, "lineno", 0) or 0,
                             )
                         )
-            if module.endswith("provider_usage_migration") or module.endswith(
-                "provider_execution"
-            ):
+            if module.endswith("provider_usage_migration") or module.endswith("provider_execution"):
                 imports_migration = True
                 uses_approved = True
-            if any(
-                alias.name in registered for alias in node.names
-            ) and (
+            if any(alias.name in registered for alias in node.names) and (
                 "provider_usage_migration" in module
                 or "provider_execution" in module
                 or "todo_daemon.llm" in module
@@ -1459,9 +1396,7 @@ def build_callsite_inventory(
         consumer = _module_consumer_id(module_path)
         if consumer:
             seen_consumers.add(consumer)
-        records, violations = scan_module_callsites(
-            source, module_path=module_path
-        )
+        records, violations = scan_module_callsites(source, module_path=module_path)
         all_records.extend(records)
         all_violations.extend(violations)
 
@@ -1500,20 +1435,11 @@ def inventory_repository_consumers(
             sources[rel] = path.read_text(encoding="utf-8")
         else:
             # Fall back to declared flat path for dual-layout trees.
-            flat = (
-                root
-                / "ipfs_accelerate_py"
-                / "agent_supervisor"
-                / f"{consumer.value}.py"
-            )
+            flat = root / "ipfs_accelerate_py" / "agent_supervisor" / f"{consumer.value}.py"
             if flat.is_file():
-                sources[str(flat.relative_to(root))] = flat.read_text(
-                    encoding="utf-8"
-                )
+                sources[str(flat.relative_to(root))] = flat.read_text(encoding="utf-8")
     # Include the migration module itself (provider-free discovery allowlist).
-    migration_rel = (
-        "ipfs_accelerate_py/agent_supervisor/provider_usage_migration.py"
-    )
+    migration_rel = "ipfs_accelerate_py/agent_supervisor/provider_usage_migration.py"
     migration_path = root / migration_rel
     if migration_path.is_file():
         sources[migration_rel] = migration_path.read_text(encoding="utf-8")
@@ -1548,12 +1474,8 @@ def migration_status_for(consumer_id: ConsumerId | str) -> dict[str, Any]:
         "migrated": True,
         "is_completion_evidence": False,
         "is_correctness_evidence": False,
-        "may_retry_side_effecting_agent_work": (
-            MIGRATION_MAY_RETRY_SIDE_EFFECTING_AGENT_WORK
-        ),
-        "may_route_to_forbidden_endpoint": (
-            MIGRATION_MAY_ROUTE_TO_FORBIDDEN_ENDPOINT
-        ),
+        "may_retry_side_effecting_agent_work": (MIGRATION_MAY_RETRY_SIDE_EFFECTING_AGENT_WORK),
+        "may_route_to_forbidden_endpoint": (MIGRATION_MAY_ROUTE_TO_FORBIDDEN_ENDPOINT),
         "may_change_prompt_source_output_contracts": (
             MIGRATION_MAY_CHANGE_PROMPT_SOURCE_OUTPUT_CONTRACTS
         ),

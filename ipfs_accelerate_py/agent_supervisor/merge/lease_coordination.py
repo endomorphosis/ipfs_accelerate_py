@@ -40,7 +40,10 @@ from ..task_sources.duckdb_state import (
 from ..task_sources.task_identity import canonical_bundle_identity
 
 MIN_LEASE_MS = 5_000
-MAX_LEASE_MS = 300_000
+# Long enough to cover a Grok implementation attempt.  A 5-minute cap let
+# other lanes steal a still-running provider after DatabaseImplementationDaemon
+# returned from a deferred portal pass and dropped its heartbeat thread.
+MAX_LEASE_MS = 14_400_000
 PROVIDER_VERSION = "3.2.0"
 MAX_PERSISTED_DEPENDENCY_REPAIRS = 256
 STRUCTURAL_DEPENDENCY_REPAIR_KINDS = frozenset(
@@ -6268,3 +6271,19 @@ __all__ = [
     "WorkerEnvironmentReceipt",
     "canonical_profile_g_bytes", "profile_g_cid",
 ]
+
+def profile_g_taskspec_attempt_limit(value: Any, *, default: int = 3) -> int:
+    """Return a Profile-G TaskSpec ``max_attempts`` value in ``[1, 100]``.
+
+    Operational queue state may use ``0`` as unlimited. Profile-G v1 TaskSpec
+    cannot represent that sentinel, so embed the same bounded terminal-block
+    cap used by the lease coordinator.
+    """
+
+    raw = profile_g_task_attempt_limit(value, default=default)
+    return UNLIMITED_TASK_TERMINAL_BLOCK_ATTEMPT_CAP if raw == 0 else raw
+
+
+def _duckdb_path_literal(path: Path) -> str:
+    return "'" + str(path).replace("'", "''") + "'"
+

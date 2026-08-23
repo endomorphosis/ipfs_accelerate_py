@@ -30,18 +30,18 @@ except ImportError:
     pass
 
 __all__ = [
-    'AndroidDevice',
-    'AndroidModelRunner',
-    'AndroidTestHarness',
+    "AndroidDevice",
+    "AndroidModelRunner",
+    "AndroidTestHarness",
 ]
 
 # Add optional components to __all__ if available
 try:
-    __all__.extend(['AndroidModelExecutor', 'ModelFormat', 'AcceleratorType'])
+    __all__.extend(["AndroidModelExecutor", "ModelFormat", "AcceleratorType"])
 except NameError:
     pass
 
 try:
-    __all__.extend(['AndroidThermalMonitor'])
+    __all__.extend(["AndroidThermalMonitor"])
 except NameError:
     pass

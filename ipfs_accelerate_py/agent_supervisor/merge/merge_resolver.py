@@ -30,7 +30,9 @@ from ..runtime.event_log import read_jsonl_events
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
 LLM_MERGE_RESOLVER_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS"
 DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS = 1800.0
-DEFAULT_PROMPT_HEADING = "Resolve the autonomous-agent supervisor merge conflict in this repository."
+DEFAULT_PROMPT_HEADING = (
+    "Resolve the autonomous-agent supervisor merge conflict in this repository."
+)
 DEFAULT_COMPLETION_RULE = "Do not unblock the source task until validation passes."
 MergePromptCallback = Callable[..., str]
 MergeResolverPayloadCallback = Callable[..., dict[str, Any]]
@@ -84,7 +86,9 @@ def conflict_fingerprint(event: Mapping[str, Any]) -> str:
     else:
         paths = []
     material = {
-        "task": value("canonical_task_key", "canonical_task_id", "canonical_task_cid", "task_id").casefold(),
+        "task": value(
+            "canonical_task_key", "canonical_task_id", "canonical_task_cid", "task_id"
+        ).casefold(),
         "branch": value("branch", "branch_name", "source_branch").casefold(),
         "target_branch": value("target_branch").casefold(),
         "source_commit": value("source_commit", "commit_sha", "head_sha", "commit").casefold(),
@@ -362,7 +366,9 @@ class MergeResolverRegistry:
             attempts = int(row["attempt_count"])
             terminal = not succeeded and attempts >= self.max_attempts
             state = "succeeded" if succeeded else ("quarantined" if terminal else "failed")
-            final_error = str(error or outcome_payload.get("error") or outcome_payload.get("apply_error") or "")
+            final_error = str(
+                error or outcome_payload.get("error") or outcome_payload.get("apply_error") or ""
+            )
             connection.execute(
                 """UPDATE conflict_resolutions SET state=?, owner_id='', token='',
                    lease_expires_at=0, updated_at=?, last_error=?, outcome_json=?
@@ -540,7 +546,10 @@ def check_event_idempotency(
     resolved = _load_resolved_events(state_dir)
     attempts = resolved.get(fingerprint, 0)
     if attempts >= _MAX_RESOLVE_ATTEMPTS_PER_EVENT:
-        return True, f"event already attempted {attempts} times (max={_MAX_RESOLVE_ATTEMPTS_PER_EVENT})"
+        return (
+            True,
+            f"event already attempted {attempts} times (max={_MAX_RESOLVE_ATTEMPTS_PER_EVENT})",
+        )
     return False, ""
 
 
@@ -684,7 +693,9 @@ def build_namespace_merge_resolver_runner(
 ) -> ConfiguredMergeResolverRunner:
     """Build a merge-resolver runner using the standard namespace state layout."""
 
-    from ..todo_daemon.implementation_daemon_runner import namespace_implementation_state_artifact_paths
+    from ..todo_daemon.implementation_daemon_runner import (
+        namespace_implementation_state_artifact_paths,
+    )
     from ..core.wrapper_utils import agent_supervisor_namespace_paths, prefixed_env_var
 
     resolved_repo_root = Path(repo_root)
@@ -737,15 +748,23 @@ def iter_jsonl(path: Path) -> list[dict[str, Any]]:
     return read_jsonl_events(path, repair=True)
 
 
-def latest_failed_merge_event(events: list[dict[str, Any]], *, task_id: str | None = None) -> dict[str, Any] | None:
+def latest_failed_merge_event(
+    events: list[dict[str, Any]], *, task_id: str | None = None
+) -> dict[str, Any] | None:
     """Return the newest merge failure event, optionally filtered by task id."""
 
     resolved_task_ids: set[str] = set()
     resolved_branches: set[str] = set()
     for event in reversed(events):
-        if str(event.get("type") or "") not in {"implementation_finished", "merge_finished", "merge_reconciled"}:
+        if str(event.get("type") or "") not in {
+            "implementation_finished",
+            "merge_finished",
+            "merge_reconciled",
+        }:
             continue
-        merge_result = event.get("merge_result") if isinstance(event.get("merge_result"), dict) else event
+        merge_result = (
+            event.get("merge_result") if isinstance(event.get("merge_result"), dict) else event
+        )
         if not isinstance(merge_result, dict):
             continue
         event_task_id = str(event.get("task_id") or merge_result.get("task_id") or "")
@@ -866,8 +885,7 @@ def active_merge_matches_payload(payload: Mapping[str, Any], repo_root: Path) ->
     references: dict[str, Any] = {
         "branch": merge_result.get("branch") or payload.get("branch"),
         "implementation_commit": (
-            merge_result.get("implementation_commit")
-            or payload.get("implementation_commit")
+            merge_result.get("implementation_commit") or payload.get("implementation_commit")
         ),
         "source_commit": merge_result.get("source_commit") or payload.get("source_commit"),
         "commit_sha": merge_result.get("commit_sha") or payload.get("commit_sha"),
@@ -964,9 +982,7 @@ def validate_resolved_paths(repo_root: Path, paths: Sequence[str]) -> dict[str, 
                     )
                     if result.returncode == 0:
                         nested_paths.update(
-                            line.strip()
-                            for line in result.stdout.splitlines()
-                            if line.strip()
+                            line.strip() for line in result.stdout.splitlines() if line.strip()
                         )
                 for nested_path in sorted(nested_paths)[:1000]:
                     if nested_repo_root == candidate:
@@ -974,7 +990,9 @@ def validate_resolved_paths(repo_root: Path, paths: Sequence[str]) -> dict[str, 
                     else:
                         expanded = Path(nested_path).as_posix()
                         normalized_prefix = normalized.rstrip("/") + "/"
-                        if normalized not in {"", "."} and not expanded.startswith(normalized_prefix):
+                        if normalized not in {"", "."} and not expanded.startswith(
+                            normalized_prefix
+                        ):
                             continue
                     expanded_paths.append(expanded)
                     pending.append(expanded)
@@ -1182,9 +1200,7 @@ def resolver_payload(
         "event_timestamp": str(event.get("timestamp") or ""),
         "branch": str(merge_result.get("branch") or ""),
         "implementation_commit": str(
-            merge_result.get("implementation_commit")
-            or event.get("implementation_commit")
-            or ""
+            merge_result.get("implementation_commit") or event.get("implementation_commit") or ""
         ),
         "target_branch": str(merge_result.get("target_branch") or ""),
         "command": merge_result.get("command") or [],
@@ -1212,7 +1228,9 @@ def build_resolver_payload_callback(
 
     configured_extra_rules = tuple(extra_rules or ())
 
-    def callback(*, events_path: Path, repo_root: Path, task_id: str | None = None) -> dict[str, Any]:
+    def callback(
+        *, events_path: Path, repo_root: Path, task_id: str | None = None
+    ) -> dict[str, Any]:
         return resolver_payload(
             events_path=events_path,
             repo_root=repo_root,
@@ -1237,7 +1255,9 @@ def invoke_llm_resolver(
 ) -> dict[str, Any]:
     """Invoke an external LLM resolver command with the prompt on stdin."""
 
-    command_template = (command_template or os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "")).strip()
+    command_template = (
+        command_template or os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "")
+    ).strip()
     if not command_template:
         return {
             **payload,
@@ -1271,6 +1291,10 @@ def invoke_llm_resolver(
             ]
         )
     timeout = resolver_timeout_seconds(timeout_seconds)
+    # Import locally because the reusable runner imports merge checkout-lock
+    # helpers; a module-level dependency would make import order authoritative.
+    from ..runtime.multi_supervisor_runner import provider_subprocess_environment
+
     process = subprocess.Popen(
         command,
         cwd=payload.get("repo_root") or None,
@@ -1278,6 +1302,7 @@ def invoke_llm_resolver(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        env=provider_subprocess_environment(os.environ),
         start_new_session=True,
     )
     try:
@@ -1343,8 +1368,12 @@ def build_llm_merge_resolver_invoker(
 ) -> MergeResolverInvoker:
     """Build an invoker that resolves project and fallback command env vars."""
 
-    def callback(payload: dict[str, Any], *, timeout_seconds: float | None = None) -> dict[str, Any]:
-        command_template = _configured_command_template(primary_command_env_var, fallback_command_env_var)
+    def callback(
+        payload: dict[str, Any], *, timeout_seconds: float | None = None
+    ) -> dict[str, Any]:
+        command_template = _configured_command_template(
+            primary_command_env_var, fallback_command_env_var
+        )
         if command_template is None:
             return {
                 **payload,
@@ -1352,20 +1381,32 @@ def build_llm_merge_resolver_invoker(
                 "apply_error": missing_command_error
                 or _missing_command_error(primary_command_env_var, fallback_command_env_var),
             }
-        return invoke_llm_resolver(payload, command_template=command_template, timeout_seconds=timeout_seconds)
+        return invoke_llm_resolver(
+            payload, command_template=command_template, timeout_seconds=timeout_seconds
+        )
 
     return callback
 
 
-def build_configured_merge_resolver_arg_parser(config: MergeResolverCliConfig) -> argparse.ArgumentParser:
+def build_configured_merge_resolver_arg_parser(
+    config: MergeResolverCliConfig,
+) -> argparse.ArgumentParser:
     """Build a standard parser for a configured merge-resolver wrapper."""
 
     parser = argparse.ArgumentParser(description=config.description)
-    parser.add_argument("--task-id", default=None, help="Resolve the latest merge failure for this task id.")
+    parser.add_argument(
+        "--task-id", default=None, help="Resolve the latest merge failure for this task id."
+    )
     parser.add_argument("--events-path", type=Path, default=config.default_events_path)
     parser.add_argument("--repo-root", type=Path, default=config.default_repo_root)
-    parser.add_argument("--apply", action="store_true", help="Invoke the configured LLM resolver command.")
-    parser.add_argument("--command", default=None, help="Resolver command template. Defaults to configured env vars.")
+    parser.add_argument(
+        "--apply", action="store_true", help="Invoke the configured LLM resolver command."
+    )
+    parser.add_argument(
+        "--command",
+        default=None,
+        help="Resolver command template. Defaults to configured env vars.",
+    )
     parser.add_argument(
         "--timeout-seconds",
         type=float,
@@ -1395,7 +1436,9 @@ def run_configured_merge_resolver_cli(
     )
     if args.apply and payload.get("found"):
         if args.command:
-            payload = invoke_llm_resolver(payload, command_template=args.command, timeout_seconds=args.timeout_seconds)
+            payload = invoke_llm_resolver(
+                payload, command_template=args.command, timeout_seconds=args.timeout_seconds
+            )
         else:
             invoker = build_llm_merge_resolver_invoker(
                 primary_command_env_var=config.primary_command_env_var,
@@ -1411,12 +1454,18 @@ def run_configured_merge_resolver_cli(
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Build or invoke an LLM merge resolver for agent-supervisor events")
+    parser = argparse.ArgumentParser(
+        description="Build or invoke an LLM merge resolver for agent-supervisor events"
+    )
     parser.add_argument("--events-path", type=Path, required=True)
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--task-id", default=None)
-    parser.add_argument("--apply", action="store_true", help="Invoke the configured resolver command")
-    parser.add_argument("--command", default=None, help="Resolver command template. Defaults to env var.")
+    parser.add_argument(
+        "--apply", action="store_true", help="Invoke the configured resolver command"
+    )
+    parser.add_argument(
+        "--command", default=None, help="Resolver command template. Defaults to env var."
+    )
     parser.add_argument("--prompt-heading", default=DEFAULT_PROMPT_HEADING)
     parser.add_argument("--completion-rule", default=DEFAULT_COMPLETION_RULE)
     parser.add_argument("--extra-rule", action="append", default=[])
@@ -1443,7 +1492,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         extra_rules=args.extra_rule,
     )
     if args.apply:
-        payload = invoke_llm_resolver(payload, command_template=args.command, timeout_seconds=args.timeout_seconds)
+        payload = invoke_llm_resolver(
+            payload, command_template=args.command, timeout_seconds=args.timeout_seconds
+        )
     print(json.dumps(payload, indent=2, sort_keys=True))
     if args.apply and payload.get("found") and not payload.get("applied"):
         return 1

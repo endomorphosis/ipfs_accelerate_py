@@ -213,11 +213,7 @@ Output:
 
 ```python
 import time
-from ipfs_accelerate_py import (
-    P2PWorkflowScheduler,
-    P2PTask,
-    WorkflowTag
-)
+from ipfs_accelerate_py import P2PWorkflowScheduler, P2PTask, WorkflowTag
 
 # Create scheduler
 scheduler = P2PWorkflowScheduler(peer_id="my-peer")
@@ -229,7 +225,7 @@ task = P2PTask(
     name="Code Generation",
     tags=[WorkflowTag.P2P_ONLY, WorkflowTag.CODE_GENERATION],
     priority=8,
-    created_at=time.time()
+    created_at=time.time(),
 )
 scheduler.submit_task(task)
 
@@ -429,10 +425,11 @@ from ipfs_accelerate_py import P2PWorkflowScheduler, WorkflowTag
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def execute_task(task):
     """Execute a workflow task"""
     logger.info(f"Executing task: {task.name}")
-    
+
     # Execute based on task type
     if WorkflowTag.CODE_GENERATION in task.tags:
         # Handle code generation
@@ -443,38 +440,40 @@ def execute_task(task):
     elif WorkflowTag.DATA_PROCESSING in task.tags:
         # Handle data processing
         pass
-    
+
     logger.info(f"Task {task.task_id} completed")
+
 
 def main():
     # Create scheduler
     scheduler = P2PWorkflowScheduler(peer_id="peer-worker-1")
-    
+
     logger.info("P2P Workflow Peer started")
     logger.info(f"Peer ID: {scheduler.peer_id}")
-    
+
     # Main loop
     while True:
         try:
             # Get next task
             task = scheduler.get_next_task()
-            
+
             if task:
                 # Execute task
                 execute_task(task)
-                
+
                 # Mark complete
                 scheduler.mark_task_complete(task.task_id)
             else:
                 # No tasks available, wait
                 time.sleep(10)
-        
+
         except KeyboardInterrupt:
             logger.info("Shutting down...")
             break
         except Exception as e:
             logger.error(f"Error: {e}")
             time.sleep(5)
+
 
 if __name__ == "__main__":
     main()

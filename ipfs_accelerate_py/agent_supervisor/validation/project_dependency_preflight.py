@@ -47,10 +47,15 @@ if not _CHILD_PROBE_MODE:
 PROJECT_DEPENDENCY_PREFLIGHT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/validation-project-dependency-preflight@1"
 )
+PROJECT_DEPENDENCY_PREFLIGHT_PROJECTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "validation-project-dependency-preflight-projection@1"
+)
 PROJECT_DEPENDENCY_PREFLIGHT_EVENT_PROJECTION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "validation-project-dependency-preflight-event-projection@1"
 )
+
 PROJECT_DEPENDENCY_PROBE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/validation-project-dependency-probe@1"
 )
@@ -63,6 +68,7 @@ SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2 = (
 SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V3 = (
     "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-preflight@3"
 )
+
 SCOPED_PROJECT_DEPENDENCY_PRIOR_SEED_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/scoped-project-dependency-prior-seed@1"
 )
@@ -75,7 +81,6 @@ MAX_SCOPED_CONTRACT_TARGETS = 16
 MAX_SCOPED_CONTRACT_TARGET_BYTES = 2048
 MAX_SCOPED_CONTRACT_TARGET_TOTAL_BYTES = 64 * 1024
 MAX_SCOPED_CONTRACT_TASK_IDENTITY_BYTES = 4096
-MAX_SCOPED_CONTRACT_EXTRA_BYTES = 128
 MAX_SCOPED_RUNTIME_DECLARED_OUTPUTS = 256
 MAX_SCOPED_RUNTIME_DECLARED_OUTPUT_TOTAL_BYTES = 256 * 1024
 MAX_SCOPED_PRIOR_SEED_AUTHORITY_BYTES = 4 * 1024 * 1024
@@ -84,9 +89,6 @@ MAX_REQUIREMENT_BYTES = 2048
 MAX_INSTALLED_VERSION_BYTES = 512
 MAX_PROBE_OUTPUT_BYTES = 2 * 1024 * 1024
 MAX_PROBE_SOURCE_BYTES = 512 * 1024
-MAX_PREFLIGHT_EVENT_FINDING_PREVIEW = 16
-MAX_PREFLIGHT_EVENT_FIELD_BYTES = 512
-MAX_PREFLIGHT_INLINE_RECEIPT_BYTES = 64 * 1024
 BOUNDED_FILE_READ_CHUNK_BYTES = 64 * 1024
 MAX_DEPENDENCY_CLOSURE_NODES = 256
 MAX_DEPENDENCY_CLOSURE_EDGES = 2048
@@ -96,6 +98,26 @@ MAX_DEPENDENCY_CLOSURE_CONTEXTS = 4096
 MAX_DEPENDENCY_CLOSURE_REQUIREMENT_BYTES = MAX_REQUIREMENT_BYTES
 MAX_DEPENDENCY_CLOSURE_METADATA_TEXT_BYTES = 2 * 1024 * 1024
 MAX_DEPENDENCY_CLOSURE_INSTALLED_VERSION_BYTES = MAX_INSTALLED_VERSION_BYTES
+MAX_DEPENDENCY_PREFLIGHT_PROJECTION_BYTES = 64 * 1024
+# This is a total-output safety parameter, not merely a per-list preference.
+# Three issue categories plus remediation requirements can all be populated at
+# once, and every retained text field may reach the byte bound below.  Four
+# samples per category keeps that deterministic worst case below the 64 KiB
+# projection envelope without needing a data-dependent retry loop.
+MAX_DEPENDENCY_PREFLIGHT_PROJECTION_ISSUES = 4
+MAX_DEPENDENCY_PREFLIGHT_PROJECTION_TEXT_BYTES = 512
+
+MAX_SCOPED_CONTRACT_EXTRA_BYTES = 128
+
+MAX_PREFLIGHT_EVENT_FINDING_PREVIEW = 16
+
+MAX_PREFLIGHT_EVENT_FIELD_BYTES = 512
+
+MAX_PREFLIGHT_INLINE_RECEIPT_BYTES = 64 * 1024
+
+
+_SAFE_SCOPED_EXTRA_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
+
 DEPENDENCY_PROBE_TIMEOUT_SECONDS = 30.0
 PYTEST_OPTIONAL_DEPENDENCY_EXTRA_PRIORITY = (
     "test",
@@ -108,7 +130,6 @@ _SAFE_SCOPED_TARGET_PATTERN = re.compile(
     r"tests/(?:[A-Za-z0-9_][A-Za-z0-9_.-]*/)*"
     r"[A-Za-z0-9_][A-Za-z0-9_.-]*\.py"
 )
-_SAFE_SCOPED_EXTRA_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
 _SCOPED_CONTRACT_FIELDS = frozenset(
     {
         "schema",
@@ -648,30 +669,6 @@ def _command_is_exact_scoped_pytest_target(
     return tokens == expected
 
 
-def _command_is_exact_v3_scoped_pytest_target(
-    command: str,
-    *,
-    relative_root: str,
-    target: str,
-) -> bool:
-    """Match either exact legacy grammar or the v3 board command grammar."""
-
-    if _command_is_exact_scoped_pytest_target(
-        command,
-        relative_root=relative_root,
-        target=target,
-    ):
-        return True
-    try:
-        tokens = shlex.split(str(command), posix=True)
-    except ValueError:
-        return False
-    expected = ["python", "-m", "pytest", "-q", target]
-    if relative_root:
-        expected = ["cd", relative_root, "&&", *expected]
-    return tokens == expected
-
-
 def _require_safe_scoped_pytest_target(value: Any) -> str:
     """Return one bounded canonical test-file target or fail closed."""
 
@@ -724,36 +721,6 @@ def _expected_scoped_declared_output(relative_root: str, target: str) -> str:
     return (PurePosixPath(relative_root) / target).as_posix()
 
 
-def _require_v3_scoped_declared_output(value: Any, *, target: str) -> str:
-    """Return one canonical repository output ending in its exact target."""
-
-    if type(value) is not str:
-        raise _ScopedDependencyContractError(
-            "v3_target_declared_output_invalid"
-        )
-    declared_output = value
-    output_path = PurePosixPath(declared_output)
-    target_parts = PurePosixPath(target).parts
-    output_parts = output_path.parts
-    if (
-        not declared_output
-        or declared_output.strip() != declared_output
-        or len(declared_output.encode("utf-8", errors="surrogatepass"))
-        > MAX_SCOPED_CONTRACT_TARGET_BYTES
-        or "\\" in declared_output
-        or output_path.is_absolute()
-        or ".." in output_parts
-        or output_path.as_posix() != declared_output
-        or any(ord(character) < 32 for character in declared_output)
-        or len(output_parts) < len(target_parts)
-        or output_parts[-len(target_parts) :] != target_parts
-    ):
-        raise _ScopedDependencyContractError(
-            "v3_target_declared_output_invalid"
-        )
-    return declared_output
-
-
 def _require_scoped_prior_seed_paths(
     value: Any,
     *,
@@ -795,7 +762,6 @@ def _scoped_prior_seed_target_sha256(
     project_root: Path,
     relative_root: str,
     selected_target: Mapping[str, Any],
-    contract_schema: str,
 ) -> str:
     """Authenticate one task-bound replay that materialized an absent target.
 
@@ -1001,7 +967,7 @@ def _scoped_prior_seed_target_sha256(
     if not (
         baseline_project.get("passed") is True
         and baseline_project.get("dependency_contract_schema")
-        == contract_schema
+        == SCOPED_PROJECT_DEPENDENCY_CONTRACT_SCHEMA_V2
         and baseline_project.get("scoped_validation_command_sha256")
         == selected_target["validation_command_sha256"]
         and baseline_project.get("scoped_validation_target_baseline_state")
@@ -1083,6 +1049,58 @@ def _require_absent_scoped_target(
         "scoped dependency absent target appeared"
     )
 
+
+def _require_v3_scoped_declared_output(value: Any, *, target: str) -> str:
+    """Return one canonical repository output ending in its exact target."""
+
+    if type(value) is not str:
+        raise _ScopedDependencyContractError(
+            "v3_target_declared_output_invalid"
+        )
+    declared_output = value
+    output_path = PurePosixPath(declared_output)
+    target_parts = PurePosixPath(target).parts
+    output_parts = output_path.parts
+    if (
+        not declared_output
+        or declared_output.strip() != declared_output
+        or len(declared_output.encode("utf-8", errors="surrogatepass"))
+        > MAX_SCOPED_CONTRACT_TARGET_BYTES
+        or "\\" in declared_output
+        or output_path.is_absolute()
+        or ".." in output_parts
+        or output_path.as_posix() != declared_output
+        or any(ord(character) < 32 for character in declared_output)
+        or len(output_parts) < len(target_parts)
+        or output_parts[-len(target_parts) :] != target_parts
+    ):
+        raise _ScopedDependencyContractError(
+            "v3_target_declared_output_invalid"
+        )
+    return declared_output
+
+def _command_is_exact_v3_scoped_pytest_target(
+    command: str,
+    *,
+    relative_root: str,
+    target: str,
+) -> bool:
+    """Match either exact legacy grammar or the v3 board command grammar."""
+
+    if _command_is_exact_scoped_pytest_target(
+        command,
+        relative_root=relative_root,
+        target=target,
+    ):
+        return True
+    try:
+        tokens = shlex.split(str(command), posix=True)
+    except ValueError:
+        return False
+    expected = ["python", "-m", "pytest", "-q", target]
+    if relative_root:
+        expected = ["cd", relative_root, "&&", *expected]
+    return tokens == expected
 
 def _scoped_v2_selected_target(
     contract: Mapping[str, Any],
@@ -2102,16 +2120,13 @@ def _bounded_static_project(
             "reason": "pep621_dependencies_must_be_static_strings",
             "pyproject_sha256": pyproject_sha256,
         }
-    scoped_validation_extra = str(
-        scoped_contract_metadata.get("scoped_validation_extra") or "test"
-    )
     requirement_marker_extras = [
-        scoped_validation_extra if scoped_contract_selected else ""
+        "test" if scoped_contract_selected else ""
     ] * len(dependencies)
     if scoped_contract_selected:
         validation_dependencies: list[str] = []
         validation_marker_extras: list[str] = []
-        selected_extras = [scoped_validation_extra]
+        selected_extras = ["test"]
         validation_manifests: list[dict[str, Any]] = []
         validation_dependency_source = "scoped_dependency_contract"
     else:
@@ -3065,6 +3080,7 @@ def _run_bounded_probe_process(
     *,
     input_payload: bytes,
     environment: Mapping[str, str],
+    inherited_fds: Sequence[int] = (),
 ) -> tuple[int | None, bytes, dict[str, Any]]:
     """Capture child output incrementally and kill it at the byte/time bound."""
 
@@ -3077,6 +3093,7 @@ def _run_bounded_probe_process(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             env=dict(environment),
+            pass_fds=tuple(int(fd) for fd in inherited_fds),
         )
         if process.stdout is None:  # pragma: no cover - Popen contract guard
             process.kill()
@@ -3191,6 +3208,7 @@ def _run_dependency_probe(
                 ],
                 input_payload=_canonical_json(payload).encode("utf-8"),
                 environment=launcher_environment,
+                inherited_fds=launcher_receipt.inherited_fds,
             )
         except OSError as exc:
             return {
@@ -3540,6 +3558,304 @@ def project_dependency_preflight_error_receipt(
     return receipt
 
 
+def compact_project_dependency_preflight_receipt(
+    receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return a bounded, content-bound projection for events and results.
+
+    The full dependency closure is decision evidence for the immediate gate,
+    but it is not an admissible event payload: a bounded closure can still be
+    larger than the runtime event envelope.  This projection retains the gate
+    disposition, retry identity, aggregate counts, and a small diagnostic
+    sample while binding the complete receipt by canonical digest.
+    """
+
+    if not isinstance(receipt, Mapping):
+        raise TypeError("dependency preflight receipt must be a mapping")
+    if receipt.get("schema") == PROJECT_DEPENDENCY_PREFLIGHT_PROJECTION_SCHEMA:
+        projection = dict(receipt)
+        expected_keys = {
+            "schema",
+            "source_schema",
+            "source_receipt_id",
+            "full_receipt_sha256",
+            "retry_fingerprint",
+            "passed",
+            "applicable",
+            "reason",
+            "automatic_install_attempted",
+            "probe_scope",
+            "validation_command_count",
+            "project_count",
+            "project_roots_sha256",
+            "validation_roots_sha256",
+            "dependency_neutral_command_count",
+            "missing_count",
+            "incompatible_count",
+            "invalid_requirement_count",
+            "invalid_command_count",
+            "missing_requirements",
+            "incompatible_requirements",
+            "invalid_requirements",
+            "issues_truncated",
+            "probe",
+            "remediation",
+            "event_projection_compacted",
+            "projection_id",
+        }
+        if set(projection) != expected_keys:
+            raise ValueError(
+                "dependency preflight projection has unknown or missing fields"
+            )
+        probe = projection.get("probe")
+        if not isinstance(probe, Mapping) or set(probe) != {
+            "reason",
+            "python_executable",
+            "python_version",
+            "project_count",
+            "validation_python_launcher",
+        }:
+            raise ValueError("dependency preflight projection probe is not closed")
+        launcher = probe.get("validation_python_launcher")
+        if not isinstance(launcher, Mapping) or not set(launcher).issubset(
+            {
+                "content_sha256",
+                "interpreter_sha256",
+                "mode",
+                "policy_sha256",
+                "sealed",
+            }
+        ):
+            raise ValueError(
+                "dependency preflight projection launcher is not closed"
+            )
+        remediation = projection.get("remediation")
+        if not isinstance(remediation, Mapping) or set(remediation) != {
+            "kind",
+            "automatic_provisioning",
+            "rerun_required",
+            "python_executable",
+            "requirement_count",
+            "requirements",
+            "requirements_truncated",
+        }:
+            raise ValueError(
+                "dependency preflight projection remediation is not closed"
+            )
+        issue_keys = {
+            "name",
+            "requirement",
+            "installed_version",
+            "reason",
+            "root",
+            "issue_sha256",
+        }
+        for field_name in (
+            "missing_requirements",
+            "incompatible_requirements",
+            "invalid_requirements",
+        ):
+            issues = projection.get(field_name)
+            if not isinstance(issues, list) or any(
+                not isinstance(item, Mapping)
+                or "issue_sha256" not in item
+                or not set(item).issubset(issue_keys)
+                for item in issues
+            ):
+                raise ValueError(
+                    "dependency preflight projection issues are not closed"
+                )
+        claimed_projection_id = projection.pop("projection_id", None)
+        expected_projection_id = _content_sha256(projection)
+        if claimed_projection_id != expected_projection_id:
+            raise ValueError("dependency preflight projection identity is invalid")
+        projection["projection_id"] = expected_projection_id
+        if (
+            len(_canonical_json(projection).encode("utf-8"))
+            > MAX_DEPENDENCY_PREFLIGHT_PROJECTION_BYTES
+        ):
+            raise ValueError("dependency preflight projection exceeds its hard bound")
+        return projection
+
+    def bounded_text(value: object, *, maximum: int = 512) -> str:
+        text = str(value or "")
+        # Event size is measured after canonical JSON serialization.  Raw
+        # UTF-8 bounds are insufficient because control characters, quotes,
+        # backslashes, and non-ASCII code points may expand substantially when
+        # escaped.  Persist a one-byte JSON-safe diagnostic projection; the
+        # full, exact value remains bound by ``full_receipt_sha256`` and each
+        # issue digest.
+        safe = "".join(
+            character
+            if 0x20 <= ord(character) <= 0x7E
+            and character not in {'"', "\\"}
+            else "?"
+            for character in text
+        )
+        return safe[:maximum]
+
+    def sequence(value: object) -> Sequence[object]:
+        if isinstance(value, Sequence) and not isinstance(
+            value,
+            (str, bytes, bytearray, memoryview),
+        ):
+            return value
+        return ()
+
+    def issue_projection(value: object) -> dict[str, Any]:
+        item = dict(value) if isinstance(value, Mapping) else {"value": value}
+        projected = {
+            key: bounded_text(
+                item.get(key),
+                maximum=MAX_DEPENDENCY_PREFLIGHT_PROJECTION_TEXT_BYTES,
+            )
+            for key in (
+                "name",
+                "requirement",
+                "installed_version",
+                "reason",
+                "root",
+            )
+            if item.get(key) not in (None, "")
+        }
+        projected["issue_sha256"] = _content_sha256(item)
+        return projected
+
+    missing = sequence(receipt.get("missing_requirements"))
+    incompatible = sequence(receipt.get("incompatible_requirements"))
+    invalid = sequence(receipt.get("invalid_requirements"))
+    invalid_commands = sequence(receipt.get("invalid_commands"))
+    projects = sequence(receipt.get("projects"))
+    project_roots = sequence(receipt.get("project_roots"))
+    validation_roots = sequence(receipt.get("validation_roots"))
+    dependency_neutral_commands = sequence(
+        receipt.get("dependency_neutral_commands")
+    )
+
+    remediation_raw = receipt.get("remediation")
+    remediation = (
+        dict(remediation_raw)
+        if isinstance(remediation_raw, Mapping)
+        else {}
+    )
+    remediation_requirements = sequence(remediation.get("requirements"))
+    compact_remediation: dict[str, Any] = {
+        "kind": bounded_text(remediation.get("kind"), maximum=256),
+        "automatic_provisioning": (
+            remediation.get("automatic_provisioning") is True
+        ),
+        "rerun_required": remediation.get("rerun_required") is True,
+        "python_executable": bounded_text(
+            remediation.get("python_executable"),
+            maximum=MAX_DEPENDENCY_PREFLIGHT_PROJECTION_TEXT_BYTES,
+        ),
+        "requirement_count": len(remediation_requirements),
+        "requirements": [
+            bounded_text(
+                item,
+                maximum=MAX_DEPENDENCY_PREFLIGHT_PROJECTION_TEXT_BYTES,
+            )
+            for item in remediation_requirements[
+                :MAX_DEPENDENCY_PREFLIGHT_PROJECTION_ISSUES
+            ]
+        ],
+        "requirements_truncated": (
+            len(remediation_requirements)
+            > MAX_DEPENDENCY_PREFLIGHT_PROJECTION_ISSUES
+        ),
+    }
+
+    probe_raw = receipt.get("probe")
+    probe = dict(probe_raw) if isinstance(probe_raw, Mapping) else {}
+    launcher_raw = probe.get("validation_python_launcher")
+    launcher = (
+        dict(launcher_raw)
+        if isinstance(launcher_raw, Mapping)
+        else {}
+    )
+    compact_probe = {
+        "reason": bounded_text(probe.get("reason"), maximum=256),
+        "python_executable": bounded_text(
+            probe.get("python_executable"),
+            maximum=MAX_DEPENDENCY_PREFLIGHT_PROJECTION_TEXT_BYTES,
+        ),
+        "python_version": bounded_text(probe.get("python_version"), maximum=128),
+        "project_count": len(sequence(probe.get("projects"))),
+        "validation_python_launcher": {
+            key: launcher[key]
+            for key in (
+                "content_sha256",
+                "interpreter_sha256",
+                "mode",
+                "policy_sha256",
+                "sealed",
+            )
+            if key in launcher
+        },
+    }
+
+    full_receipt = dict(receipt)
+    projection: dict[str, Any] = {
+        "schema": PROJECT_DEPENDENCY_PREFLIGHT_PROJECTION_SCHEMA,
+        "source_schema": bounded_text(receipt.get("schema"), maximum=256),
+        "source_receipt_id": bounded_text(
+            receipt.get("receipt_id"),
+            maximum=128,
+        ),
+        "full_receipt_sha256": _content_sha256(full_receipt),
+        "retry_fingerprint": bounded_text(
+            receipt.get("retry_fingerprint"),
+            maximum=128,
+        ),
+        "passed": receipt.get("passed") is True,
+        "applicable": receipt.get("applicable") is True,
+        "reason": bounded_text(receipt.get("reason"), maximum=256),
+        "automatic_install_attempted": (
+            receipt.get("automatic_install_attempted") is True
+        ),
+        "probe_scope": bounded_text(receipt.get("probe_scope"), maximum=256),
+        "validation_command_count": max(
+            0,
+            int(receipt.get("validation_command_count") or 0),
+        ),
+        "project_count": len(projects),
+        "project_roots_sha256": _content_sha256(list(project_roots)),
+        "validation_roots_sha256": _content_sha256(list(validation_roots)),
+        "dependency_neutral_command_count": len(
+            dependency_neutral_commands
+        ),
+        "missing_count": len(missing),
+        "incompatible_count": len(incompatible),
+        "invalid_requirement_count": len(invalid),
+        "invalid_command_count": len(invalid_commands),
+        "missing_requirements": [
+            issue_projection(item)
+            for item in missing[:MAX_DEPENDENCY_PREFLIGHT_PROJECTION_ISSUES]
+        ],
+        "incompatible_requirements": [
+            issue_projection(item)
+            for item in incompatible[
+                :MAX_DEPENDENCY_PREFLIGHT_PROJECTION_ISSUES
+            ]
+        ],
+        "invalid_requirements": [
+            issue_projection(item)
+            for item in invalid[:MAX_DEPENDENCY_PREFLIGHT_PROJECTION_ISSUES]
+        ],
+        "issues_truncated": any(
+            len(items) > MAX_DEPENDENCY_PREFLIGHT_PROJECTION_ISSUES
+            for items in (missing, incompatible, invalid)
+        ),
+        "probe": compact_probe,
+        "remediation": compact_remediation,
+        "event_projection_compacted": True,
+    }
+    projection["projection_id"] = _content_sha256(projection)
+    encoded = _canonical_json(projection).encode("utf-8")
+    if len(encoded) > MAX_DEPENDENCY_PREFLIGHT_PROJECTION_BYTES:
+        raise ValueError("dependency preflight projection exceeds its hard bound")
+    return projection
+
 def canonical_project_dependency_preflight_receipt_bytes(
     receipt: Mapping[str, Any],
 ) -> bytes:
@@ -3573,7 +3889,6 @@ def canonical_project_dependency_preflight_receipt_bytes(
     ):
         raise ValueError("dependency preflight retry fingerprint mismatch")
     return _canonical_json(value).encode("utf-8")
-
 
 def _dependency_preflight_event_finding_preview(
     receipt: Mapping[str, Any],
@@ -3622,7 +3937,6 @@ def _dependency_preflight_event_finding_preview(
                     item[field] = encoded.decode("utf-8", errors="ignore")
             selected.append(item)
     return selected
-
 
 def project_dependency_preflight_for_event(
     receipt: Mapping[str, Any],

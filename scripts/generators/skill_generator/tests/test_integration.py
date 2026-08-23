@@ -42,29 +42,29 @@ class IntegrationTest(unittest.TestCase):
         # Create a temporary directory for outputs
         self.temp_dir = tempfile.TemporaryDirectory()
         self.output_dir = Path(self.temp_dir.name)
-        
+
         # Initialize the registry
         self.registry = ComponentRegistry()
-        
+
         # Initialize the config
         self.config = ConfigManager()
-        
+
         # Set up hardware detection with mocks
         self.hardware_manager = self._setup_hardware_manager()
-        
+
         # Set up dependency manager with mocks
         self.dependency_manager = self._setup_dependency_manager()
-        
+
         # Set up templates
         self._register_templates()
-        
+
         # Set up model selector
         self.model_selector = self._setup_model_selector()
-        
+
         # Set up syntax validation
         self.syntax_validator = SyntaxValidator()
         self.syntax_fixer = SyntaxFixer()
-        
+
         # Initialize the generator core
         self.generator = GeneratorCore(
             config=self.config,
@@ -73,7 +73,7 @@ class IntegrationTest(unittest.TestCase):
             dependency_manager=self.dependency_manager,
             model_selector=self.model_selector,
             syntax_validator=self.syntax_validator,
-            syntax_fixer=self.syntax_fixer
+            syntax_fixer=self.syntax_fixer,
         )
 
     def tearDown(self):
@@ -84,26 +84,30 @@ class IntegrationTest(unittest.TestCase):
         """Set up a mock hardware detection manager."""
         manager = HardwareDetectionManager()
         # Mock hardware detection to simulate different hardware environments
-        manager.detect_all = MagicMock(return_value={
-            "cuda": {"available": True, "version": "11.7", "device_count": 1},
-            "rocm": {"available": False},
-            "mps": {"available": False},
-            "openvino": {"available": False},
-            "webnn": {"available": False},
-            "webgpu": {"available": False}
-        })
+        manager.detect_all = MagicMock(
+            return_value={
+                "cuda": {"available": True, "version": "11.7", "device_count": 1},
+                "rocm": {"available": False},
+                "mps": {"available": False},
+                "openvino": {"available": False},
+                "webnn": {"available": False},
+                "webgpu": {"available": False},
+            }
+        )
         return manager
 
     def _setup_dependency_manager(self):
         """Set up a mock dependency manager."""
         manager = DependencyManager()
         # Mock dependency checks
-        manager.check_all = MagicMock(return_value={
-            "torch": {"available": True, "version": "2.0.0", "mocked": False},
-            "transformers": {"available": True, "version": "4.30.0", "mocked": False},
-            "tokenizers": {"available": True, "version": "0.13.3", "mocked": False},
-            "sentencepiece": {"available": True, "version": "0.1.99", "mocked": False}
-        })
+        manager.check_all = MagicMock(
+            return_value={
+                "torch": {"available": True, "version": "2.0.0", "mocked": False},
+                "transformers": {"available": True, "version": "4.30.0", "mocked": False},
+                "tokenizers": {"available": True, "version": "0.13.3", "mocked": False},
+                "sentencepiece": {"available": True, "version": "0.1.99", "mocked": False},
+            }
+        )
         return manager
 
     def _register_templates(self):
@@ -119,7 +123,7 @@ class IntegrationTest(unittest.TestCase):
     def _setup_model_selector(self):
         """Set up a mock model selector."""
         selector = ModelSelector(self.registry)
-        
+
         # Mock model selection methods
         def mock_select_model(model_type, **kwargs):
             # Return a mock model info based on model type
@@ -128,10 +132,14 @@ class IntegrationTest(unittest.TestCase):
                 "id": f"{model_type}-base",
                 "architecture": self._map_model_to_architecture(model_type),
                 "default_model": f"{model_type}-base",
-                "task": "text-classification" if model_type == "bert" else "text-generation" if model_type == "gpt2" else "unknown",
-                "framework": "pt"  # PyTorch
+                "task": "text-classification"
+                if model_type == "bert"
+                else "text-generation"
+                if model_type == "gpt2"
+                else "unknown",
+                "framework": "pt",  # PyTorch
             }
-        
+
         selector.select_model = MagicMock(side_effect=mock_select_model)
         return selector
 
@@ -146,7 +154,7 @@ class IntegrationTest(unittest.TestCase):
             "bart": "encoder-decoder",
             "vit": "vision",
             "clip": "vision-text",
-            "whisper": "speech"
+            "whisper": "speech",
         }
         return mapping.get(model_type, "unknown")
 
@@ -156,16 +164,16 @@ class IntegrationTest(unittest.TestCase):
         options = {
             "output_file": self.output_dir / f"test_{model_type}.py",
             "model_name": "bert-base-uncased",
-            "task": "text-classification"
+            "task": "text-classification",
         }
-        
+
         # Generate the test file
         result = self.generator.generate(model_type, options)
-        
+
         # Verify the result
         self.assertTrue(result["success"])
         self.assertTrue(Path(options["output_file"]).exists())
-        
+
         # Check content contains key elements
         with open(options["output_file"], "r") as f:
             content = f.read()
@@ -180,16 +188,16 @@ class IntegrationTest(unittest.TestCase):
         options = {
             "output_file": self.output_dir / f"test_{model_type}.py",
             "model_name": "gpt2",
-            "task": "text-generation"
+            "task": "text-generation",
         }
-        
+
         # Generate the test file
         result = self.generator.generate(model_type, options)
-        
+
         # Verify the result
         self.assertTrue(result["success"])
         self.assertTrue(Path(options["output_file"]).exists())
-        
+
         # Check content contains key elements
         with open(options["output_file"], "r") as f:
             content = f.read()
@@ -203,16 +211,16 @@ class IntegrationTest(unittest.TestCase):
         options = {
             "output_file": self.output_dir / f"test_{model_type}.py",
             "model_name": "t5-small",
-            "task": "text2text-generation"
+            "task": "text2text-generation",
         }
-        
+
         # Generate the test file
         result = self.generator.generate(model_type, options)
-        
+
         # Verify the result
         self.assertTrue(result["success"])
         self.assertTrue(Path(options["output_file"]).exists())
-        
+
         # Check content contains key elements
         with open(options["output_file"], "r") as f:
             content = f.read()
@@ -226,16 +234,16 @@ class IntegrationTest(unittest.TestCase):
         options = {
             "output_file": self.output_dir / f"test_{model_type}.py",
             "model_name": "vit-base-patch16-224",
-            "task": "image-classification"
+            "task": "image-classification",
         }
-        
+
         # Generate the test file
         result = self.generator.generate(model_type, options)
-        
+
         # Verify the result
         self.assertTrue(result["success"])
         self.assertTrue(Path(options["output_file"]).exists())
-        
+
         # Check content contains key elements
         with open(options["output_file"], "r") as f:
             content = f.read()
@@ -250,16 +258,16 @@ class IntegrationTest(unittest.TestCase):
         options = {
             "output_file": self.output_dir / f"test_{model_type}.py",
             "model_name": "openai/clip-vit-base-patch32",
-            "task": "image-to-text"
+            "task": "image-to-text",
         }
-        
+
         # Generate the test file
         result = self.generator.generate(model_type, options)
-        
+
         # Verify the result
         self.assertTrue(result["success"])
         self.assertTrue(Path(options["output_file"]).exists())
-        
+
         # Check content contains key elements
         with open(options["output_file"], "r") as f:
             content = f.read()
@@ -274,16 +282,16 @@ class IntegrationTest(unittest.TestCase):
         options = {
             "output_file": self.output_dir / f"test_{model_type}.py",
             "model_name": "openai/whisper-tiny",
-            "task": "automatic-speech-recognition"
+            "task": "automatic-speech-recognition",
         }
-        
+
         # Generate the test file
         result = self.generator.generate(model_type, options)
-        
+
         # Verify the result
         self.assertTrue(result["success"])
         self.assertTrue(Path(options["output_file"]).exists())
-        
+
         # Check content contains key elements
         with open(options["output_file"], "r") as f:
             content = f.read()
@@ -294,26 +302,23 @@ class IntegrationTest(unittest.TestCase):
     def test_batch_generation(self):
         """Test batch generation of multiple models."""
         models = ["bert", "gpt2", "t5", "vit", "clip", "whisper"]
-        batch_options = {
-            "base_output_dir": self.output_dir,
-            "batch_size": len(models)
-        }
-        
+        batch_options = {"base_output_dir": self.output_dir, "batch_size": len(models)}
+
         # Generate all models in a batch
         results = []
         for model_type in models:
             options = {
                 "output_file": self.output_dir / f"test_{model_type}.py",
                 "model_name": f"{model_type}-base",
-                "task": "default"
+                "task": "default",
             }
             result = self.generator.generate(model_type, options)
             results.append(result)
-        
+
         # Verify all generations succeeded
         for result in results:
             self.assertTrue(result["success"])
-        
+
         # Check all files were created
         for model_type in models:
             self.assertTrue((self.output_dir / f"test_{model_type}.py").exists())
@@ -322,7 +327,8 @@ class IntegrationTest(unittest.TestCase):
         """Test syntax validation and fixing capability."""
         # Create a template with deliberate syntax errors
         broken_template = TemplateBase(self.config)
-        broken_template.get_template_str = MagicMock(return_value="""
+        broken_template.get_template_str = MagicMock(
+            return_value="""
 import os
 import sys
 
@@ -345,38 +351,39 @@ if __name__ == "__main__":
     test_function()
     test_instance = TestClass()
     print(test_instance.test_method()
-""")
+"""
+        )
 
         # Register the broken template
         self.registry.register_template("broken", broken_template)
-        
+
         # Set up options
         model_type = "broken"
         options = {
             "output_file": self.output_dir / "test_broken.py",
             "model_name": "broken-model",
             "task": "default",
-            "fix_syntax": True  # Enable syntax fixing
+            "fix_syntax": True,  # Enable syntax fixing
         }
-        
+
         # Generate with syntax fixing
         result = self.generator.generate(model_type, options)
-        
+
         # The generation should succeed despite the syntax errors because we're fixing them
         self.assertTrue(result["success"])
         self.assertTrue(Path(options["output_file"]).exists())
-        
+
         # The generated file should have valid syntax
         with open(options["output_file"], "r") as f:
             content = f.read()
-        
+
         # Validate the fixed content
         try:
             compile(content, options["output_file"], "exec")
             syntax_valid = True
         except SyntaxError:
             syntax_valid = False
-        
+
         self.assertTrue(syntax_valid, "Fixed content should have valid syntax")
 
     def test_hardware_aware_generation(self):
@@ -384,51 +391,57 @@ if __name__ == "__main__":
         # Set up different hardware profiles for testing
         hardware_profiles = [
             # CUDA available
-            {"cuda": {"available": True, "version": "11.7", "device_count": 1}, 
-             "rocm": {"available": False}, "mps": {"available": False}},
-            
+            {
+                "cuda": {"available": True, "version": "11.7", "device_count": 1},
+                "rocm": {"available": False},
+                "mps": {"available": False},
+            },
             # ROCm available
-            {"cuda": {"available": False}, 
-             "rocm": {"available": True, "version": "5.2.0"}, 
-             "mps": {"available": False}},
-            
+            {
+                "cuda": {"available": False},
+                "rocm": {"available": True, "version": "5.2.0"},
+                "mps": {"available": False},
+            },
             # MPS available (macOS)
-            {"cuda": {"available": False}, "rocm": {"available": False}, 
-             "mps": {"available": True}}
+            {
+                "cuda": {"available": False},
+                "rocm": {"available": False},
+                "mps": {"available": True},
+            },
         ]
-        
+
         model_type = "bert"
-        
+
         # Generate tests for each hardware profile
         for i, profile in enumerate(hardware_profiles):
             # Override the hardware detection
             self.hardware_manager.detect_all = MagicMock(return_value=profile)
-            
+
             options = {
                 "output_file": self.output_dir / f"test_bert_hw_{i}.py",
                 "model_name": "bert-base-uncased",
-                "task": "text-classification"
+                "task": "text-classification",
             }
-            
+
             # Generate the test file
             result = self.generator.generate(model_type, options)
-            
+
             # Verify generation succeeded
             self.assertTrue(result["success"])
             self.assertTrue(Path(options["output_file"]).exists())
-            
+
             # Check that the hardware profile is reflected in the generated file
             with open(options["output_file"], "r") as f:
                 content = f.read()
-                
+
                 # Check for hardware-specific code
                 if profile["cuda"]["available"]:
                     self.assertIn("cuda", content.lower())
                     self.assertIn("torch.cuda.is_available()", content)
-                
+
                 if profile["rocm"]["available"]:
                     self.assertIn("rocm", content.lower())
-                
+
                 if profile["mps"]["available"]:
                     self.assertIn("mps", content.lower())
                     self.assertIn("torch.backends.mps.is_available()", content)
@@ -437,13 +450,15 @@ if __name__ == "__main__":
         """Test generation in a mock environment."""
         # Set up a mocked environment where dependencies are not available
         mock_dependency_manager = DependencyManager()
-        mock_dependency_manager.check_all = MagicMock(return_value={
-            "torch": {"available": False, "mocked": True},
-            "transformers": {"available": False, "mocked": True},
-            "tokenizers": {"available": False, "mocked": True},
-            "sentencepiece": {"available": False, "mocked": True}
-        })
-        
+        mock_dependency_manager.check_all = MagicMock(
+            return_value={
+                "torch": {"available": False, "mocked": True},
+                "transformers": {"available": False, "mocked": True},
+                "tokenizers": {"available": False, "mocked": True},
+                "sentencepiece": {"available": False, "mocked": True},
+            }
+        )
+
         # Create a generator with mocked dependencies
         mock_generator = GeneratorCore(
             config=self.config,
@@ -452,23 +467,23 @@ if __name__ == "__main__":
             dependency_manager=mock_dependency_manager,
             model_selector=self.model_selector,
             syntax_validator=self.syntax_validator,
-            syntax_fixer=self.syntax_fixer
+            syntax_fixer=self.syntax_fixer,
         )
-        
+
         model_type = "bert"
         options = {
             "output_file": self.output_dir / "test_bert_mocked.py",
             "model_name": "bert-base-uncased",
-            "task": "text-classification"
+            "task": "text-classification",
         }
-        
+
         # Generate the test file in mock mode
         result = mock_generator.generate(model_type, options)
-        
+
         # Verify generation succeeded
         self.assertTrue(result["success"])
         self.assertTrue(Path(options["output_file"]).exists())
-        
+
         # Check that mock support is included in the generated file
         with open(options["output_file"], "r") as f:
             content = f.read()

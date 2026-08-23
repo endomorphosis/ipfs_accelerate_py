@@ -14,11 +14,11 @@ from datetime import datetime
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(f"generator_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-    ]
+        logging.FileHandler(f"generator_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"),
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,6 @@ ARCHITECTURE_MAPPING = {
     "electra": "encoder_only",
     "camembert": "encoder_only",
     "distilbert": "encoder_only",
-    
     # Decoder-only models
     "gpt2": "decoder_only",
     "gptj": "decoder_only",
@@ -46,7 +45,6 @@ ARCHITECTURE_MAPPING = {
     "falcon": "decoder_only",
     "mistral": "decoder_only",
     "phi": "decoder_only",
-    
     # Encoder-decoder models
     "t5": "encoder_decoder",
     "bart": "encoder_decoder",
@@ -54,7 +52,6 @@ ARCHITECTURE_MAPPING = {
     "mbart": "encoder_decoder",
     "m2m_100": "encoder_decoder",
     "led": "encoder_decoder",
-    
     # Vision models
     "vit": "vision",
     "swin": "vision",
@@ -62,20 +59,18 @@ ARCHITECTURE_MAPPING = {
     "deit": "vision",
     "convnext": "vision",
     "sam": "vision",
-    
     # Multimodal models
     "clip": "multimodal",
     "blip": "multimodal",
     "llava": "multimodal",
     "flava": "multimodal",
     "idefics": "multimodal",
-    
     # Audio models
     "wav2vec2": "audio",
     "hubert": "audio",
     "whisper": "audio",
     "clap": "audio",
-    "encodec": "audio"
+    "encodec": "audio",
 }
 
 # Template models for each architecture
@@ -85,7 +80,7 @@ DEFAULT_TEMPLATES = {
     "encoder_decoder": "t5",
     "vision": "vit",
     "multimodal": "clip",
-    "audio": "wav2vec2"
+    "audio": "wav2vec2",
 }
 
 # Model registry templates for different architectures
@@ -131,7 +126,7 @@ MODEL_REGISTRY_TEMPLATES = {
         "description": "{model_description}",
         "class": "{model_class}",
     }}
-}}"""
+}}""",
 }
 
 # Test class templates for different architectures
@@ -352,7 +347,7 @@ TEST_CLASS_TEMPLATES = {
         # Results storage
         self.results = {{}}
         self.examples = []
-        self.performance_stats = {{}}"""
+        self.performance_stats = {{}}""",
 }
 
 # Pipeline test method templates for different architectures
@@ -746,7 +741,7 @@ PIPELINE_TEST_TEMPLATES = {
         
         # Add to overall results
         self.results["pipeline"] = results
-        return results"""
+        return results""",
 }
 
 # Run tests method template (shared across architectures)
@@ -890,241 +885,249 @@ MODEL_CONSTANTS = {
         "bert": {
             "model_id": "bert-base-uncased",
             "model_class": "BertModel",
-            "model_description": "bert base model"
+            "model_description": "bert base model",
         },
         "roberta": {
             "model_id": "roberta-base",
             "model_class": "RobertaModel",
-            "model_description": "roberta base model"
+            "model_description": "roberta base model",
         },
         "albert": {
             "model_id": "albert-base-v2",
             "model_class": "AlbertModel",
-            "model_description": "albert base model"
-        }
+            "model_description": "albert base model",
+        },
     },
     "decoder_only": {
         "gpt2": {
             "model_id": "gpt2",
             "model_class": "GPT2LMHeadModel",
-            "model_description": "gpt2 base model"
+            "model_description": "gpt2 base model",
         },
         "llama": {
             "model_id": "meta-llama/Llama-2-7b-hf",
             "model_class": "LlamaForCausalLM",
-            "model_description": "llama 2 7b model"
+            "model_description": "llama 2 7b model",
         },
         "phi": {
             "model_id": "microsoft/phi-2",
             "model_class": "PhiForCausalLM",
-            "model_description": "phi-2 model"
-        }
+            "model_description": "phi-2 model",
+        },
     },
     "encoder_decoder": {
         "t5": {
             "model_id": "t5-small",
             "model_class": "T5ForConditionalGeneration",
-            "model_description": "t5 small model"
+            "model_description": "t5 small model",
         },
         "bart": {
             "model_id": "facebook/bart-base",
             "model_class": "BartForConditionalGeneration",
-            "model_description": "bart base model"
-        }
+            "model_description": "bart base model",
+        },
     },
     "vision": {
         "vit": {
             "model_id": "google/vit-base-patch16-224",
             "model_class": "ViTForImageClassification",
-            "model_description": "vit base model"
+            "model_description": "vit base model",
         },
         "swin": {
             "model_id": "microsoft/swin-base-patch4-window7-224",
             "model_class": "SwinForImageClassification",
-            "model_description": "swin base model"
-        }
+            "model_description": "swin base model",
+        },
     },
     "multimodal": {
         "clip": {
             "model_id": "openai/clip-vit-base-patch32",
             "model_class": "CLIPModel",
-            "model_description": "clip base model"
+            "model_description": "clip base model",
         },
         "blip": {
             "model_id": "Salesforce/blip-image-captioning-base",
             "model_class": "BlipForConditionalGeneration",
-            "model_description": "blip base model"
-        }
+            "model_description": "blip base model",
+        },
     },
     "audio": {
         "wav2vec2": {
             "model_id": "facebook/wav2vec2-base-960h",
             "model_class": "Wav2Vec2ForCTC",
-            "model_description": "wav2vec2 base model"
+            "model_description": "wav2vec2 base model",
         },
         "whisper": {
             "model_id": "openai/whisper-small",
             "model_class": "WhisperForConditionalGeneration",
-            "model_description": "whisper small model"
-        }
-    }
+            "model_description": "whisper small model",
+        },
+    },
 }
+
 
 def get_model_constants(model_family, architecture=None):
     """Get model-specific constants."""
     if architecture is None:
         # Try to determine architecture from model family
         architecture = ARCHITECTURE_MAPPING.get(model_family, "encoder_only")
-    
+
     # Check if model family exists in constants
     if model_family in MODEL_CONSTANTS.get(architecture, {}):
         return MODEL_CONSTANTS[architecture][model_family]
-    
+
     # If not found, use a default template based on architecture
     if architecture == "encoder_only":
         return {
             "model_id": f"{model_family}-base",
             "model_class": f"{model_family.capitalize()}Model",
-            "model_description": f"{model_family} base model"
+            "model_description": f"{model_family} base model",
         }
     elif architecture == "decoder_only":
         return {
             "model_id": model_family,
             "model_class": f"{model_family.capitalize()}ForCausalLM",
-            "model_description": f"{model_family} base model"
+            "model_description": f"{model_family} base model",
         }
     elif architecture == "encoder_decoder":
         return {
             "model_id": f"{model_family}-base",
             "model_class": f"{model_family.capitalize()}ForConditionalGeneration",
-            "model_description": f"{model_family} base model"
+            "model_description": f"{model_family} base model",
         }
     elif architecture == "vision":
         return {
             "model_id": f"google/{model_family}-base-patch16-224",
             "model_class": f"{model_family.capitalize()}ForImageClassification",
-            "model_description": f"{model_family} base model"
+            "model_description": f"{model_family} base model",
         }
     elif architecture == "multimodal":
         return {
             "model_id": f"{model_family}-base",
             "model_class": f"{model_family.capitalize()}Model",
-            "model_description": f"{model_family} base model"
+            "model_description": f"{model_family} base model",
         }
     elif architecture == "audio":
         return {
             "model_id": f"{model_family}-base",
             "model_class": f"{model_family.capitalize()}ForCTC",
-            "model_description": f"{model_family} base model"
+            "model_description": f"{model_family} base model",
         }
     else:
         # Default fallback
         return {
             "model_id": f"{model_family}-base",
             "model_class": f"{model_family.capitalize()}Model",
-            "model_description": f"{model_family} base model"
+            "model_description": f"{model_family} base model",
         }
+
 
 def pascal_case(s):
     """Convert a string to PascalCase."""
     # Split by non-alphanumeric characters
-    words = ''.join(c if c.isalnum() else ' ' for c in s).split()
+    words = "".join(c if c.isalnum() else " " for c in s).split()
     # Capitalize each word and join
-    return ''.join(word.capitalize() for word in words)
+    return "".join(word.capitalize() for word in words)
+
 
 def generate_test_file(model_family, output_dir=".", template_model=None):
     """Generate a test file for a specific model architecture."""
     # Determine the architecture
     architecture = ARCHITECTURE_MAPPING.get(model_family, "encoder_only")
-    
+
     # If template model is provided, use its architecture
     if template_model:
         template_architecture = ARCHITECTURE_MAPPING.get(template_model, architecture)
         # Use the template's architecture if it exists
         if template_architecture != architecture:
-            logger.info(f"Using {template_architecture} architecture from template model {template_model}")
+            logger.info(
+                f"Using {template_architecture} architecture from template model {template_model}"
+            )
             architecture = template_architecture
-    
+
     # Get model-specific constants
     model_constants = get_model_constants(model_family, architecture)
     model_id = model_constants["model_id"]
     model_class = model_constants["model_class"]
     model_description = model_constants["model_description"]
-    
+
     # Format the model name for class name
     model_pascal = pascal_case(model_family)
     model_upper = model_family.upper()
-    
+
     # Format the registry template
     registry = MODEL_REGISTRY_TEMPLATES[architecture].format(
         model_upper=model_upper,
         model_id=model_id,
         model_description=model_description,
-        model_class=model_class
+        model_class=model_class,
     )
-    
+
     # Format the test class template
     test_class = TEST_CLASS_TEMPLATES[architecture].format(
         model_pascal=model_pascal,
         model_family=model_family,
         model_id=model_id,
-        model_upper=model_upper
+        model_upper=model_upper,
     )
-    
+
     # Format the pipeline test method template
     pipeline_test = PIPELINE_TEST_TEMPLATES[architecture]
-    
+
     # Format the run tests method template
     run_tests = RUN_TESTS_TEMPLATE
-    
+
     # Format the main method template
     main = MAIN_TEMPLATE.format(
-        model_family=model_family,
-        model_id=model_id,
-        model_pascal=model_pascal
+        model_family=model_family, model_id=model_id, model_pascal=model_pascal
     )
-    
+
     # Assemble the file content
     content = f"{HEADER_TEMPLATE}\n\n{registry}\n\n{test_class}\n    \n    {pipeline_test}\n    \n    {run_tests}\n\n{main}\n"
-    
+
     # Create the output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Write the file
     output_path = os.path.join(output_dir, f"test_hf_{model_family}.py")
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         f.write(content)
-    
+
     logger.info(f"Generated test file: {output_path}")
     return output_path
+
 
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Generate test files for HuggingFace models")
-    parser.add_argument("--family", type=str, required=True,
-                        help="Model family (e.g., bert, gpt2, t5)")
-    parser.add_argument("--output", type=str, default=".",
-                        help="Output directory for generated files")
-    parser.add_argument("--template", type=str,
-                        help="Template model to use for architecture detection")
+    parser.add_argument(
+        "--family", type=str, required=True, help="Model family (e.g., bert, gpt2, t5)"
+    )
+    parser.add_argument(
+        "--output", type=str, default=".", help="Output directory for generated files"
+    )
+    parser.add_argument(
+        "--template", type=str, help="Template model to use for architecture detection"
+    )
     args = parser.parse_args()
-    
+
     # Generate the test file
     output_path = generate_test_file(args.family, args.output, args.template)
-    
+
     # Verify the generated file
     try:
-        with open(output_path, 'r') as f:
+        with open(output_path, "r") as f:
             content = f.read()
-        
+
         # Try to compile to check for syntax errors
-        compile(content, output_path, 'exec')
+        compile(content, output_path, "exec")
         logger.info(f"Syntax verified for {output_path}")
     except Exception as e:
         logger.error(f"Syntax error in generated file {output_path}: {e}")
         sys.exit(1)
-    
+
     logger.info("Test file generation completed successfully")
+
 
 if __name__ == "__main__":
     main()

@@ -51,17 +51,17 @@ from ipfs_accelerate_py.api_backends import claude
 api = claude(resources={}, metadata={"anthropic_api_key": "your-key-here"})
 
 # Configure the queue and backoff systems
-api.max_concurrent_requests = 5    # Maximum concurrent requests
-api.queue_size = 100               # Maximum queue size
-api.max_retries = 5                # Maximum retry attempts
-api.initial_retry_delay = 1        # Starting delay in seconds
-api.backoff_factor = 2             # Multiplier for retry delays
-api.max_retry_delay = 60           # Maximum delay cap in seconds
+api.max_concurrent_requests = 5  # Maximum concurrent requests
+api.queue_size = 100  # Maximum queue size
+api.max_retries = 5  # Maximum retry attempts
+api.initial_retry_delay = 1  # Starting delay in seconds
+api.backoff_factor = 2  # Multiplier for retry delays
+api.max_retry_delay = 60  # Maximum delay cap in seconds
 
 # Use with custom request ID for tracking
 response = api.chat(
     messages=[{"role": "user", "content": "Hello"}],
-    request_id="custom-request-id"  # Optional custom tracking ID
+    request_id="custom-request-id",  # Optional custom tracking ID
 )
 ```
 
@@ -149,10 +149,7 @@ base_client = GeminiClient()
 
 # Create semantic cache wrapper
 cached_client = SemanticCacheGeminiClient(
-    base_client=base_client,
-    similarity_threshold=0.85,
-    max_cache_size=1000,
-    ttl=3600
+    base_client=base_client, similarity_threshold=0.85, max_cache_size=1000, ttl=3600
 )
 
 # Use the cached client exactly like the original

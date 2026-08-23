@@ -25,7 +25,9 @@ def _load_index_management_api() -> Dict[str, Any]:
             "manage_index_configuration": _manage_index_configuration,
         }
     except Exception:
-        logger.warning("Source index_management_tools import unavailable, using fallback index functions")
+        logger.warning(
+            "Source index_management_tools import unavailable, using fallback index functions"
+        )
 
         async def _load_index_fallback(
             action: str,
@@ -167,7 +169,14 @@ async def manage_shards(
 ) -> Dict[str, Any]:
     """Manage index sharding operations."""
     normalized_action = str(action or "").strip().lower()
-    allowed_actions = {"create_shards", "list_shards", "rebalance", "merge_shards", "status", "distribute"}
+    allowed_actions = {
+        "create_shards",
+        "list_shards",
+        "rebalance",
+        "merge_shards",
+        "status",
+        "distribute",
+    }
     if normalized_action not in allowed_actions:
         return {
             "status": "error",
@@ -188,13 +197,17 @@ async def manage_shards(
             "message": "num_shards must be a positive integer",
             "num_shards": num_shards,
         }
-    if models is not None and (not isinstance(models, list) or not all(isinstance(item, str) for item in models)):
+    if models is not None and (
+        not isinstance(models, list) or not all(isinstance(item, str) for item in models)
+    ):
         return {
             "status": "error",
             "message": "models must be an array of strings when provided",
             "models": models,
         }
-    if shard_ids is not None and (not isinstance(shard_ids, list) or not all(isinstance(item, str) for item in shard_ids)):
+    if shard_ids is not None and (
+        not isinstance(shard_ids, list) or not all(isinstance(item, str) for item in shard_ids)
+    ):
         return {
             "status": "error",
             "message": "shard_ids must be an array of strings when provided",
@@ -222,7 +235,9 @@ async def monitor_index_status(
     include_details: bool = False,
 ) -> Dict[str, Any]:
     """Monitor index health and performance state."""
-    if metrics is not None and (not isinstance(metrics, list) or not all(isinstance(item, str) for item in metrics)):
+    if metrics is not None and (
+        not isinstance(metrics, list) or not all(isinstance(item, str) for item in metrics)
+    ):
         return {
             "status": "error",
             "message": "metrics must be an array of strings when provided",
@@ -426,7 +441,14 @@ def register_native_index_management_tools(manager: Any) -> None:
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["create_shards", "list_shards", "rebalance", "merge_shards", "status", "distribute"],
+                    "enum": [
+                        "create_shards",
+                        "list_shards",
+                        "rebalance",
+                        "merge_shards",
+                        "status",
+                        "distribute",
+                    ],
                 },
                 "dataset": {"type": ["string", "null"]},
                 "num_shards": {"type": "integer", "minimum": 1, "default": 4},
@@ -451,7 +473,11 @@ def register_native_index_management_tools(manager: Any) -> None:
             "properties": {
                 "index_id": {"type": ["string", "null"]},
                 "metrics": {"type": ["array", "null"], "items": {"type": "string"}},
-                "time_range": {"type": "string", "enum": ["1h", "6h", "24h", "7d", "30d"], "default": "24h"},
+                "time_range": {
+                    "type": "string",
+                    "enum": ["1h", "6h", "24h", "7d", "30d"],
+                    "default": "24h",
+                },
                 "include_details": {"type": "boolean", "default": False},
             },
             "required": [],
@@ -491,7 +517,11 @@ def register_native_index_management_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "dataset": {"type": "string", "minLength": 1},
-                "action": {"type": "string", "enum": ["create", "reload", "optimize"], "default": "create"},
+                "action": {
+                    "type": "string",
+                    "enum": ["create", "reload", "optimize"],
+                    "default": "create",
+                },
                 "num_shards": {"type": "integer", "minimum": 1, "default": 4},
                 "optimization_level": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1},
                 "include_status": {"type": "boolean", "default": True},

@@ -36,6 +36,18 @@ ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID = (
 ADAPTIVE_THROUGHPUT_BENCHMARK_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.adaptive-throughput-benchmark@2"
 )
+PIPELINE_OVERLAP_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.pipeline-overlap-receipt@1"
+)
+BACKPRESSURE_FAIRNESS_OVERLAP_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.backpressure-fairness-overlap-receipt@1"
+)
+STAGE_ADMISSION_PROFILE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.stage-admission-profile@1"
+)
+CAMPAIGN_RESOURCE_PROFILE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.campaign-resource-profile@1"
+)
 ADAPTIVE_STAGES = (
     "analysis",
     "inference",
@@ -6058,3 +6070,517 @@ __all__ = [
     "lgswf_reserve_vector",
 ]
 
+class CampaignResourceKind(str, Enum):
+    """Independently accounted campaign resource kinds for PGIR admission."""
+
+    CPU = "cpu"
+    GPU = "gpu"
+    PROVER = "prover"
+    IO = "io"
+    TOKEN = "token"
+    PROVIDER = "provider"
+    NETWORK = "network"
+
+
+class ExclusiveAuthority(str, Enum):
+    """Shared mutable authorities that must be serialized by lease key."""
+
+    TOKENIZER = "tokenizer"
+    CHECKPOINT = "checkpoint"
+    CORPUS = "corpus"
+    SPLIT = "split"
+    COMPILER_CONTRACT = "compiler-contract"
+    LOSS_CONFIG = "loss-config"
+    PROOF_SHARD = "proof-shard"
+    EVALUATION_SHARD = "evaluation-shard"
+    PROMOTION_POINTER = "promotion-pointer"
+    PUBLICATION = "publication"
+
+
+class PipelineHazard(str, Enum):
+    """Fail-closed overlap and admission hazards for campaign pipelines."""
+
+    UNSEALED_DATA = "unsealed_data"
+    STALE_TRACE = "stale_trace"
+    CHECKPOINT_COLLISION = "checkpoint_collision"
+    INCOMPATIBLE_TOKENIZER_MUTATION = "incompatible_tokenizer_mutation"
+    EXCLUSIVE_AUTHORITY_COLLISION = "exclusive_authority_collision"
+    PROHIBITED_STAGE_OVERLAP = "prohibited_stage_overlap"
+    NETWORK_DENIED = "network_denied"
+    NETWORK_NOT_ALLOWLISTED = "network_not_allowlisted"
+    GPU_TELEMETRY_MISSING = "gpu_telemetry_missing"
+    PROVER_NOT_ADMITTED = "prover_not_admitted"
+    TIMED_OUT = "timed_out"
+
+
+def normalize_campaign_resource_kind(value: Any) -> str:
+    """Return one of the seven campaign resource kinds, or an empty string."""
+
+    raw = str(getattr(value, "value", value) or "").strip().lower()
+    raw = raw.replace(" ", "_").replace("-", "_")
+    aliases = {
+        "cpu": CampaignResourceKind.CPU.value,
+        "host_cpu": CampaignResourceKind.CPU.value,
+        "gpu": CampaignResourceKind.GPU.value,
+        "vram": CampaignResourceKind.GPU.value,
+        "gpu_memory": CampaignResourceKind.GPU.value,
+        "accelerator": CampaignResourceKind.GPU.value,
+        "prover": CampaignResourceKind.PROVER.value,
+        "solver": CampaignResourceKind.PROVER.value,
+        "atp": CampaignResourceKind.PROVER.value,
+        "smt": CampaignResourceKind.PROVER.value,
+        "io": CampaignResourceKind.IO.value,
+        "disk": CampaignResourceKind.IO.value,
+        "artifact": CampaignResourceKind.IO.value,
+        "token": CampaignResourceKind.TOKEN.value,
+        "tokens": CampaignResourceKind.TOKEN.value,
+        "token_budget": CampaignResourceKind.TOKEN.value,
+        "provider": CampaignResourceKind.PROVIDER.value,
+        "llm": CampaignResourceKind.PROVIDER.value,
+        "model": CampaignResourceKind.PROVIDER.value,
+        "network": CampaignResourceKind.NETWORK.value,
+        "https": CampaignResourceKind.NETWORK.value,
+        "hub": CampaignResourceKind.NETWORK.value,
+    }
+    if raw in aliases:
+        return aliases[raw]
+    if raw.startswith("cpu"):
+        return CampaignResourceKind.CPU.value
+    if raw.startswith("gpu"):
+        return CampaignResourceKind.GPU.value
+    if raw.startswith("io") or raw.startswith("disk"):
+        return CampaignResourceKind.IO.value
+    if raw.startswith("llm") or raw.startswith("provider"):
+        return CampaignResourceKind.PROVIDER.value
+    if raw.startswith("token"):
+        return CampaignResourceKind.TOKEN.value
+    if raw.startswith("network") or raw.startswith("https"):
+        return CampaignResourceKind.NETWORK.value
+    if "prover" in raw or "solver" in raw or raw.startswith("cpu_proof"):
+        return CampaignResourceKind.PROVER.value
+    return ""
+
+
+def normalize_exclusive_authority(value: Any) -> str:
+    raw = str(getattr(value, "value", value) or "").strip().lower()
+    raw = raw.replace(" ", "_").replace("/", "-")
+    aliases = {
+        "tokenizer": ExclusiveAuthority.TOKENIZER.value,
+        "vocab": ExclusiveAuthority.TOKENIZER.value,
+        "vocabulary": ExclusiveAuthority.TOKENIZER.value,
+        "checkpoint": ExclusiveAuthority.CHECKPOINT.value,
+        "ckpt": ExclusiveAuthority.CHECKPOINT.value,
+        "corpus": ExclusiveAuthority.CORPUS.value,
+        "split": ExclusiveAuthority.SPLIT.value,
+        "compiler": ExclusiveAuthority.COMPILER_CONTRACT.value,
+        "compiler_contract": ExclusiveAuthority.COMPILER_CONTRACT.value,
+        "compiler-contract": ExclusiveAuthority.COMPILER_CONTRACT.value,
+        "loss": ExclusiveAuthority.LOSS_CONFIG.value,
+        "loss_config": ExclusiveAuthority.LOSS_CONFIG.value,
+        "loss-config": ExclusiveAuthority.LOSS_CONFIG.value,
+        "proof": ExclusiveAuthority.PROOF_SHARD.value,
+        "proof_shard": ExclusiveAuthority.PROOF_SHARD.value,
+        "proof-shard": ExclusiveAuthority.PROOF_SHARD.value,
+        "evaluation": ExclusiveAuthority.EVALUATION_SHARD.value,
+        "evaluation_shard": ExclusiveAuthority.EVALUATION_SHARD.value,
+        "evaluation-shard": ExclusiveAuthority.EVALUATION_SHARD.value,
+        "promotion": ExclusiveAuthority.PROMOTION_POINTER.value,
+        "promotion_pointer": ExclusiveAuthority.PROMOTION_POINTER.value,
+        "promotion-pointer": ExclusiveAuthority.PROMOTION_POINTER.value,
+        "publication": ExclusiveAuthority.PUBLICATION.value,
+    }
+    compact = raw.replace("_", "-")
+    return aliases.get(raw) or aliases.get(compact) or compact
+
+
+def campaign_stages_may_overlap(left: Any, right: Any) -> bool:
+    """Return whether two pipeline stages may share a host when otherwise safe."""
+
+    first = normalize_adaptive_stage(left)
+    second = normalize_adaptive_stage(right)
+    if first == second:
+        return first not in _SERIAL_STAGES
+    pair = frozenset((first, second))
+    if pair in _SAFE_STAGE_OVERLAPS:
+        return True
+    if first in _SERIAL_STAGES or second in _SERIAL_STAGES:
+        return False
+    left_kinds = set(_STAGE_RESOURCE_KINDS.get(first, (CampaignResourceKind.CPU.value,)))
+    right_kinds = set(_STAGE_RESOURCE_KINDS.get(second, (CampaignResourceKind.CPU.value,)))
+    contended = left_kinds.intersection(right_kinds)
+    contended.discard(CampaignResourceKind.CPU.value)
+    return not contended
+
+
+@dataclass(frozen=True)
+class StageAdmissionProfile:
+    """Explainable admission profile for one campaign or supervisor stage."""
+
+    stage: str
+    resource_kinds: tuple[str, ...]
+    exclusive_authorities: tuple[str, ...] = ()
+    overlap_safe_stages: tuple[str, ...] = ()
+    requires_sealed_inputs: bool = False
+    mutates_tokenizer: bool = False
+    mutates_checkpoint: bool = False
+    requires_network: bool = False
+    requires_gpu: bool = False
+    requires_prover: bool = False
+    requires_provider: bool = False
+    resource_class: str = "cpu-medium"
+    pool: str = "cpu-proof"
+    schema: str = STAGE_ADMISSION_PROFILE_SCHEMA
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "stage", normalize_adaptive_stage(self.stage))
+        kinds = tuple(
+            dict.fromkeys(
+                kind
+                for kind in (
+                    normalize_campaign_resource_kind(item) for item in self.resource_kinds
+                )
+                if kind
+            )
+        )
+        if not kinds:
+            raise ValueError("stage admission profile must declare resource kinds")
+        object.__setattr__(self, "resource_kinds", kinds)
+        authorities = tuple(
+            dict.fromkeys(
+                normalize_exclusive_authority(item)
+                for item in self.exclusive_authorities
+                if str(item).strip()
+            )
+        )
+        object.__setattr__(self, "exclusive_authorities", authorities)
+        object.__setattr__(
+            self,
+            "overlap_safe_stages",
+            tuple(
+                dict.fromkeys(
+                    normalize_adaptive_stage(item) for item in self.overlap_safe_stages
+                )
+            ),
+        )
+        if not str(self.resource_class).strip():
+            raise ValueError("resource_class must be non-empty")
+        if not str(self.pool).strip():
+            raise ValueError("pool must be non-empty")
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["resource_kinds"] = list(self.resource_kinds)
+        payload["exclusive_authorities"] = list(self.exclusive_authorities)
+        payload["overlap_safe_stages"] = list(self.overlap_safe_stages)
+        return payload
+
+
+def stage_admission_profile(stage: Any) -> StageAdmissionProfile:
+    """Return the campaign admission profile for ``stage``."""
+
+    name = normalize_adaptive_stage(stage)
+    adaptive = adaptive_stage_profile(name)
+    authorities = _STAGE_EXCLUSIVE_AUTHORITIES.get(name, ())
+    kinds = _STAGE_RESOURCE_KINDS.get(
+        name,
+        (CampaignResourceKind.CPU.value,),
+    )
+    companions = tuple(
+        other
+        for other in (*CANONICAL_ADAPTIVE_STAGES, *CAMPAIGN_PIPELINE_STAGES)
+        if other != name and campaign_stages_may_overlap(name, other)
+    )
+    return StageAdmissionProfile(
+        stage=name,
+        resource_kinds=kinds,
+        exclusive_authorities=authorities,
+        overlap_safe_stages=companions,
+        requires_sealed_inputs=name in _SEALED_INPUT_STAGES,
+        mutates_tokenizer=name == "tokenizer",
+        mutates_checkpoint=name == "checkpoint",
+        requires_network=CampaignResourceKind.NETWORK.value in kinds,
+        requires_gpu=CampaignResourceKind.GPU.value in kinds,
+        requires_prover=CampaignResourceKind.PROVER.value in kinds,
+        requires_provider=bool(adaptive.requires_provider),
+        resource_class=adaptive.resource_class,
+        pool=adaptive.pool,
+    )
+
+
+@dataclass(frozen=True)
+class CampaignResourceProfileSpec:
+    """Integer ceilings for one board resource profile."""
+
+    profile: str
+    cpu_count: int
+    memory_bytes: int
+    disk_bytes: int
+    gpu_memory_bytes: int = 0
+    wall_time_ms: int = 0
+    allows_gpu: bool = False
+    allows_provider: bool = False
+    allows_prover: bool = False
+    allows_network: bool = False
+    deny_missing_gpu_telemetry: bool = False
+    network_allowlist: tuple[str, ...] = ()
+    resource_kinds: tuple[str, ...] = (CampaignResourceKind.CPU.value,)
+    resource_class: str = "cpu-medium"
+    process_slots: int = 1
+    schema: str = CAMPAIGN_RESOURCE_PROFILE_SCHEMA
+
+    def __post_init__(self) -> None:
+        if not str(self.profile).strip():
+            raise ValueError("resource profile must be non-empty")
+        object.__setattr__(self, "profile", str(self.profile).strip().upper())
+        for name in (
+            "cpu_count",
+            "memory_bytes",
+            "disk_bytes",
+            "gpu_memory_bytes",
+            "wall_time_ms",
+            "process_slots",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        if self.process_slots <= 0:
+            raise ValueError("process_slots must be a positive integer")
+        object.__setattr__(
+            self,
+            "resource_kinds",
+            tuple(
+                dict.fromkeys(
+                    kind
+                    for kind in (
+                        normalize_campaign_resource_kind(item)
+                        for item in self.resource_kinds
+                    )
+                    if kind
+                )
+            )
+            or (CampaignResourceKind.CPU.value,),
+        )
+        object.__setattr__(
+            self,
+            "network_allowlist",
+            tuple(
+                dict.fromkeys(
+                    str(item).strip() for item in self.network_allowlist if str(item).strip()
+                )
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["resource_kinds"] = list(self.resource_kinds)
+        payload["network_allowlist"] = list(self.network_allowlist)
+        return payload
+
+    def to_requirement(
+        self,
+        lane_id: str,
+        *,
+        stage: Any = "execution",
+        **overrides: Any,
+    ) -> "LaneResourceRequirements":
+        """Materialize a lane claim that cannot exceed this profile's ceiling."""
+
+        values: dict[str, Any] = {
+            "lane_id": lane_id,
+            "stage": stage,
+            "resource_class": self.resource_class,
+            "memory_bytes": self.memory_bytes,
+            "disk_bytes": self.disk_bytes,
+            "gpu_memory_bytes": self.gpu_memory_bytes,
+            "process_slots": self.process_slots,
+            "timeout_ms": self.wall_time_ms,
+            "resource_profile": self.profile,
+            "requires_gpu": self.allows_gpu and self.deny_missing_gpu_telemetry,
+            "requires_prover": self.allows_prover,
+            "requires_network": self.allows_network,
+            "requires_provider": self.allows_provider,
+            "network_allowlist": self.network_allowlist,
+            "claimed_resource_kinds": self.resource_kinds,
+        }
+        values.update(overrides)
+        return LaneResourceRequirements.from_mapping(values)
+
+
+def campaign_resource_profile_spec(profile: Any) -> CampaignResourceProfileSpec:
+    """Return the closed board profile for ``profile``."""
+
+    raw = str(getattr(profile, "value", profile) or "").strip().upper()
+    spec = CAMPAIGN_RESOURCE_PROFILE_SPECS.get(raw)
+    if spec is None:
+        raise ValueError(f"unsupported campaign resource profile: {profile!r}")
+    return spec
+
+
+def lane_requirements_for_resource_profile(
+    lane_id: str,
+    profile: Any,
+    *,
+    stage: Any = "execution",
+    **overrides: Any,
+) -> "LaneResourceRequirements":
+    """Build a lane claim from a board resource profile."""
+
+    return campaign_resource_profile_spec(profile).to_requirement(
+        lane_id,
+        stage=stage,
+        **overrides,
+    )
+
+
+@dataclass(frozen=True)
+class PipelineOverlapReceipt:
+    """Content-addressed decision for one lane against live overlapping work."""
+
+    lane_id: str
+    stage: str
+    admitted: bool
+    resource_kinds: tuple[str, ...]
+    overlapping_lane_ids: tuple[str, ...] = ()
+    overlapping_stages: tuple[str, ...] = ()
+    exclusive_authorities: tuple[str, ...] = ()
+    hazards: tuple[str, ...] = ()
+    reasons: tuple[str, ...] = ()
+    fairness_key: str = ""
+    observed_at_ms: int = 0
+    schema: str = PIPELINE_OVERLAP_RECEIPT_SCHEMA
+    content_digest: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "stage", normalize_adaptive_stage(self.stage))
+        object.__setattr__(
+            self,
+            "resource_kinds",
+            tuple(
+                dict.fromkeys(
+                    kind
+                    for kind in (
+                        normalize_campaign_resource_kind(item)
+                        for item in self.resource_kinds
+                    )
+                    if kind
+                )
+            ),
+        )
+        for name in (
+            "overlapping_lane_ids",
+            "overlapping_stages",
+            "exclusive_authorities",
+            "hazards",
+            "reasons",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                tuple(dict.fromkeys(str(item) for item in getattr(self, name) if str(item))),
+            )
+        expected = _canonical_digest(self._unsigned_dict())
+        if self.content_digest and self.content_digest != expected:
+            raise ValueError("pipeline overlap receipt content digest mismatch")
+        object.__setattr__(self, "content_digest", expected)
+
+    def _unsigned_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "lane_id": self.lane_id,
+            "stage": self.stage,
+            "admitted": self.admitted,
+            "resource_kinds": list(self.resource_kinds),
+            "overlapping_lane_ids": list(self.overlapping_lane_ids),
+            "overlapping_stages": list(self.overlapping_stages),
+            "exclusive_authorities": list(self.exclusive_authorities),
+            "hazards": list(self.hazards),
+            "reasons": list(self.reasons),
+            "fairness_key": self.fairness_key,
+            "observed_at_ms": self.observed_at_ms,
+        }
+
+    @property
+    def allowed(self) -> bool:
+        return self.admitted
+
+    @property
+    def reason(self) -> str:
+        return self.reasons[0] if self.reasons else ""
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = self._unsigned_dict()
+        payload["content_digest"] = self.content_digest
+        payload["allowed"] = self.allowed
+        payload["reason"] = self.reason
+        return payload
+
+
+@dataclass(frozen=True)
+class BackpressureFairnessOverlapReceipt:
+    """Batch receipt covering fairness order, hazards, and overlap outcomes."""
+
+    observed_at_ms: int
+    fairness_order: tuple[str, ...]
+    admitted_lane_ids: tuple[str, ...]
+    backpressured_lane_ids: tuple[str, ...]
+    cancelled_lane_ids: tuple[str, ...] = ()
+    timed_out_lane_ids: tuple[str, ...] = ()
+    hazard_counts: Mapping[str, int] = field(default_factory=dict)
+    backpressure_counts: Mapping[str, int] = field(default_factory=dict)
+    overlap_receipts: tuple[PipelineOverlapReceipt, ...] = ()
+    stage_admission_profiles: tuple[StageAdmissionProfile, ...] = ()
+    schema: str = BACKPRESSURE_FAIRNESS_OVERLAP_RECEIPT_SCHEMA
+    content_digest: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "fairness_order", tuple(self.fairness_order))
+        object.__setattr__(self, "admitted_lane_ids", tuple(self.admitted_lane_ids))
+        object.__setattr__(
+            self, "backpressured_lane_ids", tuple(self.backpressured_lane_ids)
+        )
+        object.__setattr__(self, "cancelled_lane_ids", tuple(self.cancelled_lane_ids))
+        object.__setattr__(self, "timed_out_lane_ids", tuple(self.timed_out_lane_ids))
+        object.__setattr__(
+            self,
+            "hazard_counts",
+            {
+                str(name): int(value)
+                for name, value in sorted(self.hazard_counts.items())
+                if int(value) > 0
+            },
+        )
+        object.__setattr__(
+            self,
+            "backpressure_counts",
+            {
+                str(name): int(value)
+                for name, value in sorted(self.backpressure_counts.items())
+                if int(value) > 0
+            },
+        )
+        expected = _canonical_digest(self._unsigned_dict())
+        if self.content_digest and self.content_digest != expected:
+            raise ValueError("fairness overlap receipt content digest mismatch")
+        object.__setattr__(self, "content_digest", expected)
+
+    def _unsigned_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "observed_at_ms": self.observed_at_ms,
+            "fairness_order": list(self.fairness_order),
+            "admitted_lane_ids": list(self.admitted_lane_ids),
+            "backpressured_lane_ids": list(self.backpressured_lane_ids),
+            "cancelled_lane_ids": list(self.cancelled_lane_ids),
+            "timed_out_lane_ids": list(self.timed_out_lane_ids),
+            "hazard_counts": dict(self.hazard_counts),
+            "backpressure_counts": dict(self.backpressure_counts),
+            "overlap_receipts": [item.to_dict() for item in self.overlap_receipts],
+            "stage_admission_profiles": [
+                item.to_dict() for item in self.stage_admission_profiles
+            ],
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = self._unsigned_dict()
+        payload["content_digest"] = self.content_digest
+        return payload

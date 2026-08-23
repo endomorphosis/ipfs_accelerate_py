@@ -44,9 +44,7 @@ from ..validation.validation_commands import split_validation_commands
 
 
 DEFAULT_TODO_VECTOR_INDEX_SCHEMA = "ipfs_accelerate_py.agent_supervisor.todo_vector_index"
-DEFAULT_TODO_COVERAGE_INPUTS_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.todo_coverage_inputs/v1"
-)
+DEFAULT_TODO_COVERAGE_INPUTS_SCHEMA = "ipfs_accelerate_py.agent_supervisor.todo_coverage_inputs/v1"
 UNMAPPED_GOAL_BUCKET = "__unmapped__"
 DEFAULT_EXECUTION_PACKET_MAX_TASKS = 6
 
@@ -161,8 +159,7 @@ def parse_string_list_mapping(value: Any) -> dict[str, list[str]]:
     return {
         str(key).strip(): sorted_unique(
             raw
-            if isinstance(raw, Sequence)
-            and not isinstance(raw, (str, bytes, bytearray))
+            if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes, bytearray))
             else split_csv(str(raw or ""))
         )
         for key, raw in sorted(value.items(), key=lambda item: str(item[0]))
@@ -180,7 +177,9 @@ def split_acceptance_criteria(value: str | Sequence[str]) -> list[str]:
     """
 
     if not isinstance(value, str):
-        return list(dict.fromkeys(" ".join(str(item).split()) for item in value if str(item).strip()))
+        return list(
+            dict.fromkeys(" ".join(str(item).split()) for item in value if str(item).strip())
+        )
     text = value.strip()
     if not text:
         return []
@@ -191,9 +190,7 @@ def split_acceptance_criteria(value: str | Sequence[str]) -> list[str]:
             decoded = None
         if isinstance(decoded, list):
             return list(
-                dict.fromkeys(
-                    " ".join(str(item).split()) for item in decoded if str(item).strip()
-                )
+                dict.fromkeys(" ".join(str(item).split()) for item in decoded if str(item).strip())
             )
 
     criteria: list[str] = []
@@ -238,7 +235,10 @@ def _json_safe(value: Any) -> Any:
     """Return a deterministic JSON-compatible metadata value."""
 
     if isinstance(value, Mapping):
-        return {str(key): _json_safe(item) for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))}
+        return {
+            str(key): _json_safe(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
     if isinstance(value, (list, tuple)):
         return [_json_safe(item) for item in value]
     if value is None or isinstance(value, (str, int, float, bool)):
@@ -284,7 +284,9 @@ def parse_validation_receipts(fields: Mapping[str, str]) -> list[dict[str, Any]]
             if fingerprint not in seen:
                 seen.add(fingerprint)
                 receipts.append(receipt)
-    return sorted(receipts, key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":")))
+    return sorted(
+        receipts, key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":"))
+    )
 
 
 def parse_provenance_cids(
@@ -327,7 +329,9 @@ def normalize_metadata_key(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
 
 
-def parse_todo_blocks(todo_text: str, *, task_header_prefix: str) -> list[tuple[str, str, int, dict[str, str]]]:
+def parse_todo_blocks(
+    todo_text: str, *, task_header_prefix: str
+) -> list[tuple[str, str, int, dict[str, str]]]:
     """Parse markdown todo blocks and keep all metadata fields."""
 
     prefix = task_header_prefix.strip()
@@ -380,7 +384,9 @@ def infer_missing_evidence(fields: Mapping[str, str], acceptance: str) -> list[s
     direct = split_csv(str(fields.get("missing_evidence") or ""))
     if direct:
         return direct
-    match = re.search(r"missing evidence terms are covered\s+\(([^)]+)\)", acceptance, flags=re.IGNORECASE)
+    match = re.search(
+        r"missing evidence terms are covered\s+\(([^)]+)\)", acceptance, flags=re.IGNORECASE
+    )
     return split_csv(match.group(1)) if match else []
 
 
@@ -484,7 +490,9 @@ def _all_csv(fields: Mapping[str, str], *keys: str) -> list[str]:
     return sorted(values)
 
 
-def collect_output_symbols(repo_root: Path, outputs: Sequence[str], *, max_file_bytes: int = 262144) -> list[str]:
+def collect_output_symbols(
+    repo_root: Path, outputs: Sequence[str], *, max_file_bytes: int = 262144
+) -> list[str]:
     symbols: set[str] = set()
     for output in outputs:
         relative = str(output).strip()
@@ -520,7 +528,9 @@ def _record_coverage_inputs(
     """Project one todo into explainable goal-coverage evidence."""
 
     goal_bucket = record.goal_id or UNMAPPED_GOAL_BUCKET
-    prior_assignment = record.coverage_inputs.get("goal_assignment") if record.coverage_inputs else None
+    prior_assignment = (
+        record.coverage_inputs.get("goal_assignment") if record.coverage_inputs else None
+    )
     if goal_assignment_method is None and isinstance(prior_assignment, Mapping):
         goal_assignment_method = str(prior_assignment.get("method") or "")
     assignment_method = goal_assignment_method or (
@@ -536,9 +546,7 @@ def _record_coverage_inputs(
             "estimated_tokens": record.estimated_tokens,
             "estimated_validation_seconds": record.estimated_validation_seconds,
         },
-        "task_work_contract": build_task_work_contract(
-            record.to_dict()
-        ).to_dict(),
+        "task_work_contract": build_task_work_contract(record.to_dict()).to_dict(),
         "changed_files": sorted_unique(record.changed_paths),
         "changed_paths": sorted_unique(record.changed_paths),
         "ast_symbols": sorted_unique(record.ast_symbols),
@@ -603,9 +611,7 @@ def _record_coverage_inputs(
                     "goal_assignment_method": assignment_method,
                     "source_line": record.source_line,
                     "source_fields": source_fields,
-                    "evidence_counts": {
-                        name: len(values) for name, values in dimensions.items()
-                    },
+                    "evidence_counts": {name: len(values) for name, values in dimensions.items()},
                     "deterministic": True,
                 },
             }
@@ -688,7 +694,14 @@ def build_todo_coverage_inputs(records: Sequence[TodoIndexRecord]) -> dict[str, 
             "edge_ids": [edge["edge_id"] for edge in goal_edges],
         }
 
-    edges.sort(key=lambda item: (item["goal_bucket"], item["criterion_id"], item["task_id"], item["edge_id"]))
+    edges.sort(
+        key=lambda item: (
+            item["goal_bucket"],
+            item["criterion_id"],
+            item["task_id"],
+            item["edge_id"],
+        )
+    )
     criteria = [
         {
             "criterion_id": edge["criterion_id"],
@@ -729,7 +742,9 @@ def parse_todo_vector_records(
         return []
     todo_text = todo_path.read_text(encoding="utf-8")
     records: list[TodoIndexRecord] = []
-    for task_id, title, source_line, fields in parse_todo_blocks(todo_text, task_header_prefix=task_header_prefix):
+    for task_id, title, source_line, fields in parse_todo_blocks(
+        todo_text, task_header_prefix=task_header_prefix
+    ):
         outputs = split_csv(fields.get("outputs", ""))
         acceptance = str(fields.get("acceptance") or "")
         acceptance_criteria = split_acceptance_criteria(
@@ -756,11 +771,14 @@ def parse_todo_vector_records(
             ast_query=ast_query,
         )
         candidate_kind = str(fields.get("candidate_kind") or "").strip()
-        merge_family = str(fields.get("merge_family") or surplus_group or goal_id or merge_key).strip()
+        merge_family = str(
+            fields.get("merge_family") or surplus_group or goal_id or merge_key
+        ).strip()
         merge_role = str(fields.get("merge_role") or candidate_kind or "candidate").strip()
-        vector_key = str(fields.get("todo_vector_key") or "").strip() or sha1(
-            f"{task_id}\0{merge_key}".encode("utf-8")
-        ).hexdigest()[:16]
+        vector_key = (
+            str(fields.get("todo_vector_key") or "").strip()
+            or sha1(f"{task_id}\0{merge_key}".encode("utf-8")).hexdigest()[:16]
+        )
         task_identity = canonical_task_identity(
             {
                 "task_id": task_id,
@@ -816,16 +834,10 @@ def parse_todo_vector_records(
                 "resource_needs",
             ),
             provider_batch_key=str(
-                fields.get("provider_batch_key")
-                or fields.get("provider_compatibility_key")
-                or ""
+                fields.get("provider_batch_key") or fields.get("provider_compatibility_key") or ""
             ).strip(),
-            provider_id=str(
-                fields.get("provider_id") or fields.get("llm_provider") or ""
-            ).strip(),
-            provider_route=str(
-                fields.get("provider_route") or fields.get("route") or ""
-            ).strip(),
+            provider_id=str(fields.get("provider_id") or fields.get("llm_provider") or "").strip(),
+            provider_route=str(fields.get("provider_route") or fields.get("route") or "").strip(),
             model_id=str(fields.get("model_id") or fields.get("model") or "").strip(),
             provider_operation=str(
                 fields.get("provider_operation")
@@ -834,22 +846,17 @@ def parse_todo_vector_records(
                 or ""
             ).strip(),
             provider_context_limit=parse_int(
-                fields.get("provider_context_limit")
-                or fields.get("context_limit"),
+                fields.get("provider_context_limit") or fields.get("context_limit"),
                 0,
             ),
             provider_policy_digest=str(fields.get("policy_digest") or "").strip(),
-            provider_generation_digest=str(
-                fields.get("generation_digest") or ""
-            ).strip(),
+            provider_generation_digest=str(fields.get("generation_digest") or "").strip(),
             estimated_context_tokens=parse_int(
-                fields.get("estimated_context_tokens")
-                or fields.get("context_tokens"),
+                fields.get("estimated_context_tokens") or fields.get("context_tokens"),
                 0,
             ),
             estimated_tokens=parse_int(
-                fields.get("estimated_tokens")
-                or fields.get("token_cost"),
+                fields.get("estimated_tokens") or fields.get("token_cost"),
                 0,
             ),
             estimated_validation_seconds=parse_int(
@@ -865,30 +872,33 @@ def parse_todo_vector_records(
             merge_role=merge_role,
             work_item_count=parse_int(fields.get("work_item_count"), len(missing_evidence)),
             work_scope=str(fields.get("work_scope") or "").strip(),
-            goal_packet_key=str(fields.get("goal_packet") or fields.get("goal_packet_key") or "").strip(),
+            goal_packet_key=str(
+                fields.get("goal_packet") or fields.get("goal_packet_key") or ""
+            ).strip(),
             goal_packet_role=str(fields.get("goal_packet_role") or "").strip(),
-            goal_packet_goal_ids=split_csv(fields.get("goal_packet_goals") or fields.get("goal_packet_goal_ids") or ""),
+            goal_packet_goal_ids=split_csv(
+                fields.get("goal_packet_goals") or fields.get("goal_packet_goal_ids") or ""
+            ),
             goal_packet_task_count=parse_int(fields.get("goal_packet_task_count"), 0),
             goal_packet_work_item_count=parse_int(fields.get("goal_packet_work_item_count"), 0),
             candidate_kind=candidate_kind,
             vector_key=vector_key,
             ast_symbols=sorted_unique(
-                [*split_csv(fields.get("ast_symbols", "")), *collect_output_symbols(repo_root, outputs)]
+                [
+                    *split_csv(fields.get("ast_symbols", "")),
+                    *collect_output_symbols(repo_root, outputs),
+                ]
             ),
             canonical_task_key=task_identity.canonical_task_key,
             canonical_task_cid=task_identity.canonical_task_cid,
             task_cid=task_identity.canonical_task_cid,
             semantic_identity=str(
-                fields.get("canonical_semantic_identity")
-                or fields.get("semantic_identity")
-                or ""
+                fields.get("canonical_semantic_identity") or fields.get("semantic_identity") or ""
             ).strip(),
             completion_goal_bindings=parse_string_list_mapping(
                 fields.get("completion_goal_bindings") or {}
             ),
-            completion_task_bindings=split_csv(
-                fields.get("completion_task_bindings") or ""
-            ),
+            completion_task_bindings=split_csv(fields.get("completion_task_bindings") or ""),
             predicted_files=sorted_unique(
                 [*_first_csv(fields, "predicted_files", "files"), *outputs]
             ),
@@ -897,7 +907,9 @@ def parse_todo_vector_records(
                 "predicted_symbols",
                 "ast_symbols",
             ),
-            changed_paths=_first_csv(fields, "changed_paths", "actual_changed_paths", "branch_diff_paths"),
+            changed_paths=_first_csv(
+                fields, "changed_paths", "actual_changed_paths", "branch_diff_paths"
+            ),
             interfaces=_all_csv(
                 fields,
                 "interfaces",
@@ -939,12 +951,8 @@ def parse_todo_vector_records(
             ),
             work_contract=dict(surface_payload.get("work_contract") or {}),
             work_contract_id=str(surface_payload.get("work_contract_id") or ""),
-            task_work_contract=dict(
-                surface_payload.get("task_work_contract") or {}
-            ),
-            task_work_contract_id=str(
-                surface_payload.get("task_work_contract_id") or ""
-            ),
+            task_work_contract=dict(surface_payload.get("task_work_contract") or {}),
+            task_work_contract_id=str(surface_payload.get("task_work_contract_id") or ""),
             conflict_surface=surface_payload,
         )
         base_record = replace_record(
@@ -967,7 +975,9 @@ def parse_todo_vector_records(
     return attach_related_task_ids(records)
 
 
-def attach_related_task_ids(records: Sequence[TodoIndexRecord], *, max_related: int = 5) -> list[TodoIndexRecord]:
+def attach_related_task_ids(
+    records: Sequence[TodoIndexRecord], *, max_related: int = 5
+) -> list[TodoIndexRecord]:
     """Annotate records with nearest related tasks for compact prompt context."""
 
     related: list[TodoIndexRecord] = []
@@ -990,11 +1000,19 @@ def attach_related_task_ids(records: Sequence[TodoIndexRecord], *, max_related: 
                 score += 0.20
             other_symbols = set(other.ast_symbols)
             if record_symbols and other_symbols:
-                score += min(0.25, len(record_symbols & other_symbols) / max(1, len(record_symbols | other_symbols)))
+                score += min(
+                    0.25,
+                    len(record_symbols & other_symbols)
+                    / max(1, len(record_symbols | other_symbols)),
+                )
             if score > 0:
                 scored.append((score, other.task_id))
         scored.sort(key=lambda item: (-item[0], item[1]))
-        related.append(replace_record(record, related_task_ids=[task_id for _score, task_id in scored[:max_related]]))
+        related.append(
+            replace_record(
+                record, related_task_ids=[task_id for _score, task_id in scored[:max_related]]
+            )
+        )
     return related
 
 
@@ -1028,7 +1046,9 @@ def cluster_records(
                 selected = cluster
                 best_score = 0.9
                 break
-            if record.goal_packet_key and record.goal_packet_key in cluster.get("goal_packet_keys", []):
+            if record.goal_packet_key and record.goal_packet_key in cluster.get(
+                "goal_packet_keys", []
+            ):
                 selected = cluster
                 best_score = 0.85
                 break
@@ -1039,7 +1059,9 @@ def cluster_records(
                 best_score = score
                 selected = cluster
         if selected is None or best_score < min_score:
-            key_source = record.bundle_key or record.surplus_group or record.merge_key or record.task_id
+            key_source = (
+                record.bundle_key or record.surplus_group or record.merge_key or record.task_id
+            )
             selected = {
                 "cluster_key": f"todo/{safe_bundle_key(record.track or 'ops')}/{sha1(key_source.encode('utf-8')).hexdigest()[:8]}",
                 "bundle_key": record.bundle_key,
@@ -1065,7 +1087,9 @@ def cluster_records(
         selected_symbols = set(selected.get("ast_symbols") or [])
         selected_symbols.update(record.ast_symbols)
         selected["ast_symbols"] = sorted(selected_symbols)[:200]
-        selected["estimated_prompt_tokens"] = int(selected.get("estimated_prompt_tokens") or 0) + record.token_count
+        selected["estimated_prompt_tokens"] = (
+            int(selected.get("estimated_prompt_tokens") or 0) + record.token_count
+        )
         vectors = [item.embedding for item in records if item.task_id in selected["task_ids"]]
         if vectors:
             averaged = [sum(values) / len(vectors) for values in zip(*vectors)]
@@ -1081,7 +1105,10 @@ def cluster_records(
         cluster["centroid_sha1"] = sha1(
             json.dumps(cluster.pop("centroid", []), sort_keys=True).encode("utf-8")
         ).hexdigest()
-    return sorted(clusters, key=lambda item: (str(item.get("bundle_key") or ""), str(item.get("cluster_key") or "")))
+    return sorted(
+        clusters,
+        key=lambda item: (str(item.get("bundle_key") or ""), str(item.get("cluster_key") or "")),
+    )
 
 
 def active_record(record: TodoIndexRecord) -> bool:
@@ -1096,7 +1123,9 @@ def sorted_unique_receipts(values: Sequence[Mapping[str, Any]]) -> list[dict[str
     """Deduplicate structured receipts by their canonical JSON form."""
 
     by_fingerprint = {
-        json.dumps(_json_safe(value), sort_keys=True, separators=(",", ":")): dict(_json_safe(value))
+        json.dumps(_json_safe(value), sort_keys=True, separators=(",", ":")): dict(
+            _json_safe(value)
+        )
         for value in values
     }
     return [by_fingerprint[key] for key in sorted(by_fingerprint)]
@@ -1118,15 +1147,11 @@ def _task_work_contract_projection(
             ),
         )
     ]
-    contract_ids = [
-        str(item.get("task_work_contract_id") or "") for item in contracts
-    ]
+    contract_ids = [str(item.get("task_work_contract_id") or "") for item in contracts]
     if any(not value for value in contract_ids):
         raise ValueError("task work contracts must have canonical identities")
     return contracts, {
-        "estimated_context_tokens": sum(
-            record.estimated_context_tokens for record in records
-        ),
+        "estimated_context_tokens": sum(record.estimated_context_tokens for record in records),
         "estimated_tokens": sum(record.estimated_tokens for record in records),
         "estimated_validation_seconds": sum(
             record.estimated_validation_seconds for record in records
@@ -1150,18 +1175,32 @@ def build_merge_candidate(
     all_outputs = sorted_unique([output for record in records for output in record.outputs])
     output_sets = [set(record.outputs) for record in records]
     shared_outputs = sorted(output_sets[0].intersection(*output_sets[1:])) if output_sets else []
-    ast_symbols = sorted_unique([symbol for record in records for symbol in record.ast_symbols])[:80]
-    missing_evidence = sorted_unique([item for record in records for item in record.missing_evidence])
+    ast_symbols = sorted_unique([symbol for record in records for symbol in record.ast_symbols])[
+        :80
+    ]
+    missing_evidence = sorted_unique(
+        [item for record in records for item in record.missing_evidence]
+    )
     work_counts = [record.work_item_count for record in records if record.work_item_count > 0]
-    packet_work_counts = [record.goal_packet_work_item_count for record in records if record.goal_packet_work_item_count > 0]
+    packet_work_counts = [
+        record.goal_packet_work_item_count
+        for record in records
+        if record.goal_packet_work_item_count > 0
+    ]
     graph_depths = [record.graph_depth for record in records if record.graph_depth >= 0]
     task_work_contracts, estimated_costs = _task_work_contract_projection(records)
-    candidate_seed = json.dumps({"group_type": group_type, "group_value": group_value, "task_ids": task_ids}, sort_keys=True)
+    candidate_seed = json.dumps(
+        {"group_type": group_type, "group_value": group_value, "task_ids": task_ids}, sort_keys=True
+    )
     exact_merge_key_count = len({record.merge_key for record in records if record.merge_key})
     if group_type == "merge_key":
         confidence = "high"
     elif group_type == "goal_packet_key":
-        confidence = "high" if len({record.goal_id for record in records if record.goal_id}) > 1 else "medium"
+        confidence = (
+            "high"
+            if len({record.goal_id for record in records if record.goal_id}) > 1
+            else "medium"
+        )
     elif group_type == "merge_family" and shared_outputs:
         confidence = "high"
     elif group_type == "merge_family":
@@ -1173,7 +1212,10 @@ def build_merge_candidate(
     merge_ready_task_ids = (
         active_task_ids
         if len(active_task_ids) > 1
-        and (group_type in {"merge_key", "goal_packet_key", "merge_family", "surplus_group"} or bool(shared_outputs))
+        and (
+            group_type in {"merge_key", "goal_packet_key", "merge_family", "surplus_group"}
+            or bool(shared_outputs)
+        )
         else []
     )
     return {
@@ -1183,10 +1225,16 @@ def build_merge_candidate(
         "confidence": confidence,
         "task_ids": task_ids,
         "active_task_ids": active_task_ids,
-        "completed_task_ids": sorted_unique([record.task_id for record in records if record.status == "completed"]),
-        "blocked_task_ids": sorted_unique([record.task_id for record in records if record.status == "blocked"]),
+        "completed_task_ids": sorted_unique(
+            [record.task_id for record in records if record.status == "completed"]
+        ),
+        "blocked_task_ids": sorted_unique(
+            [record.task_id for record in records if record.status == "blocked"]
+        ),
         "goal_ids": sorted_unique([record.goal_id for record in records]),
-        "graph_parent_ids": sorted_unique([parent for record in records for parent in record.graph_parents]),
+        "graph_parent_ids": sorted_unique(
+            [parent for record in records for parent in record.graph_parents]
+        ),
         "graph_depth_min": min(graph_depths) if graph_depths else 0,
         "graph_depth_max": max(graph_depths) if graph_depths else 0,
         "bundle_keys": sorted_unique([record.bundle_key for record in records]),
@@ -1195,35 +1243,40 @@ def build_merge_candidate(
         "merge_roles": sorted_unique([record.merge_role for record in records]),
         "goal_packet_keys": sorted_unique([record.goal_packet_key for record in records]),
         "goal_packet_roles": sorted_unique([record.goal_packet_role for record in records]),
-        "goal_packet_goal_ids": sorted_unique([goal_id for record in records for goal_id in record.goal_packet_goal_ids]),
-        "goal_packet_task_count_max": max([record.goal_packet_task_count for record in records], default=0),
+        "goal_packet_goal_ids": sorted_unique(
+            [goal_id for record in records for goal_id in record.goal_packet_goal_ids]
+        ),
+        "goal_packet_task_count_max": max(
+            [record.goal_packet_task_count for record in records], default=0
+        ),
         "goal_packet_work_item_count_max": max(packet_work_counts) if packet_work_counts else 0,
         "surplus_groups": sorted_unique([record.surplus_group for record in records]),
-        "cluster_keys": sorted_unique([cluster_by_task.get(record.task_id, "") for record in records]),
+        "cluster_keys": sorted_unique(
+            [cluster_by_task.get(record.task_id, "") for record in records]
+        ),
         "shared_outputs": shared_outputs,
         "all_outputs": all_outputs,
-        "predicted_files": sorted_unique([path for record in records for path in record.predicted_files]),
-        "changed_paths": sorted_unique([path for record in records for path in record.changed_paths]),
+        "predicted_files": sorted_unique(
+            [path for record in records for path in record.predicted_files]
+        ),
+        "changed_paths": sorted_unique(
+            [path for record in records for path in record.changed_paths]
+        ),
         "acceptance_criteria": sorted_unique(
             [criterion for record in records for criterion in record.acceptance_criteria]
         ),
-        "effects": sorted_unique(
-            [effect for record in records for effect in record.effects]
-        ),
+        "effects": sorted_unique([effect for record in records for effect in record.effects]),
         "predicted_symbols": sorted_unique(
-            [
-                symbol
-                for record in records
-                for symbol in record.predicted_symbols
-            ]
+            [symbol for record in records for symbol in record.predicted_symbols]
         ),
         "task_work_contracts": task_work_contracts,
         "task_work_contract_ids": [
-            contract["task_work_contract_id"]
-            for contract in task_work_contracts
+            contract["task_work_contract_id"] for contract in task_work_contracts
         ],
         "estimated_costs": estimated_costs,
-        "validation": sorted_unique([command for record in records for command in record.validation]),
+        "validation": sorted_unique(
+            [command for record in records for command in record.validation]
+        ),
         "validation_receipts": sorted_unique_receipts(
             [receipt for record in records for receipt in record.validation_receipts]
         ),
@@ -1274,7 +1327,9 @@ def build_merge_candidates(
             value = str(getter(record) or "")
             if value:
                 by_value.setdefault(value, []).append(record)
-        groups.extend((group_type, value, group_records) for value, group_records in by_value.items())
+        groups.extend(
+            (group_type, value, group_records) for value, group_records in by_value.items()
+        )
 
     records_by_task = {record.task_id: record for record in records}
     for cluster in clusters:
@@ -1282,7 +1337,9 @@ def build_merge_candidates(
         task_ids = cluster.get("task_ids")
         if not cluster_key or not isinstance(task_ids, list):
             continue
-        cluster_records_for_key = [records_by_task[task_id] for task_id in map(str, task_ids) if task_id in records_by_task]
+        cluster_records_for_key = [
+            records_by_task[task_id] for task_id in map(str, task_ids) if task_id in records_by_task
+        ]
         groups.append(("vector_cluster", cluster_key, cluster_records_for_key))
 
     candidates: list[dict[str, Any]] = []
@@ -1363,10 +1420,15 @@ def build_bundle_context(
     )
     merge_ready = len(active_task_ids) > 1 and (
         bool(shared_outputs)
-        or source_type in {"merge_candidate", "merge_key", "goal_packet_key", "merge_family", "surplus_group"}
+        or source_type
+        in {"merge_candidate", "merge_key", "goal_packet_key", "merge_family", "surplus_group"}
         or bool(merge_families)
     )
-    packet_work_counts = [record.goal_packet_work_item_count for record in records if record.goal_packet_work_item_count > 0]
+    packet_work_counts = [
+        record.goal_packet_work_item_count
+        for record in records
+        if record.goal_packet_work_item_count > 0
+    ]
     task_work_contracts, estimated_costs = _task_work_contract_projection(records)
     representative_task_id = active_task_ids[0]
     context: dict[str, Any] = {
@@ -1380,7 +1442,9 @@ def build_bundle_context(
         "merge_ready": merge_ready,
         "merge_ready_task_ids": active_task_ids if merge_ready else [],
         "goal_ids": sorted_unique([record.goal_id for record in records]),
-        "graph_parent_ids": sorted_unique([parent for record in records for parent in record.graph_parents]),
+        "graph_parent_ids": sorted_unique(
+            [parent for record in records for parent in record.graph_parents]
+        ),
         "graph_depth_min": min(graph_depths) if graph_depths else 0,
         "graph_depth_max": max(graph_depths) if graph_depths else 0,
         "bundle_keys": sorted_unique([record.bundle_key for record in records]),
@@ -1389,8 +1453,12 @@ def build_bundle_context(
         "merge_roles": sorted_unique([record.merge_role for record in records]),
         "goal_packet_keys": sorted_unique([record.goal_packet_key for record in records]),
         "goal_packet_roles": sorted_unique([record.goal_packet_role for record in records]),
-        "goal_packet_goal_ids": sorted_unique([goal_id for record in records for goal_id in record.goal_packet_goal_ids]),
-        "goal_packet_task_count_max": max([record.goal_packet_task_count for record in records], default=0),
+        "goal_packet_goal_ids": sorted_unique(
+            [goal_id for record in records for goal_id in record.goal_packet_goal_ids]
+        ),
+        "goal_packet_task_count_max": max(
+            [record.goal_packet_task_count for record in records], default=0
+        ),
         "goal_packet_work_item_count_max": max(packet_work_counts) if packet_work_counts else 0,
         "work_scopes": sorted_unique([record.work_scope for record in records]),
         "work_item_count_min": min(work_counts) if work_counts else 0,
@@ -1400,28 +1468,31 @@ def build_bundle_context(
         "candidate_kinds": sorted_unique([record.candidate_kind for record in records]),
         "shared_outputs": shared_outputs,
         "all_outputs": all_outputs,
-        "validation": sorted_unique([command for record in records for command in record.validation])[:8],
-        "missing_evidence": sorted_unique([item for record in records for item in record.missing_evidence]),
-        "ast_symbols": sorted_unique([symbol for record in records for symbol in record.ast_symbols])[:80],
-        "predicted_files": sorted_unique([path for record in records for path in record.predicted_files]),
-        "changed_paths": sorted_unique([path for record in records for path in record.changed_paths]),
+        "validation": sorted_unique(
+            [command for record in records for command in record.validation]
+        )[:8],
+        "missing_evidence": sorted_unique(
+            [item for record in records for item in record.missing_evidence]
+        ),
+        "ast_symbols": sorted_unique(
+            [symbol for record in records for symbol in record.ast_symbols]
+        )[:80],
+        "predicted_files": sorted_unique(
+            [path for record in records for path in record.predicted_files]
+        ),
+        "changed_paths": sorted_unique(
+            [path for record in records for path in record.changed_paths]
+        ),
         "acceptance_criteria": sorted_unique(
             [criterion for record in records for criterion in record.acceptance_criteria]
         ),
-        "effects": sorted_unique(
-            [effect for record in records for effect in record.effects]
-        ),
+        "effects": sorted_unique([effect for record in records for effect in record.effects]),
         "predicted_symbols": sorted_unique(
-            [
-                symbol
-                for record in records
-                for symbol in record.predicted_symbols
-            ]
+            [symbol for record in records for symbol in record.predicted_symbols]
         ),
         "task_work_contracts": task_work_contracts,
         "task_work_contract_ids": [
-            contract["task_work_contract_id"]
-            for contract in task_work_contracts
+            contract["task_work_contract_id"] for contract in task_work_contracts
         ],
         "estimated_costs": estimated_costs,
         "validation_receipts": sorted_unique_receipts(
@@ -1454,8 +1525,12 @@ def build_bundle_contexts(
     contexts: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
 
-    def add_context(source_type: str, source_key: str, confidence: str, task_ids: Sequence[str]) -> None:
-        selected = [records_by_task[task_id] for task_id in map(str, task_ids) if task_id in records_by_task]
+    def add_context(
+        source_type: str, source_key: str, confidence: str, task_ids: Sequence[str]
+    ) -> None:
+        selected = [
+            records_by_task[task_id] for task_id in map(str, task_ids) if task_id in records_by_task
+        ]
         task_set = tuple(sorted(record.task_id for record in selected))
         if len(task_set) < 2 or task_set in seen:
             return
@@ -1549,7 +1624,11 @@ def execution_packet_record_rank(record: TodoIndexRecord) -> tuple[int, int, int
     candidate_kind = record.candidate_kind.strip().lower()
     packet_role = record.goal_packet_role.strip().lower()
     merge_role = record.merge_role.strip().lower()
-    if candidate_kind == "goal_packet_aggregate" or packet_role == "packet_aggregate" or merge_role == "packet_aggregate":
+    if (
+        candidate_kind == "goal_packet_aggregate"
+        or packet_role == "packet_aggregate"
+        or merge_role == "packet_aggregate"
+    ):
         role_rank = 0
     elif packet_role == "packet_anchor":
         role_rank = 1
@@ -1605,61 +1684,43 @@ def _canonical_dependency_waves(
 
     diagnostics: dict[str, list[str]] = {}
     aliases = {
-        alias: next(iter(owners))
-        for alias, owners in alias_owners.items()
-        if len(owners) == 1
+        alias: next(iter(owners)) for alias, owners in alias_owners.items() if len(owners) == 1
     }
     task_cids_by_goal: dict[str, set[str]] = {}
     for record in records:
         cid = identity_by_record.get(id(record))
         if cid and record.goal_id:
             task_cids_by_goal.setdefault(record.goal_id, set()).add(cid)
-    ambiguous_aliases = {
-        alias for alias, owners in alias_owners.items() if len(owners) != 1
-    }
-    dependencies: dict[str, set[str]] = {
-        cid: set() for cid in records_by_cid
-    }
+    ambiguous_aliases = {alias for alias, owners in alias_owners.items() if len(owners) != 1}
+    dependencies: dict[str, set[str]] = {cid: set() for cid in records_by_cid}
     for record in records:
         cid = identity_by_record.get(id(record))
         if not cid:
             continue
         for reference in record.dependency_task_cids:
             if reference in ambiguous_aliases:
-                diagnostics.setdefault(cid, []).append(
-                    f"ambiguous_dependency:{reference}"
-                )
+                diagnostics.setdefault(cid, []).append(f"ambiguous_dependency:{reference}")
                 continue
             prerequisite = aliases.get(reference)
             if prerequisite is None:
                 goal_prerequisites = task_cids_by_goal.get(reference, set())
                 if goal_prerequisites:
                     if cid in goal_prerequisites:
-                        diagnostics.setdefault(cid, []).append(
-                            f"self_dependency:{reference}"
-                        )
+                        diagnostics.setdefault(cid, []).append(f"self_dependency:{reference}")
                         continue
                     dependencies[cid].update(goal_prerequisites)
                     continue
-                diagnostics.setdefault(cid, []).append(
-                    f"unresolved_dependency:{reference}"
-                )
+                diagnostics.setdefault(cid, []).append(f"unresolved_dependency:{reference}")
                 continue
             if prerequisite == cid:
-                diagnostics.setdefault(cid, []).append(
-                    f"self_dependency:{reference}"
-                )
+                diagnostics.setdefault(cid, []).append(f"self_dependency:{reference}")
                 continue
             dependencies[cid].add(prerequisite)
 
     waves: dict[str, int] = {}
     remaining = set(dependencies) - set(diagnostics)
     while remaining:
-        ready = sorted(
-            cid
-            for cid in remaining
-            if dependencies[cid].issubset(waves)
-        )
+        ready = sorted(cid for cid in remaining if dependencies[cid].issubset(waves))
         if not ready:
             break
         for cid in ready:
@@ -1675,10 +1736,7 @@ def _canonical_dependency_waves(
             else "dependency_cycle"
         )
         diagnostics.setdefault(cid, []).append(reason)
-    return waves, {
-        cid: sorted(set(reasons))
-        for cid, reasons in sorted(diagnostics.items())
-    }
+    return waves, {cid: sorted(set(reasons)) for cid, reasons in sorted(diagnostics.items())}
 
 
 def build_execution_packet(
@@ -1696,26 +1754,21 @@ def build_execution_packet(
         return None
     selected_records = sorted(active_records, key=execution_packet_record_rank)[: max(2, max_tasks)]
     task_ids = sorted_unique([record.task_id for record in selected_records])
-    active_task_ids = ordered_unique([record.task_id for record in selected_records if active_record(record)])
+    active_task_ids = ordered_unique(
+        [record.task_id for record in selected_records if active_record(record)]
+    )
     # Completion authority is resolved against the complete context population,
     # not the bounded active execution slice.  Otherwise a packet with more
     # than ``max_tasks`` members, or a completed covered sibling, would lose
     # its exact canonical binding merely because it was omitted from the prompt.
     population_records = list(records)
-    records_by_cid = {
-        record.task_cid: record for record in population_records if record.task_cid
-    }
+    records_by_cid = {record.task_cid: record for record in population_records if record.task_cid}
     records_with_cid = [record for record in population_records if record.task_cid]
     canonical_keys = [
-        record.canonical_task_key
-        for record in population_records
-        if record.canonical_task_key
+        record.canonical_task_key for record in population_records if record.canonical_task_key
     ]
     identity_projection_valid = (
-        all(
-            record.task_cid and record.canonical_task_key
-            for record in population_records
-        )
+        all(record.task_cid and record.canonical_task_key for record in population_records)
         and len(records_by_cid) == len(records_with_cid)
         and len(canonical_keys) == len(set(canonical_keys))
     )
@@ -1735,13 +1788,9 @@ def build_execution_packet(
         len(owners) == 1 for owners in alias_owners.values()
     )
     identity_aliases = {
-        alias: next(iter(owners))
-        for alias, owners in alias_owners.items()
-        if len(owners) == 1
+        alias: next(iter(owners)) for alias, owners in alias_owners.items() if len(owners) == 1
     }
-    task_cids = sorted_unique(
-        [record.task_cid for record in selected_records if record.task_cid]
-    )
+    task_cids = sorted_unique([record.task_cid for record in selected_records if record.task_cid])
     active_task_cids = ordered_unique(
         [
             record.task_cid
@@ -1751,12 +1800,18 @@ def build_execution_packet(
     )
     if len(active_task_ids) < 2:
         return None
-    all_outputs = sorted_unique([output for record in selected_records for output in record.outputs])
+    all_outputs = sorted_unique(
+        [output for record in selected_records for output in record.outputs]
+    )
     output_sets = [set(record.outputs) for record in selected_records]
     shared_outputs = sorted(output_sets[0].intersection(*output_sets[1:])) if output_sets else []
-    work_counts = [record.work_item_count for record in selected_records if record.work_item_count > 0]
+    work_counts = [
+        record.work_item_count for record in selected_records if record.work_item_count > 0
+    ]
     packet_work_counts = [
-        record.goal_packet_work_item_count for record in selected_records if record.goal_packet_work_item_count > 0
+        record.goal_packet_work_item_count
+        for record in selected_records
+        if record.goal_packet_work_item_count > 0
     ]
     packet_seed = json.dumps(
         {
@@ -1786,16 +1841,12 @@ def build_execution_packet(
         for record in selected_records
         if record is primary or record.task_cid not in resolved_primary_bindings
     ]
-    task_work_contracts, _selected_estimated_costs = (
-        _task_work_contract_projection(selected_records)
+    task_work_contracts, _selected_estimated_costs = _task_work_contract_projection(
+        selected_records
     )
-    _independent_contracts, estimated_costs = (
-        _task_work_contract_projection(independent_records)
-    )
+    _independent_contracts, estimated_costs = _task_work_contract_projection(independent_records)
     independent_work_item_count = sum(
-        record.work_item_count
-        for record in independent_records
-        if record.work_item_count > 0
+        record.work_item_count for record in independent_records if record.work_item_count > 0
     )
     covered_work_item_count = sum(
         records_by_cid[cid].work_item_count
@@ -1814,17 +1865,15 @@ def build_execution_packet(
         "task_cids": task_cids,
         "active_task_cids": active_task_cids,
         "canonical_task_keys": sorted_unique(
-            [
-                record.canonical_task_key
-                for record in selected_records
-                if record.canonical_task_key
-            ]
+            [record.canonical_task_key for record in selected_records if record.canonical_task_key]
         ),
         "primary_task_id": selected_records[0].task_id,
         "primary_task_cid": selected_records[0].task_cid,
         "primary_canonical_task_key": selected_records[0].canonical_task_key,
         "goal_ids": sorted_unique([record.goal_id for record in selected_records]),
-        "graph_parent_ids": sorted_unique([parent for record in selected_records for parent in record.graph_parents]),
+        "graph_parent_ids": sorted_unique(
+            [parent for record in selected_records for parent in record.graph_parents]
+        ),
         "dependency_task_cids": sorted_unique(
             [
                 dependency
@@ -1832,34 +1881,30 @@ def build_execution_packet(
                 for dependency in record.dependency_task_cids
             ]
         ),
-        "dependency_depth_min": min(
-            (record.graph_depth for record in selected_records), default=0
-        ),
-        "dependency_depth_max": max(
-            (record.graph_depth for record in selected_records), default=0
-        ),
+        "dependency_depth_min": min((record.graph_depth for record in selected_records), default=0),
+        "dependency_depth_max": max((record.graph_depth for record in selected_records), default=0),
         "context_paths": sorted_unique(
             [path for record in selected_records for path in record.context_paths]
         ),
-        "resource_classes": sorted_unique(
-            [record.resource_class for record in selected_records]
-        ),
+        "resource_classes": sorted_unique([record.resource_class for record in selected_records]),
         "provider_batch_keys": sorted_unique(
             [record.provider_batch_key for record in selected_records]
         ),
-        "provider_ids": sorted_unique(
-            [record.provider_id for record in selected_records]
-        ),
+        "provider_ids": sorted_unique([record.provider_id for record in selected_records]),
         "bundle_keys": sorted_unique([record.bundle_key for record in selected_records]),
         "merge_keys": sorted_unique([record.merge_key for record in selected_records]),
         "merge_families": sorted_unique([record.merge_family for record in selected_records]),
         "merge_roles": sorted_unique([record.merge_role for record in selected_records]),
         "goal_packet_keys": sorted_unique([record.goal_packet_key for record in selected_records]),
-        "goal_packet_roles": sorted_unique([record.goal_packet_role for record in selected_records]),
+        "goal_packet_roles": sorted_unique(
+            [record.goal_packet_role for record in selected_records]
+        ),
         "goal_packet_goal_ids": sorted_unique(
             [goal_id for record in selected_records for goal_id in record.goal_packet_goal_ids]
         ),
-        "goal_packet_task_count_max": max([record.goal_packet_task_count for record in selected_records], default=0),
+        "goal_packet_task_count_max": max(
+            [record.goal_packet_task_count for record in selected_records], default=0
+        ),
         "goal_packet_work_item_count_max": max(packet_work_counts) if packet_work_counts else 0,
         "surplus_groups": sorted_unique([record.surplus_group for record in selected_records]),
         "candidate_kinds": sorted_unique([record.candidate_kind for record in selected_records]),
@@ -1871,28 +1916,21 @@ def build_execution_packet(
         "covered_sibling_work_item_count": covered_work_item_count,
         "shared_outputs": shared_outputs,
         "all_outputs": all_outputs,
-        "validation": sorted_unique([command for record in selected_records for command in record.validation])[:8],
+        "validation": sorted_unique(
+            [command for record in selected_records for command in record.validation]
+        )[:8],
         "acceptance_criteria": sorted_unique(
             [criterion for record in selected_records for criterion in record.acceptance_criteria]
         ),
         "effects": sorted_unique(
-            [
-                effect
-                for record in selected_records
-                for effect in record.effects
-            ]
+            [effect for record in selected_records for effect in record.effects]
         ),
         "predicted_symbols": sorted_unique(
-            [
-                symbol
-                for record in selected_records
-                for symbol in record.predicted_symbols
-            ]
+            [symbol for record in selected_records for symbol in record.predicted_symbols]
         ),
         "task_work_contracts": task_work_contracts,
         "task_work_contract_ids": [
-            contract["task_work_contract_id"]
-            for contract in task_work_contracts
+            contract["task_work_contract_id"] for contract in task_work_contracts
         ],
         "estimated_costs": estimated_costs,
         "validation_receipts": sorted_unique_receipts(
@@ -1901,34 +1939,38 @@ def build_execution_packet(
         "provenance_cids": sorted_unique(
             [cid for record in selected_records for cid in record.provenance_cids]
         ),
-        "missing_evidence": sorted_unique([item for record in selected_records for item in record.missing_evidence]),
-        "ast_symbols": sorted_unique([symbol for record in selected_records for symbol in record.ast_symbols])[:80],
+        "missing_evidence": sorted_unique(
+            [item for record in selected_records for item in record.missing_evidence]
+        ),
+        "ast_symbols": sorted_unique(
+            [symbol for record in selected_records for symbol in record.ast_symbols]
+        )[:80],
         "predicted_files": sorted_unique(
             [path for record in selected_records for path in record.predicted_files]
         ),
         "changed_paths": sorted_unique(
             [path for record in selected_records for path in record.changed_paths]
         ),
-        "interfaces": sorted_unique([item for record in selected_records for item in record.interfaces]),
-        "submodules": sorted_unique([item for record in selected_records for item in record.submodules]),
+        "interfaces": sorted_unique(
+            [item for record in selected_records for item in record.interfaces]
+        ),
+        "submodules": sorted_unique(
+            [item for record in selected_records for item in record.submodules]
+        ),
         "generated_artifacts": sorted_unique(
             [item for record in selected_records for item in record.generated_artifacts]
         ),
         "task_summaries": [_compact_record_summary(record) for record in selected_records],
         "raw_prompt_tokens": sum(record.token_count for record in selected_records),
     }
-    packet["evidence_producer_bindings"] = (
-        task_generation_evidence_producer_bindings(
-            packet["missing_evidence"]
-        )
+    packet["evidence_producer_bindings"] = task_generation_evidence_producer_bindings(
+        packet["missing_evidence"]
     )
     packet_conflict_graph = materialize_task_conflict_graph(
         [record.to_dict() for record in selected_records],
         max_lanes=None,
     )
-    blocking_edges = [
-        edge for edge in packet_conflict_graph.edges if edge.blocks_concurrency
-    ]
+    blocking_edges = [edge for edge in packet_conflict_graph.edges if edge.blocks_concurrency]
     packet["blocking_conflict_count"] = len(blocking_edges)
     packet["serial_execution_required"] = bool(blocking_edges)
     packet["conflict_edges"] = [
@@ -1943,38 +1985,20 @@ def build_execution_packet(
         assignment.task_cid: assignment.lane_color
         for assignment in packet_conflict_graph.assignments
     }
-    dependency_waves, dependency_diagnostics = _canonical_dependency_waves(
-        population_records
-    )
-    selected_cids = {
-        record.task_cid or record.task_id for record in selected_records
-    }
+    dependency_waves, dependency_diagnostics = _canonical_dependency_waves(population_records)
+    selected_cids = {record.task_cid or record.task_id for record in selected_records}
     packet["dependency_wave_by_task_cid"] = {
-        cid: wave
-        for cid, wave in sorted(dependency_waves.items())
-        if cid in selected_cids
+        cid: wave for cid, wave in sorted(dependency_waves.items()) if cid in selected_cids
     }
     packet["dependency_projection_diagnostics"] = {
-        cid: reasons
-        for cid, reasons in dependency_diagnostics.items()
-        if cid in selected_cids
+        cid: reasons for cid, reasons in dependency_diagnostics.items() if cid in selected_cids
     }
-    packet["dependency_projection_complete"] = not bool(
-        packet["dependency_projection_diagnostics"]
-    )
+    packet["dependency_projection_complete"] = not bool(packet["dependency_projection_diagnostics"])
     width_projections = []
     for dependency_wave in sorted(
-        {
-            dependency_waves[cid]
-            for cid in selected_cids
-            if cid in dependency_waves
-        }
+        {dependency_waves[cid] for cid in selected_cids if cid in dependency_waves}
     ):
-        wave_cids = {
-            cid
-            for cid in selected_cids
-            if dependency_waves.get(cid) == dependency_wave
-        }
+        wave_cids = {cid for cid in selected_cids if dependency_waves.get(cid) == dependency_wave}
         if not wave_cids:
             continue
         width_projections.append(
@@ -2009,9 +2033,7 @@ def build_execution_packet(
             for binding in primary.completion_task_bindings
             if binding in identity_aliases
         ]
-        unresolved_bindings = sorted(
-            set(primary.completion_task_bindings) - set(identity_aliases)
-        )
+        unresolved_bindings = sorted(set(primary.completion_task_bindings) - set(identity_aliases))
         bound_records = [
             records_by_cid[cid]
             for cid in sorted_unique(resolved_bindings)
@@ -2024,15 +2046,10 @@ def build_execution_packet(
             or record.goal_packet_key != primary.goal_packet_key
             or not record.canonical_task_key
         ]
-        if (
-            identity_projection_valid
-            and not unresolved_bindings
-            and not invalid_packet_bindings
-        ):
+        if identity_projection_valid and not unresolved_bindings and not invalid_packet_bindings:
             bound_cids = [record.task_cid for record in bound_records]
             projected_keys = {
-                record.task_cid: record.canonical_task_key
-                for record in [primary, *bound_records]
+                record.task_cid: record.canonical_task_key for record in [primary, *bound_records]
             }
             binding_material = {
                 "primary_task_cid": primary.task_cid,
@@ -2046,9 +2063,7 @@ def build_execution_packet(
                     json.dumps(binding_material, sort_keys=True).encode("utf-8")
                 ).hexdigest(),
                 "primary_task_id": primary.task_id,
-                "bound_sibling_task_ids": [
-                    record.task_id for record in bound_records
-                ],
+                "bound_sibling_task_ids": [record.task_id for record in bound_records],
             }
         else:
             packet["completion_binding_rejection"] = {
@@ -2067,7 +2082,9 @@ def build_execution_packet(
     compact_packet = _compact_execution_packet_text(packet)
     packet["compact_packet"] = compact_packet
     packet["compact_packet_tokens"] = len(objective_tokens(compact_packet))
-    packet["estimated_token_savings"] = max(0, int(packet["raw_prompt_tokens"]) - int(packet["compact_packet_tokens"]))
+    packet["estimated_token_savings"] = max(
+        0, int(packet["raw_prompt_tokens"]) - int(packet["compact_packet_tokens"])
+    )
     return packet
 
 
@@ -2090,7 +2107,9 @@ def build_execution_packets(
         task_ids = context.get("task_ids") or context.get("active_task_ids")
         if not isinstance(task_ids, list):
             continue
-        selected = [records_by_task[task_id] for task_id in map(str, task_ids) if task_id in records_by_task]
+        selected = [
+            records_by_task[task_id] for task_id in map(str, task_ids) if task_id in records_by_task
+        ]
         task_set = tuple(sorted(record.task_id for record in selected if active_record(record)))
         if len(task_set) < 2 or task_set in seen:
             continue
@@ -2127,7 +2146,9 @@ def _stored_conflict_inputs(paths: Sequence[Path | None]) -> dict[str, Any]:
             continue
         if not isinstance(payload, dict):
             continue
-        graph = payload.get("conflict_graph") if isinstance(payload.get("conflict_graph"), dict) else {}
+        graph = (
+            payload.get("conflict_graph") if isinstance(payload.get("conflict_graph"), dict) else {}
+        )
         aliases = {
             "branch_diffs": ("branch_diffs",),
             "conflict_receipts": ("conflict_receipts",),
@@ -2402,8 +2423,12 @@ def write_todo_vector_index(
         "task_header_prefix": task_header_prefix,
         "embedding_dimensions": dimensions,
         "task_count": len(records),
-        "active_task_count": sum(1 for record in records if record.status not in {"completed", "blocked"}),
-        "estimated_raw_prompt_tokens": sum(record.token_count for record in records if active_record(record)),
+        "active_task_count": sum(
+            1 for record in records if record.status not in {"completed", "blocked"}
+        ),
+        "estimated_raw_prompt_tokens": sum(
+            record.token_count for record in records if active_record(record)
+        ),
         "estimated_compact_context_tokens": sum(
             int(context.get("compact_context_tokens") or 0) for context in bundle_contexts
         ),
@@ -2464,9 +2489,7 @@ def write_todo_vector_index_artifact(
     if conflict_graph:
         rendered["conflict_graph"] = conflict_graph
         rendered["task_conflict_graph"] = dict(conflict_graph)
-    coverage_inputs = compact_coverage_inputs_projection(
-        rendered.get("coverage_inputs")
-    )
+    coverage_inputs = compact_coverage_inputs_projection(rendered.get("coverage_inputs"))
     if coverage_inputs:
         rendered["coverage_inputs"] = coverage_inputs
     if conflict_graph.get("compacted") or coverage_inputs.get("compacted"):
@@ -2502,9 +2525,7 @@ def write_todo_vector_index_artifact(
             compact_records.append(record)
         rendered["records"] = compact_records
     bundle_index_path = str(rendered.get("bundle_index_path") or "")
-    if bundle_index_path and (
-        conflict_graph.get("compacted") or coverage_inputs.get("compacted")
-    ):
+    if bundle_index_path and (conflict_graph.get("compacted") or coverage_inputs.get("compacted")):
         rendered["query_artifact"] = {
             "path": bundle_index_path,
             "duckdb_path": str(Path(bundle_index_path).with_suffix(".duckdb")),
@@ -2560,6 +2581,7 @@ def update_bundle_index_with_todo_vectors(
 
     def conflict_key(record: TodoIndexRecord) -> str:
         return record.task_cid or record.task_id
+
     by_bundle: dict[str, list[TodoIndexRecord]] = {}
     for record in records:
         if record.bundle_key:
@@ -2567,7 +2589,9 @@ def update_bundle_index_with_todo_vectors(
     cluster_by_task: dict[str, str] = {}
     for cluster in clusters:
         cluster_key = str(cluster.get("cluster_key") or "")
-        for task_id in cluster.get("task_ids", []) if isinstance(cluster.get("task_ids"), list) else []:
+        for task_id in (
+            cluster.get("task_ids", []) if isinstance(cluster.get("task_ids"), list) else []
+        ):
             cluster_by_task[str(task_id)] = cluster_key
     context_keys_by_task: dict[str, list[str]] = {}
     merge_ready_by_task: dict[str, list[str]] = {}
@@ -2602,6 +2626,7 @@ def update_bundle_index_with_todo_vectors(
                 normalized = str(task_id)
                 if normalized:
                     packet_keys_by_task.setdefault(normalized, []).append(packet_key)
+
     def compact_conflict_surface(value: Any) -> dict[str, Any]:
         if not isinstance(value, Mapping):
             return {}
@@ -2620,23 +2645,33 @@ def update_bundle_index_with_todo_vectors(
 
     graph_payload = dict(conflict_graph or {})
     raw_graph_surfaces = (
-        graph_payload.get("surfaces")
-        if isinstance(graph_payload.get("surfaces"), dict)
-        else {}
+        graph_payload.get("surfaces") if isinstance(graph_payload.get("surfaces"), dict) else {}
     )
     if raw_graph_surfaces:
         graph_payload["surfaces"] = {
-            str(key): compact_conflict_surface(value)
-            for key, value in raw_graph_surfaces.items()
+            str(key): compact_conflict_surface(value) for key, value in raw_graph_surfaces.items()
         }
-    graph_surfaces = graph_payload.get("surfaces") if isinstance(graph_payload.get("surfaces"), dict) else {}
-    graph_assignments = graph_payload.get("assignments") if isinstance(graph_payload.get("assignments"), list) else []
-    graph_decisions = graph_payload.get("decisions") if isinstance(graph_payload.get("decisions"), list) else []
+    graph_surfaces = (
+        graph_payload.get("surfaces") if isinstance(graph_payload.get("surfaces"), dict) else {}
+    )
+    graph_assignments = (
+        graph_payload.get("assignments")
+        if isinstance(graph_payload.get("assignments"), list)
+        else []
+    )
+    graph_decisions = (
+        graph_payload.get("decisions") if isinstance(graph_payload.get("decisions"), list) else []
+    )
     graph_edges = graph_payload.get("edges") if isinstance(graph_payload.get("edges"), list) else []
     assignment_by_task: dict[str, dict[str, Any]] = {}
     for assignment in graph_assignments:
         if isinstance(assignment, dict):
-            task_id = str(assignment.get("task_cid") or assignment.get("task_id") or assignment.get("node") or "")
+            task_id = str(
+                assignment.get("task_cid")
+                or assignment.get("task_id")
+                or assignment.get("node")
+                or ""
+            )
             if task_id:
                 assignment_by_task[task_id] = dict(assignment)
 
@@ -2644,14 +2679,25 @@ def update_bundle_index_with_todo_vectors(
         values = [
             item.get(key)
             for key in (
-                "task_id", "source", "target", "left", "right", "task_a", "task_b",
-                "task_cid", "source_task_id", "target_task_id", "left_task_cid", "right_task_cid",
+                "task_id",
+                "source",
+                "target",
+                "left",
+                "right",
+                "task_a",
+                "task_b",
+                "task_cid",
+                "source_task_id",
+                "target_task_id",
+                "left_task_cid",
+                "right_task_cid",
             )
         ]
         raw_task_ids = item.get("task_ids")
         if isinstance(raw_task_ids, list):
             values.extend(raw_task_ids)
         return {str(value) for value in values if value}
+
     for bundle_key, bundle_payload in bundles.items():
         if not isinstance(bundle_payload, dict):
             continue
@@ -2659,40 +2705,45 @@ def update_bundle_index_with_todo_vectors(
         bundle_payload["todo_vector_summary"] = {
             "task_count": len(bundle_records),
             "acceptance_criteria": sorted(
-                {
-                    criterion
-                    for record in bundle_records
-                    for criterion in record.acceptance_criteria
-                }
+                {criterion for record in bundle_records for criterion in record.acceptance_criteria}
             ),
             "validation_receipt_count": len(
                 sorted_unique_receipts(
-                    [
-                        receipt
-                        for record in bundle_records
-                        for receipt in record.validation_receipts
-                    ]
+                    [receipt for record in bundle_records for receipt in record.validation_receipts]
                 )
             ),
             "provenance_cids": sorted(
                 {cid for record in bundle_records for cid in record.provenance_cids}
             ),
-            "merge_keys": sorted({record.merge_key for record in bundle_records if record.merge_key}),
-            "merge_families": sorted({record.merge_family for record in bundle_records if record.merge_family}),
-            "goal_packet_keys": sorted({record.goal_packet_key for record in bundle_records if record.goal_packet_key}),
+            "merge_keys": sorted(
+                {record.merge_key for record in bundle_records if record.merge_key}
+            ),
+            "merge_families": sorted(
+                {record.merge_family for record in bundle_records if record.merge_family}
+            ),
+            "goal_packet_keys": sorted(
+                {record.goal_packet_key for record in bundle_records if record.goal_packet_key}
+            ),
             "goal_packet_goal_ids": sorted(
                 {goal_id for record in bundle_records for goal_id in record.goal_packet_goal_ids}
             ),
             "goal_packet_work_item_count_max": max(
-                [record.goal_packet_work_item_count for record in bundle_records if record.goal_packet_work_item_count],
+                [
+                    record.goal_packet_work_item_count
+                    for record in bundle_records
+                    if record.goal_packet_work_item_count
+                ],
                 default=0,
             ),
-            "surplus_groups": sorted({record.surplus_group for record in bundle_records if record.surplus_group}),
+            "surplus_groups": sorted(
+                {record.surplus_group for record in bundle_records if record.surplus_group}
+            ),
             "estimated_prompt_tokens": sum(record.token_count for record in bundle_records),
             "compact_context_tokens": sum(
                 int(context.get("compact_context_tokens") or 0)
                 for context in bundle_contexts
-                if set(context.get("task_ids") or []) & {record.task_id for record in bundle_records}
+                if set(context.get("task_ids") or [])
+                & {record.task_id for record in bundle_records}
             ),
             "execution_packet_tokens": sum(
                 int(packet.get("compact_packet_tokens") or 0)
@@ -2703,7 +2754,8 @@ def update_bundle_index_with_todo_vectors(
             "merge_candidate_keys": [
                 str(candidate.get("candidate_key") or "")
                 for candidate in merge_candidates
-                if set(candidate.get("task_ids") or []) & {record.task_id for record in bundle_records}
+                if set(candidate.get("task_ids") or [])
+                & {record.task_id for record in bundle_records}
             ],
             "bundle_context_keys": sorted(
                 {
@@ -2770,9 +2822,7 @@ def update_bundle_index_with_todo_vectors(
             task["canonical_task_key"] = record.canonical_task_key or task.get(
                 "canonical_task_key", ""
             )
-            task["canonical_task_cid"] = record.task_cid or task.get(
-                "canonical_task_cid", ""
-            )
+            task["canonical_task_cid"] = record.task_cid or task.get("canonical_task_cid", "")
             task["canonical_semantic_identity"] = record.semantic_identity
             task["completion_goal_bindings"] = record.completion_goal_bindings
             task["completion_task_bindings"] = record.completion_task_bindings
@@ -2787,37 +2837,31 @@ def update_bundle_index_with_todo_vectors(
             task["dependency_task_cids"] = record.dependency_task_cids
             task_identity = record.task_cid or record.task_id
             task["dependency_depth"] = dependency_waves.get(task_identity, 0)
-            task["dependency_projection_valid"] = (
-                task_identity in dependency_waves
-            )
-            task["dependency_projection_diagnostics"] = (
-                dependency_diagnostics.get(task_identity, [])
+            task["dependency_projection_valid"] = task_identity in dependency_waves
+            task["dependency_projection_diagnostics"] = dependency_diagnostics.get(
+                task_identity, []
             )
             task["context_paths"] = record.context_paths
             task["resource_class"] = record.resource_class
             task["resources"] = list(record.resources)
-            task["provider_batch_key"] = (
-                record.provider_batch_key or task.get("provider_batch_key", "")
+            task["provider_batch_key"] = record.provider_batch_key or task.get(
+                "provider_batch_key", ""
             )
             task["provider_id"] = record.provider_id or task.get("provider_id", "")
-            task["provider_route"] = (
-                record.provider_route or task.get("provider_route", "")
-            )
+            task["provider_route"] = record.provider_route or task.get("provider_route", "")
             task["model_id"] = record.model_id or task.get("model_id", "")
-            task["provider_operation"] = (
-                record.provider_operation or task.get("provider_operation", "")
+            task["provider_operation"] = record.provider_operation or task.get(
+                "provider_operation", ""
             )
             task["provider_context_limit"] = max(
                 record.provider_context_limit,
                 parse_int(task.get("provider_context_limit"), 0),
             )
-            task["provider_policy_digest"] = (
-                record.provider_policy_digest
-                or task.get("provider_policy_digest", "")
+            task["provider_policy_digest"] = record.provider_policy_digest or task.get(
+                "provider_policy_digest", ""
             )
-            task["provider_generation_digest"] = (
-                record.provider_generation_digest
-                or task.get("provider_generation_digest", "")
+            task["provider_generation_digest"] = record.provider_generation_digest or task.get(
+                "provider_generation_digest", ""
             )
             task["estimated_context_tokens"] = max(
                 record.estimated_context_tokens,
@@ -2879,7 +2923,8 @@ def update_bundle_index_with_todo_vectors(
             task["conflict_decision_count"] = sum(
                 1
                 for decision in graph_decisions
-                if isinstance(decision, Mapping) and record_conflict_key in graph_item_task_ids(decision)
+                if isinstance(decision, Mapping)
+                and record_conflict_key in graph_item_task_ids(decision)
             )
             task["conflict_edge_count"] = sum(
                 1

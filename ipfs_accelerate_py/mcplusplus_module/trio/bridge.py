@@ -93,8 +93,7 @@ def require_trio() -> None:
     """
     if not is_trio_context():
         raise RuntimeError(
-            "This function requires a Trio event loop. "
-            "Use trio.run() or run_in_trio() wrapper."
+            "This function requires a Trio event loop. Use trio.run() or run_in_trio() wrapper."
         )
 
 

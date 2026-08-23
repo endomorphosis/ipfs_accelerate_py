@@ -67,9 +67,7 @@ def test_backend_registry_keeps_historical_alias_and_return_shapes():
     assert isinstance(backend_registry.model_lists, dict)
     assert isinstance(backend_registry.get_models("openai"), list)
     assert backend_registry.get_backend_for_model("openai/gpt-4") == "openai_api"
-    assert backend_registry.get_backend_for_model(
-        "anthropic/claude-3-opus"
-    ) == "claude"
+    assert backend_registry.get_backend_for_model("anthropic/claude-3-opus") == "claude"
     assert backend_registry.get_backend_for_model("unknown/model") is None
 
 

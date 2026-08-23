@@ -214,10 +214,12 @@ sudo ufw allow 9100/tcp
 ```python
 # Enable debug logging
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 
 # Check cache status
 from ipfs_accelerate_py.github_cli.cache import get_global_cache
+
 cache = get_global_cache()
 print(f"P2P enabled: {cache.enable_p2p}")
 print(f"Connected peers: {len(cache._p2p_connected_peers)}")

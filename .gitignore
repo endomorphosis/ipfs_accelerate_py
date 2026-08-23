@@ -174,6 +174,7 @@ Thumbs.db
 !/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/
 !/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/**
 !/data/agent_supervisor/logic_governed_semantic_work_fabric/evidence/*.json
+/data/agent_supervisor/causal_event_federation/
 data/*.db
 data/*.sqlite
 data/*.sqlite3
@@ -294,3 +295,16 @@ state/**/*.out
 
 # LGCVF operational state is mutable, machine-local evidence and never source.
 data/agent_supervisor/logic_governed_compositional_verification_fabric/run-v*/
+
+# Proof-Carrying Architecture Refactorer compact control and evidence sources.
+/data/agent_supervisor/proof_carrying_architecture_refactorer/
+!config/agent_supervisor_architecture_refactorer_scheduler.json
+!docs/architecture/architecture_refactorer_inventory/*.json
+!benchmarks/agent_supervisor/architecture_refactorer/*.json
+!benchmarks/agent_supervisor/architecture_refactorer/fixtures/*.json
+
+# Verified Residual Intelligence Foundry mutable DuckDB/Quack/DuckLake state.
+!config/agent_supervisor_residual_intelligence_scheduler.json
+!docs/architecture/residual_intelligence_inventory/*.json
+!benchmarks/agent_supervisor/residual_intelligence/*.json
+/data/agent_supervisor/residual_intelligence_foundry/

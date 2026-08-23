@@ -1369,3 +1369,54 @@ def stop_daemon(
         "child_pid": child_pid,
     }
     return StopResult(payload=payload, exit_code=0)
+
+def _expand_snapshot_by_owned_sessions(
+    snapshot: List[Tuple[int, int, int]],
+    relationships: Dict[int, Tuple[int, int]],
+) -> List[Tuple[int, int, int]]:
+    """Add members of descendant-owned sessions that left the parent tree.
+
+    ``start_new_session=True`` children remain parent-linked until the parent
+    exits.  Once reparented they are still in the session they created.  Session
+    expansion never crosses into the caller's session.
+    """
+
+    if not snapshot:
+        return snapshot
+    identities = _process_identity_snapshot()
+    if not identities:
+        return snapshot
+    try:
+        caller_session = os.getsid(0)
+    except OSError:
+        caller_session = 0
+    visited = {process_id for process_id, _group, _depth in snapshot}
+    owned_sessions: set[int] = set()
+    for process_id, _group, _depth in snapshot:
+        record = identities.get(process_id)
+        if record is None:
+            continue
+        session = record[3]
+        if session > 1 and session != caller_session and session == process_id:
+            owned_sessions.add(session)
+    if not owned_sessions:
+        return snapshot
+    expanded = list(snapshot)
+    max_depth = max(depth for _pid, _group, depth in snapshot)
+    changed = True
+    while changed:
+        changed = False
+        for process_id, (state, _parent, process_group, session, _start) in identities.items():
+            if process_id in visited or state == "Z":
+                continue
+            if session not in owned_sessions:
+                continue
+            visited.add(process_id)
+            relation = relationships.get(process_id)
+            group = relation[1] if relation is not None else process_group
+            expanded.append((process_id, group, max_depth + 1))
+            changed = True
+            if process_id == session and session not in {0, 1, caller_session}:
+                owned_sessions.add(session)
+    return expanded
+

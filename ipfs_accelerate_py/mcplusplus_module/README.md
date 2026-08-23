@@ -74,19 +74,19 @@ The original implementations remain available for backward compatibility.
 import trio
 from ipfs_accelerate_py.mcplusplus_module.trio import TrioMCPServer
 
+
 async def main():
-    server = TrioMCPServer(
-        name="ipfs-accelerate-p2p",
-        version="0.1.0"
-    )
-    
+    server = TrioMCPServer(name="ipfs-accelerate-p2p", version="0.1.0")
+
     # Register P2P tools
     from ipfs_accelerate_py.mcplusplus_module.tools import register_p2p_tools
+
     register_p2p_tools(server)
-    
+
     # Run the server
     async with trio.open_nursery() as nursery:
         await server.run(nursery)
+
 
 if __name__ == "__main__":
     trio.run(main)
@@ -97,18 +97,14 @@ if __name__ == "__main__":
 ```python
 from ipfs_accelerate_py.mcplusplus_module.p2p import P2PTaskQueue
 
+
 async def submit_task():
-    queue = P2PTaskQueue(
-        peer_id="QmExample...",
-        multiaddr="/ip4/127.0.0.1/tcp/4001"
-    )
-    
+    queue = P2PTaskQueue(peer_id="QmExample...", multiaddr="/ip4/127.0.0.1/tcp/4001")
+
     result = await queue.submit(
-        task_type="inference",
-        model_name="gpt2",
-        payload={"prompt": "Hello, world!"}
+        task_type="inference", model_name="gpt2", payload={"prompt": "Hello, world!"}
     )
-    
+
     return result
 ```
 

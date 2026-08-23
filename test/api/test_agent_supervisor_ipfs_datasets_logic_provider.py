@@ -135,9 +135,7 @@ def test_supported_obligation_is_a_deterministic_explicit_hammer_request():
     second = dispatch_provider_request(provider, second_request).require_result()
 
     assert first["hammer_request"] == second["hammer_request"]
-    assert first["hammer_request"]["request_id"].startswith(
-        "hammer-request:sha256:"
-    )
+    assert first["hammer_request"]["request_id"].startswith("hammer-request:sha256:")
     assert first["hammer_request"]["theorem_id"] == _obligation().obligation_id
     assert first["hammer_request"]["created_at"] == "1970-01-01T00:00:00+00:00"
     assert [item["premise_id"] for item in first["premises"]] == [
@@ -148,12 +146,11 @@ def test_supported_obligation_is_a_deterministic_explicit_hammer_request():
         "premise:relation",
         "premise:state",
     ]
-    assert first["environment_lock"]["lock_id"].startswith(
-        "hammer-environment:sha256:"
+    assert first["environment_lock"]["lock_id"].startswith("hammer-environment:sha256:")
+    assert (
+        first["environment_lock"]["policy_digest"]
+        == first["portfolio_policy"]["supervisor_policy_id"]
     )
-    assert first["environment_lock"]["policy_digest"] == first[
-        "portfolio_policy"
-    ]["supervisor_policy_id"]
     assert first["provenance"]["translator_id"] == HAMMER_TRANSLATOR_ID
     assert first["provenance"]["semantic_bindings"] == {
         "accepted_plan_id": "plan:reviewed",
@@ -266,9 +263,7 @@ def test_portfolio_attempt_and_candidate_keep_upstream_receipt_provenance():
 
 
 def test_unknown_translation_is_typed_unsupported_with_exact_fallbacks():
-    obligation = _obligation(
-        metadata={"translation_family": "higher_order_dependent"}
-    )
+    obligation = _obligation(metadata={"translation_family": "higher_order_dependent"})
     request = _request()
     request = ProviderRequest(
         request_id=request.request_id,
@@ -278,9 +273,7 @@ def test_unknown_translation_is_typed_unsupported_with_exact_fallbacks():
         network_allowed=request.network_allowed,
     )
 
-    response = dispatch_provider_request(
-        IpfsDatasetsLogicProvider(_policy()), request
-    )
+    response = dispatch_provider_request(IpfsDatasetsLogicProvider(_policy()), request)
 
     assert response.ok is False
     assert response.error.code is ProviderFailureCode.UNSUPPORTED
@@ -307,9 +300,7 @@ def test_missing_reviewed_lowering_and_premise_overflow_fail_closed():
         network_allowed=request.network_allowed,
     )
     unsupported = dispatch_provider_request(
-        IpfsDatasetsLogicProvider(
-            _policy(allowed_solvers=("z3",), environment_lock=_lock())
-        ),
+        IpfsDatasetsLogicProvider(_policy(allowed_solvers=("z3",), environment_lock=_lock())),
         request,
     )
     assert unsupported.error.code is ProviderFailureCode.UNSUPPORTED
@@ -322,9 +313,7 @@ def test_missing_reviewed_lowering_and_premise_overflow_fail_closed():
         payload=overflow_request.payload,
         resource_budget=ResourceBudget(max_premises=1),
     )
-    overflow = dispatch_provider_request(
-        IpfsDatasetsLogicProvider(_policy()), overflow_request
-    )
+    overflow = dispatch_provider_request(IpfsDatasetsLogicProvider(_policy()), overflow_request)
     assert overflow.error.code is ProviderFailureCode.RESOURCE_EXHAUSTED
     assert overflow.error.details == {"max_premises": 1, "premise_count": 2}
 
@@ -347,9 +336,7 @@ def test_timeout_and_missing_reconstructor_remain_explicit():
     assert timed_out.error.code is ProviderFailureCode.TIMED_OUT
     assert timed_out.error.details["status"] == "timed_out"
     assert timed_out.error.details["proof_success"] is False
-    assert timed_out.error.details["provenance"]["semantic_bindings"][
-        "goal_id"
-    ] == "goal:reviewed"
+    assert timed_out.error.details["provenance"]["semantic_bindings"]["goal_id"] == "goal:reviewed"
 
     unsupported = dispatch_provider_request(
         IpfsDatasetsLogicProvider(_policy()),
@@ -358,10 +345,7 @@ def test_timeout_and_missing_reconstructor_remain_explicit():
     assert unsupported.ok is False
     assert unsupported.error.code is ProviderFailureCode.UNSUPPORTED
     assert unsupported.error.details["status"] == "unsupported"
-    assert (
-        unsupported.error.details["reason_code"]
-        == "independent_kernel_provider_required"
-    )
+    assert unsupported.error.details["reason_code"] == "independent_kernel_provider_required"
 
     def candidate_without_kernel(invocation):
         attempt_id = f"{invocation.bundle.request_id}:translation:z3:0"
@@ -400,13 +384,8 @@ def test_timeout_and_missing_reconstructor_remain_explicit():
     )
     assert required.ok is False
     assert required.error.code is ProviderFailureCode.UNSUPPORTED
-    assert (
-        required.error.details["reason_code"]
-        == "independent_kernel_provider_required"
-    )
-    assert required.error.details["candidate"]["candidate_id"] == (
-        "candidate:policy-required"
-    )
+    assert required.error.details["reason_code"] == "independent_kernel_provider_required"
+    assert required.error.details["candidate"]["candidate_id"] == ("candidate:policy-required")
 
 
 def test_reviewed_premise_selection_runs_through_hammer_boundary():
@@ -451,11 +430,109 @@ def test_reviewed_premise_selection_runs_through_hammer_boundary():
     ).require_result()
 
     assert repeated["hammer_request"] == result["hammer_request"]
-    assert set(
-        result["provenance"]["premise_selection"][
-            "selected_premise_ids"
-        ]
-    ) == {"premise:relation", "premise:state"}
-    assert {
-        item["selection_method"] for item in result["premises"]
-    } == {"deterministic-baseline"}
+    assert set(result["provenance"]["premise_selection"]["selected_premise_ids"]) == {
+        "premise:relation",
+        "premise:state",
+    }
+    assert {item["selection_method"] for item in result["premises"]} == {"deterministic-baseline"}
+
+
+def test_hammer_candidate_emits_non_authoritative_trace_and_disposition():
+    def fake_portfolio(invocation):
+        attempt_id = f"{invocation.bundle.request_id}:translation:z3:0"
+        return {
+            "request_id": invocation.bundle.request_id,
+            "status": "candidate",
+            "attempts": [
+                {
+                    "attempt_id": attempt_id,
+                    "request_id": invocation.bundle.request_id,
+                    "translation_id": invocation.translations[0].translation_id,
+                    "solver_name": "z3",
+                }
+            ],
+            "proof_candidate": {
+                "candidate_id": "candidate:lattice",
+                "request_id": invocation.bundle.request_id,
+                "solver_attempt_id": attempt_id,
+                "premise_ids": ["premise:relation"],
+            },
+        }
+
+    result = dispatch_provider_request(
+        IpfsDatasetsLogicProvider(
+            _policy(allowed_solvers=("z3",), environment_lock=_lock()),
+            portfolio_runner=fake_portfolio,
+        ),
+        _request(operation="prove", supervisor_policy={"allowed_solvers": ["z3"]}),
+    ).require_result()
+
+    assert result["authoritative_assurance"] == "unverified"
+    assert result["proof_success"] is False
+    assert result["hammer_trace"]["authoritative"] is False
+    assert result["hammer_trace"]["authority_class"] == "candidate"
+    assert result["authoritative_disposition"]["verdict"] == "inconclusive"
+    assert result["authoritative_disposition"]["fail_closed"] is True
+    assert result["authoritative_disposition"]["authoritative"] is False
+
+
+def test_hammer_counterexample_retains_scope_and_bounds():
+    def fake_portfolio(invocation):
+        return {
+            "request_id": invocation.bundle.request_id,
+            "status": "counterexample",
+            "attempts": [
+                {
+                    "attempt_id": f"{invocation.bundle.request_id}:translation:z3:0",
+                    "request_id": invocation.bundle.request_id,
+                    "translation_id": invocation.translations[0].translation_id,
+                    "solver_name": "z3",
+                }
+            ],
+            "counterexample": {"model": {"ready": True}},
+        }
+
+    result = dispatch_provider_request(
+        IpfsDatasetsLogicProvider(
+            _policy(allowed_solvers=("z3",), environment_lock=_lock()),
+            portfolio_runner=fake_portfolio,
+        ),
+        _request(operation="prove", supervisor_policy={"allowed_solvers": ["z3"]}),
+    ).require_result()
+
+    trace = result["counterexample_trace"]
+    assert trace["conclusive"] is True
+    assert trace["authoritative"] is False
+    assert "src/state.py::advance" in trace["ast_scope_ids"]
+    assert isinstance(trace["finite_bounds"], dict)
+    assert result["authoritative_disposition"]["verdict"] != "proved"
+
+
+def test_hammer_resource_policy_denies_portfolio_before_solver_execution():
+    from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_resources import (
+        MultiProverResourceBudget,
+        MultiProverResourceLease,
+    )
+
+    called = []
+
+    def fake_portfolio(invocation):
+        called.append(invocation)
+        raise AssertionError("resource-denied hammer must not execute")
+
+    lease = MultiProverResourceLease(MultiProverResourceBudget())
+    lease.close()
+    response = dispatch_provider_request(
+        IpfsDatasetsLogicProvider(
+            _policy(allowed_solvers=("z3",), environment_lock=_lock()),
+            portfolio_runner=fake_portfolio,
+            resource_lease=lease,
+        ),
+        _request(operation="prove", supervisor_policy={"allowed_solvers": ["z3"]}),
+    )
+
+    assert called == []
+    assert response.ok is False
+    assert response.error.code is ProviderFailureCode.RESOURCE_EXHAUSTED
+    assert response.error.details["reason_code"] == "resource_policy_denied"
+    assert response.error.details["proof_success"] is False

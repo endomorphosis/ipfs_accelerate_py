@@ -287,12 +287,24 @@ def _seeded_call_graph():
         amb_target,
     )
     edges = (
-        _edge(repo.node_id, sym_a.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"),
-        _edge(repo.node_id, sym_b.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"),
-        _edge(repo.node_id, sym_c.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"),
-        _edge(repo.node_id, sym_u.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"),
-        _edge(repo.node_id, sym_d.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"),
-        _edge(repo.node_id, sym_e.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"),
+        _edge(
+            repo.node_id, sym_a.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"
+        ),
+        _edge(
+            repo.node_id, sym_b.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"
+        ),
+        _edge(
+            repo.node_id, sym_c.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"
+        ),
+        _edge(
+            repo.node_id, sym_u.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"
+        ),
+        _edge(
+            repo.node_id, sym_d.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"
+        ),
+        _edge(
+            repo.node_id, sym_e.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"
+        ),
         _edge(sym_a.node_id, def_a.node_id, ProgramEdgeKind.DEFINES, component_id="module:pkg"),
         _edge(sym_b.node_id, def_b.node_id, ProgramEdgeKind.DEFINES, component_id="module:pkg"),
         _edge(sym_c.node_id, def_c.node_id, ProgramEdgeKind.DEFINES, component_id="module:pkg"),
@@ -323,9 +335,7 @@ def _seeded_call_graph():
             record={"reason": "multi_candidate"},
         ),
     )
-    graph = build_program_graph(
-        forest_id=FOREST_ID, nodes=nodes, edges=edges, producer=PRODUCER
-    )
+    graph = build_program_graph(forest_id=FOREST_ID, nodes=nodes, edges=edges, producer=PRODUCER)
     return {
         "graph": graph,
         "repo": repo,
@@ -424,17 +434,22 @@ def _mcp_route_graph():
     nodes = (repo, reg, tool, transport, schema, impl, helper, call, unrelated)
     edges = (
         _edge(repo.node_id, reg.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"),
-        _edge(repo.node_id, impl.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"),
+        _edge(
+            repo.node_id, impl.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"
+        ),
         _edge(reg.node_id, tool.node_id, ProgramEdgeKind.REGISTERS, component_id="mcp:entry"),
-        _edge(tool.node_id, transport.node_id, ProgramEdgeKind.USES_TRANSPORT, component_id="mcp:entry"),
+        _edge(
+            tool.node_id,
+            transport.node_id,
+            ProgramEdgeKind.USES_TRANSPORT,
+            component_id="mcp:entry",
+        ),
         _edge(tool.node_id, impl.node_id, ProgramEdgeKind.IMPLEMENTS, component_id="mcp:entry"),
         _edge(tool.node_id, schema.node_id, ProgramEdgeKind.REFERENCES, component_id="mcp:entry"),
         _edge(impl.node_id, call.node_id, ProgramEdgeKind.CONTAINS, component_id="module:pkg.mod"),
         _edge(call.node_id, helper.node_id, ProgramEdgeKind.CALLS, component_id="module:pkg.mod"),
     )
-    graph = build_program_graph(
-        forest_id=FOREST_ID, nodes=nodes, edges=edges, producer=PRODUCER
-    )
+    graph = build_program_graph(forest_id=FOREST_ID, nodes=nodes, edges=edges, producer=PRODUCER)
     return {
         "graph": graph,
         "reg": reg,
@@ -505,12 +520,20 @@ def _vfs_surface_graph():
     edges = (
         _edge(caller.node_id, call.node_id, ProgramEdgeKind.CONTAINS, component_id="module:app"),
         _edge(call.node_id, vfs_open.node_id, ProgramEdgeKind.CALLS, component_id="module:app"),
-        _edge(fsspec.node_id, vfs_open.node_id, ProgramEdgeKind.DEPENDS_ON, component_id="module:fsspec"),
-        _edge(bucket.node_id, vfs_open.node_id, ProgramEdgeKind.DEPENDS_ON, component_id="module:bucket"),
+        _edge(
+            fsspec.node_id,
+            vfs_open.node_id,
+            ProgramEdgeKind.DEPENDS_ON,
+            component_id="module:fsspec",
+        ),
+        _edge(
+            bucket.node_id,
+            vfs_open.node_id,
+            ProgramEdgeKind.DEPENDS_ON,
+            component_id="module:bucket",
+        ),
     )
-    graph = build_program_graph(
-        forest_id=FOREST_ID, nodes=nodes, edges=edges, producer=PRODUCER
-    )
+    graph = build_program_graph(forest_id=FOREST_ID, nodes=nodes, edges=edges, producer=PRODUCER)
     return {
         "graph": graph,
         "vfs_open": vfs_open,
@@ -567,13 +590,23 @@ def _contract_graph():
     nodes = (schema, producer, consumer, mcp_tool, noise)
     edges = (
         _edge(producer.node_id, schema.node_id, ProgramEdgeKind.DEFINES, component_id="module:pkg"),
-        _edge(consumer.node_id, schema.node_id, ProgramEdgeKind.REFERENCES, component_id="module:pkg"),
-        _edge(mcp_tool.node_id, schema.node_id, ProgramEdgeKind.REFERENCES, component_id="mcp:with_schema"),
-        _edge(mcp_tool.node_id, consumer.node_id, ProgramEdgeKind.IMPLEMENTS, component_id="mcp:with_schema"),
+        _edge(
+            consumer.node_id, schema.node_id, ProgramEdgeKind.REFERENCES, component_id="module:pkg"
+        ),
+        _edge(
+            mcp_tool.node_id,
+            schema.node_id,
+            ProgramEdgeKind.REFERENCES,
+            component_id="mcp:with_schema",
+        ),
+        _edge(
+            mcp_tool.node_id,
+            consumer.node_id,
+            ProgramEdgeKind.IMPLEMENTS,
+            component_id="mcp:with_schema",
+        ),
     )
-    graph = build_program_graph(
-        forest_id=FOREST_ID, nodes=nodes, edges=edges, producer=PRODUCER
-    )
+    graph = build_program_graph(forest_id=FOREST_ID, nodes=nodes, edges=edges, producer=PRODUCER)
     return {
         "graph": graph,
         "schema": schema,
@@ -668,9 +701,10 @@ def test_changed_blob_impact_selects_dependents() -> None:
     assert fx["a"].node_id in result.node_ids
     assert fx["u"].node_id not in result.node_ids
     assert result.minimal is True
-    assert BLOB_UNRELATED not in {
-        fx["graph"].node(nid).binding.blob_cid for nid in result.node_ids
-    } or fx["u"].node_id not in result.node_ids
+    assert (
+        BLOB_UNRELATED not in {fx["graph"].node(nid).binding.blob_cid for nid in result.node_ids}
+        or fx["u"].node_id not in result.node_ids
+    )
 
 
 def test_contract_consumers_and_producers() -> None:
@@ -826,12 +860,8 @@ def test_excluded_repositories_are_reported() -> None:
 
 def test_results_are_stable_and_content_addressed() -> None:
     fx = _seeded_call_graph()
-    left = query_symbol_callees(
-        fx["graph"], seed_qualified_names=["pkg.a"]
-    )
-    right = query_symbol_callees(
-        fx["graph"], seed_qualified_names=["pkg.a"]
-    )
+    left = query_symbol_callees(fx["graph"], seed_qualified_names=["pkg.a"])
+    right = query_symbol_callees(fx["graph"], seed_qualified_names=["pkg.a"])
     assert left.slice_id == right.slice_id
     assert left.to_dict() == right.to_dict()
     assert left.to_json() == right.to_json()
@@ -887,9 +917,7 @@ def test_mapping_query_entrypoint() -> None:
 
 def test_no_source_bodies_in_results() -> None:
     fx = _seeded_call_graph()
-    result = query_symbol_callees(
-        fx["graph"], seed_qualified_names=["pkg.a"]
-    )
+    result = query_symbol_callees(fx["graph"], seed_qualified_names=["pkg.a"])
     blob = json.dumps(result.to_dict())
     assert "def foo" not in blob
     assert "source_text" not in blob
@@ -925,21 +953,15 @@ def test_all_query_kinds_are_exercised() -> None:
     runners = [
         (
             QueryKind.SYMBOL_CALLERS,
-            lambda: query_symbol_callers(
-                call_fx["graph"], seed_qualified_names=["pkg.c"]
-            ),
+            lambda: query_symbol_callers(call_fx["graph"], seed_qualified_names=["pkg.c"]),
         ),
         (
             QueryKind.SYMBOL_CALLEES,
-            lambda: query_symbol_callees(
-                call_fx["graph"], seed_qualified_names=["pkg.a"]
-            ),
+            lambda: query_symbol_callees(call_fx["graph"], seed_qualified_names=["pkg.a"]),
         ),
         (
             QueryKind.CHANGED_BLOB_IMPACT,
-            lambda: query_changed_blob_impact(
-                call_fx["graph"], seed_blob_cids=[BLOB_B]
-            ),
+            lambda: query_changed_blob_impact(call_fx["graph"], seed_blob_cids=[BLOB_B]),
         ),
         (
             QueryKind.CONTRACT_CONSUMERS,
@@ -957,9 +979,7 @@ def test_all_query_kinds_are_exercised() -> None:
         ),
         (
             QueryKind.MCP_END_TO_END,
-            lambda: query_mcp_end_to_end(
-                mcp_fx["graph"], seed_node_ids=[mcp_fx["reg"].node_id]
-            ),
+            lambda: query_mcp_end_to_end(mcp_fx["graph"], seed_node_ids=[mcp_fx["reg"].node_id]),
         ),
         (
             QueryKind.VFS_OPERATION_SURFACE,
@@ -967,9 +987,7 @@ def test_all_query_kinds_are_exercised() -> None:
         ),
         (
             QueryKind.PROOF_DEPENDENCIES,
-            lambda: query_proof_dependencies(
-                call_fx["graph"], seed_qualified_names=["pkg.a"]
-            ),
+            lambda: query_proof_dependencies(call_fx["graph"], seed_qualified_names=["pkg.a"]),
         ),
         (
             QueryKind.SHORTEST_COUNTEREXAMPLE,
@@ -1068,16 +1086,12 @@ def test_kind_partitioned_query_indexes_preserve_canonical_graph_identity() -> N
     call_ab = fx["call_ab"].node_id
     # call_ab --calls--> symbol:b is present under the CALLS kind partition.
     call_neighbors = {
-        item.neighbor
-        for item in view.forward_by_kind.get(call_ab, {}).get(calls, ())
+        item.neighbor for item in view.forward_by_kind.get(call_ab, {}).get(calls, ())
     }
     assert fx["b"].node_id in call_neighbors
     # symbol:a --contains--> call_ab under CONTAINS.
     contains_neighbors = {
-        item.neighbor
-        for item in view.forward_by_kind.get(fx["a"].node_id, {}).get(
-            contains, ()
-        )
+        item.neighbor for item in view.forward_by_kind.get(fx["a"].node_id, {}).get(contains, ())
     }
     assert call_ab in contains_neighbors
 
@@ -1096,9 +1110,7 @@ def test_query_index_layout_is_recorded_without_embedding_cardinalities() -> Non
     """Provenance carries the fixed index layout marker, not volatile counts."""
 
     fx = _seeded_call_graph()
-    result = query_symbol_callees(
-        fx["graph"], seed_qualified_names=["pkg.a"]
-    )
+    result = query_symbol_callees(fx["graph"], seed_qualified_names=["pkg.a"])
     assert result.provenance["query_index"] == QUERY_INDEX_VERSION
     assert result.provenance["canonical_graph_identity_preserved"] is True
     assert result.provenance["graph_id"] == fx["graph"].graph_id
@@ -1123,15 +1135,9 @@ def test_objective_validation_repair_acceptance_seeded_slices() -> None:
     call_fx = _seeded_call_graph()
     mcp_fx = _mcp_route_graph()
 
-    callees = query_symbol_callees(
-        call_fx["graph"], seed_qualified_names=["pkg.a"]
-    )
-    callers = query_symbol_callers(
-        call_fx["graph"], seed_qualified_names=["pkg.c"]
-    )
-    mcp = query_mcp_end_to_end(
-        mcp_fx["graph"], seed_node_ids=[mcp_fx["reg"].node_id]
-    )
+    callees = query_symbol_callees(call_fx["graph"], seed_qualified_names=["pkg.a"])
+    callers = query_symbol_callers(call_fx["graph"], seed_qualified_names=["pkg.c"])
+    mcp = query_mcp_end_to_end(mcp_fx["graph"], seed_node_ids=[mcp_fx["reg"].node_id])
 
     # Seeded transitive callees / callers complete within scope.
     for result in (callees, callers, mcp):
@@ -1210,13 +1216,8 @@ def test_kind_partitioned_neighbors_match_full_adjacency_filter() -> None:
                     and item.forward
                 ):
                     continue
-            expected_ids.append(
-                (item.edge.edge_id, item.neighbor, item.forward)
-            )
-        got_ids = [
-            (item.edge.edge_id, item.neighbor, item.forward)
-            for item in partitioned
-        ]
+            expected_ids.append((item.edge.edge_id, item.neighbor, item.forward))
+        got_ids = [(item.edge.edge_id, item.neighbor, item.forward) for item in partitioned]
         assert sorted(got_ids) == sorted(expected_ids)
 
 

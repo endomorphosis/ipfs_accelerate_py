@@ -18,10 +18,10 @@ def to_valid_identifier(text):
     # Replace hyphens with underscores
     text = text.replace("-", "_")
     # Remove any other invalid characters
-    text = re.sub(r'[^a-zA-Z0-9_]', '', text)
+    text = re.sub(r"[^a-zA-Z0-9_]", "", text)
     # Ensure it doesn't start with a number
     if text and text[0].isdigit():
-        text = '_' + text
+        text = "_" + text
     return text
 ```
 
@@ -33,8 +33,8 @@ This function converts hyphenated names like `xlm-roberta` to valid Python ident
 def get_pascal_case_identifier(text):
     """Convert a model name (potentially hyphenated) to PascalCase for class names."""
     # Split by hyphens and capitalize each part
-    parts = text.split('-')
-    return ''.join(part.capitalize() for part in parts)
+    parts = text.split("-")
+    return "".join(part.capitalize() for part in parts)
 ```
 
 This function converts hyphenated names like `xlm-roberta` to PascalCase for class names like `XlmRoberta`.

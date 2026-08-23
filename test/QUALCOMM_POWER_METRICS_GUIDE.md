@@ -26,7 +26,7 @@ handler = QualcommTestHandler()
 result = handler.run_inference(
     model_path="path/to/model",
     input_data=my_input_data,
-    monitor_metrics=True  # Enable power monitoring
+    monitor_metrics=True,  # Enable power monitoring
 )
 
 # Access power metrics
@@ -49,7 +49,7 @@ result = handler.run_inference(
     model_path="path/to/model",
     input_data=my_input_data,
     monitor_metrics=True,
-    model_type="vision"  # Specify model type: vision, text, audio, llm
+    model_type="vision",  # Specify model type: vision, text, audio, llm
 )
 
 # Access enhanced metrics
@@ -281,10 +281,10 @@ You can define custom power profiles for specific models:
 # Define custom power profiles
 CUSTOM_POWER_PROFILES = {
     "my-custom-model": {
-        "base": 480.0,        # Base power in mW
-        "variance": 60.0,     # Random variance for realistic simulation
+        "base": 480.0,  # Base power in mW
+        "variance": 60.0,  # Random variance for realistic simulation
         "peak_factor": 1.25,  # Peak power relative to base
-        "idle_factor": 0.4    # Idle power relative to base
+        "idle_factor": 0.4,  # Idle power relative to base
     }
 }
 

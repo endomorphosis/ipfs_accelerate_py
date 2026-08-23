@@ -114,6 +114,7 @@ This document outlines the implementation tasks for the Adaptive Load Balancing 
 ```python
 class WorkerCapabilities:
     """Worker hardware and software capabilities."""
+
     worker_id: str
     hardware_specs: Dict[str, Any]  # CPU, GPU, memory, etc.
     software_versions: Dict[str, str]  # Python, libraries, etc.
@@ -122,8 +123,10 @@ class WorkerCapabilities:
     storage_capacity: float  # GB
     last_updated: datetime
 
+
 class WorkerPerformance:
     """Worker performance history."""
+
     worker_id: str
     test_type: str
     model_id: str
@@ -131,9 +134,11 @@ class WorkerPerformance:
     success_rate: float  # 0.0 to 1.0
     last_execution_time: datetime
     sample_count: int
-    
+
+
 class WorkerLoad:
     """Current worker load status."""
+
     worker_id: str
     active_tests: int
     cpu_utilization: float  # percentage
@@ -141,9 +146,11 @@ class WorkerLoad:
     gpu_utilization: float  # percentage
     queue_depth: int
     last_updated: datetime
-    
+
+
 class TestRequirements:
     """Test execution requirements."""
+
     test_id: str
     model_id: str
     minimum_memory: float  # GB

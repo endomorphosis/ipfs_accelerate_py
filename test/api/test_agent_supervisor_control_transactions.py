@@ -32,6 +32,25 @@ from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     SupervisorControlService,
     TransactionConflictError,
 )
+from ipfs_accelerate_py.agent_supervisor.control.promotion_admission import (
+    M3_GATES,
+    PROMOTE_CONTROL_OPERATION,
+    REJECT_CONTROL_OPERATION,
+    HumanApprovalRecord,
+    PromotionAdmissionPolicy,
+    PromotionAdmissionReceipt,
+    PromotionAdmissionRequest,
+    admit_promotion,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.promotion_comparison import (
+    DEFAULT_SEMANTIC_MINIMUM_MILLIONTHS,
+    M2_GATES,
+    PromotionComparisonPolicy,
+    PromotionComparisonRequest,
+    PromotionDecision,
+    compare_promotion,
+    passing_m2_evidence,
+)
 
 NOW = 1_500
 
@@ -108,9 +127,7 @@ def _request(
 
 def _policy(*requests: OperationRequest) -> ControlMutationPolicy:
     decisions = tuple(
-        request.authorization
-        for request in requests
-        if request.authorization is not None
+        request.authorization for request in requests if request.authorization is not None
     )
     return ControlMutationPolicy(
         policy_id="policy:control",
@@ -150,9 +167,7 @@ class _Backend:
         request: OperationRequest,
         transaction: Any,
     ) -> bool:
-        self.recoveries.append(
-            f"{request.request_id}:{transaction.transaction_id}"
-        )
+        self.recoveries.append(f"{request.request_id}:{transaction.transaction_id}")
         return True
 
     def repair(
@@ -160,9 +175,7 @@ class _Backend:
         request: OperationRequest,
         transaction: Any,
     ) -> bool:
-        self.recoveries.append(
-            f"repair:{request.request_id}:{transaction.transaction_id}"
-        )
+        self.recoveries.append(f"repair:{request.request_id}:{transaction.transaction_id}")
         return True
 
 
@@ -180,18 +193,14 @@ def _service(
         repository_allowlist=(repository_root,),
         state_allowlist=(state_root,),
         backend=backend,
-        authorization_validator=ControlMutationAuthorizer(
-            policy, clock_ms=lambda: NOW
-        ),
+        authorization_validator=ControlMutationAuthorizer(policy, clock_ms=lambda: NOW),
         identity_validator=lambda candidate: (
-            policy.current_tree_ids.get(candidate.repository_id)
-            == candidate.tree_id
+            policy.current_tree_ids.get(candidate.repository_id) == candidate.tree_id
             and policy.current_objective_revisions.get(candidate.objective_id)
             == candidate.objective_revision
         ),
         lease_validator=lambda candidate: (
-            policy.active_lease_fences.get(candidate.lease_id)
-            == candidate.fencing_epoch
+            policy.active_lease_fences.get(candidate.lease_id) == candidate.fencing_epoch
         ),
         state_store=store or InMemoryControlStateStore(),
         clock_ms=lambda: NOW,
@@ -423,9 +432,7 @@ def test_restart_turns_an_unknown_dispatch_outcome_into_typed_repair(
         action=MutationRecoveryAction.REPAIR,
     )
     assert repaired.phase is MutationTransactionPhase.REPAIRED
-    assert backend.recoveries == [
-        f"repair:{request.request_id}:{transaction.transaction_id}"
-    ]
+    assert backend.recoveries == [f"repair:{request.request_id}:{transaction.transaction_id}"]
 
 
 def test_stale_policy_targets_and_lease_loss_reject_before_dispatch(
@@ -466,3 +473,306 @@ def test_stale_policy_targets_and_lease_loss_reject_before_dispatch(
     assert stale_lease.status is OperationStatus.DENIED
     assert stale_lease.error and stale_lease.error.code is ErrorCode.UNAUTHORIZED
     assert backend.calls == 0
+
+
+def _promotion_authorization(
+    repository_root: Path,
+    state_root: Path,
+    *,
+    lease_id: str = "lease:promotion",
+    fencing_epoch: int = 3,
+    verdict: AuthorizationVerdict = AuthorizationVerdict.PERMIT,
+) -> AuthorizationDecision:
+    return AuthorizationDecision(
+        verdict=verdict,
+        operation=Operation.OBJECTIVE_RECONCILE,
+        granted_authority=OperationAuthority.MUTATION,
+        repository_root=str(repository_root),
+        state_root=str(state_root),
+        repository_id="repository:test",
+        tree_id="tree:current",
+        objective_id="PGIR-G090",
+        objective_revision="objective:1",
+        policy_id="policy:promotion",
+        policy_revision="policy:1",
+        caller="operator:alice",
+        lease_id=lease_id,
+        fencing_epoch=fencing_epoch,
+        authorized_effect_ids=("promotion:pointer",),
+        reason_code="" if verdict is AuthorizationVerdict.PERMIT else "denied",
+        grant_ids=("policy-grant:promote",),
+        evaluated_at_ms=1_000,
+        expires_at_ms=2_000,
+    )
+
+
+def _promotion_admission_policy(**overrides: object) -> PromotionAdmissionPolicy:
+    values: dict[str, object] = {
+        "policy_id": "policy:promotion",
+        "policy_revision": "policy:1",
+        "authorized_actors": ("operator:alice",),
+        "active_lease_fences": {"lease:promotion": 3},
+        "require_human_approval": False,
+    }
+    values.update(overrides)
+    return PromotionAdmissionPolicy(**values)  # type: ignore[arg-type]
+
+
+def _passing_comparison(**overrides: object):
+    values: dict[str, object] = {
+        "candidate_checkpoint_id": "ir:checkpoint:candidate",
+        "baseline_checkpoint_id": "ir:checkpoint:baseline",
+        "policy": PromotionComparisonPolicy(
+            policy_id="policy:promotion",
+            policy_revision="policy:promotion:1",
+        ),
+        "evaluation_report_identity": "eval:report:1",
+        "proof_evidence_identity": "proof:fresh:1",
+        "actor_identity": "operator:alice",
+        "expected_current_pointer": "ir:checkpoint:baseline",
+        "gates": passing_m2_evidence(),
+    }
+    values.update(overrides)
+    return compare_promotion(PromotionComparisonRequest(**values))  # type: ignore[arg-type]
+
+
+def test_policy_admission_authorizes_cas_only_when_every_m3_gate_passes(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repository_root.mkdir()
+    state_root.mkdir()
+    comparison = _passing_comparison()
+    policy = _promotion_admission_policy()
+    admitted = admit_promotion(
+        PromotionAdmissionRequest(
+            comparison=comparison,
+            policy=policy,
+            actor_identity="operator:alice",
+            actor_role="operator",
+            lease_id="lease:promotion",
+            fencing_epoch=3,
+            authorization=_promotion_authorization(repository_root, state_root),
+            comparison_policy=PromotionComparisonPolicy(
+                policy_id="policy:promotion",
+                policy_revision="policy:promotion:1",
+            ),
+        )
+    )
+
+    assert admitted.admitted is True
+    assert admitted.cas_authorized is True
+    assert admitted.decision is PromotionDecision.PROMOTE
+    assert admitted.control_operation == PROMOTE_CONTROL_OPERATION.value
+    assert set(admitted.m3_results) == set(M3_GATES)
+    assert all(status == "pass" for status in admitted.m3_results.values())
+    assert set(admitted.admitted_gates) == set(M2_GATES)
+    replay = PromotionAdmissionReceipt.from_dict(admitted.to_dict())
+    assert replay.receipt_id == admitted.receipt_id
+
+
+def test_human_approval_lease_and_minima_gates_are_noncompensable(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repository_root.mkdir()
+    state_root.mkdir()
+    comparison = _passing_comparison()
+    comparison_policy = PromotionComparisonPolicy(
+        policy_id="policy:promotion",
+        policy_revision="policy:promotion:1",
+    )
+    authorization = _promotion_authorization(repository_root, state_root)
+    required = _promotion_admission_policy(require_human_approval=True)
+    missing = admit_promotion(
+        PromotionAdmissionRequest(
+            comparison=comparison,
+            policy=required,
+            actor_identity="operator:alice",
+            actor_role="operator",
+            lease_id="lease:promotion",
+            fencing_epoch=3,
+            authorization=authorization,
+            comparison_policy=comparison_policy,
+        )
+    )
+    forged = admit_promotion(
+        PromotionAdmissionRequest(
+            comparison=comparison,
+            policy=required,
+            actor_identity="operator:alice",
+            actor_role="operator",
+            lease_id="lease:promotion",
+            fencing_epoch=3,
+            authorization=authorization,
+            comparison_policy=comparison_policy,
+            human_approval=HumanApprovalRecord(
+                approval_identity="approval:forged",
+                actor_identity="operator:alice",
+                comparison_receipt_id="not-the-receipt",
+                candidate_checkpoint_id=comparison.candidate_checkpoint_id,
+                policy_identity=required.policy_identity,
+            ),
+        )
+    )
+    bound = HumanApprovalRecord(
+        approval_identity="approval:bound",
+        actor_identity="operator:alice",
+        comparison_receipt_id=comparison.receipt_id,
+        candidate_checkpoint_id=comparison.candidate_checkpoint_id,
+        policy_identity=required.policy_identity,
+    )
+    approved = admit_promotion(
+        PromotionAdmissionRequest(
+            comparison=comparison,
+            policy=required,
+            actor_identity="operator:alice",
+            actor_role="operator",
+            lease_id="lease:promotion",
+            fencing_epoch=3,
+            authorization=authorization,
+            comparison_policy=comparison_policy,
+            human_approval=bound,
+        )
+    )
+    stale_lease = admit_promotion(
+        PromotionAdmissionRequest(
+            comparison=comparison,
+            policy=_promotion_admission_policy(),
+            actor_identity="operator:alice",
+            actor_role="operator",
+            lease_id="lease:promotion",
+            fencing_epoch=9,
+            authorization=_promotion_authorization(
+                repository_root, state_root, fencing_epoch=9
+            ),
+            comparison_policy=comparison_policy,
+        )
+    )
+    evaluator = admit_promotion(
+        PromotionAdmissionRequest(
+            comparison=comparison,
+            policy=_promotion_admission_policy(),
+            actor_identity="operator:alice",
+            actor_role="evaluator",
+            lease_id="lease:promotion",
+            fencing_epoch=3,
+            authorization=authorization,
+            comparison_policy=comparison_policy,
+        )
+    )
+    lowered = admit_promotion(
+        PromotionAdmissionRequest(
+            comparison=comparison,
+            policy=_promotion_admission_policy(
+                semantic_minimum_millionths=DEFAULT_SEMANTIC_MINIMUM_MILLIONTHS + 20_000
+            ),
+            actor_identity="operator:alice",
+            actor_role="operator",
+            lease_id="lease:promotion",
+            fencing_epoch=3,
+            authorization=authorization,
+            comparison_policy=comparison_policy,
+        )
+    )
+
+    assert missing.admitted is False
+    assert missing.decision is PromotionDecision.REJECT
+    assert missing.control_operation == REJECT_CONTROL_OPERATION.value
+    assert "human_approval:required" in missing.reasons
+    assert forged.admitted is False
+    assert "human_approval:comparison_mismatch" in forged.reasons
+    assert approved.admitted is True
+    assert approved.human_approval_identity == "approval:bound"
+    assert stale_lease.admitted is False
+    assert "lease_fence:stale" in stale_lease.reasons
+    assert evaluator.admitted is False
+    assert "authorization:role_not_permitted" in evaluator.reasons
+    assert lowered.admitted is False
+    assert "policy_identity:semantic_minimum_lowered" in lowered.reasons
+    assert missing.cas_authorized is False
+
+
+def test_admission_cannot_upgrade_a_regressed_comparison(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repository_root.mkdir()
+    state_root.mkdir()
+    gates = passing_m2_evidence()
+    from ipfs_accelerate_py.agent_supervisor.validation.promotion_comparison import (
+        PromotionGateEvidence,
+    )
+
+    gates["proof"] = PromotionGateEvidence(
+        gate_id="proof",
+        available=True,
+        baseline_millionths=1_000_000,
+        candidate_millionths=900_000,
+        noninferiority_passed=False,
+        evidence_identity="evidence:proof-regressed",
+    )
+    comparison = _passing_comparison(gates=gates)
+    admitted = admit_promotion(
+        PromotionAdmissionRequest(
+            comparison=comparison,
+            policy=_promotion_admission_policy(),
+            actor_identity="operator:alice",
+            actor_role="operator",
+            lease_id="lease:promotion",
+            fencing_epoch=3,
+            authorization=_promotion_authorization(repository_root, state_root),
+        )
+    )
+
+    assert comparison.decision is PromotionDecision.REGRESSED
+    assert admitted.decision is PromotionDecision.REGRESSED
+    assert admitted.admitted is False
+    assert admitted.cas_authorized is False
+    assert "comparison_not_promotable" in admitted.reasons
+
+
+def test_promotion_admission_records_durable_control_cas_and_stale_revision_loses(
+    tmp_path: Path,
+) -> None:
+    repository_root = tmp_path / "repo"
+    state_root = tmp_path / "state"
+    repository_root.mkdir()
+    state_root.mkdir()
+    comparison = _passing_comparison()
+    admitted = admit_promotion(
+        PromotionAdmissionRequest(
+            comparison=comparison,
+            policy=_promotion_admission_policy(),
+            actor_identity="operator:alice",
+            actor_role="operator",
+            lease_id="lease:promotion",
+            fencing_epoch=3,
+            authorization=_promotion_authorization(repository_root, state_root),
+        )
+    )
+    request = _request(repository_root, state_root, key="promote:candidate")
+    store = InMemoryControlStateStore()
+    prepared = store.begin_mutation(request, now_ms=NOW)
+    dispatching = store.compare_and_swap_mutation(
+        request,
+        expected_revision=prepared.revision,
+        phase=MutationTransactionPhase.DISPATCHING,
+        now_ms=NOW,
+    )
+
+    with pytest.raises(TransactionConflictError, match="stale transaction revision"):
+        store.compare_and_swap_mutation(
+            request,
+            expected_revision=prepared.revision,
+            phase=MutationTransactionPhase.COMMITTED,
+            now_ms=NOW,
+        )
+
+    assert admitted.cas_authorized is True
+    assert admitted.control_operation == PROMOTE_CONTROL_OPERATION.value
+    assert dispatching.revision == prepared.revision + 1
+    assert store.get_mutation(request) == dispatching

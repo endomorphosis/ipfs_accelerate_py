@@ -99,12 +99,12 @@ We can visualize them like this:
 ```python
 import matplotlib.pyplot as plt
 
-plt.imshow(image, cmap='gray')
+plt.imshow(image, cmap="gray")
 
 for i, mask in enumerate(masks["masks"]):
-    plt.imshow(mask, cmap='viridis', alpha=0.1, vmin=0, vmax=1)
+    plt.imshow(mask, cmap="viridis", alpha=0.1, vmin=0, vmax=1)
 
-plt.axis('off')
+plt.axis("off")
 plt.show()
 ```
 
@@ -126,6 +126,7 @@ the processor.
 from transformers import SamModel, SamProcessor
 import torch
 from accelerate.test_utils.testing import get_backend
+
 # automatically detects the underlying device type (CUDA, CPU, XPU, MPS, etc.)
 device, _, _ = get_backend()
 model = SamModel.from_pretrained("facebook/sam-vit-base").to(device)
@@ -138,12 +139,14 @@ and pass it to the model for inference. To post-process the model output, pass t
 since the processor resizes the image, and the output needs to be extrapolated.
 
 ```python
-input_points = [[[2592, 1728]]] # point location of the bee
+input_points = [[[2592, 1728]]]  # point location of the bee
 
 inputs = processor(image, input_points=input_points, return_tensors="pt").to(device)
 with torch.no_grad():
     outputs = model(**inputs)
-masks = processor.image_processor.post_process_masks(outputs.pred_masks.cpu(), inputs["original_sizes"].cpu(), inputs["reshaped_input_sizes"].cpu())
+masks = processor.image_processor.post_process_masks(
+    outputs.pred_masks.cpu(), inputs["original_sizes"].cpu(), inputs["reshaped_input_sizes"].cpu()
+)
 ```
 We can visualize the three masks in the `masks` output.
 
@@ -154,20 +157,20 @@ import numpy as np
 fig, axes = plt.subplots(1, 4, figsize=(15, 5))
 
 axes[0].imshow(image)
-axes[0].set_title('Original Image')
+axes[0].set_title("Original Image")
 mask_list = [masks[0][0][0].numpy(), masks[0][0][1].numpy(), masks[0][0][2].numpy()]
 
 for i, mask in enumerate(mask_list, start=1):
     overlayed_image = np.array(image).copy()
 
-    overlayed_image[:,:,0] = np.where(mask == 1, 255, overlayed_image[:,:,0])
-    overlayed_image[:,:,1] = np.where(mask == 1, 0, overlayed_image[:,:,1])
-    overlayed_image[:,:,2] = np.where(mask == 1, 0, overlayed_image[:,:,2])
-    
+    overlayed_image[:, :, 0] = np.where(mask == 1, 255, overlayed_image[:, :, 0])
+    overlayed_image[:, :, 1] = np.where(mask == 1, 0, overlayed_image[:, :, 1])
+    overlayed_image[:, :, 2] = np.where(mask == 1, 0, overlayed_image[:, :, 2])
+
     axes[i].imshow(overlayed_image)
-    axes[i].set_title(f'Mask {i}')
+    axes[i].set_title(f"Mask {i}")
 for ax in axes:
-    ax.axis('off')
+    ax.axis("off")
 
 plt.show()
 ```
@@ -187,19 +190,13 @@ to the model, then post-process the output again.
 # bounding box around the bee
 box = [2350, 1600, 2850, 2100]
 
-inputs = processor(
-        image,
-        input_boxes=[[[box]]],
-        return_tensors="pt"
-    ).to("cuda")
+inputs = processor(image, input_boxes=[[[box]]], return_tensors="pt").to("cuda")
 
 with torch.no_grad():
     outputs = model(**inputs)
 
 mask = processor.image_processor.post_process_masks(
-    outputs.pred_masks.cpu(),
-    inputs["original_sizes"].cpu(),
-    inputs["reshaped_input_sizes"].cpu()
+    outputs.pred_masks.cpu(), inputs["original_sizes"].cpu(), inputs["reshaped_input_sizes"].cpu()
 )[0][0][0].numpy()
 ```
 
@@ -211,7 +208,7 @@ import matplotlib.patches as patches
 fig, ax = plt.subplots()
 ax.imshow(image)
 
-rectangle = patches.Rectangle((2350, 1600), 500, 500, linewidth=2, edgecolor='r', facecolor='none')
+rectangle = patches.Rectangle((2350, 1600), 500, 500, linewidth=2, edgecolor="r", facecolor="none")
 ax.add_patch(rectangle)
 ax.axis("off")
 plt.show()
@@ -226,7 +223,7 @@ You can see the inference output below.
 ```python
 fig, ax = plt.subplots()
 ax.imshow(image)
-ax.imshow(mask, cmap='viridis', alpha=0.4)
+ax.imshow(mask, cmap="viridis", alpha=0.4)
 
 ax.axis("off")
 plt.show()

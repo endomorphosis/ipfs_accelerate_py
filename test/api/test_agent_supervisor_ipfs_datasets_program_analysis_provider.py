@@ -96,7 +96,11 @@ def _cid_module() -> types.ModuleType:
 
     def cid_for_dag_json(obj, *, base="base32", mh_type="sha2-256", version=1):
         return cid_for_bytes(
-            canonical_dag_json_bytes(obj), base=base, codec="dag-json", mh_type=mh_type, version=version
+            canonical_dag_json_bytes(obj),
+            base=base,
+            codec="dag-json",
+            mh_type=mh_type,
+            version=version,
         )
 
     def cid_for_obj(obj, *, base="base32", codec="raw", mh_type="sha2-256", version=1):
@@ -163,9 +167,7 @@ def _ir_protocols_module() -> types.ModuleType:
 
 
 def _graphrag_module() -> types.ModuleType:
-    mod = types.ModuleType(
-        "ipfs_datasets_py.search.graphrag_integration.graphrag_integration"
-    )
+    mod = types.ModuleType("ipfs_datasets_py.search.graphrag_integration.graphrag_integration")
 
     class GraphRAGQueryEngine:
         def query(self, query_text: str, top_k: int = 10, max_nodes_visited=None):
@@ -177,8 +179,7 @@ def _graphrag_module() -> types.ModuleType:
 
 def _ast_module() -> types.ModuleType:
     mod = types.ModuleType(
-        "ipfs_datasets_py.logic.security_models.crypto_exchange.extractors."
-        "python_ast_extractor"
+        "ipfs_datasets_py.logic.security_models.crypto_exchange.extractors.python_ast_extractor"
     )
 
     class PythonASTExtractor:
@@ -221,12 +222,8 @@ def _full_import_map() -> dict[str, object]:
         f"{root}.logic.security_models.crypto_exchange.extractors.python_ast_extractor": _ast_module(),
         f"{root}.logic.zkp.backends": _zkp_backends_module(),
         f"{root}.logic.zkp.circuits": _zkp_circuits_module(),
-        f"{root}.logic.external_provers.smt.cvc5_prover_bridge": types.ModuleType(
-            "cvc5_bridge"
-        ),
-        f"{root}.logic.external_provers.smt.z3_prover_bridge": types.ModuleType(
-            "z3_bridge"
-        ),
+        f"{root}.logic.external_provers.smt.cvc5_prover_bridge": types.ModuleType("cvc5_bridge"),
+        f"{root}.logic.external_provers.smt.z3_prover_bridge": types.ModuleType("z3_bridge"),
         "cvc5": SimpleNamespace(Solver=object, __version__="1.0-test"),
         "z3": SimpleNamespace(Solver=object, __version__="4.0-test"),
     }
@@ -250,9 +247,7 @@ def test_cold_import_construction_and_matrix_never_import_optional_code() -> Non
     provider = IpfsDatasetsProgramAnalysisProvider(
         importer=importer,
         find_spec=find_spec,
-        which=lambda name: (_ for _ in ()).throw(
-            AssertionError("cold path looked up executables")
-        ),
+        which=lambda name: (_ for _ in ()).throw(AssertionError("cold path looked up executables")),
     )
     state_before = {name: id(value) for name, value in vars(provider).items()}
 
@@ -418,8 +413,7 @@ def test_partial_matrix_when_only_some_families_are_ready() -> None:
     assert zkp.status is CapabilityProbeStatus.SIMULATED
     assert zkp.authority is CapabilityAuthority.ZKP_DIAGNOSTIC
     assert any(
-        surface.reason_code
-        is CapabilityReasonCode.SIMULATED_ZKP_AUTHORITY_REJECTED
+        surface.reason_code is CapabilityReasonCode.SIMULATED_ZKP_AUTHORITY_REJECTED
         for surface in zkp.surfaces
     )
 
@@ -526,7 +520,10 @@ def test_pseudo_cids_are_rejected_by_strict_canary() -> None:
         return value
 
     leaky.validate_cid = validate_cid
-    import_map = {f"{root}.utils.cid_utils": leaky, "multiformats": types.ModuleType("multiformats")}
+    import_map = {
+        f"{root}.utils.cid_utils": leaky,
+        "multiformats": types.ModuleType("multiformats"),
+    }
     discovery = FakeDiscovery(modules=set(import_map), import_map=import_map)
     probe = ProgramAnalysisCapabilityProbe(
         ProgramAnalysisProbeConfig(cache_ttl_seconds=0),
@@ -538,8 +535,7 @@ def test_pseudo_cids_are_rejected_by_strict_canary() -> None:
     cid = report.family(CapabilityFamily.STRICT_CID)
     assert cid.status is CapabilityProbeStatus.REJECTED
     assert any(
-        surface.reason_code is CapabilityReasonCode.PSEUDO_CID_ACCEPTED
-        for surface in cid.surfaces
+        surface.reason_code is CapabilityReasonCode.PSEUDO_CID_ACCEPTED for surface in cid.surfaces
     )
 
 
@@ -550,9 +546,7 @@ def test_simulated_zkp_authority_cannot_be_enabled() -> None:
 
 def test_unbounded_graphrag_query_is_rejected() -> None:
     root = DEFAULT_OPTIONAL_ROOT
-    mod = types.ModuleType(
-        f"{root}.search.graphrag_integration.graphrag_integration"
-    )
+    mod = types.ModuleType(f"{root}.search.graphrag_integration.graphrag_integration")
 
     class GraphRAGQueryEngine:
         def query(self, query_text: str):
@@ -572,8 +566,7 @@ def test_unbounded_graphrag_query_is_rejected() -> None:
     report = probe.probe()
     graph = report.family(CapabilityFamily.GRAPHRAG)
     assert any(
-        surface.reason_code is CapabilityReasonCode.UNBOUNDED_OUTPUT
-        for surface in graph.surfaces
+        surface.reason_code is CapabilityReasonCode.UNBOUNDED_OUTPUT for surface in graph.surfaces
     )
     assert graph.status in {
         CapabilityProbeStatus.REJECTED,
@@ -599,19 +592,11 @@ def test_current_probe_reflects_live_environment_as_diagnostics_not_constants() 
     # Live observation: cvc5 CLI is present in this environment; z3 may not be.
     # The matrix must encode that as diagnostics, never hard-coded constants.
     cvc5_exe = next(
-        (
-            surface
-            for surface in solvers.surfaces
-            if surface.surface_id == "solver.executable.cvc5"
-        ),
+        (surface for surface in solvers.surfaces if surface.surface_id == "solver.executable.cvc5"),
         None,
     )
     z3_exe = next(
-        (
-            surface
-            for surface in solvers.surfaces
-            if surface.surface_id == "solver.executable.z3"
-        ),
+        (surface for surface in solvers.surfaces if surface.surface_id == "solver.executable.z3"),
         None,
     )
     assert cvc5_exe is not None and z3_exe is not None
@@ -627,12 +612,9 @@ def test_current_probe_reflects_live_environment_as_diagnostics_not_constants() 
         CapabilityAuthority.ZKP_DIAGNOSTIC,
         CapabilityAuthority.NONE,
     }
-    if any(
-        surface.status is CapabilityProbeStatus.SIMULATED for surface in zkp.surfaces
-    ):
+    if any(surface.status is CapabilityProbeStatus.SIMULATED for surface in zkp.surfaces):
         assert any(
-            surface.reason_code
-            is CapabilityReasonCode.SIMULATED_ZKP_AUTHORITY_REJECTED
+            surface.reason_code is CapabilityReasonCode.SIMULATED_ZKP_AUTHORITY_REJECTED
             for surface in zkp.surfaces
         )
 

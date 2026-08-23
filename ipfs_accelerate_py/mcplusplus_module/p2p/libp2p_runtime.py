@@ -75,7 +75,11 @@ def patch_libp2p_compatibility():
             try:
                 # Modern pymultihash (e.g. 0.8.x) exposes `Func`/`FuncReg` and
                 # does not provide `multihash.constants.HASH_CODES`.
-                if hasattr(mod, "Func") and hasattr(mod, "digest") and callable(getattr(mod, "digest")):
+                if (
+                    hasattr(mod, "Func")
+                    and hasattr(mod, "digest")
+                    and callable(getattr(mod, "digest"))
+                ):
                     return True
 
                 # Older/alternate multihash implementations expose HASH_CODES.
@@ -275,9 +279,9 @@ def patch_libp2p_compatibility():
             target_mod.encode = encode
 
         # Check if Func already exists
-        if hasattr(multihash, 'Func'):
+        if hasattr(multihash, "Func"):
             logger.debug("multihash.Func already exists, skipping patch")
-            _ensure_multiformats_func(getattr(multihash, 'Func'))
+            _ensure_multiformats_func(getattr(multihash, "Func"))
             _ensure_digest_encodeable(multihash)
             _ensure_multihash_encode(multihash)
             try:
@@ -295,7 +299,9 @@ def patch_libp2p_compatibility():
                 from libp2p.kad_dht.provider_store import ProviderStore  # type: ignore
 
                 orig_send = getattr(ProviderStore, "_send_add_provider", None)
-                if callable(orig_send) and not getattr(orig_send, "_ipfs_accelerate_patched", False):
+                if callable(orig_send) and not getattr(
+                    orig_send, "_ipfs_accelerate_patched", False
+                ):
 
                     async def _send_add_provider_safe(self, peer_id, key):  # type: ignore[no-redef]
                         try:
@@ -309,36 +315,39 @@ def patch_libp2p_compatibility():
 
                     setattr(_send_add_provider_safe, "_ipfs_accelerate_patched", True)
                     ProviderStore._send_add_provider = _send_add_provider_safe  # type: ignore[assignment]
-                    logger.debug("✓ Patched libp2p ProviderStore._send_add_provider stream-close bug")
+                    logger.debug(
+                        "✓ Patched libp2p ProviderStore._send_add_provider stream-close bug"
+                    )
             except Exception:
                 pass
             return True
 
         # Get hash codes from multihash.constants
-        if not hasattr(multihash, 'constants') or not hasattr(multihash.constants, 'HASH_CODES'):
+        if not hasattr(multihash, "constants") or not hasattr(multihash.constants, "HASH_CODES"):
             logger.warning("multihash.constants.HASH_CODES not found, cannot patch")
             return False
 
         # Create Func class with hash algorithm codes
         class Func:
             """Hash function identifiers for multihash."""
+
             # Most commonly used hash functions
-            identity = multihash.constants.HASH_CODES.get('id', 0)
-            sha1 = multihash.constants.HASH_CODES.get('sha1', 17)
-            sha2_256 = multihash.constants.HASH_CODES.get('sha2-256', 18)
-            sha2_512 = multihash.constants.HASH_CODES.get('sha2-512', 19)
-            sha3_512 = multihash.constants.HASH_CODES.get('sha3-512', 20)
-            sha3_384 = multihash.constants.HASH_CODES.get('sha3-384', 21)
-            sha3_256 = multihash.constants.HASH_CODES.get('sha3-256', 22)
-            sha3_224 = multihash.constants.HASH_CODES.get('sha3-224', 23)
-            shake_128 = multihash.constants.HASH_CODES.get('shake-128', 24)
-            shake_256 = multihash.constants.HASH_CODES.get('shake-256', 25)
-            keccak_224 = multihash.constants.HASH_CODES.get('keccak-224', 26)
-            keccak_256 = multihash.constants.HASH_CODES.get('keccak-256', 27)
-            keccak_384 = multihash.constants.HASH_CODES.get('keccak-384', 28)
-            keccak_512 = multihash.constants.HASH_CODES.get('keccak-512', 29)
-            blake2b_512 = multihash.constants.HASH_CODES.get('blake2b-512', 45632)
-            blake2s_256 = multihash.constants.HASH_CODES.get('blake2s-256', 45664)
+            identity = multihash.constants.HASH_CODES.get("id", 0)
+            sha1 = multihash.constants.HASH_CODES.get("sha1", 17)
+            sha2_256 = multihash.constants.HASH_CODES.get("sha2-256", 18)
+            sha2_512 = multihash.constants.HASH_CODES.get("sha2-512", 19)
+            sha3_512 = multihash.constants.HASH_CODES.get("sha3-512", 20)
+            sha3_384 = multihash.constants.HASH_CODES.get("sha3-384", 21)
+            sha3_256 = multihash.constants.HASH_CODES.get("sha3-256", 22)
+            sha3_224 = multihash.constants.HASH_CODES.get("sha3-224", 23)
+            shake_128 = multihash.constants.HASH_CODES.get("shake-128", 24)
+            shake_256 = multihash.constants.HASH_CODES.get("shake-256", 25)
+            keccak_224 = multihash.constants.HASH_CODES.get("keccak-224", 26)
+            keccak_256 = multihash.constants.HASH_CODES.get("keccak-256", 27)
+            keccak_384 = multihash.constants.HASH_CODES.get("keccak-384", 28)
+            keccak_512 = multihash.constants.HASH_CODES.get("keccak-512", 29)
+            blake2b_512 = multihash.constants.HASH_CODES.get("blake2b-512", 45632)
+            blake2s_256 = multihash.constants.HASH_CODES.get("blake2s-256", 45664)
 
         # Patch the multihash module
         multihash.Func = Func
@@ -379,17 +388,22 @@ def ensure_libp2p_compatible():
         # Apply compatibility patches
         if not patch_libp2p_compatibility():
             logger.warning("Could not apply libp2p compatibility patches")
-            logger.info("To enable P2P features, install via MCP++ runtime: %s", LIBP2P_INSTALL_HINT)
+            logger.info(
+                "To enable P2P features, install via MCP++ runtime: %s", LIBP2P_INSTALL_HINT
+            )
             return False
 
         # Try to import libp2p to verify it works
         try:
             from libp2p import new_host
+
             logger.debug("✓ libp2p import successful")
             return True
         except ImportError as e:
             logger.warning(f"libp2p package not installed: {e}")
-            logger.info("To enable P2P features, install via MCP++ runtime: %s", LIBP2P_INSTALL_HINT)
+            logger.info(
+                "To enable P2P features, install via MCP++ runtime: %s", LIBP2P_INSTALL_HINT
+            )
             return False
 
     except Exception as e:
@@ -655,7 +669,9 @@ def make_dcutr_protocol(host: Any) -> Any:
     return DCUtRProtocol(host)
 
 
-def _make_first_available(module_symbols: tuple[tuple[str, str], ...], *args: Any, **kwargs: Any) -> Any | None:
+def _make_first_available(
+    module_symbols: tuple[tuple[str, str], ...], *args: Any, **kwargs: Any
+) -> Any | None:
     require_libp2p_runtime()
     for module_name, symbol in module_symbols:
         try:

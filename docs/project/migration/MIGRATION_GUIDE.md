@@ -46,9 +46,11 @@ server.run()  # Uses uvicorn (asyncio)
 import trio
 from ipfs_accelerate_py.mcplusplus_module import TrioMCPServer
 
+
 async def main():
     server = TrioMCPServer()
     await server.run()
+
 
 trio.run(main)
 ```
@@ -105,9 +107,11 @@ server.run()  # Blocks with uvicorn
 ```python
 import trio
 
+
 async def main():
     server = TrioMCPServer()
     await server.run()
+
 
 if __name__ == "__main__":
     trio.run(main)
@@ -132,6 +136,7 @@ hypercorn --worker-class trio \
 ```python
 # Manual environment variable reading
 import os
+
 host = os.getenv("MCP_HOST", "0.0.0.0")
 port = int(os.getenv("MCP_PORT", "8000"))
 server = IPFSAccelerateMCPServer(host=host, port=port)
@@ -162,6 +167,7 @@ server = TrioMCPServer(config=config)
 ```python
 # Original MCP didn't have a dedicated client
 import httpx
+
 client = httpx.AsyncClient(base_url="http://localhost:8000/mcp")
 ```
 
@@ -176,11 +182,12 @@ from ipfs_accelerate_py.mcplusplus_module import TrioMCPClient
 ```python
 import httpx
 
+
 async def call_tool():
     async with httpx.AsyncClient() as client:
         response = await client.post(
             "http://localhost:8000/mcp/tools/call",
-            json={"tool": "p2p_taskqueue_status", "arguments": {}}
+            json={"tool": "p2p_taskqueue_status", "arguments": {}},
         )
         return response.json()
 ```
@@ -190,9 +197,11 @@ async def call_tool():
 import trio
 from ipfs_accelerate_py.mcplusplus_module import TrioMCPClient
 
+
 async def call_tool():
     async with TrioMCPClient("http://localhost:8000/mcp") as client:
         return await client.call_tool("p2p_taskqueue_status")
+
 
 trio.run(call_tool)
 ```
@@ -204,13 +213,15 @@ trio.run(call_tool)
 import httpx
 import asyncio
 
+
 async def quick_call():
     async with httpx.AsyncClient() as client:
         response = await client.post(
             "http://localhost:8000/mcp/tools/call",
-            json={"tool": "p2p_taskqueue_status", "arguments": {}}
+            json={"tool": "p2p_taskqueue_status", "arguments": {}},
         )
         return response.json()
+
 
 asyncio.run(quick_call())
 ```
@@ -220,11 +231,10 @@ asyncio.run(quick_call())
 import trio
 from ipfs_accelerate_py.mcplusplus_module.trio.client import call_tool
 
+
 async def quick_call():
-    return await call_tool(
-        "http://localhost:8000/mcp",
-        "p2p_taskqueue_status"
-    )
+    return await call_tool("http://localhost:8000/mcp", "p2p_taskqueue_status")
+
 
 trio.run(quick_call())
 ```
@@ -455,6 +465,7 @@ Enable debug logging:
 **Server:**
 ```python
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 
 config = ServerConfig(debug=True)
@@ -464,6 +475,7 @@ server = TrioMCPServer(config=config)
 **Client:**
 ```python
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 
 # Debug logging is automatic
