@@ -14,6 +14,7 @@ from ipfs_accelerate_py.agent_supervisor.procedure_compiler.contracts import (
 from ipfs_accelerate_py.agent_supervisor.procedure_compiler.distillation import (
     BUILDER_REVISION,
     REQUIRED_PARTITIONS,
+    REQUIRED_PRIVACY_CLASSES,
     REQUIRED_PROVENANCE_FIELDS,
     CorpusPartition,
     DistillationAdmissionError,
@@ -226,6 +227,12 @@ def test_corpus_admits_validated_accepted_and_rejected_examples() -> None:
     assert evaluation.disjoint is True
     assert evaluation.complete_provenance is True
     assert evaluation.admitted_count == 2
+    decoded_evaluation = DistillationEvaluation.from_dict(evaluation.to_dict())
+    assert decoded_evaluation == evaluation
+    parsed_evaluation = parse_procedure_artifact(evaluation.to_dict())
+    assert isinstance(parsed_evaluation, DistillationEvaluation)
+    assert parsed_evaluation.can_promote is False
+    assert parsed_evaluation.can_skip_validation is False
 
 
 def test_corpus_rows_are_bounded_disjoint_and_carry_complete_provenance() -> None:
@@ -294,7 +301,16 @@ def test_corpus_rows_are_bounded_disjoint_and_carry_complete_provenance() -> Non
         assert "input_payload" not in record
 
     assert parsed.can_authorize is False
+    assert parsed.can_skip_validation is False
     assert parsed.state is ArtifactState.CANDIDATE
+    assert set(REQUIRED_PRIVACY_CLASSES) == {
+        "no-secrets",
+        "no-credentials",
+        "no-private-prompts",
+        "no-chain-of-thought",
+        "no-source-bodies",
+        "no-model-transcripts",
+    }
     with pytest.raises(FrozenInstanceError):
         parsed.disjoint = False  # type: ignore[misc]
 
@@ -406,6 +422,18 @@ def test_corpus_rejects_mislabeled_examples() -> None:
         )
     assert caught.value.reason_code is DistillationReason.MISLABELED_EXAMPLE
 
+    with pytest.raises(DistillationAdmissionError, match="negative") as negative:
+        _admit(
+            builder,
+            _bundle(
+                hole_id="hole.select-symbol.negative-label",
+                selected="pkg.mod:symbol_a",
+                fingerprint="cid-ev-neg-label",
+            ),
+            partition=CorpusPartition.NEGATIVE,
+        )
+    assert negative.value.reason_code is DistillationReason.MISLABELED_EXAMPLE
+
 
 def test_corpus_rejects_private_examples() -> None:
     builder = _builder()
@@ -486,6 +514,20 @@ def test_corpus_cannot_authorize_or_leave_candidate_tier() -> None:
     corpus = builder.build()
     assert corpus.can_grant_authority is False
     assert corpus.can_promote is False
+    assert corpus.can_skip_validation is False
     assert builder.evaluation is not None
     assert builder.evaluation.can_authorize is False
     assert builder.evaluation.can_grant_authority is False
+    assert builder.evaluation.can_promote is False
+    corpus_payload = corpus.to_dict()
+    corpus_payload["can_authorize"] = True
+    with pytest.raises(DistillationAdmissionError, match="cannot authorize"):
+        DistillationCorpus.from_dict(corpus_payload)
+    corpus_payload = corpus.to_dict()
+    corpus_payload["state"] = ArtifactState.PROMOTED.value
+    with pytest.raises(DistillationAdmissionError, match="candidate-tier"):
+        DistillationCorpus.from_dict(corpus_payload)
+    evaluation_payload = builder.evaluation.to_dict()
+    evaluation_payload["can_authorize"] = True
+    with pytest.raises(DistillationAdmissionError, match="cannot authorize"):
+        DistillationEvaluation.from_dict(evaluation_payload)
