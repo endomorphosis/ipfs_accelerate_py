@@ -84668,6 +84668,51 @@ class DatabaseImplementationDaemon:
         )
         return updated
 
+    def _release_exact_attempt_lease(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        reason: str,
+    ) -> None:
+        """Voluntarily release the exact live fence after a terminalized attempt."""
+
+        claim = self.coordinator.get_task_claim(attempt.claim_id)
+        if claim is None:
+            return
+        claim_state = str(
+            getattr(getattr(claim, "state", ""), "value", claim.state) or ""
+        )
+        now = self._now_ms()
+        if claim_state == "accepted" and int(claim.expires_at_ms) > now:
+            lease = self._protect_attempt_claim(attempt, claim)
+            try:
+                self.coordinator.release(
+                    lease,
+                    reason=reason,
+                    expected_fencing_token=int(attempt.fencing_token),
+                    expected_fence_epoch=int(attempt.fence_epoch),
+                    now_ms=now,
+                )
+            except Exception:
+                refreshed_claim = self.coordinator.get_task_claim(
+                    attempt.claim_id
+                )
+                refreshed_state = str(
+                    getattr(
+                        getattr(refreshed_claim, "state", ""),
+                        "value",
+                        getattr(refreshed_claim, "state", ""),
+                    )
+                    or ""
+                )
+                if refreshed_state not in {"released", "expired"}:
+                    raise
+            return
+        if claim_state == "accepted":
+            expire_claim = getattr(self.coordinator, "expire_task_claim", None)
+            if callable(expire_claim):
+                expire_claim(claim, now_ms=now)
+
     def _retire_stale_running_attempt(
         self,
         attempt: DatabaseTaskAttempt,
@@ -86391,12 +86436,15 @@ class DatabaseImplementationDaemon:
             )
             if (
                 isinstance(exc, DatabasePortalBridgeError)
-                and not isinstance(exc, DatabasePortalValidationRetry)
-                and not recovery_owned_terminal_failure
-                and (
-                    not isinstance(exc, DatabasePortalBridgeDeferred)
-                    or self._is_protected_checkout_setup_block(str(exc))
+                and not isinstance(
+                    exc,
+                    (
+                        DatabasePortalValidationRetry,
+                        DatabasePortalCandidateRetry,
+                    ),
                 )
+                and not recovery_owned_terminal_failure
+                and self._is_protected_checkout_setup_block(str(exc))
             ):
                 # Typed Portal setup/recovery failures (for example
                 # external_protected_checkout_recovery_required) are raised
@@ -86404,25 +86452,41 @@ class DatabaseImplementationDaemon:
                 # quarantines unknown-callback and can cap reopen forever.
                 # Setup deferrals of the same class never dispatched a
                 # provider, so they also requeue instead of consuming the
-                # claim as a failed callback.
+                # claim as a failed callback.  If the unimplemented-output
+                # requeue cannot apply, fall through to typed persist.
                 task = self.task_source.get(attempt.task_cid)
                 if task is None:
                     raise
-                self._retire_stale_running_attempt(attempt, task)
-                self._requeue_unimplemented_control_task(task)
-                return {
-                    "resumed": True,
-                    "retryable": True,
-                    "portal_retryable_failure": True,
-                    "reason": str(exc).replace(" ", "_") or "portal_setup_retryable",
-                    "attempt_id": attempt.attempt_id,
-                    "task_alias": attempt.task_alias,
-                    "status": "failed",
-                }
-            if not isinstance(
-                exc,
-                (DatabasePortalBridgeDeferred, DatabasePortalValidationRetry),
-            ) and not recovery_owned_terminal_failure:
+                if (
+                    self.repo_root is not None
+                    and self._task_declared_output_paths(task)
+                    and not self._task_outputs_landed_on_target(task)
+                ):
+                    self._retire_stale_running_attempt(attempt, task)
+                    requeued = self._requeue_unimplemented_control_task(task)
+                    if requeued is not None:
+                        return {
+                            "resumed": True,
+                            "retryable": True,
+                            "portal_retryable_failure": True,
+                            "reason": str(exc).replace(" ", "_")
+                            or "portal_setup_retryable",
+                            "attempt_id": attempt.attempt_id,
+                            "task_alias": attempt.task_alias,
+                            "status": "failed",
+                        }
+            if (
+                not isinstance(
+                    exc,
+                    (
+                        DatabasePortalBridgeDeferred,
+                        DatabasePortalValidationRetry,
+                        DatabasePortalCandidateRetry,
+                        DatabasePortalBridgeError,
+                    ),
+                )
+                and not recovery_owned_terminal_failure
+            ):
                 # Generic Portal/provider failures carry no retry authority.
                 # The durable callback-start intent prevents a cold restart
                 # from invoking the same unknown outcome again.
@@ -86611,6 +86675,16 @@ class DatabaseImplementationDaemon:
                     control_state = self._persist_terminal_portal_failure(
                         terminal,
                         reason=reason,
+                    )
+                if deferred and backoff_seconds == 0:
+                    # A zero-backoff typed deferral is immediately retryable.
+                    # Release the exact fence after retry CAS so claim_next can
+                    # issue a new attempt without waiting for lease expiry.
+                    # Positive backoff keeps the accepted claim; the canonical
+                    # queue deadline is the reclaim gate.
+                    self._release_exact_attempt_lease(
+                        terminal,
+                        reason="portal_retryable_failure",
                     )
             except DatabaseImplementationConflictError:
                 raise
