@@ -18,6 +18,12 @@ rejection; missing evidence/capability is an abstention; and dynamic,
 generated, stateful, native, public-API, or dependency-changing work is
 reported as approval-required without treating an approval reference as
 proof.
+
+Each reviewed grammar also declares the counterexample, unsat-core, failed-
+assumption, and validated-interpolant predicates that may refine bounded
+search, plus the effect/security restrictions that every candidate must
+obey: no undeclared imports, dependencies, files, authority, effects, or
+behavior.
 """
 
 from __future__ import annotations
@@ -185,6 +191,26 @@ class RepairBehaviorClass(str, Enum):
     DEPENDENCY_CHANGING = "dependency_changing"
 
 
+class RepairCounterevidenceClass(str, Enum):
+    """Evidence families that may refine reviewed-operator search."""
+
+    COUNTEREXAMPLE = "counterexample"
+    UNSAT_CORE = "unsat_core"
+    FAILED_ASSUMPTION = "failed_assumption"
+    VALIDATED_INTERPOLANT = "validated_interpolant"
+
+
+class RepairEffectRestriction(str, Enum):
+    """Frame restrictions every reviewed candidate must preserve."""
+
+    NO_UNDECLARED_IMPORTS = "no_undeclared_imports"
+    NO_UNDECLARED_DEPENDENCIES = "no_undeclared_dependencies"
+    NO_UNDECLARED_FILES = "no_undeclared_files"
+    NO_AUTHORITY = "no_authority"
+    NO_UNDECLARED_EFFECTS = "no_undeclared_effects"
+    NO_UNDECLARED_BEHAVIOR = "no_undeclared_behavior"
+
+
 class RepairOperatorLookupDisposition(str, Enum):
     """Resolution outcome; ``PROPOSAL_ELIGIBLE`` is not admission."""
 
@@ -217,6 +243,12 @@ class RepairOperatorLookupReason(str, Enum):
     PUBLIC_API_APPROVAL = "public_api_change_requires_approval"
     DEPENDENCY_APPROVAL = "dependency_change_requires_approval"
     CANDIDATE_ONLY = "candidate_only"
+    COUNTEREVIDENCE_MISMATCH = "counterevidence_does_not_select_operator"
+    UNDECLARED_EFFECT = "undeclared_effect_or_behavior"
+    UNDECLARED_IMPORT = "undeclared_import"
+    UNDECLARED_DEPENDENCY = "undeclared_dependency"
+    UNDECLARED_FILE = "undeclared_file"
+    UNVALIDATED_INTERPOLANT = "interpolant_not_independently_validated"
 
 
 _APPROVAL_BEHAVIORS: Final[Mapping[str, RepairOperatorLookupReason]] = MappingProxyType(
@@ -254,6 +286,113 @@ _KIND_ALIASES: Final[Mapping[str, RepairOperatorKind]] = MappingProxyType(
         "manifest": RepairOperatorKind.MANIFEST_UPDATE,
         "artifact": RepairOperatorKind.RESTORE_TRACKED_ARTIFACT,
         "equality": RepairOperatorKind.EQUALITY_REWRITE,
+    }
+)
+
+CANONICAL_EFFECT_RESTRICTIONS: Final[tuple[str, ...]] = tuple(
+    item.value for item in RepairEffectRestriction
+)
+CANONICAL_COUNTEREVIDENCE_CLASSES: Final[tuple[str, ...]] = tuple(
+    item.value for item in RepairCounterevidenceClass
+)
+
+# Repair-class strings match FormalCounterexample.RepairClass values.
+_REPAIR_CLASS_ADD_DEPENDENCY: Final[str] = "add_or_correct_dependency"
+_REPAIR_CLASS_SPLIT_TASK: Final[str] = "split_non_atomic_task"
+_REPAIR_CLASS_TIGHTEN_AUTHORITY: Final[str] = "tighten_authority_or_fencing"
+_REPAIR_CLASS_ADD_OBLIGATION: Final[str] = "add_obligation_or_fallback_test"
+_REPAIR_CLASS_CONSTRAIN_SCOPE: Final[str] = "constrain_ast_scope_or_model_bound"
+_REPAIR_CLASS_ADD_PREMISE: Final[str] = "add_premise_or_evidence_dependency"
+_REPAIR_CLASS_ADJUST_RESOURCES: Final[str] = "adjust_portfolio_or_resource_bound"
+_REPAIR_CLASS_HUMAN_REVIEW: Final[str] = "request_scoped_human_review"
+
+_OPERATOR_COUNTEREVIDENCE_GRAMMAR: Final[
+    Mapping[RepairOperatorKind, tuple[tuple[str, ...], tuple[str, ...]]]
+] = MappingProxyType(
+    {
+        RepairOperatorKind.EXACT_RENAME: (
+            (_REPAIR_CLASS_CONSTRAIN_SCOPE,),
+            ("rename", "symbol", "identifier", "name"),
+        ),
+        RepairOperatorKind.EXACT_MOVE: (
+            (_REPAIR_CLASS_CONSTRAIN_SCOPE,),
+            ("move", "path", "file_move", "relocation"),
+        ),
+        RepairOperatorKind.ADD_ARGUMENT: (
+            (_REPAIR_CLASS_ADD_PREMISE,),
+            (
+                "missing_argument",
+                "arity",
+                "argument",
+                "call",
+                "parameter",
+                "add_argument",
+            ),
+        ),
+        RepairOperatorKind.RENAME_ARGUMENT: (
+            (_REPAIR_CLASS_ADD_PREMISE, _REPAIR_CLASS_CONSTRAIN_SCOPE),
+            ("rename_argument", "keyword", "parameter_name", "argument"),
+        ),
+        RepairOperatorKind.REORDER_ARGUMENT: (
+            (_REPAIR_CLASS_ADD_PREMISE,),
+            ("reorder_argument", "argument_order", "positional", "arity"),
+        ),
+        RepairOperatorKind.THREAD_ARGUMENT: (
+            (_REPAIR_CLASS_ADD_PREMISE,),
+            ("thread_argument", "value_threading", "missing_context", "parameter"),
+        ),
+        RepairOperatorKind.ADD_IMPORT: (
+            (_REPAIR_CLASS_ADD_DEPENDENCY,),
+            ("import", "missing_symbol", "module", "unresolved_name"),
+        ),
+        RepairOperatorKind.ADD_EXPORT: (
+            (_REPAIR_CLASS_ADD_DEPENDENCY,),
+            ("export", "dunder_all", "public_name"),
+        ),
+        RepairOperatorKind.ADD_REGISTRATION: (
+            (_REPAIR_CLASS_ADD_DEPENDENCY,),
+            ("registration", "registry", "plugin"),
+        ),
+        RepairOperatorKind.ADD_CONSTRUCTOR_ROUTE: (
+            (_REPAIR_CLASS_ADD_PREMISE,),
+            ("constructor", "instantiation", "init"),
+        ),
+        RepairOperatorKind.ADD_FACTORY_ROUTE: (
+            (_REPAIR_CLASS_ADD_PREMISE,),
+            ("factory", "constructor_route"),
+        ),
+        RepairOperatorKind.FINITE_ADAPTER: (
+            (_REPAIR_CLASS_ADD_PREMISE, _REPAIR_CLASS_CONSTRAIN_SCOPE),
+            ("adapter", "wrap", "mapping_adapter"),
+        ),
+        RepairOperatorKind.SCHEMA_PROJECTION: (
+            (_REPAIR_CLASS_CONSTRAIN_SCOPE,),
+            ("schema", "field", "projection", "contract_field"),
+        ),
+        RepairOperatorKind.SERIALIZER_UPDATE: (
+            (_REPAIR_CLASS_CONSTRAIN_SCOPE,),
+            ("serializer", "codec", "encode"),
+        ),
+        RepairOperatorKind.FIXTURE_UPDATE: (
+            (_REPAIR_CLASS_ADD_OBLIGATION,),
+            ("fixture", "test_data", "oracle"),
+        ),
+        RepairOperatorKind.MANIFEST_UPDATE: (
+            (_REPAIR_CLASS_ADJUST_RESOURCES, _REPAIR_CLASS_ADD_OBLIGATION),
+            ("manifest", "generated_manifest", "lockfile"),
+        ),
+        RepairOperatorKind.RESTORE_TRACKED_ARTIFACT: (
+            (_REPAIR_CLASS_ADD_DEPENDENCY,),
+            ("artifact", "cid", "preimage", "tracked_blob"),
+        ),
+        RepairOperatorKind.SEMANTIC_PATCH: (
+            (_REPAIR_CLASS_SPLIT_TASK, _REPAIR_CLASS_CONSTRAIN_SCOPE),
+            ("semantic_patch", "reviewed_patch", "pattern"),
+        ),
+        RepairOperatorKind.EQUALITY_REWRITE: (
+            (_REPAIR_CLASS_ADD_PREMISE,),
+            ("equality", "rewrite", "equivalent", "egraph"),
+        ),
     }
 )
 
@@ -360,6 +499,101 @@ def normalize_repair_operator_kind(value: Any) -> RepairOperatorKind:
         ) from exc
 
 
+def default_operator_effect_restrictions(
+    kind: RepairOperatorKind | str | None = None,
+) -> tuple[str, ...]:
+    """Every reviewed operator forbids undeclared imports/files/effects."""
+
+    del kind
+    return CANONICAL_EFFECT_RESTRICTIONS
+
+
+def default_operator_counterevidence_grammar(
+    kind: RepairOperatorKind | str,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return ``(repair_classes, predicates)`` for one reviewed operator."""
+
+    normalized = normalize_repair_operator_kind(kind)
+    return _OPERATOR_COUNTEREVIDENCE_GRAMMAR.get(normalized, ((), ()))
+
+
+def _tokenize_counterevidence(*values: Any) -> frozenset[str]:
+    tokens: set[str] = set()
+    for value in values:
+        if value in (None, "", (), [], {}):
+            continue
+        if isinstance(value, Enum):
+            value = value.value
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                tokens.update(_tokenize_counterevidence(key, item))
+            continue
+        if isinstance(value, Sequence) and not isinstance(
+            value, (str, bytes, bytearray, memoryview)
+        ):
+            for item in value:
+                tokens.update(_tokenize_counterevidence(item))
+            continue
+        text = str(value).strip().lower().replace("-", "_")
+        if not text:
+            continue
+        tokens.add(text)
+        # Keep prefixed identifiers intact so cores/assumptions such as
+        # ``clause:missing_argument`` still contribute ``missing_argument``.
+        if ":" in text:
+            suffix = text.rsplit(":", 1)[-1].strip()
+            if suffix:
+                tokens.add(suffix)
+        for piece in text.replace(":", "_").replace("/", "_").replace(".", "_").split(
+            "_"
+        ):
+            if len(piece) >= 3:
+                tokens.add(piece)
+    return frozenset(tokens)
+
+
+def _evidence_matches_predicate(predicate: str, evidence: frozenset[str]) -> bool:
+    """Exact predicate match; prefixed ids may contribute their suffix."""
+
+    if not predicate:
+        return False
+    if predicate in evidence:
+        return True
+    colon_suffix = ":" + predicate
+    return any(token.endswith(colon_suffix) for token in evidence)
+
+
+def score_operator_counterevidence(
+    kind: RepairOperatorKind | str,
+    *,
+    repair_classes: Sequence[str] = (),
+    predicates: Sequence[str] = (),
+) -> int:
+    """Return a deterministic match score; ``0`` means no positive match.
+
+    Matching is exact on reviewed repair-class names and grammar predicates.
+    Short token substrings such as ``add`` or ``model`` must not select an
+    unrelated operator.
+    """
+
+    try:
+        normalized = normalize_repair_operator_kind(kind)
+    except UnknownRepairOperatorError:
+        return 0
+    classes, grammar_predicates = default_operator_counterevidence_grammar(normalized)
+    evidence = _tokenize_counterevidence(repair_classes, predicates)
+    if not evidence:
+        return 0
+    score = 0
+    for item in classes:
+        if item in evidence:
+            score += 4
+    for predicate in grammar_predicates:
+        if _evidence_matches_predicate(predicate, evidence):
+            score += 3
+    return score
+
+
 @dataclass(frozen=True)
 class DoctorRepairOperatorSpec(CanonicalContract):
     """Canonical v2 proposal grammar for one reviewed repair operator."""
@@ -394,6 +628,10 @@ class DoctorRepairOperatorSpec(CanonicalContract):
     semantic_authority: bool = False
     grants_proof_authority: bool = False
     grants_write_authority: bool = False
+    counterevidence_classes: tuple[str, ...] = ()
+    addresses_repair_classes: tuple[str, ...] = ()
+    counterevidence_predicates: tuple[str, ...] = ()
+    effect_restrictions: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         kind = normalize_repair_operator_kind(self.kind)
@@ -421,6 +659,10 @@ class DoctorRepairOperatorSpec(CanonicalContract):
             ("approval_classes", True),
             ("abstain_classes", True),
             ("review_requirement_refs", False),
+            ("counterevidence_classes", False),
+            ("addresses_repair_classes", False),
+            ("counterevidence_predicates", False),
+            ("effect_restrictions", False),
         ):
             object.__setattr__(
                 self,
@@ -507,6 +749,40 @@ class DoctorRepairOperatorSpec(CanonicalContract):
             raise RepairOperatorRegistryError(
                 "operator is missing canonical/scope/idempotency capabilities"
             )
+        if not self.counterevidence_classes:
+            object.__setattr__(
+                self, "counterevidence_classes", CANONICAL_COUNTEREVIDENCE_CLASSES
+            )
+        else:
+            allowed = set(CANONICAL_COUNTEREVIDENCE_CLASSES)
+            if set(self.counterevidence_classes) - allowed:
+                raise RepairOperatorRegistryError(
+                    "counterevidence_classes contains an unknown evidence family"
+                )
+        grammar_classes, grammar_predicates = default_operator_counterevidence_grammar(
+            kind
+        )
+        if not self.addresses_repair_classes:
+            object.__setattr__(self, "addresses_repair_classes", grammar_classes)
+        if not self.counterevidence_predicates:
+            object.__setattr__(self, "counterevidence_predicates", grammar_predicates)
+        if not self.effect_restrictions:
+            object.__setattr__(
+                self,
+                "effect_restrictions",
+                default_operator_effect_restrictions(kind),
+            )
+        else:
+            allowed_effects = set(CANONICAL_EFFECT_RESTRICTIONS)
+            if set(self.effect_restrictions) - allowed_effects:
+                raise RepairOperatorRegistryError(
+                    "effect_restrictions contains an unknown restriction"
+                )
+            missing_effects = allowed_effects - set(self.effect_restrictions)
+            if missing_effects:
+                raise RepairOperatorRegistryError(
+                    "reviewed operators must declare the canonical effect restrictions"
+                )
 
     @property
     def spec_id(self) -> str:
@@ -551,6 +827,10 @@ class DoctorRepairOperatorSpec(CanonicalContract):
             "semantic_authority": False,
             "grants_proof_authority": False,
             "grants_write_authority": False,
+            "counterevidence_classes": list(self.counterevidence_classes),
+            "addresses_repair_classes": list(self.addresses_repair_classes),
+            "counterevidence_predicates": list(self.counterevidence_predicates),
+            "effect_restrictions": list(self.effect_restrictions),
         }
 
     @classmethod
@@ -944,6 +1224,87 @@ class RepairOperatorRegistry(CanonicalContract):
 
         return self.get(kind_or_id)
 
+    def operator_effect_restrictions(
+        self, kind_or_id: Any
+    ) -> tuple[str, ...]:
+        return self.get(kind_or_id).effect_restrictions
+
+    def operator_counterevidence_predicates(
+        self, kind_or_id: Any
+    ) -> tuple[str, ...]:
+        spec = self.get(kind_or_id)
+        return spec.counterevidence_predicates
+
+    def refine_from_counterevidence(
+        self,
+        *,
+        operator_kinds: Sequence[str] = (),
+        repair_classes: Sequence[str] = (),
+        predicates: Sequence[str] = (),
+        core_ids: Sequence[str] = (),
+        failed_assumption_ids: Sequence[str] = (),
+        interpolant_vocabulary: Sequence[str] = (),
+        interpolant_predicates: Sequence[str] = (),
+        interpolant_validated: bool = False,
+        counterexample_kind: str = "",
+    ) -> tuple[str, ...]:
+        """Narrow reviewed operators using counterevidence; never widen.
+
+        Explicit ``operator_kinds`` bound the grammar. Matching cores,
+        failed assumptions, repair classes, and *validated* interpolants
+        rank and filter that grammar. An unvalidated interpolant is
+        ignored rather than treated as a search hint.
+        """
+
+        if operator_kinds:
+            candidates: list[RepairOperatorKind] = []
+            seen: set[RepairOperatorKind] = set()
+            for item in operator_kinds:
+                try:
+                    kind = normalize_repair_operator_kind(item)
+                except UnknownRepairOperatorError:
+                    continue
+                if kind in seen:
+                    continue
+                seen.add(kind)
+                self.get(kind)
+                candidates.append(kind)
+        else:
+            candidates = list(self.kinds())
+
+        evidence_predicates = (
+            *predicates,
+            *core_ids,
+            *failed_assumption_ids,
+            *(
+                (*tuple(interpolant_vocabulary), *tuple(interpolant_predicates))
+                if interpolant_validated
+                else ()
+            ),
+            counterexample_kind,
+        )
+        scored: list[tuple[int, str]] = []
+        for kind in candidates:
+            score = score_operator_counterevidence(
+                kind,
+                repair_classes=repair_classes,
+                predicates=evidence_predicates,
+            )
+            scored.append((score, kind.value))
+
+        matched = tuple(
+            kind
+            for score, kind in sorted(scored, key=lambda item: (-item[0], item[1]))
+            if score > 0
+        )
+        if matched:
+            return matched
+        # Unvalidated interpolants and empty evidence must not drop or
+        # reorder the caller-declared reviewed grammar.
+        if operator_kinds:
+            return tuple(kind.value for kind in candidates)
+        return ()
+
     def resolve(
         self,
         request: RepairOperatorLookupRequest,
@@ -1222,6 +1583,8 @@ def _spec(
     pre: tuple[str, ...] = (),
     post: tuple[str, ...] = (),
     inverse: str,
+    predicates: tuple[str, ...] = (),
+    repair_classes: tuple[str, ...] = (),
 ) -> DoctorRepairOperatorSpec:
     renderer = (
         "AnalyticalChangeTransformer@1"
@@ -1270,6 +1633,12 @@ def _spec(
         semantic_authority=False,
         grants_proof_authority=False,
         grants_write_authority=False,
+        counterevidence_classes=CANONICAL_COUNTEREVIDENCE_CLASSES,
+        addresses_repair_classes=repair_classes
+        or default_operator_counterevidence_grammar(kind)[0],
+        counterevidence_predicates=predicates
+        or default_operator_counterevidence_grammar(kind)[1],
+        effect_restrictions=CANONICAL_EFFECT_RESTRICTIONS,
     )
 
 
@@ -1506,6 +1875,108 @@ def default_repair_operator_registry_id(
     return build_default_repair_operator_registry(roots).registry_id
 
 
+def refine_repair_operators(
+    registry: RepairOperatorRegistry | None = None,
+    *,
+    operator_kinds: Sequence[str] = (),
+    repair_classes: Sequence[str] = (),
+    predicates: Sequence[str] = (),
+    core_ids: Sequence[str] = (),
+    failed_assumption_ids: Sequence[str] = (),
+    interpolant_vocabulary: Sequence[str] = (),
+    interpolant_predicates: Sequence[str] = (),
+    interpolant_validated: bool = False,
+    counterexample_kind: str = "",
+) -> tuple[str, ...]:
+    """Module-level wrapper around reviewed-operator counterevidence refinement."""
+
+    active = registry or build_default_repair_operator_registry()
+    return active.refine_from_counterevidence(
+        operator_kinds=operator_kinds,
+        repair_classes=repair_classes,
+        predicates=predicates,
+        core_ids=core_ids,
+        failed_assumption_ids=failed_assumption_ids,
+        interpolant_vocabulary=interpolant_vocabulary,
+        interpolant_predicates=interpolant_predicates,
+        interpolant_validated=interpolant_validated,
+        counterexample_kind=counterexample_kind,
+    )
+
+
+def candidate_effect_violations(
+    *,
+    operator_kind: str = "",
+    extra_imports: Sequence[str] = (),
+    extra_files: Sequence[str] = (),
+    extra_paths: Sequence[str] = (),
+    new_dependencies: Sequence[str] = (),
+    undeclared_effects: Sequence[str] = (),
+    behavior_class: str = RepairBehaviorClass.PURE_LOCAL.value,
+    write_authority: bool = False,
+    semantic_authority: bool = False,
+    grants_proof_authority: bool = False,
+    grants_write_authority: bool = False,
+    replacement: str = "",
+    declared_imports: Sequence[str] = (),
+    declared_paths: Sequence[str] = (),
+    declared_dependencies: Sequence[str] = (),
+) -> tuple[str, ...]:
+    """Return restriction reason codes for undeclared candidate effects."""
+
+    reasons: list[str] = []
+    kind_value = ""
+    try:
+        if operator_kind:
+            kind_value = normalize_repair_operator_kind(operator_kind).value
+    except UnknownRepairOperatorError:
+        kind_value = str(operator_kind or "")
+
+    extra_import_values = tuple(
+        item for item in extra_imports if item and item not in declared_imports
+    )
+    if extra_import_values:
+        reasons.append(RepairOperatorLookupReason.UNDECLARED_IMPORT.value)
+    extra_file_values = tuple(
+        item
+        for item in (*extra_files, *extra_paths)
+        if item and item not in declared_paths
+    )
+    if extra_file_values:
+        reasons.append(RepairOperatorLookupReason.UNDECLARED_FILE.value)
+    extra_deps = tuple(
+        item
+        for item in new_dependencies
+        if item and item not in declared_dependencies
+    )
+    if extra_deps:
+        reasons.append(RepairOperatorLookupReason.UNDECLARED_DEPENDENCY.value)
+    if undeclared_effects:
+        reasons.append(RepairOperatorLookupReason.UNDECLARED_EFFECT.value)
+    if any(
+        (
+            write_authority,
+            semantic_authority,
+            grants_proof_authority,
+            grants_write_authority,
+        )
+    ):
+        reasons.append(RepairOperatorLookupReason.UNDECLARED_EFFECT.value)
+    behavior = str(behavior_class or RepairBehaviorClass.PURE_LOCAL.value)
+    if behavior not in {
+        RepairBehaviorClass.PURE_LOCAL.value,
+        "",
+    }:
+        reasons.append(RepairOperatorLookupReason.UNDECLARED_EFFECT.value)
+    for line in replacement.splitlines():
+        stripped = line.strip().lower()
+        if stripped.startswith("import ") or stripped.startswith("from "):
+            if kind_value != RepairOperatorKind.ADD_IMPORT.value:
+                reasons.append(RepairOperatorLookupReason.UNDECLARED_IMPORT.value)
+                break
+    return tuple(dict.fromkeys(reasons))
+
+
 __all__ = (
     "DOCTOR_REPAIR_OPERATOR_SPEC_INTERFACE",
     "DOCTOR_REPAIR_OPERATOR_SPEC_SCHEMA",
@@ -1518,7 +1989,11 @@ __all__ = (
     "REPAIR_OPERATOR_REGISTRY_VERSION",
     "DoctorRepairOperatorSpec",
     "OperatorValueRequirement",
+    "CANONICAL_COUNTEREVIDENCE_CLASSES",
+    "CANONICAL_EFFECT_RESTRICTIONS",
     "RepairBehaviorClass",
+    "RepairCounterevidenceClass",
+    "RepairEffectRestriction",
     "RepairOperatorCapability",
     "RepairOperatorFamily",
     "RepairOperatorKind",
@@ -1532,6 +2007,11 @@ __all__ = (
     "ReviewedRepairHook",
     "UnknownRepairOperatorError",
     "build_default_repair_operator_registry",
+    "candidate_effect_violations",
+    "default_operator_counterevidence_grammar",
+    "default_operator_effect_restrictions",
     "default_repair_operator_registry_id",
     "normalize_repair_operator_kind",
+    "refine_repair_operators",
+    "score_operator_counterevidence",
 )
