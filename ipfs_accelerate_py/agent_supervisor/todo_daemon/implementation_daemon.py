@@ -72304,18 +72304,14 @@ class DatabaseImplementationDaemon:
                     )
                 self._reconcile_failed_attempt_coordination(attempt)
                 continue
-            if status != "in_progress":
-                raise DatabaseImplementationConflictError(
-                    f"terminal Portal failure cannot reconcile control status {status!r}"
-                )
-            coordination = self._reconcile_failed_attempt_coordination(attempt)
-            outcome = self._persist_terminal_portal_failure(
-                attempt,
-                reason=reason,
-                coordination_evidence=coordination,
+            if status == "in_progress":
+                # A live claim must not be terminalized from a leftover failed
+                # attempt. That blocked PCCE-021 after Grok exited and froze
+                # 024-025 behind a dead in_progress gate.
+                continue
+            raise DatabaseImplementationConflictError(
+                f"terminal Portal failure cannot reconcile control status {status!r}"
             )
-            outcome["coordination"] = coordination
-            outcomes.append(outcome)
         return outcomes
 
     # -- resume / run_once --------------------------------------------------
