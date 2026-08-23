@@ -70,6 +70,14 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
 
 from scripts import run_agent_supervisor_efficiency_state_hardening as aseh_operator
 
+_CWD_OWNER_DIR = Path("/proc/self/cwd/quack-owner")
+
+
+def _cwd_owner_socket(name: str) -> Path:
+    """Bind Unix sockets through the same AF_UNIX-safe cwd alias as production."""
+
+    return _CWD_OWNER_DIR / name
+
 
 def test_aseh_parallel_quack_lanes_require_strict_deterministic_sharding() -> None:
     repository_root = Path(__file__).resolve().parents[2]
@@ -238,6 +246,7 @@ def test_grant_broker_recovers_only_same_uid_stale_socket(
 )
 def test_grant_broker_reclaims_only_a_proved_stale_socket(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     capability = probe_quack_capabilities(allow_network_install=False)
     if capability.status is not QuackCapabilityStatus.COMPATIBLE:
@@ -245,7 +254,8 @@ def test_grant_broker_reclaims_only_a_proved_stale_socket(
 
     database = tmp_path / "control.duckdb"
     owner_dir = tmp_path / "quack-owner"
-    broker_socket = owner_dir / TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME
+    monkeypatch.chdir(tmp_path)
+    broker_socket = _cwd_owner_socket(TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME)
     _materialize_one_task(database)
     owner_dir.mkdir(parents=True, exist_ok=True)
 
@@ -261,6 +271,7 @@ def test_grant_broker_reclaims_only_a_proved_stale_socket(
         port=0,
         store_id=str(database),
         secret_handle="handle:aseh-stale-broker-test",
+        typed_command_socket_path=_cwd_owner_socket("typed-owner.sock"),
     )
     server.start()
     try:
@@ -284,6 +295,7 @@ def test_grant_broker_reclaims_only_a_proved_stale_socket(
         port=0,
         store_id=str(database),
         secret_handle="handle:aseh-live-broker-test",
+        typed_command_socket_path=_cwd_owner_socket("typed-owner.sock"),
     )
     second.start()
     try:
@@ -839,8 +851,40 @@ def test_live_broker_status_replays_only_an_exact_disposable_replica(
                 "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
             ).fetchone()[0]
         )
+        owner_status = server.status()
+        real_retire = aseh_operator._retire_live_replay_directory
+
+        def fail_retirement(_directory: Path) -> None:
+            raise aseh_operator.OperatorError("forced replay retirement failure")
+
+        monkeypatch.setattr(
+            aseh_operator,
+            "_retire_live_replay_directory",
+            fail_retirement,
+        )
+        for _attempt in range(2):
+            with pytest.raises(
+                aseh_operator.OperatorError,
+                match="forced replay retirement failure",
+            ):
+                aseh_operator._broker_status_query(
+                    board, paths, owner_status=owner_status
+                )
+            with aseh_operator._LIVE_REPLAY_CACHE_LOCK:
+                assert aseh_operator._LIVE_REPLAY_CACHE == {}
+        assert replay_transports == [False, False]
+        replay_directories = tuple(tmp_path.glob(".live-projection-replay*"))
+        assert len(replay_directories) == 2
+        monkeypatch.setattr(
+            aseh_operator,
+            "_retire_live_replay_directory",
+            real_retire,
+        )
+        for replay_directory in replay_directories:
+            real_retire(replay_directory)
+
         report = aseh_operator._broker_status_query(
-            board, paths, owner_status=server.status()
+            board, paths, owner_status=owner_status
         )
         assert report["available"] is True
         assert report["ready_task_ids"] == ["ASEH-000"]
@@ -849,13 +893,36 @@ def test_live_broker_status_replays_only_an_exact_disposable_replica(
         witness = report["projection_reconciliation"]
         assert witness["authoritative"] is False
         assert witness["mutation_authority"] is False
-        assert replay_transports == [False]
+        assert replay_transports == [False, False, False]
         assert not tuple(tmp_path.glob(".live-projection-replay*"))
         assert int(
             server._connection.execute(  # noqa: SLF001
                 "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
             ).fetchone()[0]
         ) == event_cursor_before
+
+        # An exact cache hit still reopens and re-hashes the owner-published
+        # bytes.  Same-sized path tampering cannot reuse the prior witness.
+        replica_path = Path(owner_status["read_replica"]["path"])
+        descriptor = os.open(replica_path, os.O_RDWR | os.O_CLOEXEC)
+        try:
+            original = os.pread(descriptor, 1, 0)
+            assert original
+            changed = bytes([original[0] ^ 0xFF])
+            assert os.pwrite(descriptor, changed, 0) == 1
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        with pytest.raises(
+            aseh_operator.OperatorError,
+            match="published replica bytes differ",
+        ):
+            aseh_operator._admit_live_projection_shadow_replay(
+                paths=paths,
+                owner_status=owner_status,
+                expected_snapshot=report["snapshot"],
+            )
+        assert replay_transports == [False, False, False]
 
         tampered_status = json.loads(json.dumps(server.status()))
         tampered_status["read_replica"]["sha256"] = f"sha256:{'0' * 64}"
@@ -893,6 +960,8 @@ def test_typed_owner_never_acknowledges_an_unpublished_mutation(
 
     database = tmp_path / "control.duckdb"
     owner_dir = tmp_path / "quack-owner"
+    monkeypatch.chdir(tmp_path)
+    owner_socket = _cwd_owner_socket("typed-owner.sock")
     _materialize_one_task(database)
     server = build_server(
         database_path=database,
@@ -901,6 +970,7 @@ def test_typed_owner_never_acknowledges_an_unpublished_mutation(
         port=0,
         store_id=str(database),
         secret_handle="handle:aseh-publication-failure-test",
+        typed_command_socket_path=owner_socket,
     )
     identity = server.start()
     try:
@@ -913,6 +983,7 @@ def test_typed_owner_never_acknowledges_an_unpublished_mutation(
             TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV,
             handoff[TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV],
         )
+        monkeypatch.setenv(TYPED_STATE_OWNER_SOCKET_ENV, str(owner_socket))
         monkeypatch.setenv(
             "IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(database)
         )
@@ -979,6 +1050,7 @@ def test_broker_denial_and_slow_peer_do_not_break_later_delivery(
 
     database = tmp_path / "control.duckdb"
     owner_dir = tmp_path / "quack-owner"
+    monkeypatch.chdir(tmp_path)
     _materialize_one_task(database)
     server = build_server(
         database_path=database,
@@ -987,6 +1059,7 @@ def test_broker_denial_and_slow_peer_do_not_break_later_delivery(
         port=0,
         store_id=str(database),
         secret_handle="handle:aseh-broker-denial-test",
+        typed_command_socket_path=_cwd_owner_socket("typed-owner.sock"),
     )
     server.start()
     wrong_fd = -1
@@ -1343,6 +1416,118 @@ def _aseh_health_fixture(
         "database": database_path,
         "runtime": tmp_path,
     }, sample
+
+
+def test_aseh_status_sample_rejects_owner_replica_publication_race(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = time.time()
+    board, paths, sample = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    before = json.loads(json.dumps(sample["owner_status"]))
+    after = json.loads(json.dumps(before))
+    after["read_replica"]["refresh_sequence"] += 1
+    observations = iter((before, after))
+    server = SimpleNamespace(status=lambda: next(observations))
+    scheduler = SimpleNamespace(pid=os.getpid(), poll=lambda: None)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_broker_status_query",
+        lambda *_args, **_kwargs: {"available": True},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_lane_status_observations",
+        lambda *_args, **_kwargs: [],
+    )
+
+    observed = aseh_operator._status_sample(
+        board, paths, server, scheduler
+    )
+
+    assert observed["authority"]["available"] is False
+    assert observed["authority"]["error_type"] == "OperatorError"
+
+
+def test_aseh_external_status_binds_receipt_to_current_owner_incarnation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = time.time()
+    board, paths, before = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now - 0.25,
+        lane_mtime_ns=int((now - 0.25) * 1_000_000_000),
+    )
+    _board, _paths, current = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    receipt = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 0.5,
+        last_progress_at=now,
+        failure={},
+    )
+    assert receipt["healthy"] is True
+    owner_directory = tmp_path / "owner"
+    status_receipt = tmp_path / "live-status.json"
+    paths.update(
+        {
+            "owner": owner_directory,
+            "status_receipt": status_receipt,
+        }
+    )
+    owner_status_path = owner_directory / "quack-state-server.status.json"
+    aseh_operator._atomic_json(owner_status_path, current["owner_status"])
+    aseh_operator._atomic_json(status_receipt, receipt)
+    monkeypatch.setattr(aseh_operator, "_load", lambda _path: (board, {}))
+    monkeypatch.setattr(aseh_operator, "_paths", lambda _board: paths)
+
+    exit_code, exact = aseh_operator.status(
+        tmp_path / "unused-config.json", require_ready=True
+    )
+    assert exit_code == 0
+    assert exact["healthy"] is True
+    assert exact["broker_authenticated_receipt"] is True
+
+    # A recent healthy receipt from the prior owner must not make a newly
+    # ready incarnation healthy after restart.
+    restarted = json.loads(json.dumps(current["owner_status"]))
+    restarted_identity = restarted["identity"]
+    restarted_identity["server_id"] = "server:aseh-health-restarted"
+    restarted_identity["database_uuid"] = "database:aseh-health-restarted"
+    restarted_identity["generation"] += 1
+    restarted_identity["process_birth_id"] = "birth:aseh-health-restarted"
+    restarted_identity["process_birth"] = {"pid": os.getpid() + 1}
+    restarted_identity["listen_uri"] = "quack:127.0.0.1:2"
+    restarted_replica = restarted["read_replica"]
+    for field in (
+        "server_id", "database_uuid", "generation", "schema_revision",
+        "schema_fingerprint",
+    ):
+        restarted_replica[field] = restarted_identity[field]
+    restarted_replica["refresh_sequence"] += 1
+    restarted_replica["sha256"] = f"sha256:{'b' * 64}"
+    aseh_operator._atomic_json(owner_status_path, restarted)
+
+    exit_code, stale = aseh_operator.status(
+        tmp_path / "unused-config.json", require_ready=True
+    )
+    assert exit_code == 1
+    assert stale["owner_ready"] is True
+    assert stale["healthy"] is False
+    assert stale["broker_authenticated_receipt"] is False
+    assert stale["receipt_error"]["reason"] == (
+        "live_status_receipt_unavailable_or_invalid"
+    )
 
 
 def test_aseh_health_heartbeat_only_cannot_mask_stuck_board(

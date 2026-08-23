@@ -2167,6 +2167,7 @@ def _admit_live_projection_shadow_replay(
     )
     replay_directory.mkdir(mode=0o700)
     temporary = replay_directory / "control.duckdb"
+    witness: dict[str, Any]
     try:
         _copy_published_replica(binding, temporary)
         with DatabaseTaskSource(
@@ -2206,12 +2207,21 @@ def _admit_live_projection_shadow_replay(
             "cache_key": cache_key,
         }
         witness["witness_cid"] = _identity(witness)
-        with _LIVE_REPLAY_CACHE_LOCK:
-            _LIVE_REPLAY_CACHE.clear()
-            _LIVE_REPLAY_CACHE.update(witness)
-        return witness
     finally:
-        _retire_live_replay_directory(replay_directory)
+        try:
+            _retire_live_replay_directory(replay_directory)
+        except BaseException:
+            # A replay is not admissible until every private artifact has
+            # been retired.  Clear a concurrently published matching entry
+            # as well, so cleanup failure cannot become a later cache hit.
+            with _LIVE_REPLAY_CACHE_LOCK:
+                if _LIVE_REPLAY_CACHE.get("cache_key") == cache_key:
+                    _LIVE_REPLAY_CACHE.clear()
+            raise
+    with _LIVE_REPLAY_CACHE_LOCK:
+        _LIVE_REPLAY_CACHE.clear()
+        _LIVE_REPLAY_CACHE.update(witness)
+    return witness
 
 
 def _live_projection_reconciliation_admitted(
@@ -3423,6 +3433,82 @@ def _read_live_status_receipt(
     return payload, age
 
 
+def _owner_incarnation_binding(
+    owner_status: Mapping[str, Any], paths: Mapping[str, Path]
+) -> dict[str, Any]:
+    """Return the exact live owner incarnation and published replica."""
+
+    identity = owner_status.get("identity")
+    identity = identity if isinstance(identity, Mapping) else {}
+    process_birth = identity.get("process_birth")
+    process_birth = process_birth if isinstance(process_birth, Mapping) else {}
+    fields = (
+        "server_id", "store_id", "database_uuid", "schema_revision",
+        "schema_fingerprint", "generation", "process_birth_id", "listen_uri",
+        "extension_fingerprint",
+    )
+    selected = {field: identity.get(field) for field in fields}
+    if (
+        any(value in (None, "") for value in selected.values())
+        or not process_birth
+        or type(process_birth.get("pid")) is not int
+        or int(process_birth["pid"]) <= 0
+    ):
+        raise OperatorError("live owner incarnation identity is incomplete")
+    return {
+        "identity": selected,
+        "process_birth": dict(process_birth),
+        "replica": _published_replica_binding(owner_status, paths),
+    }
+
+
+def _admit_receipt_for_current_owner(
+    receipt: Mapping[str, Any],
+    owner_status: Mapping[str, Any],
+    paths: Mapping[str, Path],
+) -> dict[str, Any]:
+    """Bind a two-sample health receipt to the current owner incarnation."""
+
+    samples = receipt.get("samples")
+    if not isinstance(samples, list) or len(samples) != 2:
+        raise OperatorError("live status receipt lacks two owner samples")
+    current = _owner_incarnation_binding(owner_status, paths)
+    admitted_samples: list[dict[str, Any]] = []
+    for sample in samples:
+        if not isinstance(sample, Mapping):
+            raise OperatorError("live status receipt owner sample is invalid")
+        sampled_status = sample.get("owner_status")
+        sampled_status = (
+            sampled_status if isinstance(sampled_status, Mapping) else {}
+        )
+        sampled = _owner_incarnation_binding(sampled_status, paths)
+        authority = sample.get("authority")
+        authority = authority if isinstance(authority, Mapping) else {}
+        authority_binding = authority.get("owner_binding")
+        authority_binding = (
+            authority_binding
+            if isinstance(authority_binding, Mapping)
+            else {}
+        )
+        if (
+            sampled["identity"] != current["identity"]
+            or sampled["process_birth"] != current["process_birth"]
+            or authority_binding != current["identity"]
+        ):
+            raise OperatorError(
+                "live status receipt belongs to a different owner incarnation"
+            )
+        admitted_samples.append(sampled)
+    # A task mutation may legitimately replace the replica between samples.
+    # The final authenticated sample, however, must still name the exact
+    # owner-published bytes visible in the current secure owner status.
+    if admitted_samples[-1]["replica"] != current["replica"]:
+        raise OperatorError(
+            "live status receipt belongs to a different published replica"
+        )
+    return current
+
+
 def status(config_path: Path, *, require_ready: bool) -> tuple[int, dict[str, Any]]:
     board, _config = _load(config_path)
     paths = _paths(board)
@@ -3430,11 +3516,14 @@ def status(config_path: Path, *, require_ready: bool) -> tuple[int, dict[str, An
     status_path = paths["owner"] / "quack-state-server.status.json"
     if status_path.is_file():
         try:
-            owner_status = json.loads(status_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            owner_status = _secure_runtime_json(
+                status_path, max_bytes=STATUS_RECEIPT_MAX_BYTES
+            )
+        except Exception:
             owner_status = {}
     try:
         receipt, age = _read_live_status_receipt(board, paths)
+        _admit_receipt_for_current_owner(receipt, owner_status, paths)
         receipt_available = True
         receipt_error: dict[str, Any] = {}
     except Exception as exc:
