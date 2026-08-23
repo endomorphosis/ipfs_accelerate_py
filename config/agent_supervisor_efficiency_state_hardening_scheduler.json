@@ -56,12 +56,12 @@
     "task_source_kind": "duckdb",
     "endpoint_secret_handle": "handle:aseh-v1",
     "quack_endpoint": "quack:127.0.0.1:41487",
-    "store_id": "data/agent_supervisor/efficiency_state_hardening/control.duckdb",
+    "store_id": "data/aseh/control.duckdb",
     "store_generation": "1",
     "schema_revision": "1",
-    "event_store_path": "data/agent_supervisor/efficiency_state_hardening/events",
-    "runtime_registry_path": "data/agent_supervisor/efficiency_state_hardening/quack-owner",
-    "worktree_root": "data/agent_supervisor/efficiency_state_hardening/worktrees",
+    "event_store_path": "data/aseh/events",
+    "runtime_registry_path": "data/aseh/q",
+    "worktree_root": "data/aseh/worktrees",
     "export_profile": "aseh-v1",
     "failover_policy": "fail_closed",
     "explicit_legacy": false
@@ -110,7 +110,7 @@
     "mode": "sealed_bootstrap_projection",
     "automatic_repair_before_launch": false,
     "allowed_drift": "none",
-    "bootstrap_receipt_path": "data/agent_supervisor/efficiency_state_hardening/evidence/bootstrap/bootstrap-materialization.json",
+    "bootstrap_receipt_path": "data/aseh/evidence/bootstrap/bootstrap-materialization.json",
     "canonical_authority": "DuckDB/DatabaseTaskSource@1 over typed Quack owner",
     "canonical_block_mutation_permitted": false,
     "markdown_task_mutation_permitted": false
@@ -122,8 +122,8 @@
     "acceptance_prerequisite": false,
     "completion_prerequisite": false,
     "source_authority": "DuckDB committed bootstrap receipt and outbox cursor",
-    "catalog_path": "data/agent_supervisor/efficiency_state_hardening/ducklake/catalog.duckdb",
-    "data_path": "data/agent_supervisor/efficiency_state_hardening/ducklake/data",
+    "catalog_path": "data/aseh/ducklake/catalog.duckdb",
+    "data_path": "data/aseh/ducklake/data",
     "logical_datasets": [
       "bootstrap_history",
       "task_efficiency_history",
@@ -189,13 +189,13 @@
     "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
   ],
   "runtime_paths": {
-    "root": "data/agent_supervisor/efficiency_state_hardening",
-    "state": "data/agent_supervisor/efficiency_state_hardening/state",
-    "worktrees": "data/agent_supervisor/efficiency_state_hardening/worktrees",
-    "merge_queue": "data/agent_supervisor/efficiency_state_hardening/merge-queue",
-    "logs": "data/agent_supervisor/efficiency_state_hardening/logs",
-    "evidence": "data/agent_supervisor/efficiency_state_hardening/evidence",
-    "quack_owner": "data/agent_supervisor/efficiency_state_hardening/quack-owner"
+    "root": "data/aseh",
+    "state": "data/aseh/state",
+    "worktrees": "data/aseh/worktrees",
+    "merge_queue": "data/aseh/merge-queue",
+    "logs": "data/aseh/logs",
+    "evidence": "data/aseh/evidence",
+    "quack_owner": "data/aseh/q"
   },
   "lanes": [
     {

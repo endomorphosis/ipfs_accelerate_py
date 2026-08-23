@@ -558,9 +558,9 @@ def validate(*, check_git: bool) -> dict[str, Any]:
         program.get("authority_mode") != "quack",
         program.get("task_source_kind") != "duckdb",
         program.get("failover_policy") != "fail_closed",
-        program.get("store_id") != "data/agent_supervisor/efficiency_state_hardening/control.duckdb",
+        program.get("store_id") != "data/aseh/control.duckdb",
         program.get("quack_endpoint") != "quack:127.0.0.1:41487",
-        program.get("runtime_registry_path") != "data/agent_supervisor/efficiency_state_hardening/quack-owner",
+        program.get("runtime_registry_path") != "data/aseh/q",
     )):
         errors.append("database program does not seal DuckDB + typed Quack fail-closed authority")
     provider = config.get("provider")
