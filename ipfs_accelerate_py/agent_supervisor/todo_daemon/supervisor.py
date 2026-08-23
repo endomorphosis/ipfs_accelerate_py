@@ -854,13 +854,22 @@ def build_supervisor_status_payload(
 ) -> JsonDict:
     """Build the common supervisor JSON status payload."""
 
+    reported_supervisor_pid = os.getpid() if supervisor_pid is None else supervisor_pid
+    try:
+        reported_daemon_pid = int(daemon_pid or 0)
+    except (TypeError, ValueError):
+        reported_daemon_pid = 0
     payload: JsonDict = {
         "schema": schema or f"{spec.schema}.supervisor",
         "status": status,
         "updated_at": now_utc().isoformat(),
         "repo_root": str(spec.repo_root),
-        "supervisor_pid": os.getpid() if supervisor_pid is None else supervisor_pid,
+        "supervisor_pid": reported_supervisor_pid,
+        "supervisor_pid_alive": pid_alive(int(reported_supervisor_pid)),
         "daemon_pid": daemon_pid,
+        "daemon_pid_alive": bool(
+            reported_daemon_pid > 1 and pid_alive(reported_daemon_pid)
+        ),
         "restart_count": int(restart_count),
         "run_id": run_id,
         "log_path": log_path,
