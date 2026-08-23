@@ -283,6 +283,83 @@ def test_resolve_quack_attach_token_persists_missing_vault(
     assert vault.read_text(encoding="utf-8").strip() == "liveTok_value1234567890"
 
 
+def test_intent_repository_reuses_quack_read_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opens: list[object] = []
+
+    class _FakeConnection:
+        def execute(self, *_args: object, **_kwargs: object) -> object:
+            return type("R", (), {"fetchall": lambda self: []})()
+
+        def close(self) -> None:
+            return None
+
+        description = None
+
+        def fetchall(self) -> list[object]:
+            return []
+
+    def _fake_open(path: object, **_kwargs: object) -> _FakeConnection:
+        opens.append(path)
+        return _FakeConnection()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.open_duckdb_connection",
+        _fake_open,
+    )
+    repo = IntentRepository("quack:127.0.0.1:45123", install_schema=False)
+    with repo._connection():
+        pass
+    with repo._connection():
+        pass
+    assert opens == ["quack:127.0.0.1:45123"]
+    repo.close()
+
+
+def test_intent_repository_keeps_quack_session_after_authorization_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opens: list[object] = []
+    closed: list[int] = []
+
+    class _FakeConnection:
+        def execute(self, sql: str, *_args: object, **_kwargs: object) -> object:
+            if "boom" in str(sql).lower():
+                raise RuntimeError("Invalid Input Error: Authorization failed")
+            return type("R", (), {"fetchall": lambda self: []})()
+
+        def close(self) -> None:
+            closed.append(1)
+
+        description = None
+
+        def fetchall(self) -> list[object]:
+            return []
+
+    def _fake_open(path: object, **_kwargs: object) -> _FakeConnection:
+        opens.append(path)
+        return _FakeConnection()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.open_duckdb_connection",
+        _fake_open,
+    )
+    repo = IntentRepository("quack:127.0.0.1:45123", install_schema=False)
+    with repo._connection() as connection:
+        connection.execute("SELECT 1")
+    try:
+        with repo._connection() as connection:
+            connection.execute("SELECT boom FROM tasks")
+    except RuntimeError:
+        pass
+    with repo._connection() as connection:
+        connection.execute("SELECT 1")
+    assert opens == ["quack:127.0.0.1:45123"]
+    assert closed == []
+    repo.close()
+
+
 def test_persist_quack_attach_token_vault_does_not_overwrite(
     tmp_path, monkeypatch
 ) -> None:

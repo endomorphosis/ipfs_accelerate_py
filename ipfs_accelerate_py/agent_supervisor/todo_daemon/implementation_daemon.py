@@ -79227,26 +79227,41 @@ class DatabaseImplementationDaemon:
     @staticmethod
     def _is_quack_attach_contention(exc: BaseException) -> bool:
         from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            DuckDBConnectionPolicyError,
             QuackTransportContentionError,
             quack_attach_error_is_contention,
         )
 
-        return isinstance(exc, QuackTransportContentionError) or (
-            quack_attach_error_is_contention(exc)
+        if isinstance(exc, (QuackTransportContentionError, DuckDBConnectionPolicyError)):
+            return True
+        if quack_attach_error_is_contention(exc):
+            return True
+        detail = str(exc)
+        name = type(exc).__name__
+        lowered = detail.lower()
+        return (
+            "authorization failed" in lowered
+            or "attach.lock" in lowered
+            or "timed out acquiring duckdb process lock" in lowered
+            or "timed out acquiring duckdb thread lock" in lowered
+            or (
+                name in {"TimeoutError", "InvalidInputException"}
+                and (
+                    "timed out" in lowered
+                    or "timeout" in lowered
+                    or "authentication failed" in lowered
+                    or "authorization failed" in lowered
+                )
+            )
         )
 
     def _run_reconciliation_step(
         self,
         callback: Callable[[], list[dict[str, Any]]],
     ) -> list[dict[str, Any]]:
-        """Run one reconciliation pass without letting Quack attach freeze the rest."""
+        """Run one reconciliation pass; attach failures idle the whole tick."""
 
-        try:
-            return callback()
-        except Exception as exc:
-            if self._is_quack_attach_contention(exc):
-                return []
-            raise
+        return callback()
 
     def reconcile_stale_in_progress_gates(self) -> list[dict[str, Any]]:
         """Retry leftover in_progress control tasks that freeze claim_next.
@@ -79377,12 +79392,19 @@ class DatabaseImplementationDaemon:
             "deferred": True,
             "skipped": True,
             "reason": "quack_attach_contended",
+            "selection_idle_reason": "quack_attach_failed",
+            "implementation_result": None,
+            "active_task_id": "",
             "attempt_consumed": False,
             "provider_dispatched": False,
             "backoff_seconds": _QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS,
             "portal_retryable_failure": True,
             "portal_terminal_failure": False,
             "error_class": type(exc).__name__,
+            "control_plane_error": {
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-2000:],
+            },
             "authority_mode": self.authority_mode,
             "task_source_kind": self.task_source_kind,
             "expired_attempt_reconciliations": expired,

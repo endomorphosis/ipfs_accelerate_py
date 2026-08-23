@@ -47,6 +47,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    DuckDBConnectionPolicyError,
     connect_duckdb_with_policy,
     open_duckdb_connection,
 )
@@ -6712,3 +6713,94 @@ def test_database_daemon_rejects_idle_lane_work_stealing(tmp_path: Path) -> None
             strict_task_sharding=True,
             idle_lane_work_stealing="virgin-transfer",
         )
+
+
+def test_idle_run_once_idles_on_quack_attach_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-attach-idle",
+    )
+
+    def boom() -> None:
+        raise DuckDBConnectionPolicyError(
+            "quack attach authentication failed uri='quack:127.0.0.1:41327' "
+            "token_present=True token_sha16=deadbeefdeadbeef"
+        )
+
+    try:
+        monkeypatch.setattr(daemon, "reconcile_prepared_task_completions", boom)
+        monkeypatch.setattr(
+            daemon,
+            "claim_next",
+            lambda: pytest.fail("attach failure claimed work"),
+        )
+        result = daemon.run_once()
+        assert result["selection_idle_reason"] == "quack_attach_failed"
+        assert result["implementation_result"] is None
+        assert result["active_task_id"] == ""
+        assert result["control_plane_error"]["error_type"] == (
+            "DuckDBConnectionPolicyError"
+        )
+    finally:
+        daemon.close()
+
+
+def test_idle_run_once_idles_on_quack_attach_lock_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-attach-lock-timeout-idle",
+    )
+
+    def boom() -> None:
+        raise TimeoutError(
+            "timed out acquiring DuckDB process lock: "
+            f"{tmp_path / 'quack-owner' / 'attach.lock'}"
+        )
+
+    try:
+        monkeypatch.setattr(daemon, "reconcile_prepared_task_completions", boom)
+        monkeypatch.setattr(
+            daemon,
+            "claim_next",
+            lambda: pytest.fail("attach lock timeout claimed work"),
+        )
+        result = daemon.run_once()
+        assert result["selection_idle_reason"] == "quack_attach_failed"
+        assert result["implementation_result"] is None
+        assert result["active_task_id"] == ""
+        assert result["control_plane_error"]["error_type"] == "TimeoutError"
+    finally:
+        daemon.close()
+
+
+def test_idle_run_once_idles_on_quack_authorization_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-authorization-idle",
+    )
+
+    def boom() -> None:
+        raise RuntimeError("Invalid Input Error: Authorization failed")
+
+    try:
+        monkeypatch.setattr(daemon, "reconcile_prepared_task_completions", boom)
+        monkeypatch.setattr(
+            daemon,
+            "claim_next",
+            lambda: pytest.fail("authorization failure claimed work"),
+        )
+        result = daemon.run_once()
+        assert result["selection_idle_reason"] == "quack_attach_failed"
+        assert result["implementation_result"] is None
+        assert result["control_plane_error"]["error_type"] == "RuntimeError"
+    finally:
+        daemon.close()
