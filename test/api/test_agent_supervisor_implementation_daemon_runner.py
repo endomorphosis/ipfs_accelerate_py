@@ -33,14 +33,17 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runne
 )
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import checkout_lock_owner_is_active
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DatabaseImplementationDaemon,
     PortalImplementationDaemon,
     PortalTask,
     PortalTaskState,
     _configured_agent_implementation_route_plan,
+    declared_output_paths_from_task_fields,
     default_llm_merge_resolver_command,
     parse_args,
     task_declares_validation_config_change,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import TaskSourceTask
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     PortalImplementationSupervisor,
     parse_args as parse_supervisor_args,
@@ -80,6 +83,101 @@ def test_validation_config_authority_requires_declared_task_output() -> None:
     )
     assert not task_declares_validation_config_change(
         PortalTask(**base, outputs=["*.toml"])
+    )
+
+
+def test_declared_output_paths_split_casf_owned_paths_csv() -> None:
+    paths = declared_output_paths_from_task_fields(
+        "docs/architecture/causal_event_federation_inventory/starting_tree.json, "
+        "docs/architecture/causal_event_federation_inventory/capability_snapshot.json, "
+        "docs/architecture/causal_event_federation_inventory/README.md"
+    )
+    assert paths == (
+        "docs/architecture/causal_event_federation_inventory/starting_tree.json",
+        "docs/architecture/causal_event_federation_inventory/capability_snapshot.json",
+        "docs/architecture/causal_event_federation_inventory/README.md",
+    )
+    assert declared_output_paths_from_task_fields(
+        [{"ordinal": 0, "path": paths[0]}],
+        paths[1] + ", " + paths[2],
+    ) == paths
+
+
+def test_portal_task_from_source_task_uses_owned_paths_csv() -> None:
+    source = TaskSourceTask(
+        task_id="CASF-000",
+        task_cid="cid:casf-000",
+        goal_id="CASF-G011",
+        goal_cid="cid:goal",
+        title="Seal current authority",
+        status="in_progress",
+        revision=2,
+        ordinal=1,
+        body={
+            "owned_paths": (
+                "docs/architecture/causal_event_federation_inventory/starting_tree.json, "
+                "docs/architecture/causal_event_federation_inventory/capability_snapshot.json, "
+                "docs/architecture/causal_event_federation_inventory/README.md"
+            ),
+            "predicted_files": (
+                "docs/architecture/causal_event_federation_inventory/starting_tree.json"
+            ),
+            "completion": "auto",
+            "board_namespace": "agent-supervisor-causal-event-federation-v1",
+        },
+        board_namespace="agent-supervisor-causal-event-federation-v1",
+        source_line=1,
+    )
+    task = PortalImplementationDaemon._portal_task_from_source_task(source)
+    assert task.outputs == [
+        "docs/architecture/causal_event_federation_inventory/starting_tree.json",
+        "docs/architecture/causal_event_federation_inventory/capability_snapshot.json",
+        "docs/architecture/causal_event_federation_inventory/README.md",
+    ]
+
+
+def test_completion_output_gate_skips_board_load_for_primary_task() -> None:
+    primary = PortalTask(
+        task_id="CASF-000",
+        title="Seal current authority",
+        status="in_progress",
+        completion="auto",
+        priority="P0",
+        track="casf-g011",
+        outputs=[
+            "docs/architecture/causal_event_federation_inventory/starting_tree.json",
+        ],
+        canonical_task_cid="cid:casf-000",
+    )
+
+    class _Harness:
+        def _bundle_work_order_for_task(self, task: PortalTask) -> None:
+            return None
+
+        def _load_tasks(self) -> list[PortalTask]:
+            raise AssertionError("single-task output gate must not load the board")
+
+    tasks, error = PortalImplementationDaemon._completion_tasks_for_declared_output_gate(
+        _Harness(),  # type: ignore[arg-type]
+        {},
+        primary,
+    )
+    assert error == {}
+    assert tasks == [primary]
+
+
+def test_invalid_connection_id_is_retryable_portal_reason() -> None:
+    assert (
+        DatabaseImplementationDaemon._database_portal_reason(
+            "Invalid Input Error: Invalid connection id"
+        )
+        == "quack_attach_contended"
+    )
+    assert (
+        DatabaseImplementationDaemon._database_portal_reason(
+            "Query interrupted"
+        )
+        == "quack_attach_contended"
     )
 
 

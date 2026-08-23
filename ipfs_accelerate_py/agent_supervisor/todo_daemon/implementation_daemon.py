@@ -6228,6 +6228,58 @@ def task_declared_output_paths(task: PortalTask) -> tuple[str, ...]:
     )
 
 
+def declared_output_paths_from_task_fields(*values: Any) -> tuple[str, ...]:
+    """Split owned-path, predicted-file, and output fields into repo paths.
+
+    DuckDB task bodies store CASF ``owned_paths`` / ``predicted_files`` as one
+    CSV string and keep the child ``task_outputs`` rows off the list-tasks
+    hydrate. Treating the CSV as a single path makes every inventory task fail
+    ``declared_outputs_missing_or_untracked`` even when the files are on HEAD.
+    """
+
+    collected: list[str] = []
+    seen: set[str] = set()
+
+    def add(path: str) -> None:
+        relative = str(path or "").strip().strip("`").strip("'").strip('"')
+        if (
+            not relative
+            or relative.lower() in {"none", "n/a"}
+            or not _declared_output_path_is_repo_relative(relative)
+            or relative in seen
+        ):
+            return
+        seen.add(relative)
+        collected.append(relative)
+
+    def walk(value: Any) -> None:
+        if value is None or value == "":
+            return
+        if isinstance(value, Mapping):
+            selected = str(
+                value.get("path")
+                or value.get("fluent_id")
+                or value.get("output")
+                or ""
+            ).strip()
+            if selected:
+                walk(selected)
+            return
+        if isinstance(value, str):
+            for item in split_csv(value):
+                add(item)
+            return
+        if isinstance(value, Sequence) and not isinstance(
+            value, (bytes, bytearray, memoryview)
+        ):
+            for item in value:
+                walk(item)
+
+    for value in values:
+        walk(value)
+    return tuple(collected)
+
+
 def task_declares_validation_config_change(task: PortalTask) -> bool:
     """Return whether the task explicitly owns a validation-config path.
 
@@ -7752,22 +7804,16 @@ class PortalImplementationDaemon:
             }
         )
 
-        output_values = body.get("outputs") or body.get("effects") or ()
-        if isinstance(output_values, (str, Mapping)):
-            output_values = (output_values,)
-        outputs: list[str] = []
-        for value in output_values if isinstance(output_values, Sequence) else ():
-            if isinstance(value, Mapping):
-                selected = str(
-                    value.get("path")
-                    or value.get("fluent_id")
-                    or value.get("output")
-                    or ""
-                ).strip()
-            else:
-                selected = str(value).strip()
-            if selected and selected not in outputs:
-                outputs.append(selected)
+        outputs = list(
+            declared_output_paths_from_task_fields(
+                body.get("outputs"),
+                body.get("effects"),
+                body.get("owned_paths"),
+                body.get("predicted_files"),
+                body.get("predicted files"),
+                getattr(task, "outputs", ()),
+            )
+        )
 
         validation_values = (
             body.get("validations")
@@ -29416,6 +29462,17 @@ class PortalImplementationDaemon:
         task_ids = list(dict.fromkeys(task_ids))
         if not task_ids:
             return [], {"reason": "completion_task_ids_missing"}
+        primary_ids = {
+            str(getattr(primary_task, "task_id", "") or "").strip(),
+            str(getattr(primary_task, "canonical_task_cid", "") or "").strip(),
+            str(getattr(primary_task, "canonical_task_key", "") or "").strip(),
+        }
+        primary_ids.discard("")
+        if primary_ids and set(task_ids) <= primary_ids:
+            # A single-task gate must not ATTACH the whole board.  That scan
+            # is what turned a finished inventory provider into
+            # ``declared_outputs_missing_or_untracked`` via Invalid connection id.
+            return [primary_task], {}
         try:
             current_tasks = self._load_tasks()
         except Exception as exc:
@@ -76025,6 +76082,8 @@ class DatabaseImplementationDaemon:
             "authentication failed" in lowered
             or "quack control-plane attach contended" in lowered
             or "could not connect to server" in lowered
+            or "invalid connection id" in lowered
+            or "query interrupted" in lowered
         ):
             return "quack_attach_contended"
         return (reason or "portal_execution_deferred")[:1024]
@@ -83374,19 +83433,29 @@ class DatabaseImplementationDaemon:
             except DatabaseImplementationConflictError:
                 raise
             except Exception as fail_exc:
+                persist_reason = self._database_portal_reason(fail_exc)
+                persist_retryable = (
+                    persist_reason in _RETRYABLE_PORTAL_FAILURE_REASONS
+                    or persist_reason in _PROCESS_TRANSIENT_PORTAL_REASONS
+                    or self._is_quack_attach_contention(fail_exc)
+                )
+                effective_retryable = retryable or persist_retryable
+                effective_reason = (
+                    persist_reason if persist_retryable else reason
+                )
                 return {
                     "resumed": True,
-                    "portal_retryable_failure": retryable,
-                    "portal_terminal_failure": not retryable,
+                    "portal_retryable_failure": effective_retryable,
+                    "portal_terminal_failure": not effective_retryable,
                     "deferred": deferred,
                     "attempt_consumed": (
                         getattr(exc, "attempt_consumed", False)
-                        if retryable
+                        if effective_retryable
                         else "unknown"
                     ),
                     "provider_dispatched": (
                         getattr(exc, "provider_dispatched", False)
-                        if retryable
+                        if effective_retryable
                         else "unknown"
                     ),
                     "typed_deferral_slot_consumed": (
@@ -83397,13 +83466,13 @@ class DatabaseImplementationDaemon:
                         else "unknown"
                     ),
                     "backoff_seconds": backoff_seconds,
-                    "reason": reason,
+                    "reason": effective_reason,
                     "fail_error": str(fail_exc),
                     "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
                     "task_alias": str(getattr(attempt, "task_alias", "") or ""),
                     "status": (
                         "retryable_portal_failure"
-                        if retryable
+                        if effective_retryable
                         else "terminal_portal_failure"
                     ),
                 }
@@ -83988,14 +84057,17 @@ class DatabaseImplementationDaemon:
                     "declared_outputs_missing_or_untracked",
                 }:
                     continue
-                outputs = tuple(getattr(task, "outputs", ()) or ())
+                body_map = body if isinstance(body, Mapping) else {}
+                outputs = declared_output_paths_from_task_fields(
+                    getattr(task, "outputs", ()),
+                    body_map.get("outputs"),
+                    body_map.get("effects"),
+                    body_map.get("owned_paths"),
+                    body_map.get("predicted_files"),
+                    body_map.get("predicted files"),
+                )
                 tracked = bool(outputs) and bool(head)
-                for item in outputs:
-                    path = ""
-                    if isinstance(item, Mapping):
-                        path = str(item.get("path") or "")
-                    else:
-                        path = str(getattr(item, "path", "") or "")
+                for path in outputs:
                     if not path:
                         tracked = False
                         break
