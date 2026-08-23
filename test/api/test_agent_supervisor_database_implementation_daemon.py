@@ -4905,7 +4905,10 @@ def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
         daemon.close()
 
 
-def test_unusable_candidate_retries_instead_of_blocking(tmp_path: Path) -> None:
+def test_unusable_candidate_reaches_retry_handler_without_generic_requeue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
         raise DatabasePortalCandidateRetry("no_change_completion_not_allowed")
 
@@ -4916,6 +4919,19 @@ def test_unusable_candidate_retries_instead_of_blocking(tmp_path: Path) -> None:
         max_task_attempts=4,
     )
     try:
+        def reject_generic_requeue(*_args: object, **_kwargs: object) -> None:
+            pytest.fail("candidate retry entered generic stale-attempt requeue")
+
+        monkeypatch.setattr(
+            daemon,
+            "_retire_stale_running_attempt",
+            reject_generic_requeue,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_requeue_unimplemented_control_task",
+            reject_generic_requeue,
+        )
         daemon.materialize_population(_population(1))
         result = daemon.run_once()
         implementation = result["implementation_result"]
@@ -4932,6 +4948,10 @@ def test_unusable_candidate_retries_instead_of_blocking(tmp_path: Path) -> None:
         failed = daemon.phase_history(attempt.attempt_id)[-1]["body"]
         assert failed["reason"] == "no_change_completion_not_allowed"
         assert failed["portal_retryable_failure"] is True
+        assert failed["attempt_consumed"] is True
+        assert failed["provider_dispatched"] is True
+        receipt = task.body["completion_receipt"]
+        assert receipt["operation"] != "requeue_unimplemented_stale_attempt"
     finally:
         daemon.close()
 

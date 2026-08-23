@@ -83316,7 +83316,13 @@ class DatabaseImplementationDaemon:
             )
             if (
                 isinstance(exc, DatabasePortalBridgeError)
-                and not isinstance(exc, DatabasePortalValidationRetry)
+                and not isinstance(
+                    exc,
+                    (
+                        DatabasePortalValidationRetry,
+                        DatabasePortalCandidateRetry,
+                    ),
+                )
                 and not recovery_owned_terminal_failure
                 and (
                     not isinstance(exc, DatabasePortalBridgeDeferred)
@@ -83346,7 +83352,11 @@ class DatabaseImplementationDaemon:
                 }
             if not isinstance(
                 exc,
-                (DatabasePortalBridgeDeferred, DatabasePortalValidationRetry),
+                (
+                    DatabasePortalBridgeDeferred,
+                    DatabasePortalValidationRetry,
+                    DatabasePortalCandidateRetry,
+                ),
             ) and not recovery_owned_terminal_failure:
                 # Generic Portal/provider failures carry no retry authority.
                 # The durable callback-start intent prevents a cold restart
