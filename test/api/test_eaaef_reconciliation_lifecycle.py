@@ -196,6 +196,9 @@ class _FakeOwner:
             "source_forest_root": population.source_forest_root,
             "population_cid": population.population_cid,
             "goal_population_cid": population.goal_population_cid,
+            "execution_contract_population_cid": (
+                population.execution_contract_population_cid
+            ),
             "bootstrap_population_cid": population.bootstrap_population_cid,
             "held_plan_r2_population_cid": population.plan_r2_population_cid,
             "plan_r1_cid": population.plan_r1_cid,

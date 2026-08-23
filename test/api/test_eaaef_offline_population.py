@@ -86,14 +86,98 @@ def _sealed_forest(*, accelerator_commit: str = "1" * 40) -> dict[str, Any]:
 
 
 def _population(repo_root: Path) -> lifecycle.CompiledEAAEFPopulation:
-    board = json.loads((repo_root / lifecycle.EAAEF_BOARD_PATH).read_text(encoding="utf-8"))
-    return lifecycle.compile_fresh_eaaef_population(board, forest=_sealed_forest())
+    return lifecycle.compile_fresh_eaaef_population(_board(repo_root), forest=_sealed_forest())
+
+
+def _board(repo_root: Path) -> dict[str, Any]:
+    return json.loads((repo_root / lifecycle.EAAEF_BOARD_PATH).read_text(encoding="utf-8"))
+
+
+def _plain(value: Any) -> Any:
+    return json.loads(lifecycle._canonical_bytes(value))
+
+
+def _replace_bootstrap_task(
+    population: lifecycle.CompiledEAAEFPopulation,
+    task: dict[str, Any],
+) -> lifecycle.CompiledEAAEFPopulation:
+    return replace(population, bootstrap_tasks=(task, *population.bootstrap_tasks[1:]))
+
+
+def _reseal_mutated_output_population(
+    population: lifecycle.CompiledEAAEFPopulation,
+) -> lifecycle.CompiledEAAEFPopulation:
+    task = _plain(population.bootstrap_tasks[0])
+    task["body"]["outputs"][0] = "forged/resealed-output.txt"
+    unsigned_task = dict(task)
+    unsigned_task.pop("execution_contract_cid")
+    task["execution_contract_cid"] = lifecycle._cid(
+        {
+            "schema": "EAAEFTaskExecutionContract@1",
+            "task": unsigned_task,
+            "source_forest_root": population.source_forest_root,
+        }
+    )
+    bootstrap = (task, *population.bootstrap_tasks[1:])
+    tasks = (*bootstrap, *population.plan_r2_tasks)
+    execution_contract_population_cid = lifecycle._cid(
+        {
+            "schema": lifecycle.EAAEF_EXECUTION_CONTRACT_POPULATION_SCHEMA,
+            "contracts": [
+                {
+                    "task_cid": item["task_cid"],
+                    "execution_contract_cid": item["execution_contract_cid"],
+                }
+                for item in tasks
+            ],
+            "source_forest_root": population.source_forest_root,
+        }
+    )
+    bootstrap_population_cid = lifecycle._cid(
+        {
+            "schema": "EAAEFBootstrapPopulation@1",
+            "tasks": bootstrap,
+            "dependencies": population.dependencies,
+            "source_forest_root": population.source_forest_root,
+        }
+    )
+    population_cid = lifecycle._cid(
+        {
+            "schema": lifecycle.EAAEF_POPULATION_SCHEMA,
+            "board_cid": population.board_cid,
+            "bootstrap_population_cid": bootstrap_population_cid,
+            "plan_r2_population_cid": population.plan_r2_population_cid,
+            "goal_population_cid": population.goal_population_cid,
+            "execution_contract_population_cid": execution_contract_population_cid,
+            "source_forest_root": population.source_forest_root,
+            "task_count": lifecycle.EAAEF_TASK_COUNT,
+        }
+    )
+    return replace(
+        population,
+        bootstrap_tasks=bootstrap,
+        execution_contract_population_cid=execution_contract_population_cid,
+        bootstrap_population_cid=bootstrap_population_cid,
+        population_cid=population_cid,
+    )
+
+
+class _ForbiddenMaterializer:
+    INTERFACE = offline.DATABASE_TASK_SOURCE_INTERFACE
+
+    def __init__(self) -> None:
+        self.called = False
+
+    def materialize(self, *_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        self.called = True
+        raise AssertionError("forged population reached the task source")
 
 
 def test_translation_is_exact_database_task_source_population(repo_root: Path) -> None:
     population = _population(repo_root)
     translated = offline.translate_compiled_eaaef_population(
         population,
+        current_board=_board(repo_root),
         current_forest=_sealed_forest(),
         owner_active=False,
     )
@@ -124,6 +208,7 @@ def test_translation_is_exact_database_task_source_population(repo_root: Path) -
     assert offline.verify_translated_eaaef_population(
         translated,
         population=population,
+        current_board=_board(repo_root),
         current_forest=_sealed_forest(),
     ) == translated
 
@@ -139,6 +224,7 @@ def test_offline_materialization_preserves_all_contract_rows(
         receipt = offline.materialize_offline_eaaef_population(
             source,
             population,
+            current_board=_board(repo_root),
             current_forest=_sealed_forest(),
             owner_active=False,
         )
@@ -175,12 +261,14 @@ def test_translation_rejects_live_owner_history_stale_forest_and_terminal_status
     with pytest.raises(lifecycle.EAAEFReconciliationBlocked, match="owner to be absent"):
         offline.translate_compiled_eaaef_population(
             population,
+            current_board=_board(repo_root),
             current_forest=_sealed_forest(),
             owner_active=True,
         )
     with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="historical"):
         offline.translate_compiled_eaaef_population(
             population,
+            current_board=_board(repo_root),
             current_forest=_sealed_forest(),
             owner_active=False,
             historical_task_statuses={"EAAEF-000": "done"},
@@ -188,22 +276,185 @@ def test_translation_rejects_live_owner_history_stale_forest_and_terminal_status
     with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="stale"):
         offline.translate_compiled_eaaef_population(
             population,
+            current_board=_board(repo_root),
             current_forest=_sealed_forest(accelerator_commit="9" * 40),
             owner_active=False,
         )
 
-    forged_task = dict(population.bootstrap_tasks[0])
+    forged_task = _plain(population.bootstrap_tasks[0])
     forged_task["status"] = "done"
-    forged_population = replace(
-        population,
-        bootstrap_tasks=(forged_task, *population.bootstrap_tasks[1:]),
-    )
-    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="status split"):
+    forged_population = _replace_bootstrap_task(population, forged_task)
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="CID differs"):
         offline.translate_compiled_eaaef_population(
             forged_population,
+            current_board=_board(repo_root),
             current_forest=_sealed_forest(),
             owner_active=False,
         )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        (lambda task: task["body"]["outputs"].__setitem__(0, "forged/output.txt"), "contract"),
+        (
+            lambda task: task["body"]["validations"][0]["argv"].__setitem__(0, "false"),
+            "contract",
+        ),
+        (
+            lambda task: task["body"]["acceptance"].__setitem__(0, "forged acceptance"),
+            "contract",
+        ),
+        (lambda task: task.__setitem__("priority", "P9"), "contract"),
+        (lambda task: task["body"].__setitem__("task_spec_cid", "sha256:" + "f" * 64), "task"),
+    ],
+)
+def test_retained_population_cids_reject_commitment_bearing_task_mutations(
+    repo_root: Path,
+    mutation: Any,
+    expected: str,
+) -> None:
+    population = _population(repo_root)
+    forged_task = _plain(population.bootstrap_tasks[0])
+    mutation(forged_task)
+    forged = _replace_bootstrap_task(population, forged_task)
+
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match=expected):
+        offline.translate_compiled_eaaef_population(
+            forged,
+            current_board=_board(repo_root),
+            current_forest=_sealed_forest(),
+            owner_active=False,
+        )
+
+
+def test_forged_dependency_and_held_partition_cids_fail_closed(repo_root: Path) -> None:
+    population = _population(repo_root)
+    dependency = dict(population.dependencies[0])
+    dependency["kind"] = "forged"
+    forged_dependencies = replace(
+        population,
+        dependencies=(dependency, *population.dependencies[1:]),
+    )
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="bootstrap"):
+        offline.translate_compiled_eaaef_population(
+            forged_dependencies,
+            current_board=_board(repo_root),
+            current_forest=_sealed_forest(),
+            owner_active=False,
+        )
+
+    held_task = _plain(population.plan_r2_tasks[0])
+    held_task["body"]["outputs"][0] = "forged/held-output.txt"
+    forged_held = replace(
+        population,
+        plan_r2_tasks=(held_task, *population.plan_r2_tasks[1:]),
+    )
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="contract"):
+        offline.translate_compiled_eaaef_population(
+            forged_held,
+            current_board=_board(repo_root),
+            current_forest=_sealed_forest(),
+            owner_active=False,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field_name", "expected"),
+    [
+        ("execution_contract_population_cid", "execution-contract population"),
+        ("goal_population_cid", "goal population"),
+        ("bootstrap_population_cid", "bootstrap population"),
+        ("plan_r2_population_cid", "held-R2 population"),
+        ("population_cid", "overall population"),
+    ],
+)
+def test_each_population_commitment_is_recomputed(
+    repo_root: Path,
+    field_name: str,
+    expected: str,
+) -> None:
+    population = _population(repo_root)
+    forged = replace(population, **{field_name: "sha256:" + "f" * 64})
+
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match=expected):
+        offline.translate_compiled_eaaef_population(
+            forged,
+            current_board=_board(repo_root),
+            current_forest=_sealed_forest(),
+            owner_active=False,
+        )
+
+
+def test_goal_and_r1_plan_mutations_reject_retained_commitments(repo_root: Path) -> None:
+    population = _population(repo_root)
+    goal = _plain(population.goals[0])
+    goal["title"] = "forged root goal"
+    forged_goal = replace(population, goals=(goal, *population.goals[1:]))
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="goal population"):
+        offline.translate_compiled_eaaef_population(
+            forged_goal,
+            current_board=_board(repo_root),
+            current_forest=_sealed_forest(),
+            owner_active=False,
+        )
+
+    plan = _plain(population.plan_r1)
+    plan["body"]["source_head"] = "f" * 40
+    forged_plan = replace(population, plan_r1=plan)
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="goal population"):
+        offline.translate_compiled_eaaef_population(
+            forged_plan,
+            current_board=_board(repo_root),
+            current_forest=_sealed_forest(),
+            owner_active=False,
+        )
+
+
+def test_current_board_and_task_specs_must_remain_self_addressed(repo_root: Path) -> None:
+    board = _board(repo_root)
+    board["goals"][0]["title"] = "forged board title"
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="board CID"):
+        lifecycle.compile_fresh_eaaef_population(board, forest=_sealed_forest())
+
+    board = _board(repo_root)
+    board["tasks"][0]["execution_owned_files"][0] = "forged/task-output.txt"
+    projection = dict(board)
+    projection.pop("board_cid")
+    board["board_cid"] = lifecycle._eaaef_source_cid(projection)
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="task spec CID"):
+        lifecycle.compile_fresh_eaaef_population(board, forest=_sealed_forest())
+
+
+def test_resealed_forged_rows_still_differ_from_current_sealed_board(repo_root: Path) -> None:
+    population = _population(repo_root)
+    forged = _reseal_mutated_output_population(population)
+
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="sealed board"):
+        offline.translate_compiled_eaaef_population(
+            forged,
+            current_board=_board(repo_root),
+            current_forest=_sealed_forest(),
+            owner_active=False,
+        )
+
+
+def test_commitment_failure_occurs_before_offline_sink_call(repo_root: Path) -> None:
+    population = _population(repo_root)
+    forged_task = _plain(population.bootstrap_tasks[0])
+    forged_task["body"]["outputs"][0] = "forged/pre-sink-output.txt"
+    forged = _replace_bootstrap_task(population, forged_task)
+    sink = _ForbiddenMaterializer()
+
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="contract"):
+        offline.materialize_offline_eaaef_population(
+            sink,
+            forged,
+            current_board=_board(repo_root),
+            current_forest=_sealed_forest(),
+            owner_active=False,
+        )
+    assert sink.called is False
 
 
 def test_static_owner_facade_reports_blockers_and_cannot_effect(repo_root: Path) -> None:

@@ -87,6 +87,9 @@ EAAEF_FOREST_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/eaaef-reposito
 EAAEF_POPULATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-reconciliation-population@1"
 )
+EAAEF_EXECUTION_CONTRACT_POPULATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-execution-contract-population@1"
+)
 EAAEF_OWNER_REQUEST_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-typed-owner-materialization-request@1"
 )
@@ -330,6 +333,24 @@ def _cid(value: Any) -> str:
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
+def _eaaef_source_cid(value: Any) -> str:
+    """Return the UTF-8 canonical CID used by the existing EAAEF board schema."""
+
+    try:
+        raw = json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError, UnicodeError) as exc:
+        raise EAAEFReconciliationIdentityError(
+            "EAAEF source value is not canonical JSON"
+        ) from exc
+    return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
 def _json_object(path: Path, *, noun: str, maximum_bytes: int = 32 * 1024 * 1024) -> dict[str, Any]:
     try:
         metadata = os.lstat(path)
@@ -548,6 +569,7 @@ class CompiledEAAEFPopulation:
     plan_r2_tasks: tuple[Mapping[str, Any], ...]
     dependencies: tuple[Mapping[str, str], ...]
     goal_population_cid: str
+    execution_contract_population_cid: str
     bootstrap_population_cid: str
     plan_r2_population_cid: str
     population_cid: str
@@ -577,6 +599,7 @@ class CompiledEAAEFPopulation:
             "source_forest_root": self.source_forest_root,
             "plan_r1_cid": self.plan_r1_cid,
             "goal_population_cid": self.goal_population_cid,
+            "execution_contract_population_cid": self.execution_contract_population_cid,
             "goal_count": len(self.goals),
             "goal_edge_count": len(self.goal_edges),
             "plan_count": 1,
@@ -598,6 +621,7 @@ class CompiledEAAEFPopulation:
         rows: list[dict[str, Any]] = []
         for source in (*self.bootstrap_tasks, *self.plan_r2_tasks):
             row = json.loads(_canonical_bytes(dict(source)))
+            row.pop("execution_contract_cid", None)
             row["plan_cid"] = plan_cid
             row["revision"] = int(row["revision"]) + 1
             row["status"] = "todo"
@@ -625,6 +649,11 @@ def compile_fresh_eaaef_population(
     """
 
     sealed = _require_sealed_forest(forest)
+    declared_board_cid = str(board.get("board_cid") or "")
+    board_cid_projection = dict(board)
+    board_cid_projection.pop("board_cid", None)
+    if declared_board_cid != _eaaef_source_cid(board_cid_projection):
+        raise EAAEFReconciliationIdentityError("EAAEF declared board CID differs")
     if (
         board.get("board_namespace") != EAAEF_BOARD_NAMESPACE
         or board.get("plan_revision") != EAAEF_PLAN_R1_ALIAS
@@ -654,6 +683,10 @@ def compile_fresh_eaaef_population(
             raise EAAEFReconciliationIdentityError(f"{alias} crosses the board namespace")
         if not _SHA256_RE.fullmatch(str(task.get("task_spec_cid") or "")):
             raise EAAEFReconciliationIdentityError(f"{alias} task spec CID is malformed")
+        task_spec_projection = dict(task)
+        task_spec_cid = str(task_spec_projection.pop("task_spec_cid", ""))
+        if task_spec_cid != _eaaef_source_cid(task_spec_projection):
+            raise EAAEFReconciliationIdentityError(f"{alias} task spec CID differs")
         by_alias[alias] = task
     if set(initial) - set(by_alias):
         raise EAAEFReconciliationIdentityError("EAAEF bootstrap task is absent")
@@ -675,7 +708,7 @@ def compile_fresh_eaaef_population(
 
     board_identity = {
         "schema": "EAAEFFreshBoardIdentity@1",
-        "declared_board_cid": str(board.get("board_cid") or ""),
+        "declared_board_cid": declared_board_cid,
         "source_forest_root": sealed["source_forest_root"],
         "tasks": [
             {
@@ -876,7 +909,7 @@ def compile_fresh_eaaef_population(
         )
         body["is_schedulable"] = in_bootstrap
         body["blocked_reason"] = "" if in_bootstrap else "awaiting_fresh_signed_plan_r2"
-        records[alias] = {
+        record = {
             "task_cid": task_cids[alias],
             "task_alias": alias,
             "goal_cid": goal_cids[goal_alias],
@@ -896,6 +929,14 @@ def compile_fresh_eaaef_population(
             },
             "body": body,
         }
+        record["execution_contract_cid"] = _cid(
+            {
+                "schema": "EAAEFTaskExecutionContract@1",
+                "task": record,
+                "source_forest_root": sealed["source_forest_root"],
+            }
+        )
+        records[alias] = record
     bootstrap_records = tuple(records[alias] for alias in initial)
     held_records = tuple(records[alias] for alias in held)
     bootstrap_cid = _cid(
@@ -914,6 +955,19 @@ def compile_fresh_eaaef_population(
             "source_forest_root": sealed["source_forest_root"],
         }
     )
+    execution_contract_population_cid = _cid(
+        {
+            "schema": EAAEF_EXECUTION_CONTRACT_POPULATION_SCHEMA,
+            "contracts": [
+                {
+                    "task_cid": record["task_cid"],
+                    "execution_contract_cid": record["execution_contract_cid"],
+                }
+                for record in (*bootstrap_records, *held_records)
+            ],
+            "source_forest_root": sealed["source_forest_root"],
+        }
+    )
     population_cid = _cid(
         {
             "schema": EAAEF_POPULATION_SCHEMA,
@@ -921,6 +975,7 @@ def compile_fresh_eaaef_population(
             "bootstrap_population_cid": bootstrap_cid,
             "plan_r2_population_cid": plan_r2_cid,
             "goal_population_cid": goal_population_cid,
+            "execution_contract_population_cid": execution_contract_population_cid,
             "source_forest_root": sealed["source_forest_root"],
             "task_count": EAAEF_TASK_COUNT,
         }
@@ -938,10 +993,183 @@ def compile_fresh_eaaef_population(
         plan_r2_tasks=held_records,
         dependencies=tuple(dependencies),
         goal_population_cid=goal_population_cid,
+        execution_contract_population_cid=execution_contract_population_cid,
         bootstrap_population_cid=bootstrap_cid,
         plan_r2_population_cid=plan_r2_cid,
         population_cid=population_cid,
     )
+
+
+def verify_compiled_eaaef_population_commitments(
+    population: CompiledEAAEFPopulation,
+    *,
+    current_board: Mapping[str, Any],
+    current_forest: Mapping[str, Any],
+) -> CompiledEAAEFPopulation:
+    """Rebuild every population commitment from the current sealed inputs.
+
+    ``CompiledEAAEFPopulation`` is frozen, but its nested JSON records are
+    ordinary Python values.  A retained top-level population CID therefore is
+    not evidence that a caller did not mutate one nested row.  This verifier
+    recomputes the complete commitment chain and then compares the entire
+    population with an independent compilation of the self-addressed board.
+    """
+
+    if type(population) is not CompiledEAAEFPopulation:
+        raise EAAEFReconciliationIdentityError("EAAEF population was not freshly compiled")
+    sealed = _require_sealed_forest(current_forest)
+    source_mismatches = sorted(
+        field_name
+        for field_name in ("source_head", "source_tree", "source_forest_root")
+        if getattr(population, field_name) != sealed[field_name]
+    )
+    if source_mismatches:
+        raise EAAEFReconciliationIdentityError(
+            "compiled EAAEF population belongs to a stale repository forest: "
+            + ", ".join(source_mismatches)
+        )
+
+    if (
+        len(population.bootstrap_tasks) != EAAEF_BOOTSTRAP_TASK_COUNT
+        or len(population.plan_r2_tasks) != EAAEF_PLAN_R2_TASK_COUNT
+    ):
+        raise EAAEFReconciliationIdentityError("compiled EAAEF 22+94 partitions differ")
+    tasks = (*population.bootstrap_tasks, *population.plan_r2_tasks)
+    contract_bindings: list[dict[str, str]] = []
+    seen_task_cids: set[str] = set()
+    for raw in tasks:
+        if not isinstance(raw, Mapping):
+            raise EAAEFReconciliationIdentityError("compiled EAAEF task is not an object")
+        record = dict(raw)
+        body = record.get("body")
+        identity = record.get("identity")
+        task_alias = str(record.get("task_alias") or "")
+        if not isinstance(body, Mapping) or not isinstance(identity, Mapping):
+            raise EAAEFReconciliationIdentityError(
+                f"compiled EAAEF task {task_alias or 'unknown'} contract is absent"
+            )
+        task_spec_cid = str(body.get("task_spec_cid") or "")
+        expected_task_cid = _cid(
+            {
+                "schema": "EAAEFFreshTaskIdentity@1",
+                "task_alias": task_alias,
+                "task_spec_cid": task_spec_cid,
+                "board_cid": population.board_cid,
+                "source_forest_root": population.source_forest_root,
+            }
+        )
+        expected_identity = {
+            "schema": "EAAEFFreshTaskIdentity@1",
+            "task_cid": expected_task_cid,
+            "task_alias": task_alias,
+            "task_spec_cid": task_spec_cid,
+            "board_cid": population.board_cid,
+            "source_forest_root": population.source_forest_root,
+        }
+        if record.get("task_cid") != expected_task_cid or dict(identity) != expected_identity:
+            raise EAAEFReconciliationIdentityError(
+                f"compiled EAAEF task {task_alias or 'unknown'} CID differs"
+            )
+        if expected_task_cid in seen_task_cids:
+            raise EAAEFReconciliationIdentityError("compiled EAAEF task CID is duplicated")
+        seen_task_cids.add(expected_task_cid)
+        observed_contract_cid = str(record.pop("execution_contract_cid", ""))
+        expected_contract_cid = _cid(
+            {
+                "schema": "EAAEFTaskExecutionContract@1",
+                "task": record,
+                "source_forest_root": population.source_forest_root,
+            }
+        )
+        if observed_contract_cid != expected_contract_cid:
+            raise EAAEFReconciliationIdentityError(
+                f"compiled EAAEF task {task_alias} execution-contract CID differs"
+            )
+        contract_bindings.append(
+            {
+                "task_cid": expected_task_cid,
+                "execution_contract_cid": expected_contract_cid,
+            }
+        )
+
+    expected_contract_population_cid = _cid(
+        {
+            "schema": EAAEF_EXECUTION_CONTRACT_POPULATION_SCHEMA,
+            "contracts": contract_bindings,
+            "source_forest_root": population.source_forest_root,
+        }
+    )
+    if population.execution_contract_population_cid != expected_contract_population_cid:
+        raise EAAEFReconciliationIdentityError(
+            "compiled EAAEF execution-contract population CID differs"
+        )
+    expected_goal_population_cid = _cid(
+        {
+            "schema": "EAAEFFreshGoalPopulation@1",
+            "goals": list(population.goals),
+            "goal_edges": list(population.goal_edges),
+            "plan_r1": population.plan_r1,
+            "source_forest_root": population.source_forest_root,
+        }
+    )
+    if population.goal_population_cid != expected_goal_population_cid:
+        raise EAAEFReconciliationIdentityError("compiled EAAEF goal population CID differs")
+    expected_bootstrap_cid = _cid(
+        {
+            "schema": "EAAEFBootstrapPopulation@1",
+            "tasks": population.bootstrap_tasks,
+            "dependencies": population.dependencies,
+            "source_forest_root": population.source_forest_root,
+        }
+    )
+    if population.bootstrap_population_cid != expected_bootstrap_cid:
+        raise EAAEFReconciliationIdentityError("compiled EAAEF bootstrap population CID differs")
+    expected_plan_r2_population_cid = _cid(
+        {
+            "schema": "EAAEFPlanR2HeldPopulation@1",
+            "tasks": population.plan_r2_tasks,
+            "dependencies": population.dependencies,
+            "source_forest_root": population.source_forest_root,
+        }
+    )
+    if population.plan_r2_population_cid != expected_plan_r2_population_cid:
+        raise EAAEFReconciliationIdentityError("compiled EAAEF held-R2 population CID differs")
+    expected_population_cid = _cid(
+        {
+            "schema": EAAEF_POPULATION_SCHEMA,
+            "board_cid": population.board_cid,
+            "bootstrap_population_cid": expected_bootstrap_cid,
+            "plan_r2_population_cid": expected_plan_r2_population_cid,
+            "goal_population_cid": expected_goal_population_cid,
+            "execution_contract_population_cid": expected_contract_population_cid,
+            "source_forest_root": population.source_forest_root,
+            "task_count": EAAEF_TASK_COUNT,
+        }
+    )
+    if population.population_cid != expected_population_cid:
+        raise EAAEFReconciliationIdentityError("compiled EAAEF overall population CID differs")
+    try:
+        observed_contract_counts = population.execution_contract_counts
+    except (KeyError, TypeError) as exc:
+        raise EAAEFReconciliationIdentityError(
+            "compiled EAAEF execution-contract counts are malformed"
+        ) from exc
+    if observed_contract_counts != {
+        "task_dependencies": 270,
+        "task_outputs": 415,
+        "task_validations": 117,
+        "task_acceptance": 116,
+    }:
+        raise EAAEFReconciliationIdentityError(
+            "compiled EAAEF execution-contract counts differ"
+        )
+
+    canonical = compile_fresh_eaaef_population(current_board, forest=sealed)
+    if _canonical_bytes(vars(population)) != _canonical_bytes(vars(canonical)):
+        raise EAAEFReconciliationIdentityError(
+            "compiled EAAEF population differs from the current sealed board"
+        )
+    return canonical
 
 
 def _assert_no_boundary_authority(value: Any, *, path: str = "request") -> None:
@@ -1099,6 +1327,7 @@ def _fresh_plan_r2(population: CompiledEAAEFPopulation) -> dict[str, Any]:
         "predecessor_plan_cid": population.plan_r1_cid,
         "board_cid": population.board_cid,
         "reconciliation_population_cid": population.population_cid,
+        "execution_contract_population_cid": population.execution_contract_population_cid,
         "bootstrap_population_cid": population.bootstrap_population_cid,
         "held_plan_r2_population_cid": population.plan_r2_population_cid,
         "source_forest_root": population.source_forest_root,
@@ -1463,6 +1692,7 @@ def build_typed_owner_materialization_request(
         "board_cid": population.board_cid,
         "population_cid": population.population_cid,
         "goal_population_cid": population.goal_population_cid,
+        "execution_contract_population_cid": population.execution_contract_population_cid,
         "bootstrap_population_cid": population.bootstrap_population_cid,
         "plan_r2_population_cid": population.plan_r2_population_cid,
         "plan_r1_cid": population.plan_r1_cid,
@@ -1493,6 +1723,7 @@ def build_typed_owner_materialization_request(
             "board_cid",
             "population_cid",
             "goal_population_cid",
+            "execution_contract_population_cid",
             "bootstrap_population_cid",
             "plan_r2_population_cid",
             "plan_r1_cid",
@@ -1932,6 +2163,7 @@ def _build_offline_population_request(
         "board_cid": population.board_cid,
         "population_cid": population.population_cid,
         "goal_population_cid": population.goal_population_cid,
+        "execution_contract_population_cid": population.execution_contract_population_cid,
         "bootstrap_population_cid": population.bootstrap_population_cid,
         "held_plan_r2_population_cid": population.plan_r2_population_cid,
         "plan_r1_cid": population.plan_r1_cid,
@@ -1967,6 +2199,7 @@ def _validate_offline_population_receipt(
         "source_forest_root": population.source_forest_root,
         "population_cid": population.population_cid,
         "goal_population_cid": population.goal_population_cid,
+        "execution_contract_population_cid": population.execution_contract_population_cid,
         "bootstrap_population_cid": population.bootstrap_population_cid,
         "held_plan_r2_population_cid": population.plan_r2_population_cid,
         "plan_r1_cid": population.plan_r1_cid,
@@ -2033,6 +2266,9 @@ def _validate_owner_receipt(
         "source_forest_root": request["source_forest_root"],
         "population_cid": request["population_cid"],
         "goal_population_cid": request["goal_population_cid"],
+        "execution_contract_population_cid": request[
+            "execution_contract_population_cid"
+        ],
         "plan_r1_cid": request["plan_r1_cid"],
         "signed_plan_r2_population_cid": request["signed_plan_r2_population_cid"],
         "offline_population_receipt_cid": request["offline_population_receipt_cid"],
@@ -2119,6 +2355,11 @@ def prepare_fresh_generation(
     state["state_cid"] = _cid(state)
     store.create_generation(selected_generation, state)
     try:
+        population = verify_compiled_eaaef_population_commitments(
+            population,
+            current_board=board,
+            current_forest=sealed,
+        )
         receipt, snapshot = _validate_offline_population_receipt(
             typed_owner.materialize_offline_population(
                 request,
@@ -2240,6 +2481,11 @@ def materialize_fresh_generation(
     applying["state_cid"] = _cid(applying)
     store.write_state(selected_generation, applying)
     try:
+        population = verify_compiled_eaaef_population_commitments(
+            population,
+            current_board=board,
+            current_forest=sealed,
+        )
         receipt = _validate_owner_receipt(
             typed_owner.apply_signed_plan_r2(
                 request,
@@ -2910,6 +3156,7 @@ __all__ = [
     "EAAEF_BOOTSTRAP_TASK_COUNT",
     "EAAEF_FRESH_AUTHORITY_SCHEMA",
     "EAAEF_FRESH_TRUST_SCHEMA",
+    "EAAEF_EXECUTION_CONTRACT_POPULATION_SCHEMA",
     "EAAEF_FOREST_SCHEMA",
     "EAAEF_GOAL_EDGE_COUNT",
     "EAAEF_GOAL_COUNT",
@@ -2939,6 +3186,7 @@ __all__ = [
     "resolve_production_reconciliation_owner",
     "stop_reconciliation_generation",
     "verify_fresh_authority_bundle",
+    "verify_compiled_eaaef_population_commitments",
 ]
 
 

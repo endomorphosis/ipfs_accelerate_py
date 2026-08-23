@@ -29,7 +29,7 @@ from .eaaef_reconciliation_lifecycle import (
     EAAEFReconciliationIdentityError,
     _canonical_bytes,
     _cid,
-    _require_sealed_forest,
+    verify_compiled_eaaef_population_commitments,
 )
 
 EAAEF_OFFLINE_TASK_SOURCE_POPULATION_SCHEMA: Final = (
@@ -94,31 +94,6 @@ def _require_offline_inputs(
         raise EAAEFReconciliationIdentityError(
             "historical task statuses cannot seed a fresh EAAEF population"
         )
-
-
-def _require_current_population_forest(
-    population: CompiledEAAEFPopulation,
-    current_forest: Mapping[str, Any],
-) -> dict[str, Any]:
-    if type(population) is not CompiledEAAEFPopulation:
-        raise EAAEFReconciliationIdentityError("EAAEF population was not freshly compiled")
-    sealed = _require_sealed_forest(current_forest)
-    expected = {
-        "source_head": population.source_head,
-        "source_tree": population.source_tree,
-        "source_forest_root": population.source_forest_root,
-    }
-    mismatched = sorted(
-        field_name
-        for field_name, expected_value in expected.items()
-        if sealed.get(field_name) != expected_value
-    )
-    if mismatched:
-        raise EAAEFReconciliationIdentityError(
-            "compiled EAAEF population belongs to a stale repository forest: "
-            + ", ".join(mismatched)
-        )
-    return sealed
 
 
 def _translated_goals(
@@ -392,6 +367,7 @@ def _translated_tasks(population: CompiledEAAEFPopulation) -> list[dict[str, Any
                 "priority": str(raw["priority"]),
                 "compiled_revision": 1,
                 "compiled_identity": _plain(raw["identity"]),
+                "execution_contract_cid": str(raw["execution_contract_cid"]),
                 "depends_on": actual_dependencies,
                 "outputs": [
                     {
@@ -426,6 +402,7 @@ def _translated_tasks(population: CompiledEAAEFPopulation) -> list[dict[str, Any
 def translate_compiled_eaaef_population(
     population: CompiledEAAEFPopulation,
     *,
+    current_board: Mapping[str, Any],
     current_forest: Mapping[str, Any],
     owner_active: bool,
     historical_task_statuses: Mapping[str, str]
@@ -438,7 +415,11 @@ def translate_compiled_eaaef_population(
         owner_active=owner_active,
         historical_task_statuses=historical_task_statuses,
     )
-    _require_current_population_forest(population, current_forest)
+    population = verify_compiled_eaaef_population_commitments(
+        population,
+        current_board=current_board,
+        current_forest=current_forest,
+    )
     goals, goal_edges, root_goal_cid = _translated_goals(population)
     plan = _translated_plan(population, root_goal_cid=root_goal_cid)
     tasks = _translated_tasks(population)
@@ -454,6 +435,7 @@ def translate_compiled_eaaef_population(
         "plan_root_cid": population.plan_r1_cid,
         "population_cid": population.population_cid,
         "goal_population_cid": population.goal_population_cid,
+        "execution_contract_population_cid": population.execution_contract_population_cid,
         "bootstrap_population_cid": population.bootstrap_population_cid,
         "held_plan_r2_population_cid": population.plan_r2_population_cid,
         "bootstrap_task_count": EAAEF_BOOTSTRAP_TASK_COUNT,
@@ -483,12 +465,14 @@ def verify_translated_eaaef_population(
     translated: Mapping[str, Any],
     *,
     population: CompiledEAAEFPopulation,
+    current_board: Mapping[str, Any],
     current_forest: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Verify a caller-held translation against a fresh deterministic rebuild."""
 
     expected = translate_compiled_eaaef_population(
         population,
+        current_board=current_board,
         current_forest=current_forest,
         owner_active=False,
         historical_task_statuses=None,
@@ -504,6 +488,7 @@ def materialize_offline_eaaef_population(
     task_source: OfflineDatabaseTaskSource,
     population: CompiledEAAEFPopulation,
     *,
+    current_board: Mapping[str, Any],
     current_forest: Mapping[str, Any],
     owner_active: bool,
     historical_task_statuses: Mapping[str, str]
@@ -530,6 +515,7 @@ def materialize_offline_eaaef_population(
         )
     translated = translate_compiled_eaaef_population(
         population,
+        current_board=current_board,
         current_forest=current_forest,
         owner_active=False,
         historical_task_statuses=None,
@@ -566,6 +552,7 @@ def materialize_offline_eaaef_population(
         "task_source_interface": DATABASE_TASK_SOURCE_INTERFACE,
         "source_forest_root": population.source_forest_root,
         "population_cid": population.population_cid,
+        "execution_contract_population_cid": population.execution_contract_population_cid,
         "translation_cid": translated["projection_cid"],
         "task_count": EAAEF_TASK_COUNT,
         "goal_count": EAAEF_GOAL_COUNT,
