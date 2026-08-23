@@ -73729,6 +73729,7 @@ class DatabaseImplementationDaemon:
     ) -> tuple[tuple[Any, ...], frozenset[str]]:
         """Read one bounded, generation-stable task and readiness projection."""
 
+        last_transient: Exception | None = None
         for _attempt in range(_DATABASE_PROJECTION_READ_ATTEMPTS):
             try:
                 population_tasks: list[Any] = []
@@ -73788,9 +73789,12 @@ class DatabaseImplementationDaemon:
             except Exception as exc:
                 detail = str(exc).lower()
                 if "invalid connection id" in detail or "query interrupted" in detail:
-                    time.sleep(0.2)
+                    last_transient = exc
+                    time.sleep(0.2 * (_attempt + 1))
                     continue
                 raise
+        if last_transient is not None:
+            raise last_transient
         raise DatabaseImplementationConflictError(
             "authoritative task projection changed during bounded read"
         )
@@ -76145,7 +76149,93 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "task source returned a malformed board unstall receipt"
             )
-        return [item for item in unstalled if isinstance(item, Mapping)]
+        outcomes = [item for item in unstalled if isinstance(item, Mapping)]
+        already = {str(item.get("task_cid") or "") for item in outcomes}
+        for item in self._unstall_in_progress_with_dead_lifecycle_owner():
+            task_cid = str(item.get("task_cid") or "")
+            if task_cid and task_cid not in already:
+                outcomes.append(item)
+                already.add(task_cid)
+        return outcomes
+
+    def _unstall_in_progress_with_dead_lifecycle_owner(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Retry in_progress gates whose worktree owner is provably dead.
+
+        claim_next only resumes in_progress when attempt_number > 1, and the
+        age-based unstall waits 4.5h. A dead lifecycle owner is enough proof
+        the implementer is gone, including leftover 6h leases after SIGTERM.
+        """
+
+        root = self.repo_root
+        if root is None:
+            return []
+        store = getattr(self, "worktree_lifecycle", None)
+        if not isinstance(store, WorktreeLifecycleStore):
+            store = WorktreeLifecycleStore(repo_root=root)
+        by_alias: dict[str, list[WorkspaceLifecycleRecord]] = {}
+        by_cid: dict[str, list[WorkspaceLifecycleRecord]] = {}
+        for record in store.iter_records():
+            if record.is_terminal:
+                continue
+            alias = str(record.task_id or "").strip()
+            if alias:
+                by_alias.setdefault(alias, []).append(record)
+            cid = str(record.canonical_task_cid or "").strip()
+            if cid:
+                by_cid.setdefault(cid, []).append(record)
+        if not by_alias and not by_cid:
+            return []
+        page = self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        outcomes: list[dict[str, Any]] = []
+        for task in page.tasks:
+            if str(getattr(task, "status", "") or "").strip().lower() != "in_progress":
+                continue
+            records = list(by_cid.get(str(task.task_cid or ""), ()))
+            if not records:
+                records = list(by_alias.get(str(task.task_alias or "").strip(), ()))
+            if not records:
+                continue
+            live = False
+            unknown = False
+            dead = False
+            for record in records:
+                liveness = owner_liveness(
+                    record.owner, proc_root=store.proc_root
+                )
+                if liveness is OwnerLiveness.ALIVE:
+                    live = True
+                elif liveness is OwnerLiveness.UNKNOWN:
+                    unknown = True
+                else:
+                    dead = True
+            if live or unknown or not dead:
+                continue
+            try:
+                self._cas_task_status_database(
+                    task.task_cid,
+                    expected_revision=int(task.revision),
+                    new_status="retrying",
+                    receipt={
+                        "operation": (
+                            "database_portal_dead_lifecycle_in_progress_unstall"
+                        ),
+                        "reason": "worktree_lifecycle_owner_dead",
+                    },
+                )
+            except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
+                continue
+            outcomes.append(
+                {
+                    "task_cid": str(task.task_cid),
+                    "task_alias": str(task.task_alias or ""),
+                    "previous_status": "in_progress",
+                    "status": "retrying",
+                    "reason": "worktree_lifecycle_owner_dead",
+                }
+            )
+        return outcomes
 
     def reconcile_inflight_deferral_blocks(self) -> list[dict[str, Any]]:
         """Retry gates blocked only by process-death / attach deferral caps.

@@ -681,8 +681,9 @@ class WorktreeLifecycleStore:
                 raise DuplicateAttemptError(
                     "task/attempt already has a nonterminal workspace claim"
                 )
-            if now < float(other.expires_at):
-                raise DuplicateAttemptError("task/attempt claim lease has not expired")
+            # A dead owner must not occupy the task/attempt for the remaining
+            # lease (default 6h). That is what froze CASF retries after the
+            # previous executor/grok was SIGTERM'd.
 
         # Serialize first on the stable task/attempt identity.  A losing lane
         # is rejected before it materializes a timestamp-specific workspace
@@ -706,13 +707,8 @@ class WorktreeLifecycleStore:
                         raise DuplicateAttemptError(
                             "workspace claim exists and lease has not expired"
                         )
-                    if not expired:
-                        # Owner is dead but lease still valid: only reclaim
-                        # after expiry.
-                        raise DuplicateAttemptError(
-                            "workspace claim lease has not expired for stale owner"
-                        )
-                    # Dead + expired → reclaim with fence advancement below.
+                    # Dead owner: reclaim even while the lease clock remains.
+                    # ``allow_replace_stale`` is the default for begin_preparing.
                     next_fence = int(existing.fence) + 1
                 else:
                     next_fence = 1 if existing is None else int(existing.fence) + 1

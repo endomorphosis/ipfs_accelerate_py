@@ -1082,11 +1082,29 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
         if path.name.endswith(".update.lock")
     }
 
-    for index in range(20):
+    first_candidate = tmp_path / "worktrees" / "retry-0"
+    reclaimed = store.begin_preparing(
+        task_id="DUP-GUARD",
+        canonical_task_cid="cid:dup-guard",
+        attempt=1,
+        lane_id="lane-b",
+        workspace_path=first_candidate,
+        branch="implementation/dup-guard-retry-0",
+        merge_target="main",
+    )
+    assert reclaimed.workspace_path == str(first_candidate)
+    assert store.load_workspace(first_candidate) == reclaimed
+    guards_after_reclaim = {
+        path.name
+        for path in store.store_dir.iterdir()
+        if path.name.endswith(".update.lock")
+    }
+
+    for index in range(1, 20):
         candidate = tmp_path / "worktrees" / f"retry-{index}"
         with pytest.raises(
             DuplicateAttemptError,
-            match="task/attempt claim lease has not expired",
+            match="task/attempt already has a nonterminal workspace claim",
         ):
             store.begin_preparing(
                 task_id="DUP-GUARD",
@@ -1104,9 +1122,48 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
         for path in store.store_dir.iterdir()
         if path.name.endswith(".update.lock")
     }
-    assert final_guards == initial_guards
+    assert final_guards == guards_after_reclaim
+    assert initial_guards <= final_guards
     assert store.load_workspace(original_workspace) == original
     assert len(list(store.store_dir.glob(".task-*.json.update.lock"))) == 1
+
+
+def test_dead_owner_same_workspace_is_reclaimed_before_lease_expiry(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=21_600.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    workspace = tmp_path / "worktrees" / "same-dead"
+    original = store.begin_preparing(
+        task_id="DEAD-SAME-WS",
+        canonical_task_cid="cid:dead-same-ws",
+        attempt=1,
+        lane_id="lane-a",
+        workspace_path=workspace,
+        branch="implementation/dead-same-ws",
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 11,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    reclaimed = store.begin_preparing(
+        task_id="DEAD-SAME-WS",
+        canonical_task_cid="cid:dead-same-ws",
+        attempt=1,
+        lane_id="lane-b",
+        workspace_path=workspace,
+        branch="implementation/dead-same-ws",
+        merge_target="main",
+    )
+    assert reclaimed.fence == original.fence + 1
+    assert owner_liveness(reclaimed.owner) is OwnerLiveness.ALIVE
 
 
 def test_same_lane_dead_owner_cleanup_is_reclaimed_before_expiry(

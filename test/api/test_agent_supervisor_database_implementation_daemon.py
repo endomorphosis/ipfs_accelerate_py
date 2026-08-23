@@ -28,6 +28,10 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_lock_metadata,
     checkout_mutation_lock_path,
 )
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+    ProcessBirthIdentity,
+    WorktreeLifecycleStore,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     DatabaseCoordinationError,
 )
@@ -5288,6 +5292,56 @@ def test_stale_in_progress_unstall_leaves_live_attempts_alone(
         live = daemon.task_source.get("task:cid:001")
         assert live is not None
         assert live.status == "in_progress"
+    finally:
+        daemon.close()
+
+
+def test_stale_in_progress_unstall_retries_dead_lifecycle_owner(
+    tmp_path: Path,
+) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".git").mkdir()
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:unstall-dead-lifecycle",
+        max_task_attempts=3,
+        repo_root=repo,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=20)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        with daemon.task_source._intent._connection(write=True) as connection:
+            connection.execute(
+                "UPDATE tasks SET status = 'in_progress', updated_at = ? "
+                "WHERE task_cid = ?",
+                [recent, "task:cid:001"],
+            )
+        store = WorktreeLifecycleStore(repo_root=repo, lease_seconds=21_600.0)
+        store.begin_preparing(
+            task_id="DQP-T001",
+            canonical_task_cid="task:cid:001",
+            attempt=1,
+            lane_id="lane-a",
+            workspace_path=tmp_path / "worktrees" / "dead-casf",
+            branch="implementation/dead-casf",
+            merge_target="main",
+            owner=ProcessBirthIdentity(
+                pid=2**30 - 21,
+                start_time_ticks=1,
+                boot_id="dead-boot",
+            ),
+        )
+        unstalled = daemon.reconcile_stale_in_progress_gates()
+        assert [item["task_cid"] for item in unstalled] == ["task:cid:001"]
+        assert unstalled[0]["reason"] == "worktree_lifecycle_owner_dead"
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
     finally:
         daemon.close()
 
