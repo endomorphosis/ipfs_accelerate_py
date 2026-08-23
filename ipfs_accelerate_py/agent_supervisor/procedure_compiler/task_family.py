@@ -1,22 +1,28 @@
-"""P0 wire ownership and live boundary validation for task families.
+"""Task-family discovery baseline and live boundary validation.
 
-P0 helpers reject inconsistent boundaries, memberships, and already-known
-counterexamples in immutable task-family contracts.  PCPC-011 owns the live
-boundary validator and rejection policy: every family must declare complete
-boundary dimensions, and overgeneralization or an unsafe near-match is a
-critical typed refusal with a persisted counterexample.
+PCPC-010 owns deterministic family discovery: classification uses goal
+semantics, precondition, artifact, effect, tool, validation, failure,
+postcondition, and rollback shapes.  Titles, embeddings, hints, and proposed
+labels are never evidence, and insufficient shapes return unknown.  PCPC-011
+owns the live boundary validator and rejection policy: every family must
+declare complete boundary dimensions, and overgeneralization or an unsafe
+near-match is a critical typed refusal with a persisted counterexample.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Final
 
 from .contracts import (
+    MAX_ITEMS,
+    ArtifactBindings,
+    ArtifactState,
     EffectClass,
+    ExecutionTrajectory,
     FamilyMembershipClass,
     ProcedureContractError,
     RiskClass,
@@ -28,6 +34,7 @@ from .contracts import (
     _enums,
     _identifier,
     _strings,
+    _text,
 )
 
 
@@ -1084,8 +1091,659 @@ def parse_task_family_membership(
     return validate_task_family_membership(value, family)
 
 
+CLASSIFIER_REVISION: Final[str] = "TaskFamilyClassifier@1"
+DISCOVERY_REVISION: Final[str] = "TaskFamilyDiscovery@1"
+
+REQUIRED_DISCOVERY_DIMENSIONS: Final[tuple[str, ...]] = (
+    "goal_semantics",
+    "precondition_shape",
+    "affected_artifact_classes",
+    "effect_classes",
+    "required_operation_contracts",
+    "validation_structure",
+    "failure_signatures",
+    "postcondition_shape",
+    "rollback_structure",
+)
+
+CLOSED_TASK_FAMILY_NAMES: Final[tuple[str, ...]] = (
+    "IMPORT_PURITY_REPAIR",
+    "FALSE_SUCCESS_TO_TYPED_OUTCOME",
+    "PSEUDO_CID_REPLACEMENT",
+    "MUTABLE_DEPENDENCY_PIN",
+    "SCHEMA_REGENERATION",
+    "API_ADAPTER_MIGRATION",
+    "CACHE_KEY_DEPENDENCY_REPAIR",
+    "STALE_RECEIPT_INVALIDATION",
+    "MISSING_ADMISSION_GATE",
+    "CONFIRMATION_BINDING_REPAIR",
+    "TEST_SELECTION_REPAIR",
+    "PROOF_SELECTION_REPAIR",
+    "DOCUMENTATION_CLAIM_NARROWING",
+    "MECHANICAL_RENAME",
+    "GENERATED_PROJECTION_REFRESH",
+    "POST_MERGE_REQUALIFICATION",
+    "MERGE_CONFLICT_CLASSIFICATION",
+    "PROVIDER_UNAVAILABLE_RECOVERY",
+    "CONTEXT_OMISSION_REPAIR",
+    "KNOWN_FLAKY_FAILURE",
+    "UNKNOWN_TASK_FAMILY",
+    "UNSAFE_NEAR_MATCH_TASK",
+    "CROSS_REPOSITORY_TRANSFER",
+)
+
+_IMPORT_PURITY_SHAPE: Final[dict[str, Any]] = {
+    "goal_semantics": ("restore-import-purity",),
+    "precondition_shape": ("import-side-effect-observed",),
+    "affected_artifact_classes": ("python-source",),
+    "effect_classes": (EffectClass.REPOSITORY_WRITE, EffectClass.VALIDATION),
+    "required_operation_contracts": ("approved-patch-template@1", "test-runner@1"),
+    "validation_structure": ("focused-tests", "postcondition-check"),
+    "failure_signatures": ("import-side-effect",),
+    "postcondition_shape": ("import-is-pure",),
+    "rollback_structure": ("restore-exact-tree",),
+}
+
+_SHAPE_FIELD_ALIASES: Final[dict[str, tuple[str, ...]]] = {
+    "goal_semantics": ("goal_semantics", "goal-semantics"),
+    "precondition_shape": ("precondition_shape", "precondition-shape"),
+    "affected_artifact_classes": (
+        "affected_artifact_classes",
+        "affected-artifact-classes",
+        "artifact_classes",
+    ),
+    "effect_classes": ("effect_classes", "effect-classes"),
+    "required_operation_contracts": (
+        "required_operation_contracts",
+        "required-operation-contracts",
+        "authority_classes",
+        "tools",
+    ),
+    "validation_structure": (
+        "validation_structure",
+        "validation-structure",
+        "validation_classes",
+    ),
+    "failure_signatures": ("failure_signatures", "failure-signatures"),
+    "postcondition_shape": (
+        "postcondition_shape",
+        "postcondition-shape",
+        "proof_classes",
+    ),
+    "rollback_structure": (
+        "rollback_structure",
+        "rollback-structure",
+        "rollback_classes",
+    ),
+}
+
+
+@dataclass(frozen=True)
+class TaskFamilyFeatures:
+    """Structural shapes used by the deterministic discovery baseline."""
+
+    goal_semantics: tuple[str, ...] = ()
+    precondition_shape: tuple[str, ...] = ()
+    affected_artifact_classes: tuple[str, ...] = ()
+    effect_classes: tuple[EffectClass, ...] = ()
+    required_operation_contracts: tuple[str, ...] = ()
+    validation_structure: tuple[str, ...] = ()
+    failure_signatures: tuple[str, ...] = ()
+    postcondition_shape: tuple[str, ...] = ()
+    rollback_structure: tuple[str, ...] = ()
+    title: str = ""
+    embedding_cid: str = ""
+    trajectory_cid: str = ""
+    evidence_cids: tuple[str, ...] = ()
+    non_structural_evidence: bool = False
+
+    def __post_init__(self) -> None:
+        if type(self.non_structural_evidence) is not bool:
+            raise TaskFamilyContractError("non_structural_evidence must be a boolean")
+        object.__setattr__(
+            self, "title", _text(self.title, "title", required=False)
+        )
+        for name in ("embedding_cid", "trajectory_cid"):
+            object.__setattr__(
+                self,
+                name,
+                _identifier(getattr(self, name), name, required=False),
+            )
+        object.__setattr__(
+            self,
+            "effect_classes",
+            _enums(
+                self.effect_classes,
+                EffectClass,
+                "effect_classes",
+                limit=len(EffectClass),
+            ),
+        )
+        for name in (
+            "goal_semantics",
+            "precondition_shape",
+            "affected_artifact_classes",
+            "required_operation_contracts",
+            "validation_structure",
+            "failure_signatures",
+            "postcondition_shape",
+            "rollback_structure",
+            "evidence_cids",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _strings(getattr(self, name), name, identifiers=True),
+            )
+        if self.title or self.embedding_cid:
+            object.__setattr__(self, "non_structural_evidence", True)
+
+    @property
+    def missing_dimensions(self) -> tuple[str, ...]:
+        missing: list[str] = []
+        for name in REQUIRED_DISCOVERY_DIMENSIONS:
+            if not getattr(self, name):
+                missing.append(name)
+        return tuple(missing)
+
+    @property
+    def sufficient(self) -> bool:
+        return not self.missing_dimensions
+
+    @property
+    def fingerprint(self) -> tuple[frozenset[Any], ...]:
+        return (
+            frozenset(self.goal_semantics),
+            frozenset(self.precondition_shape),
+            frozenset(self.affected_artifact_classes),
+            frozenset(item.value for item in self.effect_classes),
+            frozenset(self.required_operation_contracts),
+            frozenset(self.validation_structure),
+            frozenset(self.failure_signatures),
+            frozenset(self.postcondition_shape),
+            frozenset(self.rollback_structure),
+        )
+
+
+@dataclass(frozen=True)
+class TaskFamilyClassification:
+    """Deterministic admit-or-unknown result for one discovery check."""
+
+    membership: FamilyMembershipClass
+    family_name: str = ""
+    family: TaskFamily | None = None
+    reason_code: str = ""
+    missing_features: tuple[str, ...] = ()
+    matched_dimensions: tuple[str, ...] = ()
+    evidence_cids: tuple[str, ...] = ()
+    classifier_revision: str = CLASSIFIER_REVISION
+    trajectory_cid: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "membership", _enum(self.membership, FamilyMembershipClass, "membership")
+        )
+        object.__setattr__(
+            self, "family_name", _identifier(self.family_name, "family_name", required=False)
+        )
+        object.__setattr__(
+            self,
+            "reason_code",
+            _identifier(self.reason_code, "reason_code", required=False),
+        )
+        object.__setattr__(
+            self,
+            "classifier_revision",
+            _identifier(self.classifier_revision, "classifier_revision"),
+        )
+        object.__setattr__(
+            self,
+            "trajectory_cid",
+            _identifier(self.trajectory_cid, "trajectory_cid", required=False),
+        )
+        object.__setattr__(
+            self,
+            "missing_features",
+            _strings(self.missing_features, "missing_features", identifiers=True),
+        )
+        object.__setattr__(
+            self,
+            "matched_dimensions",
+            _strings(self.matched_dimensions, "matched_dimensions", identifiers=True),
+        )
+        object.__setattr__(
+            self,
+            "evidence_cids",
+            _strings(self.evidence_cids, "evidence_cids", identifiers=True),
+        )
+        if self.family is not None and not isinstance(self.family, TaskFamily):
+            raise TaskFamilyContractError("classification family must be TaskFamily")
+        if self.family is not None and self.family_name and self.family.name != self.family_name:
+            raise TaskFamilyContractError("classification family name disagrees with the family")
+        if self.membership is FamilyMembershipClass.POSITIVE:
+            if not self.family_name:
+                raise TaskFamilyContractError("positive classification must name a family")
+            if self.missing_features:
+                raise TaskFamilyContractError("positive classification cannot be missing features")
+
+    @property
+    def admitted(self) -> bool:
+        return self.membership is FamilyMembershipClass.POSITIVE
+
+
+def _slug(name: str) -> str:
+    return name.strip().lower().replace("_", "-")
+
+
+def _generated_family_shape(name: str) -> dict[str, Any]:
+    slug = _slug(name)
+    effects: tuple[EffectClass, ...]
+    if name == "PROOF_SELECTION_REPAIR":
+        effects = (EffectClass.PROOF, EffectClass.VALIDATION)
+    elif name == "MERGE_CONFLICT_CLASSIFICATION":
+        effects = (EffectClass.MERGE, EffectClass.VALIDATION)
+    elif name == "PROVIDER_UNAVAILABLE_RECOVERY":
+        effects = (EffectClass.ROLLBACK, EffectClass.ESCALATION)
+    elif name == "CROSS_REPOSITORY_TRANSFER":
+        effects = (EffectClass.OBSERVE, EffectClass.VALIDATION)
+    else:
+        effects = (EffectClass.REPOSITORY_WRITE, EffectClass.VALIDATION)
+    return {
+        "goal_semantics": (f"{slug}-goal",),
+        "precondition_shape": (f"{slug}-precondition",),
+        "affected_artifact_classes": (f"{slug}-artifact",),
+        "effect_classes": effects,
+        "required_operation_contracts": (f"{slug}-operation@1",),
+        "validation_structure": (f"{slug}-validation",),
+        "failure_signatures": (f"{slug}-failure",),
+        "postcondition_shape": (f"{slug}-postcondition",),
+        "rollback_structure": (f"{slug}-rollback",),
+    }
+
+
+def task_family_features_for(name: str) -> TaskFamilyFeatures:
+    """Return the closed baseline shape for one initial family name."""
+
+    normalized = _identifier(name, "family_name")
+    if normalized not in CLOSED_TASK_FAMILY_NAMES:
+        raise TaskFamilyContractError("family name is outside the closed discovery vocabulary")
+    payload = (
+        dict(_IMPORT_PURITY_SHAPE)
+        if normalized == "IMPORT_PURITY_REPAIR"
+        else _generated_family_shape(normalized)
+    )
+    return TaskFamilyFeatures(**payload)
+
+
+def task_family_features(value: TaskFamily) -> TaskFamilyFeatures:
+    if not isinstance(value, TaskFamily):
+        raise TaskFamilyContractError("family must be TaskFamily")
+    return TaskFamilyFeatures(
+        goal_semantics=value.goal_semantics,
+        precondition_shape=value.precondition_shape,
+        affected_artifact_classes=value.affected_artifact_classes,
+        effect_classes=value.effect_classes,
+        required_operation_contracts=value.required_operation_contracts,
+        validation_structure=value.validation_structure,
+        failure_signatures=value.failure_signatures,
+        postcondition_shape=value.postcondition_shape,
+        rollback_structure=value.rollback_structure,
+    )
+
+
+def _closed_family_boundary(name: str, features: TaskFamilyFeatures) -> TaskFamilyBoundary:
+    slug = _slug(name)
+    return TaskFamilyBoundary(
+        positive_member_cids=(f"{slug}-positive",),
+        negative_example_cids=(f"{slug}-negative",),
+        boundary_example_cids=(f"{slug}-boundary",),
+        unknown_case_cids=(f"{slug}-unknown",),
+        risk_ceiling=RiskClass.REVERSIBLE_LOCAL,
+        permitted_repositories=("repo",),
+        permitted_languages=("python",),
+        permitted_frameworks=("pytest",),
+        permitted_effect_classes=features.effect_classes,
+    )
+
+
+def closed_task_families(bindings: ArtifactBindings) -> tuple[TaskFamily, ...]:
+    """Materialize the closed initial family catalog against exact bindings."""
+
+    if not isinstance(bindings, ArtifactBindings):
+        raise TaskFamilyContractError("bindings must be ArtifactBindings")
+    families: list[TaskFamily] = []
+    for name in CLOSED_TASK_FAMILY_NAMES:
+        features = task_family_features_for(name)
+        families.append(
+            TaskFamily(
+                bindings=bindings,
+                name=name,
+                goal_semantics=features.goal_semantics,
+                precondition_shape=features.precondition_shape,
+                affected_artifact_classes=features.affected_artifact_classes,
+                effect_classes=features.effect_classes,
+                required_operation_contracts=features.required_operation_contracts,
+                validation_structure=features.validation_structure,
+                failure_signatures=features.failure_signatures,
+                postcondition_shape=features.postcondition_shape,
+                rollback_structure=features.rollback_structure,
+                boundary=_closed_family_boundary(name, features),
+                state=ArtifactState.CANDIDATE,
+            )
+        )
+    _require_distinguishable(families)
+    return tuple(families)
+
+
+def _mapping_value(payload: Mapping[str, Any], names: Sequence[str]) -> Any:
+    for name in names:
+        if name in payload:
+            return payload[name]
+    return None
+
+
+def _has_non_structural_surface(payload: Mapping[str, Any]) -> bool:
+    for key in (
+        "title",
+        "task_title",
+        "embedding",
+        "embedding_cid",
+        "embedding-cid",
+        "embedding_vector",
+        "task_family_hint",
+        "task-family-hint",
+        "proposed_membership",
+        "proposed-membership",
+    ):
+        value = payload.get(key)
+        if value not in (None, "", (), [], {}):
+            return True
+    return False
+
+
+def _features_from_mapping(payload: Mapping[str, Any]) -> TaskFamilyFeatures:
+    values: dict[str, Any] = {}
+    for field_name, aliases in _SHAPE_FIELD_ALIASES.items():
+        raw = _mapping_value(payload, aliases)
+        if raw is not None:
+            values[field_name] = raw
+    title = payload.get("title", payload.get("task_title", ""))
+    if title not in (None, ""):
+        values["title"] = title
+    embedding_cid = payload.get("embedding_cid", payload.get("embedding-cid", ""))
+    if isinstance(embedding_cid, str) and embedding_cid:
+        values["embedding_cid"] = embedding_cid
+    trajectory_cid = payload.get("trajectory_cid", payload.get("example_cid", ""))
+    if isinstance(trajectory_cid, str) and trajectory_cid:
+        values["trajectory_cid"] = trajectory_cid
+    evidence = payload.get("evidence_cids")
+    if evidence is not None:
+        values["evidence_cids"] = evidence
+    values["non_structural_evidence"] = _has_non_structural_surface(payload)
+    return TaskFamilyFeatures(**values)
+
+
+def _features_from_trajectory(trajectory: ExecutionTrajectory) -> TaskFamilyFeatures:
+    contracts = tuple(step.operation_contract for step in trajectory.steps)
+    effects: list[EffectClass] = []
+    for step in trajectory.steps:
+        for raw in step.effect_ids:
+            try:
+                item = _enum(raw, EffectClass, "effect_classes")
+            except ProcedureContractError:
+                continue
+            if item not in effects:
+                effects.append(item)
+    return TaskFamilyFeatures(
+        required_operation_contracts=contracts,
+        effect_classes=tuple(effects),
+        trajectory_cid=trajectory.content_id,
+        evidence_cids=(trajectory.source_episode_cid,),
+        non_structural_evidence=bool(trajectory.task_family_hint),
+    )
+
+
+def extract_task_family_features(value: Any) -> TaskFamilyFeatures:
+    """Project a typed source onto discovery shapes without using labels."""
+
+    if isinstance(value, TaskFamilyFeatures):
+        return value
+    if isinstance(value, TaskFamily):
+        return task_family_features(value)
+    if isinstance(value, BoundaryCandidate):
+        return TaskFamilyFeatures(
+            goal_semantics=value.goal_semantics,
+            precondition_shape=value.precondition_shape,
+            affected_artifact_classes=value.affected_artifact_classes,
+            effect_classes=value.effect_classes,
+            required_operation_contracts=value.required_operation_contracts
+            or value.authority_classes,
+            validation_structure=value.validation_classes,
+            failure_signatures=value.failure_signatures,
+            postcondition_shape=value.proof_classes,
+            rollback_structure=value.rollback_classes,
+            trajectory_cid=value.example_cid,
+            evidence_cids=value.evidence_cids,
+            non_structural_evidence=False,
+        )
+    if isinstance(value, ExecutionTrajectory):
+        return _features_from_trajectory(value)
+    trajectory = getattr(value, "trajectory", None)
+    if isinstance(trajectory, ExecutionTrajectory):
+        return _features_from_trajectory(trajectory)
+    if isinstance(value, Mapping):
+        return _features_from_mapping(value)
+    raise TaskFamilyContractError("discovery features must be a typed family source")
+
+
+def _present_dimensions(features: TaskFamilyFeatures) -> tuple[str, ...]:
+    return tuple(
+        name for name in REQUIRED_DISCOVERY_DIMENSIONS if getattr(features, name)
+    )
+
+
+def _require_distinguishable(families: Sequence[TaskFamily]) -> None:
+    seen: dict[tuple[frozenset[Any], ...], str] = {}
+    for family in families:
+        features = task_family_features(family)
+        if not features.sufficient:
+            continue
+        fingerprint = features.fingerprint
+        previous = seen.get(fingerprint)
+        if previous is not None and previous != family.name:
+            raise TaskFamilyContractError("closed families must be distinguishable")
+        seen[fingerprint] = family.name
+
+
+def _validate_discovery_catalog(families: Sequence[TaskFamily]) -> tuple[TaskFamily, ...]:
+    if not isinstance(families, Sequence) or isinstance(
+        families, (str, bytes, bytearray, memoryview)
+    ):
+        raise TaskFamilyContractError("families must be a bounded sequence")
+    if len(families) > MAX_ITEMS:
+        raise TaskFamilyContractError("families exceeds its item bound")
+    catalog: list[TaskFamily] = []
+    names: set[str] = set()
+    for family in families:
+        if not isinstance(family, TaskFamily):
+            raise TaskFamilyContractError("families must be typed TaskFamily contracts")
+        if family.name in names:
+            raise TaskFamilyContractError("discovery catalog family names must be unique")
+        names.add(family.name)
+        catalog.append(family)
+    _require_distinguishable(catalog)
+    return tuple(catalog)
+
+
+def _unknown_classification(
+    features: TaskFamilyFeatures,
+    *,
+    reason_code: str,
+    classifier_revision: str,
+) -> TaskFamilyClassification:
+    return TaskFamilyClassification(
+        membership=FamilyMembershipClass.UNKNOWN,
+        reason_code=reason_code,
+        missing_features=features.missing_dimensions,
+        matched_dimensions=_present_dimensions(features),
+        evidence_cids=features.evidence_cids,
+        classifier_revision=classifier_revision,
+        trajectory_cid=features.trajectory_cid,
+    )
+
+
+@dataclass(frozen=True)
+class TaskFamilyClassifier:
+    """Deterministic structural classifier.  Never promotes a family."""
+
+    revision: str = CLASSIFIER_REVISION
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "revision", _identifier(self.revision, "classifier_revision"))
+
+    def classify(
+        self,
+        source: Any,
+        families: Sequence[TaskFamily] | None = None,
+    ) -> TaskFamilyClassification:
+        features = extract_task_family_features(source)
+        named: list[tuple[str, TaskFamilyFeatures, TaskFamily | None]] = []
+        if families is None:
+            for name in CLOSED_TASK_FAMILY_NAMES:
+                named.append((name, task_family_features_for(name), None))
+        else:
+            for family in _validate_discovery_catalog(families):
+                named.append((family.name, task_family_features(family), family))
+
+        if not features.sufficient:
+            reason = "insufficient-evidence"
+            if features.non_structural_evidence and not _present_dimensions(features):
+                reason = "title-or-embedding-only"
+            return _unknown_classification(
+                features, reason_code=reason, classifier_revision=self.revision
+            )
+
+        matches = [
+            (name, family)
+            for name, shape, family in named
+            if shape.sufficient and shape.fingerprint == features.fingerprint
+        ]
+        if len(matches) == 1:
+            name, family = matches[0]
+            return TaskFamilyClassification(
+                membership=FamilyMembershipClass.POSITIVE,
+                family_name=name,
+                family=family,
+                reason_code="exact-structural-match",
+                matched_dimensions=REQUIRED_DISCOVERY_DIMENSIONS,
+                evidence_cids=features.evidence_cids,
+                classifier_revision=self.revision,
+                trajectory_cid=features.trajectory_cid,
+            )
+        reason = "ambiguous-family-match" if len(matches) > 1 else "no-family-match"
+        return _unknown_classification(
+            features, reason_code=reason, classifier_revision=self.revision
+        )
+
+    def promote(self, *_args: Any, **_kwargs: Any) -> None:
+        raise TaskFamilyContractError("task-family classifier cannot promote or mutate families")
+
+
+@dataclass(frozen=True)
+class TaskFamilyDiscovery:
+    """Closed-family discovery over normalized structural features."""
+
+    families: tuple[TaskFamily, ...] = ()
+    classifier: TaskFamilyClassifier = field(default_factory=TaskFamilyClassifier)
+    revision: str = DISCOVERY_REVISION
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "revision", _identifier(self.revision, "discovery_revision"))
+        if not isinstance(self.classifier, TaskFamilyClassifier):
+            raise TaskFamilyContractError("classifier must be TaskFamilyClassifier")
+        object.__setattr__(self, "families", _validate_discovery_catalog(self.families))
+
+    @classmethod
+    def from_bindings(
+        cls,
+        bindings: ArtifactBindings,
+        *,
+        classifier: TaskFamilyClassifier | None = None,
+    ) -> TaskFamilyDiscovery:
+        return cls(
+            families=closed_task_families(bindings),
+            classifier=classifier or TaskFamilyClassifier(),
+        )
+
+    @property
+    def catalog(self) -> tuple[TaskFamily, ...]:
+        return self.families
+
+    def classify(self, source: Any) -> TaskFamilyClassification:
+        families = self.families if self.families else None
+        return self.classifier.classify(source, families)
+
+    def discover(self, source: Any) -> TaskFamilyClassification:
+        return self.classify(source)
+
+    def membership(
+        self,
+        source: Any,
+        *,
+        bindings: ArtifactBindings | None = None,
+        trajectory_cid: str = "",
+        evidence_cids: Sequence[str] = (),
+    ) -> TaskFamilyMembership:
+        decision = self.classify(source)
+        family = decision.family
+        if family is None:
+            raise TaskFamilyContractError("unknown classification cannot bind a family membership")
+        cid = trajectory_cid or decision.trajectory_cid
+        if not cid:
+            raise TaskFamilyContractError("membership requires a trajectory CID")
+        evidence = tuple(evidence_cids) or decision.evidence_cids or (self.classifier.revision,)
+        record_bindings = bindings or family.bindings
+        return TaskFamilyMembership(
+            bindings=record_bindings,
+            task_family_cid=family.content_id,
+            trajectory_cid=cid,
+            membership=decision.membership,
+            evidence_cids=evidence,
+            classifier_revision=decision.classifier_revision,
+        )
+
+    def promote(self, *_args: Any, **_kwargs: Any) -> None:
+        raise TaskFamilyContractError("task-family discovery cannot promote or mutate families")
+
+
+def classify_task_family(
+    source: Any,
+    families: Sequence[TaskFamily] | None = None,
+    *,
+    classifier: TaskFamilyClassifier | None = None,
+) -> TaskFamilyClassification:
+    return (classifier or TaskFamilyClassifier()).classify(source, families)
+
+
+def discover_task_family(
+    source: Any,
+    families: Sequence[TaskFamily] | None = None,
+    *,
+    bindings: ArtifactBindings | None = None,
+) -> TaskFamilyClassification:
+    if families is None and bindings is not None:
+        discovery = TaskFamilyDiscovery.from_bindings(bindings)
+    else:
+        discovery = TaskFamilyDiscovery(families=tuple(families or ()))
+    return discovery.discover(source)
+
+
 __all__ = [
+    "CLASSIFIER_REVISION",
+    "CLOSED_TASK_FAMILY_NAMES",
+    "DISCOVERY_REVISION",
     "REQUIRED_BOUNDARY_DIMENSIONS",
+    "REQUIRED_DISCOVERY_DIMENSIONS",
     "BoundaryCandidate",
     "BoundaryDecision",
     "BoundarySeverity",
@@ -1095,11 +1753,21 @@ __all__ = [
     "TaskFamilyBoundary",
     "TaskFamilyBoundaryError",
     "TaskFamilyBoundaryValidator",
+    "TaskFamilyClassification",
+    "TaskFamilyClassifier",
     "TaskFamilyContractError",
     "TaskFamilyCounterexample",
+    "TaskFamilyDiscovery",
+    "TaskFamilyFeatures",
     "TaskFamilyMembership",
+    "classify_task_family",
+    "closed_task_families",
+    "discover_task_family",
+    "extract_task_family_features",
     "parse_task_family",
     "parse_task_family_membership",
+    "task_family_features",
+    "task_family_features_for",
     "validate_task_family_contract",
     "validate_task_family_membership",
 ]
