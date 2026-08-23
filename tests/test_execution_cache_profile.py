@@ -11,7 +11,7 @@ KIT_ROOT = Path(__file__).resolve().parents[1] / "ipfs_kit_py"
 if str(KIT_ROOT) not in sys.path:
     sys.path.insert(0, str(KIT_ROOT))
 
-from execution_cache.profile import CacheProfileError, ExecutionCacheProfile
+from ipfs_kit_py.execution_cache.profile import CacheProfileError, ExecutionCacheProfile
 
 
 def test_shared_writable_cache_is_rejected() -> None:

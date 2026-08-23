@@ -7,13 +7,12 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-KIT_ROOT = ROOT / "ipfs_kit_py"
+KIT_ROOT = Path(__file__).resolve().parents[1] / "ipfs_kit_py"
 if str(KIT_ROOT) not in sys.path:
     sys.path.insert(0, str(KIT_ROOT))
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from external_agent_handoff.storage import (
+from ipfs_kit_py.external_agent_handoff.storage import (
     ENCRYPTION_ALGORITHM,
     EncryptedExportStore,
     HandoffStorageError,

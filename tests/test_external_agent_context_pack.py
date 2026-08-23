@@ -11,7 +11,7 @@ KIT_ROOT = Path(__file__).resolve().parents[1] / "ipfs_kit_py"
 if str(KIT_ROOT) not in sys.path:
     sys.path.insert(0, str(KIT_ROOT))
 
-from context_pack.external_agent import ContextPackError, pack
+from ipfs_kit_py.context_pack.external_agent import ContextPackError, pack
 
 
 def test_pack_distinguishes_kinds() -> None:

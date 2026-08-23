@@ -11,7 +11,7 @@ KIT_ROOT = Path(__file__).resolve().parents[1] / "ipfs_kit_py"
 if str(KIT_ROOT) not in sys.path:
     sys.path.insert(0, str(KIT_ROOT))
 
-from repository_transfer.bundle import TransferError, admit_transfer
+from ipfs_kit_py.repository_transfer.bundle import TransferError, admit_transfer
 
 
 def test_refuses_host_paths_and_admits_aliases() -> None:
