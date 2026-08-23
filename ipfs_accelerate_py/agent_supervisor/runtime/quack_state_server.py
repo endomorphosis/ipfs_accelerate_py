@@ -104,18 +104,27 @@ from ..task_sources.duckdb_state import (
     QUACK_OWNER_MUTATION_REQUEST_SCHEMA,
     QUACK_OWNER_MUTATION_REQUEST_TTL_MS,
     QUACK_OWNER_MUTATION_RESULT_SCHEMA,
+    QUACK_OWNER_COMMAND_MAX_BYTES,
+    QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
     DuckDBConnection,
     open_duckdb_connection,
     open_quack_state_owner_connection,
     quack_owner_mutation_content_id,
     quack_owner_mutation_inbox_path,
     quack_owner_mutation_mac,
+    quack_owner_command_response,
     unstall_stale_in_progress_tasks,
+    validate_quack_owner_command_request,
+)
+from ..task_sources.database_task_source import (
+    execute_quack_owner_command,
+    quack_owner_command_error_code,
 )
 from ..task_sources.intent_repository import (
     COMPLETION_EVIDENCE_SCHEMA,
     DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
     QUEUE_ENTRY_SCHEMA,
+    IntentRepository,
     missing_current_evidence_on,
 )
 from ..task_sources.quack_capabilities import (
@@ -136,10 +145,19 @@ from ..task_sources.quack_owner_mutation import (
     write_envelope_atomic_at,
 )
 from ..task_sources.typed_state_owner import (
+    MAX_GRANT_BROKER_FRAME_BYTES,
+    TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA,
+    TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV,
+    TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV,
+    TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME,
+    TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_SOCKET_FILENAME,
     TYPED_STATE_OWNER_TOKEN_FILENAME,
     OwnerClientGrant,
+    TypedStateOwnerAuthorizationError,
     TypedStateOwnerGateway,
+    _kernel_peer_identity,
+    kernel_process_birth_id,
 )
 
 _UTC: Final = timezone.utc  # noqa: UP017 - Python 3.8 compatibility.
@@ -190,6 +208,9 @@ MUTATION_PROCESSING_NAME: Final[re.Pattern[str]] = re.compile(
 )
 MUTATION_MAX_DIRECTORY_ENTRIES: Final[int] = 4_096
 MUTATION_MAX_PER_PASS: Final[int] = 32
+TYPED_OWNER_COMMAND_REQUEST_NAME: Final[re.Pattern[str]] = re.compile(
+    r"^(?P<request_id>[0-9a-f]{32})\.request\.json$"
+)
 _MUTATION_REQUEST_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "schema",
@@ -1657,25 +1678,40 @@ class InProcessQuackTransport:
         )
         rows = None
         last_error: Exception | None = None
-        try:
-            import duckdb
-
-            client = duckdb.connect(":memory:")
+        # Quack publishes its connection id asynchronously after quack_serve
+        # returns.  Retry only that exact startup observation, using a fresh
+        # client each time; no readiness claim is made until a real query is
+        # observed.  All other failures remain immediate and fail closed.
+        startup_deadline = time.monotonic() + 2.0
+        while True:
             try:
-                client.execute("LOAD quack")
-                for sql, params in query_attempts:
-                    try:
-                        rows = client.execute(sql, params).fetchall()
-                        last_error = None
-                        break
-                    except Exception as exc:  # pragma: no cover - extension-version path
-                        last_error = exc
-            finally:
-                client.close()
-        except Exception as exc:
-            raise QuackStateServerReadyError(
-                f"authenticated remote live query failed: {type(exc).__name__}"
-            ) from exc
+                import duckdb
+
+                client = duckdb.connect(":memory:")
+                try:
+                    client.execute("LOAD quack")
+                    for sql, params in query_attempts:
+                        try:
+                            rows = client.execute(sql, params).fetchall()
+                            last_error = None
+                            break
+                        except Exception as exc:  # pragma: no cover - extension-version path
+                            last_error = exc
+                finally:
+                    client.close()
+            except Exception as exc:
+                raise QuackStateServerReadyError(
+                    f"authenticated remote live query failed: {type(exc).__name__}"
+                ) from exc
+            if last_error is None:
+                break
+            transient_startup = (
+                type(last_error).__name__ == "InvalidInputException"
+                and "Invalid connection id" in str(last_error)
+            )
+            if not transient_startup or time.monotonic() >= startup_deadline:
+                break
+            time.sleep(0.05)
         if last_error is not None:
             raise QuackStateServerReadyError(
                 f"authenticated remote live query failed: {type(last_error).__name__}"
@@ -1824,6 +1860,314 @@ class ServerLifecycle(str, Enum):  # noqa: UP042 - Python 3.8 compatibility.
     FAILED = "failed"
 
 
+class TypedStateOwnerGrantBroker:
+    """Deliver the live Quack credential across a private owner facet.
+
+    This is an in-process facet of the existing Quack state owner, not a new
+    state authority or daemon.  It accepts no SQL, path, role, operation, or
+    scope from callers.  The sealed bootstrap descriptor and ``SO_PEERCRED``
+    bind delivery to an admitted trusted process; the credential is never
+    written to disk or published in process metadata.
+    """
+
+    def __init__(
+        self,
+        *,
+        socket_path: Path,
+        bootstrap_secret: str,
+        store_id: str,
+        resolve_credential: Callable[[str, str, int], str],
+    ) -> None:
+        self.socket_path = Path(socket_path)
+        self._secret = str(bootstrap_secret)
+        self._store_id = str(store_id)
+        self._resolve_credential = resolve_credential
+        self._listener: socket.socket | None = None
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+        self._failed = threading.Event()
+        self._last_error_type = ""
+        self._clients_lock = threading.Lock()
+        self._clients: set[threading.Thread] = set()
+        self._channels: set[socket.socket] = set()
+        self._client_capacity = threading.BoundedSemaphore(16)
+        self._owner_uid = os.geteuid()
+
+    def start(self) -> None:
+        if self._thread is not None:
+            raise QuackStateServerControlError("typed grant broker already started")
+        self._stop.clear()
+        self._failed.clear()
+        self._last_error_type = ""
+        self.socket_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            observed = os.lstat(self.socket_path.parent)
+        except OSError as exc:
+            raise QuackStateServerControlError(
+                "typed grant broker state directory is unavailable"
+            ) from exc
+        if (
+            not stat.S_ISDIR(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != self._owner_uid
+        ):
+            raise QuackStateServerControlError(
+                "typed grant broker state directory is unsafe"
+            )
+        try:
+            os.lstat(self.socket_path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise QuackStateServerControlError(
+                "cannot inspect typed grant broker socket"
+            ) from exc
+        else:
+            raise QuackStateServerControlError(
+                "typed grant broker socket already exists"
+            )
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            listener.bind(str(self.socket_path))
+            os.chmod(self.socket_path, 0o600)
+            listener.listen(16)
+            listener.settimeout(0.25)
+        except BaseException:
+            listener.close()
+            self.socket_path.unlink(missing_ok=True)
+            raise
+        self._listener = listener
+        self._thread = threading.Thread(
+            target=self._serve,
+            name="typed-state-owner-grant-broker",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        listener = self._listener
+        self._listener = None
+        if listener is not None:
+            listener.close()
+        thread = self._thread
+        self._thread = None
+        if thread is not None:
+            thread.join(timeout=2.0)
+        with self._clients_lock:
+            clients = tuple(self._clients)
+            channels = tuple(self._channels)
+        for channel in channels:
+            try:
+                channel.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                channel.close()
+            except OSError:
+                pass
+        for client in clients:
+            client.join(timeout=1.0)
+        self.socket_path.unlink(missing_ok=True)
+        self._secret = ""
+
+    def _latch_failure(self, exc: BaseException) -> None:
+        """Permanently make an owner-side broker fault unhealthy."""
+
+        with self._clients_lock:
+            if not self._last_error_type:
+                self._last_error_type = type(exc).__name__
+            self._failed.set()
+        listener = self._listener
+        if listener is not None:
+            try:
+                listener.close()
+            except OSError:
+                pass
+
+    def _serve(self) -> None:
+        while not self._stop.is_set():
+            listener = self._listener
+            if listener is None:
+                return
+            try:
+                channel, _ = listener.accept()
+            except TimeoutError:
+                continue
+            except OSError as exc:
+                if not self._stop.is_set() and not self._failed.is_set():
+                    self._latch_failure(exc)
+                return
+            if not self._client_capacity.acquire(blocking=False):
+                channel.close()
+                continue
+            client = threading.Thread(
+                target=self._serve_channel,
+                args=(channel,),
+                name="typed-state-owner-grant-client",
+                daemon=True,
+            )
+            with self._clients_lock:
+                self._clients.add(client)
+                self._channels.add(channel)
+            try:
+                client.start()
+            except BaseException as exc:
+                with self._clients_lock:
+                    self._clients.discard(client)
+                    self._channels.discard(channel)
+                self._client_capacity.release()
+                channel.close()
+                self._latch_failure(exc)
+                return
+
+    def _serve_channel(self, channel: socket.socket) -> None:
+        try:
+            self._serve_one(channel)
+        except BaseException as exc:
+            # Protocol and authorization denials are handled inside
+            # _serve_one. Anything escaping it is an owner-side fault.
+            self._latch_failure(exc)
+        finally:
+            try:
+                channel.close()
+            except OSError:
+                pass
+            current = threading.current_thread()
+            with self._clients_lock:
+                self._clients.discard(current)
+                self._channels.discard(channel)
+            self._client_capacity.release()
+
+    def alive(self) -> bool:
+        thread = self._thread
+        return bool(
+            thread is not None
+            and thread.is_alive()
+            and not self._failed.is_set()
+        )
+
+    def capability(self) -> Mapping[str, Any]:
+        return MappingProxyType(
+            {
+                "available": self.alive(),
+                "last_error_type": self._last_error_type,
+            }
+        )
+
+    @staticmethod
+    def _read_frame(channel: socket.socket) -> dict[str, Any]:
+        payload = bytearray()
+        while b"\n" not in payload:
+            chunk = channel.recv(4096)
+            if not chunk:
+                break
+            payload.extend(chunk)
+            if len(payload) > MAX_GRANT_BROKER_FRAME_BYTES:
+                raise QuackStateServerControlError(
+                    "typed grant broker request exceeds its closed bound"
+                )
+        try:
+            decoded = json.loads(bytes(payload).split(b"\n", 1)[0])
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise QuackStateServerControlError(
+                "typed grant broker request is malformed"
+            ) from exc
+        if not isinstance(decoded, dict):
+            raise QuackStateServerControlError(
+                "typed grant broker request must be an object"
+            )
+        return decoded
+
+    def _serve_one(self, channel: socket.socket) -> None:
+        response = {
+            "schema": TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA,
+            "ok": False,
+            "token": "",
+            "error_code": "grant_denied",
+        }
+        authorized_identity: tuple[str, str, int] | None = None
+        try:
+            channel.settimeout(0.5)
+            if getattr(socket, "SO_PEERCRED", None) is None:
+                self._latch_failure(
+                    QuackStateServerControlError(
+                        "kernel peer credentials are unavailable"
+                    )
+                )
+                return
+            peer_pid, peer_uid, peer_start_time = _kernel_peer_identity(channel)
+            request = self._read_frame(channel)
+            if set(request) != {
+                "schema",
+                "bootstrap_secret",
+                "client_id",
+                "process_birth_id",
+                "store_id",
+            }:
+                raise QuackStateServerControlError(
+                    "typed grant broker request has unknown fields"
+                )
+            client_id = str(request.get("client_id") or "").strip()
+            process_birth_id = str(request.get("process_birth_id") or "").strip()
+            supplied_secret = str(request.get("bootstrap_secret") or "")
+            if (
+                request.get("schema") != TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA
+                or request.get("store_id") != self._store_id
+                or peer_uid != self._owner_uid
+                or peer_pid < 1
+                or not 1 <= len(client_id) <= 256
+                or process_birth_id
+                != kernel_process_birth_id(
+                    peer_pid,
+                    start_time_ticks=peer_start_time,
+                )
+                or not hmac.compare_digest(supplied_secret, self._secret)
+            ):
+                raise QuackStateServerControlError(
+                    "typed grant broker request is unauthorized"
+                )
+            authorized_identity = (client_id, process_birth_id, peer_pid)
+        except (
+            OSError,
+            ValueError,
+            QuackStateServerError,
+            TypedStateOwnerAuthorizationError,
+        ):
+            # Malformed, disconnected, or unauthorized peers are expected
+            # denials and cannot poison delivery to later admitted clients.
+            authorized_identity = None
+        if authorized_identity is not None and not self._failed.is_set():
+            try:
+                token = self._resolve_credential(*authorized_identity)
+            except BaseException as exc:
+                self._latch_failure(exc)
+            else:
+                if (
+                    not isinstance(token, str)
+                    or not 8 <= len(token) <= 256
+                    or any(
+                        not character.isalnum() and character not in "_-"
+                        for character in token
+                    )
+                ):
+                    self._latch_failure(
+                        QuackStateServerControlError(
+                            "credential resolver returned invalid material"
+                        )
+                    )
+                else:
+                    response.update(
+                        {"ok": True, "token": token, "error_code": ""}
+                    )
+        encoded = canonical_json_bytes(response) + b"\n"
+        if len(encoded) <= MAX_GRANT_BROKER_FRAME_BYTES:
+            try:
+                channel.sendall(encoded)
+            except OSError:
+                pass
+
+
 @dataclass
 class QuackStateServer:
     """Long-lived exclusive owner of one control-plane DuckDB database.
@@ -1869,6 +2213,10 @@ class QuackStateServer:
     _command_gateway: TypedStateOwnerGateway | None = field(
         default=None, init=False, repr=False
     )
+    _grant_broker: TypedStateOwnerGrantBroker | None = field(
+        default=None, init=False, repr=False
+    )
+    _grant_broker_secret_fd: int = field(default=-1, init=False, repr=False)
     _federation_repository: Any | None = field(default=None, init=False, repr=False)
     _outbox_wake: StateOwnerOutboxWake | None = field(
         default=None, init=False, repr=False
@@ -2466,6 +2814,105 @@ class QuackStateServer:
             ttl_seconds=ttl_seconds,
         )
         return token
+
+    def start_supervisor_grant_broker(self) -> Mapping[str, str]:
+        """Start the closed credential handoff for configured supervisors.
+
+        The broker is a facet of this exact owner process.  It delivers the
+        current in-memory Quack transport credential only to callers holding
+        the sealed inherited bootstrap descriptor and matching kernel peer
+        identity.  Callers cannot select operations, authority, paths, or
+        scopes; task mutations still pass through the existing owner inbox.
+        """
+
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "supervisor grant broker requires a ready state owner"
+                )
+            if self._grant_broker is not None:
+                raise QuackStateServerControlError(
+                    "supervisor grant broker is already running"
+                )
+            identity = self._identity
+            vault = self._vault
+        if identity is None or vault is None:
+            raise QuackStateServerControlError(
+                "Quack credential authority is unavailable"
+            )
+        bootstrap_secret = secrets.token_hex(32)
+        memfd_flags = int(getattr(os, "MFD_CLOEXEC", 0x0001)) | int(
+            getattr(os, "MFD_ALLOW_SEALING", 0x0002)
+        )
+        try:
+            secret_fd = os.memfd_create(
+                "ipfs-accelerate-state-grant", flags=memfd_flags
+            )
+            os.write(secret_fd, bootstrap_secret.encode("ascii"))
+            os.fchmod(secret_fd, 0o400)
+            seal_flags = (
+                int(getattr(fcntl, "F_SEAL_SEAL", 0x0001))
+                | int(getattr(fcntl, "F_SEAL_SHRINK", 0x0002))
+                | int(getattr(fcntl, "F_SEAL_GROW", 0x0004))
+                | int(getattr(fcntl, "F_SEAL_WRITE", 0x0008))
+            )
+            fcntl.fcntl(
+                secret_fd,
+                int(getattr(fcntl, "F_ADD_SEALS", 1033)),
+                seal_flags,
+            )
+        except (AttributeError, OSError):
+            try:
+                os.close(secret_fd)
+            except (NameError, OSError):
+                pass
+            raise QuackStateServerControlError(
+                "sealed typed-grant descriptor is unavailable"
+            ) from None
+
+        def resolve_credential(
+            client_id: str,
+            process_birth_id: str,
+            peer_pid: int,
+        ) -> str:
+            del client_id, process_birth_id, peer_pid
+            return vault.resolve(identity.secret_handle)
+
+        broker = TypedStateOwnerGrantBroker(
+            socket_path=(
+                self.typed_command_socket_path().parent
+                / TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME
+            ),
+            bootstrap_secret=bootstrap_secret,
+            store_id=identity.store_id,
+            resolve_credential=resolve_credential,
+        )
+        try:
+            broker.start()
+        except BaseException:
+            os.close(secret_fd)
+            raise
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                broker.stop()
+                os.close(secret_fd)
+                raise QuackStateServerNotRunningError(
+                    "state owner stopped during grant-broker startup"
+                )
+            self._grant_broker = broker
+            self._grant_broker_secret_fd = secret_fd
+        self._write_status()
+        return MappingProxyType(
+            {
+                TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV: str(
+                    broker.socket_path
+                ),
+                TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV: str(secret_fd),
+                TYPED_STATE_OWNER_SOCKET_ENV: str(
+                    self.typed_command_socket_path()
+                ),
+            }
+        )
 
     def bind_typed_status_scope(self) -> None:
         """Bind the persisted status bootstrap to the admitted live slice."""
@@ -3239,6 +3686,12 @@ class QuackStateServer:
         if not self._read_replica_enabled() or self._bound_port <= 0:
             return
         deadline = time.monotonic() + READ_REPLICA_STOP_TIMEOUT_SECONDS
+        # Quack closes asynchronously. A tight connect loop can itself keep
+        # feeding the listener and prevent the shutdown it is trying to
+        # observe, so allow one scheduling turn and probe with bounded
+        # exponential spacing.
+        delay = 0.02
+        time.sleep(delay)
         while True:
             probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             probe.settimeout(0.05)
@@ -3254,7 +3707,8 @@ class QuackStateServer:
                 raise QuackStateServerReadyError(
                     "stale Quack transport remained reachable during refresh"
                 )
-            time.sleep(0.01)
+            time.sleep(delay)
+            delay = min(delay * 2.0, 0.25)
 
     def _stop_transport_connection(self, *, observe_closed: bool) -> None:
         connection = self._transport_connection
@@ -4683,6 +5137,143 @@ class QuackStateServer:
                     serviced += 1
             return serviced
 
+    def _process_typed_owner_commands(self, *, max_requests: int) -> int:
+        """Apply closed task commands through the canonical intent repository."""
+
+        assert self._connection is not None
+        assert self._identity is not None
+        assert self._vault is not None
+        token = self._vault.resolve(self._identity.secret_handle)
+        inbox_fd = self._prepare_mutation_inbox()
+        serviced = 0
+        try:
+            request_names = sorted(
+                name
+                for name in os.listdir(inbox_fd)
+                if TYPED_OWNER_COMMAND_REQUEST_NAME.fullmatch(name)
+            )[:max_requests]
+            for request_name in request_names:
+                match = TYPED_OWNER_COMMAND_REQUEST_NAME.fullmatch(request_name)
+                assert match is not None
+                request_id = match.group("request_id")
+                done_name = f"{request_id}.done.json"
+                if mutation_envelope_exists_at(inbox_fd, done_name):
+                    # A completion is the durable idempotency tombstone.  The
+                    # authenticated client retires both files after admission.
+                    continue
+                try:
+                    request = read_envelope_at(
+                        inbox_fd,
+                        request_name,
+                        max_bytes=QUACK_OWNER_COMMAND_MAX_BYTES,
+                    )
+                    if request.get("schema") != QUACK_OWNER_COMMAND_REQUEST_SCHEMA:
+                        raise QuackOwnerMutationEnvelopeError(
+                            "typed owner command schema is not admitted"
+                        )
+                    command, payload = validate_quack_owner_command_request(
+                        request,
+                        token=token,
+                        expected_request_id=request_id,
+                        expected_store_id=self._identity.store_id,
+                        expected_store_generation=str(self._identity.generation),
+                    )
+                except (
+                    OSError,
+                    ValueError,
+                    QuackOwnerMutationEnvelopeError,
+                ):
+                    # Unauthenticated input receives no signed oracle and is
+                    # removed so it cannot starve the bounded owner inbox.
+                    unlink_mutation_envelope_at(
+                        inbox_fd,
+                        request_name,
+                        missing_ok=True,
+                    )
+                    serviced += 1
+                    continue
+
+                repository = IntentRepository(
+                    self.config.database_path,
+                    bound_connection=self._connection,
+                    owner_id="quack-state-owner",
+                    session_id=f"quack-owner-{self._identity.generation}",
+                    install_schema=False,
+                )
+                try:
+                    try:
+                        result = execute_quack_owner_command(
+                            repository,
+                            command,
+                            payload,
+                            request_id=request_id,
+                            store_id=self._identity.store_id,
+                            store_generation=str(self._identity.generation),
+                        )
+                    except Exception as exc:
+                        response = quack_owner_command_response(
+                            request,
+                            token=token,
+                            error_code=quack_owner_command_error_code(exc),
+                            error_message="typed owner command rejected",
+                        )
+                    else:
+                        response = quack_owner_command_response(
+                            request,
+                            token=token,
+                            result=result,
+                        )
+                finally:
+                    repository.close()
+                write_envelope_atomic_at(
+                    inbox_fd,
+                    done_name,
+                    response,
+                    replace=False,
+                )
+                serviced += 1
+        finally:
+            os.close(inbox_fd)
+        return serviced
+
+    def service_database_task_command_inbox(
+        self,
+        *,
+        expected_store_generation: str,
+        max_requests: int = MUTATION_MAX_PER_PASS,
+    ) -> Mapping[str, int]:
+        """Apply closed DatabaseTaskSource commands on the owner connection.
+
+        The raw transport credential and writable DuckDB handle remain inside
+        this state-owner process. Callers provide only the sealed logical
+        generation; the inbox service accepts the closed task-command schema
+        and routes every effect through IntentRepository transition gates.
+        """
+
+        if type(max_requests) is not int or not 1 <= max_requests <= MUTATION_MAX_PER_PASS:
+            raise ValueError("task command service bound is invalid")
+        expected_generation = str(expected_store_generation or "").strip()
+        if not expected_generation:
+            raise QuackStateServerControlError(
+                "task command service lacks the logical store generation"
+            )
+        with self._lock:
+            if (
+                self._lifecycle is not ServerLifecycle.READY
+                or self._connection is None
+                or self._identity is None
+                or self._vault is None
+            ):
+                raise QuackStateServerNotRunningError("state-owner is not ready")
+            if str(self._identity.generation) != expected_generation:
+                raise QuackStateServerControlError(
+                    "task command logical generation is stale"
+                )
+            serviced = self._process_typed_owner_commands(
+                max_requests=max_requests,
+            )
+            return MappingProxyType({"serviced": serviced})
+
     # -- lifecycle ---------------------------------------------------------
 
     def start(self) -> StateServerIdentity:
@@ -4822,6 +5413,12 @@ class QuackStateServer:
                     token=token,
                     identity=identity,
                 )
+                # Track the provisional writer-backed endpoint so the replica
+                # refresh stops that exact listener before starting the
+                # canonical read-only endpoint.  Without this binding two
+                # Quack listeners can survive under one advertised URI, making
+                # readiness flaky and shutdown observationally false.
+                self._transport_connection = connection
                 # Ensure transport observation never echoed the token.
                 self._vault.assert_absent_from(public_obs, surface_name="transport.start")
                 # A supervisor must never be able to reuse the HTTP Quack
@@ -4899,6 +5496,17 @@ class QuackStateServer:
         if self._event_wait is not None:
             self._event_wait.shutdown()
         try:
+            if self._grant_broker is not None:
+                self._grant_broker.stop()
+        finally:
+            self._grant_broker = None
+            if self._grant_broker_secret_fd >= 0:
+                try:
+                    os.close(self._grant_broker_secret_fd)
+                except OSError:
+                    pass
+                self._grant_broker_secret_fd = -1
+        try:
             if self._command_gateway is not None:
                 self._command_gateway.stop()
         except Exception:
@@ -4962,6 +5570,10 @@ class QuackStateServer:
             ):
                 raise QuackStateServerReadyError(
                     "typed owner command gateway is unavailable"
+                )
+            if self._grant_broker is not None and not self._grant_broker.alive():
+                raise QuackStateServerReadyError(
+                    "configured supervisor credential broker is unavailable"
                 )
             federation_event_path_bound = bool(
                 self._federation_repository is not None
@@ -5133,6 +5745,12 @@ class QuackStateServer:
                     )
 
             try:
+                if self._grant_broker is not None:
+                    self._grant_broker.stop()
+                    self._grant_broker = None
+                if self._grant_broker_secret_fd >= 0:
+                    os.close(self._grant_broker_secret_fd)
+                    self._grant_broker_secret_fd = -1
                 if self._command_gateway is not None:
                     self._command_gateway.stop()
                     self._command_gateway = None
@@ -5260,6 +5878,30 @@ class QuackStateServer:
                         "raw_sql_permitted": False,
                     }
                 ),
+                "configured_supervisor_credential_broker": {
+                    "available": bool(
+                        self._grant_broker is not None
+                        and self._grant_broker.alive()
+                    ),
+                    "server_owned": True,
+                    "socket_path": (
+                        str(self._grant_broker.socket_path)
+                        if self._grant_broker is not None
+                        else ""
+                    ),
+                    "credential_published": False,
+                    "task_mutation_path": "database_task_source_owner_command_inbox",
+                    "last_error_type": (
+                        str(
+                            self._grant_broker.capability().get(
+                                "last_error_type"
+                            )
+                            or ""
+                        )
+                        if self._grant_broker is not None
+                        else ""
+                    ),
+                },
             }
             token = None
             if self._vault is not None:

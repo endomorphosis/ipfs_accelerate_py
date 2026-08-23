@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import fcntl
 import json
 import math
 import os
@@ -42,8 +43,21 @@ TYPED_STATE_OWNER_SCHEMA: Final = (
 )
 TYPED_STATE_OWNER_SOCKET_ENV: Final = "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"
 TYPED_STATE_OWNER_TOKEN_ENV: Final = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV: Final = (
+    "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET"
+)
+TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV: Final = (
+    "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD"
+)
 TYPED_STATE_OWNER_SOCKET_FILENAME: Final = "typed-state-owner.sock"
 TYPED_STATE_OWNER_TOKEN_FILENAME: Final = "typed-state-owner.token"
+TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME: Final = (
+    "typed-state-owner-grants.sock"
+)
+TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-state-owner-grant-request@1"
+)
+MAX_GRANT_BROKER_FRAME_BYTES: Final = 8 * 1024
 MAX_FRAME_BYTES: Final = 16 * 1024 * 1024
 MAX_PARAMETER_COUNT: Final = 512
 MAX_ROW_COUNT: Final = 4096
@@ -288,7 +302,10 @@ class OwnerClientGrant:
             )
         object.__setattr__(self, "entity_scopes", tuple(sorted(scopes)))
         authority_profile = str(self.authority_profile or "").strip()
-        if authority_profile not in {"", "dedicated_store_status_portfolio"}:
+        if authority_profile not in {
+            "",
+            "dedicated_store_status_portfolio",
+        }:
             raise TypedStateOwnerAuthorizationError(
                 "owner grant authority profile is invalid"
             )
@@ -408,6 +425,33 @@ def _kernel_peer_identity(channel: socket.socket) -> tuple[int, int, int]:
             "kernel peer credentials could not be verified"
         ) from exc
     return peer_pid, peer_uid, _process_start_time_ticks(peer_pid)
+
+
+def kernel_process_birth_id(
+    pid: int | None = None,
+    *,
+    start_time_ticks: int | None = None,
+) -> str:
+    """Return the closed broker identity for one kernel-observed process.
+
+    Callers normally omit both arguments.  The owner supplies the PID and
+    start time returned by :func:`_kernel_peer_identity`; comparing the two
+    values prevents a caller-selected audit label from entering an authority
+    decision while remaining resistant to PID reuse.
+    """
+
+    selected_pid = os.getpid() if pid is None else int(pid)
+    selected_start = (
+        _process_start_time_ticks(selected_pid)
+        if start_time_ticks is None
+        else int(start_time_ticks)
+    )
+    if selected_pid < 1 or selected_start < 0:
+        raise TypedStateOwnerAuthorizationError(
+            "kernel process birth identity is invalid"
+        )
+    material = f"{selected_pid}:{selected_start}".encode("ascii")
+    return f"birth:kernel:{hashlib.sha256(material).hexdigest()[:32]}"
 
 
 def _normalize_sql(sql: str) -> str:
@@ -1356,7 +1400,11 @@ class TypedStateOwnerGateway:
             "grant_expiry_required": True,
             "kernel_peer_credentials_required": True,
             "typed_event_wait_bound": self._event_wait_handler is not None,
-            "typed_event_wait_maximum_seconds": MAX_REMOTE_EVENT_WAIT_SECONDS,
+            # Status projections use canonical control-plane JSON, which
+            # intentionally rejects floats.  This bound is an exact integer.
+            "typed_event_wait_maximum_seconds": int(
+                MAX_REMOTE_EVENT_WAIT_SECONDS
+            ),
             "commit_observer_bound": self._commit_observer is not None,
             "last_observer_error_type": self._last_observer_error_type,
             "last_error_type": self._last_error_type,
@@ -3545,6 +3593,151 @@ def open_typed_state_owner_connection(
     )
 
 
+def request_quack_attach_credential(
+    *,
+    store_id: str,
+    client_id: str,
+    process_birth_id: str,
+    timeout_seconds: float = 5.0,
+) -> str:
+    """Request the live Quack credential over the private owner facet.
+
+    The bootstrap secret is available only to hardened supervisor processes
+    through a sealed inherited descriptor and is stripped from provider and
+    validator environments.  The broker authenticates the connecting kernel
+    PID, UID, and PID start time.  ``client_id`` is diagnostic only, while the
+    supplied process birth identity must equal the kernel-derived identity.
+    No credential is written to disk, placed in argv or the environment, or
+    returned through a public status surface.
+    """
+
+    raw_secret_fd = str(
+        os.environ.get(TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV, "") or ""
+    ).strip()
+    raw_path = str(
+        os.environ.get(TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV, "") or ""
+    ).strip()
+    if not raw_secret_fd or not raw_path:
+        return ""
+    if not raw_secret_fd.isascii() or not raw_secret_fd.isdecimal():
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap descriptor is invalid"
+        )
+    secret_fd = int(raw_secret_fd)
+    if secret_fd < 3 or secret_fd > 1_048_576:
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap descriptor is invalid"
+        )
+    try:
+        descriptor = os.fstat(secret_fd)
+        secret = os.pread(secret_fd, 257, 0).decode("ascii")
+    except (OSError, UnicodeError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap descriptor is unavailable"
+        ) from exc
+    if not stat.S_ISREG(descriptor.st_mode) or descriptor.st_uid != os.geteuid():
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap descriptor is unsafe"
+        )
+    required_seals = (
+        int(getattr(fcntl, "F_SEAL_SEAL", 0x0001))
+        | int(getattr(fcntl, "F_SEAL_SHRINK", 0x0002))
+        | int(getattr(fcntl, "F_SEAL_GROW", 0x0004))
+        | int(getattr(fcntl, "F_SEAL_WRITE", 0x0008))
+    )
+    try:
+        observed_seals = int(
+            fcntl.fcntl(
+                secret_fd,
+                int(getattr(fcntl, "F_GET_SEALS", 1034)),
+            )
+        )
+    except OSError as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap descriptor is unsealed"
+        ) from exc
+    if observed_seals & required_seals != required_seals:
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap descriptor is unsealed"
+        )
+    if not 32 <= len(secret) <= 256:
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant bootstrap is unavailable"
+        )
+    selected = Path(raw_path).expanduser().resolve(strict=False)
+    store = Path(str(store_id or "")).expanduser().resolve(strict=False)
+    expected = (
+        typed_owner_socket_path(str(store)).parent
+        / TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME
+    )
+    if selected != expected:
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant broker path differs from the store binding"
+        )
+    request = canonical_json_bytes(
+        {
+            "schema": TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA,
+            "bootstrap_secret": secret,
+            "client_id": str(client_id or "").strip(),
+            "process_birth_id": str(process_birth_id or "").strip(),
+            "store_id": str(store_id or "").strip(),
+        }
+    ) + b"\n"
+    if len(request) > MAX_GRANT_BROKER_FRAME_BYTES:
+        raise TypedStateOwnerProtocolError(
+            "typed owner grant request exceeds its closed bound"
+        )
+    timeout = float(timeout_seconds)
+    if not math.isfinite(timeout) or not 0.05 <= timeout <= 30.0:
+        raise TypedStateOwnerProtocolError(
+            "typed owner grant timeout is outside its closed bound"
+        )
+    channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    channel.settimeout(timeout)
+    response = bytearray()
+    try:
+        channel.connect(str(selected))
+        channel.sendall(request)
+        while b"\n" not in response:
+            chunk = channel.recv(4096)
+            if not chunk:
+                break
+            response.extend(chunk)
+            if len(response) > MAX_GRANT_BROKER_FRAME_BYTES:
+                raise TypedStateOwnerProtocolError(
+                    "typed owner grant response exceeds its closed bound"
+                )
+    finally:
+        channel.close()
+    try:
+        payload = json.loads(bytes(response).split(b"\n", 1)[0])
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise TypedStateOwnerProtocolError(
+            "typed owner grant broker returned an invalid response"
+        ) from exc
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"schema", "ok", "token", "error_code"}
+        or payload.get("schema") != TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA
+        or payload.get("ok") is not True
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "typed owner grant broker denied the request"
+        )
+    token = str(payload.get("token") or "")
+    if (
+        not 8 <= len(token) <= 256
+        or any(
+            not character.isalnum() and character not in "_-"
+            for character in token
+        )
+    ):
+        raise TypedStateOwnerProtocolError(
+            "typed owner grant broker returned an invalid credential"
+        )
+    return token
+
+
 __all__ = [
     "OwnerOperation",
     "OwnerClientGrant",
@@ -3554,6 +3747,10 @@ __all__ = [
     "SUPERVISOR_EVENT_CHILD_ALLOWED_OPERATIONS",
     "SUPERVISOR_RUNTIME_CHILD_ALLOWED_OPERATIONS",
     "TYPED_STATE_OWNER_INTERFACE",
+    "TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA",
+    "TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV",
+    "TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV",
+    "TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME",
     "TYPED_STATE_OWNER_SCHEMA",
     "TYPED_STATE_OWNER_SOCKET_ENV",
     "TYPED_STATE_OWNER_SOCKET_FILENAME",
@@ -3569,6 +3766,8 @@ __all__ = [
     "build_control_plane_operation_catalog",
     "catalog_fingerprint",
     "internal_operation_for_sql",
+    "kernel_process_birth_id",
     "open_typed_state_owner_connection",
+    "request_quack_attach_credential",
     "typed_owner_socket_path",
 ]

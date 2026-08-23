@@ -511,6 +511,16 @@ TRUSTED_RUNTIME_CACHE_ENV_NAMES: tuple[str, ...] = (
     TRUSTED_CUDA_CACHE_DISABLE_ENV,
     TRUSTED_PYTHONDONTWRITEBYTECODE_ENV,
 )
+STATE_GRANT_BROKER_SOCKET_ENV = (
+    "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET"
+)
+STATE_GRANT_BROKER_SECRET_FD_ENV = (
+    "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD"
+)
+TRUSTED_STATE_GRANT_BROKER_ENV_NAMES: tuple[str, ...] = (
+    STATE_GRANT_BROKER_SOCKET_ENV,
+    STATE_GRANT_BROKER_SECRET_FD_ENV,
+)
 
 DATABASE_PROGRAM_ENV_NAMES: tuple[str, ...] = (
     STATE_AUTHORITY_MODE_ENV,
@@ -567,6 +577,7 @@ def _plan_bound_positive_child_environment(
         "TZ",
         *_PLAN_BOUND_LIFECYCLE_ENV_NAMES,
         *_PLAN_BOUND_PROFILE_ENV_NAMES,
+        *TRUSTED_STATE_GRANT_BROKER_ENV_NAMES,
     }
     projected = {
         name: str(value)
@@ -747,6 +758,7 @@ STATE_CREDENTIAL_ENV_NAMES: frozenset[str] = frozenset(
         "IPFS_ACCELERATE_AGENT_STATE_PASSWORD",
         "IPFS_ACCELERATE_AGENT_STATE_SECRET",
         "IPFS_ACCELERATE_AGENT_STATE_CREDENTIAL",
+        *TRUSTED_STATE_GRANT_BROKER_ENV_NAMES,
         "IPFS_ACCELERATE_AGENT_CONTROL_PLANE_TOKEN",
         "IPFS_ACCELERATE_AGENT_CONTROL_PLANE_PASSWORD",
     }
@@ -5477,6 +5489,19 @@ def start_track(
             )
         raise
     launch_environment = profile.launch_environment(0)
+    # Both ordinary configured-board tracks and plan-bound tracks need the
+    # live owner socket plus sealed broker descriptor. Lifecycle profiles are
+    # positive projections, so ambient inheritance cannot supply these later.
+    launch_environment.update(
+        {
+            name: os.environ[name]
+            for name in (
+                STATE_OWNER_SOCKET_ENV,
+                *TRUSTED_STATE_GRANT_BROKER_ENV_NAMES,
+            )
+            if str(os.environ.get(name, "") or "").strip()
+        }
+    )
     if plan_bound_dispatch:
         # Isolated absolute-script launch bootstraps only its own accepted
         # repository root.  Build a positive environment in the parent before
@@ -5503,6 +5528,9 @@ def start_track(
         launch_environment = _plan_bound_positive_child_environment(
             launch_environment
         )
+    from .process_security import state_authority_pass_fds
+
+    authority_descriptors = state_authority_pass_fds(launch_environment)
     try:
         try:
             process = subprocess.Popen(
@@ -5513,10 +5541,17 @@ def start_track(
                 stdout=out_handle,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
-                pass_fds=(
-                    (gate_read_fd, accepted_control_plane_descriptor)
-                    if plan_bound_dispatch and gate_read_fd is not None
-                    else ()
+                pass_fds=tuple(
+                    sorted(
+                        {
+                            *authority_descriptors,
+                            *(
+                                (gate_read_fd, accepted_control_plane_descriptor)
+                                if plan_bound_dispatch and gate_read_fd is not None
+                                else ()
+                            ),
+                        }
+                    )
                 ),
             )
         except BaseException:
@@ -8241,6 +8276,9 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
         "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
         *_without_detach(argv),
     ]
+    from .process_security import state_authority_pass_fds
+
+    authority_descriptors = state_authority_pass_fds(os.environ)
     process: subprocess.Popen[bytes] | None = None
     descriptor = -1
     reservation_identity: tuple[int, int] | None = None
@@ -8266,6 +8304,7 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
                     stdout=out_handle,
                     stderr=subprocess.STDOUT,
                     start_new_session=True,
+                    pass_fds=authority_descriptors,
                 )
             finally:
                 out_handle.close()

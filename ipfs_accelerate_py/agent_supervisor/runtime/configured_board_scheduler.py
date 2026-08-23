@@ -110,6 +110,9 @@ from .multi_supervisor_runner import (
     AUTHORITY_MODE_LEGACY_MARKDOWN,
     DATABASE_PROGRAM_CONFIG_INTERFACE,
     STATE_LIVE_SCHEMA_REVISION_ENV,
+    STATE_GRANT_BROKER_SECRET_FD_ENV,
+    STATE_GRANT_BROKER_SOCKET_ENV,
+    STATE_OWNER_SOCKET_ENV,
     STATE_STORE_LIVE_GENERATION_ENV,
     TRUSTED_DUCKDB_HOME_ENV,
     TRUSTED_PYTHON_USER_BASE_ENV,
@@ -5737,6 +5740,9 @@ def _plan_bound_coordinator_environment() -> dict[str, str]:
             "TZ",
             STATE_STORE_LIVE_GENERATION_ENV,
             STATE_LIVE_SCHEMA_REVISION_ENV,
+            STATE_GRANT_BROKER_SOCKET_ENV,
+            STATE_GRANT_BROKER_SECRET_FD_ENV,
+            STATE_OWNER_SOCKET_ENV,
             TRUSTED_DUCKDB_HOME_ENV,
             TRUSTED_PYTHON_USER_BASE_ENV,
         }
@@ -5800,13 +5806,17 @@ def _launch_foreground_plan_bound_coordinator(
             ),
         )
         environment = _plan_bound_coordinator_environment()
+        from .process_security import state_authority_pass_fds
+
         process = subprocess.Popen(
             command,
             cwd=board.repo_root,
             env=environment,
             stdin=subprocess.DEVNULL,
             start_new_session=False,
-            pass_fds=(sealed.descriptor,),
+            pass_fds=tuple(
+                sorted({sealed.descriptor, *state_authority_pass_fds(environment)})
+            ),
         )
         return int(process.wait())
     finally:
@@ -5880,6 +5890,8 @@ def _launch_detached_plan_bound_coordinator(
         )
         with _open_plan_bound_coordinator_log(log_path) as stream:
             launch_environment = _plan_bound_coordinator_environment()
+            from .process_security import state_authority_pass_fds
+
             process = subprocess.Popen(
                 command,
                 cwd=accepted_tree_root,
@@ -5888,7 +5900,14 @@ def _launch_detached_plan_bound_coordinator(
                 stdout=stream,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
-                pass_fds=(sealed.descriptor,),
+                pass_fds=tuple(
+                    sorted(
+                        {
+                            sealed.descriptor,
+                            *state_authority_pass_fds(launch_environment),
+                        }
+                    )
+                ),
             )
         _publish_reserved_coordinator_pid(
             pid_path,
@@ -6064,10 +6083,23 @@ def _launch_detached_receipt_coordinator(
             health_path=str(status_path),
             health_stale_ms=launch_attestation_max_age_ms,
         )
+        launch_environment = profile.launch_environment(0)
+        launch_environment.update(
+            {
+                name: base_environment[name]
+                for name in (
+                    STATE_GRANT_BROKER_SOCKET_ENV,
+                    STATE_GRANT_BROKER_SECRET_FD_ENV,
+                )
+                if str(base_environment.get(name, "") or "").strip()
+            }
+        )
         launch_environment = _plan_bound_positive_child_environment(
-            profile.launch_environment(0)
+            launch_environment
         )
         with _open_plan_bound_coordinator_log(log_path) as stream:
+            from .process_security import state_authority_pass_fds
+
             process = subprocess.Popen(
                 command,
                 cwd=accepted_tree_root,
@@ -6076,7 +6108,14 @@ def _launch_detached_receipt_coordinator(
                 stdout=stream,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
-                pass_fds=(sealed.descriptor,),
+                pass_fds=tuple(
+                    sorted(
+                        {
+                            sealed.descriptor,
+                            *state_authority_pass_fds(launch_environment),
+                        }
+                    )
+                ),
             )
         identity_deadline = time.monotonic() + 10.0
         adapter = LinuxProcessAdapter()

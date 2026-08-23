@@ -86247,6 +86247,9 @@ TodoImplementationDaemon = PortalImplementationDaemon
 
 
 def main(argv: list[str] | None = None) -> None:
+    from ..runtime.process_security import harden_state_authority_process
+
+    harden_state_authority_process()
     args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),

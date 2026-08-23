@@ -1,0 +1,729 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-protected-requirements@1",
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "short_id": "ASEH",
+  "plan_revision": "ASEH-PLAN-R1",
+  "root_objective": "Increase the agent supervisor's measured token efficiency, compute efficiency, state-management reliability, and planning/synthesis quality without weakening any safety, authority, validation, or promotion gate.",
+  "campaign_class": "bounded_consolidation_measurement_and_efficiency",
+  "control_binding": {
+    "protected_input": true,
+    "mutation_after_materialization": "operator_authorized_current_tree_plan_revision_only",
+    "markdown_is_completion_authority": false,
+    "database_authority": "DuckDB/DatabaseTaskSource@1 over the exclusive typed Quack owner",
+    "ducklake_role": "non_authoritative_append_only_analytics_projection"
+  },
+  "cross_repository_authority": {
+    "ipfs_datasets_py": {
+      "owns": [
+        "semantic_identity",
+        "canonical_ir_and_schema_semantics",
+        "minimal_semantic_context_pack_construction",
+        "formal_obligations",
+        "semantic_dependency_descriptions",
+        "source_lineage",
+        "proof_relationships"
+      ],
+      "must_not_own": [
+        "durable_byte_storage",
+        "supervisor_execution_authority"
+      ]
+    },
+    "ipfs_kit_py": {
+      "owns": [
+        "durable_byte_storage",
+        "cid_verification",
+        "immutable_blocks",
+        "current_root_cas",
+        "wal_and_recovery",
+        "retention",
+        "optional_replication"
+      ],
+      "must_not_own": [
+        "semantic_correctness",
+        "proof_admission",
+        "execution_reuse_admission"
+      ]
+    },
+    "ipfs_accelerate_py": {
+      "owns": [
+        "supervisor_state",
+        "execution_admission",
+        "provider_and_model_routing",
+        "task_claims_leases_and_fencing",
+        "retries_validation_repair_and_reconciliation",
+        "terminalization_and_promotion_decisions",
+        "context_pack_freshness_and_executor_selection",
+        "proof_and_test_reuse_admission_for_current_tree"
+      ],
+      "must_not_own": [
+        "reminting_datasets_semantic_identities"
+      ]
+    },
+    "contract_rules": [
+      "Do not copy large implementations across repositories.",
+      "Use stable contracts and immutable package or artifact boundaries.",
+      "Tests must not import another repository's uninstalled source-tree tests directory.",
+      "Shared fixtures must be stable package data, schemas, or immutable vectors."
+    ]
+  },
+  "truth_and_safety_invariants": [
+    "No simulated observation may be represented as live.",
+    "No estimated cost or duration may be represented as measured.",
+    "No attempted operation may be represented as observed.",
+    "No observed operation may be represented as verified without admitted verifier evidence.",
+    "No stored proof blob may be treated as an admitted or reusable proof.",
+    "No cache entry may be reused unless it binds the exact repository, tree, objective revision, policy revision, interface and schema versions, toolchain, and relevant environment.",
+    "No stale lease or fencing token may complete a task.",
+    "No unknown provider outcome may be automatically retried as though no external effect occurred.",
+    "No controller may mutate task state outside the canonical state-transition authority.",
+    "No model, controller, or candidate branch may authorize its own policy promotion.",
+    "No validation gate may be silently skipped, reduced, or converted into a warning.",
+    "No absent metric may be recorded as zero.",
+    "No broad production claim may be generated from hermetic fixtures.",
+    "No efficiency promotion may occur without paired live or reproducible measured evidence.",
+    "No large model may be invoked merely because it is available."
+  ],
+  "promotion_hard_gates_required_zero": [
+    "false_completions",
+    "unauthorized_mutations",
+    "simulated_as_live_outcomes",
+    "stale_authoritative_cache_admissions",
+    "confirmation_replays",
+    "path_or_scope_escapes",
+    "hidden_validation_reductions",
+    "controlled_critical_omissions_accepted",
+    "escaped_critical_seeded_defects",
+    "self_authorized_policy_promotions",
+    "selected_test_false_negatives_on_promotion_corpus",
+    "double_terminalization",
+    "double_execution_of_an_idempotent_effect",
+    "stale_fence_completion"
+  ],
+  "scope_freeze_forbidden_new_categories": [
+    "meta_controller",
+    "planner_family",
+    "refactorer_family",
+    "memory_system",
+    "federation_system",
+    "procedure_compiler",
+    "autonomous_supervisor",
+    "task_database",
+    "event_system",
+    "dashboard",
+    "model_provider_abstraction",
+    "transport_profile",
+    "general_purpose_agent_framework"
+  ],
+  "operating_requirements": {
+    "inspect_before_change": [
+      "current_main_and_repository_state",
+      "agent_supervisor_architecture_and_autonomy",
+      "quack_duckdb_and_ducklake",
+      "proof_reuse_and_semantic_compression",
+      "context_selection_validation_and_promotion",
+      "recovery_and_release"
+    ],
+    "canonical_handoff_must_cover": [
+      "objectives",
+      "task_boards",
+      "worktree_bound_implementation_tasks",
+      "validations",
+      "receipts",
+      "promotion_or_non_promotion_decisions"
+    ],
+    "source_identity": "exact_commits_and_trees_only",
+    "isolation": "canonical_isolated_worktrees_or_repository_isolation",
+    "routine_choice_approval": "not_required",
+    "escalation_only_for": [
+      "irreducible_value_laden_decision",
+      "credential_bearing_decision",
+      "destructive_decision",
+      "promotion_authority_decision"
+    ]
+  },
+  "required_task_contract_fields": [
+    "stable_identity",
+    "exact_declared_outputs",
+    "owning_repository",
+    "explicit_dependencies",
+    "exact_validation_command",
+    "risk_class",
+    "authority_requirement",
+    "terminal_success_criteria",
+    "terminal_non_success_criteria"
+  ],
+  "sealed_baseline_required_fields": [
+    "all_repository_commits_and_trees",
+    "supervisor_policy_cid_or_equivalent_immutable_identity",
+    "provider_and_model_configuration",
+    "task_corpus",
+    "acceptance_tests",
+    "cost_accounting_method",
+    "benchmark_code_digest",
+    "environment_identity"
+  ],
+  "bounded_workstreams": {
+    "ASEH-000": "authority_inventory_and_sealed_baseline",
+    "ASEH-100": "real_paired_efficiency_measurement",
+    "ASEH-200": "deterministic_first_routing",
+    "ASEH-300": "cross_repository_context_packs",
+    "ASEH-400": "canonical_control_plane_state_machine",
+    "ASEH-500": "analysis_planning_and_synthesis_logic",
+    "ASEH-600": "consolidation_and_migration",
+    "ASEH-700": "qualification_and_promotion"
+  },
+  "telemetry_receipt": {
+    "identity_fields": [
+      "task_id",
+      "task_cid",
+      "objective_id",
+      "objective_revision",
+      "repository_commit",
+      "repository_tree",
+      "policy_identity",
+      "context_pack_cid",
+      "interface_schema_identities",
+      "provider_model_exact_identity_and_revision"
+    ],
+    "model_use_fields": [
+      "input_tokens",
+      "output_tokens",
+      "cached_input_tokens_where_reported",
+      "reasoning_tokens_where_reported",
+      "number_of_calls",
+      "calls_by_model_class",
+      "safe_provider_request_ids",
+      "provider_reported_usage_where_available",
+      "explicit_unavailable_fields"
+    ],
+    "model_classes": [
+      "deterministic",
+      "local_small_model",
+      "local_medium_model",
+      "remote_standard_model",
+      "remote_frontier_model",
+      "human"
+    ],
+    "compute_fields": [
+      "cpu_seconds",
+      "gpu_seconds",
+      "peak_memory",
+      "wall_clock_duration",
+      "test_execution_time",
+      "prover_execution_time",
+      "static_analysis_time",
+      "indexing_retrieval_time",
+      "bytes_read_and_written_where_practical",
+      "process_count",
+      "concurrency"
+    ],
+    "cost_fields": [
+      "provider_reported_charge_where_available",
+      "clearly_labeled_token_based_estimated_charge",
+      "price_snapshot_identity_and_timestamp",
+      "local_compute_units_without_unknown_cost_as_zero",
+      "audit_and_verification_overhead",
+      "cost_per_accepted_patch",
+      "cost_per_completed_task"
+    ],
+    "work_fields": [
+      "tests_selected",
+      "tests_executed",
+      "full_suite_tests",
+      "type_static_schema_checks",
+      "proof_obligations_selected",
+      "proof_obligations_executed",
+      "proof_receipts_reused",
+      "retries",
+      "rescue_attempts",
+      "merge_conflicts",
+      "manual_recovery",
+      "human_interventions",
+      "final_task_outcome",
+      "validation_result",
+      "patch_disposition"
+    ],
+    "patch_dispositions": [
+      "accepted",
+      "rejected",
+      "quarantined",
+      "reverted"
+    ],
+    "truth_states": [
+      "measured",
+      "estimated",
+      "unavailable",
+      "attempted",
+      "observed",
+      "verified",
+      "simulated"
+    ]
+  },
+  "paired_benchmark": {
+    "arms": [
+      "direct_minimal_orchestration_baseline",
+      "sealed_current_supervisor_baseline",
+      "candidate_optimized_supervisor"
+    ],
+    "arm_constraints": {
+      "direct_minimal_orchestration_baseline": [
+        "same_safe_isolation_and_acceptance_tests",
+        "no_candidate_context_pack_optimization",
+        "no_candidate_proof_or_test_reuse_optimization",
+        "same_available_model_and_provider_set",
+        "no_unsafe_direct_mutation"
+      ],
+      "sealed_current_supervisor_baseline": [
+        "exact_pre_campaign_policy",
+        "exact_pre_campaign_routing_behavior"
+      ],
+      "candidate_optimized_supervisor": [
+        "campaign_changes_only",
+        "shadow_before_mutation"
+      ]
+    },
+    "equal_controls": [
+      "repository_revision",
+      "objective",
+      "task_inputs",
+      "acceptance_tests",
+      "available_providers_and_models",
+      "price_accounting",
+      "resource_limits",
+      "maximum_retries",
+      "human_intervention_policy"
+    ],
+    "populations": {
+      "hermetic_development_minimum": 60,
+      "historical_exact_tree_replay_minimum": 20,
+      "new_live_shadow_canary_minimum": 10,
+      "hermetic_sufficient_for_production_promotion": false,
+      "live_enrollment_deadline_maximum_days": 30
+    },
+    "historical_required_outcomes": [
+      "successful",
+      "failed",
+      "retried",
+      "rescued",
+      "conflicted",
+      "human_escalated"
+    ],
+    "statistics": [
+      "median_difference",
+      "mean_difference",
+      "per_task_ratios",
+      "bootstrap_confidence_intervals",
+      "distribution_by_task_class",
+      "outlier_analysis",
+      "quality_adjusted_cost",
+      "accepted_patch_rate",
+      "time_to_terminal_outcome"
+    ],
+    "promotion_without_paired_campaign": false
+  },
+  "deterministic_first_routing": {
+    "ordered_stages": [
+      "exact_current_authoritative_cached_receipt",
+      "ast_symbol_dependency_and_impact_analysis",
+      "schema_type_static_lint_and_contract_checks",
+      "selected_tests",
+      "incremental_smt_or_theorem_prover",
+      "local_small_specialist_model",
+      "local_or_remote_medium_model",
+      "remote_strong_or_frontier_model",
+      "human_decision"
+    ],
+    "unresolved_question_fields": [
+      "question_id",
+      "exact_question",
+      "why_prior_deterministic_stages_could_not_resolve",
+      "evidence_available",
+      "evidence_missing",
+      "candidate_decisions_answer_could_change",
+      "minimum_model_capability",
+      "context_budget",
+      "response_schema",
+      "deadline",
+      "cost_budget"
+    ],
+    "route_receipt_fields": [
+      "stages_run",
+      "stages_skipped_and_reason",
+      "decisive_evidence",
+      "escalation_reason",
+      "selected_executor",
+      "actual_resource_use",
+      "final_outcome"
+    ],
+    "metrics": [
+      "deterministic_resolution_rate",
+      "small_model_resolution_rate",
+      "frontier_model_rate",
+      "human_rate",
+      "escalation_precision",
+      "unnecessary_escalation_rate",
+      "unresolved_question_closure_rate"
+    ],
+    "normally_no_large_model_examples": [
+      "exact_cache_freshness",
+      "dependency_cone_selection",
+      "schema_validity",
+      "type_validity",
+      "known_test_selection",
+      "exact_deterministic_migration",
+      "duplicate_retry_without_new_evidence",
+      "stale_tree_detection",
+      "proof_receipt_identity_matching",
+      "unchanged_documentation_only_path",
+      "current_lease_and_fence_validity",
+      "policy_pointer_cas_status"
+    ],
+    "reject_call_when_answer_cannot_change_admissible_decision": true
+  },
+  "supervisor_context_pack_at_1": {
+    "identity": [
+      "schema_and_interface_version",
+      "repository_identity",
+      "commit_and_tree",
+      "objective_identity_and_revision",
+      "policy_identity",
+      "builder_identity",
+      "creation_time",
+      "content_cid",
+      "parent_context_pack_cid_where_incremental"
+    ],
+    "scope": [
+      "affected_files",
+      "affected_symbols",
+      "dependency_cone",
+      "reverse_dependencies",
+      "explicitly_excluded_paths",
+      "changed_interfaces_and_schemas",
+      "semantic_diff_summary"
+    ],
+    "contracts": [
+      "applicable_api_contracts",
+      "assumptions_and_guarantees",
+      "invariants",
+      "security_constraints",
+      "side_effect_classes",
+      "allowed_mutation_scope"
+    ],
+    "validation": [
+      "known_tests",
+      "selected_tests",
+      "type_static_schema_checks",
+      "proof_obligations",
+      "required_full_suite_conditions",
+      "current_authoritative_receipts"
+    ],
+    "history": [
+      "relevant_prior_failures",
+      "relevant_counterexamples",
+      "prior_accepted_patches",
+      "stale_or_invalidated_receipts",
+      "retry_and_rescue_history"
+    ],
+    "questions": [
+      "named_unresolved_questions",
+      "missing_evidence",
+      "completeness_witness",
+      "expansion_references"
+    ],
+    "budgets": [
+      "maximum_bytes",
+      "maximum_tokens",
+      "maximum_retrieval_operations",
+      "maximum_model_class",
+      "maximum_wall_time",
+      "validation_reserve_models_cannot_consume"
+    ],
+    "freshness_and_invalidation": [
+      "file_and_symbol_identities",
+      "schema_identities",
+      "toolchain_identities",
+      "environment_requirements",
+      "invalidation_triggers",
+      "reusable_until_conditions"
+    ],
+    "incremental_rules": [
+      "Use a delta or affected-suffix pack for a changed tree where safe.",
+      "Whole-repository expansion requires a typed completeness failure.",
+      "Retrieve only a named missing CID, symbol, contract, test, counterexample, or proof obligation."
+    ],
+    "benchmark_metrics": [
+      "reuse_rate",
+      "context_tokens_before_and_after",
+      "expansion_precision_and_recall",
+      "critical_omission_detection",
+      "stale_pack_rejection",
+      "build_cost",
+      "retrieval_cost",
+      "net_provider_cost_effect"
+    ]
+  },
+  "canonical_state_machine": {
+    "states": [
+      "discovered",
+      "admitted",
+      "ready",
+      "claimed",
+      "dispatched",
+      "provider_starting",
+      "provider_running",
+      "provider_completed",
+      "provider_outcome_unknown",
+      "validating",
+      "validation_failed",
+      "validation_succeeded",
+      "rescue_pending",
+      "retry_pending",
+      "merge_pending",
+      "merging",
+      "reconciliation_pending",
+      "terminal_succeeded",
+      "terminal_failed",
+      "quarantined",
+      "compensated"
+    ],
+    "events": [
+      "claim",
+      "dispatch",
+      "provider_start",
+      "provider_completion",
+      "provider_timeout",
+      "provider_connection_loss",
+      "validation_start",
+      "validation_result",
+      "rescue",
+      "retry",
+      "merge",
+      "merge_conflict",
+      "reconciliation",
+      "terminalization",
+      "owner_loss",
+      "owner_restart",
+      "lease_expiry",
+      "fence_takeover",
+      "confirmation_grant",
+      "confirmation_expiry",
+      "policy_change",
+      "state_recovery"
+    ],
+    "invariants": [
+      "Exactly one authoritative owner may mutate a task at a time.",
+      "Every mutation uses revision and CAS semantics.",
+      "Every effectful execution binds an idempotency key.",
+      "Stale leases and stale fencing tokens cannot complete.",
+      "A provider-unknown outcome enters reconciliation rather than blind retry.",
+      "A task can terminalize only once.",
+      "A merge requires current validation evidence.",
+      "A rescue or retry cannot erase an observed external effect.",
+      "Owner restart reconstructs the same authoritative state from durable data.",
+      "A controller cannot bypass the state-transition service by directly updating task tables.",
+      "Transition events and current materialized state must reconcile.",
+      "No successful terminal state may exist without its required receipt.",
+      "A failed validation cannot become success through merge bookkeeping.",
+      "A policy change does not retroactively authorize an earlier invocation."
+    ],
+    "required_tests": [
+      "machine_readable_transition_table",
+      "executable_invariant_checks",
+      "model_or_property_tests",
+      "crash_and_restart_tests",
+      "lease_fence_race_tests",
+      "duplicate_delivery_tests",
+      "owner_loss_tests",
+      "unknown_provider_outcome_tests",
+      "replay_and_idempotency_tests",
+      "reconciliation_tests"
+    ]
+  },
+  "analysis_planning_synthesis": {
+    "task_plan_bindings": [
+      "objective_and_revision",
+      "assumptions",
+      "guarantees",
+      "affected_dependency_cone",
+      "required_interfaces",
+      "permitted_paths",
+      "side_effect_class",
+      "acceptance_conditions",
+      "test_and_proof_obligations",
+      "unresolved_questions",
+      "execution_budget",
+      "fallback_and_recovery_rules"
+    ],
+    "analysis": [
+      "ast_and_symbol_analysis_before_model_analysis",
+      "dependency_cones_and_reverse_dependencies",
+      "changed_contracts_and_invariants",
+      "semantic_vs_formatting_or_documentation_classification",
+      "exact_freshness_for_proof_and_test_reuse",
+      "typed_completeness_witness",
+      "minimal_counterexample_and_unsat_core_context",
+      "qualified_craig_interpolation",
+      "bounded_cegar_refinement",
+      "affected_suffix_invalidation"
+    ],
+    "planning": [
+      "decompose_until_each_leaf_has_deterministic_acceptance",
+      "prefer_plan_deltas",
+      "preserve_accepted_unaffected_subplans",
+      "detect_duplicate_or_semantically_equivalent_tasks",
+      "coalesce_identical_proof_test_or_retrieval_work",
+      "separate_value_laden_human_decisions",
+      "reserve_final_validation_budget",
+      "prevent_provider_calls_consuming_validation_reserve"
+    ],
+    "deterministic_transform_allowlist": [
+      "exact_typed_error_migration",
+      "schema_field_migration",
+      "import_path_correction",
+      "stable_api_adapter_generation",
+      "bounded_rename",
+      "generated_vector_update",
+      "known_compatibility_wrapper",
+      "exact_formatting_only_repair"
+    ],
+    "patch_plan_fields": [
+      "base_tree",
+      "intended_semantic_change",
+      "files_and_symbols",
+      "preconditions",
+      "postconditions",
+      "expected_invariants",
+      "required_tests_and_proofs",
+      "scope_limit",
+      "patch_digest"
+    ],
+    "merge_rules": [
+      "reject_semantically_empty_patch",
+      "reject_out_of_scope_paths",
+      "run_secret_and_generated_artifact_checks",
+      "require_current_validation_receipt",
+      "use_small_model_for_bounded_residual_synthesis",
+      "require_named_unresolved_question_for_stronger_model",
+      "never_substitute_llm_statement_for_observation_or_proof"
+    ]
+  },
+  "consolidation": {
+    "single_owner_concerns": [
+      "task_state",
+      "objective_state",
+      "model_routing",
+      "semantic_context",
+      "proof_test_reuse",
+      "repair_planning",
+      "merge_handling",
+      "promotion",
+      "recovery",
+      "event_and_receipt_persistence"
+    ],
+    "duplicate_path_dispositions": [
+      "canonical",
+      "compatibility_adapter",
+      "deprecated",
+      "test_fixture",
+      "removed"
+    ],
+    "compatibility_removal_preconditions": [
+      "migration_adapter_exists",
+      "tests_prove_supported_behavior_equivalence",
+      "callers_have_documented_replacement",
+      "compatibility_path_cannot_claim_authority_independently"
+    ],
+    "legacy_inference_coordinator_broad_rewrite_in_scope": false,
+    "benchmark_capability_and_cid_requirement": "real_not_mock_or_pseudo"
+  },
+  "qualification": {
+    "candidate_first_mode": "shadow",
+    "promotion_requires": [
+      "held_out_replay",
+      "live_cohort",
+      "current_tree_evidence",
+      "operator_authorized_cas"
+    ],
+    "minimum_targets": {
+      "median_live_input_token_reduction_percent": 30,
+      "total_weighted_provider_cost_reduction_percent": 20,
+      "frontier_model_call_reduction_percent": 40,
+      "retry_token_reduction_percent": 25,
+      "low_risk_deterministic_or_small_model_share_percent": 60,
+      "eligible_context_pack_reuse_percent": 50,
+      "manual_recovery_rate_strictly_less_than_percent": 2,
+      "accepted_patch_quality_statistically_meaningful_degradation": false,
+      "overall_wall_time_maximum_regression_percent": 10,
+      "net_savings_after_audit_and_verification_overhead_positive": true
+    },
+    "closed_dispositions": [
+      "non_promoted_unmeasured",
+      "non_promoted_safety_or_quality",
+      "non_promoted_efficiency",
+      "promotion_eligible_operator_authorization_required"
+    ],
+    "honest_negative_receipt_is_task_success": true,
+    "candidate_may_promote_itself": false
+  },
+  "required_deliverables": [
+    "architecture_decision_record",
+    "machine_readable_schemas",
+    "sealed_benchmark_inputs",
+    "telemetry_implementation",
+    "canonical_state_machine_implementation",
+    "deterministic_first_routing_implementation",
+    "cross_repository_context_pack_implementation",
+    "analysis_planning_and_synthesis_improvements",
+    "migration_and_rollback_plan",
+    "focused_property_crash_contract_replay_live_and_negative_tests",
+    "final_machine_readable_release_report",
+    "final_human_readable_report"
+  ],
+  "final_report_required_fields": [
+    "exact_commits_changed_in_each_repository",
+    "board_completion_status",
+    "canonical_architecture_selected",
+    "duplicate_paths_deprecated",
+    "benchmark_population_sample_sizes",
+    "baseline_current_candidate_token_use",
+    "baseline_current_candidate_compute_use",
+    "provider_cost",
+    "model_call_distribution",
+    "deterministic_small_medium_frontier_and_human_route_shares",
+    "test_and_proof_reuse",
+    "retry_and_recovery_rate",
+    "false_positive_and_false_negative_results",
+    "quality_results",
+    "safety_results",
+    "promotion_status",
+    "residual_risks",
+    "next_highest_return_engineering_work"
+  ],
+  "validation_discipline": [
+    "Run focused tests, contract and schema validation, and negative tests for every implementation task.",
+    "Record exact validation commands and bind outputs to the current tree and policy.",
+    "Preserve raw logs as non-authoritative evidence.",
+    "Create authoritative receipts only from admitted validators.",
+    "Do not infer external-effect success from process exit alone.",
+    "Cross-repository contracts validate canonical bytes, real CID equality, unknown fields, numeric bounds, stale identities, missing dependencies, and installed packages without sibling source trees.",
+    "Mock providers and simulated tasks cannot satisfy a live promotion gate."
+  ],
+  "completion_criteria": [
+    "One canonical supervisor state machine owns every production task mutation.",
+    "One canonical deterministic-first router owns executor escalation.",
+    "One canonical ContextPack contract works across Datasets, Kit, and Accelerate.",
+    "Paired baseline, current, and candidate measurements exist.",
+    "At least one live cohort has been measured.",
+    "Token and compute claims use measured evidence.",
+    "Efficiency includes audit and verification overhead.",
+    "Safety hard gates remain zero.",
+    "Candidate changes have a promotion or honest non-promotion decision.",
+    "The final report names residual gaps without creating automatic expansion tasks.",
+    "Current-head tests and package contracts pass.",
+    "The supervisor drains repeated boards without manual database repair, direct state-table edits, or operator credential re-materialization."
+  ],
+  "deferred_backlog": {
+    "automatically_executed": false,
+    "may_create_follow_on_tasks": false
+  }
+}

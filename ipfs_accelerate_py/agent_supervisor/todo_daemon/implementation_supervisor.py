@@ -99,12 +99,16 @@ from ..runtime.multi_supervisor_runner import (
     DatabaseProgramConfigError,
     FAILOVER_FAIL_CLOSED,
     STATE_LIVE_SCHEMA_REVISION_ENV,
+    STATE_GRANT_BROKER_SECRET_FD_ENV,
+    STATE_GRANT_BROKER_SOCKET_ENV,
+    STATE_OWNER_SOCKET_ENV,
     STATE_STORE_LIVE_GENERATION_ENV,
     TASK_SOURCE_LEGACY_MARKDOWN,
     TRUSTED_DUCKDB_HOME_ENV,
     _trusted_duckdb_runtime_environment,
     provider_subprocess_environment,
 )
+from ..runtime.process_security import state_authority_pass_fds
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
 from ..merge.worktree_lifecycle import WorktreeLifecycleStore
 from ..objectives.scan_receipts import (
@@ -1400,6 +1404,9 @@ def _managed_daemon_child_environment(
         REPOSITORY_ROOT_ENV,
         STATE_STORE_LIVE_GENERATION_ENV,
         STATE_LIVE_SCHEMA_REVISION_ENV,
+        STATE_GRANT_BROKER_SOCKET_ENV,
+        STATE_GRANT_BROKER_SECRET_FD_ENV,
+        STATE_OWNER_SOCKET_ENV,
     ):
         value = str(os.environ.get(name, "") or "").strip()
         if value:
@@ -6430,6 +6437,7 @@ class PortalSupervisorConfig:
     task_prefix: str = TASK_HEADER_PREFIX
     board_namespace: str = ""
     state_prefix: str = "portal"
+    accepted_launch_argv: tuple[str, ...] = field(default_factory=tuple)
     database_program: DatabaseProgramConfig | None = None
     reconciliation_only: bool = False
     implement: bool = False
@@ -6840,6 +6848,11 @@ class PortalImplementationSupervisor:
     def _reload_for_control_plane_update(self) -> None:
         """Replace this process image so parent and child import one generation."""
 
+        accepted_argv = (
+            list(self.config.accepted_launch_argv)
+            if self.config.accepted_launch_argv
+            else list(sys.argv[1:])
+        )
         supervisor_script_path = self.config.supervisor_script_path
         if supervisor_script_path is not None:
             script_path = Path(supervisor_script_path)
@@ -6848,7 +6861,7 @@ class PortalImplementationSupervisor:
             arguments = [
                 sys.executable,
                 str(script_path.resolve()),
-                *sys.argv[1:],
+                *accepted_argv,
             ]
         else:
             module_name = (
@@ -6863,7 +6876,7 @@ class PortalImplementationSupervisor:
                 sys.executable,
                 "-m",
                 module_name,
-                *sys.argv[1:],
+                *accepted_argv,
             ]
         os.execv(
             sys.executable,
@@ -8557,6 +8570,7 @@ class PortalImplementationSupervisor:
             # children retain the admitted source root and database authority
             # bindings instead of falling back to an ambient installation.
             child_env=child_environment,
+            child_pass_fds=state_authority_pass_fds(child_environment),
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
                 fast_restart_backoff_seconds=min(2.0, max(0.0, float(self.config.check_interval))),
@@ -18929,6 +18943,7 @@ class PortalImplementationSupervisor:
             cwd=self.config.repo_root,
             text=True,
             env=env,
+            pass_fds=state_authority_pass_fds(env),
         )
         write_text_atomic(self._managed_daemon_pid_path(), f"{process.pid}\n")
         return process
@@ -20138,6 +20153,29 @@ class PortalImplementationSupervisor:
         if option_values("--board-namespace") != {self.board_namespace}:
             return False
 
+        program = self.config.database_program
+        if program is not None:
+            expected_program_options = {
+                "--task-source-kind": program.task_source_kind,
+                "--authority-mode": program.authority_mode,
+                "--state-failover-policy": program.failover_policy,
+                "--quack-endpoint": program.quack_endpoint,
+                "--state-store-id": program.store_id,
+                "--state-store-generation": program.store_generation,
+                "--state-schema-revision": program.schema_revision,
+                "--event-store-path": program.event_store_path,
+                "--runtime-registry-path": program.runtime_registry_path,
+                "--export-profile": program.export_profile,
+            }
+            for option, expected in expected_program_options.items():
+                expected_values = [expected] if expected else []
+                if option_value_list(option) != expected_values:
+                    return False
+            if (
+                "--explicit-legacy-task-source" in tokens
+            ) != program.explicit_legacy:
+                return False
+
         if option_values("--execution-slice-task-id") != set(
             self.config.execution_slice_task_ids
         ):
@@ -20985,7 +21023,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging verbosity",
     )
-    return parser.parse_args(argv)
+    accepted_argv = list(sys.argv[1:] if argv is None else argv)
+    parsed = parser.parse_args(accepted_argv)
+    parsed._accepted_launch_argv = tuple(str(item) for item in accepted_argv)
+    return parsed
 
 
 def supervisor_config_from_args(
@@ -21032,6 +21073,10 @@ def supervisor_config_from_args(
         task_prefix=args.task_prefix,
         board_namespace=str(getattr(args, "board_namespace", "") or ""),
         state_prefix=args.state_prefix,
+        accepted_launch_argv=tuple(
+            str(item)
+            for item in getattr(args, "_accepted_launch_argv", ())
+        ),
         database_program=database_program,
         reconciliation_only=reconciliation_only,
         implement=implement,

@@ -1,0 +1,424 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.agent-supervisor-efficiency-and-state-hardening-v1.scheduler_config@1",
+  "program_identifier": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "taskboard_path": "docs/architecture/agent_supervisor_efficiency_state_hardening.todo.md",
+  "objectives_path": "docs/architecture/agent_supervisor_efficiency_state_hardening.objectives.md",
+  "plan_path": "docs/architecture/AGENT_SUPERVISOR_EFFICIENCY_AND_STATE_HARDENING_PLAN.md",
+  "requirements_path": "docs/architecture/agent_supervisor_efficiency_state_hardening.requirements.json",
+  "requirements_digest": "sha256:734a1c016bbb4e3e896c612c95a7144d6a8846b921784e75a41d90a5f2568e96",
+  "validator_path": "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+  "task_prefix": "ASEH-",
+  "goal_prefix": "ASEH-G",
+  "board_namespace": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "accepted_plan_revision_alias": "ASEH-PLAN-R1",
+  "merge_target_branch": "agent/agent-supervisor-efficiency-and-state-hardening-v1",
+  "source_binding": {
+    "accelerator_required_ancestor": "755f45475cc2d13dacd8b330036c1d597afeddde",
+    "accelerator_planning_revision": "755f45475cc2d13dacd8b330036c1d597afeddde",
+    "accelerator_planning_tree": "729da9f8293ecfa046a0136381a3d3808f9ed140",
+    "accelerator_selected_remote_ref": "origin/main",
+    "accelerator_required_branch": "agent/agent-supervisor-efficiency-and-state-hardening-v1",
+    "bootstrap_task_source": "duckdb",
+    "require_clean_checkout_at_launch": true,
+    "record_repository_revision_at_launch": true,
+    "require_initialized_gitlinks": true,
+    "require_superproject_gitlink_equals_nested_head": true,
+    "require_clean_nested_worktree_at_task_start": true,
+    "record_recursive_repository_forest_at_launch": true,
+    "changed_revision_requires_fresh_inventory_and_baseline": true,
+    "planning_revision_is_runtime_completion_evidence": false,
+    "datasets_submodule_path": "ipfs_datasets_py",
+    "datasets_planning_revision": "209dbe2765593fbc6efe8e9281c34f2e8f6e37a6",
+    "datasets_planning_tree": "95f54df34585d0b736706fd90c83f55954489ad9",
+    "datasets_selected_remote_ref": "origin/integration/datasets-ui-capability-recovery-20260823",
+    "datasets_gitlink_at_accelerator_baseline": "66a02063496fd200f2372b3083e376f1978c6be1",
+    "kit_submodule_path": "ipfs_kit_py",
+    "kit_planning_revision": "ba5508d940fb5b23a6d0d9b2084f5195cd26a671",
+    "kit_planning_tree": "7c71efa93c4e4124d12fa05515868df3a5344b2e",
+    "kit_selected_remote_ref": "origin/feat/pcce-009-proof-context-v01",
+    "kit_gitlink_at_accelerator_baseline": "2564aea1ae35061f2165872aff91e8a40801ab7e"
+  },
+  "initial_projection": {
+    "task_count": 40,
+    "task_dependency_count": 90,
+    "completed_task_ids": [],
+    "ready_task_ids": [
+      "ASEH-000",
+      "ASEH-001"
+    ],
+    "blocked_task_ids": [],
+    "terminal_task_id": "ASEH-075",
+    "goal_count": 9,
+    "root_goal_id": "ASEH-G000"
+  },
+  "database_program": {
+    "authority_mode": "quack",
+    "task_source_kind": "duckdb",
+    "endpoint_secret_handle": "handle:aseh-v1",
+    "quack_endpoint": "quack:127.0.0.1:41487",
+    "store_id": "data/agent_supervisor/efficiency_state_hardening/control.duckdb",
+    "store_generation": "1",
+    "schema_revision": "1",
+    "event_store_path": "data/agent_supervisor/efficiency_state_hardening/events",
+    "runtime_registry_path": "data/agent_supervisor/efficiency_state_hardening/quack-owner",
+    "worktree_root": "data/agent_supervisor/efficiency_state_hardening/worktrees",
+    "export_profile": "aseh-v1",
+    "failover_policy": "fail_closed",
+    "explicit_legacy": false
+  },
+  "operational_control_plane": {
+    "name": "DuckDB + Quack typed state owner",
+    "duckdb_role": "authoritative transactional goals, tasks, lifecycle, schema, CAS, fencing, receipts and projection cursor",
+    "quack_role": "mandatory loopback transport and exclusive fenced typed-command state-owner boundary",
+    "canonical_gateway": "IntentRepository/DatabaseTaskSource over TypedStateOwnerCommandGateway@1",
+    "direct_multi_process_duckdb_file_open_permitted": false,
+    "automatic_file_fallback_permitted": false,
+    "outage_policy": "fail_closed",
+    "markdown_is_authority": false
+  },
+  "bootstrap_handoff_repair": {
+    "task_id": "ASEH-BOOTSTRAP-001",
+    "stable_identity": "agent-supervisor-efficiency-and-state-hardening-v1/ASEH-BOOTSTRAP-001@ASEH-PLAN-R1",
+    "scope": "PID-bound typed state-owner grants for the existing configured implementation-supervisor path",
+    "owning_repository": "ipfs_accelerate_py",
+    "dependencies": [],
+    "exact_declared_outputs": [
+      "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+      "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+    ],
+    "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+    "authority_requirement": "repair only the existing configured IntentRepository/DatabaseTaskSource to typed Quack-owner handoff; no new supervisor, store, daemon family, or writable authority",
+    "terminal_success_criteria": "The configured implementation-supervisor path obtains a kernel-PID-bound live handoff, opens no second writable DuckDB authority, rejects stale or foreign identities, strips the descriptor from provider and validator children, persists no raw credential, and passes the exact focused validator.",
+    "terminal_non_success_criteria": "Any second writable authority, direct multi-process DuckDB open, automatic file fallback, reusable or leaked credential, stale identity acceptance, child descriptor exposure, raw-token persistence, or failed focused validator prevents materialization; owner-restart qualification remains bounded to ASEH-044.",
+    "creates_new_supervisor": false,
+    "creates_new_store": false,
+    "required_before_materialization": true,
+    "validation": "python3 -m pytest -q test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+  },
+  "authoritative_board_projection_repair": {
+    "mode": "sealed_bootstrap_projection",
+    "automatic_repair_before_launch": false,
+    "allowed_drift": "none",
+    "bootstrap_receipt_path": "data/agent_supervisor/efficiency_state_hardening/evidence/bootstrap/bootstrap-materialization.json",
+    "canonical_authority": "DuckDB/DatabaseTaskSource@1 over typed Quack owner",
+    "canonical_block_mutation_permitted": false,
+    "markdown_task_mutation_permitted": false
+  },
+  "ducklake_projection_program": {
+    "mode": "enabled_non_authoritative",
+    "authority": false,
+    "scheduling_prerequisite": false,
+    "acceptance_prerequisite": false,
+    "completion_prerequisite": false,
+    "source_authority": "DuckDB committed bootstrap receipt and outbox cursor",
+    "catalog_path": "data/agent_supervisor/efficiency_state_hardening/ducklake/catalog.duckdb",
+    "data_path": "data/agent_supervisor/efficiency_state_hardening/ducklake/data",
+    "logical_datasets": [
+      "bootstrap_history",
+      "task_efficiency_history",
+      "paired_benchmark_observations"
+    ],
+    "permitted_purposes": [
+      "append-only history projection",
+      "analytics",
+      "benchmark comparison"
+    ],
+    "outage_policy": "record typed projection unavailability and replay idempotently without blocking control-plane work",
+    "may_grant_authority": false
+  },
+  "max_lanes": 4,
+  "strict_task_sharding": false,
+  "idle_lane_work_stealing": "",
+  "exit_when_all_tracks_terminal": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "objective_goal_refinement_enabled": false,
+  "retry_budget_guardrail_enabled": true,
+  "dependency_guardrail_enabled": true,
+  "reconciliation_guardrail_enabled": true,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 20,
+  "check_interval_seconds": 10,
+  "stale_seconds": 1800,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 8,
+  "max_task_attempts": 4,
+  "implementation_retry_budget": 4,
+  "validation_retry_budget": 4,
+  "merge_retry_budget": 4,
+  "implementation_timeout_seconds": 14400,
+  "implementation_max_timeout_seconds": 21600,
+  "implementation_log_stall_seconds": 1200,
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py",
+    "ipfs_kit_py"
+  ],
+  "protected_paths": [
+    "docs/architecture/AGENT_SUPERVISOR_EFFICIENCY_AND_STATE_HARDENING_PLAN.md",
+    "docs/architecture/agent_supervisor_efficiency_state_hardening.requirements.json",
+    "docs/architecture/agent_supervisor_efficiency_state_hardening.objectives.md",
+    "docs/architecture/agent_supervisor_efficiency_state_hardening.todo.md",
+    "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/bootstrap_baseline.json",
+    "docs/architecture/agent_supervisor/PROGRAMS.md",
+    "config/agent_supervisor_efficiency_state_hardening_scheduler.json",
+    "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
+  ],
+  "runtime_paths": {
+    "root": "data/agent_supervisor/efficiency_state_hardening",
+    "state": "data/agent_supervisor/efficiency_state_hardening/state",
+    "worktrees": "data/agent_supervisor/efficiency_state_hardening/worktrees",
+    "merge_queue": "data/agent_supervisor/efficiency_state_hardening/merge-queue",
+    "logs": "data/agent_supervisor/efficiency_state_hardening/logs",
+    "evidence": "data/agent_supervisor/efficiency_state_hardening/evidence",
+    "quack_owner": "data/agent_supervisor/efficiency_state_hardening/quack-owner"
+  },
+  "lanes": [
+    {
+      "index": 0,
+      "name": "aseh-lane-0",
+      "strict_shard_remainder": 0,
+      "initial_task_ids": [
+        "ASEH-000"
+      ],
+      "initial_focus": "authority-inventory"
+    },
+    {
+      "index": 1,
+      "name": "aseh-lane-1",
+      "strict_shard_remainder": 1,
+      "initial_task_ids": [
+        "ASEH-001"
+      ],
+      "initial_focus": "baseline-seal"
+    },
+    {
+      "index": 2,
+      "name": "aseh-lane-2",
+      "strict_shard_remainder": 2,
+      "initial_task_ids": [],
+      "initial_focus": "contracts-and-state"
+    },
+    {
+      "index": 3,
+      "name": "aseh-lane-3",
+      "strict_shard_remainder": 3,
+      "initial_task_ids": [],
+      "initial_focus": "measurement-and-qualification"
+    }
+  ],
+  "goal_hierarchy": {
+    "ASEH-G000": [
+      "ASEH-G010",
+      "ASEH-G020",
+      "ASEH-G030",
+      "ASEH-G040",
+      "ASEH-G050",
+      "ASEH-G060",
+      "ASEH-G070",
+      "ASEH-G080"
+    ]
+  },
+  "task_groups": {
+    "ASEH-G010": [
+      "ASEH-000",
+      "ASEH-001"
+    ],
+    "ASEH-G020": [
+      "ASEH-010",
+      "ASEH-011",
+      "ASEH-012",
+      "ASEH-013",
+      "ASEH-014",
+      "ASEH-015"
+    ],
+    "ASEH-G030": [
+      "ASEH-020",
+      "ASEH-021",
+      "ASEH-022",
+      "ASEH-023",
+      "ASEH-024"
+    ],
+    "ASEH-G040": [
+      "ASEH-030",
+      "ASEH-031",
+      "ASEH-032",
+      "ASEH-033",
+      "ASEH-034",
+      "ASEH-035"
+    ],
+    "ASEH-G050": [
+      "ASEH-040",
+      "ASEH-041",
+      "ASEH-042",
+      "ASEH-043",
+      "ASEH-044",
+      "ASEH-045"
+    ],
+    "ASEH-G060": [
+      "ASEH-050",
+      "ASEH-051",
+      "ASEH-052",
+      "ASEH-053",
+      "ASEH-054",
+      "ASEH-055"
+    ],
+    "ASEH-G070": [
+      "ASEH-060",
+      "ASEH-061",
+      "ASEH-062"
+    ],
+    "ASEH-G080": [
+      "ASEH-070",
+      "ASEH-071",
+      "ASEH-072",
+      "ASEH-073",
+      "ASEH-074",
+      "ASEH-075"
+    ]
+  },
+  "waves": [
+    {
+      "id": "W0",
+      "task_ids": [
+        "ASEH-000",
+        "ASEH-001"
+      ]
+    },
+    {
+      "id": "W1",
+      "task_ids": [
+        "ASEH-010",
+        "ASEH-020",
+        "ASEH-030",
+        "ASEH-040",
+        "ASEH-050"
+      ]
+    },
+    {
+      "id": "W2",
+      "task_ids": [
+        "ASEH-011",
+        "ASEH-021",
+        "ASEH-031",
+        "ASEH-032",
+        "ASEH-041",
+        "ASEH-051"
+      ]
+    },
+    {
+      "id": "W3",
+      "task_ids": [
+        "ASEH-012",
+        "ASEH-022",
+        "ASEH-033",
+        "ASEH-042",
+        "ASEH-052",
+        "ASEH-053",
+        "ASEH-054"
+      ]
+    },
+    {
+      "id": "W4",
+      "task_ids": [
+        "ASEH-013",
+        "ASEH-023",
+        "ASEH-034",
+        "ASEH-043",
+        "ASEH-055"
+      ]
+    },
+    {"id": "W5", "task_ids": ["ASEH-014", "ASEH-024", "ASEH-044"]},
+    {"id": "W6", "task_ids": ["ASEH-015", "ASEH-035", "ASEH-045"]},
+    {"id": "W7", "task_ids": ["ASEH-060"]},
+    {"id": "W8", "task_ids": ["ASEH-061"]},
+    {"id": "W9", "task_ids": ["ASEH-062"]},
+    {"id": "W10", "task_ids": ["ASEH-070"]},
+    {"id": "W11", "task_ids": ["ASEH-071"]},
+    {"id": "W12", "task_ids": ["ASEH-072"]},
+    {"id": "W13", "task_ids": ["ASEH-073"]},
+    {"id": "W14", "task_ids": ["ASEH-074"]},
+    {"id": "W15", "task_ids": ["ASEH-075"]}
+  ],
+  "provider": {
+    "primary_provider_id": "grok_cli",
+    "primary_model_id": "grok-4.6",
+    "fallback_provider_id": "codex",
+    "fallback_model_id": "gpt-5.6-terra",
+    "fallback_trigger": "primary_quota_exhausted",
+    "fallback_reasoning_effort": "high",
+    "max_concurrency": 4,
+    "secrets_from_environment_only": true,
+    "secrets_in_argv_prompts_logs_or_receipts": false
+  },
+  "authority_policy": {
+    "duckdb_transactional_authority": true,
+    "quack_exclusive_state_owner_transport": true,
+    "typed_state_owner_grants_required": true,
+    "ducklake_projection_authority": false,
+    "ducklake_projection_is_scheduling_prerequisite": false,
+    "ducklake_projection_is_acceptance_prerequisite": false,
+    "markdown_is_completion_authority": false,
+    "task_board_status_is_completion_evidence": false,
+    "direct_multi_process_duckdb_file_open_permitted": false,
+    "automatic_quack_to_file_fallback": false,
+    "provider_or_model_claim_is_completion_authority": false,
+    "one_authoritative_store_per_mutable_semantic_fact": true,
+    "deterministic_current_tree_admission_required": true,
+    "exact_receipt_identity_required": true,
+    "unknown_ownership_disposition": "typed_blocker",
+    "context_pack_semantic_owner": "ipfs_datasets_py",
+    "durable_byte_owner": "ipfs_kit_py",
+    "execution_and_reuse_admission_owner": "ipfs_accelerate_py",
+    "candidate_self_promotion": false
+  },
+  "autonomy_ceiling": {
+    "candidate_may_raise_ceiling": false,
+    "high_risk_requires_human_approval": true,
+    "public_api_state_provider_receipt_or_cross_package_migration_mode": "proposal_only",
+    "automatic_operator_classes": [
+      "typed_contract_definition",
+      "instrumentation",
+      "deterministic_analysis",
+      "hermetic_fixture",
+      "bounded_internal_adapter",
+      "offline_evaluation"
+    ]
+  },
+  "completion_policy": {
+    "terminal_task_id": "ASEH-075",
+    "all_task_dependencies_terminal_required": true,
+    "goal_completion_contracts_required": true,
+    "current_tree_required": true,
+    "active_mutating_claims_empty_required": true,
+    "merge_queue_settled_required": true,
+    "blocking_obligations_empty_required": true,
+    "required_receipts_and_seals_verify": true,
+    "non_success_terminals_never_report_success": true,
+    "ducklake_outage_cannot_block_core_completion": true,
+    "final_report_required": true,
+    "promotion_requires_operator_authorized_cas": true
+  }
+}

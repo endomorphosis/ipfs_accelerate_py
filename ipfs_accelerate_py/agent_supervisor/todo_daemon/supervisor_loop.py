@@ -69,6 +69,7 @@ class SupervisorLoopConfig:
     max_restarts: int = 0
     latest_log_path: Optional[Path] = None
     child_env: Mapping[str, str] = field(default_factory=dict)
+    child_pass_fds: tuple[int, ...] = ()
     status_static_fields: Mapping[str, Any] = field(default_factory=dict)
     status_extra_fields: Mapping[str, Any] = field(default_factory=dict)
     watchdog_quiescent_status_predicate: Optional[
@@ -178,6 +179,7 @@ class SupervisorLoop:
             child_pid_path=self.config.spec.child_pid_path,
             latest_log_path=self.config.latest_log_path or self.config.spec.latest_log_path,
             env=self.config.child_env,
+            pass_fds=self.config.child_pass_fds,
         )
 
     def _write_status(

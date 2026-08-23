@@ -2707,7 +2707,8 @@ def _execute_quack_owner_mutation(
     target = quack_owner_mutation_dir()
     if target is None:
         raise DuckDBConnectionPolicyError(
-            "quack owner mutation store does not resolve to a bounded inbox"
+            "quack transport is read-only when the owner mutation store "
+            "does not resolve to a bounded inbox"
         )
     try:
         inbox_fd = open_mutation_inbox_directory(target)
@@ -2724,7 +2725,7 @@ def _execute_quack_owner_mutation(
         bound = dict(parameters)
     else:
         bound = list(parameters)
-    token = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or "")
+    token = resolve_quack_attach_token()
     store_id = str(
         os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
     )
@@ -2921,10 +2922,12 @@ def persist_quack_attach_token_vault(token: str = "") -> Path | None:
 def resolve_quack_attach_token(token: str = "") -> str:
     """Resolve the current owner attach token.
 
-    The vault file is preferred over a process environment value so a
-    restarted owner generation is not blocked by a stale supervisor env.
-    When the vault is missing, persist the live env token so owner recycle
-    and operator status can keep draining the board.
+    A configured live broker is authoritative and is always consulted before
+    legacy vault or environment material.  An incomplete or denied broker
+    binding fails closed; it never falls back to a possibly stale credential.
+    Vault and environment fallback remains only for launchers that do not yet
+    carry a broker binding, including the legacy env-to-vault compatibility
+    path.
     """
 
     explicit = str(token or "").strip()
@@ -2934,6 +2937,47 @@ def resolve_quack_attach_token(token: str = "") -> str:
                 "quack attach token must be an opaque url-safe secret"
             )
         return explicit
+    broker_socket = str(
+        os.environ.get(
+            "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET", ""
+        )
+        or ""
+    ).strip()
+    broker_descriptor = str(
+        os.environ.get(
+            "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD", ""
+        )
+        or ""
+    ).strip()
+    if broker_socket or broker_descriptor:
+        if not broker_socket or not broker_descriptor:
+            raise DuckDBConnectionPolicyError(
+                "Quack credential broker binding is incomplete"
+            )
+        store_id = str(
+            os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
+        ).strip()
+        if not store_id:
+            raise DuckDBConnectionPolicyError(
+                "Quack credential broker lacks an exact store binding"
+            )
+        from .typed_state_owner import (
+            TypedStateOwnerError,
+            kernel_process_birth_id,
+            request_quack_attach_credential,
+        )
+
+        try:
+            return request_quack_attach_credential(
+                store_id=store_id,
+                client_id=f"quack-attach:{os.getpid()}",
+                process_birth_id=kernel_process_birth_id(),
+                timeout_seconds=15.0,
+            )
+        except (OSError, TypedStateOwnerError) as exc:
+            raise DuckDBConnectionPolicyError(
+                "Quack credential broker denied the live attach"
+            ) from exc
     vault = quack_token_vault_path()
     if vault is not None:
         material = _read_quack_token_vault(vault)
@@ -2975,7 +3019,7 @@ def _probe_quack_connection(connection: Any) -> None:
     _consume_duckdb_result(probed)
 
 
-def _attach_quack_once(uri: str, secret: str) -> Any:
+def _attach_quack_once(uri: str, secret: str) -> tuple[Any, dict[str, Any]]:
     import duckdb
 
     connection = duckdb.connect(":memory:")
@@ -3073,14 +3117,13 @@ def _attach_quack_once(uri: str, secret: str) -> Any:
             raise DuckDBConnectionPolicyError(
                 "quack transport store generation does not match server binding"
             )
-        connection._quack_live_binding = binding
     except Exception:
         try:
             connection.close()
         except Exception:
             pass
         raise
-    return connection
+    return connection, binding
 
 
 def _open_quack_transport_connection_once(
@@ -3139,7 +3182,7 @@ def _open_quack_transport_connection_once(
                     uri=text
                 )
             try:
-                raw = _attach_quack_once(text, secret)
+                raw, binding = _attach_quack_once(text, secret)
             except BaseException as exc:
                 last_error = exc
                 if (
@@ -3155,7 +3198,6 @@ def _open_quack_transport_connection_once(
             wrapped = DuckDBConnection.wrap(raw)
             wrapped._default_catalog = _QUACK_CONTROL_CATALOG
             wrapped._pooled = True
-            binding = getattr(raw, "_quack_live_binding", None)
             wrapped._quack_mutation_binding = (
                 dict(binding) if isinstance(binding, Mapping) else None
             )
