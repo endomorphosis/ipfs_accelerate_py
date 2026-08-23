@@ -21,6 +21,7 @@ from typing import Any, ClassVar, Final
 
 from ..proof.formal_verification_contracts import CanonicalContract
 from .contracts import (
+    ARTIFACT_TYPES_BY_SCHEMA,
     MAX_ITEMS,
     MAX_MAPPING_ITEMS,
     PROCEDURE_CONTRACT_VERSION,
@@ -1212,6 +1213,15 @@ class ExperimentPlanner:
             reason = ExperimentReason.BINDING_MISMATCH
         elif isolation_reason is not None:
             reason = isolation_reason
+        elif (
+            world is not None
+            and experiment.isolation.kind is IsolationKind.AUTHORIZED_DISPOSABLE_WORKTREE
+            and (
+                experiment.isolation.target_id not in world.worktree_ids
+                or experiment.isolation.lease_id not in world.lease_ids
+            )
+        ):
+            reason = ExperimentReason.UNAUTHORIZED_WORKTREE
         elif _forbidden_effects(experiment):
             reason = ExperimentReason.FORBIDDEN_EFFECT
         elif not _effect_matches_isolation(experiment):
@@ -1309,14 +1319,10 @@ def _evaluate_rule(rule: DecisionRule, observed_facts: Mapping[str, Any]) -> tup
     if rule.observation_binding not in observed_facts:
         raise ExperimentObservationError("required observation binding is absent from fixture facts")
     observed = observed_facts[rule.observation_binding]
-    if observed == rule.hypothesis_operand:
-        return ExperimentOutcome.HYPOTHESIS, rule.hypothesis_option_id, True
-    if observed == rule.counterfactual_operand:
-        return ExperimentOutcome.COUNTERFACTUAL, rule.counterfactual_option_id, False
     if rule.rule_class is DecisionRuleClass.INTEGER_THRESHOLD:
         if isinstance(observed, bool) or not isinstance(observed, int):
             raise ExperimentObservationError("integer-threshold rules require an integer observation")
-        if not isinstance(rule.hypothesis_operand, int) or isinstance(rule.hypothesis_operand, bool):
+        if isinstance(rule.hypothesis_operand, bool) or not isinstance(rule.hypothesis_operand, int):
             raise ExperimentDeclarationError("integer-threshold hypothesis operand must be an integer")
         if observed >= rule.hypothesis_operand:
             return ExperimentOutcome.HYPOTHESIS, rule.hypothesis_option_id, True
@@ -1329,6 +1335,10 @@ def _evaluate_rule(rule: DecisionRule, observed_facts: Mapping[str, Any]) -> tup
             raise ExperimentDeclarationError("closed-membership operand must be a sequence")
         if observed in membership:
             return ExperimentOutcome.HYPOTHESIS, rule.hypothesis_option_id, True
+        return ExperimentOutcome.COUNTERFACTUAL, rule.counterfactual_option_id, False
+    if observed == rule.hypothesis_operand:
+        return ExperimentOutcome.HYPOTHESIS, rule.hypothesis_option_id, True
+    if observed == rule.counterfactual_operand:
         return ExperimentOutcome.COUNTERFACTUAL, rule.counterfactual_option_id, False
     return ExperimentOutcome.INCONCLUSIVE, "", False
 
@@ -1428,6 +1438,9 @@ class ShadowExperimentRunner:
             observation_artifact=observation_artifact,
             evaluation_artifact=evaluation_artifact,
         )
+
+
+ARTIFACT_TYPES_BY_SCHEMA[ExperimentDecision.SCHEMA] = ExperimentDecision
 
 
 __all__ = [
