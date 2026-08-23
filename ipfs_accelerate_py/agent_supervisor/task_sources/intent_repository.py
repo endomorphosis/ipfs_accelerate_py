@@ -2509,35 +2509,43 @@ class IntentRepository:
                     t.task_cid, t.task_alias, t.goal_cid, t.plan_cid, t.objective_id,
                     t.ordinal, t.status, t.revision, t.priority, t.created_at,
                     t.updated_at, t.identity_json, t.body_json,
-                    coalesce((
-                        SELECT json_group_array(d.dependency_task_cid)
-                        FROM {deps} d WHERE d.task_cid = t.task_cid
-                    ), '[]'),
-                    coalesce((
-                        SELECT json_group_array(json_object(
-                            'ordinal', o.ordinal,
-                            'path', o.path,
-                            'effect', o.effect_json
-                        ))
-                        FROM {outputs} o WHERE o.task_cid = t.task_cid
-                    ), '[]'),
-                    coalesce((
-                        SELECT json_group_array(json_object(
-                            'ordinal', a.ordinal,
-                            'criterion', a.criterion,
-                            'evidence_policy', a.evidence_policy_json
-                        ))
-                        FROM {acceptance} a WHERE a.task_cid = t.task_cid
-                    ), '[]'),
-                    coalesce((
-                        SELECT json_group_array(json_object(
-                            'ordinal', v.ordinal,
-                            'argv', v.argv_json,
-                            'policy', v.policy_json
-                        ))
-                        FROM {validations} v WHERE v.task_cid = t.task_cid
-                    ), '[]')
+                    coalesce(dep.deps, '[]'),
+                    coalesce(out.outputs, '[]'),
+                    coalesce(acc.acceptance, '[]'),
+                    coalesce(val.validations, '[]')
                 FROM {tasks} t
+                LEFT JOIN (
+                    SELECT task_cid, json_group_array(dependency_task_cid) AS deps
+                    FROM {deps}
+                    GROUP BY task_cid
+                ) dep ON dep.task_cid = t.task_cid
+                LEFT JOIN (
+                    SELECT task_cid, json_group_array(json_object(
+                        'ordinal', ordinal,
+                        'path', path,
+                        'effect', effect_json
+                    )) AS outputs
+                    FROM {outputs}
+                    GROUP BY task_cid
+                ) out ON out.task_cid = t.task_cid
+                LEFT JOIN (
+                    SELECT task_cid, json_group_array(json_object(
+                        'ordinal', ordinal,
+                        'criterion', criterion,
+                        'evidence_policy', evidence_policy_json
+                    )) AS acceptance
+                    FROM {acceptance}
+                    GROUP BY task_cid
+                ) acc ON acc.task_cid = t.task_cid
+                LEFT JOIN (
+                    SELECT task_cid, json_group_array(json_object(
+                        'ordinal', ordinal,
+                        'argv', argv_json,
+                        'policy', policy_json
+                    )) AS validations
+                    FROM {validations}
+                    GROUP BY task_cid
+                ) val ON val.task_cid = t.task_cid
                 {where_sql}
                 {order_sql}
                 """
