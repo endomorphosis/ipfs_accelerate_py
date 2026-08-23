@@ -71795,6 +71795,14 @@ _QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS = 30
 DATABASE_DECLARED_OUTPUT_REARM_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-declared-output-rearm@1"
 )
+DATABASE_POST_MERGE_RECOVERY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-post-merge-declared-output-recovery@1"
+)
+DATABASE_INVALID_METADATA_MERGE_SETTLEMENT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-invalid-metadata-merge-settlement@1"
+)
 _TERMINAL_PORTAL_RECONCILE_SKIP_STATUSES = frozenset(
     {
         "blocked",
@@ -72422,6 +72430,12 @@ class DatabaseImplementationDaemon:
         self._pooled_worktree_create_recovery_fn = (
             pooled_worktree_create_recovery_fn
         )
+        self._post_merge_recovery_fn: Callable[[], Mapping[str, Any] | None] | None = (
+            None
+        )
+        self._merge_queue: Any = None
+        self._merge_repo_root: Path | None = None
+        self._merge_target_branch = ""
         self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
@@ -72779,6 +72793,198 @@ class DatabaseImplementationDaemon:
             self._pooled_worktree_create_recovery_fn = (
                 pooled_worktree_create_recovery_fn
             )
+
+    def bind_post_merge_recovery(
+        self,
+        callback: Callable[[], Mapping[str, Any] | None],
+    ) -> None:
+        """Bind one request-routed merge recovery reconciler.
+
+        The callback is deliberately separate from provider execution: an
+        exhausted or terminal database task can leave a validated merge
+        candidate in quarantine while there is no claim eligible to dispatch
+        a provider.  Only an explicitly authorised production daemon may bind
+        this maintenance path.
+        """
+
+        self._require_execution_authority("bind post-merge recovery")
+        if not callable(callback):
+            raise TypeError("post-merge recovery callback must be callable")
+        with self._lock:
+            if self._post_merge_recovery_fn is not None:
+                raise DatabaseImplementationAuthorityError(
+                    "post-merge recovery callback is already bound"
+                )
+            self._post_merge_recovery_fn = callback
+
+    def bind_merge_train_recovery(
+        self,
+        *,
+        merge_queue: Any,
+        repo_root: Path | str,
+        merge_target_branch: str,
+    ) -> None:
+        """Bind the shared merge queue for invalid-metadata quarantine settlement.
+
+        Database lanes do not otherwise consume the merge train.  Leftover
+        portal-projection rows quarantined for empty cross-board authority
+        metadata must still be settled when their declared outputs are
+        already on the target, even if a later Quack attach fails.
+        """
+
+        self._require_execution_authority("bind merge-train recovery")
+        branch = str(merge_target_branch or "").strip()
+        if merge_queue is None or not branch:
+            raise DatabaseImplementationAuthorityError(
+                "merge-train recovery requires a bound queue and target branch"
+            )
+        with self._lock:
+            if self._merge_queue is not None:
+                raise DatabaseImplementationAuthorityError(
+                    "merge-train recovery is already bound"
+                )
+            self._merge_queue = merge_queue
+            self._merge_repo_root = Path(repo_root)
+            self._merge_target_branch = branch
+
+    def _settle_invalid_metadata_portal_quarantines(self) -> dict[str, Any]:
+        """Settle leftover invalid-metadata portal quarantines before DuckDB work."""
+
+        schema = DATABASE_INVALID_METADATA_MERGE_SETTLEMENT_SCHEMA
+        if self._merge_queue is None or self._merge_repo_root is None:
+            return {
+                "schema": schema,
+                "attempted": False,
+                "settled": 0,
+                "reason": "merge_train_recovery_not_configured",
+                "write_count": 0,
+            }
+        try:
+            from ..merge.merge_train import MergeTrain
+
+            train = MergeTrain(
+                repo_root=self._merge_repo_root,
+                queue=self._merge_queue,
+                target_branch=self._merge_target_branch,
+                max_attempts=int(
+                    getattr(self._merge_queue, "max_attempts", 3)
+                ),
+            )
+            settled = 0
+            results: list[dict[str, Any]] = []
+            while settled < 8:
+                result = train.recover_one_integrated_quarantine(
+                    request_filter=(
+                        train._portal_projection_invalid_metadata_already_on_target
+                    ),
+                )
+                if not isinstance(result, Mapping):
+                    break
+                settled += 1
+                results.append(
+                    {
+                        "request_id": str(result.get("request_id") or ""),
+                        "status": str(result.get("status") or ""),
+                        "reason": str(result.get("reason") or ""),
+                    }
+                )
+                if str(result.get("status") or "") != "already_merged":
+                    break
+            return {
+                "schema": schema,
+                "attempted": True,
+                "settled": settled,
+                "results": results,
+                "write_count": settled,
+            }
+        except Exception as exc:
+            return {
+                "schema": schema,
+                "attempted": True,
+                "settled": 0,
+                "reason": "merge_train_settlement_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-2000:],
+                "durable_state_uncertain": True,
+                "write_count": 1,
+            }
+
+    def _run_post_merge_recovery(self) -> dict[str, Any]:
+        callback = self._post_merge_recovery_fn
+        if not callable(callback):
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": False,
+                "recovered": False,
+                "reason": "post_merge_recovery_not_configured",
+                "write_count": 0,
+            }
+        try:
+            raw = callback()
+        except Exception as exc:
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": False,
+                "reason": "post_merge_recovery_callback_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-2000:],
+                "durable_state_uncertain": True,
+                "write_count": 1,
+            }
+        if raw is None:
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": False,
+                "reason": "no_recoverable_post_merge_request",
+                "write_count": 0,
+            }
+        if not isinstance(raw, Mapping):
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": False,
+                "reason": "post_merge_recovery_result_invalid",
+                "durable_state_uncertain": True,
+                "write_count": 1,
+            }
+        result = dict(raw)
+        raw_write_count = result.get("write_count", 0)
+        envelope_invalid = (
+            result.get("schema") != DATABASE_POST_MERGE_RECOVERY_SCHEMA
+            or result.get("attempted") is not True
+            or not isinstance(result.get("recovered"), bool)
+            or (
+                result.get("recovered") is True
+                and not isinstance(result.get("changed"), bool)
+            )
+            or (
+                result.get("recovered") is False
+                and not str(result.get("reason") or "").strip()
+            )
+        )
+        write_count_invalid = (
+            isinstance(raw_write_count, bool)
+            or not isinstance(raw_write_count, int)
+            or raw_write_count < 0
+            or raw_write_count > 1024
+        )
+        if envelope_invalid or write_count_invalid:
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": False,
+                "reason": (
+                    "post_merge_recovery_result_invalid"
+                    if envelope_invalid
+                    else "post_merge_recovery_write_count_invalid"
+                ),
+                "durable_state_uncertain": True,
+                "write_count": 1,
+            }
+        result["write_count"] = raw_write_count
+        return result
 
     def _require_execution_authority(self, operation: str) -> None:
         """Require the explicit real-execution permit for a mutating phase.
@@ -83746,6 +83952,10 @@ class DatabaseImplementationDaemon:
         if not self.require_real_execution:
             return self._execution_disabled_observation()
         output_rearm = self._rearm_blocked_tasks_with_outputs_on_head()
+        merge_quarantine_settlement = (
+            self._settle_invalid_metadata_portal_quarantines()
+        )
+        post_merge_recovery_reconciliation = self._run_post_merge_recovery()
         completion_reconciliations = self._run_reconciliation_step(
             self.reconcile_prepared_task_completions
         )
@@ -83789,7 +83999,9 @@ class DatabaseImplementationDaemon:
             self.reconcile_inflight_deferral_blocks
         )
         reconciliation_write_count = (
-            len(completion_reconciliations)
+            int(merge_quarantine_settlement.get("write_count") or 0)
+            + int(post_merge_recovery_reconciliation.get("write_count") or 0)
+            + len(completion_reconciliations)
             + len(expired_attempt_reconciliations)
             + len(landed_merge_reconciliations)
             + len(unknown_callback_reopens)
@@ -83925,6 +84137,8 @@ class DatabaseImplementationDaemon:
                     "stale_in_progress_unstalls": stale_in_progress_unstalls,
                     "inflight_deferral_unstalls": inflight_deferral_unstalls,
                     "declared_output_rearm": output_rearm,
+                    "merge_quarantine_settlement": merge_quarantine_settlement,
+                    "post_merge_recovery": post_merge_recovery_reconciliation,
                 }
 
         attempt = self.claim_next()
@@ -83975,6 +84189,8 @@ class DatabaseImplementationDaemon:
                 "stale_in_progress_unstalls": stale_in_progress_unstalls,
                 "inflight_deferral_unstalls": inflight_deferral_unstalls,
                 "declared_output_rearm": output_rearm,
+                "merge_quarantine_settlement": merge_quarantine_settlement,
+                "post_merge_recovery": post_merge_recovery_reconciliation,
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -84015,6 +84231,8 @@ class DatabaseImplementationDaemon:
             "stale_in_progress_unstalls": stale_in_progress_unstalls,
             "inflight_deferral_unstalls": inflight_deferral_unstalls,
             "declared_output_rearm": output_rearm,
+            "merge_quarantine_settlement": merge_quarantine_settlement,
+            "post_merge_recovery": post_merge_recovery_reconciliation,
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,

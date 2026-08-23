@@ -2769,3 +2769,96 @@ def test_database_portal_attempt_projection_verifier_rejects_tampering(
             expected_task_alias="LGSWF-004",
             expected_task_cid="task:cid:004",
         )
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_merge_train_recovery_is_inert_until_bound(tmp_path: Path) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:merge-train-recovery",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    try:
+        settlement = daemon._settle_invalid_metadata_portal_quarantines()
+        recovery = daemon._run_post_merge_recovery()
+        assert settlement["attempted"] is False
+        assert settlement["reason"] == "merge_train_recovery_not_configured"
+        assert settlement["write_count"] == 0
+        assert recovery["attempted"] is False
+        assert recovery["reason"] == "post_merge_recovery_not_configured"
+        assert recovery["write_count"] == 0
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="bound queue and target branch",
+        ):
+            daemon.bind_merge_train_recovery(
+                merge_queue=None,
+                repo_root=tmp_path,
+                merge_target_branch="",
+            )
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_merge_train_recovery_bind_is_one_shot(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        checkout_repository_id,
+    )
+    from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "recovery@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Recovery Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README").write_text("seed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True)
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:merge-train-bind",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    try:
+        daemon.bind_merge_train_recovery(
+            merge_queue=queue,
+            repo_root=repo,
+            merge_target_branch="main",
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="already bound",
+        ):
+            daemon.bind_merge_train_recovery(
+                merge_queue=queue,
+                repo_root=repo,
+                merge_target_branch="main",
+            )
+        settlement = daemon._settle_invalid_metadata_portal_quarantines()
+        assert settlement["attempted"] is True
+        assert settlement["settled"] == 0
+    finally:
+        daemon.close()
