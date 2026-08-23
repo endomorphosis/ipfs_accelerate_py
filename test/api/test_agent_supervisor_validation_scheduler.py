@@ -668,6 +668,8 @@ def test_validation_runtime_seals_nested_python_launcher_and_cleans_descriptor()
         finally:
             os.close(descriptor)
         assert receipt.sealed is True
+        assert receipt.inherited_fds
+        assert int(Path(launcher_path).name) in receipt.inherited_fds
         assert receipt.executable == launcher_path
         assert receipt.content_sha256 == hashlib.sha256(payload).hexdigest()
         assert (
@@ -687,7 +689,8 @@ def test_validation_runtime_seals_nested_python_launcher_and_cleans_descriptor()
             VALIDATION_RUFF_EXECUTABLE_STAT_ENV,
         } & set(child_environment)
         if environment[VALIDATION_RUFF_EXECUTABLE_MODE_ENV] == "sealed-memfd":
-            assert ruff_path.startswith(f"/proc/{os.getpid()}/fd/")
+            assert ruff_path.startswith("/proc/self/fd/")
+            assert int(Path(ruff_path).name) in receipt.inherited_fds
             assert Path(ruff_path).is_file()
             assert hashlib.sha256(Path(ruff_path).read_bytes()).hexdigest() == (
                 environment[VALIDATION_RUFF_EXECUTABLE_SHA256_ENV]
@@ -697,6 +700,71 @@ def test_validation_runtime_seals_nested_python_launcher_and_cleans_descriptor()
     assert not Path(launcher_path).exists()
     if ruff_path:
         assert not Path(ruff_path).exists()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="non-dumpable state-authority isolation is Linux-specific",
+)
+def test_validation_runner_uses_only_inherited_sealed_fds_when_parent_is_non_dumpable() -> None:
+    script = """
+import json
+import os
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
+
+os.environ["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = "regression-fixture"
+
+from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+    harden_state_authority_process,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    TodoImplementationDaemon,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
+    build_validation_environment,
+    validation_environment_for_runner,
+)
+
+assert harden_state_authority_process() is True
+runner = TodoImplementationDaemon._validation_command_runner
+environment = validation_environment_for_runner(
+    build_validation_environment(),
+    runner,
+)
+with tempfile.TemporaryDirectory() as temporary_directory:
+    result = runner(
+        spec=SimpleNamespace(
+            command=(
+                "test -z \\\"${IPFS_ACCELERATE_AGENT_QUACK_TOKEN-}\\\" "
+                "&& python -c 'print(42)'"
+            ),
+            raw_command="non-dumpable-validation-regression",
+        ),
+        workspace_path=Path(temporary_directory),
+        timeout_seconds=30,
+        environment=environment,
+    )
+print(json.dumps(result, sort_keys=True))
+raise SystemExit(0 if result.get("returncode") == 0 else 1)
+"""
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[2],
+        env=dict(os.environ),
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    result = json.loads(completed.stdout)
+    assert result["returncode"] == 0
+    assert result["output"] == "42\n"
+    assert result["validation_python_launcher"]["sealed"] is True
 
 
 @pytest.mark.skipif(
@@ -1051,7 +1119,8 @@ raise SystemExit(completed.returncode or site_probe.returncode)
         launcher_receipt["interpreter_stat"] == environment[VALIDATION_PYTHON_INTERPRETER_STAT_ENV]
     )
     launcher_path = (workspace / "launcher-path.txt").read_text(encoding="utf-8")
-    assert launcher_path.startswith(f"/proc/{os.getpid()}/fd/")
+    assert launcher_path.startswith("/proc/")
+    assert "/fd/" in launcher_path
     assert not Path(launcher_path).exists()
 
 
