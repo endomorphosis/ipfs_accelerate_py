@@ -74066,7 +74066,20 @@ class DatabaseImplementationDaemon:
                     raise DatabaseImplementationAuthorityError(
                         "typed post-merge retry has no exact cooldown validator"
                     )
-                validate_retrying_cooldown(task_cid)
+                validate_retrying_cooldown(
+                    task_cid,
+                    expected_attempt_identity={
+                        "attempt_id": latest.attempt_id,
+                        "claim_id": latest.claim_id,
+                        "lease_id": latest.lease_id,
+                        "owner_session_id": latest.owner_session_id,
+                        "attempt_number": int(latest.attempt_number),
+                        "fencing_token": int(latest.fencing_token),
+                        "fence_epoch": int(latest.fence_epoch),
+                    },
+                    expected_reason=queue_reason,
+                    expected_delay_ms=0,
+                )
             self._verified_post_merge_declared_output_recovery_state(
                 latest,
                 task,
@@ -79972,7 +79985,18 @@ class DatabaseImplementationDaemon:
                         "typed retry repair has no exact cooldown validator"
                     )
                 existing_entry = validate_retrying_cooldown(
-                    attempt.task_cid
+                    attempt.task_cid,
+                    expected_attempt_identity={
+                        "attempt_id": attempt.attempt_id,
+                        "claim_id": attempt.claim_id,
+                        "lease_id": attempt.lease_id,
+                        "owner_session_id": attempt.owner_session_id,
+                        "attempt_number": int(attempt.attempt_number),
+                        "fencing_token": int(attempt.fencing_token),
+                        "fence_epoch": int(attempt.fence_epoch),
+                    },
+                    expected_reason=queue_reason,
+                    expected_delay_ms=delay_ms,
                 )
                 queue_receipt_dict = {}
             elif existing_entry is None:

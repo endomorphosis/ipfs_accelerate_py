@@ -6335,8 +6335,20 @@ def test_typed_retrying_reuse_requires_exact_task_queue_validation() -> None:
             raise AssertionError("already-retrying path must not write a new digest")
 
         @staticmethod
-        def validate_retrying_task_cooldown(_task_cid: str) -> None:
+        def validate_retrying_task_cooldown(
+            _task_cid: str,
+            **kwargs: object,
+        ) -> None:
             calls.append("validate")
+            assert kwargs["expected_attempt_identity"] == {
+                "attempt_id": "attempt:typed-retrying-exact-reuse",
+                "claim_id": "claim:typed-retrying-exact-reuse",
+                "lease_id": "lease:typed-retrying-exact-reuse",
+                "owner_session_id": "session:typed-retrying-exact-reuse",
+                "attempt_number": 1,
+                "fencing_token": 7,
+                "fence_epoch": 3,
+            }
             raise DatabaseImplementationAuthorityError(
                 "retrying task receipt differs from its typed cooldown"
             )
