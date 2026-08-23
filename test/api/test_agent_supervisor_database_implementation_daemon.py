@@ -1626,6 +1626,36 @@ def test_reconcile_reopens_mixed_capacity_and_inflight_budget_block(
         daemon.close()
 
 
+def test_reconcile_reopens_provider_failed_terminal_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:provider-failed-unstall",
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            status="blocked",
+            receipt={
+                "operation": "database_portal_terminal_failure",
+                "reason": "portal_provider_failed",
+            },
+        )
+        outcomes = daemon.reconcile_inflight_deferral_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+
 def test_owner_mutation_reject_is_attach_contention(tmp_path: Path) -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         DuckDBConnectionPolicyError,

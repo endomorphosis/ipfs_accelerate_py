@@ -449,13 +449,21 @@ class DuckDBConnection:
                 parameters,
                 dml=True,
             )
-        if catalog and not normalized.startswith("USE "):
-            self._connection.execute(f"USE {catalog}")
-            _consume_duckdb_result(self._connection)
-        if parameters is None:
-            self._connection.execute(statement)
-        else:
-            self._connection.execute(statement, parameters)
+        try:
+            if catalog and not normalized.startswith("USE "):
+                self._connection.execute(f"USE {catalog}")
+                _consume_duckdb_result(self._connection)
+            if parameters is None:
+                self._connection.execute(statement)
+            else:
+                self._connection.execute(statement, parameters)
+        except Exception as exc:
+            if catalog and quack_attach_error_is_contention(exc):
+                reset_quack_transport_cache()
+                raise QuackTransportContentionError(
+                    "quack control-plane attach contended: " + str(exc)
+                ) from exc
+            raise
         if normalized.startswith("BEGIN"):
             self._transaction_active = True
         elif normalized in {"COMMIT", "ROLLBACK"}:
@@ -607,6 +615,9 @@ _QUACK_ATTACH_CONTENTION_MARKERS = (
     "mutation rejected",
     "timed out waiting for quack state-owner",
     "fatalexception",
+    "invalid connection id",
+    "connection closed",
+    "could not find a quack authentication token",
     "temporarily unavailable",
     "resource temporarily unavailable",
     "too many clients",

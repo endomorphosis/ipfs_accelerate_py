@@ -70059,23 +70059,28 @@ class DatabaseImplementationDaemon:
             )
             if not isinstance(receipt, Mapping):
                 continue
-            if (
-                str(receipt.get("operation") or "")
-                != "database_portal_typed_deferral_budget_exhausted"
-            ):
-                continue
-            budget = receipt.get("retry_budget")
-            matching = (
-                budget.get("matching_attempts")
-                if isinstance(budget, Mapping)
-                else None
-            )
-            reasons = {
-                str(item.get("reason") or "")
-                for item in matching
-                if isinstance(item, Mapping)
-            } if isinstance(matching, list) else set()
-            if not reasons or not reasons <= _PROCESS_TRANSIENT_PORTAL_REASONS:
+            operation = str(receipt.get("operation") or "")
+            if operation == "database_portal_terminal_failure":
+                reason = str(receipt.get("reason") or "")
+                if reason not in _PROCESS_TRANSIENT_PORTAL_REASONS | {
+                    "portal_provider_failed"
+                }:
+                    continue
+            elif operation == "database_portal_typed_deferral_budget_exhausted":
+                budget = receipt.get("retry_budget")
+                matching = (
+                    budget.get("matching_attempts")
+                    if isinstance(budget, Mapping)
+                    else None
+                )
+                reasons = {
+                    str(item.get("reason") or "")
+                    for item in matching
+                    if isinstance(item, Mapping)
+                } if isinstance(matching, list) else set()
+                if not reasons or not reasons <= _PROCESS_TRANSIENT_PORTAL_REASONS:
+                    continue
+            else:
                 continue
             try:
                 self._cas_task_status_database(
