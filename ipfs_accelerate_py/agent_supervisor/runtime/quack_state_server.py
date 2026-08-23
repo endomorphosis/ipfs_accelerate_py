@@ -140,6 +140,7 @@ from ..task_sources.typed_state_owner import (
     TYPED_STATE_OWNER_TOKEN_FILENAME,
     OwnerClientGrant,
     TypedStateOwnerGateway,
+    compact_default_owner_socket_path,
 )
 
 _UTC: Final = timezone.utc  # noqa: UP017 - Python 3.8 compatibility.
@@ -2430,9 +2431,12 @@ class QuackStateServer:
         )
 
     def typed_command_socket_path(self) -> Path:
-        return (
-            self.config.typed_command_socket_path_override
-            or self.config.state_dir / TYPED_STATE_OWNER_SOCKET_FILENAME
+        override = self.config.typed_command_socket_path_override
+        if override is not None:
+            return override
+        return compact_default_owner_socket_path(
+            self.config.state_dir / TYPED_STATE_OWNER_SOCKET_FILENAME,
+            identity=self.config.database_path,
         )
 
     def typed_command_token_path(self) -> Path:

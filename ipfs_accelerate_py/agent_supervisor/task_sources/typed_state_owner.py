@@ -44,6 +44,12 @@ TYPED_STATE_OWNER_SOCKET_ENV: Final = "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"
 TYPED_STATE_OWNER_TOKEN_ENV: Final = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
 TYPED_STATE_OWNER_SOCKET_FILENAME: Final = "typed-state-owner.sock"
 TYPED_STATE_OWNER_TOKEN_FILENAME: Final = "typed-state-owner.token"
+# Linux permits 107 pathname bytes in ``sockaddr_un.sun_path`` while other
+# supported Unix platforms can be slightly smaller.  Keep a little headroom
+# for the trailing NUL and fail over before ``bind(2)`` becomes platform
+# dependent.
+_SAFE_UNIX_SOCKET_PATH_BYTES: Final = 100
+_COMPACT_SOCKET_ROOT_PREFIX: Final = "ipfs-accelerate-typed-owner"
 MAX_FRAME_BYTES: Final = 16 * 1024 * 1024
 MAX_PARAMETER_COUNT: Final = 512
 MAX_ROW_COUNT: Final = 4096
@@ -1283,7 +1289,16 @@ class TypedStateOwnerGateway:
             )
 
     def start(self) -> None:
-        self.socket_path.parent.mkdir(parents=True, exist_ok=True)
+        self.socket_path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+        parent_metadata = os.lstat(self.socket_path.parent)
+        if not stat.S_ISDIR(parent_metadata.st_mode):
+            raise TypedStateOwnerProtocolError(
+                "gateway socket parent is not a real directory"
+            )
+        if parent_metadata.st_uid != os.geteuid():
+            raise TypedStateOwnerProtocolError(
+                "gateway socket parent is not owned by the current process user"
+            )
         os.chmod(self.socket_path.parent, 0o700)
         try:
             metadata = os.lstat(self.socket_path)
@@ -3515,6 +3530,25 @@ class TypedStateOwnerConnection:
             return response
 
 
+def compact_default_owner_socket_path(
+    candidate: Path | str,
+    *,
+    identity: Path | str,
+) -> Path:
+    """Keep an owner-selected default within portable ``AF_UNIX`` limits."""
+
+    path = Path(candidate).expanduser().resolve(strict=False)
+    if len(os.fsencode(path)) <= _SAFE_UNIX_SOCKET_PATH_BYTES:
+        return path
+    identity_path = Path(identity).expanduser().resolve(strict=False)
+    store_digest = hashlib.sha256(os.fsencode(identity_path)).hexdigest()[:32]
+    return (
+        Path("/tmp")
+        / f"{_COMPACT_SOCKET_ROOT_PREFIX}-{os.geteuid()}"
+        / f"{store_digest}.sock"
+    )
+
+
 def typed_owner_socket_path(store_id: str, explicit: str = "") -> Path:
     """Resolve the launcher-controlled socket; never accept a database path payload."""
 
@@ -3524,6 +3558,7 @@ def typed_owner_socket_path(store_id: str, explicit: str = "") -> Path:
     else:
         store = Path(str(store_id or "")).expanduser().resolve(strict=False)
         path = store.parent / "quack-owner" / TYPED_STATE_OWNER_SOCKET_FILENAME
+        path = compact_default_owner_socket_path(path, identity=store)
     return path
 
 
@@ -3559,6 +3594,7 @@ __all__ = [
     "TYPED_STATE_OWNER_SOCKET_FILENAME",
     "TYPED_STATE_OWNER_TOKEN_ENV",
     "TYPED_STATE_OWNER_TOKEN_FILENAME",
+    "compact_default_owner_socket_path",
     "TypedOwnerResult",
     "TypedStateOwnerAuthorizationError",
     "TypedStateOwnerConnection",

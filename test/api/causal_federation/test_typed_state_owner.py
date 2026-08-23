@@ -145,6 +145,29 @@ def _task_grant_operations() -> tuple[str, ...]:
     )
 
 
+def test_default_owner_socket_path_compacts_an_overlong_store_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(TYPED_STATE_OWNER_SOCKET_ENV, raising=False)
+    long_store = tmp_path.joinpath(*("long-segment" for _ in range(12)), "control.duckdb")
+
+    first = typed_owner.typed_owner_socket_path(str(long_store))
+    second = typed_owner.typed_owner_socket_path(str(long_store))
+
+    assert first == second
+    assert len(os.fsencode(first)) <= 100
+    assert first.parent.name == f"ipfs-accelerate-typed-owner-{os.geteuid()}"
+    assert first.suffix == ".sock"
+
+
+def test_explicit_owner_socket_path_is_not_silently_rewritten(
+    tmp_path: Path,
+) -> None:
+    explicit = tmp_path / "launcher-owned" / "owner.sock"
+    assert typed_owner.typed_owner_socket_path("ignored", str(explicit)) == explicit
+
+
 def test_closed_owner_command_is_atomic_and_rolls_back_callback_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
