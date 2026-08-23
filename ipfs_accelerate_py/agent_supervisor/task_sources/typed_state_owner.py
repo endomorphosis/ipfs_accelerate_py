@@ -629,11 +629,29 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
             }
         ),
         "task.status.cas": frozenset({"txn_cas_task_status"}),
+        "task.validation.record.passed": frozenset(
+            {
+                "executor_insert_validation_run",
+                "executor_insert_validation_result",
+                "executor_insert_validation_evidence",
+            }
+        ),
+        "task.validation.record.nonpassing": frozenset(
+            {
+                "executor_insert_validation_run",
+                "executor_insert_validation_result",
+            }
+        ),
     }
 )
 
 _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
-    set(_COMMAND_MUTATION_CATALOG) - {"task.status.cas"}
+    set(_COMMAND_MUTATION_CATALOG)
+    - {
+        "task.status.cas",
+        "task.validation.record.passed",
+        "task.validation.record.nonpassing",
+    }
 )
 _EVENT_EMITTING_COMMANDS: Final[frozenset[str]] = frozenset(
     {
@@ -698,6 +716,12 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
             ),
             "event.acknowledge": _COMMAND_MUTATION_CATALOG["event.acknowledge"],
             "task.status.cas": frozenset({"txn_cas_task_status"}),
+            "task.validation.record.passed": _COMMAND_MUTATION_CATALOG[
+                "task.validation.record.passed"
+            ],
+            "task.validation.record.nonpassing": _COMMAND_MUTATION_CATALOG[
+                "task.validation.record.nonpassing"
+            ],
         }
     )
 )

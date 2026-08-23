@@ -84506,6 +84506,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Daemon session identity used for fenced claims.",
     )
     parser.add_argument(
+        "--state-owner-bootstrap-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--state-owner-bootstrap-store-id",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--expected-task-source-root",
         default="",
         help="Optional canonical plan root which the configured source must match.",
@@ -84941,11 +84952,37 @@ def main(argv: list[str] | None = None) -> None:
             if program is not None
             else str(getattr(args, "task_source_kind", "") or "duckdb")
         )
+        owner_session_id = str(getattr(args, "owner_session_id", "") or "")
+        bootstrap_fd = int(getattr(args, "state_owner_bootstrap_fd", -1))
+        if bootstrap_fd >= 3:
+            if not owner_session_id:
+                raise RuntimeError(
+                    "state-owner bootstrap requires an explicit database owner session"
+                )
+            from ..task_sources.state_owner_bootstrap import (
+                request_state_owner_bootstrap,
+            )
+
+            credentials = request_state_owner_bootstrap(
+                bootstrap_fd,
+                client_id=f"database-implementation-daemon:{owner_session_id}",
+                store_id=str(
+                    getattr(args, "state_owner_bootstrap_store_id", "") or ""
+                ),
+            )
+            expected_endpoint = str(
+                getattr(args, "quack_endpoint", "") or ""
+            ).strip()
+            if credentials.endpoint != expected_endpoint:
+                raise RuntimeError(
+                    "state-owner bootstrap endpoint differs from the database program"
+                )
+            credentials.install_environment()
         daemon: Any = DatabaseImplementationDaemon(
             database_path=Path(database_path),
             coordination_path=db_paths["coordination_path"],
             execution_path=db_paths["execution_path"],
-            owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
+            owner_session_id=owner_session_id,
             authority_mode=authority_mode or "quack",
             task_source_kind=task_source_kind or "duckdb",
             quack_uri=str(getattr(args, "quack_endpoint", "") or ""),

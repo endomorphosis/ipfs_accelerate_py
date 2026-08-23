@@ -6433,6 +6433,7 @@ class PortalSupervisorConfig:
     database_program: DatabaseProgramConfig | None = None
     database_owner_session_id: str = ""
     state_owner_bootstrap_fd: int = -1
+    state_owner_bootstrap_store_id: str = ""
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
@@ -6593,6 +6594,14 @@ class PortalSupervisorConfig:
         if any(character in owner_session_id for character in ("\x00", "\n", "\r")):
             raise ValueError("database_owner_session_id must be a single-line identity")
         self.database_owner_session_id = owner_session_id
+        bootstrap_store_id = str(self.state_owner_bootstrap_store_id or "").strip()
+        if any(character in bootstrap_store_id for character in ("\x00", "\n", "\r")):
+            raise ValueError("state_owner_bootstrap_store_id must be a single-line identity")
+        if self.state_owner_bootstrap_fd >= 3 and not bootstrap_store_id:
+            raise ValueError(
+                "state_owner_bootstrap_store_id is required with the bootstrap descriptor"
+            )
+        self.state_owner_bootstrap_store_id = bootstrap_store_id
         if self.plan_bound_dispatch:
             if (
                 self.plan_bound_accepted_tree_root is None
@@ -19752,6 +19761,8 @@ class PortalImplementationSupervisor:
                         [
                             "--state-owner-bootstrap-fd",
                             str(self.config.state_owner_bootstrap_fd),
+                            "--state-owner-bootstrap-store-id",
+                            self.config.state_owner_bootstrap_store_id,
                         ]
                     )
             if self.config.validation_max_workers is not None:
@@ -20351,6 +20362,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--state-owner-bootstrap-fd",
         type=int,
         default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--state-owner-bootstrap-store-id",
+        default="",
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
@@ -21085,6 +21101,9 @@ def supervisor_config_from_args(
         ),
         state_owner_bootstrap_fd=int(
             getattr(args, "state_owner_bootstrap_fd", -1)
+        ),
+        state_owner_bootstrap_store_id=str(
+            getattr(args, "state_owner_bootstrap_store_id", "") or ""
         ),
         reconciliation_only=reconciliation_only,
         implement=implement,

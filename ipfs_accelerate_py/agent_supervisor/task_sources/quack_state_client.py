@@ -393,6 +393,88 @@ def _default_templates() -> dict[str, StatementTemplate]:
             kind=StatementKind.QUERY,
             description="Cursor page of tasks ordered by ordinal",
         ),
+        "executor_task_projection_page": StatementTemplate(
+            name="executor_task_projection_page",
+            sql=(
+                "SELECT t.task_cid, t.task_alias, t.goal_cid, t.plan_cid, "
+                "t.objective_id, t.ordinal, t.status, t.revision, t.priority, "
+                "t.identity_json, t.body_json, "
+                "COALESCE((SELECT to_json(list(d.dependency_task_cid ORDER BY "
+                "d.dependency_task_cid)) FROM task_dependencies AS d WHERE "
+                "d.task_cid = t.task_cid), '[]') AS dependencies_json, "
+                "COALESCE((SELECT to_json(list(struct_pack(ordinal := o.ordinal, "
+                "path := o.path, effect := o.effect_json) ORDER BY o.ordinal)) "
+                "FROM task_outputs AS o WHERE o.task_cid = t.task_cid), '[]') "
+                "AS outputs_json, COALESCE((SELECT to_json(list(struct_pack("
+                "ordinal := a.ordinal, criterion := a.criterion, evidence_policy "
+                ":= a.evidence_policy_json) ORDER BY a.ordinal)) FROM "
+                "task_acceptance AS a WHERE a.task_cid = t.task_cid), '[]') "
+                "AS acceptance_json, COALESCE((SELECT to_json(list(struct_pack("
+                "ordinal := v.ordinal, argv := v.argv_json, policy := "
+                "v.policy_json) ORDER BY v.ordinal)) FROM task_validations AS v "
+                "WHERE v.task_cid = t.task_cid), '[]') AS validations_json "
+                "FROM tasks AS t ORDER BY t.ordinal ASC, t.task_cid ASC "
+                "LIMIT ? OFFSET ?"
+            ),
+            parameter_names=("limit", "offset"),
+            kind=StatementKind.QUERY,
+            description=(
+                "Bounded full-fidelity task projection for an admitted executor"
+            ),
+        ),
+        "executor_task_projection_by_identity": StatementTemplate(
+            name="executor_task_projection_by_identity",
+            sql=(
+                "SELECT t.task_cid, t.task_alias, t.goal_cid, t.plan_cid, "
+                "t.objective_id, t.ordinal, t.status, t.revision, t.priority, "
+                "t.identity_json, t.body_json, "
+                "COALESCE((SELECT to_json(list(d.dependency_task_cid ORDER BY "
+                "d.dependency_task_cid)) FROM task_dependencies AS d WHERE "
+                "d.task_cid = t.task_cid), '[]') AS dependencies_json, "
+                "COALESCE((SELECT to_json(list(struct_pack(ordinal := o.ordinal, "
+                "path := o.path, effect := o.effect_json) ORDER BY o.ordinal)) "
+                "FROM task_outputs AS o WHERE o.task_cid = t.task_cid), '[]') "
+                "AS outputs_json, COALESCE((SELECT to_json(list(struct_pack("
+                "ordinal := a.ordinal, criterion := a.criterion, evidence_policy "
+                ":= a.evidence_policy_json) ORDER BY a.ordinal)) FROM "
+                "task_acceptance AS a WHERE a.task_cid = t.task_cid), '[]') "
+                "AS acceptance_json, COALESCE((SELECT to_json(list(struct_pack("
+                "ordinal := v.ordinal, argv := v.argv_json, policy := "
+                "v.policy_json) ORDER BY v.ordinal)) FROM task_validations AS v "
+                "WHERE v.task_cid = t.task_cid), '[]') AS validations_json "
+                "FROM tasks AS t WHERE t.task_cid = ? OR t.task_alias = ? "
+                "ORDER BY t.task_cid ASC LIMIT 2"
+            ),
+            parameter_names=("task_identity", "task_alias"),
+            kind=StatementKind.QUERY,
+            description=(
+                "Exact full-fidelity task projection for an admitted executor"
+            ),
+        ),
+        "executor_control_snapshot": StatementTemplate(
+            name="executor_control_snapshot",
+            sql=(
+                "SELECT (SELECT COUNT(*) FROM objectives) AS objective_count, "
+                "(SELECT COUNT(*) FROM goals) AS goal_count, "
+                "(SELECT COUNT(*) FROM plans) AS plan_count, "
+                "(SELECT COUNT(*) FROM tasks) AS task_count, "
+                "(SELECT COUNT(*) FROM task_dependencies) AS dependency_count, "
+                "(SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events) "
+                "AS event_watermark, COALESCE((SELECT to_json(list(struct_pack("
+                "goal_cid := g.goal_cid, status := g.status, revision := "
+                "g.revision) ORDER BY g.goal_cid)) FROM goals AS g), '[]') "
+                "AS goals_json, COALESCE((SELECT to_json(list(struct_pack("
+                "plan_cid := p.plan_cid, status := p.status, revision := "
+                "p.revision) ORDER BY p.plan_cid)) FROM plans AS p), '[]') "
+                "AS plans_json, COALESCE((SELECT to_json(list(struct_pack("
+                "task_cid := t.task_cid, status := t.status, revision := "
+                "t.revision) ORDER BY t.task_cid)) FROM tasks AS t), '[]') "
+                "AS tasks_json"
+            ),
+            parameter_names=(),
+            kind=StatementKind.QUERY,
+            description="Bounded authoritative executor control-plane snapshot",
+        ),
         "insert_task": StatementTemplate(
             name="insert_task",
             sql=(
@@ -435,6 +517,64 @@ def _default_templates() -> dict[str, StatementTemplate]:
             ),
             kind=StatementKind.MUTATION,
             description="CAS update task status by expected revision",
+        ),
+        "executor_insert_validation_run": StatementTemplate(
+            name="executor_insert_validation_run",
+            sql=(
+                "INSERT INTO validation_runs (run_id, task_cid, attempt_id, "
+                "started_at, finished_at, status, command_digest, body_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            ),
+            parameter_names=(
+                "run_id",
+                "task_cid",
+                "attempt_id",
+                "started_at",
+                "finished_at",
+                "status",
+                "command_digest",
+                "body_json",
+            ),
+            kind=StatementKind.MUTATION,
+            description="Insert one executor validation run",
+        ),
+        "executor_insert_validation_result": StatementTemplate(
+            name="executor_insert_validation_result",
+            sql=(
+                "INSERT INTO validation_results (result_id, run_id, task_cid, "
+                "ordinal, outcome, evidence_digest, body_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)"
+            ),
+            parameter_names=(
+                "result_id",
+                "run_id",
+                "task_cid",
+                "ordinal",
+                "outcome",
+                "evidence_digest",
+                "body_json",
+            ),
+            kind=StatementKind.MUTATION,
+            description="Insert one executor validation result",
+        ),
+        "executor_insert_validation_evidence": StatementTemplate(
+            name="executor_insert_validation_evidence",
+            sql=(
+                "INSERT INTO evidence_nodes (evidence_id, parent_evidence_id, "
+                "task_cid, evidence_kind, digest, created_at, body_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)"
+            ),
+            parameter_names=(
+                "evidence_id",
+                "parent_evidence_id",
+                "task_cid",
+                "evidence_kind",
+                "digest",
+                "created_at",
+                "body_json",
+            ),
+            kind=StatementKind.MUTATION,
+            description="Insert passing executor validation evidence",
         ),
         "insert_goal": StatementTemplate(
             name="insert_goal",

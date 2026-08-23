@@ -75,7 +75,9 @@ def _receive_frame(channel: socket.socket) -> dict[str, Any]:
     return payload
 
 
-def _checked_socket(descriptor: int, *, timeout_seconds: float) -> socket.socket:
+def _connect_inherited_listener(
+    descriptor: int, *, timeout_seconds: float
+) -> socket.socket:
     if isinstance(descriptor, bool) or not isinstance(descriptor, int) or descriptor < 3:
         raise StateOwnerBootstrapError("state-owner bootstrap descriptor is invalid")
     try:
@@ -88,10 +90,39 @@ def _checked_socket(descriptor: int, *, timeout_seconds: float) -> socket.socket
         raise StateOwnerBootstrapError(
             "state-owner bootstrap requires an inherited Unix socket"
         )
+    listener: socket.socket | None = None
     try:
-        channel = socket.socket(fileno=descriptor)
+        listener = socket.socket(fileno=descriptor)
+        if listener.family != socket.AF_UNIX or (
+            listener.type & socket.SOCK_STREAM
+        ) != socket.SOCK_STREAM:
+            raise StateOwnerBootstrapError(
+                "state-owner bootstrap descriptor has the wrong socket type"
+            )
+        if listener.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) != 1:
+            raise StateOwnerBootstrapError(
+                "state-owner bootstrap descriptor is not a rendezvous listener"
+            )
+        address = listener.getsockname()
+        if not isinstance(address, (str, bytes)) or not address:
+            raise StateOwnerBootstrapError(
+                "state-owner bootstrap rendezvous identity is unavailable"
+            )
+        # Close this daemon's inherited copy before making a fresh connection.
+        # The fresh connect is what gives the owner an authoritative
+        # SO_PEERCRED identity for this exact process birth.
+        listener.close()
+        listener = None
+        channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         channel.settimeout(max(0.1, float(timeout_seconds)))
+        channel.connect(address)
+    except StateOwnerBootstrapError:
+        if listener is not None:
+            listener.close()
+        raise
     except (OSError, TypeError, ValueError) as exc:
+        if listener is not None:
+            listener.close()
         raise StateOwnerBootstrapError(
             "state-owner bootstrap socket could not be opened"
         ) from exc
@@ -118,7 +149,7 @@ class StateOwnerBootstrapCredentials:
         client_id: str,
         store_id: str,
         expected_process_birth_id: str,
-    ) -> "StateOwnerBootstrapCredentials":
+    ) -> StateOwnerBootstrapCredentials:
         fields = {
             "schema",
             "ok",
@@ -201,7 +232,10 @@ def request_state_owner_bootstrap(
     if birth is None:
         raise StateOwnerBootstrapError("state-owner bootstrap process birth is unavailable")
     birth_id = process_birth_id(birth)
-    channel = _checked_socket(descriptor, timeout_seconds=timeout_seconds)
+    channel = _connect_inherited_listener(
+        descriptor,
+        timeout_seconds=timeout_seconds,
+    )
     try:
         _send_frame(
             channel,
@@ -215,7 +249,7 @@ def request_state_owner_bootstrap(
             },
         )
         response = _receive_frame(channel)
-    except (OSError, TimeoutError, socket.timeout) as exc:
+    except (OSError, TimeoutError) as exc:
         raise StateOwnerBootstrapError(
             "state-owner bootstrap transport failed"
         ) from exc
