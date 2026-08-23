@@ -69099,6 +69099,52 @@ class DatabaseImplementationDaemon:
             and not isinstance(receipt.get("fence_epoch"), bool)
         )
 
+    def _control_claim_already_landed(self, claim: Any, exc: BaseException) -> bool:
+        """Return True when owner recycle applied the claim CAS after the waiter lost.
+
+        Quack UPDATE has to bounce the exclusive writer. The waiter often times
+        out on ``done.json`` after recycle already wrote ``in_progress``. Treat
+        that as success so the local attempt is inserted and Grok can spawn.
+        """
+
+        message = " ".join(str(exc).lower().split())
+        if not any(
+            marker in message
+            for marker in (
+                "timed out waiting for quack state-owner",
+                "quack control-plane attach contended",
+                "authentication failed",
+                "could not connect",
+                "failed to send message",
+            )
+        ):
+            return False
+        try:
+            from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+                reset_quack_transport_cache,
+            )
+
+            reset_quack_transport_cache()
+        except Exception:
+            pass
+        try:
+            fresh = self.task_source.get(str(claim.task_cid))
+        except Exception:
+            return False
+        if fresh is None:
+            return False
+        if str(getattr(fresh, "status", "") or "").lower() != "in_progress":
+            return False
+        body = getattr(fresh, "body", None)
+        receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
+        if not isinstance(receipt, Mapping):
+            return False
+        return (
+            str(receipt.get("operation") or "") == "database_claim"
+            and str(receipt.get("claim_id") or "") == str(claim.claim_id)
+            and str(receipt.get("attempt_id") or "") == str(claim.attempt_id)
+        )
+
     def claim_next(
         self,
         *,
@@ -69226,6 +69272,9 @@ class DatabaseImplementationDaemon:
                 )
                 excluded.add(str(claim.task_cid))
                 continue
+            except Exception as exc:
+                if not self._control_claim_already_landed(claim, exc):
+                    raise
 
             attempt = self._insert_attempt_from_claim(
                 claim,

@@ -37,6 +37,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
     install_datasets_authoritative_operational_schema,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    DuckDBConnectionPolicyError,
     connect_duckdb_with_policy,
     open_duckdb_connection,
 )
@@ -1480,6 +1481,36 @@ def test_abandoned_in_progress_gate_unstalls_without_running_attempt(
         attempt = daemon.claim_next()
         assert attempt is not None
         assert attempt.task_cid == "task:cid:001"
+    finally:
+        daemon.close()
+
+
+def test_claim_next_proceeds_when_owner_recycle_lands_cas_after_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:claim-cas-timeout",
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        original = daemon._cas_task_status_database
+
+        def land_then_timeout(*args: object, **kwargs: object) -> None:
+            original(*args, **kwargs)
+            raise DuckDBConnectionPolicyError(
+                "timed out waiting for quack state-owner to apply mutation"
+            )
+
+        monkeypatch.setattr(daemon, "_cas_task_status_database", land_then_timeout)
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert attempt.task_cid == "task:cid:001"
+        assert daemon.task_source.get("task:cid:001").status == "in_progress"
+        running = daemon.list_running_attempts()
+        assert [item.attempt_id for item in running] == [attempt.attempt_id]
     finally:
         daemon.close()
 
