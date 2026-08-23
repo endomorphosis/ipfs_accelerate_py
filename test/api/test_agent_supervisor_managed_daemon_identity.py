@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -1041,6 +1042,80 @@ def test_supervisor_loop_preserves_markers_when_termination_is_unproven(
     )
     assert pid_path.read_text(encoding="utf-8").strip() == "450"
     assert identity_path.read_text(encoding="utf-8") == "unavailable\n"
+    status = json.loads(
+        spec.supervisor_status_path.read_text(encoding="utf-8")
+    )
+    assert status["status"] == "termination_blocked"
+    assert status["daemon_pid"] == 450
+    assert status["managed_child_termination_proven"] is False
+    assert status["managed_child_termination_reason"] == (
+        "supervised_child_termination_unproven"
+    )
+    assert status["worker_metrics_available"] is False
+    assert status["active_worker_count"] is None
+    assert type(status["worker_observed_at_ns"]) is int
+    assert status["worker_observed_at_ns"] > 0
+    assert status["worker_observation_generation"] == ""
+
+
+def test_signal_shutdown_retains_unresolved_daemon_without_false_terminal_truth(
+    tmp_path: Path,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    status_path = supervisor._supervisor_status_path()
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(
+        json.dumps(
+            {
+                "status": "running",
+                "daemon_pid": 4321,
+                "daemon_pid_alive": True,
+                "worker_metrics_available": True,
+                "worker_observed_at_ns": 123,
+                "worker_observation_generation": "run:4321:55:boot",
+                "active_worker_count": 1,
+                "active_worker_pids": [9876],
+                "worker_descendant_count": 1,
+                "worker_descendant_pids": [9876],
+                "worker_phase": "implementing",
+                "stalled_without_active_worker": False,
+                "last_exit_code": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    supervisor._write_signal_shutdown_status(
+        stop_signal=signal.SIGTERM,
+        cleanup={
+            "pid": 4321,
+            "terminated": False,
+            "quiesced": False,
+            "remaining_pid": 4321,
+        },
+        interrupted_reconciliation={
+            "reconciled": False,
+            "blocked": True,
+            "reason": "daemon_cleanup_unproven",
+        },
+    )
+
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    assert status["status"] == "stopping"
+    assert status["supervisor_pid_alive"] is True
+    assert status["supervisor_exit_pending"] is True
+    assert status["daemon_pid"] == 4321
+    assert status["daemon_pid_alive"] is None
+    assert status["worker_metrics_available"] is False
+    assert status["worker_metrics_unavailable_reason"] == (
+        "shutdown_cleanup_unproven"
+    )
+    assert status["active_worker_count"] is None
+    assert status["worker_observed_at_ns"] is None
+    assert status["worker_observation_generation"] == ""
+    assert status["last_worker_observation"]["active_worker_count"] == 1
+    assert status["requested_exit_code"] == 128 + signal.SIGTERM
+    assert "last_exit_code" not in status
 
 
 def test_adopted_child_exit_is_proven_before_identity_markers_are_cleared(
