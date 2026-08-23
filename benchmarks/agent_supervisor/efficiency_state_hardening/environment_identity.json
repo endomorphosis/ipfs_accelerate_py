@@ -1,0 +1,37 @@
+{
+  "authority": false,
+  "canonical_validation_environment": {
+    "home_directory_name_prefix": "ipfs-accelerate-validation-home-",
+    "operator_profile_state": "unavailable",
+    "path": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin",
+    "python_interpreter": "/usr/bin/python3.12",
+    "python_major_minor": [
+      3,
+      12
+    ],
+    "xdg_cache": "$HOME/.cache",
+    "xdg_config": "$HOME/.config",
+    "xdg_data": "$HOME/.local/share",
+    "xdg_state": "$HOME/.local/state"
+  },
+  "capability_is_authority": false,
+  "goal_id": "ASEH-G010",
+  "host_capability_observation": {
+    "capability_is_authority": false,
+    "duckdb": "1.5.5",
+    "ducklake_extension_version": "d8a1881e",
+    "ducklake_installed": true,
+    "machine": "aarch64",
+    "platform": "Linux-6.17.0-1014-nvidia-aarch64-with-glibc2.39",
+    "python": "3.12.3",
+    "quack_extension_fingerprint": "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b",
+    "quack_extension_version": "c154811",
+    "quack_profile": "agent-supervisor-duckdb-quack-1.5",
+    "quack_status": "compatible"
+  },
+  "package_version": "0.0.45",
+  "package_version_source": "pyproject.toml",
+  "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
+  "schema": "ipfs_accelerate_py/agent-supervisor/aseh-environment-identity@1",
+  "task_id": "ASEH-001"
+}
