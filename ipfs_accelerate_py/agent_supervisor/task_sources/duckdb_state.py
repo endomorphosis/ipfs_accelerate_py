@@ -1067,28 +1067,6 @@ _QUACK_ATTACH_CONTENTION_MARKERS = (
 _QUACK_ATTACH_TOKEN_ENV = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
 _QUACK_SECRET_HANDLE_ENV = "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE"
 
-def resolve_quack_attach_token(
-    token: str = "",
-    *,
-    environment: Mapping[str, str] | None = None,
-) -> str:
-    """Return the admitted attach token without logging it.
-
-    Resolution order: explicit argument, ``IPFS_ACCELERATE_AGENT_QUACK_TOKEN``,
-    then the environment variable named by an ``env://`` secret handle.
-    """
-
-    source = os.environ if environment is None else environment
-    secret = str(token or source.get(_QUACK_ATTACH_TOKEN_ENV, "") or "").strip()
-    if secret:
-        return secret
-    handle = str(source.get(_QUACK_SECRET_HANDLE_ENV, "") or "").strip()
-    if handle.startswith("env://"):
-        target = handle[len("env://") :].strip()
-        if target:
-            secret = str(source.get(target, "") or "").strip()
-    return secret
-
 
 def _quack_token_fingerprint(token: str) -> str:
     secret = str(token or "").strip()
@@ -2939,15 +2917,23 @@ def persist_quack_attach_token_vault(token: str = "") -> Path | None:
     return vault
 
 
-def resolve_quack_attach_token(token: str = "") -> str:
+def resolve_quack_attach_token(
+    token: str = "",
+    *,
+    environment: Mapping[str, str] | None = None,
+) -> str:
     """Resolve the current owner attach token.
 
-    The vault file is preferred over a process environment value so a
-    restarted owner generation is not blocked by a stale supervisor env.
-    When the vault is missing, persist the live env token so owner recycle
-    and operator status can keep draining the board.
+    Resolution order: explicit argument, the 0600 vault file (process env
+    only), ``IPFS_ACCELERATE_AGENT_QUACK_TOKEN``, then the environment
+    variable named by an ``env://`` secret handle.  The vault is preferred
+    over a process environment value so a restarted owner generation is not
+    blocked by a stale supervisor env.  When the vault is missing, persist
+    the live env token so owner recycle and operator status can keep
+    draining the board.
     """
 
+    source = os.environ if environment is None else environment
     explicit = str(token or "").strip()
     if explicit:
         if not _QUACK_TOKEN_RE.fullmatch(explicit):
@@ -2955,18 +2941,32 @@ def resolve_quack_attach_token(token: str = "") -> str:
                 "quack attach token must be an opaque url-safe secret"
             )
         return explicit
-    vault = quack_token_vault_path()
-    if vault is not None:
-        material = _read_quack_token_vault(vault)
-        if material:
-            return material
-    secret = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or "").strip()
-    if secret and not _QUACK_TOKEN_RE.fullmatch(secret):
-        raise DuckDBConnectionPolicyError(
-            "quack attach token must be an opaque url-safe secret"
-        )
+    if environment is None:
+        vault = quack_token_vault_path()
+        if vault is not None:
+            material = _read_quack_token_vault(vault)
+            if material:
+                return material
+    secret = str(source.get(_QUACK_ATTACH_TOKEN_ENV, "") or "").strip()
     if secret:
-        persist_quack_attach_token_vault(secret)
+        if not _QUACK_TOKEN_RE.fullmatch(secret):
+            raise DuckDBConnectionPolicyError(
+                "quack attach token must be an opaque url-safe secret"
+            )
+        if environment is None:
+            persist_quack_attach_token_vault(secret)
+        return secret
+    handle = str(source.get(_QUACK_SECRET_HANDLE_ENV, "") or "").strip()
+    if handle.startswith("env://"):
+        target = handle[len("env://") :].strip()
+        if target:
+            secret = str(source.get(target, "") or "").strip()
+            if secret:
+                if not _QUACK_TOKEN_RE.fullmatch(secret):
+                    raise DuckDBConnectionPolicyError(
+                        "quack attach token must be an opaque url-safe secret"
+                    )
+                return secret
     return secret
 
 
