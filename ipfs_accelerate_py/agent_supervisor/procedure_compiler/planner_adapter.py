@@ -1240,7 +1240,12 @@ class PlannerDispatchDecision(CanonicalContract):
                 raise PlannerAdapterError("qualified dispatch must record planner order")
             if not self.selected_kind:
                 raise PlannerAdapterError("qualified dispatch must select a planner-order kind")
-            selected = PlannerOperatorKind(self.selected_kind)
+            try:
+                selected = PlannerOperatorKind(self.selected_kind)
+            except ValueError as exc:
+                raise PlannerAdapterError(
+                    "qualified dispatch selected an unknown planner-order kind"
+                ) from exc
             expected = tuple(item.value for item in PLANNER_OPERATOR_ORDER)
             if tuple(self.considered_kinds) != expected:
                 raise PlannerAdapterError("qualified dispatch must consider the required order")
