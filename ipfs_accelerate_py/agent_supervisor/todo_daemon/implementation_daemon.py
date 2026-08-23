@@ -74456,6 +74456,11 @@ class DatabaseImplementationDaemon:
                     self._verified_validation_retry_recovery_state(attempt, task)
                 self._reconcile_failed_attempt_coordination(attempt)
                 continue
+            if status in {"ready", "completed"}:
+                # A control-plane rearm or later completion can outrace a
+                # stale terminal Portal projection (for example inflight
+                # sibling lanes).  Do not fail-closed or re-block.
+                continue
             if status != "in_progress":
                 raise DatabaseImplementationConflictError(
                     f"terminal Portal failure cannot reconcile control status {status!r}"

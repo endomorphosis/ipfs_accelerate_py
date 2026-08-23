@@ -1369,6 +1369,36 @@ def test_reconcile_rearms_blocked_portal_provider_failed(tmp_path: Path) -> None
         daemon.close()
 
 
+def test_reconcile_skips_stale_terminal_after_control_rearm(tmp_path: Path) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:rearm-ready-after-terminal-portal",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "blocked"
+        daemon.task_source.compare_and_set_status(
+            attempt.task_cid,
+            task.revision,
+            "ready",
+        )
+        assert daemon.task_source.get(attempt.task_cid).status == "ready"
+        assert daemon.reconcile_terminal_portal_failures() == []
+        assert daemon.task_source.get(attempt.task_cid).status == "ready"
+    finally:
+        daemon.close()
+
+
 def test_reconcile_rearms_blocked_checkout_contention(tmp_path: Path) -> None:
     def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
         raise DatabasePortalBridgeError(
