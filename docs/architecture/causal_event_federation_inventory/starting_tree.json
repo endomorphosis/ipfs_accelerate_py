@@ -3,36 +3,247 @@
   "artifact_version": 1,
   "program_id": "agent-supervisor-causal-event-federation-v1",
   "root_objective_id": "CASF-G000",
+  "plan_revision": "CASF-PLAN-R1",
   "task_prefix": "CASF-",
+  "producer_task_id": "CASF-000",
   "inventory_tasks": [
     "CASF-000",
     "CASF-001"
   ],
+  "authority_class": "evidence-only",
+  "starting_commit": "84a056e41e48a81d4484be43840196578d6c87da",
+  "starting_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
   "repository": {
     "identity": "endomorphosis/ipfs_accelerate_py",
+    "origin": "https://github.com/endomorphosis/ipfs_accelerate_py",
     "branch": "codex/causal-event-supervisor-federation-v1",
     "starting_commit": "84a056e41e48a81d4484be43840196578d6c87da",
     "starting_tree": "40f0771e77d394ac91d92cc1edb02f7860f6131b",
+    "rollback_target": "84a056e41e48a81d4484be43840196578d6c87da",
     "baseline_kind": "committed_git_tree",
     "starting_worktree_was_clean": true,
     "observation_time_utc": "2026-08-21T21:08:48Z",
-    "write_time_note": "Concurrent bounded implementation work may add uncommitted paths after the starting tree was sealed; those paths are not part of this baseline."
+    "planning_revision_is_runtime_completion_evidence": false,
+    "write_time_note": "This inventory seals the board-bound starting commit and tree. Concurrent bounded implementation work may add later overlay paths after that tree was sealed; those paths are not part of this baseline and cannot reclassify starting-tree authority."
+  },
+  "validation_environment": {
+    "path": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin",
+    "canonical_python_interpreter": "/usr/bin/python3.12",
+    "canonical_python_major_minor": [
+      3,
+      12
+    ],
+    "home_policy": "fresh private HOME whose directory name starts with ipfs-accelerate-validation-home-",
+    "xdg_paths": [
+      "$HOME/.cache",
+      "$HOME/.config",
+      "$HOME/.local/share",
+      "$HOME/.local/state"
+    ],
+    "operator_profile_state_unavailable": true,
+    "inherited_provider_path_ignored": true,
+    "network": "deny"
   },
   "control_plane_baseline": {
+    "schema_interface": "ControlPlaneSchema@1",
+    "schema_contract": "ipfs_accelerate_py/agent-supervisor/control-plane-schema@1",
+    "schema_revision": 1,
     "migration_catalog": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+    "migration_catalog_schema": "ipfs_accelerate_py/agent-supervisor/control-plane-migration-catalog@1",
     "base_migration": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql",
+    "base_migration_id": "0001_control_plane",
     "base_migration_version": 1,
     "normalized_domain_table_count": 110,
     "schema_authority": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py",
     "state_repository_authority": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
-    "transaction_authority": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py"
+    "transaction_authority": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py",
+    "runtime_ddl_permitted": false,
+    "casf_schema_extension_in_starting_tree": false,
+    "transactional_outbox_in_base_migration": false,
+    "domain_events_present": true,
+    "domain_events_evidence": "ipfs_accelerate_py/agent_supervisor/task_sources/sql/0001_control_plane.sql:827"
   },
+  "operation_catalog": {
+    "source": "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py",
+    "schema": "ipfs_accelerate_py/agent-supervisor/control-operation-catalog@2",
+    "requirement_id": "294719425747343997526263348545558645762",
+    "catalog_version": 2,
+    "unique_operation_count": 35,
+    "federation_star_operations_in_starting_catalog": false,
+    "catalog_presence_is_federation_qualification": false
+  },
+  "mandated_roots": {
+    "classification_owner": "CASF-001",
+    "status_vocabulary": [
+      "available",
+      "available_with_caveats",
+      "stale",
+      "incompatible",
+      "missing"
+    ],
+    "accelerator_surfaces": [
+      "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/quack_capabilities.py",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/quack_state_client.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/control",
+      "ipfs_accelerate_py/agent_supervisor/runtime",
+      "ipfs_accelerate_py/agent_supervisor/planning",
+      "ipfs_accelerate_py/agent_supervisor/proof",
+      "ipfs_accelerate_py/agent_supervisor/verification",
+      "ipfs_accelerate_py/agent_supervisor/semantic_governor",
+      "ipfs_accelerate_py/agent_supervisor/adversarial_assurance",
+      "ipfs_accelerate_py/agent_supervisor/semantic_state/world_snapshot_builder.py",
+      "ipfs_accelerate_py/agent_supervisor/analysis/doctor_causal_localization.py",
+      "ipfs_accelerate_py/agent_supervisor/integrations/ducklake_history_projection.py"
+    ],
+    "architecture_documents": [
+      "docs/architecture/AGENT_SUPERVISOR_DUCKDB_QUACK_CONTROL_PLANE_PLAN.md",
+      "docs/architecture/agent_supervisor_duckdb_quack_control_plane.todo.md",
+      "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_PLAN.md",
+      "docs/architecture/LOGIC_GOVERNED_SEMANTIC_WORK_FABRIC_QUALIFICATION.md",
+      "docs/architecture/AGENT_SUPERVISOR_ARCHITECTURE.md"
+    ],
+    "unknowns_remain_typed": true,
+    "name_or_import_is_not_authority": true
+  },
+  "sibling_contract_policy": {
+    "sibling_mutation_permitted": false,
+    "missing_sibling_capability_disposition": "typed_blocker",
+    "owners": [
+      {
+        "owner": "ipfs_datasets_py",
+        "path": "ipfs_datasets_py",
+        "owns": "semantic meaning and immutable semantic data contracts",
+        "casf_constraint": "Persist and query supplied identities without reinterpreting their meaning or writing the sibling repository."
+      },
+      {
+        "owner": "ipfs_kit_py",
+        "path": "ipfs_kit_py",
+        "owns": "published durable artifact and content-storage interfaces",
+        "casf_constraint": "Do not duplicate VFS, proof-seal, WAL, or current-pointer authority."
+      },
+      {
+        "owner": "MCP++",
+        "path": "ipfs_accelerate_py/mcplusplus",
+        "owns": "existing shared protocol and wire contracts when a profile applies",
+        "casf_constraint": "Do not create a new MCP++ profile for CASF."
+      }
+    ]
+  },
+  "non_compensable_constraints": [
+    "zero unauthorized supervisor, subagent, or mutation creation",
+    "zero duplicate committed effects, stale-fence completion, or lost authoritative transitions",
+    "zero simulated-as-live evidence, model-created authority, model-created policy permission, model-created completion, or false completion",
+    "zero DuckLake-derived scheduling, lease, policy, or completion authority",
+    "zero direct multi-process DuckDB file mutation and zero implicit Quack to embedded/file fallback",
+    "zero arbitrary SQL from an agent, unbounded event fanout, hidden validation reduction, cross-tenant leakage, or raw credential propagation"
+  ],
+  "closed_contracts": [
+    {
+      "contract_id": "CASF-000-STATUS-VOCABULARY",
+      "statement": "Every classified surface uses exactly available, available_with_caveats, stale, incompatible, or missing."
+    },
+    {
+      "contract_id": "CASF-000-SOURCE-TREE-SEAL",
+      "statement": "The sealed starting commit is 84a056e41e48a81d4484be43840196578d6c87da and the sealed starting tree is 40f0771e77d394ac91d92cc1edb02f7860f6131b."
+    },
+    {
+      "contract_id": "CASF-000-EVIDENCE-ONLY",
+      "statement": "This inventory is compact evidence. It does not create operational authority, policy outcomes, leases, fences, completion, or promotion."
+    },
+    {
+      "contract_id": "CASF-000-NARROW-EXTENSION",
+      "statement": "Current canonical authorities are extended narrowly in later tasks. CASF-000 does not replace store identity, migration, schema, repository, transaction, or control-catalog owners."
+    },
+    {
+      "contract_id": "CASF-000-FAIL-CLOSED-MISSING",
+      "statement": "Missing, unknown, or unprobed capability is a typed blocker. It is never classified available."
+    },
+    {
+      "contract_id": "CASF-000-ONE-STATE-OWNER",
+      "statement": "Authoritative mutation remains behind one exclusive Quack state-owner boundary. Embedded mode cannot claim multi-supervisor parallelism."
+    },
+    {
+      "contract_id": "CASF-000-DUCKLAKE-NONAUTHORITY",
+      "statement": "DuckLake remains optional, append-only, rebuildable, eventually consistent, and never a scheduling, lease, policy, acceptance, or completion prerequisite."
+    }
+  ],
+  "fail_closed_negative_paths": [
+    {
+      "path_id": "CASF-000-NEG-UNKNOWN-STATUS",
+      "input": "status outside the closed vocabulary",
+      "disposition": "reject"
+    },
+    {
+      "path_id": "CASF-000-NEG-UNPROBED-AVAILABLE",
+      "input": "capability claimed available without a current-source identity or fail-closed probe",
+      "disposition": "reject"
+    },
+    {
+      "path_id": "CASF-000-NEG-MISSING-AS-AVAILABLE",
+      "input": "missing prerequisite reported as available",
+      "disposition": "typed_blocker and reject the available claim"
+    },
+    {
+      "path_id": "CASF-000-NEG-NAME-AS-AUTHORITY",
+      "input": "module name, import, fixture, table name, Markdown board, generated report, or historical receipt used as live authority",
+      "disposition": "reject"
+    },
+    {
+      "path_id": "CASF-000-NEG-OVERLAY-AS-BASELINE",
+      "input": "later worktree overlay treated as the sealed starting tree",
+      "disposition": "reject"
+    },
+    {
+      "path_id": "CASF-000-NEG-DUCKLAKE-PROMOTION",
+      "input": "DuckLake or httpfs LOAD success used as scheduling, lease, policy, or completion authority",
+      "disposition": "reject"
+    },
+    {
+      "path_id": "CASF-000-NEG-QUACK-EVENT-CLAIM",
+      "input": "Quack compatibility or health used as event-driven or multi-supervisor qualification",
+      "disposition": "reject"
+    },
+    {
+      "path_id": "CASF-000-NEG-FILE-FALLBACK",
+      "input": "direct multi-process control.duckdb mutation or implicit Quack-to-file fallback",
+      "disposition": "reject"
+    },
+    {
+      "path_id": "CASF-000-NEG-AGENT-SQL",
+      "input": "agent-supplied SQL, database path, endpoint, or raw credentials",
+      "disposition": "reject"
+    },
+    {
+      "path_id": "CASF-000-NEG-SELF-COMPLETION",
+      "input": "process exit, board status, quiet queue, or this inventory used as CASF-000 completion",
+      "disposition": "reject; final result identity remains pending until current-tree merge and post-merge gates"
+    },
+    {
+      "path_id": "CASF-000-NEG-CONSTRAINT-COMPENSATION",
+      "input": "weakening or compensating a non-compensable constraint",
+      "disposition": "reject"
+    },
+    {
+      "path_id": "CASF-000-NEG-SIBLING-WRITE",
+      "input": "write to ipfs_datasets_py, ipfs_kit_py, or MCP++ sibling sources",
+      "disposition": "reject"
+    }
+  ],
   "evidence_basis": {
     "source": "exact committed current tree plus explicitly bounded current-environment extension probes",
     "markdown_board_is_authority": false,
     "historical_receipt_is_current_qualification": false,
     "generated_report_is_completion_authority": false,
-    "module_or_table_name_is_capability_authority": false
+    "module_or_table_name_is_capability_authority": false,
+    "embedded_test_is_multiprocess_qualification": false,
+    "this_inventory_is_completion_authority": false
   },
   "inventory_refs": {
     "human_readable": "docs/architecture/causal_event_federation_inventory/README.md",

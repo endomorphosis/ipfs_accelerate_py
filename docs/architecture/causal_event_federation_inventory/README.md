@@ -5,6 +5,11 @@ agent-supervisor-causal-event-federation-v1. It is an inventory of the
 committed current tree and the current local extension probes. It is not a
 task-board completion claim, a policy decision, or a promotion receipt.
 
+CASF-000 owns the starting-tree seal and capability snapshot. CASF-001 owns
+the named-authority classification. Both tasks remain evidence-only: they
+extend current canonical authorities narrowly, fail closed on missing
+capability, and preserve every non-compensable constraint.
+
 ## Baseline
 
 | Field | Value |
@@ -13,13 +18,31 @@ task-board completion claim, a policy decision, or a promotion receipt.
 | Branch | codex/causal-event-supervisor-federation-v1 |
 | Starting commit | 84a056e41e48a81d4484be43840196578d6c87da |
 | Starting tree | 40f0771e77d394ac91d92cc1edb02f7860f6131b |
+| Rollback target | 84a056e41e48a81d4484be43840196578d6c87da |
+| Plan revision | CASF-PLAN-R1 |
 | Program | agent-supervisor-causal-event-federation-v1 |
 | Root objective | CASF-G000 |
 | Inventory tasks | CASF-000, CASF-001 |
+| Authority class | evidence-only |
 
 The exact machine-readable baseline is in starting_tree.json. Concurrent
 implementation work may make the worktree dirty after this committed tree was
-sealed; that does not change the starting commit or tree identity.
+sealed; that does not change the starting commit or tree identity. Later
+overlay paths are not this baseline.
+
+## Validation environment
+
+Capability and validation assertions are bound to the sealed environment, not
+a provider-side PATH or operator toolchain:
+
+| Field | Value |
+|---|---|
+| PATH | `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin` |
+| Canonical interpreter | `/usr/bin/python3.12` |
+| HOME | fresh private directory named `ipfs-accelerate-validation-home-*` |
+| XDG paths | `$HOME/.cache`, `$HOME/.config`, `$HOME/.local/share`, `$HOME/.local/state` |
+| Network | deny |
+| Extension INSTALL | disabled |
 
 ## Closed status vocabulary
 
@@ -31,18 +54,78 @@ sealed; that does not change the starting commit or tree identity.
 | incompatible | Present, but unsafe as the canonical CASF path because its behavior conflicts with a non-compensable constraint. |
 | missing | No qualifying current-tree implementation was found. |
 
+Unknown, unprobed, or unnamed statuses fail closed. They are never rewritten
+as available.
+
+## Closed contracts
+
+- Status vocabulary is closed. No extra labels are admitted.
+- The sealed starting commit/tree identities are exact and cannot be replaced
+  by a dirty overlay, branch name, or planning document.
+- This inventory is compact evidence. It cannot create operational authority,
+  policy outcomes, leases, fences, completion, or promotion.
+- Current canonical owners (store identity, migrations, schema, repository,
+  transactions, control catalog) are extended later, not replaced here.
+- Missing capability emits a typed blocker and allows independent work. It is
+  never classified available.
+- Authoritative mutation remains behind one exclusive Quack state-owner
+  boundary. Embedded mode cannot claim multi-supervisor parallelism.
+- DuckLake remains optional, append-only, rebuildable, eventually consistent,
+  and never a scheduling, lease, policy, acceptance, or completion
+  prerequisite.
+
+## Fail-closed negative paths
+
+| Negative path | Disposition |
+|---|---|
+| Status outside the closed vocabulary | reject |
+| Capability claimed available without source identity or probe | reject |
+| Missing prerequisite reported as available | typed blocker; reject the available claim |
+| Module name, import, fixture, table name, Markdown board, generated report, or historical receipt used as live authority | reject |
+| Later overlay treated as the sealed starting tree | reject |
+| DuckLake or httpfs LOAD used as scheduling, lease, policy, or completion authority | reject |
+| Quack compatibility or health used as event-driven or multi-supervisor qualification | reject |
+| Direct multi-process `control.duckdb` mutation or implicit Quack-to-file fallback | reject |
+| Agent-supplied SQL, database path, endpoint, or raw credentials | reject |
+| Process exit, board status, quiet queue, or this inventory used as completion | reject; final result identity remains pending |
+| Weakening a non-compensable constraint | reject |
+| Write to sibling `ipfs_datasets_py`, `ipfs_kit_py`, or MCP++ sources | reject |
+| Network `INSTALL` during an ordinary probe | reject |
+| `import duckdb` treated as a health-check pass | reject |
+| Starting-tree DuckLake placeholder treated as a typed projection pipeline | reject; status remains stale |
+| Client polling treated as server-owned `wait_for_events` | reject |
+
+## Non-compensable constraints
+
+These invariants are preserved by this baseline and cannot be traded away:
+
+- zero unauthorized supervisor, subagent, or mutation creation
+- zero duplicate committed effects, stale-fence completion, or lost
+  authoritative transitions
+- zero simulated-as-live evidence, model-created authority, model-created
+  policy permission, model-created completion, or false completion
+- zero DuckLake-derived scheduling, lease, policy, or completion authority
+- zero direct multi-process DuckDB file mutation and zero implicit Quack to
+  embedded/file fallback
+- zero arbitrary SQL from an agent, unbounded event fanout, hidden validation
+  reduction, cross-tenant leakage, or raw credential propagation
+
 ## Current capability snapshot
 
 | Capability | Inventory result | Qualification boundary |
 |---|---|---|
-| DuckDB | available; version 1.5.5 | Runtime presence is not federation qualification. |
-| Quack | available_with_caveats; core extension c154811 loaded; quack_serve and quack_query present; compatible and health check passed | experimental_usable is false and the declared beta limitation is no_server_push_clients_must_poll. It does not qualify the required event-wait gate. |
+| Python | available; canonical `/usr/bin/python3.12` | Interpreter presence is not federation qualification. |
+| DuckDB | available; version 1.5.5; pin `>=1.5.0,<1.6.0` | Runtime presence is not federation qualification. Direct multi-process file mutation is prohibited. |
+| Quack | available_with_caveats; core extension c154811 loaded; quack_serve and quack_query present; compatible and health check passed | experimental_usable is false and the declared beta limitation includes no_server_push_clients_must_poll. It does not qualify the required event-wait gate. |
 | DuckLake | available_with_caveats; core extension d8a1881e loaded | Extension load is not a typed, idempotent projection pipeline or a promotion receipt. |
 | httpfs | available_with_caveats; core extension 827222f loaded | Transport capability does not grant scheduling or policy authority. |
 | Python ducklake package | missing | This is not a DuckDB-extension blocker, but no standalone-package behavior is claimed. |
+| DuckLake projection pipeline | stale | Starting-tree adapter is a non-authoritative placeholder. |
+| Event-driven wakeup | missing | No starting-tree server-owned `wait_for_events` path. |
+| Qualified parallel federation | missing | Runner polls and the configured live-seal gate is NO-GO. |
 
-Network installation was disabled during the probes. Full probe facts and
-nonclaims are recorded in capability_snapshot.json.
+Network installation was disabled during the probes. Full probe facts, closed
+contracts, and explicit nonclaims are recorded in capability_snapshot.json.
 
 ## Named authority disposition
 
