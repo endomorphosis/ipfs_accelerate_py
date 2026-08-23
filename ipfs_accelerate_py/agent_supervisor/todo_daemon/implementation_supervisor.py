@@ -9053,7 +9053,9 @@ class PortalImplementationSupervisor:
             return SupervisorLoopDecision.keep_running()
 
         state = PortalTaskState.load(self.config.state_path)
-        worker_status = dict(_loop._last_worker_status)
+        worker_status = dict(
+            getattr(_loop, "_last_worker_status", {}) or {}
+        )
         stuck, reason = self.is_stuck(
             state,
             now_ts=time.time(),

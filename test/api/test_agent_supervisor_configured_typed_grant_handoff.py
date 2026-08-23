@@ -1502,13 +1502,15 @@ def test_aseh_status_sample_rejects_replica_generation_change_during_query(
     before = json.loads(json.dumps(sample["owner_status"]))
     after = json.loads(json.dumps(before))
     after["read_replica"]["refresh_sequence"] += 1
-    observations = iter((before, after))
+    observations = iter((before, after) * 3)
     server = SimpleNamespace(status=lambda: next(observations))
     scheduler = SimpleNamespace(pid=os.getpid(), poll=lambda: None)
+    broker_calls = []
     monkeypatch.setattr(
         aseh_operator,
         "_broker_status_query",
-        lambda *_args, **_kwargs: {"available": True},
+        lambda *_args, **_kwargs: broker_calls.append(True)
+        or {"available": True},
     )
     monkeypatch.setattr(
         aseh_operator,
@@ -1522,6 +1524,47 @@ def test_aseh_status_sample_rejects_replica_generation_change_during_query(
 
     assert observed["authority"]["available"] is False
     assert observed["authority"]["error_type"] == "OperatorError"
+    assert observed["owner_status"]["read_replica"]["refresh_sequence"] == (
+        after["read_replica"]["refresh_sequence"]
+    )
+    assert len(broker_calls) == 3
+
+
+def test_aseh_status_sample_retries_the_whole_query_until_replica_is_stable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = time.time()
+    board, paths, sample = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    before = json.loads(json.dumps(sample["owner_status"]))
+    after = json.loads(json.dumps(before))
+    after["read_replica"]["refresh_sequence"] += 1
+    observations = iter((before, after, after, after))
+    server = SimpleNamespace(status=lambda: next(observations))
+    scheduler = SimpleNamespace(pid=os.getpid(), poll=lambda: None)
+    broker_calls = []
+    monkeypatch.setattr(
+        aseh_operator,
+        "_broker_status_query",
+        lambda *_args, **_kwargs: broker_calls.append(True)
+        or {"available": True},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_lane_status_observations",
+        lambda *_args, **_kwargs: [],
+    )
+
+    observed = aseh_operator._status_sample(
+        board, paths, server, scheduler
+    )
+
+    assert observed["authority"]["available"] is True
+    assert len(broker_calls) == 2
     assert observed["owner_status"]["read_replica"]["refresh_sequence"] == (
         after["read_replica"]["refresh_sequence"]
     )
@@ -1956,6 +1999,15 @@ def test_aseh_lane_status_projects_worker_watchdog(
     assert observations[0]["worker_phase_age_seconds"] is None
     assert observations[0]["stalled_without_active_worker"] is None
 
+    payload["worker_observed_at_ns"] = time.time_ns() + 250_000_000
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    future_obs = aseh_operator._lane_status_observations(
+        board, now=time.time()
+    )
+    assert future_obs[0]["watchdog_admissible"] is True
+    assert future_obs[0]["worker_observation_age_seconds"] == 0.0
+    payload["worker_observed_at_ns"] = time.time_ns()
+
     payload.update(
         {
             "worker_phase": "validating_reconciled_candidate",
@@ -2051,6 +2103,7 @@ def test_aseh_lane_status_projects_worker_watchdog(
         ("worker_root_identity_source", "captured_before_census"),
         ("worker_root_pid", 4322),
         ("worker_observed_at_ns", 1),
+        ("worker_observed_at_ns", time.time_ns() + 60_000_000_000),
         ("worker_observation_generation", "run-1:4321:1:boot-id"),
     ],
 )
@@ -2117,26 +2170,74 @@ def test_aseh_lane_status_rejects_unsealed_worker_root_identity(
     assert observations[0]["watchdog_admissible"] is False
 
 
-def test_known_non_worktree_phases_are_not_worker_stalls() -> None:
-    validating = todo_supervisor.worktree_phase_worker_status(
-        {"active_phase": "validating"},
-        daemon_pid=1234,
-        threshold_seconds=60,
+def test_known_non_worktree_phase_allowlist_is_exact_and_not_guarded() -> None:
+    expected = frozenset(
+        {
+            "merge_queue",
+            "merge_reconciliation",
+            "validating",
+            "validating_reconciled_candidate",
+        }
     )
-    assert validating["required"] is False
-    assert validating["phase_known"] is True
-    assert validating["phase_known_non_worktree"] is True
-    assert validating["stall_evidence_unavailable_reason"] == "phase_not_guarded"
-    assert validating["stalled_without_active_worker"] is None
+    assert todo_supervisor.KNOWN_NON_WORKTREE_PHASES == expected
+
+    for phase in sorted(expected):
+        status = todo_supervisor.worktree_phase_worker_status(
+            {"active_phase": phase},
+            daemon_pid=1234,
+            threshold_seconds=60,
+            descendants=[],
+        )
+        assert status["required"] is False
+        assert status["phase_known"] is True
+        assert status["phase_known_non_worktree"] is True
+        assert status["stall_evidence_unavailable_reason"] == "phase_not_guarded"
+        assert status["stalled_without_active_worker"] is None
 
     unknown = todo_supervisor.worktree_phase_worker_status(
         {"active_phase": "implementng"},
         daemon_pid=1234,
         threshold_seconds=60,
+        descendants=[],
     )
     assert unknown["phase_known"] is False
     assert unknown["phase_known_non_worktree"] is False
     assert unknown["stall_evidence_unavailable_reason"] == "phase_unknown"
+
+
+def test_worker_observation_binds_exact_run_child_and_root_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loop = object.__new__(SupervisorLoop)
+    loop.last_run_id = "run-7"
+    loop._last_worker_status = {}
+    monkeypatch.setattr(
+        supervisor_loop_module.time,
+        "time_ns",
+        lambda: 1_700_000_000_000_000_000,
+    )
+
+    observed = loop._record_worker_observation(
+        SimpleNamespace(pid=4321),
+        {
+            "worker_metrics_available": True,
+            "worker_root_start_time_ticks": 987654,
+            "worker_root_boot_id": "boot-id",
+        },
+    )
+
+    assert observed["worker_observed_at_ns"] == 1_700_000_000_000_000_000
+    assert observed["worker_observation_generation"] == (
+        "run-7:4321:987654:boot-id"
+    )
+    assert loop._last_worker_status == observed
+
+    unavailable = loop._record_worker_observation(
+        SimpleNamespace(pid=4321),
+        {"worker_metrics_available": False},
+    )
+    assert unavailable["worker_observed_at_ns"] == 1_700_000_000_000_000_000
+    assert unavailable["worker_observation_generation"] == ""
 
 
 def test_supervisor_loop_publishes_worker_census_before_startup_grace(
@@ -2513,7 +2614,14 @@ def test_aseh_health_rejects_outage_progress_and_bounds_recovery_edges(
     assert rejected["task_authority_pair"]["revision_monotonic"] is False
     assert rejected["healthy"] is False
 
-    unhealthy = {"healthy": False, "blocked": False, "stuck": False}
+    unhealthy = {
+        "healthy": False,
+        "blocked": False,
+        "stuck": False,
+        "scheduler_alive": True,
+        "owner_ready": True,
+        "broker_ready": True,
+    }
     edges = 0
     for prior_available, current_available in (
         (True, False),
@@ -2535,6 +2643,76 @@ def test_aseh_health_rejects_outage_progress_and_bounds_recovery_edges(
     assert action == "fail"
     assert reason == "authoritative_status_recovery_grace_exhausted"
     assert edges == 3
+
+
+def test_aseh_post_admission_grace_is_exclusive_to_typed_lane_loss() -> None:
+    lane_only = {
+        "healthy": False,
+        "blocked": False,
+        "stuck": False,
+        "terminal": False,
+        "scheduler_alive": True,
+        "owner_ready": True,
+        "broker_ready": True,
+        "health_without_lane_admitted": True,
+        "lane_heartbeat_fresh": False,
+    }
+
+    edges = 0
+    for _index in range(2):
+        action, reason, edges = aseh_operator._post_admission_health_action(
+            lane_only,
+            prior_available=True,
+            current_available=True,
+            unhealthy_edges=edges,
+        )
+        assert (action, reason) == ("continue", "")
+    action, reason, edges = aseh_operator._post_admission_health_action(
+        lane_only,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=edges,
+    )
+    assert (action, reason, edges) == (
+        "fail",
+        "authoritative_health_admission_lost",
+        3,
+    )
+
+    healthy = {**lane_only, "healthy": True, "lane_heartbeat_fresh": True}
+    assert aseh_operator._post_admission_health_action(
+        healthy,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=2,
+    ) == ("continue", "", 0)
+
+    for field, value in (
+        ("scheduler_alive", False),
+        ("owner_ready", False),
+        ("broker_ready", False),
+        ("health_without_lane_admitted", False),
+        ("lane_heartbeat_fresh", None),
+    ):
+        degraded = {**lane_only, field: value}
+        action, _reason, next_edges = (
+            aseh_operator._post_admission_health_action(
+                degraded,
+                prior_available=True,
+                current_available=True,
+                unhealthy_edges=0,
+            )
+        )
+        assert action == "fail", field
+        assert next_edges == 0
+
+    scheduler_lost = {**lane_only, "scheduler_alive": False}
+    assert aseh_operator._post_admission_health_action(
+        scheduler_lost,
+        prior_available=True,
+        current_available=False,
+        unhealthy_edges=0,
+    )[:2] == ("fail", "authoritative_scheduler_not_live")
 
 
 def test_aseh_startup_retries_unsafe_replica_until_stable(

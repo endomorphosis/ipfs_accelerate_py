@@ -79,6 +79,7 @@ LIVE_STATUS_SCHEMA: Final = (
 OWNER_LOCK_SUFFIX: Final = ".state-owner.lock"
 OWNER_MARKER_SUFFIX: Final = ".state-owner.json"
 STATUS_SAMPLE_INTERVAL_SECONDS: Final = 0.5
+STATUS_REPLICA_STABILITY_ATTEMPTS: Final = 3
 STATUS_RECEIPT_MAX_BYTES: Final = 1_048_576
 LIVE_REPLAY_MAX_BYTES: Final = 1_073_741_824
 LIVE_REPLAY_IO_TIMEOUT_SECONDS: Final = 60.0
@@ -2610,6 +2611,13 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
             if worker_observed_at_ns is not None
             else None
         )
+        if (
+            worker_observation_age_seconds is not None
+            and -1.0 <= worker_observation_age_seconds < 0.0
+        ):
+            # Status IO and replica replay can observe a heartbeat written
+            # slightly after the sample's start timestamp.
+            worker_observation_age_seconds = 0.0
         worker_observation_generation = str(
             payload.get("worker_observation_generation") or ""
         )
@@ -2687,7 +2695,7 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
             and worker_root_identity_source == "supervised_child_identity"
             and bool(run_id)
             and worker_observed_at_ns is not None
-            and worker_observed_at_ns <= observed.st_mtime_ns
+            and worker_observed_at_ns <= observed.st_mtime_ns + 1_000_000_000
             and worker_observation_age_seconds is not None
             and 0.0 <= worker_observation_age_seconds <= 60.0
             and worker_observation_generation
@@ -2807,38 +2815,58 @@ def _status_sample(
     scheduler: subprocess.Popen[Any],
 ) -> dict[str, Any]:
     observed_at = time.time()
-    owner_status_before = server.status()
-    try:
-        authority = _broker_status_query(
-            board, paths, owner_status=owner_status_before
-        )
-    except Exception as exc:
-        authority = {
-            "available": False,
-            "error_type": type(exc).__name__,
-            "error": str(exc),
-            "ready_count": 0,
-            "active_count": 0,
-            "blocked_count": 0,
-            "terminal_count": 0,
-            "event_cursor": 0,
-            "task_statuses": {},
-            "task_revisions": {},
-        }
-    owner_status_after = server.status()
-    if authority.get("available") is True:
+    owner_status_after: Mapping[str, Any] = {}
+    authority: dict[str, Any] = {}
+    for attempt in range(STATUS_REPLICA_STABILITY_ATTEMPTS):
+        owner_status_before = server.status()
         try:
-            if _published_replica_binding(
-                owner_status_before, paths
-            ) != _published_replica_binding(owner_status_after, paths):
-                raise OperatorError(
-                    "owner replica publication changed during status query"
-                )
+            authority = _broker_status_query(
+                board, paths, owner_status=owner_status_before
+            )
         except Exception as exc:
             authority = {
                 "available": False,
                 "error_type": type(exc).__name__,
                 "error": str(exc),
+                "ready_count": 0,
+                "active_count": 0,
+                "blocked_count": 0,
+                "terminal_count": 0,
+                "event_cursor": 0,
+                "task_statuses": {},
+                "task_revisions": {},
+            }
+        owner_status_after = server.status()
+        if authority.get("available") is not True:
+            break
+        try:
+            stable_replica = bool(
+                _published_replica_binding(owner_status_before, paths)
+                == _published_replica_binding(owner_status_after, paths)
+            )
+        except Exception as exc:
+            authority = {
+                "available": False,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "ready_count": 0,
+                "active_count": 0,
+                "blocked_count": 0,
+                "terminal_count": 0,
+                "event_cursor": 0,
+                "task_statuses": {},
+                "task_revisions": {},
+            }
+            break
+        if stable_replica:
+            break
+        if attempt + 1 == STATUS_REPLICA_STABILITY_ATTEMPTS:
+            authority = {
+                "available": False,
+                "error_type": "OperatorError",
+                "error": (
+                    "owner replica publication changed during status query"
+                ),
                 "ready_count": 0,
                 "active_count": 0,
                 "blocked_count": 0,
@@ -2863,7 +2891,7 @@ def _status_sample(
             "returncode": scheduler_returncode,
         },
         "authority": authority,
-        "lanes": _lane_status_observations(board, now=observed_at),
+        "lanes": _lane_status_observations(board, now=time.time()),
     }
     sample["sample_cid"] = _identity(sample)
     return sample
@@ -3411,6 +3439,27 @@ def _health_receipt(
         and (ready_count or active_count or delayed_frontier_admitted or terminal)
         and (admission_progress or not require_authoritative_progress)
     )
+    health_without_lane_admitted = bool(
+        owner_ready
+        and scheduler_alive
+        and broker_ready
+        and broker_samples_authenticated
+        and owner_identity_admitted
+        and task_authority_pair["admitted"] is True
+        and source_identity_admitted
+        and task_corpus_admitted
+        and semantic_corpus_admitted
+        and frontier_admitted
+        and task_count == expected_tasks
+        and goal_count == expected_goals
+        and dependency_count == expected_dependencies
+        and objective_count == expected_objectives == 1
+        and plan_count == expected_plans == 1
+        and not blocked
+        and not stuck
+        and (ready_count or active_count or delayed_frontier_admitted or terminal)
+        and (admission_progress or not require_authoritative_progress)
+    )
     lane_active_worker_count = (
         sum(int(item["active_worker_count"]) for item in lanes)
         if lanes
@@ -3433,9 +3482,11 @@ def _health_receipt(
         "last_progress_at": last_progress_at,
         "startup_grace_active": startup_active,
         "lane_heartbeat_fresh": lane_fresh,
+        "health_without_lane_admitted": health_without_lane_admitted,
         "lane_stalled_without_active_worker": lane_stalled,
         "lane_active_worker_count": lane_active_worker_count,
         "owner_ready": owner_ready,
+        "broker_ready": broker_ready,
         "owner_identity_admitted": owner_identity_admitted,
         "task_authority_pair": task_authority_pair,
         "source_identity_admitted": source_identity_admitted,
@@ -3564,6 +3615,12 @@ def _post_admission_health_action(
         return "fail", "authoritative_board_blocked", unhealthy_edges
     if receipt.get("stuck") is True:
         return "fail", "authoritative_board_stuck", unhealthy_edges
+    if receipt.get("scheduler_alive") is not True:
+        return "fail", "authoritative_scheduler_not_live", unhealthy_edges
+    if receipt.get("owner_ready") is not True:
+        return "fail", "authoritative_owner_not_ready", unhealthy_edges
+    if receipt.get("broker_ready") is not True:
+        return "fail", "authoritative_broker_not_ready", unhealthy_edges
     if not prior_available and not current_available:
         return (
             "fail",
@@ -3581,11 +3638,8 @@ def _post_admission_health_action(
         # same recovery edges used for a single missing authority sample,
         # but keep semantic or identity loss fail-closed.
         lane_only_loss = bool(
-            receipt.get("task_corpus_admitted") is True
-            and receipt.get("semantic_corpus_admitted") is True
-            and receipt.get("owner_identity_admitted") is True
-            and receipt.get("source_identity_admitted") is True
-            and receipt.get("lane_heartbeat_fresh") is not True
+            receipt.get("health_without_lane_admitted") is True
+            and receipt.get("lane_heartbeat_fresh") is False
         )
         if lane_only_loss:
             next_edges = unhealthy_edges + 1
