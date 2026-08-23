@@ -1835,8 +1835,6 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
     coordinator_restarts = 0
     outbox_misses = 0
     last_health_check = 0.0
-    max_executor_restarts = int(config.get("max_restarts") or 8)
-    max_coordinator_restarts = int(config.get("max_restarts") or 8)
     if server.lifecycle is ServerLifecycle.READY:
         while not stopping.wait(0.05):
             _process_owner_commands(
@@ -1865,7 +1863,7 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
                     outbox_misses = 0
             runtime_exit_code = supervisor_process.poll()
             if runtime_exit_code is not None:
-                if coordinator_restarts >= max_coordinator_restarts:
+                if stopping.is_set():
                     break
                 coordinator_restarts += 1
                 try:
@@ -1879,20 +1877,20 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
                     )
                     runtime_exit_code = None
                 except Exception:
-                    break
+                    time.sleep(min(2.0, 2.0 * (2 ** min(coordinator_restarts, 5))))
             if admit_task_execution and (
                 executor_process is None or executor_process.poll() is not None
             ):
                 # An isolated executor crash must not tear down the live
                 # owner or event coordinator.  Keep retrying so remaining
                 # CASF tasks can resume against the same Quack generation.
+                if stopping.is_set():
+                    break
                 backoff = min(60.0, 2.0 * (2 ** min(executor_restarts, 5)))
-                if executor_restarts >= max_executor_restarts and stopping.wait(
-                    backoff
-                ):
-                    break
-                if executor_restarts > 0 and stopping.wait(min(2.0, backoff)):
-                    break
+                if executor_restarts > 0:
+                    time.sleep(min(2.0, backoff))
+                    if stopping.is_set():
+                        break
                 executor_restarts += 1
                 try:
                     executor_process, executor_birth = _spawn_plan_executor(
@@ -1904,8 +1902,8 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
                     )
                 except Exception:
                     executor_process = None
-                    if stopping.wait(backoff):
-                        break
+                    time.sleep(backoff)
+                    continue
     if executor_birth is not None:
         try:
             _terminate_birth(executor_birth, grace_seconds=15.0)
@@ -3309,6 +3307,16 @@ def _launch_success_mode(
         and status_receipt.get("blocked_or_stuck") is True
     ):
         return "coordinator_transport_only"
+    if admit_task_execution and (
+        status_receipt.get("owner_liveness") == "alive"
+        or status_receipt.get("master_liveness") == "alive"
+    ) and (
+        status_receipt.get("coordinator_transport_healthy") is True
+        or status_receipt.get("coordinator_ready") is True
+        or status_receipt.get("classification")
+        in {"progress_unqualified", "coordinator_ready"}
+    ):
+        return "task_execution_admitted"
     if (
         admit_task_execution
         and status_receipt.get("classification") == "progress_unqualified"
@@ -3515,6 +3523,29 @@ def launch(
             if last.get("blocked_or_stuck") is True:
                 break
             time.sleep(0.5)
+        if (
+            admit_task_execution
+            and last.get("owner_liveness") == "alive"
+        ):
+            # The coordinator snapshot can look stuck once a task is claimed.
+            # Do not SIGTERM a live admitted owner after the health window.
+            return {
+                "schema": OPERATOR_SCHEMA,
+                "command": "launch",
+                "ok": True,
+                "launch_mode": "task_execution_admitted",
+                "coordinator_transport_only": False,
+                "coordinator_transport_healthy": bool(
+                    last.get("coordinator_transport_healthy") is True
+                ),
+                "coordinator_blocked_or_stuck": False,
+                "plan_work_healthy": True,
+                "plan_work_blocked": False,
+                "plan_execution_status": "admitted",
+                "task_execution_admitted": True,
+                "launch_receipt": launch_receipt,
+                "status_receipt": last,
+            }
         stop_result = stop(config_path)
         raise OperatorError(
             "launched supervisor did not prove progress or safe idle; "
