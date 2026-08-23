@@ -628,3 +628,64 @@ def test_generic_experiment_plan_envelope_is_unchanged() -> None:
     decoded = parse_procedure_artifact(record.to_dict())
     assert decoded == record
     assert isinstance(decoded, contracts.BoundedArtifact)
+
+
+def _worktree_experiment() -> ShadowExperiment:
+    return _experiment(
+        isolation=_worktree_isolation(),
+        effects=(ExperimentEffectClass.OBSERVE_DISPOSABLE_WORKTREE,),
+        cost=_cost(worktree_count=1),
+        execution_bound=_bound(max_worktrees=1),
+        risk_class=RiskClass.REVERSIBLE_LOCAL,
+    )
+
+
+def test_worktree_must_be_present_in_world_and_pending_decision_is_required() -> None:
+    worktree_experiment = _worktree_experiment()
+    missing_worktree = _plan(
+        worktree_experiment,
+        world=_world(worktree_ids=("other-worktree",), lease_ids=("lease-shadow-1",)),
+    )
+    assert missing_worktree.action is ExperimentAction.REFUSE
+    assert missing_worktree.reason_code is ExperimentReason.UNAUTHORIZED_WORKTREE
+    assert missing_worktree.can_authorize is False
+
+    missing_lease = _plan(
+        worktree_experiment,
+        world=_world(worktree_ids=("worktree-shadow-1",), lease_ids=("other-lease",)),
+    )
+    assert missing_lease.action is ExperimentAction.REFUSE
+    assert missing_lease.reason_code is ExperimentReason.UNAUTHORIZED_WORKTREE
+
+    no_pending = ExperimentPlanner().plan(
+        _experiment(),
+        questions=_questions(),
+        world=_world(),
+    )
+    assert no_pending.action is ExperimentAction.SKIP
+    assert no_pending.reason_code is ExperimentReason.NO_PENDING_DECISION
+    assert no_pending.can_authorize is False
+
+
+def test_run_decision_cannot_target_production_and_runner_rechecks_effects() -> None:
+    decision = _plan()
+    payload = decision.to_dict()
+    payload["isolation"] = dict(payload["isolation"])
+    payload["isolation"]["production"] = True
+    with pytest.raises(ExperimentIsolationError, match="production-mutation"):
+        ExperimentDecision.from_dict(payload)
+
+    runner = ShadowExperimentRunner()
+    mutating = _experiment(effects=(ExperimentEffectClass.MUTATE_PRODUCTION,))
+    with pytest.raises(ExperimentIsolationError, match="forbidden-effect"):
+        runner.run(
+            decision,
+            mutating,
+            observed_facts={"proof_status_current": True},
+        )
+    with pytest.raises(ExperimentError, match="identities differ"):
+        runner.run(
+            decision,
+            _experiment(experiment_id="other-shadow"),
+            observed_facts={"proof_status_current": True},
+        )

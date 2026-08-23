@@ -819,6 +819,8 @@ def value_of_experiment(
 
 def observation_may_discharge(use: ObservationUse | str) -> bool:
     normalized = _enum(use, ObservationUse, "use")
+    if normalized.value in _AUTHORITY_USES:
+        return False
     return normalized in {
         ObservationUse.PLANNING_OBSERVATION,
         ObservationUse.COST,
@@ -918,6 +920,11 @@ class ExperimentDecision(CanonicalContract):
         if self.can_authorize:
             raise ExperimentError("experiment decisions cannot authorize")
         if self.action is ExperimentAction.RUN:
+            isolation_reason = self.isolation.refusal_reason()
+            if isolation_reason is not None:
+                raise ExperimentIsolationError(
+                    f"a run decision cannot target {isolation_reason.value} isolation"
+                )
             if self.value_of_experiment <= 0:
                 raise ExperimentError("a run decision requires positive decision value")
             if self.reason_code is not ExperimentReason.DECISION_RELEVANT:
@@ -1144,16 +1151,53 @@ def _privacy_complete(experiment: ShadowExperiment) -> bool:
 def _effect_matches_isolation(experiment: ShadowExperiment) -> bool:
     if experiment.isolation.kind is IsolationKind.FIXTURE:
         return experiment.effects == (ExperimentEffectClass.OBSERVE_FIXTURE,)
-    return (
-        ExperimentEffectClass.OBSERVE_DISPOSABLE_WORKTREE in experiment.effects
-        and not _forbidden_effects(experiment)
-    )
+    return experiment.effects == (ExperimentEffectClass.OBSERVE_DISPOSABLE_WORKTREE,)
 
 
 def _worktree_cost_valid(experiment: ShadowExperiment) -> bool:
     if experiment.isolation.kind is IsolationKind.FIXTURE:
         return experiment.cost.worktree_count == 0 and experiment.execution_bound.max_worktrees == 0
-    return experiment.cost.worktree_count <= 1
+    return 0 < experiment.cost.worktree_count <= 1 and experiment.execution_bound.max_worktrees == 1
+
+
+def _execution_refusal(experiment: ShadowExperiment) -> ExperimentReason | None:
+    """Return why an experiment must not run, independent of decision value."""
+
+    isolation_reason = experiment.isolation.refusal_reason()
+    if isolation_reason is not None:
+        return isolation_reason
+    if _forbidden_effects(experiment) or not _effect_matches_isolation(experiment):
+        return ExperimentReason.FORBIDDEN_EFFECT
+    if _risk_rank(experiment.risk_class) > _risk_rank(RISK_CEILING):
+        return ExperimentReason.RISK_CEILING
+    if (
+        experiment.risk_class is RiskClass.REVERSIBLE_LOCAL
+        and experiment.isolation.kind is IsolationKind.FIXTURE
+    ):
+        return ExperimentReason.RISK_CEILING
+    if not _privacy_complete(experiment):
+        return ExperimentReason.PRIVACY_VIOLATION
+    if not experiment.execution_bound.admits(experiment.cost) or not _worktree_cost_valid(
+        experiment
+    ):
+        if experiment.cost.worktree_count > experiment.execution_bound.max_worktrees:
+            return ExperimentReason.UNBOUNDED
+        return ExperimentReason.COST_EXCEEDS_BOUND
+    return None
+
+
+def _worktree_admitted_in_world(
+    experiment: ShadowExperiment,
+    world: RepositoryWorldState | None,
+) -> bool:
+    if experiment.isolation.kind is not IsolationKind.AUTHORIZED_DISPOSABLE_WORKTREE:
+        return True
+    if world is None:
+        return True
+    isolation = experiment.isolation
+    return (
+        isolation.target_id in world.worktree_ids and isolation.lease_id in world.lease_ids
+    )
 
 
 class ExperimentPlanner:
@@ -1200,7 +1244,7 @@ class ExperimentPlanner:
         value = 0
         reachable: tuple[str, ...] = ()
         decision_id = experiment.decision_id
-        isolation_reason = experiment.isolation.refusal_reason()
+        execution_reason = _execution_refusal(experiment)
         open_questions = extract_uncertainty_questions(
             world=world, family=family, questions=questions
         )
@@ -1210,29 +1254,10 @@ class ExperimentPlanner:
             reason = ExperimentReason.BINDING_MISMATCH
         elif family is not None and family.bindings != experiment.bindings:
             reason = ExperimentReason.BINDING_MISMATCH
-        elif isolation_reason is not None:
-            reason = isolation_reason
-        elif _forbidden_effects(experiment):
-            reason = ExperimentReason.FORBIDDEN_EFFECT
-        elif not _effect_matches_isolation(experiment):
-            reason = ExperimentReason.FORBIDDEN_EFFECT
-        elif _risk_rank(experiment.risk_class) > _risk_rank(RISK_CEILING):
-            reason = ExperimentReason.RISK_CEILING
-        elif (
-            experiment.risk_class is RiskClass.REVERSIBLE_LOCAL
-            and experiment.isolation.kind is IsolationKind.FIXTURE
-        ):
-            reason = ExperimentReason.RISK_CEILING
-        elif not _privacy_complete(experiment):
-            reason = ExperimentReason.PRIVACY_VIOLATION
-        elif not experiment.execution_bound.admits(experiment.cost) or not _worktree_cost_valid(
-            experiment
-        ):
-            reason = (
-                ExperimentReason.UNBOUNDED
-                if experiment.cost.worktree_count > experiment.execution_bound.max_worktrees
-                else ExperimentReason.COST_EXCEEDS_BOUND
-            )
+        elif execution_reason is not None:
+            reason = execution_reason
+        elif not _worktree_admitted_in_world(experiment, world):
+            reason = ExperimentReason.UNAUTHORIZED_WORKTREE
         elif pending_decision is None:
             action = ExperimentAction.SKIP
             reason = ExperimentReason.NO_PENDING_DECISION
@@ -1369,16 +1394,24 @@ class ShadowExperimentRunner:
             raise ExperimentError("decision and experiment identities differ")
         if decision.bindings != experiment.bindings:
             raise ExperimentError("decision and experiment exact bindings differ")
-        isolation_reason = experiment.isolation.refusal_reason()
-        if isolation_reason is not None:
+        if decision.question_id != experiment.question_id:
+            raise ExperimentError("decision and experiment questions differ")
+        if decision.isolation != experiment.isolation:
+            raise ExperimentIsolationError("decision isolation does not match the experiment")
+        if decision.decision_rule != experiment.decision_rule:
+            raise ExperimentError("decision rule does not match the experiment")
+        execution_reason = _execution_refusal(experiment)
+        if execution_reason is not None:
             raise ExperimentIsolationError(
-                f"shadow experiments cannot run on {isolation_reason.value} targets"
+                f"shadow experiments cannot run on {execution_reason.value} targets"
             )
         if decision.action is not ExperimentAction.RUN:
             raise ExperimentIsolationError(
                 "shadow runner will not execute a skipped or refused experiment"
             )
         if decision.can_authorize or decision.value_of_experiment <= 0:
+            raise ExperimentError("only decision-relevant non-authorizing experiments may run")
+        if not experiment.decision_rule.distinguishes:
             raise ExperimentError("only decision-relevant non-authorizing experiments may run")
         facts = _freeze(observed_facts or {}, "observed_facts")
         if not isinstance(facts, Mapping):
