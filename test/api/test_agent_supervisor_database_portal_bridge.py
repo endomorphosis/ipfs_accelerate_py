@@ -3676,4 +3676,3 @@ def test_bridge_routes_only_owned_missing_output_quarantine_and_replays_completi
     record.status = "in_progress"
     assert replay_bridge.recover_post_merge_declared_outputs(authority) is None
     assert len(recovered_evidence) == 3
-
