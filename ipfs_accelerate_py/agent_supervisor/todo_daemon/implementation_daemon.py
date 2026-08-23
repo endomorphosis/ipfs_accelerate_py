@@ -76174,29 +76174,31 @@ class DatabaseImplementationDaemon:
         store = getattr(self, "worktree_lifecycle", None)
         if not isinstance(store, WorktreeLifecycleStore):
             store = WorktreeLifecycleStore(repo_root=root)
-        by_alias: dict[str, list[WorkspaceLifecycleRecord]] = {}
-        by_cid: dict[str, list[WorkspaceLifecycleRecord]] = {}
+        expected_repo = normalize_workspace_path(root)
+        prefix = str(self.task_prefix or "").strip()
+        candidates: dict[str, list[WorkspaceLifecycleRecord]] = {}
         for record in store.iter_records():
             if record.is_terminal:
                 continue
+            if (
+                record.repo_root
+                and normalize_workspace_path(record.repo_root) != expected_repo
+            ):
+                continue
             alias = str(record.task_id or "").strip()
-            if alias:
-                by_alias.setdefault(alias, []).append(record)
-            cid = str(record.canonical_task_cid or "").strip()
-            if cid:
-                by_cid.setdefault(cid, []).append(record)
-        if not by_alias and not by_cid:
+            if prefix and alias and not alias.startswith(prefix):
+                continue
+            key = alias or str(record.canonical_task_cid or "").strip()
+            if not key:
+                continue
+            candidates.setdefault(key, []).append(record)
+        if not candidates:
             return []
-        page = self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
         outcomes: list[dict[str, Any]] = []
-        for task in page.tasks:
-            if str(getattr(task, "status", "") or "").strip().lower() != "in_progress":
-                continue
-            records = list(by_cid.get(str(task.task_cid or ""), ()))
-            if not records:
-                records = list(by_alias.get(str(task.task_alias or "").strip(), ()))
-            if not records:
-                continue
+        getter = getattr(self.task_source, "get", None)
+        if not callable(getter):
+            return []
+        for key, records in candidates.items():
             live = False
             unknown = False
             dead = False
@@ -76211,6 +76213,17 @@ class DatabaseImplementationDaemon:
                 else:
                     dead = True
             if live or unknown or not dead:
+                continue
+            try:
+                task = getter(key)
+            except Exception as exc:
+                detail = str(exc).lower()
+                if "invalid connection id" in detail or "query interrupted" in detail:
+                    continue
+                raise
+            if task is None:
+                continue
+            if str(getattr(task, "status", "") or "").strip().lower() != "in_progress":
                 continue
             try:
                 self._cas_task_status_database(
@@ -76229,7 +76242,7 @@ class DatabaseImplementationDaemon:
             outcomes.append(
                 {
                     "task_cid": str(task.task_cid),
-                    "task_alias": str(task.task_alias or ""),
+                    "task_alias": str(task.task_alias or key),
                     "previous_status": "in_progress",
                     "status": "retrying",
                     "reason": "worktree_lifecycle_owner_dead",
