@@ -111,6 +111,7 @@ SUPERVISOR_RUNTIME_CHILD_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset(
         "casf_seed_stream_head",
         "casf_advance_stream_head",
         "casf_insert_domain_event",
+        "casf_insert_event_parent",
         "casf_insert_changed_fact",
         "casf_insert_outbox",
     }
@@ -885,11 +886,29 @@ def _receive_frame(channel: socket.socket) -> dict[str, Any]:
 
 
 def _result_columns(result: Any) -> tuple[str, ...]:
+    # An empty ``_columns`` attribute is not authoritative: some DuckDB
+    # result wrappers expose that name as an unused default while still
+    # populating ``description``.  Treating the empty tuple as the projection
+    # made named reads look like missing rows.  Do not read ``.columns`` here;
+    # on DuckDB query results that accessor can consume the cursor before
+    # fetchall.
     direct = getattr(result, "_columns", None)
-    if isinstance(direct, Sequence) and not isinstance(direct, (str, bytes)):
+    if (
+        isinstance(direct, Sequence)
+        and direct
+        and not isinstance(direct, (str, bytes, bytearray))
+    ):
         return tuple(str(item) for item in direct)
     description = getattr(result, "description", None) or ()
-    return tuple(str(item[0] if isinstance(item, Sequence) else item) for item in description)
+    columns: list[str] = []
+    for item in description:
+        if isinstance(item, Sequence) and item and not isinstance(
+            item, (str, bytes, bytearray)
+        ):
+            columns.append(str(item[0]))
+        else:
+            columns.append(str(item))
+    return tuple(columns)
 
 
 def _result_rows(result: Any) -> list[list[Any]]:
@@ -3307,10 +3326,19 @@ class TypedStateOwnerGateway:
             operation.sql,
             parameters if parameters else None,
         )
+        # Materialize rows before inspecting column metadata.  Some DuckDB
+        # result objects consume the cursor when ``description`` / ``columns``
+        # is read, which made live lookups look empty.
+        rows = _result_rows(result)
+        columns = list(_result_columns(result))
+        if not columns and rows:
+            first = rows[0]
+            if isinstance(first, Mapping):
+                columns = [str(key) for key in first]
         return {
             "ok": True,
-            "columns": list(_result_columns(result)),
-            "rows": _result_rows(result),
+            "columns": columns,
+            "rows": rows,
             "rowcount": int(getattr(result, "rowcount", -1) or -1),
         }
 

@@ -1677,10 +1677,14 @@ class QuackStateClient:
         if not rows:
             return tuple()
         if not columns:
-            # Prefer mapping rows (DuckDBRow); otherwise treat as DML with no projection.
+            # Prefer mapping rows (DuckDBRow).  Tuple rows without a
+            # projection used to be discarded as DML, which made live
+            # lookups look like "supervisor is absent" / empty queues.
             if isinstance(rows[0], Mapping):
                 return tuple(_row_mapping((), row) for row in rows)
-            return tuple()
+            raise QuackClientTransportError(
+                f"template {template.name} returned rows without columns"
+            )
         return tuple(_row_mapping(columns, row) for row in rows)
 
     def _load_generation(self, adapter: _ConnectionAdapter) -> StoreGeneration:
