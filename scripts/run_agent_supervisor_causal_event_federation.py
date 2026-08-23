@@ -1832,7 +1832,11 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
     signal.signal(signal.SIGTERM, request_stop)
     runtime_exit_code: int | None = None
     executor_restarts = 0
+    coordinator_restarts = 0
+    outbox_misses = 0
+    last_health_check = 0.0
     max_executor_restarts = int(config.get("max_restarts") or 8)
+    max_coordinator_restarts = int(config.get("max_restarts") or 8)
     if server.lifecycle is ServerLifecycle.READY:
         while not stopping.wait(0.05):
             _process_owner_commands(
@@ -1842,18 +1846,40 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
                 expected_store_id=_control_plane_store_id(program),
                 expected_store_generation=str(program.store_generation),
             )
-            outbox_health = _state_owner_outbox_health(server)
-            # Transient Quack client errors during ATTACH/query must not tear
-            # down the exclusive owner.  Only a dead outbox thread is fatal.
-            if (
-                outbox_health.get("thread_alive") is not True
-                or outbox_health.get("available") is not True
-            ):
-                runtime_exit_code = 1
-                break
+            now = time.monotonic()
+            if now - last_health_check >= 1.0:
+                last_health_check = now
+                outbox_health = _state_owner_outbox_health(server)
+                # Transient Quack client errors during ATTACH/query must not
+                # tear down the exclusive owner.  Only a dead outbox thread
+                # that stays dead is fatal.
+                if (
+                    outbox_health.get("thread_alive") is not True
+                    or outbox_health.get("available") is not True
+                ):
+                    outbox_misses += 1
+                    if outbox_misses >= 5:
+                        runtime_exit_code = 1
+                        break
+                else:
+                    outbox_misses = 0
             runtime_exit_code = supervisor_process.poll()
             if runtime_exit_code is not None:
-                break
+                if coordinator_restarts >= max_coordinator_restarts:
+                    break
+                coordinator_restarts += 1
+                try:
+                    supervisor_process, supervisor_birth = _spawn_event_supervisor(
+                        server=server,
+                        board=board,
+                        config_path=config_path,
+                        paths=paths,
+                        admission=admission,
+                        task_projection=task_projection,
+                    )
+                    runtime_exit_code = None
+                except Exception:
+                    break
             if admit_task_execution and (
                 executor_process is None or executor_process.poll() is not None
             ):
