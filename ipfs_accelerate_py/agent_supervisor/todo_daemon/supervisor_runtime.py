@@ -286,6 +286,7 @@ def launch_process_child(
     cwd: Path | str,
     env: Optional[Mapping[str, object]] = None,
     inherit_environment: bool = True,
+    replace_env: bool = False,
     stdin: Any = subprocess.DEVNULL,
     stdout: Any = None,
     stderr: Any = None,
@@ -293,8 +294,13 @@ def launch_process_child(
     text: bool = False,
     pass_fds: Sequence[int] = (),
 ) -> subprocess.Popen[Any]:
-    """Launch a supervisor-owned child process with normalized runtime defaults."""
+    """Launch a supervisor-owned child process with normalized runtime defaults.
 
+    ``replace_env=True`` is a compatibility alias for ``inherit_environment=False``.
+    """
+
+    if replace_env:
+        inherit_environment = False
     child_env = dict(os.environ) if inherit_environment else {}
     if env:
         child_env.update({str(key): str(value) for key, value in env.items()})
@@ -1055,6 +1061,7 @@ def run_process_group_stream(
     input_text: Optional[str] = None,
     env: Optional[Mapping[str, object]] = None,
     inherit_environment: bool = True,
+    replace_env: bool = False,
     timeout_seconds: float,
     progress_timeout_seconds: float | None = None,
     max_timeout_seconds: float | None = None,
@@ -1139,6 +1146,7 @@ def run_process_group_stream(
         cwd=cwd,
         env=env,
         inherit_environment=inherit_environment,
+        replace_env=replace_env,
         stdin=subprocess.PIPE if input_text is not None else None,
         stdout=stdout,
         stderr=stderr,

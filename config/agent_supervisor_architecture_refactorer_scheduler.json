@@ -50,7 +50,7 @@
     "endpoint_secret_handle": "handle:pcar-v1",
     "quack_endpoint": "quack:127.0.0.1:41317",
     "store_id": "data/agent_supervisor/proof_carrying_architecture_refactorer/control.duckdb",
-    "store_generation": "pcar-v1",
+    "store_generation": "1",
     "schema_revision": "1",
     "event_store_path": "data/agent_supervisor/proof_carrying_architecture_refactorer/events",
     "runtime_registry_path": "data/agent_supervisor/proof_carrying_architecture_refactorer/registry",
@@ -68,6 +68,17 @@
     "automatic_file_fallback_permitted": false,
     "outage_policy": "fail_closed",
     "markdown_is_authority": false
+  },
+  "authoritative_board_projection_repair": {
+    "mode": "sealed_bootstrap_projection",
+    "automatic_repair_before_launch": true,
+    "allowed_drift": "supervisor_generated_guardrail_suffix_only",
+    "bootstrap_receipt_path": "data/agent_supervisor/proof_carrying_architecture_refactorer/evidence/bootstrap/bootstrap-materialization.json",
+    "repair_receipt_path": "data/agent_supervisor/proof_carrying_architecture_refactorer/evidence/control-plane/board-projection-repair.json",
+    "canonical_authority": "DuckDB/DatabaseTaskSource@1 over Quack",
+    "canonical_block_mutation_permitted": false,
+    "markdown_task_mutation_permitted": false,
+    "suppressed_finding_disposition": "typed_runtime_telemetry"
   },
   "ducklake_projection_program": {
     "mode": "enabled_non_authoritative",

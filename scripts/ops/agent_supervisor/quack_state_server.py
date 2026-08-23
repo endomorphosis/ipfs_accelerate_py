@@ -111,6 +111,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bind port (0 allocates an ephemeral loopback port)",
     )
     parser.add_argument(
+        "--container-bind-host",
+        default="",
+        help=(
+            "Container-internal bind host; a distinct non-loopback bind requires "
+            "an admitted isolation receipt"
+        ),
+    )
+    parser.add_argument(
+        "--container-port",
+        type=int,
+        default=0,
+        help="Container-internal port (defaults to the advertised --port)",
+    )
+    parser.add_argument(
         "--store-id",
         default="control.duckdb",
         help="Logical store identity",
@@ -124,6 +138,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--secret-handle",
         default="",
         help="Opaque secret handle (never a raw token)",
+    )
+    parser.add_argument(
+        "--isolation-receipt-json",
+        default=None,
+        help=(
+            "Owner-only canonical isolation receipt under --state-dir; required "
+            "to serve Quack with extension-required external access"
+        ),
     )
     parser.add_argument(
         "--allow-experimental",
@@ -209,11 +231,14 @@ def _build_server(args: argparse.Namespace) -> Any:
         repository_root=Path(args.repository_root),
         host=str(args.host),
         port=int(args.port),
+        container_bind_host=str(args.container_bind_host or ""),
+        container_port=int(args.container_port),
         repository_id=str(args.repository_id or ""),
         store_id=str(args.store_id or "control.duckdb"),
         allow_experimental=bool(args.allow_experimental),
         remote_bind_policy=policy,
         secret_handle=str(args.secret_handle or ""),
+        isolation_receipt_path=args.isolation_receipt_json,
     )
 
 
@@ -243,8 +268,11 @@ def _serve_until_stop(server: Any) -> dict[str, Any]:
         while server.lifecycle.value == "ready" and not stop_requested["value"]:
             if control_path.is_file():
                 break
-            server.process_mutation_inbox()
-            time.sleep(0.05)
+            # The exclusive owner is also the sole executor for authenticated,
+            # closed mutation bundles.  Keep each pass bounded so stop and
+            # readiness control remain responsive.
+            server.process_mutation_inbox(max_requests=32)
+            time.sleep(0.25)
         return server.stop()
     finally:
         signal.signal(signal.SIGINT, previous_int)

@@ -1,19 +1,521 @@
 {
   "authority": false,
+  "authority_candidates": [
+    {
+      "concern": "content identity",
+      "confidence": "exact",
+      "nominated_symbol": "ContentIdentity",
+      "path": "ipfs_accelerate_py/assurance/content_identity.py",
+      "present": true,
+      "source_span": {
+        "end_line": 115,
+        "path": "ipfs_accelerate_py/assurance/content_identity.py",
+        "start_line": 115
+      },
+      "uncertainty": null
+    },
+    {
+      "concern": "content identity",
+      "confidence": "conservative",
+      "nominated_symbol": "CIDProfile",
+      "path": "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+      "present": true,
+      "source_span": {
+        "end_line": 216,
+        "path": "ipfs_accelerate_py/agent_supervisor/core/multiformats_identity.py",
+        "start_line": 216
+      },
+      "uncertainty": "nomination_only_ownership_requires_pcar_006_resolution"
+    },
+    {
+      "concern": "operation identity",
+      "confidence": "exact",
+      "nominated_symbol": "OPERATION_CATALOG_V2",
+      "path": "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py",
+      "present": true,
+      "source_span": {
+        "end_line": 8346,
+        "path": "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py",
+        "start_line": 8346
+      },
+      "uncertainty": null
+    },
+    {
+      "concern": "provider capability",
+      "confidence": "conservative",
+      "nominated_symbol": "ProviderCapabilityEvidence",
+      "path": "ipfs_accelerate_py/agent_supervisor/control/capability_resolver.py",
+      "present": true,
+      "source_span": {
+        "end_line": 233,
+        "path": "ipfs_accelerate_py/agent_supervisor/control/capability_resolver.py",
+        "start_line": 233
+      },
+      "uncertainty": "nomination_only_ownership_requires_pcar_006_resolution"
+    },
+    {
+      "concern": "provider selection",
+      "confidence": "conservative",
+      "nominated_symbol": "ProviderRoutePolicy",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+      "present": true,
+      "source_span": {
+        "end_line": 42,
+        "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+        "start_line": 42
+      },
+      "uncertainty": "nomination_only_ownership_requires_pcar_006_resolution"
+    },
+    {
+      "concern": "execution result",
+      "confidence": "conservative",
+      "nominated_symbol": "InvocationMode",
+      "path": "ipfs_accelerate_py/agent_supervisor/contracts/execution.py",
+      "present": true,
+      "source_span": {
+        "end_line": 167,
+        "path": "ipfs_accelerate_py/agent_supervisor/contracts/execution.py",
+        "start_line": 167
+      },
+      "uncertainty": "nomination_only_ownership_requires_pcar_006_resolution"
+    },
+    {
+      "concern": "task identity",
+      "confidence": "exact",
+      "nominated_symbol": "DatabaseTaskSource",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+      "present": true,
+      "source_span": {
+        "end_line": 325,
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
+        "start_line": 325
+      },
+      "uncertainty": null
+    },
+    {
+      "concern": "objective identity",
+      "confidence": "exact",
+      "nominated_symbol": "ObjectiveGoal",
+      "path": "ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py",
+      "present": true,
+      "source_span": {
+        "end_line": 1531,
+        "path": "ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py",
+        "start_line": 1531
+      },
+      "uncertainty": null
+    },
+    {
+      "concern": "policy decision",
+      "confidence": "conservative",
+      "nominated_symbol": "ALLOWED_LOCAL_CAPABILITIES",
+      "path": "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+      "present": true,
+      "source_span": {
+        "end_line": 39,
+        "path": "ipfs_accelerate_py/agent_supervisor/control/profile_authority.py",
+        "start_line": 39
+      },
+      "uncertainty": "nomination_only_ownership_requires_pcar_006_resolution"
+    },
+    {
+      "concern": "authorization",
+      "confidence": "exact",
+      "nominated_symbol": "AuthorizationPolicy",
+      "path": "ipfs_accelerate_py/agent_supervisor/control/authorization_logic.py",
+      "present": true,
+      "source_span": {
+        "end_line": 533,
+        "path": "ipfs_accelerate_py/agent_supervisor/control/authorization_logic.py",
+        "start_line": 533
+      },
+      "uncertainty": null
+    },
+    {
+      "concern": "confirmation",
+      "confidence": "conservative",
+      "nominated_symbol": "SupervisorControlService",
+      "path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+      "present": true,
+      "source_span": {
+        "end_line": 4383,
+        "path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+        "start_line": 4383
+      },
+      "uncertainty": "nomination_only_ownership_requires_pcar_006_resolution"
+    },
+    {
+      "concern": "lease and fencing",
+      "confidence": "exact",
+      "nominated_symbol": "LeaseCoordinator",
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+      "present": true,
+      "source_span": {
+        "end_line": 1561,
+        "path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+        "start_line": 1561
+      },
+      "uncertainty": null
+    },
+    {
+      "concern": "state persistence",
+      "confidence": "exact",
+      "nominated_symbol": "DuckDBConnection",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "present": true,
+      "source_span": {
+        "end_line": 354,
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+        "start_line": 354
+      },
+      "uncertainty": null
+    },
+    {
+      "concern": "proof verification",
+      "confidence": "conservative",
+      "nominated_symbol": "IncrementalVerificationPlanner",
+      "path": "ipfs_accelerate_py/agent_supervisor/verification/planner.py",
+      "present": true,
+      "source_span": {
+        "end_line": 2310,
+        "path": "ipfs_accelerate_py/agent_supervisor/verification/planner.py",
+        "start_line": 2310
+      },
+      "uncertainty": "nomination_only_ownership_requires_pcar_006_resolution"
+    },
+    {
+      "concern": "test evidence",
+      "confidence": "conservative",
+      "nominated_symbol": "TestExecutionKey",
+      "path": "ipfs_accelerate_py/agent_supervisor/proof/test_execution_contracts.py",
+      "present": true,
+      "source_span": {
+        "end_line": 658,
+        "path": "ipfs_accelerate_py/agent_supervisor/proof/test_execution_contracts.py",
+        "start_line": 658
+      },
+      "uncertainty": "nomination_only_ownership_requires_pcar_006_resolution"
+    },
+    {
+      "concern": "completion evidence",
+      "confidence": "exact",
+      "nominated_symbol": "AuthoritativeCompletionGate",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py",
+      "present": true,
+      "source_span": {
+        "end_line": 178,
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/authoritative_completion.py",
+        "start_line": 178
+      },
+      "uncertainty": null
+    },
+    {
+      "concern": "release qualification",
+      "confidence": "conservative",
+      "nominated_symbol": "DeterministicRepairRelease",
+      "path": "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_release.py",
+      "present": true,
+      "source_span": {
+        "end_line": 144,
+        "path": "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_release.py",
+        "start_line": 144
+      },
+      "uncertainty": "nomination_only_ownership_requires_pcar_006_resolution"
+    }
+  ],
+  "dynamic_loading": [
+    {
+      "mechanism": "importlib.import_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/__init__.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 632,
+        "path": "ipfs_accelerate_py/agent_supervisor/__init__.py",
+        "start_line": 632
+      },
+      "symbol": "_load_landed_module",
+      "uncertainty": "landed_module_alias_membership_depends_on_AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE"
+    },
+    {
+      "mechanism": "importlib.abc.MetaPathFinder",
+      "path": "ipfs_accelerate_py/agent_supervisor/__init__.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 655,
+        "path": "ipfs_accelerate_py/agent_supervisor/__init__.py",
+        "start_line": 655
+      },
+      "symbol": "_LandedModuleAliasFinder",
+      "uncertainty": "meta_path_finder_resolves_retired_flat_names_at_import_time"
+    },
+    {
+      "mechanism": "importlib.import_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 872,
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py",
+        "start_line": 872
+      },
+      "symbol": "_load_implementation_module",
+      "uncertainty": "lazy_implementation_exports_are_not_statically_closed"
+    },
+    {
+      "mechanism": "importlib.import_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/registry.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 84,
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/registry.py",
+        "start_line": 84
+      },
+      "symbol": "load_daemon_main",
+      "uncertainty": "daemon_registry_module_names_are_resolved_at_runtime"
+    },
+    {
+      "mechanism": "importlib.import_module",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 566,
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+        "start_line": 566
+      },
+      "symbol": "supervisor_runtime",
+      "uncertainty": "supervisor_runtime_imports_registered_modules_dynamically"
+    },
+    {
+      "mechanism": "__import__",
+      "path": "ipfs_accelerate_py/agent_supervisor/planning/plan_critic.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1450,
+        "path": "ipfs_accelerate_py/agent_supervisor/planning/plan_critic.py",
+        "start_line": 1450
+      },
+      "symbol": "plan_critic_schema_parsers",
+      "uncertainty": "schema_to_class_parsers_use_runtime_import"
+    },
+    {
+      "mechanism": "deferred_import",
+      "path": "ipfs_accelerate_py/mcp_server/server.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 157,
+        "path": "ipfs_accelerate_py/mcp_server/server.py",
+        "start_line": 157
+      },
+      "symbol": "configure_agent_supervisor_tools",
+      "uncertainty": "mcp_tool_registration_imports_agent_supervisor_tools_lazily"
+    },
+    {
+      "mechanism": "static_registration",
+      "path": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 517,
+        "path": "ipfs_accelerate_py/mcp_server/tools/agent_supervisor_tools/native_agent_supervisor_tools.py",
+        "start_line": 517
+      },
+      "symbol": "register_native_agent_supervisor_tools",
+      "uncertainty": "mcp_tool_callables_are_closed_but_service_resolution_is_deferred"
+    },
+    {
+      "mechanism": "importlib.util.spec_from_file_location",
+      "path": "ipfs_accelerate_py/agent_supervisor/validation/logic_repair_rollout.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1156,
+        "path": "ipfs_accelerate_py/agent_supervisor/validation/logic_repair_rollout.py",
+        "start_line": 1156
+      },
+      "symbol": "logic_repair_rollout",
+      "uncertainty": "file_location_imports_prevent_dead_code_classification"
+    },
+    {
+      "mechanism": "deferred_import",
+      "path": "ipfs_accelerate_py/cli.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 2615,
+        "path": "ipfs_accelerate_py/cli.py",
+        "start_line": 2615
+      },
+      "symbol": "register_agent_cli",
+      "uncertainty": "cli_discovery_imports_control_cli_only_when_building_parsers"
+    }
+  ],
+  "inspection": {
+    "assurance": "static_surfaces_only",
+    "method": "static_source_inventory",
+    "nonclaim": "static_inspection_is_not_ownership_proof_and_does_not_declare_dead_code"
+  },
   "invariant": "Every mandated path has an exact classification or typed unknown.",
   "overlapping_paths": [
     {
-      "kind": "hardware",
-      "path": "ipfs_accelerate_py/hardware_detection.py",
-      "present": false,
-      "reachability": "production",
-      "uncertainty": "path_absent_from_current_tree"
-    },
-    {
-      "kind": "compatibility",
-      "path": "ipfs_accelerate_py/utils",
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/ipfs_accelerate.py",
       "present": true,
       "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/ipfs_accelerate.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/inference_backend_manager.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 57,
+        "path": "ipfs_accelerate_py/inference_backend_manager.py",
+        "start_line": 57
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/unified_inference_service.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 129,
+        "path": "ipfs_accelerate_py/unified_inference_service.py",
+        "start_line": 129
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/worker",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/worker/__init__.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/ipfs_backend_router.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 52,
+        "path": "ipfs_accelerate_py/ipfs_backend_router.py",
+        "start_line": 52
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 178,
+        "path": "ipfs_accelerate_py/llm_router.py",
+        "start_line": 178
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/embeddings_router.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 135,
+        "path": "ipfs_accelerate_py/embeddings_router.py",
+        "start_line": 135
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/multimodal_router.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 106,
+        "path": "ipfs_accelerate_py/multimodal_router.py",
+        "start_line": 106
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "accelerator",
+      "path": "ipfs_accelerate_py/voice_router.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 144,
+        "path": "ipfs_accelerate_py/voice_router.py",
+        "start_line": 144
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "provider",
+      "path": "ipfs_accelerate_py/api_backends",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/api_backends/__init__.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "provider",
+      "path": "ipfs_accelerate_py/backends",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 10,
+        "path": "ipfs_accelerate_py/backends/__init__.py",
+        "start_line": 10
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "provider",
+      "path": "ipfs_accelerate_py/cli_runtime/providers",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/cli_runtime/providers/__init__.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "provider",
+      "path": "ipfs_accelerate_py/mcp",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/mcp/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
@@ -21,6 +523,271 @@
       "path": "ipfs_accelerate_py/mcp_server",
       "present": true,
       "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/mcp_server/__init__.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "provider",
+      "path": "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 376,
+        "path": "ipfs_accelerate_py/agent_supervisor/control/provider_attempt_store.py",
+        "start_line": 376
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "provider",
+      "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 42,
+        "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py",
+        "start_line": 42
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "provider",
+      "path": "ipfs_accelerate_py/api_integrations",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 43,
+        "path": "ipfs_accelerate_py/api_integrations/__init__.py",
+        "start_line": 43
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "provider",
+      "path": "ipfs_accelerate_py/voice_providers",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/voice_providers/__init__.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "provider",
+      "path": "ipfs_accelerate_py/container_backends",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/container_backends/backends.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "hardware",
+      "path": "ipfs_accelerate_py/hardware_detection.py",
+      "present": false,
+      "reachability": "production",
+      "source_span": null,
+      "uncertainty": "path_absent_from_current_tree"
+    },
+    {
+      "kind": "hardware",
+      "path": "common/hardware_detection.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 49,
+        "path": "common/hardware_detection.py",
+        "start_line": 49
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "hardware",
+      "path": "ipfs_accelerate_py/hf_model_server/hardware",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 32,
+        "path": "ipfs_accelerate_py/hf_model_server/hardware/detector.py",
+        "start_line": 32
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "hardware",
+      "path": "ipfs_accelerate_py/kit/hardware_kit.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 39,
+        "path": "ipfs_accelerate_py/kit/hardware_kit.py",
+        "start_line": 39
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "hardware",
+      "path": "ipfs_accelerate_py/predictive_performance/hardware_model_predictor.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 78,
+        "path": "ipfs_accelerate_py/predictive_performance/hardware_model_predictor.py",
+        "start_line": 78
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "hardware",
+      "path": "ipfs_accelerate_py/webnn_webgpu_integration.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 69,
+        "path": "ipfs_accelerate_py/webnn_webgpu_integration.py",
+        "start_line": 69
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "endpoint",
+      "path": "ipfs_accelerate_py/cli_runtime/endpoints.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 143,
+        "path": "ipfs_accelerate_py/cli_runtime/endpoints.py",
+        "start_line": 143
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "endpoint",
+      "path": "ipfs_accelerate_py/endpoint_usage",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 133,
+        "path": "ipfs_accelerate_py/endpoint_usage/coordinator.py",
+        "start_line": 133
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "compatibility",
+      "path": "ipfs_accelerate_py/_voice_response_dag_compat.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/_voice_response_dag_compat.py",
+        "start_line": 1
+      },
+      "uncertainty": "compatibility_surface_must_not_be_treated_as_canonical_authority"
+    },
+    {
+      "kind": "compatibility",
+      "path": "ipfs_accelerate_py/cli_integrations",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/cli_integrations/__init__.py",
+        "start_line": 1
+      },
+      "uncertainty": "compatibility_surface_must_not_be_treated_as_canonical_authority"
+    },
+    {
+      "kind": "compatibility",
+      "path": "ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/ipfs_accelerate_py_legacy.py",
+        "start_line": 1
+      },
+      "uncertainty": "compatibility_surface_must_not_be_treated_as_canonical_authority"
+    },
+    {
+      "kind": "compatibility",
+      "path": "ipfs_accelerate_py/utils",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 10,
+        "path": "ipfs_accelerate_py/utils/__init__.py",
+        "start_line": 10
+      },
+      "uncertainty": "compatibility_surface_must_not_be_treated_as_canonical_authority"
+    },
+    {
+      "kind": "compatibility",
+      "path": "ipfs_accelerate_py/github_cli/libp2p_compat.py",
+      "present": true,
+      "reachability": "compatibility",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/github_cli/libp2p_compat.py",
+        "start_line": 1
+      },
+      "uncertainty": "compatibility_surface_must_not_be_treated_as_canonical_authority"
+    },
+    {
+      "kind": "compatibility",
+      "path": "ipfs_accelerate_py/embedding_router.py",
+      "present": true,
+      "reachability": "compatibility",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/embedding_router.py",
+        "start_line": 1
+      },
+      "uncertainty": "compatibility_surface_must_not_be_treated_as_canonical_authority"
+    },
+    {
+      "kind": "compatibility",
+      "path": "ipfs_accelerate_py/tts_router.py",
+      "present": true,
+      "reachability": "compatibility",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/tts_router.py",
+        "start_line": 1
+      },
+      "uncertainty": "compatibility_surface_must_not_be_treated_as_canonical_authority"
+    },
+    {
+      "kind": "entrypoint",
+      "path": "ipfs_accelerate_py/ai_inference_cli.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1076,
+        "path": "ipfs_accelerate_py/ai_inference_cli.py",
+        "start_line": 1076
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "entrypoint",
+      "path": "ipfs_accelerate_py/cli.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 2533,
+        "path": "ipfs_accelerate_py/cli.py",
+        "start_line": 2533
+      },
       "uncertainty": null
     },
     {
@@ -28,13 +795,35 @@
       "path": "ipfs_accelerate_py/cli_entry.py",
       "present": true,
       "reachability": "production",
+      "source_span": {
+        "end_line": 12,
+        "path": "ipfs_accelerate_py/cli_entry.py",
+        "start_line": 12
+      },
       "uncertainty": null
     },
     {
       "kind": "entrypoint",
-      "path": "ipfs_accelerate_py/ai_inference_cli.py",
+      "path": "ipfs_accelerate_py/ipfs_accelerate_cli.py",
       "present": true,
       "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/ipfs_accelerate_cli.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "entrypoint",
+      "path": "ipfs_accelerate_py/unified_cli.py",
+      "present": true,
+      "reachability": "production",
+      "source_span": {
+        "end_line": 547,
+        "path": "ipfs_accelerate_py/unified_cli.py",
+        "start_line": 547
+      },
       "uncertainty": null
     },
     {
@@ -42,6 +831,23 @@
       "path": "test/api",
       "present": true,
       "reachability": "test",
+      "source_span": {
+        "end_line": 1,
+        "path": "test/api/architecture_refactorer/test_repository_inventory.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "kind": "test",
+      "path": "test/api/architecture_refactorer",
+      "present": true,
+      "reachability": "test",
+      "source_span": {
+        "end_line": 1,
+        "path": "test/api/architecture_refactorer/test_repository_inventory.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
@@ -49,11 +855,44 @@
       "path": "test/fixtures",
       "present": true,
       "reachability": "test",
+      "source_span": {
+        "end_line": 1,
+        "path": "test/fixtures/adversarial_assurance/manifest.json",
+        "start_line": 1
+      },
       "uncertainty": null
+    },
+    {
+      "kind": "simulation",
+      "path": "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_shadow.py",
+      "present": true,
+      "reachability": "simulation",
+      "source_span": {
+        "end_line": 97,
+        "path": "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_shadow.py",
+        "start_line": 97
+      },
+      "uncertainty": "static_reachability_does_not_prove_production_isolation"
+    },
+    {
+      "kind": "simulation",
+      "path": "ipfs_accelerate_py/assurance/capability_outcomes.py",
+      "present": true,
+      "reachability": "simulation",
+      "source_span": {
+        "end_line": 255,
+        "path": "ipfs_accelerate_py/assurance/capability_outcomes.py",
+        "start_line": 255
+      },
+      "uncertainty": "static_reachability_does_not_prove_production_isolation"
     }
   ],
   "packages": [
     {
+      "authority_candidates": [
+        "policy decision",
+        "authorization"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/admission",
       "python_file_count": 2,
@@ -62,9 +901,18 @@
         "ipfs_accelerate_py/agent_supervisor/admission/formal_kernel.py",
         "ipfs_accelerate_py/agent_supervisor/admission/transport_gate.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/admission/formal_kernel.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "test evidence",
+        "release qualification"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance",
       "python_file_count": 18,
@@ -79,9 +927,18 @@
         "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/cli_campaign.py",
         "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/diagnosis.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/adversarial_assurance/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "content identity",
+        "test evidence"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/analysis",
       "python_file_count": 98,
@@ -96,21 +953,43 @@
         "ipfs_accelerate_py/agent_supervisor/analysis/analysis_pipeline.py",
         "ipfs_accelerate_py/agent_supervisor/analysis/analysis_retrieval.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/analysis/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "content identity"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/architecture_refactorer",
-      "python_file_count": 3,
+      "python_file_count": 15,
       "reachability": "production",
       "sample_files": [
         "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/__init__.py",
         "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/architecture_ir.py",
-        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/contracts.py"
+        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/authority_graph.py",
+        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/boundary_synthesizer.py",
+        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/candidate.py",
+        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/contract_extractor.py",
+        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/cross_repository_audit.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/architecture_refactorer/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "content identity",
+        "proof verification"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/assurance",
       "python_file_count": 1,
@@ -118,9 +997,17 @@
       "sample_files": [
         "ipfs_accelerate_py/agent_supervisor/assurance/formal_claim_adapter.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/assurance/formal_claim_adapter.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "execution result"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/autonomous_repair",
       "python_file_count": 27,
@@ -135,9 +1022,40 @@
         "ipfs_accelerate_py/agent_supervisor/autonomous_repair/engine.py",
         "ipfs_accelerate_py/agent_supervisor/autonomous_repair/formal_assurance_cegis.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/autonomous_repair/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [],
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/autonomy",
+      "python_file_count": 19,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/autonomy/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomy/causal_attribution.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomy/cli.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomy/cognitive_budget.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomy/cognitive_scheduler.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomy/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomy/decision_graph.py",
+        "ipfs_accelerate_py/agent_supervisor/autonomy/experience_ledger.py"
+      ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/autonomy/__init__.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "authority_candidates": [
+        "content identity"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/context",
       "python_file_count": 11,
@@ -152,9 +1070,17 @@
         "ipfs_accelerate_py/agent_supervisor/context/decision_runtime.py",
         "ipfs_accelerate_py/agent_supervisor/context/decision_runtime_benchmark.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/context/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "operation identity"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/contract_analysis",
       "python_file_count": 3,
@@ -164,9 +1090,19 @@
         "ipfs_accelerate_py/agent_supervisor/contract_analysis/cache_adapter.py",
         "ipfs_accelerate_py/agent_supervisor/contract_analysis/execution_profile.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/contract_analysis/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "authorization",
+        "execution result",
+        "provider capability"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/contracts",
       "python_file_count": 4,
@@ -177,9 +1113,21 @@
         "ipfs_accelerate_py/agent_supervisor/contracts/execution.py",
         "ipfs_accelerate_py/agent_supervisor/contracts/provider_capacity.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/contracts/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "operation identity",
+        "authorization",
+        "confirmation",
+        "policy decision",
+        "provider capability"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/control",
       "python_file_count": 22,
@@ -194,9 +1142,17 @@
         "ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
         "ipfs_accelerate_py/agent_supervisor/control/database_backend.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/control/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "content identity"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/core",
       "python_file_count": 9,
@@ -211,9 +1167,18 @@
         "ipfs_accelerate_py/agent_supervisor/core/protected_acceptance_contracts.py",
         "ipfs_accelerate_py/agent_supervisor/core/submodule_degradation.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/core/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "provider selection",
+        "operation identity"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/entrypoints",
       "python_file_count": 56,
@@ -228,9 +1193,18 @@
         "ipfs_accelerate_py/agent_supervisor/entrypoints/database_run_registry.py",
         "ipfs_accelerate_py/agent_supervisor/entrypoints/execution_plan.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "release qualification",
+        "test evidence"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/evaluation",
       "python_file_count": 7,
@@ -244,9 +1218,40 @@
         "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_release.py",
         "ipfs_accelerate_py/agent_supervisor/evaluation/dcr_shadow.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/evaluation/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [],
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/federation",
+      "python_file_count": 31,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/federation/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/federation/agent_registry.py",
+        "ipfs_accelerate_py/agent_supervisor/federation/bootstrap_runtime.py",
+        "ipfs_accelerate_py/agent_supervisor/federation/budgets.py",
+        "ipfs_accelerate_py/agent_supervisor/federation/causal_abstraction.py",
+        "ipfs_accelerate_py/agent_supervisor/federation/causal_contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/federation/causal_evidence.py",
+        "ipfs_accelerate_py/agent_supervisor/federation/causal_frontier.py"
+      ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/federation/__init__.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "authority_candidates": [
+        "execution result"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/gui_optimizer",
       "python_file_count": 11,
@@ -261,9 +1266,17 @@
         "ipfs_accelerate_py/agent_supervisor/gui_optimizer/improvement_loop.py",
         "ipfs_accelerate_py/agent_supervisor/gui_optimizer/patch_scope.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/gui_optimizer/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "provider capability"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/integrations",
       "python_file_count": 19,
@@ -278,12 +1291,21 @@
         "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_doctor_logic.py",
         "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_embedding_provider.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/integrations/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "lease and fencing",
+        "completion evidence"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/merge",
-      "python_file_count": 19,
+      "python_file_count": 20,
       "reachability": "production",
       "sample_files": [
         "ipfs_accelerate_py/agent_supervisor/merge/__init__.py",
@@ -295,9 +1317,17 @@
         "ipfs_accelerate_py/agent_supervisor/merge/git_gc.py",
         "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/merge/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "objective identity"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/objectives",
       "python_file_count": 27,
@@ -312,9 +1342,18 @@
         "ipfs_accelerate_py/agent_supervisor/objectives/completion_contracts.py",
         "ipfs_accelerate_py/agent_supervisor/objectives/contract_mismatch_refinery.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/objectives/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "operation identity",
+        "proof verification"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/planning",
       "python_file_count": 56,
@@ -329,9 +1368,17 @@
         "ipfs_accelerate_py/agent_supervisor/planning/conflict_free_frontier.py",
         "ipfs_accelerate_py/agent_supervisor/planning/database_symbolic_planning.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/planning/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "policy decision"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/prompt",
       "python_file_count": 11,
@@ -346,9 +1393,17 @@
         "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
         "ipfs_accelerate_py/agent_supervisor/prompt/prompt_plan_admission.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/prompt/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "proof verification"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/proof",
       "python_file_count": 130,
@@ -363,9 +1418,43 @@
         "ipfs_accelerate_py/agent_supervisor/proof/change_propagation_edit_packet.py",
         "ipfs_accelerate_py/agent_supervisor/proof/change_propagation_obligations.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/proof/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "execution result",
+        "proof verification"
+      ],
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/procedure_compiler",
+      "python_file_count": 9,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/interpreter.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/procedure_ir.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/runtime.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/task_family.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/trajectory.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/transition_model.py"
+      ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/procedure_compiler/__init__.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "authority_candidates": [
+        "execution result"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/rescue",
       "python_file_count": 11,
@@ -380,12 +1469,44 @@
         "ipfs_accelerate_py/agent_supervisor/rescue/rescue_orchestrator.py",
         "ipfs_accelerate_py/agent_supervisor/rescue/rescue_planner.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/rescue/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [],
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/residual_intelligence",
+      "python_file_count": 19,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/residual_intelligence/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/residual_intelligence/abstention.py",
+        "ipfs_accelerate_py/agent_supervisor/residual_intelligence/baselines.py",
+        "ipfs_accelerate_py/agent_supervisor/residual_intelligence/calibration.py",
+        "ipfs_accelerate_py/agent_supervisor/residual_intelligence/cascade.py",
+        "ipfs_accelerate_py/agent_supervisor/residual_intelligence/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/residual_intelligence/corpus.py",
+        "ipfs_accelerate_py/agent_supervisor/residual_intelligence/distillation.py"
+      ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/residual_intelligence/__init__.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "authority_candidates": [
+        "state persistence",
+        "completion evidence"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/runtime",
-      "python_file_count": 45,
+      "python_file_count": 46,
       "reachability": "production",
       "sample_files": [
         "ipfs_accelerate_py/agent_supervisor/runtime/__init__.py",
@@ -397,9 +1518,17 @@
         "ipfs_accelerate_py/agent_supervisor/runtime/daemon_registry.py",
         "ipfs_accelerate_py/agent_supervisor/runtime/database_artifact_store.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/runtime/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "release qualification"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/self_improvement",
       "python_file_count": 18,
@@ -414,9 +1543,17 @@
         "ipfs_accelerate_py/agent_supervisor/self_improvement/planner_doctor_rollout.py",
         "ipfs_accelerate_py/agent_supervisor/self_improvement/proof_reuse_benchmark.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/self_improvement/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "content identity"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/semantic_governor",
       "python_file_count": 19,
@@ -431,9 +1568,18 @@
         "ipfs_accelerate_py/agent_supervisor/semantic_governor/governor.py",
         "ipfs_accelerate_py/agent_supervisor/semantic_governor/metrics.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/semantic_governor/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "content identity",
+        "state persistence"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/semantic_state",
       "python_file_count": 27,
@@ -448,26 +1594,44 @@
         "ipfs_accelerate_py/agent_supervisor/semantic_state/contracts.py",
         "ipfs_accelerate_py/agent_supervisor/semantic_state/datasets_adapter.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/semantic_state/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "task identity",
+        "state persistence"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/task_sources",
-      "python_file_count": 27,
+      "python_file_count": 30,
       "reachability": "production",
       "sample_files": [
         "ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py",
-        "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
-        "ipfs_accelerate_py/agent_supervisor/task_sources/dataset_store.py"
+        "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "completion evidence",
+        "execution result"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon",
       "python_file_count": 72,
@@ -482,12 +1646,21 @@
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/auto_commit.py",
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/campaign_resume.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "test evidence",
+        "release qualification"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/validation",
-      "python_file_count": 60,
+      "python_file_count": 61,
       "reachability": "production",
       "sample_files": [
         "ipfs_accelerate_py/agent_supervisor/validation/__init__.py",
@@ -499,9 +1672,18 @@
         "ipfs_accelerate_py/agent_supervisor/validation/contract_repair_validation.py",
         "ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_benchmark.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/validation/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     },
     {
+      "authority_candidates": [
+        "proof verification",
+        "test evidence"
+      ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/verification",
       "python_file_count": 17,
@@ -516,11 +1698,150 @@
         "ipfs_accelerate_py/agent_supervisor/verification/counterexamples.py",
         "ipfs_accelerate_py/agent_supervisor/verification/datasets_adapter.py"
       ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/verification/__init__.py",
+        "start_line": 1
+      },
       "uncertainty": null
     }
   ],
   "repository_tree": "a2d1529934197dc64fe18cfbaec9dc7daf438703^{tree}",
   "required_root": "ipfs_accelerate_py/agent_supervisor",
+  "residual_root_modules": [
+    {
+      "kind": "module",
+      "path": "ipfs_accelerate_py/agent_supervisor/cli_implement_runner.py",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 171,
+        "path": "ipfs_accelerate_py/agent_supervisor/cli_implement_runner.py",
+        "start_line": 171
+      },
+      "uncertainty": "residual_root_module_outside_domain_package_map"
+    },
+    {
+      "kind": "module",
+      "path": "ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 82,
+        "path": "ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py",
+        "start_line": 82
+      },
+      "uncertainty": "residual_root_module_outside_domain_package_map"
+    },
+    {
+      "kind": "module",
+      "path": "ipfs_accelerate_py/agent_supervisor/incremental_proof_sealer.py",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 20,
+        "path": "ipfs_accelerate_py/agent_supervisor/incremental_proof_sealer.py",
+        "start_line": 20
+      },
+      "uncertainty": "residual_root_module_outside_domain_package_map"
+    },
+    {
+      "kind": "module",
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt_workflow.py",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/prompt_workflow.py",
+        "start_line": 1
+      },
+      "uncertainty": "residual_root_module_outside_domain_package_map"
+    },
+    {
+      "kind": "module",
+      "path": "ipfs_accelerate_py/agent_supervisor/provider_fallback_runner.py",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 481,
+        "path": "ipfs_accelerate_py/agent_supervisor/provider_fallback_runner.py",
+        "start_line": 481
+      },
+      "uncertainty": "residual_root_module_outside_domain_package_map"
+    },
+    {
+      "kind": "module",
+      "path": "ipfs_accelerate_py/agent_supervisor/sca_doctor_bridge.py",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 68,
+        "path": "ipfs_accelerate_py/agent_supervisor/sca_doctor_bridge.py",
+        "start_line": 68
+      },
+      "uncertainty": "residual_root_module_outside_domain_package_map"
+    },
+    {
+      "kind": "module",
+      "path": "ipfs_accelerate_py/agent_supervisor/sca_ir_integration.py",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 88,
+        "path": "ipfs_accelerate_py/agent_supervisor/sca_ir_integration.py",
+        "start_line": 88
+      },
+      "uncertainty": "residual_root_module_outside_domain_package_map"
+    },
+    {
+      "kind": "module",
+      "path": "ipfs_accelerate_py/agent_supervisor/sca_ir_logic_applicator.py",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/sca_ir_logic_applicator.py",
+        "start_line": 1
+      },
+      "uncertainty": "residual_root_module_outside_domain_package_map"
+    },
+    {
+      "kind": "module",
+      "path": "ipfs_accelerate_py/agent_supervisor/sca_rpr_admission.py",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 41,
+        "path": "ipfs_accelerate_py/agent_supervisor/sca_rpr_admission.py",
+        "start_line": 41
+      },
+      "uncertainty": "residual_root_module_outside_domain_package_map"
+    },
+    {
+      "kind": "module",
+      "path": "ipfs_accelerate_py/agent_supervisor/sca_structural_ir_applicator.py",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/sca_structural_ir_applicator.py",
+        "start_line": 1
+      },
+      "uncertainty": "residual_root_module_outside_domain_package_map"
+    },
+    {
+      "kind": "module",
+      "path": "ipfs_accelerate_py/agent_supervisor/sca_symbolic_planning.py",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 143,
+        "path": "ipfs_accelerate_py/agent_supervisor/sca_symbolic_planning.py",
+        "start_line": 143
+      },
+      "uncertainty": "residual_root_module_outside_domain_package_map"
+    },
+    {
+      "kind": "module",
+      "path": "ipfs_accelerate_py/agent_supervisor/sca_symbolic_repair.py",
+      "reachability": "production",
+      "source_span": {
+        "end_line": 97,
+        "path": "ipfs_accelerate_py/agent_supervisor/sca_symbolic_repair.py",
+        "start_line": 97
+      },
+      "uncertainty": "residual_root_module_outside_domain_package_map"
+    }
+  ],
   "schema": "ipfs_accelerate_py.agent_supervisor.architecture-refactorer.current-repository-inventory@1",
   "task_id": "PCAR-001"
 }
