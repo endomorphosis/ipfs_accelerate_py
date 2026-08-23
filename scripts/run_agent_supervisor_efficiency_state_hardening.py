@@ -2757,11 +2757,22 @@ def _owner_identity_admitted(sample: Mapping[str, Any]) -> bool:
         "schema_fingerprint", "generation", "process_birth_id", "listen_uri",
         "extension_fingerprint",
     )
+    identity_fields = tuple(
+        field for field in fields if field != "schema_fingerprint"
+    )
+    schema_fingerprint = binding.get("schema_fingerprint")
     return bool(
         owner_status.get("lifecycle") == "ready"
         and authority.get("available") is True
         and all(identity.get(field) not in (None, "") for field in fields)
-        and all(binding.get(field) == identity.get(field) for field in fields)
+        and all(
+            binding.get(field) == identity.get(field) for field in identity_fields
+        )
+        and schema_fingerprint not in (None, "")
+        and schema_fingerprint in {
+            identity.get("schema_fingerprint"),
+            owner_status.get("storage_schema_fingerprint"),
+        }
         and type(process_pid) is int
         and process_pid == os.getpid()
     )
