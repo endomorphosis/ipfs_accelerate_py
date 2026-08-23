@@ -1,10 +1,15 @@
-"""Residual-hole distillation corpus admission and compact manifests.
+"""Residual-hole distillation corpus admission and compact local resolvers.
 
 Validated hole resolutions become bounded corpus rows.  This module owns
 admission, not authority: it never promotes a resolver, skips validation, or
 inlines prompts, transcripts, or source bodies.  Large payloads stay behind
 content references.  Accepted and rejected examples are labeled only from
 independent validation/proof/outcome bindings, and partitions stay disjoint.
+
+Exact-cache, declarative-rule, deterministic-classifier, and small-local
+resolvers consume only training rows and remain proposal producers.  Held-out
+rows cannot train a resolver, confidence is not authority, and every route
+still requires independent downstream validation.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, ClassVar, Final, NoReturn
 
-from ..proof.formal_verification_contracts import CanonicalContract
+from ..proof.formal_verification_contracts import CanonicalContract, content_identity
 from .contracts import (
     ARTIFACT_TYPES_BY_SCHEMA,
     MAX_ITEMS,
@@ -25,6 +30,7 @@ from .contracts import (
     HoleType,
     ProcedureContractError,
     ProcedureSafetyError,
+    ProviderClass,
     _bounded,
     _decode_fields,
     _enum,
@@ -40,13 +46,21 @@ from .contracts import (
 )
 from .hole_resolution import (
     HOLE_VALIDATOR_REVISION,
+    LOCAL_HOLE_ROUTE_ORDER,
+    CompiledHoleContext,
     HoleCandidate,
     HoleContextReference,
+    HoleProviderOutcome,
+    HoleProviderResult,
     HoleRequest,
     HoleResolution,
     HoleResolutionAction,
     HoleResolutionValidator,
+    HoleResolver,
     HoleValidationReceipt,
+    ProviderCapacitySnapshot,
+    default_hole_context_compiler,
+    evidence_fingerprint,
 )
 
 
@@ -177,6 +191,9 @@ class DistillationReason(str, Enum):
     CORPUS_UNBOUNDED = "corpus-unbounded"
     AUTHORITY_REJECTED = "authority-rejected"
     CANDIDATE_TIER_REQUIRED = "candidate-tier-required"
+    INCOMPLETE_CACHE_KEY = "incomplete-cache-key"
+    HELD_OUT_TRAINING_REJECTED = "held-out-training-rejected"
+    CONFIDENCE_AUTHORITY_REJECTED = "confidence-authority-rejected"
 
 
 class DistillationAdmissionAction(str, Enum):
@@ -1537,18 +1554,907 @@ class DistillationCorpusBuilder:
         return example
 
 
+EXACT_HOLE_CACHE_REVISION: Final[str] = "ExactHoleCache@1"
+DECLARATIVE_HOLE_RULE_REVISION: Final[str] = "DeclarativeHoleRule@1"
+DETERMINISTIC_HOLE_CLASSIFIER_REVISION: Final[str] = "DeterministicHoleClassifier@1"
+LOCAL_HOLE_RESOLVER_REVISION: Final[str] = "LocalHoleResolver@1"
+MAX_RESOLVER_ENTRIES: Final[int] = MAX_ITEMS
+MAX_CONFIDENCE_MILLIS: Final[int] = 1000
+TRAINABLE_PARTITIONS: Final[frozenset[CorpusPartition]] = frozenset(
+    {CorpusPartition.TRAINING}
+)
+REQUIRED_CACHE_KEY_FIELDS: Final[tuple[str, ...]] = (
+    "repository_id",
+    "repository_commit",
+    "tree_id",
+    "objective_id",
+    "task_id",
+    "contract_revision",
+    "policy_revision",
+    "environment_id",
+    "hole_type",
+    "input_schema_ref",
+    "output_schema_ref",
+    "input_payload",
+    "context_reference_ids",
+    "context_content_ids",
+    "evidence_fingerprint",
+    "validation_observation_ids",
+)
+
+
+class DeclarativeHoleRuleKind(str, Enum):
+    SELECT_SINGLETON = "select-singleton"
+    EXACT_OUTPUT = "exact-output"
+    CLOSED_MAP = "closed-map"
+
+
+def _miss(code: str) -> HoleProviderResult:
+    return HoleProviderResult(outcome=HoleProviderOutcome.MISSED, failure_code=code)
+
+
+def _propose(
+    output: Mapping[str, Any], *, token_count: int = 0
+) -> HoleProviderResult:
+    return HoleProviderResult(
+        outcome=HoleProviderOutcome.PROPOSED,
+        output=dict(output),
+        token_count=token_count,
+    )
+
+
+def _non_authority_guard(owner: object) -> None:
+    if getattr(owner, "can_skip_validation", False):
+        _refuse(
+            DistillationReason.AUTHORITY_REJECTED,
+            "hole resolvers cannot skip validation",
+        )
+    if getattr(owner, "can_authorize", False):
+        _refuse(
+            DistillationReason.AUTHORITY_REJECTED,
+            "hole resolvers cannot authorize",
+        )
+    if getattr(owner, "claims_correctness", False) or getattr(
+        owner, "can_claim_correctness", False
+    ):
+        _refuse(
+            DistillationReason.CONFIDENCE_AUTHORITY_REJECTED,
+            "hole resolvers cannot claim correctness",
+        )
+
+
+def _require_training_partition(partition: CorpusPartition | str) -> CorpusPartition:
+    normalized = _enum(partition, CorpusPartition, "partition")
+    if normalized not in TRAINABLE_PARTITIONS:
+        _refuse(
+            DistillationReason.HELD_OUT_TRAINING_REJECTED,
+            "held-out and rejected partitions cannot train a hole resolver",
+        )
+    return normalized
+
+
+def _require_accepted(label: DistillationLabel | str | bool) -> None:
+    if type(label) is bool:
+        accepted = label
+    else:
+        accepted = _enum(label, DistillationLabel, "label") is DistillationLabel.ACCEPTED
+    if not accepted:
+        _refuse(
+            DistillationReason.MISLABELED_EXAMPLE,
+            "rejected examples cannot train a hole resolver",
+        )
+
+
+def _output_compatible(request: HoleRequest, output: Mapping[str, Any]) -> bool:
+    return HoleResolutionValidator().check_output_schema(request, output) is None
+
+
+def _compact_output(
+    request: HoleRequest,
+    output: Mapping[str, Any] | None = None,
+    features: Mapping[str, Any] | None = None,
+) -> Mapping[str, Any]:
+    payload: dict[str, Any] = {"schema_ref": request.output_schema_ref}
+    source = dict(output or {})
+    feature_map = dict(features or {})
+    for key in _COMPACT_OUTPUT_KEYS:
+        if key == "schema_ref":
+            continue
+        if key in source and type(source[key]) is str:
+            payload[key] = source[key]
+        elif key in feature_map and type(feature_map[key]) is str:
+            payload[key] = feature_map[key]
+    if "schema_ref" in source and type(source["schema_ref"]) is str:
+        payload["schema_ref"] = source["schema_ref"]
+    _reject_privacy(payload, "resolver.output")
+    return MappingProxyType(payload)
+
+
+def _request_features(request: HoleRequest) -> Mapping[str, Any]:
+    features: dict[str, Any] = {
+        "hole_type": request.hole_type.value,
+        "input_schema_ref": request.input_schema_ref,
+        "output_schema_ref": request.output_schema_ref,
+    }
+    payload = dict(request.input_payload)
+    for key, item in payload.items():
+        if type(item) is str:
+            try:
+                features[key] = _identifier(item, key)
+            except ProcedureContractError:
+                continue
+        elif isinstance(item, Sequence) and not isinstance(
+            item, (str, bytes, bytearray, memoryview)
+        ):
+            features[f"{key}_count"] = len(item)
+            if len(item) == 1 and type(item[0]) is str:
+                try:
+                    features[f"{key}_only"] = _identifier(item[0], key)
+                except ProcedureContractError:
+                    continue
+    return MappingProxyType(features)
+
+
+def _classifier_signature(request: HoleRequest) -> str:
+    return content_identity(
+        {
+            "hole_type": request.hole_type.value,
+            "input_schema_ref": request.input_schema_ref,
+            "output_schema_ref": request.output_schema_ref,
+            "input_payload": _freeze(dict(request.input_payload), "input_payload"),
+        }
+    )
+
+
+def _output_digest(output: Mapping[str, Any]) -> str:
+    return content_identity({"output": dict(output)})
+
+
+def _cache_key_payload(
+    request: HoleRequest,
+    *,
+    compiled: CompiledHoleContext | None = None,
+    evidence: str = "",
+) -> dict[str, Any]:
+    # Receipt CIDs are compiler artifacts, not hole identity.  Exact cache keys
+    # bind request, bindings, context bodies, and a receipt-free fingerprint.
+    if compiled is not None:
+        if compiled.tree_id and compiled.tree_id != request.bindings.tree_id:
+            _refuse(
+                DistillationReason.STALE_EXAMPLE,
+                "compiled hole context tree does not match the request",
+            )
+        if (
+            compiled.repository_id
+            and compiled.repository_id != request.bindings.repository_id
+        ):
+            _refuse(
+                DistillationReason.STALE_EXAMPLE,
+                "compiled hole context repository does not match the request",
+            )
+    for item in request.context_references:
+        if item.tree_id and item.tree_id != request.bindings.tree_id:
+            _refuse(
+                DistillationReason.STALE_EXAMPLE,
+                "context reference tree does not match the request",
+            )
+    fingerprint = evidence or evidence_fingerprint(request)
+    payload = {
+        "repository_id": request.bindings.repository_id,
+        "repository_commit": request.bindings.repository_commit,
+        "tree_id": request.bindings.tree_id,
+        "objective_id": request.bindings.objective_id,
+        "task_id": request.bindings.task_id,
+        "contract_revision": request.bindings.contract_revision,
+        "policy_revision": request.bindings.policy_revision,
+        "environment_id": request.bindings.environment_id,
+        "hole_type": request.hole_type.value,
+        "input_schema_ref": request.input_schema_ref,
+        "output_schema_ref": request.output_schema_ref,
+        "input_payload": _freeze(dict(request.input_payload), "input_payload"),
+        "context_reference_ids": tuple(
+            item.reference_id for item in request.context_references
+        ),
+        "context_content_ids": tuple(
+            item.content_id for item in request.context_references
+        ),
+        "evidence_fingerprint": fingerprint,
+        "validation_observation_ids": request.validation_observation_ids,
+    }
+    missing = tuple(
+        name
+        for name in REQUIRED_CACHE_KEY_FIELDS
+        if payload.get(name) in (None, "", (), {})
+    )
+    if missing:
+        _refuse(
+            DistillationReason.INCOMPLETE_CACHE_KEY,
+            "exact hole cache key omitted required identity dimensions",
+        )
+    return payload
+
+
+@dataclass(frozen=True)
+class ExactHoleCacheEntry:
+    """Stored previously validated proposal.  Replay remains a candidate."""
+
+    cache_key: str
+    output: Mapping[str, Any]
+    example_id: str = ""
+    candidate_cid: str = ""
+    validation_cid: str = ""
+    partition: CorpusPartition = CorpusPartition.TRAINING
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "cache_key", _identifier(self.cache_key, "cache_key"))
+        object.__setattr__(self, "output", _payload_mapping_proxy(self.output, "output"))
+        object.__setattr__(
+            self, "example_id", _identifier(self.example_id, "example_id", required=False)
+        )
+        object.__setattr__(
+            self,
+            "candidate_cid",
+            _identifier(self.candidate_cid, "candidate_cid", required=False),
+        )
+        object.__setattr__(
+            self,
+            "validation_cid",
+            _identifier(self.validation_cid, "validation_cid", required=False),
+        )
+        object.__setattr__(
+            self, "partition", _enum(self.partition, CorpusPartition, "partition")
+        )
+        if self.partition not in TRAINABLE_PARTITIONS:
+            _refuse(
+                DistillationReason.HELD_OUT_TRAINING_REJECTED,
+                "exact hole cache cannot store held-out rows",
+            )
+        if not self.validation_cid:
+            _refuse(
+                DistillationReason.MISSING_VALIDATION,
+                "exact hole cache entries require independent validation provenance",
+            )
+
+
+def _payload_mapping_proxy(value: Any, field_name: str) -> Mapping[str, Any]:
+    frozen = _freeze(value if value is not None else {}, field_name)
+    if not isinstance(frozen, Mapping):
+        raise DistillationError(f"{field_name} must be a mapping")
+    _reject_privacy(frozen, field_name)
+    return MappingProxyType(dict(frozen))
+
+
+class ExactHoleCache:
+    """Exact-identity proposal producer.  Hits never skip validation."""
+
+    provider_class: ClassVar[ProviderClass] = ProviderClass.EXACT_CACHE
+    revision: ClassVar[str] = EXACT_HOLE_CACHE_REVISION
+
+    def __init__(self) -> None:
+        self._entries: dict[str, ExactHoleCacheEntry] = {}
+        self.calls = 0
+
+    @property
+    def can_skip_validation(self) -> bool:
+        return False
+
+    @property
+    def can_authorize(self) -> bool:
+        return False
+
+    @property
+    def claims_correctness(self) -> bool:
+        return False
+
+    def cache_key(
+        self,
+        request: HoleRequest,
+        compiled: CompiledHoleContext | None = None,
+        *,
+        evidence_fingerprint: str = "",
+    ) -> str:
+        payload = _cache_key_payload(
+            request, compiled=compiled, evidence=evidence_fingerprint
+        )
+        return content_identity(payload)
+
+    def remember(
+        self,
+        request: HoleRequest,
+        output: Mapping[str, Any],
+        *,
+        compiled: CompiledHoleContext | None = None,
+        evidence_fingerprint: str = "",
+        partition: CorpusPartition | str = CorpusPartition.TRAINING,
+        accepted: bool = True,
+        example_id: str = "",
+        candidate_cid: str = "",
+        validation_cid: str = "",
+    ) -> str:
+        _non_authority_guard(self)
+        _require_accepted(accepted)
+        normalized_partition = _require_training_partition(partition)
+        if not validation_cid:
+            _refuse(
+                DistillationReason.MISSING_VALIDATION,
+                "exact hole cache entries require independent validation provenance",
+            )
+        if len(self._entries) >= MAX_RESOLVER_ENTRIES:
+            _refuse(DistillationReason.CORPUS_UNBOUNDED, "exact hole cache exceeds its bound")
+        compact = dict(_compact_output(request, output))
+        if not _output_compatible(request, compact):
+            _refuse(
+                DistillationReason.UNVERIFIED_EXAMPLE,
+                "exact hole cache cannot store a schema-invalid proposal",
+            )
+        key = self.cache_key(
+            request, compiled, evidence_fingerprint=evidence_fingerprint
+        )
+        self._entries[key] = ExactHoleCacheEntry(
+            cache_key=key,
+            output=compact,
+            example_id=example_id,
+            candidate_cid=candidate_cid,
+            validation_cid=validation_cid,
+            partition=normalized_partition,
+        )
+        return key
+
+    def ingest_example(
+        self,
+        example: DistillationExample,
+        request: HoleRequest,
+        output: Mapping[str, Any],
+        *,
+        compiled: CompiledHoleContext | None = None,
+    ) -> str:
+        if example.request_cid != request.content_id:
+            _refuse(
+                DistillationReason.BINDING_MISMATCH,
+                "cache example is not bound to the hole request",
+            )
+        return self.remember(
+            request,
+            output,
+            compiled=compiled,
+            partition=example.partition,
+            accepted=example.label is DistillationLabel.ACCEPTED,
+            example_id=example.example_id,
+            candidate_cid=example.candidate_cid,
+            validation_cid=example.validation_cid,
+        )
+
+    def lookup(
+        self,
+        request: HoleRequest,
+        compiled: CompiledHoleContext | None = None,
+    ) -> ExactHoleCacheEntry | None:
+        try:
+            key = self.cache_key(request, compiled)
+        except DistillationAdmissionError:
+            return None
+        return self._entries.get(key)
+
+    def propose(
+        self,
+        request: HoleRequest,
+        compiled: CompiledHoleContext,
+    ) -> HoleProviderResult:
+        self.calls += 1
+        _non_authority_guard(self)
+        entry = self.lookup(request, compiled)
+        if entry is None:
+            return _miss("cache-miss")
+        output = dict(entry.output)
+        if not _output_compatible(request, output):
+            return _miss("cache-incompatible")
+        return _propose(output)
+
+
+@dataclass(frozen=True)
+class DeclarativeHoleRule:
+    """Closed deterministic feature rule.  A miss never claims correctness."""
+
+    rule_id: str
+    hole_type: HoleType
+    kind: DeclarativeHoleRuleKind = DeclarativeHoleRuleKind.EXACT_OUTPUT
+    match: Mapping[str, Any] = field(default_factory=dict)
+    output: Mapping[str, Any] = field(default_factory=dict)
+    input_field: str = ""
+    output_field: str = ""
+    mapping: Mapping[str, str] = field(default_factory=dict)
+
+    provider_class: ClassVar[ProviderClass] = ProviderClass.DECLARATIVE_RULE
+    revision: ClassVar[str] = DECLARATIVE_HOLE_RULE_REVISION
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "rule_id", _identifier(self.rule_id, "rule_id"))
+        object.__setattr__(self, "hole_type", _enum(self.hole_type, HoleType, "hole_type"))
+        object.__setattr__(
+            self, "kind", _enum(self.kind, DeclarativeHoleRuleKind, "kind")
+        )
+        object.__setattr__(self, "match", _payload_mapping_proxy(self.match, "match"))
+        object.__setattr__(self, "output", _payload_mapping_proxy(self.output, "output"))
+        object.__setattr__(
+            self, "input_field", _identifier(self.input_field, "input_field", required=False)
+        )
+        object.__setattr__(
+            self,
+            "output_field",
+            _identifier(self.output_field, "output_field", required=False),
+        )
+        frozen_map = _payload_mapping_proxy(self.mapping, "mapping")
+        normalized_map: dict[str, str] = {}
+        for key, value in frozen_map.items():
+            if type(value) is not str:
+                raise DistillationError("rule mapping values must be identifiers")
+            normalized_map[_identifier(key, "mapping")] = _identifier(value, "mapping")
+        object.__setattr__(self, "mapping", MappingProxyType(normalized_map))
+        if self.kind is DeclarativeHoleRuleKind.CLOSED_MAP and (
+            not self.input_field or not self.output_field or not self.mapping
+        ):
+            raise DistillationError("closed-map rules require input, output, and mapping")
+        _reject_privacy(self.match, "match")
+        _reject_privacy(self.output, "output")
+
+    @property
+    def can_skip_validation(self) -> bool:
+        return False
+
+    @property
+    def can_authorize(self) -> bool:
+        return False
+
+    @property
+    def claims_correctness(self) -> bool:
+        return False
+
+    def match_output(self, request: HoleRequest) -> Mapping[str, Any] | None:
+        if request.hole_type is not self.hole_type:
+            return None
+        features = _request_features(request)
+        for key, expected in self.match.items():
+            actual = features.get(key, request.input_payload.get(key))
+            if actual != expected:
+                return None
+        if self.kind is DeclarativeHoleRuleKind.SELECT_SINGLETON:
+            values = request.input_payload.get("allowed_values")
+            if values is None:
+                values = request.input_payload.get("template_ids")
+            if not isinstance(values, Sequence) or isinstance(
+                values, (str, bytes, bytearray, memoryview)
+            ):
+                return None
+            if len(values) != 1 or type(values[0]) is not str:
+                return None
+            field = self.output_field or {
+                HoleType.SELECT_ONE_OF_ALLOWED_SYMBOLS: "selected",
+                HoleType.PROPOSE_BOUNDED_PATCH: "template_id",
+                HoleType.CHOOSE_APPROVED_REPAIR_TEMPLATE: "template_id",
+            }.get(request.hole_type)
+            if not field:
+                return None
+            output = {"schema_ref": request.output_schema_ref, field: values[0]}
+            return output if _output_compatible(request, output) else None
+        if self.kind is DeclarativeHoleRuleKind.CLOSED_MAP:
+            raw = request.input_payload.get(self.input_field)
+            if type(raw) is not str or raw not in self.mapping:
+                return None
+            output = {
+                "schema_ref": request.output_schema_ref,
+                self.output_field: self.mapping[raw],
+            }
+            return output if _output_compatible(request, output) else None
+        output = {"schema_ref": request.output_schema_ref, **dict(self.output)}
+        return output if _output_compatible(request, output) else None
+
+    def propose(
+        self,
+        request: HoleRequest,
+        compiled: CompiledHoleContext,
+    ) -> HoleProviderResult:
+        _non_authority_guard(self)
+        output = self.match_output(request)
+        if output is None:
+            return _miss("rule-miss")
+        return _propose(output)
+
+
+class _DeclarativeRuleProvider:
+    """Unique-match bundle over declarative rules."""
+
+    provider_class: ClassVar[ProviderClass] = ProviderClass.DECLARATIVE_RULE
+
+    def __init__(self, rules: Sequence[DeclarativeHoleRule] = ()) -> None:
+        self._rules = tuple(sorted(rules, key=lambda item: item.rule_id))
+        self.calls = 0
+
+    @property
+    def rules(self) -> tuple[DeclarativeHoleRule, ...]:
+        return self._rules
+
+    @property
+    def can_skip_validation(self) -> bool:
+        return False
+
+    @property
+    def can_authorize(self) -> bool:
+        return False
+
+    @property
+    def claims_correctness(self) -> bool:
+        return False
+
+    def propose(
+        self,
+        request: HoleRequest,
+        compiled: CompiledHoleContext,
+    ) -> HoleProviderResult:
+        self.calls += 1
+        hits: list[Mapping[str, Any]] = []
+        for rule in self._rules:
+            output = rule.match_output(request)
+            if output is not None:
+                hits.append(output)
+        if len(hits) != 1:
+            return _miss("rule-miss" if not hits else "rule-ambiguous")
+        return _propose(hits[0])
+
+
+class DeterministicHoleClassifier:
+    """Exact typed-feature classifier trained only on disjoint training rows."""
+
+    provider_class: ClassVar[ProviderClass] = ProviderClass.DETERMINISTIC_CLASSIFIER
+    revision: ClassVar[str] = DETERMINISTIC_HOLE_CLASSIFIER_REVISION
+
+    def __init__(self) -> None:
+        self._outputs: dict[str, dict[str, Mapping[str, Any]]] = {}
+        self.calls = 0
+
+    @property
+    def can_skip_validation(self) -> bool:
+        return False
+
+    @property
+    def can_authorize(self) -> bool:
+        return False
+
+    @property
+    def claims_correctness(self) -> bool:
+        return False
+
+    def ingest(
+        self,
+        request: HoleRequest,
+        output: Mapping[str, Any],
+        *,
+        partition: CorpusPartition | str = CorpusPartition.TRAINING,
+        accepted: bool = True,
+    ) -> None:
+        _non_authority_guard(self)
+        _require_accepted(accepted)
+        _require_training_partition(partition)
+        compact = dict(_compact_output(request, output))
+        if not _output_compatible(request, compact):
+            _refuse(
+                DistillationReason.UNVERIFIED_EXAMPLE,
+                "classifier cannot train on a schema-invalid proposal",
+            )
+        signature = _classifier_signature(request)
+        bucket = self._outputs.setdefault(signature, {})
+        if len(self._outputs) > MAX_RESOLVER_ENTRIES:
+            _refuse(
+                DistillationReason.CORPUS_UNBOUNDED,
+                "deterministic classifier exceeds its bound",
+            )
+        bucket[_output_digest(compact)] = MappingProxyType(compact)
+
+    def propose(
+        self,
+        request: HoleRequest,
+        compiled: CompiledHoleContext,
+    ) -> HoleProviderResult:
+        self.calls += 1
+        _non_authority_guard(self)
+        bucket = self._outputs.get(_classifier_signature(request), {})
+        if len(bucket) != 1:
+            return _miss("classifier-miss" if not bucket else "classifier-ambiguous")
+        output = dict(next(iter(bucket.values())))
+        if not _output_compatible(request, output):
+            return _miss("classifier-incompatible")
+        return _propose(output)
+
+
+@dataclass(frozen=True)
+class HeldOutResolverEvaluation:
+    """Held-out counts.  Accuracy never becomes authority or correctness."""
+
+    evaluated_count: int
+    proposed_count: int
+    missed_count: int
+    matched_count: int
+    claims_correctness: bool = False
+    can_skip_validation: bool = False
+    can_authorize: bool = False
+    accuracy_is_authority: bool = False
+
+    def __post_init__(self) -> None:
+        for name in (
+            "evaluated_count",
+            "proposed_count",
+            "missed_count",
+            "matched_count",
+        ):
+            object.__setattr__(
+                self, name, _nonnegative_int(getattr(self, name), name)
+            )
+        object.__setattr__(
+            self, "claims_correctness", _bool(self.claims_correctness, "claims_correctness")
+        )
+        object.__setattr__(
+            self,
+            "can_skip_validation",
+            _bool(self.can_skip_validation, "can_skip_validation"),
+        )
+        object.__setattr__(self, "can_authorize", _bool(self.can_authorize, "can_authorize"))
+        object.__setattr__(
+            self,
+            "accuracy_is_authority",
+            _bool(self.accuracy_is_authority, "accuracy_is_authority"),
+        )
+        if self.claims_correctness or self.can_skip_validation or self.can_authorize:
+            _refuse(
+                DistillationReason.CONFIDENCE_AUTHORITY_REJECTED,
+                "held-out evaluation cannot claim correctness or skip validation",
+            )
+        if self.accuracy_is_authority:
+            _refuse(
+                DistillationReason.CONFIDENCE_AUTHORITY_REJECTED,
+                "held-out accuracy is not authority",
+            )
+
+
+class LocalHoleResolver:
+    """Small local model plus the exact cache -> rule -> classifier cascade.
+
+    Confidence is a non-authoritative millicount.  Every proposal remains a
+    candidate until independent validation.
+    """
+
+    provider_class: ClassVar[ProviderClass] = ProviderClass.LOCAL_SMALL_MODEL
+    revision: ClassVar[str] = LOCAL_HOLE_RESOLVER_REVISION
+    route_order: ClassVar[tuple[ProviderClass, ...]] = LOCAL_HOLE_ROUTE_ORDER
+
+    def __init__(
+        self,
+        *,
+        cache: ExactHoleCache | None = None,
+        rules: Sequence[DeclarativeHoleRule] | DeclarativeHoleRule = (),
+        classifier: DeterministicHoleClassifier | None = None,
+        remote: object | None = None,
+    ) -> None:
+        self._cache = cache if cache is not None else ExactHoleCache()
+        if isinstance(rules, DeclarativeHoleRule):
+            rule_items: tuple[DeclarativeHoleRule, ...] = (rules,)
+        else:
+            rule_items = tuple(rules)
+        self._rules = rule_items
+        self._rule_port = _DeclarativeRuleProvider(rule_items)
+        self._classifier = (
+            classifier if classifier is not None else DeterministicHoleClassifier()
+        )
+        self._remote = remote
+        self._outputs: dict[HoleType, dict[str, Mapping[str, Any]]] = {}
+        self._counts: dict[HoleType, dict[str, int]] = {}
+        self.calls = 0
+        self._last_confidence_millis = 0
+        _non_authority_guard(self)
+        _non_authority_guard(self._cache)
+        _non_authority_guard(self._rule_port)
+        _non_authority_guard(self._classifier)
+
+    @property
+    def cache(self) -> ExactHoleCache:
+        return self._cache
+
+    @property
+    def rules(self) -> tuple[DeclarativeHoleRule, ...]:
+        return self._rules
+
+    @property
+    def rule_provider(self) -> _DeclarativeRuleProvider:
+        return self._rule_port
+
+    @property
+    def classifier(self) -> DeterministicHoleClassifier:
+        return self._classifier
+
+    @property
+    def last_confidence_millis(self) -> int:
+        return self._last_confidence_millis
+
+    @property
+    def can_skip_validation(self) -> bool:
+        return False
+
+    @property
+    def can_authorize(self) -> bool:
+        return False
+
+    @property
+    def claims_correctness(self) -> bool:
+        return False
+
+    def provider_ports(self) -> Mapping[ProviderClass, object]:
+        ports: dict[ProviderClass, object] = {
+            ProviderClass.EXACT_CACHE: self._cache,
+            ProviderClass.DECLARATIVE_RULE: self._rule_port,
+            ProviderClass.DETERMINISTIC_CLASSIFIER: self._classifier,
+            ProviderClass.LOCAL_SMALL_MODEL: self,
+        }
+        if self._remote is not None:
+            ports[ProviderClass.REMOTE_STANDARD_MODEL] = self._remote
+        return MappingProxyType(ports)
+
+    def ingest(
+        self,
+        request: HoleRequest,
+        output: Mapping[str, Any],
+        *,
+        compiled: CompiledHoleContext | None = None,
+        partition: CorpusPartition | str = CorpusPartition.TRAINING,
+        accepted: bool = True,
+        example_id: str = "",
+        candidate_cid: str = "",
+        validation_cid: str = "",
+        remember_cache: bool = False,
+    ) -> None:
+        _require_accepted(accepted)
+        _require_training_partition(partition)
+        compact = dict(_compact_output(request, output))
+        if not _output_compatible(request, compact):
+            _refuse(
+                DistillationReason.UNVERIFIED_EXAMPLE,
+                "local hole resolver cannot train on a schema-invalid proposal",
+            )
+        digest = _output_digest(compact)
+        bucket = self._outputs.setdefault(request.hole_type, {})
+        counts = self._counts.setdefault(request.hole_type, {})
+        if len(self._outputs) > MAX_RESOLVER_ENTRIES:
+            _refuse(DistillationReason.CORPUS_UNBOUNDED, "local hole resolver exceeds its bound")
+        bucket[digest] = MappingProxyType(compact)
+        counts[digest] = counts.get(digest, 0) + 1
+        self._classifier.ingest(
+            request, compact, partition=partition, accepted=accepted
+        )
+        if remember_cache:
+            self._cache.remember(
+                request,
+                compact,
+                compiled=compiled,
+                partition=partition,
+                accepted=accepted,
+                example_id=example_id,
+                candidate_cid=candidate_cid,
+                validation_cid=validation_cid,
+            )
+
+    def _compatible_unique(
+        self, request: HoleRequest
+    ) -> tuple[Mapping[str, Any] | None, int]:
+        bucket = self._outputs.get(request.hole_type, {})
+        counts = self._counts.get(request.hole_type, {})
+        compatible: list[tuple[str, Mapping[str, Any], int]] = []
+        total = 0
+        for digest, output in bucket.items():
+            weight = counts.get(digest, 0)
+            total += weight
+            if _output_compatible(request, dict(output)):
+                compatible.append((digest, output, weight))
+        if len(compatible) != 1 or total < 1:
+            return None, 0
+        _, output, weight = compatible[0]
+        confidence = min(MAX_CONFIDENCE_MILLIS, (weight * MAX_CONFIDENCE_MILLIS) // total)
+        return dict(output), confidence
+
+    def propose(
+        self,
+        request: HoleRequest,
+        compiled: CompiledHoleContext,
+    ) -> HoleProviderResult:
+        self.calls += 1
+        _non_authority_guard(self)
+        output, confidence = self._compatible_unique(request)
+        self._last_confidence_millis = confidence
+        if output is None:
+            return _miss("local-model-miss")
+        return _propose(output)
+
+    def evaluate_held_out(
+        self,
+        cases: Sequence[tuple[HoleRequest, CompiledHoleContext, Mapping[str, Any]]],
+    ) -> HeldOutResolverEvaluation:
+        proposed = 0
+        missed = 0
+        matched = 0
+        for request, compiled, expected in cases:
+            result = self.propose(request, compiled)
+            if result.outcome is HoleProviderOutcome.MISSED:
+                missed += 1
+                continue
+            proposed += 1
+            if dict(result.output) == dict(_compact_output(request, expected)):
+                matched += 1
+        return HeldOutResolverEvaluation(
+            evaluated_count=len(tuple(cases)),
+            proposed_count=proposed,
+            missed_count=missed,
+            matched_count=matched,
+            claims_correctness=False,
+            can_skip_validation=False,
+            can_authorize=False,
+            accuracy_is_authority=False,
+        )
+
+    def to_hole_resolver(
+        self,
+        *,
+        capacity: Sequence[ProviderCapacitySnapshot | Mapping[str, Any]] | None = None,
+        context_compiler: object | None = None,
+        current_tree_id: str = "",
+        remote: object | None = None,
+        extra_providers: Mapping[ProviderClass | str, object] | None = None,
+    ) -> HoleResolver:
+        ports: dict[ProviderClass, object] = dict(self.provider_ports())
+        if remote is not None:
+            ports[ProviderClass.REMOTE_STANDARD_MODEL] = remote
+        for key, port in dict(extra_providers or {}).items():
+            ports[_enum(key, ProviderClass, "provider_class")] = port
+        classes = tuple(ports)
+        snapshots = capacity
+        if snapshots is None:
+            snapshots = tuple(
+                ProviderCapacitySnapshot(
+                    provider_class=item,
+                    available=True,
+                    remaining_calls=4,
+                    max_context_bytes=65_536,
+                    max_tokens=8_192,
+                    provider_id=f"provider.{item.value}",
+                )
+                for item in classes
+            )
+        compiler = context_compiler or default_hole_context_compiler()
+        return HoleResolver(
+            compiler,
+            providers=ports,
+            capacity=snapshots,
+            current_tree_id=current_tree_id,
+        )
+
+
 for _artifact_type in (DistillationExample, DistillationCorpus, DistillationEvaluation):
     ARTIFACT_TYPES_BY_SCHEMA[_artifact_type.SCHEMA] = _artifact_type
 
 
 __all__ = [
     "BUILDER_REVISION",
+    "DECLARATIVE_HOLE_RULE_REVISION",
+    "DETERMINISTIC_HOLE_CLASSIFIER_REVISION",
     "EVALUATOR_REVISION",
+    "EXACT_HOLE_CACHE_REVISION",
+    "LOCAL_HOLE_RESOLVER_REVISION",
     "MAX_CORPUS_ROWS",
+    "MAX_RESOLVER_ENTRIES",
+    "REQUIRED_CACHE_KEY_FIELDS",
     "REQUIRED_PARTITIONS",
     "REQUIRED_PRIVACY_CLASSES",
     "REQUIRED_PROVENANCE_FIELDS",
+    "TRAINABLE_PARTITIONS",
     "CorpusPartition",
+    "DeclarativeHoleRule",
+    "DeclarativeHoleRuleKind",
+    "DeterministicHoleClassifier",
     "DistillationAdmissionAction",
     "DistillationAdmissionError",
     "DistillationContentReference",
@@ -1561,4 +2467,8 @@ __all__ = [
     "DistillationLabel",
     "DistillationReason",
     "DistillationReferenceKind",
+    "ExactHoleCache",
+    "ExactHoleCacheEntry",
+    "HeldOutResolverEvaluation",
+    "LocalHoleResolver",
 ]
