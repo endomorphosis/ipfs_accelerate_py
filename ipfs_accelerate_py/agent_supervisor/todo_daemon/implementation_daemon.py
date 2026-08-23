@@ -75875,6 +75875,25 @@ class DatabaseImplementationDaemon:
                 "post-merge recovery queue write did not reproduce"
             )
         self._protect_retry_transition_authority(latest, coordination)
+        qualification_control_fields = (
+            {
+                "repair_commit": qualified_target_commit,
+                "repair_receipt_id": qualification_receipt_id,
+                "repair_evidence_id": evidence_id,
+            }
+            if qualification_kind == "repair"
+            else {
+                "source_repair_commit": str(
+                    qualification_receipt["source_repair_commit"]
+                ),
+                "source_repair_receipt_id": str(
+                    qualification_receipt["source_repair_receipt_id"]
+                ),
+                "qualified_target_commit": qualified_target_commit,
+                "requalification_receipt_id": qualification_receipt_id,
+                "requalification_evidence_id": evidence_id,
+            }
+        )
         cas_result = self._cas_task_status_database(
             task_cid,
             expected_revision=int(task.revision),
@@ -75886,9 +75905,27 @@ class DatabaseImplementationDaemon:
                     + "_recovery"
                 ),
                 "attempt_id": latest.attempt_id,
+                "attempt_number": int(latest.attempt_number),
+                "claim_id": latest.claim_id,
+                "lease_id": latest.lease_id,
+                "owner_session_id": latest.owner_session_id,
+                "fencing_token": int(latest.fencing_token),
+                "fence_epoch": int(latest.fence_epoch),
+                "execution_phase": ATTEMPT_PHASE_FAILED,
+                "execution_revision": int(latest.revision),
+                "execution_finished_at_ms": latest.finished_at_ms,
                 "request_id": str(raw["request_id"]),
-                "qualified_target_commit": qualified_target_commit,
-                "qualification_receipt_id": qualification_receipt_id,
+                "candidate_commit": str(raw["candidate_commit"]),
+                "source_binding_id": str(raw["source_binding_id"]),
+                "source_projection_immutable_digest": str(
+                    raw["source_projection_immutable_digest"]
+                ),
+                "queue_reason": queue_reason,
+                "queue_receipt": dict(queue_receipt_dict),
+                "coordination": dict(coordination),
+                "control_expected_status": "blocked",
+                "control_expected_revision": int(task.revision),
+                **qualification_control_fields,
             },
             evidence_digests=[
                 qualification_receipt_id,
