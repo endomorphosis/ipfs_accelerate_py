@@ -583,9 +583,10 @@ _QUACK_OWNER_DML_PREFIXES = (
 # stolen. Shorter than a multi-day freeze so a dead in_progress gate unblocks.
 STALE_IN_PROGRESS_UNSTALL_SECONDS = 16_200
 # claim_next can CAS in_progress and then die before an attempt row or Grok
-# child exists. 4.5h is too long for that leftover; 60s covers spawn races
-# without waiting out the live-attempt window.
-ABANDONED_IN_PROGRESS_UNSTALL_SECONDS = 60
+# child exists. 4.5h is too long for that leftover. Quack DML has to bounce
+# the exclusive owner (~60s) before Grok can spawn, so keep a 10-minute
+# abandoned window rather than stealing the live claim.
+ABANDONED_IN_PROGRESS_UNSTALL_SECONDS = 600
 _QUACK_ATTACH_LOCK = threading.RLock()
 _QUACK_TRANSPORT_CACHE: dict[str, DuckDBConnection] = {}
 QUACK_ATTACH_ATTEMPTS = 12

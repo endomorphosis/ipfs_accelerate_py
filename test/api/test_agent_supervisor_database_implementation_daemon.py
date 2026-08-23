@@ -1371,7 +1371,7 @@ def test_quack_attach_contention_requests_owner_board_unstall(
         assert len(requests) == 1
         payload = json.loads(requests[0].read_text(encoding="utf-8"))
         assert payload["op"] == "board_unstall"
-        assert payload["stale_seconds"] == 60
+        assert payload["stale_seconds"] == 600
         second = daemon.run_once()
         assert second.get("board_unstall_request", {}).get("requested") is False
         assert second.get("board_unstall_request", {}).get("skipped") == (
@@ -1462,7 +1462,7 @@ def test_abandoned_in_progress_gate_unstalls_without_running_attempt(
     )
     try:
         daemon.materialize_population(_population(1))
-        abandoned = (datetime.now(timezone.utc) - timedelta(minutes=2)).strftime(
+        abandoned = (datetime.now(timezone.utc) - timedelta(minutes=15)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
         with daemon.task_source._intent._connection(write=True) as connection:
