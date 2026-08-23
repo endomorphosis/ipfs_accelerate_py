@@ -1426,7 +1426,7 @@ def _aseh_health_fixture(
     }, sample
 
 
-def test_aseh_status_sample_binds_query_to_the_replica_generation_it_authenticated(
+def test_aseh_status_sample_rejects_owner_replica_publication_race(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1457,10 +1457,8 @@ def test_aseh_status_sample_binds_query_to_the_replica_generation_it_authenticat
         board, paths, server, scheduler
     )
 
-    assert observed["authority"]["available"] is True
-    assert observed["owner_status"]["read_replica"]["refresh_sequence"] == (
-        before["read_replica"]["refresh_sequence"]
-    )
+    assert observed["authority"]["available"] is False
+    assert observed["authority"]["error_type"] == "OperatorError"
 
 
 def test_aseh_external_status_binds_receipt_to_current_owner_incarnation(
