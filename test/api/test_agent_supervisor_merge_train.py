@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -15,7 +16,11 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     conflict_fingerprint,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalExecutionBridge,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DatabaseTaskAttempt,
     PortalImplementationDaemon,
     PortalTask,
 )
@@ -39,6 +44,92 @@ def _repo(tmp_path: Path) -> Path:
     _git(repo, "add", "base.txt")
     _git(repo, "commit", "-m", "base")
     return repo
+
+
+class _DatabaseProjectionTaskSource:
+    def __init__(self, record: object) -> None:
+        self.record = record
+
+    def get_task(self, task_cid: str) -> object | None:
+        return (
+            self.record
+            if task_cid == str(getattr(self.record, "task_cid", ""))
+            else None
+        )
+
+    def snapshot(self) -> object:
+        return SimpleNamespace(repository_tree_id="tree:merge-continuation")
+
+
+def _database_projection_record(
+    *, task_cid: str = "task:cid:ref-040", revision: int = 1
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        task_cid=task_cid,
+        task_alias="REF-040",
+        goal_cid="goal:ref-040",
+        plan_cid="plan:merge-continuation",
+        revision=revision,
+        priority="P0",
+        dependencies=(),
+        outputs=({"path": "base.txt"},),
+        validations=(),
+        acceptance=({"criterion": "The exact candidate is integrated"},),
+        body={
+            "objective": "Continue one exact database task merge",
+            "completion": "auto",
+            "track": "implementation",
+        },
+    )
+
+
+def _database_projection_attempt(
+    *, attempt_id: str, claim_id: str, task_cid: str, attempt_number: int
+) -> DatabaseTaskAttempt:
+    return DatabaseTaskAttempt(
+        attempt_id=attempt_id,
+        claim_id=claim_id,
+        task_cid=task_cid,
+        task_alias="REF-040",
+        attempt_number=attempt_number,
+        owner_session_id="session:merge-continuation",
+        fencing_token=attempt_number,
+        fence_epoch=1,
+        lease_id=f"lease:{attempt_number}",
+        committed_phase="claimed",
+        status="running",
+        started_at_ms=attempt_number,
+    )
+
+
+def _database_projection_daemon(
+    *,
+    repo: Path,
+    attempt_root: Path,
+    merge_queue_dir: Path,
+    attempt: DatabaseTaskAttempt,
+    record: SimpleNamespace,
+) -> tuple[PortalImplementationDaemon, object, dict[str, object]]:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_DatabaseProjectionTaskSource(record),
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, _alias: None,
+        repository_root=repo,
+        task_header_prefix="## REF-",
+    )
+    paths, binding = bridge._ensure_attempt_projection(attempt, record)
+    daemon = PortalImplementationDaemon(
+        todo_path=paths.task_projection,
+        state_path=paths.state,
+        strategy_path=paths.strategy,
+        events_path=paths.events,
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        merge_target_branch="main",
+        merge_queue_dir=merge_queue_dir,
+        worktree_pool_enabled=False,
+    )
+    return daemon, paths, dict(binding)
 
 
 def test_queue_deduplicates_canonical_task_and_commit_across_lanes(tmp_path: Path) -> None:
@@ -568,6 +659,73 @@ def test_cross_lane_completion_without_authority_policy_fails_closed(
     assert result["consumer_todo_path"] == str(consumer_todo)
     assert "- Status: todo" in producer_todo.read_text(encoding="utf-8")
     assert consumer.merge_queue.target_branch == "benchmark/semantic-roundtrip"
+
+
+def test_database_portal_retry_continues_merge_into_current_projection(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    task_cid = "task:cid:ref-040"
+    producer_attempt = _database_projection_attempt(
+        attempt_id="attempt:producer",
+        claim_id="claim:producer",
+        task_cid=task_cid,
+        attempt_number=1,
+    )
+    consumer_attempt = _database_projection_attempt(
+        attempt_id="attempt:consumer",
+        claim_id="claim:consumer",
+        task_cid=task_cid,
+        attempt_number=2,
+    )
+    producer, producer_paths, producer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=producer_attempt,
+        record=_database_projection_record(revision=2),
+    )
+    consumer, consumer_paths, consumer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=consumer_attempt,
+        record=_database_projection_record(revision=4),
+    )
+    _git(repo, "branch", "implementation/ref-040")
+    task = producer._load_tasks()[0]
+    commit = _git(repo, "rev-parse", "HEAD")
+    request, _queued = producer._enqueue_merge_candidate(
+        branch_name="implementation/ref-040",
+        implementation_commit=commit,
+        baseline_ref=commit,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+
+    result = consumer._merge_train_callback(request)
+
+    assert result.get("merged") is True or result.get("already_merged") is True
+    continuation = result["database_portal_merge_continuation"]
+    assert continuation["task_id"] == "REF-040"
+    assert continuation["task_cid"] == task_cid
+    assert continuation["producer_binding_id"] == producer_binding["binding_id"]
+    assert continuation["consumer_binding_id"] == consumer_binding["binding_id"]
+    assert "- Status: ready" in producer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert "- Status: completed" in consumer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_same_git_worktree_todo_path_is_not_cross_board(tmp_path: Path) -> None:
