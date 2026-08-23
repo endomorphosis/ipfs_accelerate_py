@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import errno
 import hashlib
 import json
 import os
@@ -16,6 +17,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -1753,6 +1755,220 @@ def test_detached_coordinator_pid_projection_rejects_symlink_and_hardlink(
     os.chmod(pid_path, 0o600)
     assert scheduler_module._remove_owned_coordinator_pid(board) is True
     assert not pid_path.exists()
+
+
+def _detached_runner_args(tmp_path: Path, pid_path: Path) -> SimpleNamespace:
+    return SimpleNamespace(
+        require_configured_board_live_seal="",
+        repo_root=tmp_path,
+        master_dir=tmp_path / "runtime",
+        master_log=tmp_path / "runtime" / "master.log",
+        master_pid_path=pid_path,
+        stamp="test-detached-pid",
+    )
+
+
+def test_non_plan_detach_quarantines_dead_legacy_pid_before_spawn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    stale_pid = 3833003
+    pid_path.write_text(f"{stale_pid}\n", encoding="ascii")
+    os.chmod(pid_path, 0o664)
+    stale_inode = os.lstat(pid_path).st_ino
+    probes: list[tuple[int, int]] = []
+
+    def absent_probe(pid: int, signal_number: int) -> None:
+        probes.append((pid, signal_number))
+        raise ProcessLookupError(errno.ESRCH, "no such process")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", absent_probe)
+    monkeypatch.setattr(multi_runner_module, "pid_alive", lambda _pid: True)
+
+    class Process:
+        pid = 424242
+
+        @staticmethod
+        def poll() -> None:
+            return None
+
+    def spawn(*_args: object, **_kwargs: object) -> Process:
+        assert pid_path.read_bytes() == b""
+        assert stat.S_IMODE(os.lstat(pid_path).st_mode) == 0o600
+        return Process()
+
+    monkeypatch.setattr(multi_runner_module.subprocess, "Popen", spawn)
+    result = multi_runner_module.launch_detached(
+        _detached_runner_args(tmp_path, pid_path),
+        ("--detach",),
+    )
+
+    assert result["master_pid"] == Process.pid
+    assert probes == [(stale_pid, 0)]
+    assert pid_path.read_text(encoding="ascii") == f"{Process.pid}\n"
+    assert stat.S_IMODE(os.lstat(pid_path).st_mode) == 0o600
+    quarantines = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.quarantine")
+    )
+    decisions = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.decision.json")
+    )
+    receipts = list(
+        pid_path.parent.glob(f".{pid_path.name}.stale-*.receipt.json")
+    )
+    assert len(quarantines) == len(decisions) == len(receipts) == 1
+    assert quarantines[0].read_text(encoding="ascii") == f"{stale_pid}\n"
+    assert os.lstat(quarantines[0]).st_ino == stale_inode
+    assert stat.S_IMODE(os.lstat(quarantines[0]).st_mode) == 0o664
+    decision = json.loads(decisions[0].read_text(encoding="utf-8"))
+    receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
+    decision_id = decision.pop("decision_receipt_id")
+    receipt_id = receipt.pop("receipt_id")
+    assert decision_id == multi_runner_module.content_identity(decision)
+    assert receipt_id == multi_runner_module.content_identity(receipt)
+    assert receipt["decision_receipt_id"] == decision_id
+    assert receipt["legacy_pid"] == stale_pid
+    assert receipt["liveness_evidence"] == {
+        "operation": "os.kill",
+        "signal": 0,
+        "result": "dead",
+        "errno": "ESRCH",
+        "errno_number": errno.ESRCH,
+    }
+    assert receipt["completion_authority"] is False
+    assert receipt["model_created"] is False
+    assert stat.S_IMODE(os.lstat(decisions[0]).st_mode) == 0o600
+    assert stat.S_IMODE(os.lstat(receipts[0]).st_mode) == 0o600
+
+
+@pytest.mark.parametrize("liveness", ("live", "unknown"))
+def test_non_plan_detach_refuses_live_or_unknown_legacy_pid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    liveness: str,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("987654\n", encoding="ascii")
+    spawned = False
+
+    def probe(_pid: int, signal_number: int) -> None:
+        assert signal_number == 0
+        if liveness == "unknown":
+            raise PermissionError(errno.EPERM, "not permitted")
+
+    def spawn(*_args: object, **_kwargs: object) -> object:
+        nonlocal spawned
+        spawned = True
+        raise AssertionError("liveness refusal must precede spawn")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", probe)
+    monkeypatch.setattr(multi_runner_module.subprocess, "Popen", spawn)
+    with pytest.raises(ValueError, match=liveness):
+        multi_runner_module.launch_detached(
+            _detached_runner_args(tmp_path, pid_path),
+            ("--detach",),
+        )
+    assert spawned is False
+    assert pid_path.read_bytes() == b"987654\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+@pytest.mark.parametrize("unsafe_kind", ("malformed", "symlink", "hardlink"))
+def test_non_plan_detach_refuses_unsafe_legacy_pid_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_kind: str,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+    pid_path.parent.mkdir(parents=True)
+    outside = tmp_path / "outside.pid"
+    outside.write_text("123456\n", encoding="ascii")
+    if unsafe_kind == "malformed":
+        pid_path.write_text("123456", encoding="ascii")
+    elif unsafe_kind == "symlink":
+        pid_path.symlink_to(outside)
+    else:
+        os.link(outside, pid_path)
+
+    def unexpected(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("unsafe PID projection reached liveness or spawn")
+
+    monkeypatch.setattr(multi_runner_module.os, "kill", unexpected)
+    monkeypatch.setattr(multi_runner_module.subprocess, "Popen", unexpected)
+    with pytest.raises(
+        (ValueError, multi_runner_module._StableArtifactReadError)
+    ):
+        multi_runner_module.launch_detached(
+            _detached_runner_args(tmp_path, pid_path),
+            ("--detach",),
+        )
+    assert outside.read_bytes() == b"123456\n"
+    assert list(pid_path.parent.glob(f".{pid_path.name}.stale-*")) == []
+
+
+def test_non_plan_detach_spawn_failure_discards_exact_reservation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pid_path = tmp_path / "runtime" / "configured-board-master.pid"
+
+    def fail_spawn(*_args: object, **_kwargs: object) -> object:
+        assert pid_path.read_bytes() == b""
+        assert stat.S_IMODE(os.lstat(pid_path).st_mode) == 0o600
+        raise OSError("synthetic spawn failure")
+
+    monkeypatch.setattr(multi_runner_module.subprocess, "Popen", fail_spawn)
+    with pytest.raises(OSError, match="synthetic spawn failure"):
+        multi_runner_module.launch_detached(
+            _detached_runner_args(tmp_path, pid_path),
+            ("--detach",),
+        )
+    assert not pid_path.exists()
+
+
+def test_supervisor_status_health_ignores_leftover_pid_from_prior_generation(
+    tmp_path: Path,
+) -> None:
+    status_path = tmp_path / "vrif_lane_0_supervisor_status.json"
+    status_path.write_text(
+        json.dumps(
+            {
+                "status": "stopped",
+                "supervisor_pid": 836631,
+                "updated_at": (
+                    datetime.now(timezone.utc) - timedelta(hours=2)
+                ).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    track = SimpleNamespace(supervisor_status_path=status_path)
+    leftover = multi_runner_module.supervisor_status_health_fields(
+        track,
+        repo_root=tmp_path,
+        stale_seconds=1800.0,
+        expected_supervisor_pid=3156583,
+        generation_started_at_epoch_seconds=time.time(),
+        startup_grace_seconds=1800.0,
+    )
+    assert leftover["supervisor_status_generation_reason"] == (
+        "supervisor_pid_mismatch"
+    )
+    assert leftover["restart_supervisor"] is False
+
+    matching = multi_runner_module.supervisor_status_health_fields(
+        track,
+        repo_root=tmp_path,
+        stale_seconds=1800.0,
+        expected_supervisor_pid=836631,
+        generation_started_at_epoch_seconds=time.time() - (4 * 3600),
+        startup_grace_seconds=0.0,
+    )
+    assert matching["supervisor_status"] == "stale"
+    assert matching["restart_supervisor"] is True
 
 
 def test_plan_bound_wave_and_supervisor_pid_projections_reject_links(
