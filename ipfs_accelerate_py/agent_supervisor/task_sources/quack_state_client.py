@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import re
 import threading
 import time
@@ -76,6 +75,7 @@ from .duckdb_state import open_duckdb_connection
 from .typed_state_owner import (
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TypedStateOwnerError,
+    _validated_stored_retry_cooldown,
     open_typed_state_owner_connection,
 )
 
@@ -1955,12 +1955,21 @@ class QuackStateClient:
             )
 
         positive_values = {
-            "expected_task_revision": expected_task_revision,
             "attempt_number": attempt_number,
             "fencing_token": fencing_token,
             "fence_epoch": fence_epoch,
         }
-        normalized_ints: dict[str, int] = {}
+        if (
+            isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or expected_task_revision < 0
+        ):
+            raise QuackClientError(
+                "retry cooldown expected_task_revision is invalid"
+            )
+        normalized_ints: dict[str, int] = {
+            "expected_task_revision": int(expected_task_revision)
+        }
         for name, value in positive_values.items():
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise QuackClientError(f"retry cooldown {name} is invalid")
@@ -1994,28 +2003,23 @@ class QuackStateClient:
         )
         if len(prior_rows) > 1:
             raise QuackClientError("retry cooldown queue identity is ambiguous")
-        prior = dict(prior_rows[0]) if prior_rows else {}
-        expected_queue_revision = -1
-        expected_queue_attempt = 0
-        if prior:
+        prior: dict[str, Any] = {}
+        if prior_rows:
             try:
-                prior_revision = int(prior["revision"])
-                prior_attempt = int(prior["attempt"])
-                prior_extension = json.loads(str(prior["extension_json"]))
-            except (KeyError, TypeError, ValueError) as exc:
+                prior = _validated_stored_retry_cooldown(
+                    prior_rows[0],
+                    task_cid=normalized["task_cid"],
+                )
+            except TypedStateOwnerError as exc:
                 raise QuackClientError(
                     "retry cooldown prior queue state is malformed"
                 ) from exc
-            if (
-                prior_revision < 1
-                or prior_attempt < 1
-                or str(prior.get("extension_schema") or "")
-                != TYPED_RETRY_COOLDOWN_SCHEMA
-                or not isinstance(prior_extension, Mapping)
-            ):
-                raise QuackClientError(
-                    "retry cooldown refuses a foreign queue row"
-                )
+        expected_queue_revision = -1
+        expected_queue_attempt = 0
+        if prior:
+            prior_revision = int(prior["revision"])
+            prior_attempt = int(prior["attempt"])
+            prior_extension = dict(prior["extension"])
             if prior_attempt == normalized_ints["attempt_number"]:
                 replay_identity = {
                     "task_cid": normalized["task_cid"],
