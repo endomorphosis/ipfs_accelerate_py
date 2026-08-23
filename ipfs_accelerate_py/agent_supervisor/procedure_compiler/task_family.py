@@ -1,28 +1,976 @@
-"""P0 wire ownership and boundary validation for task families.
+"""P0 wire ownership and live boundary validation for task families.
 
 P0 helpers reject inconsistent boundaries, memberships, and already-known
-counterexamples in immutable task-family contracts.  PCPC-010/PCPC-011 may
-add discovery and live boundary validators in this same module.
+counterexamples in immutable task-family contracts.  PCPC-011 owns the live
+boundary validator and rejection policy: every family must declare complete
+boundary dimensions, and overgeneralization or an unsafe near-match is a
+critical typed refusal with a persisted counterexample.
 """
 
 from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from typing import Any
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Final
 
 from .contracts import (
+    EffectClass,
     FamilyMembershipClass,
     ProcedureContractError,
+    RiskClass,
     TaskFamily,
     TaskFamilyBoundary,
     TaskFamilyCounterexample,
     TaskFamilyMembership,
+    _enum,
+    _enums,
+    _identifier,
+    _strings,
 )
 
 
 class TaskFamilyContractError(ProcedureContractError):
     """A task-family wire artifact violates its declared safe boundary."""
+
+
+class TaskFamilyBoundaryError(TaskFamilyContractError):
+    """A family boundary check produced a critical typed rejection."""
+
+    def __init__(self, message: str, decision: BoundaryDecision | None = None) -> None:
+        super().__init__(message)
+        self.decision = decision
+
+
+class BoundarySeverity(str, Enum):
+    """Closed severity for family-boundary decisions."""
+
+    NONE = "none"
+    CRITICAL = "critical"
+
+
+class BoundaryViolationClass(str, Enum):
+    """Closed reasons a candidate or merge cannot remain inside a family."""
+
+    INCOMPLETE_BOUNDARY = "incomplete-boundary"
+    NEGATIVE_EXAMPLE = "negative-example"
+    BOUNDARY_EXAMPLE = "boundary-example"
+    UNKNOWN_CASE = "unknown-case"
+    MEMBERSHIP_CONTRADICTION = "membership-contradiction"
+    RISK_CEILING = "risk-ceiling"
+    REPOSITORY = "repository"
+    LANGUAGE = "language"
+    FRAMEWORK = "framework"
+    EFFECT = "effect"
+    AUTHORITY = "authority-split"
+    VALIDATION = "validation-split"
+    ROLLBACK = "rollback-split"
+    LEGAL = "legal-split"
+    SECURITY = "security-split"
+    OWNERSHIP = "ownership-split"
+    PROOF = "proof-split"
+    OVERGENERALIZATION = "overgeneralization"
+    UNSAFE_NEAR_MATCH = "unsafe-near-match"
+    KNOWN_COUNTEREXAMPLE = "known-counterexample"
+
+
+REQUIRED_BOUNDARY_DIMENSIONS: Final[tuple[str, ...]] = (
+    "positive_member_cids",
+    "negative_example_cids",
+    "boundary_example_cids",
+    "unknown_case_cids",
+    "risk_ceiling",
+    "permitted_repositories",
+    "permitted_languages",
+    "permitted_frameworks",
+    "permitted_effect_classes",
+    "required_operation_contracts",
+    "validation_structure",
+    "rollback_structure",
+    "postcondition_shape",
+)
+
+_RISK_RANK: Final[dict[RiskClass, int]] = {
+    RiskClass.OBSERVATION_ONLY: 0,
+    RiskClass.REVERSIBLE_LOCAL: 1,
+    RiskClass.REPOSITORY_WRITE: 2,
+    RiskClass.PUBLIC_CONTRACT: 3,
+    RiskClass.AUTHORITY_OR_SECURITY: 4,
+}
+
+_DECLARED_VIOLATION: Final[dict[FamilyMembershipClass, BoundaryViolationClass]] = {
+    FamilyMembershipClass.NEGATIVE: BoundaryViolationClass.NEGATIVE_EXAMPLE,
+    FamilyMembershipClass.BOUNDARY: BoundaryViolationClass.BOUNDARY_EXAMPLE,
+    FamilyMembershipClass.UNKNOWN: BoundaryViolationClass.UNKNOWN_CASE,
+}
+
+_DECLARED_REASON: Final[dict[FamilyMembershipClass, str]] = {
+    FamilyMembershipClass.NEGATIVE: "negative-example-cannot-join-family",
+    FamilyMembershipClass.BOUNDARY: "boundary-example-cannot-join-family",
+    FamilyMembershipClass.UNKNOWN: "unknown-case-cannot-join-family",
+}
+
+
+def _risk_rank(value: RiskClass) -> int:
+    return _RISK_RANK[value]
+
+
+def _legal_classes(risk: RiskClass) -> frozenset[str]:
+    if _risk_rank(risk) >= _risk_rank(RiskClass.PUBLIC_CONTRACT):
+        return frozenset({risk.value, "public-contract"})
+    return frozenset()
+
+
+def _security_classes(risk: RiskClass) -> frozenset[str]:
+    if risk is RiskClass.AUTHORITY_OR_SECURITY:
+        return frozenset({risk.value, "authority-or-security"})
+    return frozenset()
+
+
+@dataclass(frozen=True)
+class BoundaryCandidate:
+    """Typed features offered when testing family membership or a near-match."""
+
+    example_cid: str
+    repository_id: str = ""
+    language: str = ""
+    framework: str = ""
+    risk_class: RiskClass | None = None
+    effect_classes: tuple[EffectClass, ...] = ()
+    authority_classes: tuple[str, ...] = ()
+    validation_classes: tuple[str, ...] = ()
+    rollback_classes: tuple[str, ...] = ()
+    proof_classes: tuple[str, ...] = ()
+    legal_classes: tuple[str, ...] = ()
+    security_classes: tuple[str, ...] = ()
+    ownership_classes: tuple[str, ...] = ()
+    goal_semantics: tuple[str, ...] = ()
+    precondition_shape: tuple[str, ...] = ()
+    affected_artifact_classes: tuple[str, ...] = ()
+    required_operation_contracts: tuple[str, ...] = ()
+    failure_signatures: tuple[str, ...] = ()
+    proposed_membership: FamilyMembershipClass = FamilyMembershipClass.POSITIVE
+    evidence_cids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "example_cid", _identifier(self.example_cid, "example_cid")
+        )
+        for name in ("repository_id", "language", "framework"):
+            object.__setattr__(
+                self,
+                name,
+                _identifier(getattr(self, name), name, required=False),
+            )
+        if self.risk_class is not None:
+            object.__setattr__(
+                self, "risk_class", _enum(self.risk_class, RiskClass, "risk_class")
+            )
+        object.__setattr__(
+            self,
+            "effect_classes",
+            _enums(
+                self.effect_classes,
+                EffectClass,
+                "effect_classes",
+                limit=len(EffectClass),
+            ),
+        )
+        object.__setattr__(
+            self,
+            "proposed_membership",
+            _enum(self.proposed_membership, FamilyMembershipClass, "proposed_membership"),
+        )
+        for name in (
+            "authority_classes",
+            "validation_classes",
+            "rollback_classes",
+            "proof_classes",
+            "legal_classes",
+            "security_classes",
+            "ownership_classes",
+            "goal_semantics",
+            "precondition_shape",
+            "affected_artifact_classes",
+            "required_operation_contracts",
+            "failure_signatures",
+            "evidence_cids",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                _strings(getattr(self, name), name, identifiers=True),
+            )
+
+
+@dataclass(frozen=True)
+class BoundaryDecision:
+    """Typed admit/refuse result for one family-boundary check."""
+
+    admitted: bool
+    membership: FamilyMembershipClass
+    severity: BoundarySeverity
+    reason_code: str
+    violation_classes: tuple[BoundaryViolationClass, ...] = ()
+    conflicting_authority_classes: tuple[str, ...] = ()
+    conflicting_effect_classes: tuple[EffectClass, ...] = ()
+    conflicting_validation_classes: tuple[str, ...] = ()
+    counterexample: TaskFamilyCounterexample | None = None
+    evidence_cids: tuple[str, ...] = ()
+    missing_dimensions: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if type(self.admitted) is not bool:
+            raise TaskFamilyContractError("BoundaryDecision.admitted must be a boolean")
+        object.__setattr__(
+            self, "membership", _enum(self.membership, FamilyMembershipClass, "membership")
+        )
+        object.__setattr__(
+            self, "severity", _enum(self.severity, BoundarySeverity, "severity")
+        )
+        object.__setattr__(
+            self,
+            "reason_code",
+            _identifier(self.reason_code, "reason_code", required=not self.admitted),
+        )
+        violations = _enums(
+            self.violation_classes,
+            BoundaryViolationClass,
+            "violation_classes",
+            limit=len(BoundaryViolationClass),
+        )
+        object.__setattr__(self, "violation_classes", violations)
+        object.__setattr__(
+            self,
+            "conflicting_authority_classes",
+            _strings(
+                self.conflicting_authority_classes,
+                "conflicting_authority_classes",
+                identifiers=True,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "conflicting_effect_classes",
+            _enums(
+                self.conflicting_effect_classes,
+                EffectClass,
+                "conflicting_effect_classes",
+                limit=len(EffectClass),
+            ),
+        )
+        object.__setattr__(
+            self,
+            "conflicting_validation_classes",
+            _strings(
+                self.conflicting_validation_classes,
+                "conflicting_validation_classes",
+                identifiers=True,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "evidence_cids",
+            _strings(self.evidence_cids, "evidence_cids", identifiers=True),
+        )
+        object.__setattr__(
+            self,
+            "missing_dimensions",
+            _strings(self.missing_dimensions, "missing_dimensions", identifiers=True),
+        )
+        if self.counterexample is not None and not isinstance(
+            self.counterexample, TaskFamilyCounterexample
+        ):
+            raise TaskFamilyContractError("counterexample must be TaskFamilyCounterexample")
+        if self.admitted:
+            if self.severity is not BoundarySeverity.NONE:
+                raise TaskFamilyContractError("an admitted boundary decision cannot be critical")
+            if self.violation_classes or self.counterexample is not None:
+                raise TaskFamilyContractError("an admitted boundary decision cannot carry a refusal")
+        elif self.severity is not BoundarySeverity.CRITICAL:
+            raise TaskFamilyContractError("a refused boundary decision must be critical")
+        elif not self.violation_classes:
+            raise TaskFamilyContractError("a refused boundary decision must name a violation class")
+
+    @property
+    def is_critical_rejection(self) -> bool:
+        return (not self.admitted) and self.severity is BoundarySeverity.CRITICAL
+
+
+def _declared_membership(family: TaskFamily, example_cid: str) -> FamilyMembershipClass | None:
+    boundary = family.boundary
+    declared = {
+        FamilyMembershipClass.POSITIVE: boundary.positive_member_cids,
+        FamilyMembershipClass.NEGATIVE: boundary.negative_example_cids,
+        FamilyMembershipClass.BOUNDARY: boundary.boundary_example_cids,
+        FamilyMembershipClass.UNKNOWN: boundary.unknown_case_cids,
+    }
+    matches = [cls for cls, cids in declared.items() if example_cid in cids]
+    if len(matches) > 1:
+        raise TaskFamilyContractError("family boundary example classes must be disjoint")
+    return matches[0] if matches else None
+
+
+def _incomplete_family_dimensions(family: TaskFamily) -> tuple[str, ...]:
+    boundary = family.boundary
+    present = {
+        "positive_member_cids": boundary.positive_member_cids,
+        "negative_example_cids": boundary.negative_example_cids,
+        "boundary_example_cids": boundary.boundary_example_cids,
+        "unknown_case_cids": boundary.unknown_case_cids,
+        "risk_ceiling": (boundary.risk_ceiling.value,),
+        "permitted_repositories": boundary.permitted_repositories,
+        "permitted_languages": boundary.permitted_languages,
+        "permitted_frameworks": boundary.permitted_frameworks,
+        "permitted_effect_classes": boundary.permitted_effect_classes,
+        "required_operation_contracts": family.required_operation_contracts,
+        "validation_structure": family.validation_structure,
+        "rollback_structure": family.rollback_structure,
+        "postcondition_shape": family.postcondition_shape,
+    }
+    missing = tuple(name for name in REQUIRED_BOUNDARY_DIMENSIONS if not present[name])
+    if family.bindings.repository_id not in boundary.permitted_repositories:
+        missing = missing + ("ownership",)
+    return missing
+
+
+def _candidate_authority(candidate: BoundaryCandidate) -> frozenset[str]:
+    return frozenset(candidate.authority_classes) | frozenset(
+        candidate.required_operation_contracts
+    )
+
+
+def _candidate_ownership(candidate: BoundaryCandidate) -> frozenset[str]:
+    ownership = set(candidate.ownership_classes)
+    if candidate.repository_id:
+        ownership.add(candidate.repository_id)
+    return frozenset(ownership)
+
+
+def _surface_near_match(family: TaskFamily, candidate: BoundaryCandidate) -> bool:
+    boundary = family.boundary
+    shared_goals = frozenset(candidate.goal_semantics) & frozenset(family.goal_semantics)
+    shared_artifacts = frozenset(candidate.affected_artifact_classes) & frozenset(
+        family.affected_artifact_classes
+    )
+    return bool(
+        (candidate.language and candidate.language in boundary.permitted_languages)
+        or (candidate.repository_id and candidate.repository_id in boundary.permitted_repositories)
+        or (candidate.framework and candidate.framework in boundary.permitted_frameworks)
+        or shared_goals
+        or shared_artifacts
+    )
+
+
+def _coerce_candidate(
+    family: TaskFamily,
+    candidate: BoundaryCandidate | TaskFamilyMembership,
+) -> BoundaryCandidate:
+    if isinstance(candidate, BoundaryCandidate):
+        return candidate
+    if not isinstance(candidate, TaskFamilyMembership):
+        raise TaskFamilyContractError("boundary candidate must be typed")
+    if candidate.bindings != family.bindings:
+        raise TaskFamilyContractError("membership and family exact bindings differ")
+    if candidate.task_family_cid != family.content_id:
+        raise TaskFamilyContractError("membership does not bind the exact task-family CID")
+    return BoundaryCandidate(
+        example_cid=candidate.trajectory_cid,
+        proposed_membership=candidate.membership,
+        evidence_cids=candidate.evidence_cids,
+        repository_id=family.bindings.repository_id,
+    )
+
+
+class TaskFamilyBoundaryValidator:
+    """Fail-closed family-boundary and negative-example checker.
+
+    The validator never promotes a family and never treats titles, embeddings,
+    or a proposed membership label as evidence.  Declared negatives, boundary
+    cases, and unknowns stay out of the positive set.  Any material split in
+    authority, effects, validation, rollback, legal/security treatment,
+    ownership, or proof obligations is a critical overgeneralization.
+    """
+
+    def validate_family(self, family: TaskFamily) -> TaskFamily:
+        """Require every family to declare the complete boundary dimensions."""
+
+        if not isinstance(family, TaskFamily):
+            raise TaskFamilyContractError("family must be TaskFamily")
+        missing = _incomplete_family_dimensions(family)
+        if missing:
+            decision = self._reject(
+                family,
+                example_cid=family.boundary.positive_member_cids[0]
+                if family.boundary.positive_member_cids
+                else family.name,
+                membership=FamilyMembershipClass.UNKNOWN,
+                reason_code="incomplete-boundary",
+                violations=(BoundaryViolationClass.INCOMPLETE_BOUNDARY,),
+                missing_dimensions=missing,
+            )
+            raise TaskFamilyBoundaryError(
+                "family does not declare complete boundary dimensions",
+                decision=decision,
+            )
+        return family
+
+    def evaluate(
+        self,
+        family: TaskFamily,
+        candidate: BoundaryCandidate | TaskFamilyMembership,
+        *,
+        counterexamples: Sequence[TaskFamilyCounterexample] = (),
+    ) -> BoundaryDecision:
+        """Classify one candidate against a family without raising on refusal."""
+
+        if not isinstance(family, TaskFamily):
+            raise TaskFamilyContractError("family must be TaskFamily")
+        missing = _incomplete_family_dimensions(family)
+        if missing:
+            example_cid = family.name
+            evidence: tuple[str, ...] = ()
+            membership = FamilyMembershipClass.UNKNOWN
+            if isinstance(candidate, BoundaryCandidate):
+                example_cid = candidate.example_cid
+                evidence = candidate.evidence_cids
+                membership = candidate.proposed_membership
+            elif isinstance(candidate, TaskFamilyMembership):
+                example_cid = candidate.trajectory_cid
+                evidence = candidate.evidence_cids
+                membership = candidate.membership
+            return self._reject(
+                family,
+                example_cid=example_cid,
+                membership=membership,
+                reason_code="incomplete-boundary",
+                violations=(BoundaryViolationClass.INCOMPLETE_BOUNDARY,),
+                evidence_cids=evidence,
+                missing_dimensions=missing,
+            )
+
+        known = self._known_counterexample_decision(family, counterexamples)
+        if known is not None:
+            return known
+
+        normalized = _coerce_candidate(family, candidate)
+        declared = _declared_membership(family, normalized.example_cid)
+        if declared is not None:
+            return self._evaluate_declared(family, normalized, declared)
+        if normalized.proposed_membership is FamilyMembershipClass.POSITIVE:
+            return self._evaluate_undeclared_positive(family, normalized)
+        return self._admit(
+            normalized.proposed_membership,
+            evidence_cids=normalized.evidence_cids,
+        )
+
+    def require(
+        self,
+        family: TaskFamily,
+        candidate: BoundaryCandidate | TaskFamilyMembership,
+        *,
+        counterexamples: Sequence[TaskFamilyCounterexample] = (),
+    ) -> BoundaryDecision:
+        """Return an admitted decision or raise a critical typed rejection."""
+
+        decision = self.evaluate(family, candidate, counterexamples=counterexamples)
+        if decision.is_critical_rejection:
+            raise TaskFamilyBoundaryError(
+                self._rejection_message(decision),
+                decision=decision,
+            )
+        return decision
+
+    def evaluate_merge(self, family: TaskFamily, other: TaskFamily) -> BoundaryDecision:
+        """Refuse any merge that would widen or split a family's boundary."""
+
+        self.validate_family(family)
+        if not isinstance(other, TaskFamily):
+            raise TaskFamilyContractError("merged family must be TaskFamily")
+        other_missing = _incomplete_family_dimensions(other)
+        if other_missing:
+            return self._reject(
+                family,
+                example_cid=other.name,
+                membership=FamilyMembershipClass.NEGATIVE,
+                reason_code="incomplete-boundary",
+                violations=(
+                    BoundaryViolationClass.INCOMPLETE_BOUNDARY,
+                    BoundaryViolationClass.OVERGENERALIZATION,
+                ),
+                missing_dimensions=other_missing,
+            )
+        if family.content_id == other.content_id:
+            return self._admit(FamilyMembershipClass.POSITIVE)
+
+        violations: list[BoundaryViolationClass] = [BoundaryViolationClass.OVERGENERALIZATION]
+        authority: list[str] = []
+        effects: list[EffectClass] = []
+        validation: list[str] = []
+        if family.required_operation_contracts != other.required_operation_contracts:
+            violations.append(BoundaryViolationClass.AUTHORITY)
+            authority.extend(
+                sorted(
+                    set(family.required_operation_contracts).symmetric_difference(
+                        other.required_operation_contracts
+                    )
+                )
+            )
+        if family.validation_structure != other.validation_structure:
+            violations.append(BoundaryViolationClass.VALIDATION)
+            validation.extend(
+                sorted(
+                    set(family.validation_structure).symmetric_difference(other.validation_structure)
+                )
+            )
+        if family.rollback_structure != other.rollback_structure:
+            violations.append(BoundaryViolationClass.ROLLBACK)
+        if family.postcondition_shape != other.postcondition_shape:
+            violations.append(BoundaryViolationClass.PROOF)
+        if family.effect_classes != other.effect_classes:
+            violations.append(BoundaryViolationClass.EFFECT)
+            effects.extend(
+                sorted(
+                    set(family.effect_classes).symmetric_difference(other.effect_classes),
+                    key=lambda item: item.value,
+                )
+            )
+        left_boundary = family.boundary
+        right_boundary = other.boundary
+        if left_boundary.risk_ceiling is not right_boundary.risk_ceiling:
+            violations.append(BoundaryViolationClass.RISK_CEILING)
+            higher = (
+                left_boundary.risk_ceiling
+                if _risk_rank(left_boundary.risk_ceiling) > _risk_rank(right_boundary.risk_ceiling)
+                else right_boundary.risk_ceiling
+            )
+            if higher is RiskClass.PUBLIC_CONTRACT:
+                violations.append(BoundaryViolationClass.LEGAL)
+            if higher is RiskClass.AUTHORITY_OR_SECURITY:
+                violations.append(BoundaryViolationClass.SECURITY)
+                violations.append(BoundaryViolationClass.LEGAL)
+        if left_boundary.permitted_repositories != right_boundary.permitted_repositories:
+            violations.append(BoundaryViolationClass.REPOSITORY)
+            violations.append(BoundaryViolationClass.OWNERSHIP)
+        if left_boundary.permitted_languages != right_boundary.permitted_languages:
+            violations.append(BoundaryViolationClass.LANGUAGE)
+        if left_boundary.permitted_frameworks != right_boundary.permitted_frameworks:
+            violations.append(BoundaryViolationClass.FRAMEWORK)
+        if left_boundary.permitted_effect_classes != right_boundary.permitted_effect_classes:
+            violations.append(BoundaryViolationClass.EFFECT)
+            effects.extend(
+                sorted(
+                    set(left_boundary.permitted_effect_classes).symmetric_difference(
+                        right_boundary.permitted_effect_classes
+                    ),
+                    key=lambda item: item.value,
+                )
+            )
+        if family.bindings.policy_revision != other.bindings.policy_revision:
+            violations.append(BoundaryViolationClass.AUTHORITY)
+            authority.append(other.bindings.policy_revision)
+        if family.bindings.repository_id != other.bindings.repository_id:
+            violations.append(BoundaryViolationClass.OWNERSHIP)
+        if set(other.boundary.positive_member_cids) & set(left_boundary.negative_example_cids):
+            violations.append(BoundaryViolationClass.NEGATIVE_EXAMPLE)
+        if set(other.boundary.positive_member_cids) & set(left_boundary.boundary_example_cids):
+            violations.append(BoundaryViolationClass.BOUNDARY_EXAMPLE)
+        if set(other.boundary.positive_member_cids) & set(left_boundary.unknown_case_cids):
+            violations.append(BoundaryViolationClass.UNKNOWN_CASE)
+
+        ordered: list[BoundaryViolationClass] = []
+        for item in violations:
+            if item not in ordered:
+                ordered.append(item)
+        unique_effects: list[EffectClass] = []
+        for item in effects:
+            if item not in unique_effects:
+                unique_effects.append(item)
+        return self._reject(
+            family,
+            example_cid=other.content_id,
+            membership=FamilyMembershipClass.NEGATIVE,
+            reason_code="overgeneralization",
+            violations=tuple(ordered),
+            conflicting_authority_classes=tuple(dict.fromkeys(authority)),
+            conflicting_effect_classes=tuple(unique_effects),
+            conflicting_validation_classes=tuple(dict.fromkeys(validation)),
+        )
+
+    def require_merge(self, family: TaskFamily, other: TaskFamily) -> BoundaryDecision:
+        decision = self.evaluate_merge(family, other)
+        if decision.is_critical_rejection:
+            raise TaskFamilyBoundaryError(
+                self._rejection_message(decision),
+                decision=decision,
+            )
+        return decision
+
+    def _evaluate_declared(
+        self,
+        family: TaskFamily,
+        candidate: BoundaryCandidate,
+        declared: FamilyMembershipClass,
+    ) -> BoundaryDecision:
+        if candidate.proposed_membership is not declared:
+            if declared is FamilyMembershipClass.POSITIVE:
+                return self._reject(
+                    family,
+                    example_cid=candidate.example_cid,
+                    membership=declared,
+                    reason_code="membership-contradicts-declared-boundary",
+                    violations=(BoundaryViolationClass.MEMBERSHIP_CONTRADICTION,),
+                    evidence_cids=candidate.evidence_cids,
+                )
+            violation = _DECLARED_VIOLATION[declared]
+            violations = [violation]
+            if candidate.proposed_membership is FamilyMembershipClass.POSITIVE:
+                violations.append(BoundaryViolationClass.OVERGENERALIZATION)
+                if _surface_near_match(family, candidate):
+                    violations.append(BoundaryViolationClass.UNSAFE_NEAR_MATCH)
+            return self._reject(
+                family,
+                example_cid=candidate.example_cid,
+                membership=declared,
+                reason_code=_DECLARED_REASON.get(
+                    declared, "membership-contradicts-declared-boundary"
+                ),
+                violations=tuple(violations),
+                evidence_cids=candidate.evidence_cids,
+            )
+        if declared is FamilyMembershipClass.POSITIVE:
+            structural = self._structural_violations(family, candidate, require_complete=False)
+            if structural[0]:
+                return self._reject(
+                    family,
+                    example_cid=candidate.example_cid,
+                    membership=FamilyMembershipClass.NEGATIVE,
+                    reason_code=structural[1],
+                    violations=structural[0],
+                    conflicting_authority_classes=structural[2],
+                    conflicting_effect_classes=structural[3],
+                    conflicting_validation_classes=structural[4],
+                    evidence_cids=candidate.evidence_cids,
+                )
+        return self._admit(declared, evidence_cids=candidate.evidence_cids)
+
+    def _evaluate_undeclared_positive(
+        self,
+        family: TaskFamily,
+        candidate: BoundaryCandidate,
+    ) -> BoundaryDecision:
+        violations, reason, authority, effects, validation = self._structural_violations(
+            family, candidate, require_complete=True
+        )
+        if not violations:
+            return self._admit(
+                FamilyMembershipClass.POSITIVE,
+                evidence_cids=candidate.evidence_cids,
+            )
+        if _surface_near_match(family, candidate):
+            if BoundaryViolationClass.UNSAFE_NEAR_MATCH not in violations:
+                violations = violations + (BoundaryViolationClass.UNSAFE_NEAR_MATCH,)
+            if reason in {
+                "authority-split",
+                "validation-split",
+                "rollback-split",
+                "proof-split",
+                "legal-split",
+                "security-split",
+                "ownership-split",
+                "effect-class-not-permitted",
+                "risk-ceiling-exceeded",
+            }:
+                reason = "unsafe-near-match"
+        if BoundaryViolationClass.OVERGENERALIZATION not in violations:
+            violations = violations + (BoundaryViolationClass.OVERGENERALIZATION,)
+        return self._reject(
+            family,
+            example_cid=candidate.example_cid,
+            membership=FamilyMembershipClass.NEGATIVE,
+            reason_code=reason,
+            violations=violations,
+            conflicting_authority_classes=authority,
+            conflicting_effect_classes=effects,
+            conflicting_validation_classes=validation,
+            evidence_cids=candidate.evidence_cids,
+        )
+
+    def _structural_violations(
+        self,
+        family: TaskFamily,
+        candidate: BoundaryCandidate,
+        *,
+        require_complete: bool,
+    ) -> tuple[
+        tuple[BoundaryViolationClass, ...],
+        str,
+        tuple[str, ...],
+        tuple[EffectClass, ...],
+        tuple[str, ...],
+    ]:
+        boundary = family.boundary
+        violations: list[BoundaryViolationClass] = []
+        reason = "overgeneralization"
+        authority_conflict: list[str] = []
+        effect_conflict: list[EffectClass] = []
+        validation_conflict: list[str] = []
+
+        def note(violation: BoundaryViolationClass, code: str) -> None:
+            nonlocal reason
+            if violation not in violations:
+                violations.append(violation)
+            if reason == "overgeneralization":
+                reason = code
+
+        if require_complete:
+            missing_features: list[str] = []
+            if not candidate.repository_id:
+                missing_features.append("repository")
+            if not candidate.language:
+                missing_features.append("language")
+            if boundary.permitted_frameworks and not candidate.framework:
+                missing_features.append("framework")
+            if candidate.risk_class is None:
+                missing_features.append("risk_ceiling")
+            if not candidate.effect_classes:
+                missing_features.append("effects")
+            if not _candidate_authority(candidate):
+                missing_features.append("authority")
+            if not candidate.validation_classes:
+                missing_features.append("validation")
+            if not candidate.rollback_classes:
+                missing_features.append("rollback")
+            if not candidate.proof_classes:
+                missing_features.append("proof")
+            if missing_features:
+                note(BoundaryViolationClass.INCOMPLETE_BOUNDARY, "incomplete-boundary")
+                note(BoundaryViolationClass.OVERGENERALIZATION, "overgeneralization")
+
+        if candidate.repository_id and candidate.repository_id not in boundary.permitted_repositories:
+            note(BoundaryViolationClass.REPOSITORY, "repository-not-permitted")
+            note(BoundaryViolationClass.OWNERSHIP, "ownership-split")
+        if candidate.language and candidate.language not in boundary.permitted_languages:
+            note(BoundaryViolationClass.LANGUAGE, "language-not-permitted")
+        if candidate.framework and candidate.framework not in boundary.permitted_frameworks:
+            note(BoundaryViolationClass.FRAMEWORK, "framework-not-permitted")
+        if candidate.risk_class is not None and _risk_rank(candidate.risk_class) > _risk_rank(
+            boundary.risk_ceiling
+        ):
+            note(BoundaryViolationClass.RISK_CEILING, "risk-ceiling-exceeded")
+            if candidate.risk_class is RiskClass.PUBLIC_CONTRACT:
+                note(BoundaryViolationClass.LEGAL, "legal-split")
+            if candidate.risk_class is RiskClass.AUTHORITY_OR_SECURITY:
+                note(BoundaryViolationClass.SECURITY, "security-split")
+                note(BoundaryViolationClass.LEGAL, "legal-split")
+
+        extra_effects = tuple(
+            item for item in candidate.effect_classes if item not in family.effect_classes
+        )
+        if extra_effects:
+            note(BoundaryViolationClass.EFFECT, "effect-class-not-permitted")
+            effect_conflict.extend(extra_effects)
+        unpermitted_effects = tuple(
+            item
+            for item in candidate.effect_classes
+            if item not in boundary.permitted_effect_classes
+        )
+        if unpermitted_effects:
+            note(BoundaryViolationClass.EFFECT, "effect-class-not-permitted")
+            for item in unpermitted_effects:
+                if item not in effect_conflict:
+                    effect_conflict.append(item)
+
+        family_authority = frozenset(family.required_operation_contracts)
+        candidate_authority = _candidate_authority(candidate)
+        if candidate_authority and candidate_authority != family_authority:
+            note(BoundaryViolationClass.AUTHORITY, "authority-split")
+            authority_conflict.extend(sorted(candidate_authority.symmetric_difference(family_authority)))
+        if candidate.validation_classes and frozenset(candidate.validation_classes) != frozenset(
+            family.validation_structure
+        ):
+            note(BoundaryViolationClass.VALIDATION, "validation-split")
+            validation_conflict.extend(
+                sorted(
+                    frozenset(candidate.validation_classes).symmetric_difference(
+                        family.validation_structure
+                    )
+                )
+            )
+        if candidate.rollback_classes and frozenset(candidate.rollback_classes) != frozenset(
+            family.rollback_structure
+        ):
+            note(BoundaryViolationClass.ROLLBACK, "rollback-split")
+        if candidate.proof_classes and frozenset(candidate.proof_classes) != frozenset(
+            family.postcondition_shape
+        ):
+            note(BoundaryViolationClass.PROOF, "proof-split")
+        if candidate.goal_semantics and frozenset(candidate.goal_semantics) != frozenset(
+            family.goal_semantics
+        ):
+            note(BoundaryViolationClass.OVERGENERALIZATION, "overgeneralization")
+        if candidate.precondition_shape and frozenset(candidate.precondition_shape) != frozenset(
+            family.precondition_shape
+        ):
+            note(BoundaryViolationClass.OVERGENERALIZATION, "overgeneralization")
+        if candidate.affected_artifact_classes and frozenset(
+            candidate.affected_artifact_classes
+        ) != frozenset(family.affected_artifact_classes):
+            note(BoundaryViolationClass.OVERGENERALIZATION, "overgeneralization")
+        if candidate.failure_signatures and frozenset(candidate.failure_signatures) != frozenset(
+            family.failure_signatures
+        ):
+            note(BoundaryViolationClass.OVERGENERALIZATION, "overgeneralization")
+        if candidate.required_operation_contracts and frozenset(
+            candidate.required_operation_contracts
+        ) != frozenset(family.required_operation_contracts):
+            note(BoundaryViolationClass.AUTHORITY, "authority-split")
+            authority_conflict.extend(
+                sorted(
+                    frozenset(candidate.required_operation_contracts).symmetric_difference(
+                        family.required_operation_contracts
+                    )
+                )
+            )
+
+        ownership = _candidate_ownership(candidate)
+        if ownership and not ownership.issubset(boundary.permitted_repositories):
+            note(BoundaryViolationClass.OWNERSHIP, "ownership-split")
+            note(BoundaryViolationClass.REPOSITORY, "repository-not-permitted")
+        family_legal = _legal_classes(boundary.risk_ceiling)
+        family_security = _security_classes(boundary.risk_ceiling)
+        extra_legal = frozenset(candidate.legal_classes) - family_legal
+        extra_security = frozenset(candidate.security_classes) - family_security
+        if extra_legal:
+            note(BoundaryViolationClass.LEGAL, "legal-split")
+        if extra_security:
+            note(BoundaryViolationClass.SECURITY, "security-split")
+        if candidate.risk_class is not None:
+            if _legal_classes(candidate.risk_class) - family_legal:
+                note(BoundaryViolationClass.LEGAL, "legal-split")
+            if _security_classes(candidate.risk_class) - family_security:
+                note(BoundaryViolationClass.SECURITY, "security-split")
+
+        unique_authority = tuple(dict.fromkeys(authority_conflict))
+        unique_effects = tuple(dict.fromkeys(effect_conflict))
+        unique_validation = tuple(dict.fromkeys(validation_conflict))
+        return tuple(violations), reason, unique_authority, unique_effects, unique_validation
+
+    def _known_counterexample_decision(
+        self,
+        family: TaskFamily,
+        counterexamples: Sequence[TaskFamilyCounterexample],
+    ) -> BoundaryDecision | None:
+        if not isinstance(counterexamples, Sequence) or isinstance(
+            counterexamples, (str, bytes, bytearray, memoryview)
+        ):
+            raise TaskFamilyContractError("counterexamples must be a bounded sequence")
+        if len(counterexamples) > 128:
+            raise TaskFamilyContractError("counterexamples exceeds its item bound")
+        for counterexample in counterexamples:
+            if not isinstance(counterexample, TaskFamilyCounterexample):
+                raise TaskFamilyContractError("counterexamples must be typed contracts")
+            if counterexample.bindings != family.bindings:
+                raise TaskFamilyContractError("counterexample exact bindings differ")
+            if counterexample.task_family_cid != family.content_id:
+                raise TaskFamilyContractError("counterexample does not bind the exact family CID")
+            violations = [BoundaryViolationClass.KNOWN_COUNTEREXAMPLE]
+            if (
+                counterexample.conflicting_authority_classes
+                or counterexample.conflicting_effect_classes
+                or counterexample.conflicting_validation_classes
+            ):
+                violations.append(BoundaryViolationClass.OVERGENERALIZATION)
+                if counterexample.conflicting_authority_classes:
+                    violations.append(BoundaryViolationClass.AUTHORITY)
+                if counterexample.conflicting_effect_classes:
+                    violations.append(BoundaryViolationClass.EFFECT)
+                if counterexample.conflicting_validation_classes:
+                    violations.append(BoundaryViolationClass.VALIDATION)
+            return self._reject(
+                family,
+                example_cid=counterexample.example_cid,
+                membership=FamilyMembershipClass.NEGATIVE,
+                reason_code="known-counterexample",
+                violations=tuple(violations),
+                conflicting_authority_classes=counterexample.conflicting_authority_classes,
+                conflicting_effect_classes=counterexample.conflicting_effect_classes,
+                conflicting_validation_classes=counterexample.conflicting_validation_classes,
+                counterexample=counterexample,
+            )
+        return None
+
+    def _admit(
+        self,
+        membership: FamilyMembershipClass,
+        *,
+        evidence_cids: tuple[str, ...] = (),
+    ) -> BoundaryDecision:
+        return BoundaryDecision(
+            admitted=True,
+            membership=membership,
+            severity=BoundarySeverity.NONE,
+            reason_code="",
+            evidence_cids=evidence_cids,
+        )
+
+    def _reject(
+        self,
+        family: TaskFamily,
+        *,
+        example_cid: str,
+        membership: FamilyMembershipClass,
+        reason_code: str,
+        violations: Sequence[BoundaryViolationClass],
+        conflicting_authority_classes: Sequence[str] = (),
+        conflicting_effect_classes: Sequence[EffectClass] = (),
+        conflicting_validation_classes: Sequence[str] = (),
+        evidence_cids: Sequence[str] = (),
+        missing_dimensions: Sequence[str] = (),
+        counterexample: TaskFamilyCounterexample | None = None,
+    ) -> BoundaryDecision:
+        if counterexample is None:
+            primary = violations[0] if violations else BoundaryViolationClass.OVERGENERALIZATION
+            counterexample = TaskFamilyCounterexample(
+                bindings=family.bindings,
+                task_family_cid=family.content_id,
+                example_cid=example_cid,
+                violation_class=primary.value,
+                conflicting_authority_classes=tuple(conflicting_authority_classes),
+                conflicting_effect_classes=tuple(conflicting_effect_classes),
+                conflicting_validation_classes=tuple(conflicting_validation_classes),
+            )
+        return BoundaryDecision(
+            admitted=False,
+            membership=membership,
+            severity=BoundarySeverity.CRITICAL,
+            reason_code=reason_code,
+            violation_classes=tuple(violations),
+            conflicting_authority_classes=tuple(conflicting_authority_classes),
+            conflicting_effect_classes=tuple(conflicting_effect_classes),
+            conflicting_validation_classes=tuple(conflicting_validation_classes),
+            counterexample=counterexample,
+            evidence_cids=tuple(evidence_cids),
+            missing_dimensions=tuple(missing_dimensions),
+        )
+
+    @staticmethod
+    def _rejection_message(decision: BoundaryDecision) -> str:
+        if BoundaryViolationClass.INCOMPLETE_BOUNDARY in decision.violation_classes:
+            missing = ",".join(decision.missing_dimensions) or "required-dimensions"
+            return f"family does not declare complete boundary dimensions: {missing}"
+        if BoundaryViolationClass.NEGATIVE_EXAMPLE in decision.violation_classes:
+            return "negative example cannot join the family as a positive member"
+        if BoundaryViolationClass.BOUNDARY_EXAMPLE in decision.violation_classes:
+            return "boundary example cannot join the family as a positive member"
+        if BoundaryViolationClass.UNKNOWN_CASE in decision.violation_classes:
+            return "unknown case cannot join the family as a positive member"
+        if BoundaryViolationClass.UNSAFE_NEAR_MATCH in decision.violation_classes:
+            return "unsafe near-match is a critical typed rejection"
+        if BoundaryViolationClass.OVERGENERALIZATION in decision.violation_classes:
+            return "overgeneralization is a critical typed rejection"
+        return f"family boundary refused: {decision.reason_code}"
 
 
 def validate_task_family_membership(
@@ -137,9 +1085,16 @@ def parse_task_family_membership(
 
 
 __all__ = [
+    "REQUIRED_BOUNDARY_DIMENSIONS",
+    "BoundaryCandidate",
+    "BoundaryDecision",
+    "BoundarySeverity",
+    "BoundaryViolationClass",
     "FamilyMembershipClass",
     "TaskFamily",
     "TaskFamilyBoundary",
+    "TaskFamilyBoundaryError",
+    "TaskFamilyBoundaryValidator",
     "TaskFamilyContractError",
     "TaskFamilyCounterexample",
     "TaskFamilyMembership",
