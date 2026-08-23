@@ -479,6 +479,105 @@ def test_cache_reset_discards_cross_thread_transaction_owner() -> None:
         assert uri not in ds._QUACK_TRANSPORT_CACHE
 
 
+def test_cache_reset_preserves_rightful_context_owner_exception() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    uri = "quack:127.0.0.1:41351"
+    reset_quack_transport_cache()
+    cached = DuckDBConnection.wrap(
+        _FakeQuackRaw(),
+        transaction_on_context=True,
+    )
+    cached._pooled = True
+    cached._quack_uri = uri
+    with ds._QUACK_ATTACH_LOCK:
+        ds._QUACK_TRANSPORT_CACHE[uri] = cached
+    entered = threading.Event()
+    owner_may_raise = threading.Event()
+    sentinel = RuntimeError("rightful context owner sentinel")
+    failures: list[BaseException] = []
+
+    def context_owner() -> None:
+        try:
+            with cached:
+                entered.set()
+                if not owner_may_raise.wait(timeout=3.0):
+                    raise AssertionError("owner continuation was not signalled")
+                raise sentinel
+        except BaseException as exc:
+            failures.append(exc)
+
+    owner = threading.Thread(target=context_owner, daemon=True)
+    owner.start()
+    assert entered.wait(timeout=3.0)
+    reset_quack_transport_cache()
+    assert cached._context_depth == 1
+    assert cached._context_owner != 0
+    owner_may_raise.set()
+    owner.join(timeout=3.0)
+
+    assert not owner.is_alive()
+    assert len(failures) == 1
+    assert failures[0] is sentinel
+    assert cached._context_depth == 0
+    assert cached._context_owner == 0
+
+
+def test_failed_cached_probe_preserves_context_owner_exception(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    uri = "quack:127.0.0.1:41352"
+    reset_quack_transport_cache()
+    cached = DuckDBConnection.wrap(
+        _FakeQuackRaw(),
+        transaction_on_context=True,
+    )
+    cached._pooled = True
+    cached._quack_uri = uri
+    with ds._QUACK_ATTACH_LOCK:
+        ds._QUACK_TRANSPORT_CACHE[uri] = cached
+    entered = threading.Event()
+    owner_may_raise = threading.Event()
+    sentinel = RuntimeError("failed probe context owner sentinel")
+    failures: list[BaseException] = []
+
+    def context_owner() -> None:
+        try:
+            with cached:
+                entered.set()
+                if not owner_may_raise.wait(timeout=3.0):
+                    raise AssertionError("owner continuation was not signalled")
+                raise sentinel
+        except BaseException as exc:
+            failures.append(exc)
+
+    def reject_cached_probe(connection) -> None:
+        assert connection is cached
+        raise RuntimeError("cached probe failed")
+
+    monkeypatch.setattr(ds, "_probe_quack_connection", reject_cached_probe)
+    monkeypatch.setattr(ds, "_attach_quack_once", lambda _uri, _secret: _FakeQuackRaw())
+    monkeypatch.setattr(ds, "resolve_quack_attach_token", lambda token="": "tok")
+    owner = threading.Thread(target=context_owner, daemon=True)
+    owner.start()
+    assert entered.wait(timeout=3.0)
+    try:
+        replacement = open_quack_transport_connection(uri)
+        assert replacement is not cached
+        assert cached._context_depth == 1
+        assert cached._context_owner != 0
+        owner_may_raise.set()
+        owner.join(timeout=3.0)
+
+        assert not owner.is_alive()
+        assert len(failures) == 1
+        assert failures[0] is sentinel
+    finally:
+        owner_may_raise.set()
+        owner.join(timeout=3.0)
+        reset_quack_transport_cache()
+
+
 class _FailingTerminalRaw:
     def __init__(self) -> None:
         self.description = ()
