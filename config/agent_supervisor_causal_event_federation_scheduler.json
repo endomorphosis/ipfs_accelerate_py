@@ -47,7 +47,7 @@
     "quack_endpoint": "quack:127.0.0.1:41417",
     "store_id": "data/agent_supervisor/causal_event_federation/control.duckdb",
     "store_generation": "casf-v1",
-    "schema_revision": "2",
+    "schema_revision": "3",
     "event_store_path": "data/agent_supervisor/causal_event_federation/events",
     "runtime_registry_path": "data/agent_supervisor/causal_event_federation/registry",
     "worktree_root": "data/agent_supervisor/causal_event_federation/worktrees",

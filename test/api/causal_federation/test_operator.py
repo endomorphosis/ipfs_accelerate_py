@@ -156,6 +156,17 @@ def test_native_launch_plan_admits_only_one_event_wait_coordinator(
     assert "environment" not in plan
 
 
+def test_scheduler_schema_revision_must_match_canonical_migration_head() -> None:
+    operator = _operator()
+
+    assert operator._require_canonical_schema_revision("3") == 3
+    with pytest.raises(
+        operator.OperatorError,
+        match=r"canonical migration head \(configured=2, latest=3\)",
+    ):
+        operator._require_canonical_schema_revision("2")
+
+
 def test_population_uses_production_parser_and_current_configured_frontier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1166,7 +1177,7 @@ def test_stale_owner_identity_is_rejected_before_any_stop() -> None:
         server_id="server:test",
         store_id="foreign/control.duckdb",
         database_uuid="db-test",
-        schema_revision=2,
+        schema_revision=3,
         schema_fingerprint="sha256:" + "0" * 64,
         generation=1,
         fence_epoch=1,
