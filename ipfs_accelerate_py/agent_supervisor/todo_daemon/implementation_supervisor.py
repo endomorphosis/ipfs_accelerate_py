@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 import threading
+from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
@@ -1413,6 +1414,14 @@ def _managed_daemon_child_environment(
         )
     if database_program is not None:
         env.update(database_program.environment(repository_root=repo_root))
+        from ..runtime.process_security import (
+            forward_env_secret_handle_credentials,
+        )
+
+        forward_env_secret_handle_credentials(
+            env,
+            secret_handle=database_program.endpoint_secret_handle,
+        )
     return env
 
 
@@ -19090,10 +19099,10 @@ class PortalImplementationSupervisor:
         ]
         if not all(fragment in command_line for fragment in required_fragments):
             return False
-        has_implement_flag = "--implement" in command_line
+        tokens = command_line.split()
+        has_implement_flag = "--implement" in tokens
         if self.config.implement != has_implement_flag:
             return False
-        tokens = command_line.split()
 
         has_strict_task_sharding = "--strict-task-sharding" in tokens
         if self.config.strict_task_sharding != has_strict_task_sharding:
@@ -19105,6 +19114,13 @@ class PortalImplementationSupervisor:
                 for index, token in enumerate(tokens[:-1])
                 if token == option
             }
+
+        def option_value_list(option: str) -> list[str]:
+            return [
+                tokens[index + 1]
+                for index, token in enumerate(tokens[:-1])
+                if token == option
+            ]
 
         if option_values("--task-shard-count") != {
             str(self.config.task_shard_count)
@@ -19138,6 +19154,44 @@ class PortalImplementationSupervisor:
             else set()
         )
         if option_values("--merge-queue-dir") != expected_merge_queue_dirs:
+            return False
+        if option_value_list("--max-task-attempts") != [
+            str(max(0, int(self.config.max_task_attempts)))
+        ]:
+            return False
+        expected_workers = (
+            [str(max(1, int(self.config.validation_max_workers)))]
+            if self.config.validation_max_workers is not None
+            else []
+        )
+        if option_value_list("--validation-max-workers") != expected_workers:
+            return False
+        if Counter(option_value_list("--implementation-protected-path")) != Counter(
+            self.config.implementation_protected_paths
+        ):
+            return False
+        if Counter(option_value_list("--manual-completion-authority-task-id")) != Counter(
+            self.config.manual_completion_authority_task_ids
+        ):
+            return False
+        if Counter(
+            option_value_list("--manual-completion-authority-required-task-id")
+        ) != Counter(self.config.manual_completion_authority_required_task_ids):
+            return False
+        expected_epoch = (
+            [self.config.manual_completion_authority_epoch_id]
+            if self.config.manual_completion_authority_epoch_id
+            else []
+        )
+        if option_value_list("--manual-completion-authority-epoch-id") != expected_epoch:
+            return False
+        has_revalidation_only = (
+            "--manual-completion-authority-revalidation-only" in tokens
+        )
+        if (
+            bool(self.config.manual_completion_authority_revalidation_only)
+            != has_revalidation_only
+        ):
             return False
         return True
 
@@ -19274,6 +19328,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Exact repo-relative file that managed implementation agents must treat as "
             "read-only. May be repeated or comma-separated."
+        ),
+    )
+    parser.add_argument(
+        "--validation-max-workers",
+        type=int,
+        default=None,
+        help=(
+            "Maximum validation subprocesses per managed daemon stage. "
+            "Omitted when unset so existing daemons keep their default."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-task-id",
+        action="append",
+        default=[],
+        help="Repeatable task ID governed by verified manual-completion authority.",
+    )
+    parser.add_argument(
+        "--manual-completion-authority-required-task-id",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable staged task ID that remains quarantined until a "
+            "fresh supervisor load verifies its operator seal."
+        ),
+    )
+    parser.add_argument(
+        "--manual-completion-authority-epoch-id",
+        default="",
+        help="Content-addressed identity of the verified manual-completion seal set.",
+    )
+    parser.add_argument(
+        "--manual-completion-authority-revalidation-only",
+        action="store_true",
+        help=(
+            "Run only zero-provider revalidation of completed tasks governed "
+            "by manual-completion authority."
         ),
     )
     parser.add_argument(
@@ -19945,6 +20036,11 @@ def supervisor_config_from_args(
         implementation_timeout=args.implementation_timeout,
         implementation_max_timeout=args.implementation_max_timeout,
         implementation_log_stall_seconds=args.implementation_log_stall_seconds,
+        validation_max_workers=(
+            None
+            if getattr(args, "validation_max_workers", None) is None
+            else max(1, int(args.validation_max_workers))
+        ),
         use_ephemeral_worktree=implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         merge_target_branch=args.merge_target_branch,
@@ -19953,6 +20049,18 @@ def supervisor_config_from_args(
         implementation_protected_paths=normalize_implementation_protected_paths(
             resolved_implementation_protected_paths,
             repo_root=effective_repo_root,
+        ),
+        manual_completion_authority_task_ids=tuple(
+            getattr(args, "manual_completion_authority_task_id", None) or ()
+        ),
+        manual_completion_authority_required_task_ids=tuple(
+            getattr(args, "manual_completion_authority_required_task_id", None) or ()
+        ),
+        manual_completion_authority_epoch_id=str(
+            getattr(args, "manual_completion_authority_epoch_id", "") or ""
+        ),
+        manual_completion_authority_revalidation_only=bool(
+            getattr(args, "manual_completion_authority_revalidation_only", False)
         ),
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,

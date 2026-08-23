@@ -6713,6 +6713,9 @@ def _run_parsed_command(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from .process_security import harden_state_authority_process
+
+    harden_state_authority_process()
     parser = _build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
     receipt_only = bool(getattr(args, "launch_receipt_only", False))
