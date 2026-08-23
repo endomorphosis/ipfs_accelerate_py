@@ -76058,6 +76058,8 @@ class DatabaseImplementationDaemon:
                 # A consumed Quack handle must not freeze later rearm/unstall
                 # steps on the same pass.
                 return []
+            if "pooled-worktree create recovery" in detail:
+                return []
             raise
 
     def reconcile_stale_in_progress_gates(self) -> list[dict[str, Any]]:
