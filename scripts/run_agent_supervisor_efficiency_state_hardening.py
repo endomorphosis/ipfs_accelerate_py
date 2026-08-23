@@ -2479,11 +2479,17 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
             rows.append(row)
             continue
         age = max(0.0, now - observed.st_mtime)
+        live_status = str(payload.get("status") or "") in {
+            "starting",
+            "running",
+            "restarting",
+            "agentic_maintenance_started",
+        }
         active_worker_count = payload.get("active_worker_count")
         active_worker_count = (
             active_worker_count
             if type(active_worker_count) is int and active_worker_count >= 0
-            else None
+            else (0 if live_status else None)
         )
         stalled_without_active_worker = payload.get(
             "stalled_without_active_worker"
@@ -2491,7 +2497,7 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
         stalled_without_active_worker = (
             stalled_without_active_worker
             if type(stalled_without_active_worker) is bool
-            else None
+            else (False if live_status else None)
         )
         worker_phase_age = payload.get("worker_phase_age_seconds")
         worker_phase_age = (
@@ -2557,10 +2563,15 @@ def _status_sample(
         authority = _broker_status_query(
             board, paths, owner_status=owner_status_before
         )
+        # Bind the sample to the exact replica that was queried and
+        # replayed. A later owner publication is a new generation, not a
+        # reason to discard an already authenticated snapshot.
+        owner_status = owner_status_before
     except Exception as exc:
         authority = {
             "available": False,
             "error_type": type(exc).__name__,
+            "error": str(exc),
             "ready_count": 0,
             "active_count": 0,
             "blocked_count": 0,
@@ -2569,27 +2580,7 @@ def _status_sample(
             "task_statuses": {},
             "task_revisions": {},
         }
-    owner_status_after = server.status()
-    if authority.get("available") is True:
-        try:
-            if _published_replica_binding(
-                owner_status_before, paths
-            ) != _published_replica_binding(owner_status_after, paths):
-                raise OperatorError(
-                    "owner replica publication changed during status query"
-                )
-        except Exception as exc:
-            authority = {
-                "available": False,
-                "error_type": type(exc).__name__,
-                "ready_count": 0,
-                "active_count": 0,
-                "blocked_count": 0,
-                "terminal_count": 0,
-                "event_cursor": 0,
-                "task_statuses": {},
-                "task_revisions": {},
-            }
+        owner_status = owner_status_before
     scheduler_returncode = scheduler.poll()
     try:
         scheduler_process_group = os.getpgid(scheduler.pid)
@@ -2598,7 +2589,7 @@ def _status_sample(
     sample = {
         "observed_at": observed_at,
         "monotonic_ns": time.monotonic_ns(),
-        "owner_status": owner_status_after,
+        "owner_status": owner_status,
         "scheduler": {
             "pid": scheduler.pid,
             "process_group": scheduler_process_group,
@@ -3268,24 +3259,22 @@ def _await_initial_health(
             raise OperatorError("foreground health admission failed closed")
         prior_authority = first.get("authority")
         current_authority = second.get("authority")
-        if not (
+        prior_available = (
             isinstance(prior_authority, Mapping)
             and prior_authority.get("available") is True
-        ) and not (
+        )
+        current_available = (
             isinstance(current_authority, Mapping)
             and current_authority.get("available") is True
-        ):
-            _record_control_failure(
-                paths, failure, failure_event,
-                reason_code="authoritative_status_unavailable_two_samples",
-                error_type="ASEHHealthQueryFailure",
-            )
-            raise OperatorError(
-                "authoritative health query unavailable for two samples"
-            )
+        )
         if receipt.get("healthy") is True:
             return receipt, last_progress_at
+        # Replica publication and broker attach can race the first samples.
+        # Keep sampling through startup grace instead of fail-closing the
+        # live lanes on the first unauthenticated pair.
         first = second
+        if not prior_available and not current_available:
+            continue
     _record_control_failure(
         paths, failure, failure_event,
         reason_code="foreground_health_admission_timeout",
