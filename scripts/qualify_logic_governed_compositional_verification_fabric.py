@@ -58,6 +58,8 @@ _MAX_UNTRACKED_PROTECTED_BYTES: Final[int] = 64 * 1024 * 1024
 DECLARED_GENERATED_EVIDENCE_PATHS: Final[tuple[str, ...]] = (
     "data/agent_supervisor/logic_governed_compositional_verification_fabric/benchmark_result.json",
     "data/agent_supervisor/logic_governed_compositional_verification_fabric/independent_qualification_result.json",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/external_qualification_receipt.json",
+    "data/agent_supervisor/logic_governed_compositional_verification_fabric/production_authorization_receipt.json",
     "data/agent_supervisor/logic_governed_compositional_verification_fabric/successor_tasks.json",
     "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_IMPLEMENTATION_REPORT.md",
     "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_RELEASE.md",
