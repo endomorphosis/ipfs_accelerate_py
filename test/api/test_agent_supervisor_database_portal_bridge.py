@@ -1667,7 +1667,7 @@ def test_bridge_defers_inflight_process_skip(tmp_path: Path) -> None:
         bridge.run_provider(_attempt())
 
     assert str(caught.value) == "inflight_process"
-    assert caught.value.backoff_seconds == 20
+    assert caught.value.backoff_seconds == 30
     assert caught.value.attempt_consumed is False
     assert portal.closed is True
 
