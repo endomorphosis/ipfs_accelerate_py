@@ -3015,19 +3015,20 @@ class QuackStateServer:
             return self.connection_factory(self.config.database_path)
         if not duckdb_available():
             raise QuackStateServerError("DuckDB is required for the state-owner")
-        if isinstance(self.transport, InProcessQuackTransport):
+        if not isinstance(self.transport, InProcessQuackTransport):
             return open_duckdb_connection(
                 self.config.database_path,
                 threads=1,
                 memory_limit=DEFAULT_MEMORY_LIMIT,
-                quack_owner=True,
             )
         return open_quack_state_owner_connection(self.config.database_path)
 
     def _read_replica_enabled(self) -> bool:
         """Return whether this is the real, non-injected transport path."""
 
-        return self.connection_factory is None
+        return self.connection_factory is None and isinstance(
+            self.transport, InProcessQuackTransport
+        )
 
     def _verify_loaded_transport_extensions(self, connection: Any) -> None:
         capability = self._capability
@@ -4819,24 +4820,12 @@ class QuackStateServer:
                 )
                 self._identity = identity
 
-                assert self.transport is not None
-                # Publish identity before quack_serve occupies this connection.
-                # Auth callbacks open a fresh DuckDB session; DML on the serve
-                # connection after listen starts is reported as Authentication
-                # failed rather than lock contention.
+                # Publish identity before copying the non-authoritative
+                # transport replica.  The authoritative writer never serves
+                # Quack and therefore keeps external access disabled for its
+                # entire lifetime.
                 self._publish_identity_rows(connection, identity, capability)
-                # Last exclusive-writer window: quack_serve occupies this
-                # connection and later DML contends with auth callbacks.
                 self._unstall_stale_board_gates(connection)
-                public_obs = self.transport.start(
-                    connection,
-                    host=self.config.host,
-                    port=port,
-                    token=token,
-                    identity=identity,
-                )
-                # Ensure transport observation never echoed the token.
-                self._vault.assert_absent_from(public_obs, surface_name="transport.start")
                 # A supervisor must never be able to reuse the HTTP Quack
                 # credential to obtain a generic SQL surface.  Only the owner
                 # retains it after identity mint; the replica transport later
