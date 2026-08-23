@@ -2862,3 +2862,115 @@ def test_merge_train_recovery_bind_is_one_shot(tmp_path: Path) -> None:
         assert settlement["settled"] == 0
     finally:
         daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_post_merge_rearm_endpoints_fail_closed_on_invalid_payloads(
+    tmp_path: Path,
+) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:post-merge-rearm",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    try:
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="preauthorization source is invalid",
+        ):
+            daemon.preauthorize_post_merge_declared_output_recovery({})
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="recovery schema is invalid",
+        ):
+            daemon.recover_blocked_post_merge_declared_outputs(
+                {"schema": "not-a-recovery-schema"}
+            )
+        captured: list[object] = []
+        daemon.bind_post_merge_recovery(lambda: captured.append("bound") or None)
+        result = daemon._run_post_merge_recovery()
+        assert captured == ["bound"]
+        assert result["attempted"] is True
+        assert result["recovered"] is False
+        assert result["reason"] == "no_recoverable_post_merge_request"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_configured_runner_binds_post_merge_recovery_when_queue_is_target_bound(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        checkout_repository_id,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
+        bind_database_portal_execution_from_args,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "recovery@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Recovery Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README").write_text("seed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True)
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:post-merge-bind",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    args = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded_exclusive",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--todo-path",
+            str(tmp_path / "canonical-board.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "lgswf",
+            "--worktree-root",
+            ".worktrees",
+            "--merge-queue-dir",
+            str(tmp_path / "queue"),
+            "--merge-target-branch",
+            "main",
+            "--implement",
+            "--once",
+        ]
+    )
+    try:
+        bind_database_portal_execution_from_args(
+            daemon,
+            args,
+            repo_root=repo,
+            portal_daemon_class=PortalImplementationDaemon,
+        )
+        assert daemon._merge_queue is not None
+        assert daemon._merge_target_branch == "main"
+        assert daemon._post_merge_recovery_fn is not None
+        assert checkout_repository_id(repo) == daemon._merge_queue.target_repository_id
+    finally:
+        daemon.close()
