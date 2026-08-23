@@ -1484,6 +1484,7 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
     """Run the exclusive Quack owner in the foreground (internal command)."""
 
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        QuackStateServerReadyError,
         ServerLifecycle,
         build_server,
     )
@@ -1600,7 +1601,24 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
     # query on that connection; running it after concurrent admission would
     # bypass the gateway transaction lock and corrupt an otherwise valid
     # semantic-command observation.
-    ready = server.ready()
+    ready: dict[str, Any] | None = None
+    last_ready_error: BaseException | None = None
+    for _attempt in (1, 2, 3):
+        try:
+            ready = server.ready()
+            break
+        except QuackStateServerReadyError as exc:
+            last_ready_error = exc
+            detail = str(exc)
+            if (
+                "InvalidInputException" not in detail
+                and "Invalid connection" not in detail
+            ):
+                raise
+            time.sleep(0.25)
+    if ready is None:
+        assert last_ready_error is not None
+        raise last_ready_error
     outbox_runtime = server.start_federation_outbox_worker()
     if _state_owner_outbox_health(server)["healthy"] is not True:
         raise OperatorError("state-owner outbox worker failed startup health")
@@ -3147,6 +3165,10 @@ def launch(
     existing_live = _owner_liveness(existing_status)
     if existing_live in {"alive", "unknown"}:
         raise OperatorError("an existing or uninspectable Quack owner blocks launch")
+    if existing_live == "dead" and not paths["launch_receipt"].is_file():
+        # A previous owner died before a launch receipt existed.  That
+        # control plane cannot be revived; mint a fresh generation.
+        _retire_consumed_generation(paths, launch_id="failed-pre-launch")
     preflight(config_path, require_free_port=True)
     materialized = materialize(config_path)
     bootstrap = materialized["bootstrap_receipt"]
