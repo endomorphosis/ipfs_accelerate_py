@@ -392,20 +392,48 @@ def _validation_result_digest(
     return _sha256_bytes(_canonical_json(payload).encode("utf-8"))
 
 
+_EXTERNAL_VALIDATION_ISOLATION_SCHEMA_MARKERS = (
+    "external-validation-isolation",
+    "authority-validation-isolation-receipt",
+)
+
+
+def _external_validation_isolation_receipt_is_complete(
+    receipt: object,
+) -> bool:
+    """Return whether Docker isolation evidence stands in for host memfd."""
+
+    if not isinstance(receipt, Mapping):
+        return False
+    schema = str(receipt.get("schema") or "")
+    if not any(marker in schema for marker in _EXTERNAL_VALIDATION_ISOLATION_SCHEMA_MARKERS):
+        return False
+    image_id = str(receipt.get("image_id") or "").strip()
+    receipt_id = str(receipt.get("receipt_id") or "").strip()
+    return bool(
+        image_id
+        and receipt_id
+        and receipt.get("container_removed") is True
+    )
+
+
 def _validation_python_launcher_receipt_matches_environment(
     result: Mapping[str, object],
     environment: Mapping[str, object],
 ) -> bool:
-    """Require exact sealed-runner evidence for sealed cache identities."""
+    """Require exact sealed-runner evidence for sealed cache identities.
+
+    Host sealed-memfd Python cannot be projected into the external Docker
+    validation container.  A complete isolation receipt is the nested-process
+    evidence for that path; a stub runner that returns 0 without either
+    receipt still fail-closes.
+    """
 
     mode = str(
         environment.get(VALIDATION_PYTHON_LAUNCHER_MODE_ENV) or ""
     )
     if not mode.endswith(":sealed-memfd"):
         return True
-    receipt = result.get("validation_python_launcher")
-    if not isinstance(receipt, Mapping):
-        return False
     expected = {
         "content_sha256": str(
             environment.get(VALIDATION_PYTHON_LAUNCHER_SHA256_ENV) or ""
@@ -425,21 +453,28 @@ def _validation_python_launcher_receipt_matches_environment(
         ),
         "sealed": True,
     }
-    if {str(key): value for key, value in receipt.items()} != expected:
+
+    def _attempt_matches(payload: Mapping[str, object]) -> bool:
+        if _external_validation_isolation_receipt_is_complete(
+            payload.get("external_validation_isolation_receipt")
+        ) or _external_validation_isolation_receipt_is_complete(
+            payload.get("authority_validation_isolation_receipt")
+        ):
+            return True
+        receipt = payload.get("validation_python_launcher")
+        if not isinstance(receipt, Mapping):
+            return False
+        return {str(key): value for key, value in receipt.items()} == expected
+
+    if not _attempt_matches(result):
         return False
     attempts = result.get("attempts")
     if isinstance(attempts, Sequence) and not isinstance(
         attempts, (str, bytes, bytearray)
     ):
         for attempt in attempts:
-            if not isinstance(attempt, Mapping):
-                return False
-            attempt_receipt = attempt.get("validation_python_launcher")
-            if not isinstance(attempt_receipt, Mapping):
-                return False
-            if (
-                {str(key): value for key, value in attempt_receipt.items()}
-                != expected
+            if not isinstance(attempt, Mapping) or not _attempt_matches(
+                attempt
             ):
                 return False
     return True
