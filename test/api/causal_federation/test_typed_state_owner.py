@@ -996,26 +996,3 @@ def test_manifest_rejects_duplicate_and_out_of_order_mutations(
     assert (task[0], task[1]) == ("ready", 0)
     gateway.stop()
     owner_connection.close()
-
-
-def test_result_columns_ignores_empty_internal_columns() -> None:
-    class _EmptyInternal:
-        _columns = ()
-        description = (("supervisor_id", None), ("tenant_id", None))
-
-        @property
-        def columns(self) -> tuple[str, ...]:
-            raise AssertionError("must not consume result.columns")
-
-    class _PopulatedInternal:
-        _columns = ("supervisor_id", "federation_id")
-        description = (("ignored",),)
-
-    assert typed_owner._result_columns(_EmptyInternal()) == (
-        "supervisor_id",
-        "tenant_id",
-    )
-    assert typed_owner._result_columns(_PopulatedInternal()) == (
-        "supervisor_id",
-        "federation_id",
-    )

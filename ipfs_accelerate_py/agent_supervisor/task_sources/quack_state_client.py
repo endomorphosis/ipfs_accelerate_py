@@ -1677,22 +1677,10 @@ class QuackStateClient:
         if not rows:
             return tuple()
         if not columns:
-            # Prefer mapping rows (DuckDBRow).  Tuple rows without a
-            # projection used to be discarded as DML, which made live
-            # lookups look empty.  Keep positional keys so callers such as
-            # load_store_generation can still read the generation head.
+            # Prefer mapping rows (DuckDBRow); otherwise treat as DML with no projection.
             if isinstance(rows[0], Mapping):
                 return tuple(_row_mapping((), row) for row in rows)
-            return tuple(
-                {
-                    str(index): value
-                    for index, value in enumerate(row)
-                }
-                if isinstance(row, Sequence)
-                and not isinstance(row, (str, bytes, bytearray))
-                else {"value": row}
-                for row in rows
-            )
+            return tuple()
         return tuple(_row_mapping(columns, row) for row in rows)
 
     def _load_generation(self, adapter: _ConnectionAdapter) -> StoreGeneration:
@@ -1702,38 +1690,14 @@ class QuackStateClient:
                 "store generation is missing; seed or migrate the database first"
             )
         row = rows[0]
-        names = (
-            "generation",
-            "schema_revision",
-            "fence_epoch",
-            "revision",
-            "database_uuid",
-            "birth_id",
-        )
-        values = []
-        for index, name in enumerate(names):
-            if name in row:
-                values.append(row[name])
-                continue
-            if str(index) in row:
-                values.append(row[str(index)])
-                continue
-            if isinstance(row, Sequence) and not isinstance(
-                row, (str, bytes, bytearray)
-            ) and index < len(row):
-                values.append(row[index])
-                continue
-            raise StaleGenerationError(
-                "store generation row is missing field " + name
-            )
         return StoreGeneration(
             store_id=self.store_id,
-            generation=int(values[0]),
-            schema_revision=int(values[1]),
-            fence_epoch=int(values[2]),
-            revision=int(values[3]),
-            database_uuid=str(values[4]),
-            birth_id=str(values[5] or ""),
+            generation=int(row["generation"]),
+            schema_revision=int(row["schema_revision"]),
+            fence_epoch=int(row["fence_epoch"]),
+            revision=int(row["revision"]),
+            database_uuid=str(row["database_uuid"]),
+            birth_id=str(row.get("birth_id") or ""),
         )
 
     def _seed_generation_if_missing(self, adapter: _ConnectionAdapter) -> None:
