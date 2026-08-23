@@ -1074,7 +1074,9 @@ def _expected_task_authority_spec_cids(
             "extension": {},
             "dependencies": [
                 {"dependency_task_cid": str(value), "kind": "depends_on"}
-                for value in (item.get("depends_on") or item.get("dependencies") or ())
+                for value in sorted(
+                    item.get("depends_on") or item.get("dependencies") or ()
+                )
             ],
             "outputs": outputs,
             "acceptance": acceptance,
@@ -1137,7 +1139,9 @@ def _verify_materialized_source(
                 f"materialized task identity differs: {item.task_alias}"
             )
         expected = expected_tasks[expected_aliases.index(item.task_alias)]
-        if tuple(item.dependencies) != tuple(expected.get("dependencies") or ()):
+        if tuple(sorted(item.dependencies)) != tuple(
+            sorted(expected.get("dependencies") or ())
+        ):
             raise OperatorError(
                 f"materialized dependency edges differ: {item.task_alias}"
             )
