@@ -67681,6 +67681,16 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
         "authentication_failed",
     }
 )
+# Grok/wrapper deaths and Quack attach races are retryable, but they are not
+# model attempts. Counting them as typed deferrals blocked PCCE-021 after
+# three inflight_process events and froze dependents.
+_PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
+    {
+        "inflight_process",
+        "quack_attach_contended",
+        "authentication_failed",
+    }
+)
 _QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS = 30
 _TERMINAL_PORTAL_RECONCILE_SKIP_STATUSES = frozenset(
     {
@@ -70009,6 +70019,71 @@ class DatabaseImplementationDaemon:
                 "task source returned a malformed board unstall receipt"
             )
         return [item for item in unstalled if isinstance(item, Mapping)]
+
+    def reconcile_inflight_deferral_blocks(self) -> list[dict[str, Any]]:
+        """Retry gates blocked only by process-death / attach deferral caps.
+
+        ``max_task_attempts`` typed-deferral exhaustion is meant to stop
+        spin. Inflight Grok/wrapper deaths are not model usage, but they
+        still blocked PCCE-021 and froze Epic B-H. Reopen those rows so
+        claim_next can continue the board.
+        """
+
+        self._require_execution_authority("inflight deferral block unstall")
+        page = self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        outcomes: list[dict[str, Any]] = []
+        for task in page.tasks:
+            if str(getattr(task, "status", "") or "").strip().lower() != "blocked":
+                continue
+            body = getattr(task, "body", None)
+            receipt = (
+                body.get("completion_receipt")
+                if isinstance(body, Mapping)
+                else None
+            )
+            if not isinstance(receipt, Mapping):
+                continue
+            if (
+                str(receipt.get("operation") or "")
+                != "database_portal_typed_deferral_budget_exhausted"
+            ):
+                continue
+            budget = receipt.get("retry_budget")
+            matching = (
+                budget.get("matching_attempts")
+                if isinstance(budget, Mapping)
+                else None
+            )
+            reasons = {
+                str(item.get("reason") or "")
+                for item in matching
+                if isinstance(item, Mapping)
+            } if isinstance(matching, list) else set()
+            if not reasons or not reasons <= _PROCESS_TRANSIENT_PORTAL_REASONS:
+                continue
+            try:
+                self._cas_task_status_database(
+                    task.task_cid,
+                    expected_revision=int(task.revision),
+                    new_status="retrying",
+                    receipt={
+                        "operation": "database_portal_inflight_deferral_unstall",
+                        "reason": "inflight_process_deferral_budget_unstall",
+                        "previous_operation": receipt.get("operation"),
+                    },
+                )
+            except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
+                continue
+            outcomes.append(
+                {
+                    "task_cid": str(task.task_cid),
+                    "task_alias": str(task.task_alias or ""),
+                    "previous_status": "blocked",
+                    "status": "retrying",
+                    "reason": "inflight_process_deferral_budget_unstall",
+                }
+            )
+        return outcomes
 
     def _request_owner_board_unstall(self) -> dict[str, Any]:
         """Ask the exclusive owner to unstall gates when ATTACH cannot run."""
@@ -72373,6 +72448,10 @@ class DatabaseImplementationDaemon:
                 DatabasePortalValidationRetry,
             )
             reason = self._database_portal_reason(str(exc))
+            if reason in _PROCESS_TRANSIENT_PORTAL_REASONS:
+                # Keep the claim retryable without consuming the typed
+                # deferral anti-spin budget that would block the gate.
+                deferred = False
             retryable = (
                 deferred
                 or validation_retry
@@ -72623,12 +72702,16 @@ class DatabaseImplementationDaemon:
         stale_in_progress_unstalls = self._run_reconciliation_step(
             self.reconcile_stale_in_progress_gates
         )
+        inflight_deferral_unstalls = self._run_reconciliation_step(
+            self.reconcile_inflight_deferral_blocks
+        )
         reconciliation_write_count = (
             len(completion_reconciliations)
             + len(expired_attempt_reconciliations)
             + len(terminal_portal_reconciliations)
             + len(terminal_retry_reconciliations)
             + len(stale_in_progress_unstalls)
+            + len(inflight_deferral_unstalls)
         )
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
@@ -72655,6 +72738,7 @@ class DatabaseImplementationDaemon:
                     terminal_portal_reconciliations
                 ),
                 "stale_in_progress_unstalls": stale_in_progress_unstalls,
+                "inflight_deferral_unstalls": inflight_deferral_unstalls,
             }
 
         attempt = self.claim_next()
@@ -72681,6 +72765,7 @@ class DatabaseImplementationDaemon:
                     terminal_portal_reconciliations
                 ),
                 "stale_in_progress_unstalls": stale_in_progress_unstalls,
+                "inflight_deferral_unstalls": inflight_deferral_unstalls,
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -72699,6 +72784,7 @@ class DatabaseImplementationDaemon:
             "terminal_retry_reconciliations": terminal_retry_reconciliations,
             "terminal_portal_reconciliations": terminal_portal_reconciliations,
             "stale_in_progress_unstalls": stale_in_progress_unstalls,
+            "inflight_deferral_unstalls": inflight_deferral_unstalls,
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,
