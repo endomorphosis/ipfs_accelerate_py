@@ -13,6 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBConnectionPolicyError,
+    DuckDBCursor,
     QuackTransportContentionError,
     is_quack_transport_target,
     open_quack_transport_connection,
@@ -836,3 +837,86 @@ def test_quack_attach_exhausted_contention_raises_typed_error(monkeypatch) -> No
             open_quack_transport_connection("quack:127.0.0.1:41347")
     finally:
         reset_quack_transport_cache()
+
+
+def test_duckdb_cursor_fetches_rows_before_reading_description() -> None:
+    class DescriptionConsumesResult:
+        def __init__(self) -> None:
+            self._rows = [(7, 8)]
+            self._description = (("a",), ("b",))
+
+        @property
+        def description(self):
+            self._rows = []
+            return self._description
+
+        def fetchall(self):
+            rows = list(self._rows)
+            self._rows = []
+            return rows
+
+    cursor = DuckDBCursor(DescriptionConsumesResult())
+    rows = cursor.fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == 7
+    assert rows[0][1] == 8
+    assert cursor._columns == ("a", "b")
+
+
+def test_quack_wrapper_reattaches_after_invalid_connection_id(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    class InvalidConnection(Exception):
+        def __str__(self) -> str:
+            return "Invalid Input Error: Invalid connection id"
+
+    class FlakyRaw:
+        def __init__(self, *, fail_once: bool) -> None:
+            self.fail_once = fail_once
+            self.closed = False
+            self.description = (("n",),)
+            self._rows = [(1,)]
+
+        def execute(self, sql, params=None):
+            del params
+            if self.fail_once and "SELECT 2" in str(sql):
+                self.fail_once = False
+                raise InvalidConnection()
+            self.description = (("n",),)
+            self._rows = [(2 if "SELECT 2" in str(sql) else 1,)]
+            return self
+
+        def fetchall(self):
+            rows = list(self._rows)
+            self._rows = []
+            return rows
+
+        def close(self) -> None:
+            self.closed = True
+
+        def rollback(self) -> None:
+            return None
+
+    replacements = {"count": 0}
+
+    def fake_attach(uri: str, secret: str):
+        del uri, secret
+        replacements["count"] += 1
+        return FlakyRaw(fail_once=False), {"server_id": "server:test"}
+
+    first = FlakyRaw(fail_once=True)
+    connection = DuckDBConnection.wrap(first)
+    connection._default_catalog = "control_plane"
+    connection._active_catalog = "control_plane"
+    connection._quack_uri = "quack:127.0.0.1:41417"
+    connection._quack_mutation_token = "tok"
+    monkeypatch.setattr(ds, "_attach_quack_once", fake_attach)
+    try:
+        first_row = connection.execute("SELECT 1").fetchone()
+        assert first_row is not None and first_row[0] == 1
+        second_row = connection.execute("SELECT 2").fetchone()
+        assert second_row is not None and second_row[0] == 2
+        assert replacements["count"] == 1
+        assert first.closed is True
+    finally:
+        connection.close()

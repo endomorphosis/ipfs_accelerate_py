@@ -387,13 +387,66 @@ class DuckDBRow(Mapping[str, Any]):
         return len(self._columns)
 
 
+def _is_quack_invalid_connection(exc: BaseException) -> bool:
+    """Return whether Quack dropped the ATTACH query handle."""
+
+    return "invalid connection id" in str(exc).lower()
+
+
+def _result_description_columns(result: Any) -> tuple[str, ...]:
+    description = getattr(result, "description", None) or ()
+    columns: list[str] = []
+    for item in description:
+        if (
+            isinstance(item, Sequence)
+            and not isinstance(item, (str, bytes, bytearray))
+            and len(item) > 0
+        ):
+            columns.append(str(item[0]))
+        else:
+            columns.append(str(item))
+    return tuple(columns)
+
+
+def _materialize_duckdb_result(result: Any) -> tuple[tuple[str, ...], list[Any]]:
+    """Fetch rows before reading description or columns.
+
+    Quack remote results consume the cursor when ``description`` is read
+    first.  The next ``execute`` then fails with ``Invalid connection id``.
+    """
+
+    fetchall = getattr(result, "fetchall", None)
+    if not callable(fetchall):
+        return _result_description_columns(result), []
+    try:
+        rows = list(fetchall() or [])
+    except Exception as exc:
+        if _is_quack_invalid_connection(exc):
+            raise
+        rows = []
+    columns = _result_description_columns(result)
+    if not columns and rows:
+        first = rows[0]
+        if isinstance(first, Mapping):
+            columns = tuple(
+                str(key)
+                for key in first
+                if isinstance(key, str) and key and not key.isdigit()
+            )
+        elif isinstance(first, Sequence) and not isinstance(
+            first, (str, bytes, bytearray)
+        ):
+            columns = tuple(str(index) for index in range(len(first)))
+    return columns, rows
+
+
 class DuckDBCursor:
     """Materialize a result before another statement reuses the connection."""
 
     def __init__(self, connection: Any, *, dml: bool = False) -> None:
-        description = connection.description or ()
-        self._columns = tuple(str(item[0]) for item in description)
-        self._rows = list(connection.fetchall()) if description else []
+        columns, rows = _materialize_duckdb_result(connection)
+        self._columns = columns
+        self._rows = rows
         self._offset = 0
         self.rowcount = -1
         if (
@@ -646,6 +699,7 @@ class DuckDBConnection:
         self._quack_pending_mutations: list[dict[str, Any]] = []
         self._pooled = False
         self._quack_uri = ""
+        self._active_catalog = None
         self._raw_wrapper_key = 0
         self._lock_context = exclusive_file_lock(
             self.path.with_name(f".{self.path.name}.lock"),
@@ -707,6 +761,7 @@ class DuckDBConnection:
         instance._quack_pending_mutations = []
         instance._pooled = False
         instance._quack_uri = ""
+        instance._active_catalog = None
         instance._raw_wrapper_key = 0
         _register_duckdb_wrapper(instance, connection)
         return instance
@@ -833,18 +888,28 @@ class DuckDBConnection:
                     )
                 try:
                     result = self._execute_locked(statement, normalized, parameters)
-                except BaseException:
-                    if begins_transaction:
-                        self._quack_pending_mutations = []
-                        try:
-                            self._connection.rollback()
-                        except Exception:
+                except BaseException as exc:
+                    if self._should_reattach_quack_locked(
+                        exc,
+                        begins_transaction=begins_transaction,
+                        ends_transaction=ends_transaction,
+                    ):
+                        self._reattach_quack_locked()
+                        result = self._execute_locked(
+                            statement, normalized, parameters
+                        )
+                    else:
+                        if begins_transaction:
+                            self._quack_pending_mutations = []
+                            try:
+                                self._connection.rollback()
+                            except Exception:
+                                evict_uri = self._poison_locked()
+                            else:
+                                self._transaction_finished_locked()
+                        elif ends_transaction:
                             evict_uri = self._poison_locked()
-                        else:
-                            self._transaction_finished_locked()
-                    elif ends_transaction:
-                        evict_uri = self._poison_locked()
-                    raise
+                        raise
                 if begins_transaction and self._transaction_active:
                     self._transaction_lock_owner = thread_id
                 elif ends_transaction and not self._transaction_active:
@@ -930,18 +995,69 @@ class DuckDBConnection:
             )
             return _empty_duckdb_cursor()
         if catalog and not normalized.startswith("USE "):
-            self._connection.execute(f"USE {catalog}")
-            _consume_duckdb_result(self._connection)
+            if getattr(self, "_active_catalog", None) != catalog:
+                used = self._connection.execute(f"USE {catalog}")
+                _consume_duckdb_result(used)
+                self._active_catalog = catalog
         if parameters is None:
-            self._connection.execute(statement)
+            executed = self._connection.execute(statement)
         else:
-            self._connection.execute(statement, parameters)
+            executed = self._connection.execute(statement, parameters)
+        if executed is None:
+            executed = self._connection
         if normalized.startswith("BEGIN"):
             self._transaction_active = True
         elif normalized in {"COMMIT", "ROLLBACK"}:
             self._transaction_active = False
+        elif normalized.startswith("USE "):
+            self._active_catalog = catalog or getattr(self, "_active_catalog", None)
         dml = normalized.startswith(("INSERT ", "UPDATE ", "DELETE "))
-        return DuckDBCursor(self._connection, dml=dml)
+        return DuckDBCursor(executed, dml=dml)
+
+    def _should_reattach_quack_locked(
+        self,
+        exc: BaseException,
+        *,
+        begins_transaction: bool,
+        ends_transaction: bool,
+    ) -> bool:
+        if begins_transaction or ends_transaction:
+            return False
+        if not getattr(self, "_quack_uri", ""):
+            return False
+        if self._connection is None or self._poisoned or self._closed:
+            return False
+        return _is_quack_invalid_connection(exc)
+
+    def _reattach_quack_locked(self) -> None:
+        """Replace a dead Quack ATTACH handle without dropping the wrapper."""
+
+        uri = str(getattr(self, "_quack_uri", "") or "")
+        secret = str(getattr(self, "_quack_mutation_token", "") or "")
+        if not uri or not secret:
+            raise DuckDBConnectionPolicyError(
+                "quack transport session died and cannot be reattached"
+            )
+        previous = self._connection
+        if previous is not None:
+            _unregister_duckdb_wrapper(self, previous)
+            try:
+                previous.close()
+            except Exception:
+                pass
+        attached = _attach_quack_once(uri, secret)
+        if isinstance(attached, tuple) and len(attached) == 2:
+            raw, binding = attached
+        else:
+            raw = attached
+            binding = getattr(raw, "_quack_live_binding", None)
+        self._connection = raw
+        self._active_catalog = getattr(self, "_default_catalog", None)
+        self._transaction_active = False
+        self._quack_pending_mutations = []
+        if isinstance(binding, Mapping):
+            self._quack_mutation_binding = dict(binding)
+        _register_duckdb_wrapper(self, raw)
 
     def executemany(
         self,
@@ -1850,6 +1966,7 @@ def _is_quack_session_dead(exc: BaseException) -> bool:
     lowered = detail.lower()
     return (
         "Authentication failed" in detail
+        or _is_quack_invalid_connection(exc)
         or "connection refused" in lowered
         or "connection reset" in lowered
         or "connection closed" in lowered
@@ -3605,6 +3722,7 @@ def _open_quack_transport_connection_once(
                     continue
                 wrapped = DuckDBConnection.wrap(raw)
                 wrapped._default_catalog = _QUACK_CONTROL_CATALOG
+                wrapped._active_catalog = _QUACK_CONTROL_CATALOG
                 wrapped._pooled = True
                 wrapped._quack_uri = text
                 wrapped._quack_mutation_binding = (
