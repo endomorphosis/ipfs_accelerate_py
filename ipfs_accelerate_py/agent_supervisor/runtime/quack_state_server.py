@@ -4603,7 +4603,9 @@ class QuackStateServer:
             inbox = self.mutation_inbox_path()
             inbox.mkdir(parents=True, exist_ok=True)
             if inbox.is_symlink():
-                raise QuackStateServerMutationError("inbox_symlink_refused")
+                raise QuackStateServerReadyError(
+                    "mutation inbox is not a safe owner directory"
+                )
             os.chmod(inbox, 0o700)
             entries = tuple(inbox.iterdir())
             if len(entries) > MUTATION_MAX_DIRECTORY_ENTRIES:

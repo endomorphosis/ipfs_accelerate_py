@@ -127,7 +127,9 @@ DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
         "checkout_mutation_lock_exists",
     }
 )
-DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS: Final[int] = 15
+DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS: Final[int] = (
+    FENCE_CONTENTION_BACKOFF_SECONDS
+)
 
 
 class DatabasePortalBridgeError(RuntimeError):

@@ -1133,7 +1133,7 @@ def package_sql_directory() -> Path:
 def load_control_plane_catalog(
     sql_directory: Path | str | None = None,
 ) -> MigrationCatalog:
-    """Load the contiguous default catalog (0001 foundation + 0002 federation)."""
+    """Load the contiguous package control-plane migration catalog."""
 
     return load_default_catalog(sql_directory or package_sql_directory())
 
