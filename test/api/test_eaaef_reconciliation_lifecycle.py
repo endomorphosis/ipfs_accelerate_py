@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import inspect
 import json
 import os
@@ -59,9 +60,24 @@ def _sealed_forest(*, accelerator_commit: str = "1" * 40) -> dict[str, Any]:
             "clean": True,
         },
     ]
+    board_bytes = (
+        Path(__file__).resolve().parents[2] / lifecycle.EAAEF_BOARD_PATH
+    ).read_bytes()
+    blob_oid = hashlib.sha1(
+        b"blob " + str(len(board_bytes)).encode("ascii") + b"\0" + board_bytes,
+        usedforsecurity=False,
+    ).hexdigest()
+    board_source = lifecycle._board_source_binding(
+        board_bytes,
+        source_head=repositories[0]["commit"],
+        source_tree=repositories[0]["tree"],
+        git_mode="100644",
+        blob_oid=blob_oid,
+    )
     identity = {
         "schema": lifecycle.EAAEF_FOREST_SCHEMA,
         "repositories": repositories,
+        "board_source": board_source,
     }
     root = lifecycle._cid(identity)
     return {
@@ -369,6 +385,26 @@ def test_stale_forest_and_bootstrap_bindings_fail_closed(repo_root: Path) -> Non
             population=fresh_population,
             bootstrap_snapshot=_bootstrap_snapshot(original_population),
         )
+
+
+def test_board_source_binding_is_read_from_exact_git_tree_blob(repo_root: Path) -> None:
+    head = lifecycle._git(repo_root, "rev-parse", "HEAD")
+    tree = lifecycle._git(repo_root, "rev-parse", f"{head}^{{tree}}")
+    binding = lifecycle._git_board_source(
+        repo_root,
+        source_head=head,
+        source_tree=tree,
+    )
+    board_bytes = (repo_root / lifecycle.EAAEF_BOARD_PATH).read_bytes()
+
+    assert binding["relative_path"] == lifecycle.EAAEF_BOARD_PATH
+    assert binding["source_head"] == head
+    assert binding["source_tree"] == tree
+    assert binding["git_mode"] == "100644"
+    assert binding["object_type"] == "blob"
+    assert binding["byte_count"] == len(board_bytes)
+    assert binding["bytes_cid"] == lifecycle._cid(board_bytes)
+    assert binding["canonical_json_cid"] == lifecycle._eaaef_source_cid(_board(repo_root))
 
 
 def test_prepare_materializes_offline_contracts_and_stops_before_authority(

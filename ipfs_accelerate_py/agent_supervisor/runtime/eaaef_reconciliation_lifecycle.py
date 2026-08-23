@@ -84,6 +84,9 @@ EAAEF_FRESH_TRUST_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-fresh-reconciliation-trust-roots@1"
 )
 EAAEF_FOREST_SCHEMA: Final = "ipfs_accelerate_py/agent-supervisor/eaaef-repository-forest-binding@1"
+EAAEF_BOARD_SOURCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-board-git-source-binding@1"
+)
 EAAEF_POPULATION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-reconciliation-population@1"
 )
@@ -301,6 +304,21 @@ _TASK_EXECUTION_BODY_FIELDS: Final = (
     "subgoal_id",
     "epic",
 )
+_BOARD_SOURCE_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "relative_path",
+        "source_head",
+        "source_tree",
+        "git_mode",
+        "object_type",
+        "blob_oid",
+        "byte_count",
+        "bytes_cid",
+        "canonical_json_cid",
+        "declared_board_cid",
+    }
+)
 
 
 class EAAEFReconciliationError(RuntimeError):
@@ -351,26 +369,91 @@ def _eaaef_source_cid(value: Any) -> str:
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
-def _json_object(path: Path, *, noun: str, maximum_bytes: int = 32 * 1024 * 1024) -> dict[str, Any]:
+def _decode_json_object(raw: bytes, *, noun: str) -> dict[str, Any]:
     try:
-        metadata = os.lstat(path)
-        if not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
-            raise EAAEFReconciliationIdentityError(f"{noun} is not a regular file")
-        if metadata.st_size <= 0 or metadata.st_size > maximum_bytes:
-            raise EAAEFReconciliationIdentityError(f"{noun} size is outside its bound")
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(raw.decode("utf-8"))
     except EAAEFReconciliationError:
         raise
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+    except (UnicodeError, json.JSONDecodeError) as exc:
         raise EAAEFReconciliationIdentityError(f"{noun} is unavailable or corrupt") from exc
     if not isinstance(payload, dict) or not all(isinstance(key, str) for key in payload):
         raise EAAEFReconciliationIdentityError(f"{noun} is not a JSON object")
     return payload
 
 
+def _json_object_with_metadata(
+    path: Path,
+    *,
+    noun: str,
+    maximum_bytes: int = 32 * 1024 * 1024,
+) -> tuple[dict[str, Any], os.stat_result]:
+    """Read one bounded regular JSON file through a stable, no-follow descriptor."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    flags |= getattr(os, "O_NONBLOCK", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise EAAEFReconciliationIdentityError(f"{noun} is unavailable or corrupt") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise EAAEFReconciliationIdentityError(f"{noun} is not a regular file")
+        if metadata.st_size <= 0 or metadata.st_size > maximum_bytes:
+            raise EAAEFReconciliationIdentityError(f"{noun} size is outside its bound")
+        chunks: list[bytes] = []
+        observed_size = 0
+        while True:
+            chunk = os.read(descriptor, min(1024 * 1024, maximum_bytes + 1 - observed_size))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            observed_size += len(chunk)
+            if observed_size > maximum_bytes:
+                raise EAAEFReconciliationIdentityError(f"{noun} size is outside its bound")
+        final_metadata = os.fstat(descriptor)
+    except EAAEFReconciliationError:
+        raise
+    except OSError as exc:
+        raise EAAEFReconciliationIdentityError(f"{noun} is unavailable or corrupt") from exc
+    finally:
+        os.close(descriptor)
+
+    stable_fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if (
+        observed_size != metadata.st_size
+        or any(getattr(metadata, field) != getattr(final_metadata, field) for field in stable_fields)
+    ):
+        raise EAAEFReconciliationIdentityError(f"{noun} changed while it was read")
+    try:
+        path_metadata = os.lstat(path)
+    except OSError as exc:
+        raise EAAEFReconciliationIdentityError(f"{noun} changed while it was read") from exc
+    if (
+        stat.S_ISLNK(path_metadata.st_mode)
+        or path_metadata.st_dev != metadata.st_dev
+        or path_metadata.st_ino != metadata.st_ino
+    ):
+        raise EAAEFReconciliationIdentityError(f"{noun} changed while it was read")
+    return _decode_json_object(b"".join(chunks), noun=noun), metadata
+
+
+def _json_object(
+    path: Path,
+    *,
+    noun: str,
+    maximum_bytes: int = 32 * 1024 * 1024,
+) -> dict[str, Any]:
+    payload, _metadata = _json_object_with_metadata(
+        path,
+        noun=noun,
+        maximum_bytes=maximum_bytes,
+    )
+    return payload
+
+
 def _private_json_object(path: Path, *, noun: str) -> dict[str, Any]:
-    payload = _json_object(path, noun=noun)
-    metadata = os.lstat(path)
+    payload, metadata = _json_object_with_metadata(path, noun=noun)
     if metadata.st_uid != os.geteuid() or stat.S_IMODE(metadata.st_mode) & 0o077:
         raise EAAEFReconciliationIdentityError(f"{noun} is not private to the current owner")
     return payload
@@ -395,8 +478,94 @@ def _git(repo_root: Path, *args: str, check: bool = True) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def _gitlink_commit(repo_root: Path, relative_path: str) -> str:
-    line = _git(repo_root, "ls-tree", "HEAD", "--", relative_path)
+def _git_blob(repo_root: Path, blob_oid: str, *, maximum_bytes: int) -> bytes:
+    if not _GIT_OID_RE.fullmatch(blob_oid):
+        raise EAAEFReconciliationIdentityError("Git blob identity is malformed")
+    raw_size = _git(repo_root, "cat-file", "-s", blob_oid)
+    try:
+        size = int(raw_size)
+    except ValueError as exc:
+        raise EAAEFReconciliationIdentityError("Git blob size is malformed") from exc
+    if size <= 0 or size > maximum_bytes:
+        raise EAAEFReconciliationIdentityError("Git blob size is outside its bound")
+    try:
+        result = subprocess.run(
+            ["git", "cat-file", "blob", blob_oid],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise EAAEFReconciliationIdentityError("Git blob read failed") from exc
+    if result.returncode != 0 or len(result.stdout) != size:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise EAAEFReconciliationIdentityError(detail or "Git blob read failed")
+    return result.stdout
+
+
+def _board_source_binding(
+    raw_board: bytes,
+    *,
+    source_head: str,
+    source_tree: str,
+    git_mode: str,
+    blob_oid: str,
+) -> dict[str, Any]:
+    """Bind exact committed board bytes and semantics to their Git locator."""
+
+    if (
+        not _GIT_OID_RE.fullmatch(source_head)
+        or not _GIT_OID_RE.fullmatch(source_tree)
+        or git_mode != "100644"
+        or not _GIT_OID_RE.fullmatch(blob_oid)
+    ):
+        raise EAAEFReconciliationIdentityError("EAAEF board Git source is malformed")
+    expected_blob_oid = hashlib.sha1(
+        b"blob " + str(len(raw_board)).encode("ascii") + b"\0" + raw_board,
+        usedforsecurity=False,
+    ).hexdigest()
+    if blob_oid != expected_blob_oid:
+        raise EAAEFReconciliationIdentityError("EAAEF board Git blob identity differs")
+    board = _decode_json_object(raw_board, noun="committed EAAEF task board")
+    return {
+        "schema": EAAEF_BOARD_SOURCE_SCHEMA,
+        "relative_path": EAAEF_BOARD_PATH,
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "git_mode": git_mode,
+        "object_type": "blob",
+        "blob_oid": blob_oid,
+        "byte_count": len(raw_board),
+        "bytes_cid": _cid(raw_board),
+        "canonical_json_cid": _eaaef_source_cid(board),
+        "declared_board_cid": str(board.get("board_cid") or ""),
+    }
+
+
+def _git_board_source(repo_root: Path, *, source_head: str, source_tree: str) -> dict[str, Any]:
+    line = _git(repo_root, "ls-tree", source_tree, "--", EAAEF_BOARD_PATH)
+    if "\t" not in line:
+        raise EAAEFReconciliationIdentityError("EAAEF board is absent from the sealed Git tree")
+    identity, observed_path = line.split("\t", 1)
+    fields = identity.split()
+    if len(fields) != 3:
+        raise EAAEFReconciliationIdentityError("EAAEF board Git source is malformed")
+    git_mode, object_type, blob_oid = fields
+    if observed_path != EAAEF_BOARD_PATH or object_type != "blob":
+        raise EAAEFReconciliationIdentityError("EAAEF board Git source differs")
+    raw_board = _git_blob(repo_root, blob_oid, maximum_bytes=32 * 1024 * 1024)
+    return _board_source_binding(
+        raw_board,
+        source_head=source_head,
+        source_tree=source_tree,
+        git_mode=git_mode,
+        blob_oid=blob_oid,
+    )
+
+
+def _gitlink_commit(repo_root: Path, source_tree: str, relative_path: str) -> str:
+    line = _git(repo_root, "ls-tree", source_tree, "--", relative_path)
     prefix = "160000 commit "
     if not line.startswith(prefix) or "\t" not in line:
         raise EAAEFReconciliationIdentityError(f"{relative_path} is not one exact gitlink")
@@ -419,9 +588,10 @@ def inspect_current_repository_forest(repo_root: str | Path) -> dict[str, Any]:
     root = Path(repo_root).resolve(strict=True)
     blockers: list[str] = []
     head = _git(root, "rev-parse", "HEAD")
-    tree = _git(root, "rev-parse", "HEAD^{tree}")
+    tree = _git(root, "rev-parse", f"{head}^{{tree}}")
     if not _GIT_OID_RE.fullmatch(head) or not _GIT_OID_RE.fullmatch(tree):
         raise EAAEFReconciliationIdentityError("accelerator HEAD/tree is malformed")
+    board_source = _git_board_source(root, source_head=head, source_tree=tree)
     root_status = _git(root, "status", "--porcelain=v1", "--untracked-files=all")
     if root_status:
         blockers.append("accelerator_worktree_not_clean")
@@ -437,7 +607,7 @@ def inspect_current_repository_forest(repo_root: str | Path) -> dict[str, Any]:
         }
     ]
     for name, relative_path in _SUBMODULES:
-        gitlink = _gitlink_commit(root, relative_path)
+        gitlink = _gitlink_commit(root, tree, relative_path)
         nested = root / relative_path
         try:
             nested_metadata = os.lstat(nested)
@@ -455,7 +625,11 @@ def inspect_current_repository_forest(repo_root: str | Path) -> dict[str, Any]:
             nested_top and Path(nested_top).resolve(strict=True) == nested.resolve(strict=True)
         )
         nested_head = _git(nested, "rev-parse", "HEAD", check=False) if exact_repository else ""
-        nested_tree = _git(nested, "rev-parse", "HEAD^{tree}", check=False) if nested_head else ""
+        nested_tree = (
+            _git(nested, "rev-parse", f"{nested_head}^{{tree}}", check=False)
+            if nested_head
+            else ""
+        )
         nested_status = (
             _git(nested, "status", "--porcelain=v1", "--untracked-files=all", check=False)
             if nested_head
@@ -481,9 +655,19 @@ def inspect_current_repository_forest(repo_root: str | Path) -> dict[str, Any]:
                 "clean": initialized and not bool(nested_status),
             }
         )
+    final_head = _git(root, "rev-parse", "HEAD")
+    final_status = _git(root, "status", "--porcelain=v1", "--untracked-files=all")
+    if final_head != head:
+        blockers.append("accelerator_head_changed_during_inspection")
+    if final_status != root_status:
+        blockers.append("accelerator_worktree_changed_during_inspection")
+    if final_status and "accelerator_worktree_not_clean" not in blockers:
+        blockers.append("accelerator_worktree_not_clean")
+    repositories[0]["clean"] = not bool(root_status or final_status) and final_head == head
     identity = {
         "schema": EAAEF_FOREST_SCHEMA,
         "repositories": repositories,
+        "board_source": board_source,
     }
     complete = not blockers
     forest_root = _cid(identity) if complete else ""
@@ -542,7 +726,32 @@ def _require_sealed_forest(forest: Mapping[str, Any]) -> dict[str, Any]:
         or repositories[0]["tree"] != value["source_tree"]
     ):
         raise EAAEFReconciliationIdentityError("accelerator forest member differs")
-    identity = {"schema": EAAEF_FOREST_SCHEMA, "repositories": repositories}
+    raw_board_source = value.get("board_source")
+    if not isinstance(raw_board_source, Mapping):
+        raise EAAEFReconciliationIdentityError("repository forest board source is absent")
+    board_source = dict(raw_board_source)
+    if (
+        set(board_source) != _BOARD_SOURCE_FIELDS
+        or board_source.get("schema") != EAAEF_BOARD_SOURCE_SCHEMA
+        or board_source.get("relative_path") != EAAEF_BOARD_PATH
+        or board_source.get("source_head") != value["source_head"]
+        or board_source.get("source_tree") != value["source_tree"]
+        or board_source.get("git_mode") != "100644"
+        or board_source.get("object_type") != "blob"
+        or not _GIT_OID_RE.fullmatch(str(board_source.get("blob_oid") or ""))
+        or not isinstance(board_source.get("byte_count"), int)
+        or isinstance(board_source.get("byte_count"), bool)
+        or not 0 < int(board_source["byte_count"]) <= 32 * 1024 * 1024
+        or not _SHA256_RE.fullmatch(str(board_source.get("bytes_cid") or ""))
+        or not _SHA256_RE.fullmatch(str(board_source.get("canonical_json_cid") or ""))
+        or not _SHA256_RE.fullmatch(str(board_source.get("declared_board_cid") or ""))
+    ):
+        raise EAAEFReconciliationIdentityError("repository forest board source differs")
+    identity = {
+        "schema": EAAEF_FOREST_SCHEMA,
+        "repositories": repositories,
+        "board_source": board_source,
+    }
     expected_root = _cid(identity)
     if (
         value.get("source_forest_root") != expected_root
@@ -636,6 +845,21 @@ class CompiledEAAEFPopulation:
         return tuple(sorted(rows, key=lambda item: str(item["task_cid"])))
 
 
+def _require_current_board_provenance(
+    board: Mapping[str, Any],
+    *,
+    sealed_forest: Mapping[str, Any],
+) -> None:
+    board_source = sealed_forest["board_source"]
+    if (
+        board_source["canonical_json_cid"] != _eaaef_source_cid(board)
+        or board_source["declared_board_cid"] != str(board.get("board_cid") or "")
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "EAAEF current board differs from the sealed Git board source"
+        )
+
+
 def compile_fresh_eaaef_population(
     board: Mapping[str, Any],
     *,
@@ -649,6 +873,12 @@ def compile_fresh_eaaef_population(
     """
 
     sealed = _require_sealed_forest(forest)
+    try:
+        board = json.loads(_canonical_bytes(dict(board)))
+    except (TypeError, ValueError) as exc:
+        raise EAAEFReconciliationIdentityError("EAAEF board snapshot is malformed") from exc
+    if not isinstance(board, dict):
+        raise EAAEFReconciliationIdentityError("EAAEF board snapshot is malformed")
     declared_board_cid = str(board.get("board_cid") or "")
     board_cid_projection = dict(board)
     board_cid_projection.pop("board_cid", None)
@@ -705,6 +935,8 @@ def compile_fresh_eaaef_population(
         if not alias or alias in goal_specs:
             raise EAAEFReconciliationIdentityError("EAAEF goal identity is malformed or duplicated")
         goal_specs[alias] = goal
+
+    _require_current_board_provenance(board, sealed_forest=sealed)
 
     board_identity = {
         "schema": "EAAEFFreshBoardIdentity@1",
@@ -3154,6 +3386,7 @@ __all__ = [
     "EAAEFTypedReconciliationOwner",
     "EAAEF_BOARD_NAMESPACE",
     "EAAEF_BOOTSTRAP_TASK_COUNT",
+    "EAAEF_BOARD_SOURCE_SCHEMA",
     "EAAEF_FRESH_AUTHORITY_SCHEMA",
     "EAAEF_FRESH_TRUST_SCHEMA",
     "EAAEF_EXECUTION_CONTRACT_POPULATION_SCHEMA",

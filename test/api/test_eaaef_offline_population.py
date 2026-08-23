@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import inspect
 import json
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -71,7 +73,25 @@ def _sealed_forest(*, accelerator_commit: str = "1" * 40) -> dict[str, Any]:
             "clean": True,
         },
     ]
-    identity = {"schema": lifecycle.EAAEF_FOREST_SCHEMA, "repositories": repositories}
+    board_bytes = (
+        Path(__file__).resolve().parents[2] / lifecycle.EAAEF_BOARD_PATH
+    ).read_bytes()
+    blob_oid = hashlib.sha1(
+        b"blob " + str(len(board_bytes)).encode("ascii") + b"\0" + board_bytes,
+        usedforsecurity=False,
+    ).hexdigest()
+    board_source = lifecycle._board_source_binding(
+        board_bytes,
+        source_head=repositories[0]["commit"],
+        source_tree=repositories[0]["tree"],
+        git_mode="100644",
+        blob_oid=blob_oid,
+    )
+    identity = {
+        "schema": lifecycle.EAAEF_FOREST_SCHEMA,
+        "repositories": repositories,
+        "board_source": board_source,
+    }
     root = lifecycle._cid(identity)
     return {
         **identity,
@@ -435,6 +455,55 @@ def test_resealed_forged_rows_still_differ_from_current_sealed_board(repo_root: 
             forged,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(),
+            owner_active=False,
+        )
+
+
+def test_resealed_board_and_population_must_match_sealed_git_source(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    forest = _sealed_forest()
+    forged_board = _board(repo_root)
+    task = forged_board["tasks"][0]
+    task["execution_owned_files"][0] = "forged/resealed-board-output.txt"
+    task_projection = dict(task)
+    task_projection.pop("task_spec_cid")
+    task["task_spec_cid"] = lifecycle._eaaef_source_cid(task_projection)
+    board_projection = dict(forged_board)
+    board_projection.pop("board_cid")
+    forged_board["board_cid"] = lifecycle._eaaef_source_cid(board_projection)
+
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="sealed Git board source",
+    ):
+        lifecycle.compile_fresh_eaaef_population(forged_board, forest=forest)
+
+    # Reconstruct the fully self-consistent population accepted before the
+    # provenance gate, then prove the offline verifier independently rejects it.
+    def _allow_unbound_board(
+        _board: Mapping[str, Any],
+        *,
+        sealed_forest: Mapping[str, Any],
+    ) -> None:
+        assert sealed_forest["source_forest_root"] == forest["source_forest_root"]
+
+    with monkeypatch.context() as bypass:
+        bypass.setattr(lifecycle, "_require_current_board_provenance", _allow_unbound_board)
+        forged_population = lifecycle.compile_fresh_eaaef_population(
+            forged_board,
+            forest=forest,
+        )
+
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="sealed Git board source",
+    ):
+        offline.translate_compiled_eaaef_population(
+            forged_population,
+            current_board=forged_board,
+            current_forest=forest,
             owner_active=False,
         )
 
