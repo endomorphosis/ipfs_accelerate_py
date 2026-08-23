@@ -40,14 +40,12 @@ from .contracts import (
     ProcedureSpec,
     ProcedureValidationPlan,
     RiskClass,
-    StepOperation,
     _bounded,
     _decode_fields,
     _enum,
     _enums,
     _identifier,
     _nested,
-    _nonnegative_int,
     _schema_name,
     _strings,
     _text,
@@ -1398,8 +1396,11 @@ class ProcedureCompositionValidator:
         declared_effects = _ordered_unique(request.composed_effects)
         component_rank = _effect_rank(component_effects)
         declared_rank = _effect_rank(declared_effects)
-        if set(declared_effects) != set(component_effects) or declared_rank > component_rank:
+        extra_effects = set(declared_effects) - set(component_effects)
+        if extra_effects or declared_rank > component_rank:
             fail("effect", CompositionReason.HIDDEN_EFFECT_ESCALATION)
+        elif set(declared_effects) != set(component_effects):
+            fail("effect", CompositionReason.EFFECT_INCOMPATIBLE)
         else:
             pass_dimension("effect")
 
