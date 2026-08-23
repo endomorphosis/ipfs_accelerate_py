@@ -481,7 +481,13 @@ def test_temporal_layer_rejects_stale_or_future_evidence() -> None:
         evidence_for(
             spec,
             receipts=(
-                receipt("proof-1", "proof", contract_id="proof-runner@1", expires_at_ms=20),
+                receipt(
+                    "proof-1",
+                    "proof",
+                    contract_id="proof-runner@1",
+                    observed_at_ms=10,
+                    expires_at_ms=20,
+                ),
                 receipt("test-1", "test", contract_id="focused-tests@1"),
                 receipt("assurance-1", "adversarial"),
                 receipt("held-out-1", "held_out"),
