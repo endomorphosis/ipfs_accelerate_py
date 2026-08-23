@@ -1129,6 +1129,10 @@ class TypedDatabaseTaskSource:
     def validate_retrying_task_cooldown(
         self,
         task_cid_or_alias: str,
+        *,
+        expected_attempt_identity: Mapping[str, Any] | None = None,
+        expected_reason: str | None = None,
+        expected_delay_ms: int | None = None,
     ) -> QueueEntry:
         """Return an exact retrying task/queue binding under one generation."""
 
@@ -1148,6 +1152,50 @@ class TypedDatabaseTaskSource:
                     "retrying task has no typed cooldown receipt"
                 )
             self._validate_retrying_cooldown_binding(task, row)
+            extension = dict(row.get("extension") or {})
+            if expected_attempt_identity is not None:
+                required_identity = {
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                }
+                supplied_identity = dict(expected_attempt_identity)
+                if set(supplied_identity) != required_identity:
+                    raise TaskSourceIntegrityError(
+                        "typed cooldown expected attempt identity is invalid"
+                    )
+                mismatches = [
+                    name
+                    for name in sorted(required_identity)
+                    if type(extension.get(name))
+                    is not type(supplied_identity.get(name))
+                    or extension.get(name) != supplied_identity.get(name)
+                ]
+                if mismatches:
+                    raise TaskSourceIntegrityError(
+                        "retrying task cooldown differs from the expected "
+                        "attempt: " + ", ".join(mismatches)
+                    )
+            if expected_reason is not None and (
+                type(extension.get("reason")) is not str
+                or extension.get("reason") != expected_reason
+            ):
+                raise TaskSourceIntegrityError(
+                    "retrying task cooldown differs from the expected reason"
+                )
+            if expected_delay_ms is not None and (
+                isinstance(expected_delay_ms, bool)
+                or not isinstance(expected_delay_ms, int)
+                or type(extension.get("delay_ms")) is not int
+                or extension.get("delay_ms") != expected_delay_ms
+            ):
+                raise TaskSourceIntegrityError(
+                    "retrying task cooldown differs from the expected delay"
+                )
             return self._queue_entry_from_cooldown_row(row)
         raise TaskSourceConflictError(
             "typed retrying task/cooldown changed during bounded validation"

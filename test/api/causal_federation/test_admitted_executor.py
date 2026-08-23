@@ -1159,6 +1159,49 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
         assert after_stale is not None
         assert dict(after_stale) == dict(second_row)
 
+        retrying_again = adapter.compare_and_set_status(
+            claimed_again.task.task_cid,
+            claimed_again.task.revision,
+            "retrying",
+            {
+                "operation": "database_portal_retry",
+                **second_cooldown,
+                "queue_reason": second_reason,
+                "backoff_ms": 2_000,
+                "retry_not_before_ms": 9_000,
+                "control_expected_revision": claimed_again.task.revision,
+            },
+        )
+        assert retrying_again.task.status == "retrying"
+        with pytest.raises(
+            TaskSourceIntegrityError,
+            match="differs from the expected attempt",
+        ):
+            adapter.validate_retrying_task_cooldown(
+                retrying_again.task.task_cid,
+                expected_attempt_identity={
+                    name: cooldown[name]
+                    for name in (
+                        "attempt_id",
+                        "claim_id",
+                        "lease_id",
+                        "owner_session_id",
+                        "attempt_number",
+                        "fencing_token",
+                        "fence_epoch",
+                    )
+                },
+                expected_reason=queue_reason,
+                expected_delay_ms=5_000,
+            )
+        exact_second_entry = adapter.validate_retrying_task_cooldown(
+            retrying_again.task.task_cid,
+            expected_attempt_identity=second_cooldown,
+            expected_reason=second_reason,
+            expected_delay_ms=2_000,
+        )
+        assert exact_second_entry.attempt == 2
+
         post_merge_task = adapter.get("CASF-TYPED-POST-MERGE-RECOVERY")
         assert post_merge_task is not None and post_merge_task.status == "blocked"
         post_merge_attempt = SimpleNamespace(
