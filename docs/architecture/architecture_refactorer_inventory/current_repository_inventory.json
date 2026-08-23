@@ -1305,7 +1305,7 @@
       ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/merge",
-      "python_file_count": 19,
+      "python_file_count": 20,
       "reachability": "production",
       "sample_files": [
         "ipfs_accelerate_py/agent_supervisor/merge/__init__.py",
@@ -1421,6 +1421,32 @@
       "source_span": {
         "end_line": 1,
         "path": "ipfs_accelerate_py/agent_supervisor/proof/__init__.py",
+        "start_line": 1
+      },
+      "uncertainty": null
+    },
+    {
+      "authority_candidates": [
+        "execution result",
+        "proof verification"
+      ],
+      "kind": "package",
+      "path": "ipfs_accelerate_py/agent_supervisor/procedure_compiler",
+      "python_file_count": 9,
+      "reachability": "production",
+      "sample_files": [
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/contracts.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/interpreter.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/procedure_ir.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/runtime.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/task_family.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/trajectory.py",
+        "ipfs_accelerate_py/agent_supervisor/procedure_compiler/transition_model.py"
+      ],
+      "source_span": {
+        "end_line": 1,
+        "path": "ipfs_accelerate_py/agent_supervisor/procedure_compiler/__init__.py",
         "start_line": 1
       },
       "uncertainty": null
@@ -1582,17 +1608,17 @@
       ],
       "kind": "package",
       "path": "ipfs_accelerate_py/agent_supervisor/task_sources",
-      "python_file_count": 29,
+      "python_file_count": 30,
       "reachability": "production",
       "sample_files": [
         "ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_repository.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py",
         "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_transactions.py",
-        "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
-        "ipfs_accelerate_py/agent_supervisor/task_sources/dataset_store.py"
+        "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py"
       ],
       "source_span": {
         "end_line": 1,

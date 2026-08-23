@@ -27,6 +27,7 @@ from ...llm_router import (
     AgentImplementationSealedControlPlane,
     verify_agent_implementation_sealed_control_plane,
 )
+from ..control.lifecycle_orchestrator import REPOSITORY_ROOT_ENV
 from ..control.manual_completion_seal import (
     ManualCompletionSealError,
     verify_manual_completion_seal,
@@ -37,6 +38,7 @@ from ..merge.checkout_lock import (
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
     adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease as acquire_atomic_checkout_mutation_lease,
+    board_scoped_checkout_mutation_lock_path,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
     checkout_mutation_lease_state,
@@ -46,6 +48,15 @@ from ..merge.checkout_lock import (
     release_checkout_mutation_lease,
     serialized_lock_update,
     update_checkout_mutation_lease,
+)
+from ..task_sources.board_control_plane import (
+    infer_board_namespace,
+    isolate_board_runtime,
+)
+from ..merge.protected_recovery_fence import (
+    generated_board_output_paths,
+    is_protected_recovery_fence_contention,
+    is_worktree_merge_operation,
 )
 from ..control.plan_execution_store import (
     MAX_PLAN_BOUND_WAVE_TRANSFERS,
@@ -86,7 +97,11 @@ from ..runtime.multi_supervisor_runner import (
     DatabaseProgramConfig,
     DatabaseProgramConfigError,
     FAILOVER_FAIL_CLOSED,
+    STATE_LIVE_SCHEMA_REVISION_ENV,
+    STATE_STORE_LIVE_GENERATION_ENV,
     TASK_SOURCE_LEGACY_MARKDOWN,
+    TRUSTED_DUCKDB_HOME_ENV,
+    _trusted_duckdb_runtime_environment,
     provider_subprocess_environment,
 )
 from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
@@ -110,6 +125,7 @@ from .implementation_daemon import (
     IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
     IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
     IMPLEMENTATION_RUNNER_PROCESS_PATTERN,
+    PROVIDER_EXTERNAL_ISOLATION_ENV,
     TASK_HEADER_PREFIX,
     PortalImplementationDaemon,
     PortalTask,
@@ -136,6 +152,7 @@ from .implementation_daemon import (
     utc_now,
     write_json_atomic,
     write_text_atomic,
+    validate_external_provider_isolation_config,
 )
 from .supervisor import (
     active_codex_exec_workers,
@@ -1365,6 +1382,35 @@ def _managed_daemon_child_environment(
     env: dict[str, str] = {}
     if pythonpath:
         env["PYTHONPATH"] = pythonpath
+    external_isolation = str(
+        os.environ.get(PROVIDER_EXTERNAL_ISOLATION_ENV, "") or ""
+    ).strip()
+    if external_isolation:
+        isolation_config = validate_external_provider_isolation_config(
+            external_isolation,
+            verify_host=False,
+        )
+        env[PROVIDER_EXTERNAL_ISOLATION_ENV] = (
+            isolation_config.environment_json()
+        )
+    for name in (
+        REPOSITORY_ROOT_ENV,
+        STATE_STORE_LIVE_GENERATION_ENV,
+        STATE_LIVE_SCHEMA_REVISION_ENV,
+    ):
+        value = str(os.environ.get(name, "") or "").strip()
+        if value:
+            env[name] = value
+    trusted_home = str(os.environ.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
+    if trusted_home:
+        env.update(
+            _trusted_duckdb_runtime_environment(
+                os.environ,
+                repository_root=Path(
+                    os.environ.get(REPOSITORY_ROOT_ENV, "") or source_root
+                ),
+            )
+        )
     if database_program is not None:
         env.update(database_program.environment(repository_root=repo_root))
     return env
@@ -3806,6 +3852,10 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             expected_branch: str,
             current_branch: str,
             validation_result: Mapping[str, Any],
+            require_no_change_policy_gate: bool = True,
+            expected_task_id: str = "",
+            expected_task_cid: str = "",
+            authoritative_no_change_policy_gate: Mapping[str, Any] | None = None,
         ) -> dict[str, Any]:
             """Publish no-change only after the canonical final guard allows it."""
 
@@ -3815,6 +3865,12 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
                 expected_branch=expected_branch,
                 current_branch=current_branch,
                 validation_result=validation_result,
+                require_no_change_policy_gate=require_no_change_policy_gate,
+                expected_task_id=expected_task_id,
+                expected_task_cid=expected_task_cid,
+                authoritative_no_change_policy_gate=(
+                    authoritative_no_change_policy_gate
+                ),
             )
             pending = getattr(self, "_plan_bound_pending_no_change", None)
             self._plan_bound_pending_no_change = None
@@ -5988,6 +6044,27 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             if bool(getattr(result, "accepted", False)):
                 return result
 
+            compact_result = self._compact_proposal_validation(result)
+            if (
+                getattr(
+                    self,
+                    "_plan_bound_no_change_policy_probe_depth",
+                    0,
+                )
+                and list(compact_result.get("changed_paths") or []) == []
+                and reason_codes == ("empty_patch", "missing_required_field")
+            ):
+                # The canonical clean-candidate path intentionally asks the
+                # proposal validator to produce this exact typed empty-patch
+                # rejection.  It is evidence for the separately issued,
+                # attempt-bound no-change gate; it is not the task's proposal
+                # disposition.  Any other rejection still takes the ordinary
+                # plan-bound disposition path below.  The base clean-candidate
+                # path additionally checks every finding, runs declared
+                # validation uncached, binds the empty candidate, and issues
+                # the one-shot gate consumed by the final guard.
+                return result
+
             proposal = getattr(result, "proposal", None)
             receipt = getattr(result, "receipt", None)
             proposal_id = str(getattr(proposal, "proposal_id", "") or "")
@@ -6016,6 +6093,32 @@ def _run_plan_bound_daemon_child(argv: Sequence[str]) -> int:
             raise PlanBoundDispatchError(
                 "rejected proposal unexpectedly received wave release"
             )
+
+        def _run_clean_candidate_validation(
+            self,
+            *args: Any,
+            **kwargs: Any,
+        ) -> Any:
+            """Keep an empty-patch policy probe distinct from disposition."""
+
+            depth = int(
+                getattr(
+                    self,
+                    "_plan_bound_no_change_policy_probe_depth",
+                    0,
+                )
+            )
+            self._plan_bound_no_change_policy_probe_depth = depth + 1
+            try:
+                return super()._run_clean_candidate_validation(
+                    *args,
+                    **kwargs,
+                )
+            finally:
+                if depth:
+                    self._plan_bound_no_change_policy_probe_depth = depth
+                else:
+                    del self._plan_bound_no_change_policy_probe_depth
 
     def plan_bound_daemon_factory(**kwargs: Any) -> Any:
         if (
@@ -6314,6 +6417,7 @@ class PortalSupervisorConfig:
     max_task_attempts: int = 0
     daemon_interval: float = 300.0
     task_prefix: str = TASK_HEADER_PREFIX
+    board_namespace: str = ""
     state_prefix: str = "portal"
     database_program: DatabaseProgramConfig | None = None
     reconciliation_only: bool = False
@@ -6617,6 +6721,36 @@ class PortalImplementationSupervisor:
             self._loaded_control_plane_source
         )
         self._last_control_plane_source_probe_monotonic = 0.0
+        todo_path = Path(config.todo_path)
+        self.board_namespace = infer_board_namespace(
+            board_namespace=config.board_namespace,
+            merge_target_branch=config.merge_target_branch,
+            todo_path=todo_path,
+            state_prefix=config.state_prefix,
+        )
+        ingest_todo = todo_path.suffix.lower() in {".md", ".markdown"}
+        isolated = isolate_board_runtime(
+            repo_root=config.repo_root,
+            board_namespace=self.board_namespace,
+            merge_target_branch=config.merge_target_branch,
+            todo_path=todo_path,
+            state_prefix=config.state_prefix,
+            source_kind="" if ingest_todo else "duckdb",
+            ensure_branch=True,
+            ensure_worktree=False,
+            ingest_todo=ingest_todo,
+        )
+        self.board_control_plane_status = isolated
+        resolved_branch = str(isolated.get("implementation_branch") or "").strip()
+        branch_reason = str(
+            (isolated.get("branch_result") or {}).get("reason") or ""
+        )
+        if (
+            resolved_branch
+            and not str(self.config.merge_target_branch or "").strip()
+            and branch_reason in {"created", "already_exists"}
+        ):
+            self.config.merge_target_branch = resolved_branch
 
     @staticmethod
     def _control_plane_source_snapshot() -> dict[str, Any]:
@@ -8398,7 +8532,7 @@ class PortalImplementationSupervisor:
             # the two projections identical so safe-path (``python -P``)
             # children retain the admitted source root and database authority
             # bindings instead of falling back to an ambient installation.
-            child_env=spec.launch_env,
+            child_env=child_environment,
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
                 fast_restart_backoff_seconds=min(2.0, max(0.0, float(self.config.check_interval))),
@@ -8907,7 +9041,15 @@ class PortalImplementationSupervisor:
         return result
 
     def _repo_merge_lock_path(self) -> Path:
-        return checkout_mutation_lock_path(self.config.repo_root)
+        namespace = getattr(self, "board_namespace", "") or infer_board_namespace(
+            merge_target_branch=self.config.merge_target_branch,
+            todo_path=self.config.todo_path,
+            state_prefix=self.config.state_prefix,
+        )
+        return board_scoped_checkout_mutation_lock_path(
+            self.config.repo_root,
+            namespace,
+        )
 
     def _todo_board_is_implementation_protected(self) -> bool:
         try:
@@ -9896,15 +10038,53 @@ class PortalImplementationSupervisor:
             if not item.get("trusted_generator")
         ]
         if untrusted_commits:
-            return {
-                **result_base,
-                "release_allowed": False,
-                "reason": "protected_generated_history_untrusted",
-                "before_head": before_head,
-                "after_head": after_head,
-                "commits": commits,
-                "untrusted_commits": untrusted_commits,
-            }
+            board_paths = generated_board_output_paths(paths)
+            if not board_paths:
+                return {
+                    **result_base,
+                    "release_allowed": False,
+                    "reason": "protected_generated_history_untrusted",
+                    "before_head": before_head,
+                    "after_head": after_head,
+                    "commits": commits,
+                    "untrusted_commits": untrusted_commits,
+                }
+            board_revision = (
+                f"{before_head}..{after_head}" if before_head else after_head
+            )
+            board_history = self._git_protected_history(
+                git_root,
+                board_revision,
+                board_paths,
+            )
+            if not board_history.get("ok"):
+                return {
+                    **result_base,
+                    "release_allowed": False,
+                    "reason": "protected_generated_history_query_failed",
+                    "history_query": board_history,
+                }
+            board_untrusted = [
+                str(item.get("commit") or "")
+                for item in board_history.get("commits") or ()
+                if not item.get("trusted_generator")
+            ]
+            if board_untrusted:
+                return {
+                    **result_base,
+                    "release_allowed": False,
+                    "reason": "protected_generated_history_untrusted",
+                    "before_head": before_head,
+                    "after_head": after_head,
+                    "commits": commits,
+                    "untrusted_commits": board_untrusted,
+                    "generated_board_paths": list(board_paths),
+                }
+            result_base["unrelated_untrusted_commits"] = untrusted_commits
+            result_base["generated_board_paths"] = list(board_paths)
+            result_base["automatic_fence_resolution"] = (
+                "protected_generated_history_unrelated_protected_code"
+            )
 
         confirmed_head = self._git_head_state(git_root)
         confirmed_status = self._git_scope_dirty_paths(git_root, paths)
@@ -9927,9 +10107,12 @@ class PortalImplementationSupervisor:
             **result_base,
             "release_allowed": True,
             "reason": (
-                "protected_generated_history_trusted"
-                if commits
-                else "protected_outputs_clean_unrelated_history"
+                str(result_base.get("automatic_fence_resolution") or "")
+                or (
+                    "protected_generated_history_trusted"
+                    if commits
+                    else "protected_outputs_clean_history_unchanged"
+                )
             ),
             "before_head": before_head,
             "after_head": after_head,
@@ -12883,6 +13066,7 @@ class PortalImplementationSupervisor:
                 / f"{self.config.state_prefix}_events.jsonl"
             ),
             repo_root=self.config.repo_root,
+            board_namespace=self.board_namespace,
             task_header_prefix=self.config.task_prefix,
             implement=False,
             implementation_command=self.config.implementation_command,
@@ -14445,6 +14629,125 @@ class PortalImplementationSupervisor:
             "owner_lease_pid": str(owner.get("lease_pid") or ""),
         }
 
+    def _commit_dirty_submodules_for_rescue(
+        self,
+        worktree_path: Path,
+        *,
+        rescue_branch: str,
+        reason: str,
+    ) -> list[dict[str, Any]]:
+        """Commit dirty submodule trees so failed-test work can be rescued.
+
+        Parent ``git add -A`` only sees a gitlink. Uncommitted files inside
+        ``external/ipfs_accelerate`` (or other configured submodules) would
+        otherwise vanish as ``no_staged_rescue_delta``.
+        """
+
+        results: list[dict[str, Any]] = []
+        for relative in self.config.worktree_submodule_paths:
+            target = worktree_path / relative
+            if not target.is_dir():
+                continue
+            git_dir = subprocess.run(
+                ["git", "rev-parse", "--is-inside-work-tree"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if git_dir.returncode != 0 or git_dir.stdout.strip() != "true":
+                continue
+            status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if status.returncode != 0 or not status.stdout.strip():
+                continue
+            add = subprocess.run(
+                ["git", "add", "-A"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if add.returncode != 0:
+                results.append(
+                    {
+                        "path": relative,
+                        "committed": False,
+                        "reason": "stage_submodule_rescue_failed",
+                        "returncode": add.returncode,
+                        "stderr": add.stderr[-2000:],
+                    }
+                )
+                continue
+            staged = subprocess.run(
+                ["git", "diff", "--cached", "--quiet"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if staged.returncode == 0:
+                results.append(
+                    {
+                        "path": relative,
+                        "committed": False,
+                        "reason": "no_staged_submodule_delta",
+                    }
+                )
+                continue
+            commit = subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Implementation Supervisor",
+                    "-c",
+                    "user.email=implementation-supervisor@example.invalid",
+                    "commit",
+                    "-m",
+                    f"Rescue dirty submodule {relative}",
+                    "-m",
+                    f"Rescue branch: {rescue_branch}",
+                    "-m",
+                    f"Cleanup reason: {reason}",
+                ],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if commit.returncode != 0:
+                results.append(
+                    {
+                        "path": relative,
+                        "committed": False,
+                        "reason": "commit_submodule_rescue_failed",
+                        "returncode": commit.returncode,
+                        "stderr": commit.stderr[-2000:],
+                    }
+                )
+                continue
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            results.append(
+                {
+                    "path": relative,
+                    "committed": True,
+                    "commit": head.stdout.strip(),
+                    "reason": "dirty_submodule_committed_for_rescue",
+                }
+            )
+        return results
+
     @staticmethod
     def _safe_rescue_branch_fragment(value: str) -> str:
         normalized = []
@@ -14534,6 +14837,12 @@ class PortalImplementationSupervisor:
             self._record_event("dirty_worktree_rescue_failed", result)
             return result
 
+        submodule_results = self._commit_dirty_submodules_for_rescue(
+            worktree_path,
+            rescue_branch=rescue_branch,
+            reason=reason,
+        )
+
         add = subprocess.run(
             ["git", "add", "-A"],
             cwd=worktree_path,
@@ -14580,6 +14889,7 @@ class PortalImplementationSupervisor:
                 "rescue_branch": rescue_branch,
                 "rescue_commit": rescue_commit,
                 "status_short": status_lines[:20],
+                "submodule_results": submodule_results,
                 "started_at": started_at,
                 "finished_at": utc_now(),
             }
@@ -14639,6 +14949,7 @@ class PortalImplementationSupervisor:
             "rescue_branch": rescue_branch,
             "rescue_commit": rescue_commit,
             "status_short": status_lines[:20],
+            "submodule_results": submodule_results,
             "returncode": commit.returncode,
             "stdout": commit.stdout[-4000:],
             "stderr": commit.stderr[-4000:],
@@ -16644,8 +16955,11 @@ class PortalImplementationSupervisor:
     def _objective_goals_for_finding_mapping(self) -> list[Any]:
         """Read the current heap for deterministic dynamic-finding assignment."""
 
-        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
-        from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
+        try:
+            from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
+            from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
+        except Exception:
+            return []
 
         objective_path = self.config.objective_path or default_objective_path(
             self.config.repo_root
@@ -17634,6 +17948,55 @@ class PortalImplementationSupervisor:
                             if key != "lease"
                         },
                         "leftover_release": leftover,
+                    }
+                existing = read_checkout_mutation_lease(
+                    self._repo_merge_lock_path()
+                )
+                peer_merge = bool(
+                    is_protected_recovery_fence_contention(
+                        adoption.get("reason")
+                    )
+                    or (
+                        existing is not None
+                        and is_worktree_merge_operation(
+                            existing.metadata.get("operation")
+                        )
+                    )
+                )
+                if peer_merge:
+                    # Another worktree/daemon still owns the merge lock, or
+                    # that merge already completed. This is not a supervisor
+                    # generated-board recovery fence; do not freeze in
+                    # agentic_maintenance_started.
+                    released_stale_merge = False
+                    if (
+                        existing is not None
+                        and is_worktree_merge_operation(
+                            existing.metadata.get("operation")
+                        )
+                    ):
+                        try:
+                            owner_pid = int(existing.metadata.get("pid") or 0)
+                        except (TypeError, ValueError):
+                            owner_pid = 0
+                        if owner_pid <= 0 or not process_is_running(owner_pid):
+                            released_stale_merge = bool(
+                                release_checkout_mutation_lease(
+                                    existing,
+                                    timeout_seconds=2.0,
+                                )
+                            )
+                    return {
+                        **adoption,
+                        "attempted": False,
+                        "recovered": False,
+                        "retained_lease": False,
+                        "peer_merge_lock": True,
+                        "released_stale_merge_lock": released_stale_merge,
+                        "reason": str(
+                            adoption.get("reason")
+                            or "external_protected_checkout_recovery_required"
+                        ),
                     }
                 return {
                     **adoption,
@@ -18987,6 +19350,8 @@ class PortalImplementationSupervisor:
                     str(self.config.state_dir),
                     "--task-prefix",
                     self.config.task_prefix,
+                    "--board-namespace",
+                    self.board_namespace,
                     "--state-prefix",
                     self.config.state_prefix,
                     "--max-task-attempts",
@@ -19461,6 +19826,8 @@ class PortalImplementationSupervisor:
             str(self.config.task_shard_index)
         }:
             return False
+        if option_values("--board-namespace") != {self.board_namespace}:
+            return False
 
         if option_values("--execution-slice-task-id") != set(
             self.config.execution_slice_task_ids
@@ -19552,6 +19919,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--task-prefix",
         default=TASK_HEADER_PREFIX,
         help="Markdown heading prefix for tasks, for example '## PORTAL-' or '## AGENT-'",
+    )
+    parser.add_argument(
+        "--board-namespace",
+        default="",
+        help="Canonical task-board namespace for branch and lock isolation.",
     )
     parser.add_argument(
         "--state-prefix",
@@ -20319,6 +20691,7 @@ def supervisor_config_from_args(
         ),
         daemon_interval=args.daemon_interval,
         task_prefix=args.task_prefix,
+        board_namespace=str(getattr(args, "board_namespace", "") or ""),
         state_prefix=args.state_prefix,
         database_program=database_program,
         reconciliation_only=reconciliation_only,

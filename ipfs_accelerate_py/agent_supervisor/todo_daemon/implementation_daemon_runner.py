@@ -6,6 +6,7 @@ import argparse
 import logging
 import math
 import os
+import re
 import signal
 import sys
 import time
@@ -1110,6 +1111,27 @@ def implementation_state_paths(parsed: argparse.Namespace) -> dict[str, Path]:
     )
 
 
+def database_implementation_sidecar_paths(
+    parsed: argparse.Namespace,
+) -> dict[str, Path]:
+    """Return lane-private database execution and coordination sidecars.
+
+    The control database may be shared through Quack, but DuckDB sidecars may
+    only have one external writer.  Bind both filenames to the already
+    lane-scoped ``state_dir`` and ``state_prefix`` supplied by the supervisor.
+    """
+
+    state_dir = Path(parsed.state_dir).absolute()
+    state_prefix = str(parsed.state_prefix or "database").strip()
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", state_prefix) is None:
+        raise ValueError("state_prefix is unsafe for database sidecar paths")
+    return {
+        "execution_path": state_dir / f"{state_prefix}_database_execution.duckdb",
+        "coordination_path": state_dir
+        / f"{state_prefix}_database_coordination.duckdb",
+    }
+
+
 def configure_daemon_logging(
     parsed: argparse.Namespace,
     *,
@@ -1166,12 +1188,17 @@ def resolve_database_implementation_paths(
         candidate = Path(todo_path)
         if candidate.suffix.lower() in {".duckdb", ".ddb"}:
             database_path = candidate
+    sidecars = database_implementation_sidecar_paths(parsed)
     coordination_path = getattr(parsed, "coordination_path", None)
-    if coordination_path is not None:
-        coordination_path = Path(coordination_path)
+    coordination_path = (
+        Path(coordination_path)
+        if coordination_path is not None
+        else sidecars["coordination_path"]
+    )
     return {
         "database_path": database_path,
         "coordination_path": coordination_path,
+        "execution_path": sidecars["execution_path"],
     }
 
 
@@ -1225,6 +1252,9 @@ def bind_database_portal_execution_from_args(
             strategy_path=paths.strategy,
             events_path=paths.events,
             repo_root=repo_root,
+            board_namespace=str(
+                getattr(parsed, "board_namespace", "") or ""
+            ),
             task_header_prefix=parsed.task_prefix,
             implement=True,
             implementation_command=parsed.implementation_command or None,
@@ -1373,6 +1403,7 @@ def build_portal_implementation_daemon_from_args(
         daemon: object = DatabaseImplementationDaemon(
             database_path=database_path,
             coordination_path=db_paths["coordination_path"],
+            execution_path=db_paths["execution_path"],
             owner_session_id=str(getattr(parsed, "owner_session_id", "") or ""),
             authority_mode=authority_mode or "quack",
             task_source_kind=task_source_kind or "duckdb",
@@ -1394,10 +1425,20 @@ def build_portal_implementation_daemon_from_args(
                 parsed, "strict_task_sharding", False
             ),
             require_real_execution=bool(getattr(parsed, "implement", False)),
+            execution_slice_task_ids=getattr(
+                parsed, "execution_slice_task_id", ()
+            ),
+            execution_slice_task_cids=getattr(
+                parsed, "execution_slice_task_cid", ()
+            ),
+            idle_lane_work_stealing=str(
+                getattr(parsed, "idle_lane_work_stealing", "") or ""
+            ),
             repo_root=repo_root,
             merge_target_ref=str(
                 getattr(parsed, "merge_target_branch", "") or "HEAD"
             ),
+            task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
         )
         bind_database_portal_execution_from_args(
             daemon,
@@ -1534,6 +1575,7 @@ def build_database_implementation_daemon_from_args(
     return DatabaseImplementationDaemon(
         database_path=resolved_db,
         coordination_path=db_paths["coordination_path"],
+        execution_path=db_paths["execution_path"],
         owner_session_id=owner_session_id
         or str(getattr(parsed, "owner_session_id", "") or ""),
         authority_mode=authority_mode,
@@ -1557,10 +1599,19 @@ def build_database_implementation_daemon_from_args(
         events_path=None,
         pid_path=None,
         queue_path=None,
+        execution_slice_task_ids=getattr(parsed, "execution_slice_task_id", ()),
+        execution_slice_task_cids=getattr(
+            parsed, "execution_slice_task_cid", ()
+        ),
+        task_shard_count=int(getattr(parsed, "task_shard_count", 1)),
+        task_shard_index=int(getattr(parsed, "task_shard_index", 0)),
+        strict_task_sharding=bool(
+            getattr(parsed, "strict_task_sharding", False)
+        ),
+        idle_lane_work_stealing=str(
+            getattr(parsed, "idle_lane_work_stealing", "") or ""
+        ),
         max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
-        task_shard_count=getattr(parsed, "task_shard_count", 1),
-        task_shard_index=getattr(parsed, "task_shard_index", 0),
-        strict_task_sharding=getattr(parsed, "strict_task_sharding", False),
         repo_root=getattr(parsed, "repo_root", None),
         merge_target_ref=str(
             getattr(parsed, "merge_target_branch", "") or "HEAD"

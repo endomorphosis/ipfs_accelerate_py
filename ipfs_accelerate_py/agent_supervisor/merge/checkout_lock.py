@@ -540,6 +540,39 @@ def checkout_mutation_lock_path(
     return git_common_dir(repo_root) / lock_name
 
 
+def board_scoped_checkout_mutation_lock_path(
+    repo_root: Path,
+    board_namespace: str,
+) -> Path:
+    """Return the merge lock used by one task-board namespace.
+
+    Distinct boards sharing a Git common directory no longer contend on
+    ``implementation-main-merge.lock``. Two supervisors with the same
+    namespace still serialize on the same inode.
+    """
+
+    from ..task_sources.board_control_plane import board_merge_lock_name
+
+    return checkout_mutation_lock_path(
+        repo_root,
+        lock_name=board_merge_lock_name(board_namespace),
+    )
+
+
+def board_scoped_protected_path_maintenance_lock_path(
+    repo_root: Path,
+    board_namespace: str,
+) -> Path:
+    """Return the protected-path maintenance lock for one board namespace."""
+
+    from ..task_sources.board_control_plane import board_protected_path_lock_name
+
+    return checkout_mutation_lock_path(
+        repo_root,
+        lock_name=board_protected_path_lock_name(board_namespace),
+    )
+
+
 def objective_admission_lock_path(objective_path: Path) -> Path:
     """Return a durable lock outside a Git worktree when one is available.
 

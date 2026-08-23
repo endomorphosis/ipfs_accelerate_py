@@ -3312,6 +3312,141 @@ def test_generated_board_same_producer_retry_releases_retained_lease(
     assert supervisor._current_supervisor_checkout_lease() is None
 
 
+def test_generated_board_release_ignores_unrelated_protected_code_history(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Fixture")
+    _git(repo, "config", "user.email", "fixture@example.invalid")
+    todo_path = repo / "tasks.todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    script_path = repo / "scripts" / "run_operator.py"
+    script_path.parent.mkdir()
+    script_path.write_text("print('seed')\n", encoding="utf-8")
+    _git(repo, "add", "tasks.todo.md", "scripts/run_operator.py")
+    _git(repo, "commit", "-m", "initial")
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implementation-protected-path",
+            "tasks.todo.md",
+            "--implementation-protected-path",
+            "scripts/run_operator.py",
+        ]
+    )
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(args, repo_root=repo)
+    )
+
+    def dirty_producer() -> list[str]:
+        todo_path.write_text("# Tasks\n\n## EX-002 Retry\n", encoding="utf-8")
+        return ["dirty"]
+
+    with pytest.raises(RuntimeError, match="protected_generated_outputs_dirty"):
+        supervisor._run_generated_board_producer(
+            producer="retry-test",
+            commit_outputs=True,
+            callback=dirty_producer,
+        )
+
+    script_path.write_text("print('later operator fix')\n", encoding="utf-8")
+    _git(repo, "add", "scripts/run_operator.py")
+    _git(repo, "commit", "-m", "untrusted operator script")
+
+    def trusted_retry() -> list[str]:
+        _git(repo, "add", "tasks.todo.md")
+        _git(
+            repo,
+            "-c",
+            "user.name=Agent Supervisor",
+            "-c",
+            f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
+            "commit",
+            "-m",
+            generated_protected_board_commit_subject("retry generated output"),
+        )
+        return ["recovered"]
+
+    assert supervisor._run_generated_board_producer(
+        producer="retry-test",
+        commit_outputs=True,
+        callback=trusted_retry,
+    ) == ["recovered"]
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert supervisor._current_supervisor_checkout_lease() is None
+
+
+def test_successful_worktree_merge_releases_shared_lock(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed")
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_protected_paths=("todo.md",),
+    )
+
+    def merge_cb() -> dict[str, object]:
+        daemon._checkout_mutation_context.retain_until_protected_clean = True
+        return {"merged": True}
+
+    result = daemon._run_checkout_mutation_transaction(
+        task_id="PCCE-022",
+        operation="merge_branch_to_main",
+        callback=merge_cb,
+        failure_fields={"merged": False},
+    )
+    assert result["merged"] is True
+    assert result.get("checkout_mutation_lease_retained") is not True
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert daemon._current_checkout_mutation_lease() is None
+
+
+def test_supervisor_does_not_freeze_on_peer_worktree_merge_lock(
+    tmp_path: Path,
+) -> None:
+    supervisor, repo, _todo_path = _generated_protected_supervisor(tmp_path)
+    lock_path = checkout_mutation_lock_path(repo)
+    metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="PCCE-022",
+        extra={"operation": "merge_branch_to_main"},
+    )
+    metadata.update(
+        {
+            "operation": "merge_branch_to_main",
+            "pid": 2_147_483_647,
+            "protected_recovery_required": True,
+            "protected_recovery_owner": "implementation_daemon",
+            "owner_script": "implementation_daemon.py",
+        }
+    )
+    lock_path.write_text(json.dumps(metadata, sort_keys=True), encoding="utf-8")
+    lock_path.chmod(0o600)
+    result = supervisor._recover_retained_generated_checkout_lease()
+    assert result.get("retained_lease") is False
+    assert result.get("peer_merge_lock") is True
+    assert result.get("released_stale_merge_lock") is True
+    assert not lock_path.exists()
+
+
 def test_generated_dirty_repair_recovers_retained_lease_when_disabled(
     tmp_path: Path,
 ) -> None:

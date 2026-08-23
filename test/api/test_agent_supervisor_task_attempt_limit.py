@@ -897,6 +897,37 @@ def test_classify_provider_capacity_ignores_grok_policy_diagnostic(
     assert classified == {"exhausted": False, "providers": [], "reason": ""}
 
 
+def test_classify_canonical_legacy_grok_receipt_is_quota_exhaustion() -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import (
+        GROK_FAILURE_RECEIPT_PREFIX,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    receipt = {
+        "failure_class": "hard_quota_exhausted",
+        "primary_dispatched": False,
+        "probe_returncode": 1,
+        "receipt_id": "sha256:" + "a" * 64,
+        "evidence_sha256": "sha256:" + "b" * 64,
+    }
+    text = (
+        GROK_FAILURE_RECEIPT_PREFIX
+        + json.dumps(receipt, separators=(",", ":"))
+        + "\nTyped Grok preflight did not authorize fallback; "
+        "Codex fallback is forbidden\n"
+    )
+    classified = classify_provider_capacity_failure(
+        text,
+        provider_labels=("grok",),
+    )
+    assert classified["exhausted"] is True
+    assert classified["providers"] == ["grok"]
+    assert classified["failure_class"] == "hard_quota_exhausted"
+    assert classified["reason"] == "provider_capacity_exhausted"
+
+
 def test_classify_codex_quota_does_not_poison_grok_capacity() -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
         classify_provider_capacity_failure,

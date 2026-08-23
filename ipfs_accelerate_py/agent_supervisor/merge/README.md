@@ -28,6 +28,8 @@ Landing completed work: merge queue/train/resolver, checkout locks, leases, and 
 | `merge_resolver` | `merge/merge_resolver.py` |
 | `merge_train` | `merge/merge_train.py` |
 | `promotion_pointer` | `merge/promotion_pointer.py` |
+| `protected_recovery_clearance` | `merge/protected_recovery_clearance.py` |
+| `protected_recovery_fence` | `merge/protected_recovery_fence.py` |
 
 ## Preferred imports
 

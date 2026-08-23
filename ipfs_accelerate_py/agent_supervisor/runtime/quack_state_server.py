@@ -24,11 +24,14 @@ from __future__ import annotations
 import base64
 import fcntl
 import hashlib
+import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import socket
+import stat
 import threading
 import time
 import uuid
@@ -60,6 +63,7 @@ from ..task_sources.control_plane_contracts import (
     SecretHandle,
     StateAuthorityClass,
     StoreGeneration,
+    canonical_json_bytes,
     content_identity,
     is_secret_handle,
     redact_mapping,
@@ -77,9 +81,42 @@ from ..task_sources.control_plane_schema import (
     install_control_plane_schema,
 )
 from ..task_sources.duckdb_state import (
+    DUCKDB_CONNECTION_POLICY_SETTINGS,
+    DEFAULT_MEMORY_LIMIT,
+    DuckDBConnection,
+    QUACK_MUTATION_COMPLETION_RECEIPT_INSERT,
+    QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+    QUACK_MUTATION_EVIDENCE_DELETE,
+    QUACK_MUTATION_EVIDENCE_INSERT,
+    QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
+    QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE,
+    QUACK_MUTATION_QUEUE_BACKOFF,
+    QUACK_MUTATION_TASK_REVISION_INSERT,
+    QUACK_MUTATION_TASK_STATUS_CAS,
+    QUACK_MUTATION_TASK_STATUS_TRANSITION,
+    QUACK_MUTATION_VALIDATION_RECORD,
+    QUACK_MUTATION_VALIDATION_RESULT_INSERT,
+    QUACK_MUTATION_VALIDATION_RUN_INSERT,
+    QUACK_OWNER_MUTATION_MAX_PARAMETER_BYTES,
+    QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES,
+    QUACK_OWNER_MUTATION_MAX_STEPS,
+    QUACK_OWNER_MUTATION_MAX_CLOCK_SKEW_MS,
+    QUACK_OWNER_MUTATION_PROTOCOL_REVISION,
+    QUACK_OWNER_MUTATION_REQUEST_TTL_MS,
+    QUACK_OWNER_MUTATION_REQUEST_SCHEMA,
+    QUACK_OWNER_MUTATION_RESULT_SCHEMA,
     open_duckdb_connection,
     open_quack_state_owner_connection,
+    quack_owner_mutation_content_id,
     quack_owner_mutation_inbox_path,
+    quack_owner_mutation_mac,
+    unstall_stale_in_progress_tasks,
+)
+from ..task_sources.intent_repository import (
+    COMPLETION_EVIDENCE_SCHEMA,
+    DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+    QUEUE_ENTRY_SCHEMA,
+    missing_current_evidence_on,
 )
 from ..task_sources.quack_capabilities import (
     QuackCapabilityReport,
@@ -126,6 +163,9 @@ OWNER_MARKER_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/state-owner-marker@1"
 )
 QUACK_STATE_SERVER_VERSION: Final[int] = 1
+QUACK_ISOLATION_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/quack-owner-isolation-receipt@4"
+)
 
 DEFAULT_LOOPBACK_HOST: Final = "127.0.0.1"
 DEFAULT_STORE_ID: Final = "control.duckdb"
@@ -135,8 +175,120 @@ OWNER_MARKER_SUFFIX: Final = ".state-owner.json"
 OWNER_LOCK_SUFFIX: Final = ".state-owner.lock"
 STATUS_FILENAME: Final = "quack-state-server.status.json"
 CONTROL_STOP_FILENAME: Final = "quack-state-server.stop"
+READ_REPLICA_NAME_INFIX: Final = ".read-replica"
+READ_REPLICA_MAX_BYTES: Final[int] = 8 * 1024 * 1024 * 1024
+READ_REPLICA_COPY_CHUNK_BYTES: Final[int] = 1024 * 1024
+READ_REPLICA_COPY_TIMEOUT_SECONDS: Final[float] = 30.0
+READ_REPLICA_STOP_TIMEOUT_SECONDS: Final[float] = 2.0
 MUTATION_INBOX_DIRNAME: Final = "mutations"
 MAX_MUTATIONS_PER_POLL: Final[int] = 64
+MUTATION_REQUEST_NAME: Final[re.Pattern[str]] = re.compile(
+    r"^(?P<request_id>b[a-z2-7]{40,127})\.request\.json$"
+)
+MUTATION_PROCESSING_NAME: Final[re.Pattern[str]] = re.compile(
+    r"^(?P<request_id>b[a-z2-7]{40,127})\.processing\.json$"
+)
+MUTATION_MAX_DIRECTORY_ENTRIES: Final[int] = 4_096
+MUTATION_MAX_PER_PASS: Final[int] = 32
+_MUTATION_REQUEST_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "protocol_revision",
+        "request_id",
+        "issued_at_ms",
+        "expires_at_ms",
+        "operation",
+        "binding",
+        "steps",
+        "request_cid",
+        "auth_mac",
+    }
+)
+_MUTATION_READY_FROM: Final[frozenset[str]] = frozenset(
+    {
+        "todo",
+        "ready",
+        "open",
+        "pending",
+        "queued",
+        "proposed",
+        "admitted",
+        "retrying",
+    }
+)
+_MUTATION_ALLOWED_TO: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {
+        **{
+            status: frozenset({"in_progress"})
+            for status in _MUTATION_READY_FROM - {"retrying"}
+        },
+        "retrying": frozenset({"in_progress", "blocked"}),
+        "claimed": frozenset({"in_progress", "ready", "blocked"}),
+        "running": frozenset({"ready", "completed", "blocked", "retrying"}),
+        "in_progress": frozenset({"ready", "completed", "blocked", "retrying"}),
+        "blocked": frozenset({"retrying", "ready"}),
+    }
+)
+
+_MUTATION_SQL_TEMPLATES: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        QUACK_MUTATION_TASK_STATUS_CAS: (
+            "UPDATE tasks SET status = ?, revision = ?, updated_at = ?, "
+            "body_json = ? WHERE task_cid = ? AND revision = ?"
+        ),
+        QUACK_MUTATION_TASK_REVISION_INSERT: (
+            "INSERT INTO task_revisions "
+            "(task_cid, revision, status, body_json, recorded_at) "
+            "VALUES (?, ?, ?, ?, ?)"
+        ),
+        QUACK_MUTATION_COMPLETION_RECEIPT_INSERT: (
+            "INSERT INTO completion_receipts "
+            "(receipt_cid, task_cid, goal_cid, attempt_id, claim_cid, "
+            "fencing_token, completed_at, validation_run_id, "
+            "evidence_digest, body_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        ),
+        QUACK_MUTATION_DOMAIN_EVENT_INSERT: (
+            "INSERT INTO domain_events "
+            "(event_id, stream_id, sequence, global_sequence, event_type, "
+            "task_cid, attempt_id, session_id, recorded_at, body_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        ),
+        QUACK_MUTATION_VALIDATION_RUN_INSERT: (
+            "INSERT INTO validation_runs "
+            "(run_id, task_cid, attempt_id, started_at, finished_at, status, "
+            "command_digest, body_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        ),
+        QUACK_MUTATION_VALIDATION_RESULT_INSERT: (
+            "INSERT INTO validation_results "
+            "(result_id, run_id, task_cid, ordinal, outcome, "
+            "evidence_digest, body_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        ),
+        QUACK_MUTATION_EVIDENCE_DELETE: (
+            "DELETE FROM evidence_nodes WHERE evidence_id = ?"
+        ),
+        QUACK_MUTATION_EVIDENCE_INSERT: (
+            "INSERT INTO evidence_nodes "
+            "(evidence_id, parent_evidence_id, task_cid, evidence_kind, "
+            "digest, created_at, body_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        ),
+        QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT: (
+            "INSERT INTO leases "
+            "(task_cid, claim_cid, resolution_cid, claimant_did, "
+            "logical_epoch, fencing_token, expires_at_ms, attempt, "
+            "state, started_at_ms, release_reason, retry_not_before_ms, "
+            "owner_session_id, fence_epoch, revision, extension_schema, "
+            "extension_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        ),
+        QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE: (
+            "UPDATE leases SET attempt = ?, retry_not_before_ms = ?, "
+            "release_reason = ?, state = 'released', "
+            "extension_schema = ?, extension_json = ?, "
+            "revision = revision + 1 WHERE task_cid = ?"
+        ),
+    }
+)
 
 LOOPBACK_HOSTS: Final[frozenset[str]] = frozenset(
     {
@@ -228,6 +380,21 @@ class QuackStateServerControlError(QuackStateServerError):
 
 class QuackStateServerNotRunningError(QuackStateServerError):
     """Operation requires a started state-owner."""
+
+
+class QuackStateServerMutationError(QuackStateServerError):
+    """A bounded owner-side mutation request is invalid or inadmissible."""
+
+    def __init__(
+        self, code: str, *, observed: Mapping[str, Any] | None = None
+    ) -> None:
+        self.code = str(code or "mutation_rejected")
+        self.observed = dict(observed or {})
+        super().__init__(self.code)
+
+
+class QuackStateServerIsolationError(QuackStateServerError):
+    """The external-access owner mode lacks an admitted isolation receipt."""
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +533,74 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
     return payload if isinstance(payload, dict) else None
+
+
+def _mutation_duplicate_guard(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON key")
+        value[key] = item
+    return value
+
+
+def _read_bounded_canonical_json(path: Path) -> dict[str, Any]:
+    """Read one regular, non-symlink, canonical bounded JSON object."""
+
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode):
+            raise QuackStateServerMutationError("request_not_regular")
+        if info.st_size > QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES:
+            raise QuackStateServerMutationError("request_too_large")
+        raw = os.read(descriptor, QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES + 1)
+    finally:
+        os.close(descriptor)
+    if len(raw) > QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES:
+        raise QuackStateServerMutationError("request_too_large")
+    try:
+        payload = json.loads(raw, object_pairs_hook=_mutation_duplicate_guard)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise QuackStateServerMutationError("request_not_canonical_json") from exc
+    if not isinstance(payload, dict):
+        raise QuackStateServerMutationError("request_not_object")
+    try:
+        canonical = canonical_json_bytes(payload)
+    except Exception as exc:
+        raise QuackStateServerMutationError("request_not_canonical_json") from exc
+    if canonical != raw.strip():
+        raise QuackStateServerMutationError("request_not_canonical_json")
+    return payload
+
+
+def _mutation_parameters(step: Mapping[str, Any], count: int) -> list[Any]:
+    if set(step) != {"template_id", "parameters"}:
+        raise QuackStateServerMutationError("step_schema_invalid")
+    parameters = step.get("parameters")
+    if not isinstance(parameters, list) or len(parameters) != count:
+        raise QuackStateServerMutationError("step_parameters_invalid")
+    for value in parameters:
+        if value is None:
+            continue
+        if type(value) is int and -(2**63) <= value < 2**63:
+            continue
+        if type(value) is str and len(value.encode("utf-8")) <= QUACK_OWNER_MUTATION_MAX_PARAMETER_BYTES:
+            continue
+        raise QuackStateServerMutationError("step_parameters_invalid")
+    return parameters
+
+
+def _canonical_object(text: object, *, code: str) -> dict[str, Any]:
+    if not isinstance(text, str) or len(text.encode("utf-8")) > QUACK_OWNER_MUTATION_MAX_PARAMETER_BYTES:
+        raise QuackStateServerMutationError(code)
+    try:
+        value = json.loads(text, object_pairs_hook=_mutation_duplicate_guard)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise QuackStateServerMutationError(code) from exc
+    if not isinstance(value, dict) or canonical_json_bytes(value) != text.encode("utf-8"):
+        raise QuackStateServerMutationError(code)
+    return value
 
 
 def _contains_token_material(value: Any, token: str | None) -> bool:
@@ -775,6 +1010,8 @@ class QuackStateServerConfig:
     state_dir: Path
     host: str = DEFAULT_LOOPBACK_HOST
     port: int = 0
+    container_bind_host: str = ""
+    container_port: int = 0
     repository_id: str = ""
     store_id: str = DEFAULT_STORE_ID
     allow_experimental: bool = False
@@ -782,6 +1019,7 @@ class QuackStateServerConfig:
     application_version: str | None = None
     tool_version: str | None = None
     secret_handle: str = ""
+    isolation_receipt_path: Path | None = None
     typed_command_socket_path_override: Path | None = None
     repository_root: Path | None = None
 
@@ -823,6 +1061,13 @@ class QuackStateServerConfig:
             "state_dir",
             _sealed_path(self.state_dir, name="state_dir"),
         )
+        object.__setattr__(
+            self,
+            "isolation_receipt_path",
+            None
+            if self.isolation_receipt_path is None
+            else Path(self.isolation_receipt_path),
+        )
         socket_override = self.typed_command_socket_path_override
         if socket_override is not None:
             socket_override = Path(socket_override)
@@ -842,6 +1087,14 @@ class QuackStateServerConfig:
             )
         object.__setattr__(self, "host", str(self.host or DEFAULT_LOOPBACK_HOST).strip())
         object.__setattr__(self, "port", int(self.port))
+        object.__setattr__(
+            self,
+            "container_bind_host",
+            str(self.container_bind_host or self.host).strip(),
+        )
+        object.__setattr__(
+            self, "container_port", int(self.container_port or self.port)
+        )
         object.__setattr__(self, "repository_id", str(self.repository_id or "").strip())
         object.__setattr__(
             self, "store_id", str(self.store_id or DEFAULT_STORE_ID).strip()
@@ -854,12 +1107,155 @@ class QuackStateServerConfig:
         object.__setattr__(self, "secret_handle", handle)
         if self.port < 0 or self.port > 65535:
             raise ValueError("port must be in 0..65535")
+        if self.container_port < 0 or self.container_port > 65535:
+            raise ValueError("container_port must be in 0..65535")
+        if self.port != self.container_port:
+            raise ValueError("advertised and container ports must match exactly")
+        if (
+            self.container_bind_host != self.host
+            and self.isolation_receipt_path is None
+        ):
+            raise QuackStateServerBindError(
+                "distinct container bind requires an isolation receipt"
+            )
         assert_bind_admitted(self.host, remote_policy=self.remote_bind_policy)
 
     def resolved_secret_handle(self, server_id: str, generation: int) -> str:
         if self.secret_handle:
             return self.secret_handle
         return f"{DEFAULT_SECRET_HANDLE_PREFIX}:{server_id}:g{int(generation)}"
+
+
+def _mountinfo_entries() -> tuple[dict[str, Any], ...]:
+    try:
+        lines = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ()
+    entries: list[dict[str, Any]] = []
+    for line in lines[:8_192]:
+        fields = line.split()
+        try:
+            separator = fields.index("-")
+        except ValueError:
+            continue
+        if separator < 6 or len(fields) <= separator + 2:
+            continue
+        mountpoint = (
+            fields[4]
+            .replace("\\040", " ")
+            .replace("\\011", "\t")
+            .replace("\\134", "\\")
+        )
+        entries.append(
+            {
+                "target": str(Path(mountpoint).resolve()),
+                "options": frozenset(fields[5].split(",")),
+                "fstype": fields[separator + 1],
+                "source": fields[separator + 2],
+            }
+        )
+    return tuple(entries)
+
+
+def _observe_quack_owner_isolation(
+    config: QuackStateServerConfig, receipt: Mapping[str, Any]
+) -> Mapping[str, Any]:
+    """Observe isolation from inside the prospective owner process."""
+
+    marker = Path("/.dockerenv")
+    marker_regular = False
+    try:
+        marker_regular = stat.S_ISREG(marker.stat().st_mode) and not marker.is_symlink()
+    except OSError:
+        pass
+    try:
+        hostname = Path("/etc/hostname").read_text(encoding="utf-8").strip()
+    except OSError:
+        hostname = ""
+    container_id = str(receipt.get("container_id") or "").strip()
+    expected_hostname = str(receipt.get("container_hostname") or "").strip()
+    hostname_matches = bool(hostname and hostname == expected_hostname)
+    entries = _mountinfo_entries()
+    by_target = {entry["target"]: entry for entry in entries}
+    root = by_target.get("/")
+    repository = str(Path(str(receipt.get("repository_path") or "")).resolve())
+    repository_mount = by_target.get(repository)
+    root_read_only = bool(root and "ro" in root["options"] and "rw" not in root["options"])
+    repository_read_only = bool(
+        repository_mount
+        and "ro" in repository_mount["options"]
+        and "rw" not in repository_mount["options"]
+    )
+    pseudo = {
+        "proc", "sysfs", "tmpfs", "devtmpfs", "devpts", "cgroup", "cgroup2",
+        "mqueue", "overlay", "squashfs", "securityfs", "pstore", "bpf",
+        "tracefs", "configfs", "fusectl", "autofs", "hugetlbfs",
+    }
+    rw_host_bind_targets = sorted(
+        entry["target"]
+        for entry in entries
+        if entry["target"] != "/"
+        and "rw" in entry["options"]
+        and entry["fstype"] not in pseudo
+    )
+    docker_socket_absent = not Path("/var/run/docker.sock").exists()
+    try:
+        init_command = Path("/proc/1/cmdline").read_bytes().replace(b"\0", b" ").decode(
+            "utf-8", errors="replace"
+        )
+    except OSError:
+        init_command = ""
+    host_proc_hidden = bool(
+        marker_regular
+        and hostname_matches
+        and init_command
+        and not any(name in init_command.lower() for name in ("systemd", "init --system"))
+    )
+    home = Path(os.environ.get("HOME", "") or "/nonexistent").resolve()
+    try:
+        home_info = home.stat()
+        home_names = {item.name for item in home.iterdir()}
+    except OSError:
+        home_info = None
+        home_names = set()
+    forbidden_home = {
+        ".aws", ".azure", ".codex", ".config", ".docker", ".gnupg", ".ssh",
+        ".huggingface", ".netrc",
+    }
+    private_home = bool(
+        home_info
+        and stat.S_ISDIR(home_info.st_mode)
+        and not (home_info.st_mode & 0o077)
+        and not (home_names & forbidden_home)
+    )
+    provider_fragments = (
+        "OPENAI", "ANTHROPIC", "GITHUB_TOKEN", "HF_TOKEN", "HUGGING_FACE",
+        "AWS_ACCESS", "AZURE_CLIENT_SECRET", "GOOGLE_APPLICATION_CREDENTIALS",
+    )
+    provider_auth_absent = not any(
+        any(fragment in name.upper() for fragment in provider_fragments)
+        and bool(value)
+        for name, value in os.environ.items()
+    )
+    return MappingProxyType(
+        {
+            "schema": "ipfs_accelerate_py/agent-supervisor/quack-owner-isolation-observation@1",
+            "container_marker_regular": marker_regular,
+            # The full ID is externally inspect-bound in the signed receipt;
+            # host-network containers cannot re-observe it through hostname or
+            # cgroup.  Exact, launcher-chosen hostname is the independent live
+            # link to that receipt, alongside the namespace/mount controls.
+            "container_id": container_id if hostname_matches else "",
+            "container_hostname": hostname,
+            "root_read_only": root_read_only,
+            "repository_read_only": repository_read_only,
+            "rw_host_bind_targets": rw_host_bind_targets,
+            "docker_socket_absent": docker_socket_absent,
+            "host_proc_hidden": host_proc_hidden,
+            "private_home": private_home,
+            "provider_auth_absent": provider_auth_absent,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1113,126 +1509,6 @@ class TokenVault:
 
 
 # ---------------------------------------------------------------------------
-# Owner-DML gate
-# ---------------------------------------------------------------------------
-
-_OWNER_DML_PREFIXES: Final = (
-    "UPDATE ",
-    "DELETE ",
-    "MERGE ",
-    "INSERT OR REPLACE",
-    "INSERT OR IGNORE",
-)
-
-
-class _OwnerDmlResult:
-    """Materialized DML result safe to consume after its connection closes."""
-
-    description = None
-    rowcount = -1
-
-    def __init__(self, rows: Sequence[Any] = ()) -> None:
-        self._rows = tuple(rows)
-
-    def fetchall(self) -> list[Any]:
-        return list(self._rows)
-
-    def fetchone(self) -> Any | None:
-        return self._rows[0] if self._rows else None
-
-
-class _QuackPausedMutationConnection:
-    """Stop ``quack_serve`` around row-mutating owner DML.
-
-    A live ``quack_serve`` session fatals DuckDB when an in-process UPDATE
-    touches an existing base-table row. Inbox DML is applied on the owner
-    connection, so the serve listener must be paused for that statement.
-    """
-
-    def __init__(
-        self,
-        inner: Any,
-        *,
-        pause: Callable[[], None],
-        resume: Callable[[], None],
-        database_path: Path | None = None,
-        note: Callable[[str], None] | None = None,
-    ) -> None:
-        object.__setattr__(self, "_inner", inner)
-        object.__setattr__(self, "_pause", pause)
-        object.__setattr__(self, "_resume", resume)
-        object.__setattr__(self, "_database_path", database_path)
-        object.__setattr__(self, "_note", note)
-
-    def execute(self, sql: str, parameters: Any = None) -> Any:
-        normalized = " ".join(str(sql or "").strip().upper().split())
-        inner = object.__getattribute__(self, "_inner")
-        if not normalized.startswith(_OWNER_DML_PREFIXES):
-            if parameters is None:
-                return inner.execute(sql)
-            return inner.execute(sql, parameters)
-        pause = object.__getattribute__(self, "_pause")
-        resume = object.__getattribute__(self, "_resume")
-        pause()
-        try:
-            return object.__getattribute__(self, "_execute_inner")(sql, parameters)
-        finally:
-            try:
-                resume()
-            except Exception:
-                # DML already ran; a serve-resume failure must not report as
-                # a rejected mutation. The next ready() probe fails closed.
-                pass
-
-    def _execute_inner(self, sql: str, parameters: Any) -> Any:
-        # After quack_stop, apply DML on a fresh in-process file connection.
-        # Reusing the serve connection still fatals on row-touching UPDATE for
-        # the live control-plane schema.
-        note = object.__getattribute__(self, "_note")
-        inner = object.__getattribute__(self, "_inner")
-        path = object.__getattribute__(self, "_database_path")
-        if callable(note):
-            note("dml_start")
-        try:
-            if (
-                hasattr(inner, "_connection")
-                and getattr(inner, "_connection", None) is None
-                and path is not None
-            ):
-                import duckdb
-
-                alt = duckdb.connect(str(path))
-                try:
-                    if parameters is None:
-                        executed = alt.execute(sql)
-                    else:
-                        executed = alt.execute(sql, parameters)
-                    result = _OwnerDmlResult(executed.fetchall())
-                finally:
-                    alt.close()
-            elif parameters is None:
-                result = inner.execute(sql)
-            else:
-                result = inner.execute(sql, parameters)
-        except Exception as exc:
-            if callable(note):
-                note("dml_error_" + type(exc).__name__)
-            raise
-        if callable(note):
-            note("dml_ok")
-        return result
-
-    def close(self) -> None:
-        inner = object.__getattribute__(self, "_inner")
-        close = getattr(inner, "close", None)
-        if callable(close):
-            close()
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(object.__getattribute__(self, "_inner"), name)
-
-
-# ---------------------------------------------------------------------------
 # Transport adapter
 # ---------------------------------------------------------------------------
 
@@ -1273,6 +1549,7 @@ class InProcessQuackTransport:
 
     def __init__(self) -> None:
         self._started = False
+        self._serve_uri = ""
         self._listen_uri = ""
         self._server_identity: dict[str, Any] = {}
 
@@ -1285,7 +1562,12 @@ class InProcessQuackTransport:
         token: str,
         identity: StateServerIdentity,
     ) -> Mapping[str, Any]:
-        # Never log token.
+        serve_uri = listen_uri(host, port)
+        advertised_uri = identity.listen_uri
+        allow_other_hostname = not _is_loopback_host(host)
+        # DuckDB/Quack 1.5.5 exposes quack_serve as a table function.  Named
+        # arguments are required after the address; the token stays bound and
+        # never enters SQL text or the returned public observation.
         try:
             connection.execute("LOAD quack")
         except Exception as exc:
@@ -1293,27 +1575,28 @@ class InProcessQuackTransport:
                 f"failed to LOAD quack for state-owner: {type(exc).__name__}"
             ) from exc
 
-        uri = listen_uri(host, port)
         disable_ssl = _is_loopback_host(host)
         # Quack's current table function uses named optional parameters.
         # Values remain parameter-bound so the token is absent from SQL text,
         # argv, status, and logs.  Older qualified beta signatures remain a
-        # narrow compatibility path.
+        # narrow compatibility path.  Isolated container binds pass
+        # ``allow_other_hostname`` so the advertised loopback identity can
+        # differ from the in-container listen address.
         serve_attempts = (
             (
                 "SELECT * FROM quack_serve(?, token := ?, "
                 "allow_other_hostname := ?, disable_ssl := ?)",
-                [uri, token, False, disable_ssl],
+                [serve_uri, token, allow_other_hostname, disable_ssl],
             ),
             (
                 "SELECT * FROM quack_serve(token := ?, "
                 "allow_other_hostname := ?, disable_ssl := ?)",
-                [token, False, disable_ssl],
+                [token, allow_other_hostname, disable_ssl],
             ),
             (
                 "SELECT * FROM quack_serve(?, token := ?, "
                 "allow_other_hostname := false, disable_ssl := true)",
-                [uri, token],
+                [serve_uri, token],
             ),
             ("SELECT quack_serve(?, ?, ?)", [host, int(port), token]),
             ("SELECT quack_serve(?, ?)", [f"{host}:{int(port)}", token]),
@@ -1334,7 +1617,8 @@ class InProcessQuackTransport:
             ) from last_error
 
         self._started = True
-        self._listen_uri = uri
+        self._serve_uri = serve_uri
+        self._listen_uri = advertised_uri
         self._server_identity = {
             "server_id": identity.server_id,
             "store_id": identity.store_id,
@@ -1343,7 +1627,7 @@ class InProcessQuackTransport:
             "schema_fingerprint": identity.schema_fingerprint,
             "generation": identity.generation,
             "process_birth_id": identity.process_birth_id,
-            "listen_uri": uri,
+            "listen_uri": advertised_uri,
         }
         # Return public observation only.
         return MappingProxyType(dict(self._server_identity))
@@ -1358,8 +1642,9 @@ class InProcessQuackTransport:
         if not self._started:
             raise QuackStateServerReadyError("transport has not started")
         # Prove the listener, authentication, request worker, and response path
-        # are all usable.  A local SELECT on the owner connection would not
-        # prove that Quack clients can attach.
+        # are all usable.  Named token/disable_ssl arguments match the admitted
+        # Quack 1.5.5 surface; positional 4-arg calls are a last compatibility
+        # attempt only.
         query_attempts = (
             (
                 "SELECT * FROM quack_query(?, ?, token := ?, disable_ssl := ?)",
@@ -1369,25 +1654,43 @@ class InProcessQuackTransport:
                 "SELECT * FROM quack_query(?, ?, token := ?, disable_ssl := true)",
                 [self._listen_uri, "SELECT 1 AS quack_live", token],
             ),
-            (
-                "SELECT * FROM quack_query(?, ?, ?, ?)",
-                [self._listen_uri, "SELECT 1 AS quack_live", token, True],
-            ),
         )
         rows = None
         last_error: Exception | None = None
-        for sql, params in query_attempts:
+        try:
+            import duckdb
+
+            client = duckdb.connect(":memory:")
             try:
-                rows = connection.execute(sql, params).fetchall()
-                last_error = None
-                break
-            except Exception as exc:  # pragma: no cover - extension-version path
-                last_error = exc
+                client.execute("LOAD quack")
+                for sql, params in query_attempts:
+                    try:
+                        rows = client.execute(sql, params).fetchall()
+                        last_error = None
+                        break
+                    except Exception as exc:  # pragma: no cover - extension-version path
+                        last_error = exc
+            finally:
+                client.close()
+        except Exception as exc:
+            raise QuackStateServerReadyError(
+                f"authenticated remote live query failed: {type(exc).__name__}"
+            ) from exc
         if last_error is not None:
             raise QuackStateServerReadyError(
                 f"authenticated remote live query failed: {type(last_error).__name__}"
             ) from last_error
-        if rows is None or len(rows) != 1 or tuple(rows[0]) != (1,):
+        if rows is None or len(rows) != 1:
+            raise QuackStateServerReadyError(
+                "authenticated remote live query returned an unexpected result"
+            )
+        live_row = rows[0]
+        live_value = (
+            live_row[0]
+            if not isinstance(live_row, Mapping)
+            else live_row.get("quack_live")
+        )
+        if live_value != 1:
             raise QuackStateServerReadyError(
                 "authenticated remote live query returned an unexpected result"
             )
@@ -1408,17 +1711,18 @@ class InProcessQuackTransport:
         return MappingProxyType(observed)
 
     def stop(self, connection: Any | None = None) -> None:
-        if connection is not None and self._listen_uri:
+        if connection is not None and self._serve_uri:
             try:
                 connection.execute(
                     "SELECT * FROM quack_stop(?)",
-                    [self._listen_uri],
+                    [self._serve_uri],
                 ).fetchall()
             except Exception:
                 # Closing the exclusive owning connection is the final stop
                 # boundary; callers still receive lifecycle bookkeeping.
                 pass
         self._started = False
+        self._serve_uri = ""
         self._listen_uri = ""
         self._server_identity = {}
 
@@ -1466,7 +1770,7 @@ class FakeQuackTransport:
                 "schema_fingerprint": identity.schema_fingerprint,
                 "generation": identity.generation,
                 "process_birth_id": identity.process_birth_id,
-                "listen_uri": listen_uri(host, port),
+                "listen_uri": identity.listen_uri,
             }
         )
 
@@ -1532,11 +1836,14 @@ class QuackStateServer:
     connection_factory: Callable[[Path], Any] | None = None
     process_birth_factory: Callable[[], ProcessBirthIdentity] | None = None
     owner_liveness_probe: Callable[[ProcessBirthIdentity], OwnerLiveness] | None = None
+    isolation_observer: Callable[
+        [QuackStateServerConfig, Mapping[str, Any]], Mapping[str, Any]
+    ] | None = None
     clock: Callable[[], float] = field(default=time.time)
     _lifecycle: ServerLifecycle = field(default=ServerLifecycle.CREATED, init=False)
     _identity: StateServerIdentity | None = field(default=None, init=False)
     _connection: Any | None = field(default=None, init=False)
-    _serve_connection: Any | None = field(default=None, init=False)
+    _transport_connection: Any | None = field(default=None, init=False)
     _owner: ExclusiveOwnerLease | None = field(default=None, init=False)
     _vault: TokenVault | None = field(default=None, init=False)
     _capability: QuackCapabilityReport | None = field(default=None, init=False)
@@ -1544,6 +1851,14 @@ class QuackStateServer:
     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
     _bound_port: int = field(default=0, init=False)
     _logs: list[str] = field(default_factory=list, init=False, repr=False)
+    _mutation_recovery_complete: bool = field(default=False, init=False, repr=False)
+    _isolation_admission: dict[str, Any] | None = field(
+        default=None, init=False, repr=False
+    )
+    _read_replica_observation: dict[str, Any] = field(
+        default_factory=dict, init=False, repr=False
+    )
+    _read_replica_refresh_sequence: int = field(default=0, init=False, repr=False)
     _event_source: EventSource | None = field(default=None, init=False, repr=False)
     _event_wait: StateOwnerEventWait | None = field(default=None, init=False, repr=False)
     _command_gateway: TypedStateOwnerGateway | None = field(
@@ -1574,6 +1889,8 @@ class QuackStateServer:
             self.capability_probe = probe_quack_capabilities
         if self.process_birth_factory is None:
             self.process_birth_factory = current_process_birth
+        if self.isolation_observer is None:
+            self.isolation_observer = _observe_quack_owner_isolation
         self._vault = TokenVault(self.config.state_dir)
 
     # -- public properties -------------------------------------------------
@@ -2090,6 +2407,14 @@ class QuackStateServer:
     def stop_control_path(self) -> Path:
         return self.config.state_dir / CONTROL_STOP_FILENAME
 
+    def read_replica_path(self) -> Path:
+        """Return the non-authoritative Quack transport snapshot path."""
+
+        database = self.config.database_path
+        return database.with_name(
+            f"{database.stem}{READ_REPLICA_NAME_INFIX}{database.suffix}"
+        )
+
     def typed_command_socket_path(self) -> Path:
         return (
             self.config.typed_command_socket_path_override
@@ -2217,6 +2542,14 @@ class QuackStateServer:
     ) -> tuple[Mapping[str, Any], ...]:
         """Serialize mutation processing with lifecycle and owner teardown."""
 
+        catalog_bound = MUTATION_MAX_PER_PASS
+        if not isinstance(catalog_bound, int) or catalog_bound < 1:
+            catalog_bound = 32
+        # Drain closed-catalog bundles first so protocol-@2 `*.request.json`
+        # files are not misread as envelope mutations.
+        self.service_mutation_inbox(
+            max_requests=min(max(int(max_requests), 1), catalog_bound)
+        )
         with self._lock:
             return self._process_mutation_inbox_locked(
                 max_requests=max_requests,
@@ -2488,7 +2821,178 @@ class QuackStateServer:
                 f"control-plane migration failed: {type(exc).__name__}: {exc}"
             ) from exc
 
-    def _open_connection(self) -> Any:
+    def _admit_isolated_owner(self) -> dict[str, Any] | None:
+        """Admit the explicit container-only external-access owner mode."""
+
+        receipt_path = self.config.isolation_receipt_path
+        if receipt_path is None:
+            return None
+        state_dir = self.config.state_dir.expanduser().resolve()
+        path = receipt_path.expanduser()
+        if not path.is_absolute():
+            path = state_dir / path
+        path = path.resolve()
+        try:
+            path.relative_to(state_dir)
+        except ValueError as exc:
+            raise QuackStateServerIsolationError(
+                "isolation receipt must be stored under the owner state directory"
+            ) from exc
+        try:
+            info = path.stat()
+        except OSError as exc:
+            raise QuackStateServerIsolationError(
+                "isolation receipt is unavailable"
+            ) from exc
+        if (
+            path.is_symlink()
+            or not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.getuid()
+            or info.st_mode & 0o077
+            or info.st_size > 32_768
+        ):
+            raise QuackStateServerIsolationError(
+                "isolation receipt must be an owner-only bounded regular file"
+            )
+        try:
+            raw = path.read_bytes()
+            payload = json.loads(raw, object_pairs_hook=_mutation_duplicate_guard)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            raise QuackStateServerIsolationError(
+                "isolation receipt is not canonical JSON"
+            ) from exc
+        fields = {
+            "schema",
+            "runtime",
+            "container_id",
+            "container_hostname",
+            "network_mode",
+            "container_bind_host",
+            "container_port",
+            "published_host",
+            "published_port",
+            "published_protocol",
+            "owner_write_root",
+            "database_path",
+            "state_dir",
+            "repository_path",
+            "allowed_rw_mount_targets",
+            "issuer",
+            "issued_at",
+            "receipt_cid",
+        }
+        if not isinstance(payload, dict) or set(payload) != fields:
+            raise QuackStateServerIsolationError(
+                "isolation receipt has unknown or missing fields"
+            )
+        unsigned = dict(payload)
+        receipt_cid = unsigned.pop("receipt_cid", None)
+        database_path = str(self.config.database_path.expanduser().resolve())
+        owner_write_root = str(self.config.database_path.parent.resolve())
+        raw_repository_path = str(payload.get("repository_path") or "").strip()
+        repository_path = str(Path(raw_repository_path).resolve()) if raw_repository_path else ""
+        allowed_rw = payload.get("allowed_rw_mount_targets")
+        if (
+            payload.get("schema") != QUACK_ISOLATION_RECEIPT_SCHEMA
+            or payload.get("runtime") not in {"docker", "podman"}
+            or not isinstance(payload.get("container_id"), str)
+            or re.fullmatch(
+                r"[0-9a-f]{64}", str(payload.get("container_id") or "")
+            )
+            is None
+            or not isinstance(payload.get("container_hostname"), str)
+            or re.fullmatch(
+                r"[a-z0-9](?:[a-z0-9.-]{0,61}[a-z0-9])?",
+                str(payload.get("container_hostname") or ""),
+            )
+            is None
+            or payload.get("network_mode") != "bridge"
+            or payload.get("container_bind_host") != "0.0.0.0"
+            or payload.get("container_bind_host")
+            != self.config.container_bind_host
+            or type(payload.get("container_port")) is not int
+            or not 1 <= int(payload.get("container_port") or 0) <= 65535
+            or payload.get("container_port") != self.config.container_port
+            or payload.get("published_host") != DEFAULT_LOOPBACK_HOST
+            or payload.get("published_host") != self.config.host
+            or type(payload.get("published_port")) is not int
+            or not 1 <= int(payload.get("published_port") or 0) <= 65535
+            or payload.get("published_port") != self.config.port
+            or payload.get("published_port") != payload.get("container_port")
+            or payload.get("published_protocol") != "tcp"
+            or payload.get("owner_write_root") != owner_write_root
+            or payload.get("database_path") != database_path
+            or payload.get("state_dir") != str(state_dir)
+            or self.config.database_path.parent.resolve()
+            != Path(owner_write_root)
+            or state_dir != Path(owner_write_root) / "quack-owner"
+            or self.config.database_path.parent != Path(owner_write_root)
+            or self.config.database_path.name in {"", ".", ".."}
+            or not repository_path
+            or not Path(raw_repository_path).is_absolute()
+            or raw_repository_path != repository_path
+            or not isinstance(allowed_rw, list)
+            or any(not isinstance(item, str) for item in allowed_rw)
+            or allowed_rw != [owner_write_root]
+            or not str(payload.get("issuer") or "").strip()
+            or not str(payload.get("issued_at") or "").strip()
+            or receipt_cid != content_identity(unsigned)
+            or canonical_json_bytes(payload) != raw.strip()
+        ):
+            raise QuackStateServerIsolationError(
+                "isolation receipt identity or required controls are invalid"
+            )
+        assert self.isolation_observer is not None
+        try:
+            observed = dict(self.isolation_observer(self.config, payload))
+        except Exception as exc:
+            raise QuackStateServerIsolationError(
+                "live isolation observation failed"
+            ) from exc
+        observation_fields = {
+            "schema",
+            "container_marker_regular",
+            "container_id",
+            "container_hostname",
+            "root_read_only",
+            "repository_read_only",
+            "rw_host_bind_targets",
+            "docker_socket_absent",
+            "host_proc_hidden",
+            "private_home",
+            "provider_auth_absent",
+        }
+        if (
+            set(observed) != observation_fields
+            or observed.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/quack-owner-isolation-observation@1"
+            or observed.get("container_marker_regular") is not True
+            or observed.get("container_id") != payload.get("container_id")
+            or observed.get("container_hostname")
+            != payload.get("container_hostname")
+            or observed.get("root_read_only") is not True
+            or observed.get("repository_read_only") is not True
+            or observed.get("rw_host_bind_targets") != sorted(allowed_rw)
+            or observed.get("docker_socket_absent") is not True
+            or observed.get("host_proc_hidden") is not True
+            or observed.get("private_home") is not True
+            or observed.get("provider_auth_absent") is not True
+        ):
+            raise QuackStateServerIsolationError(
+                "live container isolation does not satisfy the admitted receipt"
+            )
+        return payload
+
+    def _open_connection(
+        self, *, isolation_admission: Mapping[str, Any] | None
+    ) -> Any:
+        """Open the authoritative writer with the ordinary sealed policy.
+
+        The writer never loads Quack and never enables external access.  Quack
+        is loaded only on the distinct read-only transport replica.
+        """
+
+        del isolation_admission
         if self.connection_factory is not None:
             return self.connection_factory(self.config.database_path)
         if not duckdb_available():
@@ -2496,116 +3000,464 @@ class QuackStateServer:
         if isinstance(self.transport, InProcessQuackTransport):
             return open_duckdb_connection(
                 self.config.database_path,
+                threads=1,
+                memory_limit=DEFAULT_MEMORY_LIMIT,
                 quack_owner=True,
             )
         return open_quack_state_owner_connection(self.config.database_path)
 
-    def _wrap_owner_mutation_connection(self, connection: Any) -> Any:
-        """Pause ``quack_serve`` around inbox UPDATE/DELETE on the owner conn."""
+    def _read_replica_enabled(self) -> bool:
+        """Return whether this is the real, non-injected transport path."""
 
-        transport = self.transport
-        vault = self._vault
-        if transport is None or vault is None:
-            raise QuackStateServerError("mutation gate requires transport and vault")
-        host = self.config.host
-        port = int(self._bound_port or self.config.port)
-        db_path = str(self.config.database_path)
-        serve_paused = False
+        return self.connection_factory is None
 
-        def _gate_event(event: str) -> None:
-            self._log("owner-dml-gate " + event)
-            try:
-                path = self.config.state_dir / "mutation-gate.jsonl"
-                with path.open("a", encoding="utf-8") as handle:
-                    handle.write(json.dumps({"event": event}) + "\n")
-            except Exception:
-                pass
-
-        def pause() -> None:
-            nonlocal serve_paused
-            serve_paused = False
-            _gate_event("pause")
-            if not hasattr(connection, "_connection"):
-                _gate_event("paused")
-                return
-            identity = self._identity
-            uri = (
-                (identity.listen_uri if identity is not None else "")
-                or listen_uri(host, port)
+    def _verify_loaded_transport_extensions(self, connection: Any) -> None:
+        capability = self._capability
+        if capability is None or not capability.extension.install_path:
+            raise QuackStateServerCapabilityError(
+                "state-owner lacks a prequalified local Quack extension path"
             )
-            current = getattr(connection, "_connection", None)
-            try:
-                if current is not None:
-                    stopped = current.execute("SELECT * FROM quack_stop(?)", [uri])
-                    fetchall = getattr(stopped, "fetchall", None)
-                    if callable(fetchall):
-                        fetchall()
-                    close = getattr(current, "close", None)
-                    if callable(close):
-                        close()
-            except Exception as exc:
-                _gate_event("pause_error_" + type(exc).__name__)
-            else:
-                connection._connection = None
-                serve_paused = True
-                _gate_event("paused")
+        extension = connection.execute(
+            "SELECT loaded, install_path, extension_version "
+            "FROM duckdb_extensions() WHERE extension_name = 'quack'"
+        ).fetchone()
+        if (
+            extension is None
+            or extension[0] is not True
+            or Path(str(extension[1])).resolve()
+            != Path(capability.extension.install_path).resolve()
+            or (
+                capability.extension.extension_version
+                and str(extension[2]) != capability.extension.extension_version
+            )
+        ):
+            raise QuackStateServerCapabilityError(
+                "loaded Quack bytes differ from the admitted capability"
+            )
 
-        def resume() -> None:
-            nonlocal serve_paused
-            identity = self._identity
-            if identity is None:
-                raise QuackStateServerNotRunningError(
-                    "cannot resume quack_serve without identity"
-                )
-            _gate_event("resume")
-            # A fake or otherwise non-serving transport may not expose
-            # ``quack_stop`` on its owner connection.  In that case pause()
-            # deliberately left the live connection in place and owner DML
-            # ran directly on it; opening a differently configured replacement
-            # would violate DuckDB's per-file configuration fence.
-            if not serve_paused:
-                _gate_event("resume_not_required")
-                return
-            if not hasattr(connection, "_connection"):
-                _gate_event("resumed")
-                return
+        # Quack's HTTP transport uses the installed core httpfs build.  Admit
+        # only the build colocated with the already-qualified Quack bytes.
+        httpfs = connection.execute(
+            "SELECT installed, install_path, extension_version, "
+            "install_mode, installed_from FROM duckdb_extensions() "
+            "WHERE extension_name = 'httpfs'"
+        ).fetchone()
+        if (
+            httpfs is None
+            or httpfs[0] is not True
+            or not str(httpfs[1] or "")
+            or Path(str(httpfs[1])).resolve().parent
+            != Path(capability.extension.install_path).resolve().parent
+            or not str(httpfs[2] or "")
+            or str(httpfs[3]) != "REPOSITORY"
+            or str(httpfs[4]) != "core"
+        ):
+            raise QuackStateServerCapabilityError(
+                "Quack transport lacks the colocated core httpfs build"
+            )
+
+    def _open_read_replica_connection(
+        self, *, isolation_admission: Mapping[str, Any] | None
+    ) -> Any:
+        """Open and seal the non-authoritative snapshot in read-only mode."""
+
+        if not duckdb_available():
+            raise QuackStateServerError("DuckDB is required for the state-owner")
+        isolation = isolation_admission
+        try:
             import duckdb
 
-            token = vault.resolve(identity.secret_handle)
-            uri = identity.listen_uri or listen_uri(host, port)
-            new = duckdb.connect(db_path)
-            try:
-                new.execute("LOAD quack")
-                served = new.execute(
-                    "SELECT * FROM quack_serve(?, token := ?, "
-                    "allow_other_hostname := false, disable_ssl := true)",
-                    [uri, token],
+            connection = duckdb.connect(
+                str(self.read_replica_path()),
+                read_only=True,
+                config={
+                    "autoinstall_known_extensions": "false",
+                    "autoload_known_extensions": "false",
+                    "enable_external_access": "true",
+                    "allow_unsigned_extensions": "false",
+                    "threads": "1",
+                    "memory_limit": DEFAULT_MEMORY_LIMIT,
+                },
+            )
+            connection.execute("LOAD quack")
+            self._verify_loaded_transport_extensions(connection)
+            connection.execute("LOAD httpfs")
+            functions = {
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT DISTINCT function_name FROM duckdb_functions() "
+                    "WHERE function_name IN ('quack_serve', 'quack_query')"
+                ).fetchall()
+            }
+            if functions != {"quack_serve", "quack_query"}:
+                raise QuackStateServerCapabilityError(
+                    "loaded Quack extension lacks the admitted serve/query surface"
                 )
-                fetchall = getattr(served, "fetchall", None)
-                if callable(fetchall):
-                    fetchall()
-                connection._connection = new
-                serve_paused = False
-                _gate_event("resumed")
-            except Exception as exc:
-                _gate_event("resume_error_" + type(exc).__name__)
-                close = getattr(new, "close", None)
-                if callable(close):
-                    try:
-                        close()
-                    except Exception:
-                        pass
-                raise
-            finally:
-                del token
+            access_mode = connection.execute(
+                "SELECT current_setting('access_mode')"
+            ).fetchone()
+            if access_mode is None or str(access_mode[0]).lower() != "read_only":
+                raise QuackStateServerCapabilityError(
+                    "Quack transport replica is not read-only"
+                )
+            # Loading is the only external-access window.  Serving fixed
+            # loopback HTTP continues to work after this is disabled, while
+            # raw authenticated SQL cannot COPY, read files, or reach URLs.
+            connection.execute("SET enable_external_access = false")
+            connection.execute("SET allow_persistent_secrets = false")
+            connection.execute("SET lock_configuration = true")
+            names = tuple(name for name, _configured, _expected in DUCKDB_CONNECTION_POLICY_SETTINGS)
+            settings = connection.execute(
+                "SELECT " + ", ".join(f"current_setting('{name}')" for name in names)
+            ).fetchone()
+            expected = tuple(
+                value
+                for _name, _configured, value in DUCKDB_CONNECTION_POLICY_SETTINGS
+            )
+            if settings is None or tuple(settings) != expected:
+                raise QuackStateServerCapabilityError(
+                    "read-only Quack transport did not seal the DuckDB policy"
+                )
+            if isolation is not None:
+                self._log(
+                    "isolated Quack owner mode admitted "
+                    f"receipt_cid={isolation['receipt_cid']}"
+                )
+            return DuckDBConnection.wrap(connection)
+        except BaseException:
+            if "connection" in locals():
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            raise
 
-        return _QuackPausedMutationConnection(
-            connection,
-            pause=pause,
-            resume=resume,
-            database_path=self.config.database_path,
-            note=_gate_event,
+    def _copy_authoritative_read_replica(self) -> tuple[str, int]:
+        """Checkpoint and atomically refresh the bounded replica file."""
+
+        if self._connection is None:
+            raise QuackStateServerReadyError("authoritative writer is unavailable")
+        source = self.config.database_path
+        replica = self.read_replica_path()
+        if source.parent != replica.parent or source == replica:
+            raise QuackStateServerReadyError("read-replica path is outside owner root")
+        temporary = replica.with_name(
+            f".{replica.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
         )
+        source_descriptor: int | None = None
+        target_descriptor: int | None = None
+        started = time.monotonic()
+        try:
+            self._connection.execute("CHECKPOINT")
+            source_descriptor = os.open(
+                source,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0),
+            )
+            before = os.fstat(source_descriptor)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_uid != os.getuid()
+                or before.st_size <= 0
+                or before.st_size > READ_REPLICA_MAX_BYTES
+            ):
+                raise QuackStateServerReadyError(
+                    "authoritative database is not an owner-only bounded regular file"
+                )
+            target_descriptor = os.open(
+                temporary,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+                0o600,
+            )
+            digest = hashlib.sha256()
+            copied = 0
+            while copied < before.st_size:
+                if time.monotonic() - started > READ_REPLICA_COPY_TIMEOUT_SECONDS:
+                    raise QuackStateServerReadyError("read-replica copy timed out")
+                chunk = os.read(
+                    source_descriptor,
+                    min(READ_REPLICA_COPY_CHUNK_BYTES, before.st_size - copied),
+                )
+                if not chunk:
+                    raise QuackStateServerReadyError(
+                        "authoritative database changed during replica copy"
+                    )
+                digest.update(chunk)
+                view = memoryview(chunk)
+                while view:
+                    written = os.write(target_descriptor, view)
+                    if written <= 0:
+                        raise QuackStateServerReadyError(
+                            "read-replica copy made no progress"
+                        )
+                    view = view[written:]
+                copied += len(chunk)
+            after = os.fstat(source_descriptor)
+            stable_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+            if any(getattr(before, name) != getattr(after, name) for name in stable_fields):
+                raise QuackStateServerReadyError(
+                    "authoritative database changed during replica copy"
+                )
+            os.fsync(target_descriptor)
+            os.close(target_descriptor)
+            target_descriptor = None
+            os.replace(temporary, replica)
+            os.chmod(replica, 0o600)
+            directory_descriptor = os.open(
+                replica.parent,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0),
+            )
+            try:
+                os.fsync(directory_descriptor)
+            finally:
+                os.close(directory_descriptor)
+            return f"sha256:{digest.hexdigest()}", copied
+        except QuackStateServerError:
+            raise
+        except Exception as exc:
+            raise QuackStateServerReadyError(
+                f"read-replica refresh failed: {type(exc).__name__}"
+            ) from exc
+        finally:
+            if source_descriptor is not None:
+                os.close(source_descriptor)
+            if target_descriptor is not None:
+                os.close(target_descriptor)
+            temporary.unlink(missing_ok=True)
+
+    def _wait_for_transport_endpoint_closed(self) -> None:
+        """Independently observe endpoint closure before replacing a replica."""
+
+        if not self._read_replica_enabled() or self._bound_port <= 0:
+            return
+        deadline = time.monotonic() + READ_REPLICA_STOP_TIMEOUT_SECONDS
+        while True:
+            probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            probe.settimeout(0.05)
+            try:
+                open_endpoint = probe.connect_ex(
+                    (self.config.host, self._bound_port)
+                ) == 0
+            finally:
+                probe.close()
+            if not open_endpoint:
+                return
+            if time.monotonic() >= deadline:
+                raise QuackStateServerReadyError(
+                    "stale Quack transport remained reachable during refresh"
+                )
+            time.sleep(0.01)
+
+    def _stop_transport_connection(self, *, observe_closed: bool) -> None:
+        connection = self._transport_connection
+        if connection is None:
+            return
+        try:
+            if self.transport is not None:
+                self.transport.stop(connection)
+        finally:
+            if connection is not self._connection and hasattr(connection, "close"):
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            self._transport_connection = None
+            if self._read_replica_observation:
+                self._read_replica_observation["live"] = False
+        if observe_closed:
+            self._wait_for_transport_endpoint_closed()
+
+    def _assert_live_identity_observation(
+        self, observed: Mapping[str, Any]
+    ) -> None:
+        if self._identity is None:
+            raise QuackStateServerReadyError("state-owner identity is unavailable")
+        required_fields = (
+            "store_id",
+            "generation",
+            "schema_revision",
+            "schema_fingerprint",
+            "server_id",
+            "database_uuid",
+            "process_birth_id",
+        )
+        missing = [
+            name for name in required_fields if observed.get(name) in (None, "")
+        ]
+        if missing:
+            raise QuackStateServerReadyError(
+                "live query missing identity fields: " + ", ".join(missing)
+            )
+        try:
+            observed_generation = int(observed["generation"])
+            observed_schema_revision = int(observed["schema_revision"])
+        except (TypeError, ValueError) as exc:
+            raise QuackStateServerReadyError(
+                "live query identity fields are not integers"
+            ) from exc
+        if not self._identity.matches(
+            store_id=str(observed["store_id"]),
+            generation=observed_generation,
+            schema_revision=observed_schema_revision,
+            schema_fingerprint=str(observed["schema_fingerprint"]),
+            server_id=str(observed["server_id"]),
+            database_uuid=str(observed["database_uuid"]),
+            process_birth_id=str(observed["process_birth_id"]),
+        ):
+            raise QuackStateServerReadyError(
+                "live query identities do not match published state-owner identity"
+            )
+
+    def _refresh_read_replica(
+        self, *, verify_request: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Synchronously replace and prove the transport snapshot.
+
+        The endpoint is stopped before checkpoint/copy and remains unavailable
+        until the new read-only connection, live identity, and optional exact
+        mutation effects have all been observed.
+        """
+
+        if (
+            self._connection is None
+            or self._identity is None
+            or self._vault is None
+            or self.transport is None
+        ):
+            raise QuackStateServerReadyError(
+                "read-replica refresh lacks writer, identity, vault, or transport"
+            )
+        identity = self._identity
+        token = self._vault.resolve(identity.secret_handle)
+        if not self._read_replica_enabled():
+            if self._transport_connection is None:
+                public = self.transport.start(
+                    self._connection,
+                    host=self.config.container_bind_host,
+                    port=int(self.config.container_port or self._bound_port),
+                    token=token,
+                    identity=identity,
+                )
+                self._vault.assert_absent_from(
+                    public, surface_name="transport.start"
+                )
+                self._transport_connection = self._connection
+            observed = self.transport.live_query(
+                self._transport_connection,
+                identity=identity,
+                token=token,
+            )
+            self._assert_live_identity_observation(observed)
+            self._read_replica_refresh_sequence += 1
+            self._read_replica_observation = {
+                "schema": "ipfs_accelerate_py/agent-supervisor/read-replica-observation@1",
+                "authority": "injected_test_transport",
+                "path": str(self.read_replica_path()),
+                "source_database_path": str(self.config.database_path),
+                "server_id": identity.server_id,
+                "database_uuid": identity.database_uuid,
+                "generation": identity.generation,
+                "schema_revision": identity.schema_revision,
+                "schema_fingerprint": identity.schema_fingerprint,
+                "storage_schema_fingerprint": str(
+                    self._mutation_binding().get("schema_fingerprint") or ""
+                ),
+                "sha256": "",
+                "size_bytes": 0,
+                "refresh_sequence": self._read_replica_refresh_sequence,
+                "refreshed_at_ms": int(self.clock() * 1000),
+                "live": True,
+            }
+            return dict(self._read_replica_observation)
+
+        self._stop_transport_connection(observe_closed=True)
+        try:
+            digest, size_bytes = self._copy_authoritative_read_replica()
+            replica_connection = self._open_read_replica_connection(
+                isolation_admission=self._isolation_admission
+            )
+            self._transport_connection = replica_connection
+            writer_meta = self._read_meta(self._connection)
+            replica_meta = self._read_meta(replica_connection)
+            if replica_meta != writer_meta:
+                raise QuackStateServerReadyError(
+                    "read-replica metadata differs from authoritative writer"
+                )
+            public = self.transport.start(
+                replica_connection,
+                host=self.config.container_bind_host,
+                port=int(self.config.container_port or self._bound_port),
+                token=token,
+                identity=identity,
+            )
+            self._vault.assert_absent_from(public, surface_name="transport.start")
+            observed = self.transport.live_query(
+                replica_connection,
+                identity=identity,
+                token=token,
+            )
+            self._assert_live_identity_observation(observed)
+            if verify_request is not None:
+                steps = verify_request["steps"]
+                effects_present = self._mutation_effects_present(
+                    verify_request["operation"],
+                    steps,
+                    connection=replica_connection,
+                )
+                if not effects_present:
+                    raise QuackStateServerReadyError(
+                        "read-replica lacks the committed mutation effects"
+                    )
+            self._read_replica_refresh_sequence += 1
+            self._read_replica_observation = {
+                "schema": "ipfs_accelerate_py/agent-supervisor/read-replica-observation@1",
+                "authority": "non_authoritative_read_replica",
+                "path": str(self.read_replica_path()),
+                "source_database_path": str(self.config.database_path),
+                "server_id": identity.server_id,
+                "database_uuid": identity.database_uuid,
+                "generation": identity.generation,
+                "schema_revision": identity.schema_revision,
+                "schema_fingerprint": identity.schema_fingerprint,
+                "storage_schema_fingerprint": str(
+                    self._mutation_binding().get("schema_fingerprint") or ""
+                ),
+                "sha256": digest,
+                "size_bytes": size_bytes,
+                "refresh_sequence": self._read_replica_refresh_sequence,
+                "refreshed_at_ms": int(self.clock() * 1000),
+                "live": True,
+            }
+            return dict(self._read_replica_observation)
+        except BaseException:
+            try:
+                self._stop_transport_connection(observe_closed=True)
+            except Exception:
+                pass
+            if self._read_replica_observation:
+                self._read_replica_observation["live"] = False
+            raise
+
+    def _unstall_stale_board_gates(self, connection: Any) -> None:
+        """Retry leftover in_progress gates before quack_serve occupies the writer."""
+
+        try:
+            result = unstall_stale_in_progress_tasks(connection)
+        except Exception as exc:
+            self._log(f"board unstall skipped: {type(exc).__name__}")
+            return
+        unstalled = result.get("unstalled") or []
+        if not unstalled:
+            return
+        aliases = ",".join(
+            str(item.get("task_alias") or item.get("task_cid") or "")
+            for item in unstalled[:8]
+            if isinstance(item, Mapping)
+        )
+        self._log(f"board unstall gates={len(unstalled)} aliases={aliases}")
 
     def _read_meta(self, connection: Any) -> dict[str, str]:
         def get(key: str) -> str:
@@ -2792,6 +3644,1040 @@ class QuackStateServer:
         except Exception:
             pass
 
+    # -- closed owner-mutation inbox --------------------------------------
+
+    def _mutation_binding(self) -> dict[str, Any]:
+        if self._identity is None or self._connection is None:
+            raise QuackStateServerMutationError("server_not_ready")
+        schema_row = self._connection.execute(
+            "SELECT value FROM control_plane_metadata "
+            "WHERE key = 'schema_fingerprint'"
+        ).fetchone()
+        schema_fingerprint = str(schema_row[0] if schema_row else "")
+        identity = self._identity
+        return {
+            "server_id": identity.server_id,
+            "store_id": identity.store_id,
+            "database_uuid": identity.database_uuid,
+            "schema_revision": identity.schema_revision,
+            "generation": identity.generation,
+            "process_birth_id": identity.process_birth_id,
+            "listen_uri": identity.listen_uri,
+            "extension_fingerprint": identity.extension_fingerprint,
+            "schema_fingerprint": schema_fingerprint,
+        }
+
+    def _validate_mutation_request(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        request_id: str,
+        allow_expired: bool = False,
+    ) -> dict[str, Any]:
+        if set(payload) != _MUTATION_REQUEST_FIELDS:
+            raise QuackStateServerMutationError("request_schema_invalid")
+        if (
+            payload.get("schema") != QUACK_OWNER_MUTATION_REQUEST_SCHEMA
+            or payload.get("protocol_revision")
+            != QUACK_OWNER_MUTATION_PROTOCOL_REVISION
+            or payload.get("request_id") != request_id
+        ):
+            raise QuackStateServerMutationError("request_schema_invalid")
+        operation = payload.get("operation")
+        binding = payload.get("binding")
+        steps = payload.get("steps")
+        issued_at_ms = payload.get("issued_at_ms")
+        expires_at_ms = payload.get("expires_at_ms")
+        request_cid = payload.get("request_cid")
+        auth_mac = payload.get("auth_mac")
+        if (
+            operation not in {
+                QUACK_MUTATION_TASK_STATUS_TRANSITION,
+                QUACK_MUTATION_VALIDATION_RECORD,
+                QUACK_MUTATION_QUEUE_BACKOFF,
+            }
+            or not isinstance(binding, dict)
+            or binding != self._mutation_binding()
+            or not isinstance(steps, list)
+            or not 1 <= len(steps) <= QUACK_OWNER_MUTATION_MAX_STEPS
+            or type(issued_at_ms) is not int
+            or type(expires_at_ms) is not int
+            or expires_at_ms - issued_at_ms != QUACK_OWNER_MUTATION_REQUEST_TTL_MS
+            or not isinstance(request_cid, str)
+            or not isinstance(auth_mac, str)
+        ):
+            raise QuackStateServerMutationError("request_binding_invalid")
+        now_ms = int(self.clock() * 1000)
+        if issued_at_ms > now_ms + QUACK_OWNER_MUTATION_MAX_CLOCK_SKEW_MS:
+            raise QuackStateServerMutationError("request_from_future")
+        if not allow_expired and expires_at_ms < now_ms:
+            raise QuackStateServerMutationError("request_expired")
+        semantic = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/quack-owner-mutation-semantic@1",
+            "protocol_revision": QUACK_OWNER_MUTATION_PROTOCOL_REVISION,
+            "operation": operation,
+            "binding": binding,
+            "steps": steps,
+        }
+        if request_id != quack_owner_mutation_content_id(semantic):
+            raise QuackStateServerMutationError("request_identity_invalid")
+        unsigned = dict(payload)
+        unsigned.pop("auth_mac", None)
+        unsigned.pop("request_cid", None)
+        if request_cid != quack_owner_mutation_content_id(unsigned):
+            raise QuackStateServerMutationError("request_cid_invalid")
+        assert self._vault is not None and self._identity is not None
+        token = self._vault.resolve(self._identity.secret_handle)
+        authenticated = {**unsigned, "request_cid": request_cid}
+        if not hmac.compare_digest(
+            auth_mac, quack_owner_mutation_mac(authenticated, token)
+        ):
+            raise QuackStateServerMutationError("request_mac_invalid")
+        return dict(payload)
+
+    def _mutation_result(
+        self,
+        request: Mapping[str, Any],
+        *,
+        ok: bool,
+        error_code: str = "",
+        rowcounts: Sequence[int] = (),
+        observed: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        unsigned = {
+            "schema": QUACK_OWNER_MUTATION_RESULT_SCHEMA,
+            "protocol_revision": QUACK_OWNER_MUTATION_PROTOCOL_REVISION,
+            "request_id": request["request_id"],
+            "request_cid": request["request_cid"],
+            "issued_at_ms": request["issued_at_ms"],
+            "expires_at_ms": request["expires_at_ms"],
+            "operation": request["operation"],
+            "binding": dict(request["binding"]),
+            "ok": bool(ok),
+            "error_code": str(error_code or ""),
+            "rowcounts": [int(value) for value in rowcounts][
+                :QUACK_OWNER_MUTATION_MAX_STEPS
+            ],
+            "observed": dict(observed or {}),
+        }
+        result_cid = quack_owner_mutation_content_id(unsigned)
+        authenticated = {**unsigned, "result_cid": result_cid}
+        assert self._vault is not None and self._identity is not None
+        token = self._vault.resolve(self._identity.secret_handle)
+        return {
+            **authenticated,
+            "result_mac": quack_owner_mutation_mac(authenticated, token),
+        }
+
+    def _write_mutation_result(
+        self, path: Path, request: Mapping[str, Any], **kwargs: Any
+    ) -> None:
+        receipt = self._mutation_result(request, **kwargs)
+        encoded = canonical_json_bytes(receipt)
+        if len(encoded) > QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES:
+            raise QuackStateServerMutationError("result_too_large")
+        _atomic_write_text(path, encoded.decode("utf-8") + "\n", mode=0o600)
+
+    def _existing_result_is_valid(
+        self, path: Path, request: Mapping[str, Any]
+    ) -> bool:
+        try:
+            payload = _read_bounded_canonical_json(path)
+        except (OSError, QuackStateServerMutationError):
+            return False
+        fields = {
+            "schema", "protocol_revision", "request_id", "request_cid",
+            "issued_at_ms", "expires_at_ms",
+            "operation", "binding", "ok", "error_code", "rowcounts",
+            "observed", "result_cid", "result_mac",
+        }
+        if set(payload) != fields:
+            return False
+        result_cid = payload.get("result_cid")
+        result_mac = payload.get("result_mac")
+        unsigned = dict(payload)
+        unsigned.pop("result_cid", None)
+        unsigned.pop("result_mac", None)
+        authenticated = {**unsigned, "result_cid": result_cid}
+        assert self._vault is not None and self._identity is not None
+        token = self._vault.resolve(self._identity.secret_handle)
+        return bool(
+            payload.get("schema") == QUACK_OWNER_MUTATION_RESULT_SCHEMA
+            and payload.get("protocol_revision")
+            == QUACK_OWNER_MUTATION_PROTOCOL_REVISION
+            and payload.get("request_id") == request.get("request_id")
+            and payload.get("request_cid") == request.get("request_cid")
+            and payload.get("issued_at_ms") == request.get("issued_at_ms")
+            and payload.get("expires_at_ms") == request.get("expires_at_ms")
+            and payload.get("operation") == request.get("operation")
+            and payload.get("binding") == request.get("binding")
+            and isinstance(result_cid, str)
+            and result_cid == quack_owner_mutation_content_id(unsigned)
+            and isinstance(result_mac, str)
+            and hmac.compare_digest(
+                result_mac, quack_owner_mutation_mac(authenticated, token)
+            )
+        )
+
+    @staticmethod
+    def _validate_domain_event(parameters: list[Any]) -> dict[str, Any]:
+        event_body = _canonical_object(parameters[9], code="event_body_invalid")
+        if set(event_body) != {
+            "schema", "event_type", "subject_id", "body", "recorded_at", "owner_id"
+        }:
+            raise QuackStateServerMutationError("event_body_invalid")
+        if (
+            event_body.get("event_type") != parameters[4]
+            or event_body.get("recorded_at") != parameters[8]
+            or not isinstance(event_body.get("body"), dict)
+        ):
+            raise QuackStateServerMutationError("event_body_invalid")
+        expected_id = content_identity(
+            {
+                "stream_id": parameters[1],
+                "sequence": parameters[2],
+                "global_sequence": parameters[3],
+                "event_type": parameters[4],
+                "body": event_body,
+            }
+        )
+        if parameters[0] != expected_id:
+            raise QuackStateServerMutationError("event_identity_invalid")
+        return event_body
+
+    def _validate_event_head(self, parameters: list[Any]) -> None:
+        assert self._connection is not None
+        row = self._connection.execute(
+            "SELECT COALESCE(MAX(sequence), 0), "
+            "(SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events) "
+            "FROM domain_events WHERE stream_id = ?",
+            [parameters[1]],
+        ).fetchone()
+        if (
+            row is None
+            or type(parameters[2]) is not int
+            or type(parameters[3]) is not int
+            or parameters[2] != int(row[0]) + 1
+            or parameters[3] != int(row[1]) + 1
+        ):
+            raise QuackStateServerMutationError("event_head_conflict")
+
+    def _task_effects_present(
+        self,
+        steps: Sequence[Mapping[str, Any]],
+        *,
+        connection: Any | None = None,
+    ) -> bool:
+        active = connection if connection is not None else self._connection
+        assert active is not None
+        update = _mutation_parameters(steps[0], 6)
+        revision = _mutation_parameters(steps[1], 5)
+        event = _mutation_parameters(steps[-1], 10)
+        task = active.execute(
+            "SELECT status, revision, updated_at, body_json "
+            "FROM tasks WHERE task_cid = ?",
+            [update[4]],
+        ).fetchone()
+        task_matches = task is not None and (
+            task[0], int(task[1]), task[2], task[3]
+        ) == (
+            update[0], update[1], update[2], update[3]
+        )
+        revision_row = active.execute(
+            "SELECT status, body_json, recorded_at FROM task_revisions "
+            "WHERE task_cid = ? AND revision = ?",
+            [revision[0], revision[1]],
+        ).fetchone()
+        event_row = active.execute(
+            "SELECT event_id, stream_id, sequence, global_sequence, event_type, "
+            "task_cid, attempt_id, session_id, recorded_at, body_json "
+            "FROM domain_events WHERE event_id = ?",
+            [event[0]],
+        ).fetchone()
+        completion_row = None
+        completion: list[Any] | None = None
+        if len(steps) == 4:
+            completion = _mutation_parameters(steps[2], 10)
+            completion_row = active.execute(
+                "SELECT receipt_cid, task_cid, goal_cid, attempt_id, claim_cid, "
+                "fencing_token, completed_at, validation_run_id, evidence_digest, "
+                "body_json FROM completion_receipts WHERE receipt_cid = ?",
+                [completion[0]],
+            ).fetchone()
+        revision_matches = revision_row is not None and tuple(
+            revision_row[index] for index in range(3)
+        ) == tuple(revision[2:5])
+        event_matches = event_row is not None and tuple(
+            event_row[index] for index in range(10)
+        ) == tuple(event)
+        completion_matches = completion is None or (
+            completion_row is not None
+            and tuple(completion_row[index] for index in range(10))
+            == tuple(completion)
+        )
+        # The task-revision primary key is shared by legitimate competing CAS
+        # requests, so a winner may occupy it before this request is checked.
+        # Only the request-specific event identity establishes that this exact
+        # semantic bundle was partially or wholly persisted.  Revision and
+        # completion keys can be shared by legitimate competing CAS requests.
+        if event_row is None:
+            return False
+        if event_row is not None and not event_matches:
+            raise QuackStateServerMutationError("replay_integrity_failure")
+        if not (task_matches and revision_matches and event_matches and completion_matches):
+            raise QuackStateServerMutationError("replay_integrity_failure")
+        return True
+
+    def _validation_effects_present(
+        self,
+        steps: Sequence[Mapping[str, Any]],
+        *,
+        connection: Any | None = None,
+    ) -> bool:
+        active = connection if connection is not None else self._connection
+        assert active is not None
+        run = _mutation_parameters(steps[0], 8)
+        result = _mutation_parameters(steps[1], 7)
+        event = _mutation_parameters(steps[-1], 10)
+        run_row = active.execute(
+            "SELECT run_id, task_cid, attempt_id, started_at, finished_at, status, "
+            "command_digest, body_json FROM validation_runs WHERE run_id = ?",
+            [run[0]],
+        ).fetchone()
+        result_row = active.execute(
+            "SELECT result_id, run_id, task_cid, ordinal, outcome, evidence_digest, "
+            "body_json FROM validation_results WHERE result_id = ?",
+            [result[0]],
+        ).fetchone()
+        event_row = active.execute(
+            "SELECT event_id, stream_id, sequence, global_sequence, event_type, "
+            "task_cid, attempt_id, session_id, recorded_at, body_json "
+            "FROM domain_events WHERE event_id = ?",
+            [event[0]],
+        ).fetchone()
+        evidence: list[Any] | None = None
+        evidence_row = None
+        if len(steps) == 5:
+            evidence = _mutation_parameters(steps[3], 7)
+            evidence_row = active.execute(
+                "SELECT evidence_id, parent_evidence_id, task_cid, evidence_kind, "
+                "digest, created_at, body_json FROM evidence_nodes "
+                "WHERE evidence_id = ?",
+                [evidence[0]],
+            ).fetchone()
+        persisted = [run_row, result_row, event_row]
+        if evidence is not None:
+            persisted.append(evidence_row)
+        if not any(row is not None for row in persisted):
+            return False
+        exact = (
+            run_row is not None
+            and tuple(run_row[index] for index in range(8)) == tuple(run)
+            and result_row is not None
+            and tuple(result_row[index] for index in range(7)) == tuple(result)
+            and event_row is not None
+            and tuple(event_row[index] for index in range(10)) == tuple(event)
+            and (
+                evidence is None
+                or (
+                    evidence_row is not None
+                    and tuple(evidence_row[index] for index in range(7))
+                    == tuple(evidence)
+                )
+            )
+        )
+        if not exact:
+            raise QuackStateServerMutationError("replay_integrity_failure")
+        return True
+
+    def _mutation_effects_present(
+        self,
+        operation: object,
+        steps: Sequence[Mapping[str, Any]],
+        *,
+        connection: Any | None = None,
+    ) -> bool:
+        if operation == QUACK_MUTATION_TASK_STATUS_TRANSITION:
+            return self._task_effects_present(steps, connection=connection)
+        if operation == QUACK_MUTATION_VALIDATION_RECORD:
+            return self._validation_effects_present(steps, connection=connection)
+        if operation == QUACK_MUTATION_QUEUE_BACKOFF:
+            return self._queue_backoff_effects_present(
+                steps, connection=connection
+            )
+        raise QuackStateServerMutationError("operation_not_allowlisted")
+
+    def _queue_backoff_effects_present(
+        self,
+        steps: Sequence[Mapping[str, Any]],
+        *,
+        connection: Any | None = None,
+    ) -> bool:
+        active = connection if connection is not None else self._connection
+        assert active is not None
+        templates = [step.get("template_id") for step in steps]
+        inserting = templates == [
+            QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
+            QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+        ]
+        updating = templates == [
+            QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE,
+            QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+        ]
+        if not inserting and not updating:
+            raise QuackStateServerMutationError("operation_shape_invalid")
+        lease = _mutation_parameters(steps[0], 17 if inserting else 6)
+        event = _mutation_parameters(steps[-1], 10)
+        event_row = active.execute(
+            "SELECT event_id, stream_id, sequence, global_sequence, event_type, "
+            "task_cid, attempt_id, session_id, recorded_at, body_json "
+            "FROM domain_events WHERE event_id = ?",
+            [event[0]],
+        ).fetchone()
+        if inserting:
+            lease_row = active.execute(
+                "SELECT task_cid, claim_cid, resolution_cid, claimant_did, "
+                "logical_epoch, fencing_token, expires_at_ms, attempt, "
+                "state, started_at_ms, release_reason, retry_not_before_ms, "
+                "owner_session_id, fence_epoch, revision, extension_schema, "
+                "extension_json FROM leases WHERE task_cid = ?",
+                [lease[0]],
+            ).fetchone()
+            lease_matches = lease_row is not None and tuple(
+                lease_row[index] for index in range(17)
+            ) == tuple(lease)
+        else:
+            lease_row = active.execute(
+                "SELECT attempt, retry_not_before_ms, release_reason, state, "
+                "extension_schema, extension_json FROM leases WHERE task_cid = ?",
+                [lease[5]],
+            ).fetchone()
+            lease_matches = lease_row is not None and (
+                int(lease_row[0]),
+                int(lease_row[1]),
+                lease_row[2],
+                lease_row[3],
+                lease_row[4],
+                lease_row[5],
+            ) == (
+                lease[0],
+                lease[1],
+                lease[2],
+                "released",
+                lease[3],
+                lease[4],
+            )
+        event_matches = event_row is not None and tuple(
+            event_row[index] for index in range(10)
+        ) == tuple(event)
+        if event_row is None:
+            return False
+        if not event_matches or not lease_matches:
+            raise QuackStateServerMutationError("replay_integrity_failure")
+        return True
+
+    def _validate_task_transition(
+        self, steps: Sequence[Mapping[str, Any]]
+    ) -> tuple[dict[str, Any], bool]:
+        templates = [step.get("template_id") for step in steps]
+        completing = len(steps) == 4
+        expected = [
+            QUACK_MUTATION_TASK_STATUS_CAS,
+            QUACK_MUTATION_TASK_REVISION_INSERT,
+            *([QUACK_MUTATION_COMPLETION_RECEIPT_INSERT] if completing else []),
+            QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+        ]
+        if templates != expected:
+            raise QuackStateServerMutationError("operation_shape_invalid")
+        update = _mutation_parameters(steps[0], 6)
+        revision = _mutation_parameters(steps[1], 5)
+        event = _mutation_parameters(steps[-1], 10)
+        event_body = self._validate_domain_event(event)
+        inner = event_body["body"]
+        if not isinstance(inner, dict):
+            raise QuackStateServerMutationError("event_body_invalid")
+        assert self._connection is not None
+        task = self._connection.execute(
+            "SELECT task_alias, goal_cid, status, revision, body_json "
+            "FROM tasks WHERE task_cid = ?", [update[4]]
+        ).fetchone()
+        if task is None:
+            raise QuackStateServerMutationError("task_missing")
+        old_status, old_revision = str(task[2]), int(task[3])
+        if old_revision != update[5]:
+            raise QuackStateServerMutationError("cas_conflict")
+        allowed = update[0] in _MUTATION_ALLOWED_TO.get(old_status, frozenset())
+        if not allowed or update[1] != update[5] + 1:
+            raise QuackStateServerMutationError("transition_invalid")
+        _canonical_object(update[3], code="task_body_invalid")
+        if revision != [update[4], update[1], update[0], update[3], update[2]]:
+            raise QuackStateServerMutationError("revision_binding_invalid")
+        expected_event_type = (
+            "intent.completion_recorded" if update[0] == "completed" else "intent.task_status_changed"
+        )
+        if completing != (update[0] == "completed"):
+            raise QuackStateServerMutationError("completion_shape_invalid")
+        if (
+            event[1] != "stream:intent"
+            or event[4] != expected_event_type
+            or event[5] != update[4]
+            or event_body["subject_id"] != update[4]
+            or inner.get("task_cid") != update[4]
+            or inner.get("task_alias") != str(task[0])
+            or inner.get("goal_cid") != str(task[1])
+            or inner.get("previous_status") != old_status
+            or inner.get("status") != update[0]
+            or inner.get("revision") != update[1]
+            or inner.get("recorded_at") != update[2]
+        ):
+            raise QuackStateServerMutationError("event_binding_invalid")
+        self._validate_event_head(event)
+        if completing:
+            completion = _mutation_parameters(steps[2], 10)
+            completion_body = _canonical_object(
+                completion[9], code="completion_receipt_invalid"
+            )
+            evidence_digests = completion_body.get("evidence_digests")
+            completion_receipt = completion_body.get("receipt")
+            if (
+                set(completion_body)
+                != {"schema", "receipt", "evidence_digests", "revision"}
+                or completion_body.get("schema") != COMPLETION_EVIDENCE_SCHEMA
+                or not isinstance(completion_receipt, dict)
+                or completion[1] != update[4]
+                or completion[2] != str(task[1])
+                or completion[6] != update[2]
+                or completion_body.get("revision") != update[1]
+                or not isinstance(evidence_digests, list)
+                or any(not isinstance(item, str) for item in evidence_digests)
+                or inner.get("completion_receipt_cid") != completion[0]
+                or inner.get("evidence_digest") != completion[8]
+            ):
+                raise QuackStateServerMutationError("completion_receipt_invalid")
+            expected_evidence_digest = content_identity(
+                {
+                    "task_cid": update[4],
+                    "revision": update[1],
+                    "receipt": completion_receipt,
+                    "evidence_digests": evidence_digests,
+                }
+            )
+            if completion[8] != expected_evidence_digest:
+                raise QuackStateServerMutationError("completion_receipt_invalid")
+            expected_receipt = content_identity(
+                {
+                    "namespace": "completion-receipt",
+                    "task_cid": update[4],
+                    "revision": update[1],
+                    "evidence_digest": completion[8],
+                }
+            )
+            if completion[0] != expected_receipt:
+                raise QuackStateServerMutationError("completion_receipt_invalid")
+            missing_evidence = missing_current_evidence_on(
+                self._connection,
+                update[4],
+                evidence_digests=evidence_digests,
+                now_ms=int(self.clock() * 1000),
+                evidence_freshness_seconds=DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+            )
+            if missing_evidence:
+                raise QuackStateServerMutationError("completion_evidence_stale")
+        return {
+            "task_cid": update[4],
+            "old_status": old_status,
+            "old_revision": old_revision,
+            "new_status": update[0],
+            "new_revision": update[1],
+            "event_id": event[0],
+        }, completing
+
+    def _validate_validation_record(
+        self, steps: Sequence[Mapping[str, Any]]
+    ) -> dict[str, Any]:
+        passed = len(steps) == 5
+        expected = [
+            QUACK_MUTATION_VALIDATION_RUN_INSERT,
+            QUACK_MUTATION_VALIDATION_RESULT_INSERT,
+            *([QUACK_MUTATION_EVIDENCE_DELETE, QUACK_MUTATION_EVIDENCE_INSERT] if passed else []),
+            QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+        ]
+        if [step.get("template_id") for step in steps] != expected:
+            raise QuackStateServerMutationError("operation_shape_invalid")
+        run = _mutation_parameters(steps[0], 8)
+        result = _mutation_parameters(steps[1], 7)
+        event = _mutation_parameters(steps[-1], 10)
+        run_body = _canonical_object(run[7], code="validation_body_invalid")
+        _canonical_object(result[6], code="validation_body_invalid")
+        event_body = self._validate_domain_event(event)
+        inner = event_body["body"]
+        if not isinstance(inner, dict):
+            raise QuackStateServerMutationError("event_body_invalid")
+        argv = run_body.get("argv")
+        if (
+            not isinstance(argv, list)
+            or any(not isinstance(item, str) for item in argv)
+            or run[4] != run[3]
+            or run[5] not in {"passed", "failed", "error", "skipped"}
+            or result[1] != run[0]
+            or result[2] != run[1]
+            or result[3] != 0
+            or result[4] != run[5]
+            or passed != (run[5] == "passed")
+            or run[6] != content_identity({"argv": argv})
+            or run[0] != content_identity(
+                {
+                    "task_cid": run[1],
+                    "attempt_id": run[2],
+                    "argv": argv,
+                    "recorded_at": run[3],
+                }
+            )
+            or result[0] != content_identity(
+                {"run_id": run[0], "outcome": result[4], "evidence_digest": result[5]}
+            )
+        ):
+            raise QuackStateServerMutationError("validation_binding_invalid")
+        assert self._connection is not None
+        if self._connection.execute(
+            "SELECT 1 FROM tasks WHERE task_cid = ?", [run[1]]
+        ).fetchone() is None:
+            raise QuackStateServerMutationError("task_missing")
+        if (
+            event[1] != "stream:intent"
+            or event[4] != "intent.validation_recorded"
+            or event[5] != run[1]
+            or event[6] != run[2]
+            or event_body["subject_id"] != result[0]
+            or inner.get("result_id") != result[0]
+            or inner.get("run_id") != run[0]
+            or inner.get("task_cid") != run[1]
+            or inner.get("outcome") != run[5]
+            or inner.get("evidence_digest") != result[5]
+        ):
+            raise QuackStateServerMutationError("event_binding_invalid")
+        self._validate_event_head(event)
+        if passed:
+            delete = _mutation_parameters(steps[2], 1)
+            evidence = _mutation_parameters(steps[3], 7)
+            evidence_body = _canonical_object(evidence[6], code="evidence_binding_invalid")
+            expected_eid = content_identity(
+                {
+                    "task_cid": run[1],
+                    "evidence_kind": "validation",
+                    "digest": result[5],
+                    "run_id": run[0],
+                }
+            )
+            if (
+                delete[0] != expected_eid
+                or evidence[0] != expected_eid
+                or evidence[1] != ""
+                or evidence[2] != run[1]
+                or evidence[3] != "validation"
+                or evidence[4] != result[5]
+                or evidence_body.get("run_id") != run[0]
+                or evidence_body.get("result_id") != result[0]
+                or evidence_body.get("outcome") != "passed"
+            ):
+                raise QuackStateServerMutationError("evidence_binding_invalid")
+        return {
+            "task_cid": run[1],
+            "run_id": run[0],
+            "result_id": result[0],
+            "event_id": event[0],
+            "outcome": run[5],
+        }
+
+    def _validate_queue_backoff(
+        self, steps: Sequence[Mapping[str, Any]]
+    ) -> dict[str, Any]:
+        templates = [step.get("template_id") for step in steps]
+        inserting = templates == [
+            QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
+            QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+        ]
+        updating = templates == [
+            QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE,
+            QUACK_MUTATION_DOMAIN_EVENT_INSERT,
+        ]
+        if not inserting and not updating:
+            raise QuackStateServerMutationError("operation_shape_invalid")
+        lease = _mutation_parameters(steps[0], 17 if inserting else 6)
+        event = _mutation_parameters(steps[-1], 10)
+        event_body = self._validate_domain_event(event)
+        inner = event_body["body"]
+        if not isinstance(inner, dict):
+            raise QuackStateServerMutationError("event_body_invalid")
+        if inserting:
+            task_cid = lease[0]
+            attempt = lease[7]
+            started_at_ms = lease[9]
+            reason = lease[10]
+            retry_not_before_ms = lease[11]
+            owner_session_id = lease[12]
+            extension_schema = lease[15]
+            extension_json = lease[16]
+            if (
+                not isinstance(task_cid, str)
+                or not task_cid
+                or lease[1] != f"claim:queue:{task_cid}"
+                or lease[2] != f"resolution:queue:{task_cid}"
+                or not isinstance(lease[3], str)
+                or lease[4] != 1
+                or lease[5] != 1
+                or lease[6] != 0
+                or type(attempt) is not int
+                or attempt < 1
+                or lease[8] != "released"
+                or type(started_at_ms) is not int
+                or not isinstance(reason, str)
+                or type(retry_not_before_ms) is not int
+                or not isinstance(owner_session_id, str)
+                or lease[13] != 1
+                or lease[14] != 1
+            ):
+                raise QuackStateServerMutationError("lease_binding_invalid")
+        else:
+            task_cid = lease[5]
+            attempt = lease[0]
+            retry_not_before_ms = lease[1]
+            reason = lease[2]
+            extension_schema = lease[3]
+            extension_json = lease[4]
+            owner_session_id = event[7]
+            started_at_ms = None
+            if (
+                type(attempt) is not int
+                or attempt < 1
+                or type(retry_not_before_ms) is not int
+                or not isinstance(reason, str)
+                or not isinstance(task_cid, str)
+                or not task_cid
+                or not isinstance(owner_session_id, str)
+            ):
+                raise QuackStateServerMutationError("lease_binding_invalid")
+        extension = _canonical_object(extension_json, code="lease_binding_invalid")
+        delay_ms = inner.get("delay_ms")
+        selection_penalty = inner.get("selection_penalty")
+        if (
+            extension_schema != QUEUE_ENTRY_SCHEMA
+            or set(extension) != {"selection_penalty", "consecutive_failures", "reason"}
+            or extension.get("reason") != reason
+            or extension.get("consecutive_failures") != attempt
+            or extension.get("selection_penalty") != selection_penalty
+            or type(delay_ms) is not int
+            or delay_ms < 0
+            or type(selection_penalty) is not int
+            or selection_penalty < 0
+            or (
+                inserting
+                and started_at_ms is not None
+                and retry_not_before_ms != started_at_ms + delay_ms
+            )
+        ):
+            raise QuackStateServerMutationError("lease_binding_invalid")
+        if (
+            event[1] != "stream:intent"
+            or event[4] != "intent.queue_backoff"
+            or event[5] != task_cid
+            or event[7] != owner_session_id
+            or event_body["subject_id"] != task_cid
+            or inner.get("task_cid") != task_cid
+            or inner.get("attempt") != attempt
+            or inner.get("retry_not_before_ms") != retry_not_before_ms
+            or inner.get("reason") != reason
+            or inner.get("revision") != attempt
+            or set(inner)
+            != {
+                "task_cid",
+                "attempt",
+                "retry_not_before_ms",
+                "delay_ms",
+                "selection_penalty",
+                "reason",
+                "revision",
+            }
+        ):
+            raise QuackStateServerMutationError("event_binding_invalid")
+        self._validate_event_head(event)
+        assert self._connection is not None
+        if self._connection.execute(
+            "SELECT 1 FROM tasks WHERE task_cid = ?", [task_cid]
+        ).fetchone() is None:
+            raise QuackStateServerMutationError("task_missing")
+        existing = self._connection.execute(
+            "SELECT 1 FROM leases WHERE task_cid = ?", [task_cid]
+        ).fetchone()
+        if inserting and existing is not None:
+            raise QuackStateServerMutationError("lease_conflict")
+        if updating and existing is None:
+            raise QuackStateServerMutationError("lease_missing")
+        return {
+            "task_cid": task_cid,
+            "attempt": attempt,
+            "retry_not_before_ms": retry_not_before_ms,
+            "event_id": event[0],
+            "inserted": inserting,
+        }
+
+    def _execute_mutation_request(
+        self, request: Mapping[str, Any]
+    ) -> tuple[list[int], dict[str, Any]]:
+        assert self._connection is not None
+        steps = request["steps"]
+        self._connection.execute("BEGIN TRANSACTION")
+        try:
+            if request["operation"] == QUACK_MUTATION_TASK_STATUS_TRANSITION:
+                if self._task_effects_present(steps):
+                    self._connection.execute("ROLLBACK")
+                    update = _mutation_parameters(steps[0], 6)
+                    observed = {
+                        "task_cid": update[4], "new_status": update[0],
+                        "new_revision": update[1], "idempotent_replay": True,
+                    }
+                    return [1] * len(steps), self._settle_mutation_replica(
+                        request, observed=observed
+                    )
+                observed, _completing = self._validate_task_transition(steps)
+            elif request["operation"] == QUACK_MUTATION_VALIDATION_RECORD:
+                if self._validation_effects_present(steps):
+                    self._connection.execute("ROLLBACK")
+                    run = _mutation_parameters(steps[0], 8)
+                    observed = {
+                        "task_cid": run[1], "run_id": run[0],
+                        "idempotent_replay": True,
+                    }
+                    return [1] * len(steps), self._settle_mutation_replica(
+                        request, observed=observed
+                    )
+                observed = self._validate_validation_record(steps)
+            elif request["operation"] == QUACK_MUTATION_QUEUE_BACKOFF:
+                if self._queue_backoff_effects_present(steps):
+                    self._connection.execute("ROLLBACK")
+                    event = _mutation_parameters(steps[-1], 10)
+                    inserting = (
+                        steps[0].get("template_id")
+                        == QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT
+                    )
+                    lease = _mutation_parameters(steps[0], 17 if inserting else 6)
+                    observed = {
+                        "task_cid": lease[0] if inserting else lease[5],
+                        "event_id": event[0],
+                        "idempotent_replay": True,
+                    }
+                    return [1] * len(steps), self._settle_mutation_replica(
+                        request, observed=observed
+                    )
+                observed = self._validate_queue_backoff(steps)
+            else:
+                raise QuackStateServerMutationError("operation_not_allowlisted")
+            rowcounts: list[int] = []
+            for index, step in enumerate(steps):
+                template_id = str(step["template_id"])
+                sql = _MUTATION_SQL_TEMPLATES.get(template_id)
+                if sql is None:
+                    raise QuackStateServerMutationError("template_not_allowlisted")
+                cursor = self._connection.execute(sql, step["parameters"])
+                rowcount = int(getattr(cursor, "rowcount", -1))
+                if index == 0 and request["operation"] == QUACK_MUTATION_TASK_STATUS_TRANSITION and rowcount != 1:
+                    raise QuackStateServerMutationError("cas_conflict")
+                rowcounts.append(rowcount)
+            self._connection.execute("COMMIT")
+            return rowcounts, self._settle_mutation_replica(
+                request, observed=observed
+            )
+        except BaseException:
+            try:
+                self._connection.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+
+    def _settle_mutation_replica(
+        self,
+        request: Mapping[str, Any],
+        *,
+        observed: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Require a fresh, live, exact replica projection before success."""
+
+        result = dict(observed)
+        try:
+            result["read_replica"] = self._refresh_read_replica(
+                verify_request=request
+            )
+            # Status is the handle resolver's independently read freshness
+            # binding and must settle before the signed mutation result.
+            self._write_status()
+        except BaseException as exc:
+            try:
+                self._stop_transport_connection(observe_closed=True)
+            except Exception:
+                pass
+            failure_observation = dict(self._read_replica_observation)
+            failure_observation["live"] = False
+            raise QuackStateServerMutationError(
+                "read_replica_refresh_unknown_outcome",
+                observed={
+                    **result,
+                    "canonical_effects_present": True,
+                    "read_replica": failure_observation,
+                    "refresh_failure_class": type(exc).__name__,
+                },
+            ) from exc
+        return result
+
+    def _recover_stale_mutation_claims(self, inbox: Path) -> None:
+        now = time.time()
+        for path in tuple(inbox.iterdir())[:MUTATION_MAX_DIRECTORY_ENTRIES]:
+            match = MUTATION_PROCESSING_NAME.fullmatch(path.name)
+            if match is None:
+                continue
+            done = inbox / f"{match.group('request_id')}.done.json"
+            try:
+                age_ms = (now - path.stat().st_mtime) * 1000
+            except OSError:
+                continue
+            if age_ms < QUACK_OWNER_MUTATION_REQUEST_TTL_MS:
+                continue
+            request: dict[str, Any] | None = None
+            try:
+                request = self._validate_mutation_request(
+                    _read_bounded_canonical_json(path),
+                    request_id=match.group("request_id"),
+                    allow_expired=True,
+                )
+                if done.is_file() and self._existing_result_is_valid(done, request):
+                    path.unlink(missing_ok=True)
+                    continue
+                done.unlink(missing_ok=True)
+                effects = self._mutation_effects_present(
+                    request["operation"], request["steps"]
+                )
+                observed = {"reconciled_after_interruption": True}
+                if effects:
+                    observed = self._settle_mutation_replica(
+                        request,
+                        observed=observed,
+                    )
+                self._write_mutation_result(
+                    done,
+                    request,
+                    ok=effects,
+                    error_code="" if effects else "unknown_external_outcome",
+                    rowcounts=[1] * len(request["steps"]) if effects else [],
+                    observed=observed,
+                )
+            except QuackStateServerMutationError as exc:
+                if request is not None:
+                    self._write_mutation_result(
+                        done,
+                        request,
+                        ok=False,
+                        error_code=exc.code,
+                        rowcounts=[],
+                        observed={
+                            "reconciled_after_interruption": True,
+                            **exc.observed,
+                        },
+                    )
+                    if exc.code == "read_replica_refresh_unknown_outcome":
+                        self._lifecycle = ServerLifecycle.FAILED
+                        self._write_status()
+            except Exception:
+                # Unauthenticated or unreadable claims never receive a signed
+                # oracle response.
+                pass
+            finally:
+                path.unlink(missing_ok=True)
+
+    def service_mutation_inbox(self, *, max_requests: int = MUTATION_MAX_PER_PASS) -> int:
+        """Claim and execute bounded, authenticated mutation bundles."""
+
+        if type(max_requests) is not int or not 1 <= max_requests <= MUTATION_MAX_PER_PASS:
+            raise ValueError("max_requests is outside the closed service bound")
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY or self._connection is None:
+                raise QuackStateServerNotRunningError("state-owner is not ready")
+            inbox = self.mutation_inbox_path()
+            inbox.mkdir(parents=True, exist_ok=True)
+            if inbox.is_symlink():
+                raise QuackStateServerReadyError(
+                    "mutation inbox is not a safe owner directory"
+                )
+            os.chmod(inbox, 0o700)
+            entries = tuple(inbox.iterdir())
+            if len(entries) > MUTATION_MAX_DIRECTORY_ENTRIES:
+                raise QuackStateServerMutationError("inbox_population_exceeded")
+            self._recover_stale_mutation_claims(inbox)
+            if self._lifecycle is not ServerLifecycle.READY:
+                return 0
+            serviced = 0
+            for request_path in sorted(entries, key=lambda item: item.name):
+                if serviced >= max_requests:
+                    break
+                match = MUTATION_REQUEST_NAME.fullmatch(request_path.name)
+                if match is None:
+                    continue
+                request_id = match.group("request_id")
+                processing = inbox / f"{request_id}.processing.json"
+                done = inbox / f"{request_id}.done.json"
+                claimed = False
+                try:
+                    if processing.exists():
+                        continue
+                    try:
+                        # Claim the pathname before reading any bytes.  This
+                        # competes atomically with client cancellation, so an
+                        # owner can execute only the inode it actually won.
+                        os.replace(request_path, processing)
+                        claimed = True
+                    except FileNotFoundError:
+                        continue
+                    payload = _read_bounded_canonical_json(processing)
+                    request = self._validate_mutation_request(
+                        payload, request_id=request_id
+                    )
+                    if done.is_file() and self._existing_result_is_valid(done, request):
+                        # Exact deterministic replay consumes no second effect;
+                        # the client authenticates the retained receipt.
+                        processing.unlink(missing_ok=True)
+                        serviced += 1
+                        continue
+                    done.unlink(missing_ok=True)
+                    try:
+                        rowcounts, observed = self._execute_mutation_request(request)
+                    except QuackStateServerMutationError as exc:
+                        self._write_mutation_result(
+                            done, request, ok=False, error_code=exc.code,
+                            rowcounts=[], observed=exc.observed,
+                        )
+                        if exc.code == "read_replica_refresh_unknown_outcome":
+                            self._lifecycle = ServerLifecycle.FAILED
+                            self._write_status()
+                    except Exception:
+                        self._write_mutation_result(
+                            done, request, ok=False, error_code="owner_transaction_failed",
+                            rowcounts=[], observed={},
+                        )
+                    else:
+                        self._write_mutation_result(
+                            done, request, ok=True, rowcounts=rowcounts,
+                            observed=observed,
+                        )
+                    finally:
+                        processing.unlink(missing_ok=True)
+                    serviced += 1
+                except (OSError, QuackStateServerMutationError, ValueError):
+                    # Unauthenticated/malformed files receive no signed oracle.
+                    if claimed:
+                        processing.unlink(missing_ok=True)
+                    else:
+                        request_path.unlink(missing_ok=True)
+                    serviced += 1
+            return serviced
+
     # -- lifecycle ---------------------------------------------------------
 
     def start(self) -> StateServerIdentity:
@@ -2812,17 +4698,16 @@ class QuackStateServer:
                     self.config.host,
                     remote_policy=self.config.remote_bind_policy,
                 )
-                capability = self._admit_capability()
-                self._capability = capability
-                self._log(
-                    f"capability admitted status={capability.status.value} "
-                    f"fingerprint={capability.extension_fingerprint or 'none'}"
+                # Container isolation is an independently observed authority
+                # gate.  It must precede every database mutation, including
+                # schema installation, and is carried into connection birth so
+                # it cannot be replaced by a second receipt-shaped assertion.
+                isolation_admission = self._admit_isolated_owner()
+                self._isolation_admission = (
+                    None
+                    if isolation_admission is None
+                    else dict(isolation_admission)
                 )
-
-                migration = self._ensure_migrated()
-                self._migration_report = migration
-                self._log("control-plane schema migration complete before ready")
-
                 birth = (
                     self.process_birth_factory()
                     if self.process_birth_factory is not None
@@ -2842,8 +4727,27 @@ class QuackStateServer:
                     generation=1,
                 )
                 self._owner = owner
+                # A previous generation's ready projection must never survive
+                # as a launch signal while this generation is qualifying.
+                self.status_path().unlink(missing_ok=True)
 
-                connection = self._open_connection()
+                # The OS lease/fence is the exact single-writer gate.  No
+                # migration or database connection may be reached by a losing
+                # concurrent starter.
+                capability = self._admit_capability()
+                self._capability = capability
+                self._log(
+                    f"capability admitted status={capability.status.value} "
+                    f"fingerprint={capability.extension_fingerprint or 'none'}"
+                )
+
+                migration = self._ensure_migrated()
+                self._migration_report = migration
+                self._log("control-plane schema migration complete before ready")
+
+                connection = self._open_connection(
+                    isolation_admission=isolation_admission
+                )
                 self._connection = connection
                 meta = self._read_meta(connection)
                 database_uuid = meta.get("database_uuid") or str(uuid.uuid4())
@@ -2898,6 +4802,14 @@ class QuackStateServer:
                 self._identity = identity
 
                 assert self.transport is not None
+                # Publish identity before quack_serve occupies this connection.
+                # Auth callbacks open a fresh DuckDB session; DML on the serve
+                # connection after listen starts is reported as Authentication
+                # failed rather than lock contention.
+                self._publish_identity_rows(connection, identity, capability)
+                # Last exclusive-writer window: quack_serve occupies this
+                # connection and later DML contends with auth callbacks.
+                self._unstall_stale_board_gates(connection)
                 public_obs = self.transport.start(
                     connection,
                     host=self.config.host,
@@ -2909,12 +4821,25 @@ class QuackStateServer:
                 self._vault.assert_absent_from(public_obs, surface_name="transport.start")
                 # A supervisor must never be able to reuse the HTTP Quack
                 # credential to obtain a generic SQL surface.  Only the owner
-                # retains it after transport startup.
+                # retains it after identity mint; the replica transport later
+                # resolves the in-process token.
                 self._vault.remove_persisted_copy()
 
-                self._publish_identity_rows(connection, identity, capability)
                 identity = identity.with_status("ready")
+                ready_update = connection.execute(
+                    "UPDATE state_servers SET status = 'ready', revision = revision + 1 "
+                    "WHERE server_id = ? AND generation = ? AND status = 'starting'",
+                    [identity.server_id, identity.generation],
+                )
+                if getattr(ready_update, "rowcount", -1) not in {-1, 1}:
+                    raise QuackStateServerMigrationError(
+                        "could not publish the exact ready server generation"
+                    )
                 self._identity = identity
+                # The endpoint serves only a checkpointed, atomically replaced,
+                # non-authoritative read-only replica containing this exact
+                # ready identity.  Startup fails closed if any proof fails.
+                self._refresh_read_replica()
                 gateway = TypedStateOwnerGateway(
                     connection=connection,
                     socket_path=self.typed_command_socket_path(),
@@ -2937,11 +4862,10 @@ class QuackStateServer:
                     status_bootstrap_token,
                     mode=0o600,
                 )
-                # Retain the transport/gateway connection for serving while
-                # owner-side maintenance uses its separately wrapped writer.
-                self._serve_connection = connection
-                self._connection = self._wrap_owner_mutation_connection(connection)
                 self._lifecycle = ServerLifecycle.READY
+                # READY is a live remote claim: prove the authenticated Quack
+                # data path before publishing status or returning to a launcher.
+                self.ready()
                 self._write_status()
                 self._log(
                     f"state-owner ready server_id={identity.server_id} "
@@ -2955,6 +4879,10 @@ class QuackStateServer:
                 self._lifecycle = ServerLifecycle.FAILED
                 self._log(f"state-owner start failed: {type(exc).__name__}")
                 self._emergency_cleanup()
+                try:
+                    self._write_status()
+                except Exception:
+                    pass
                 raise
 
     def _emergency_cleanup(self) -> None:
@@ -2976,18 +4904,15 @@ class QuackStateServer:
         except FileNotFoundError:
             pass
         try:
-            if self.transport is not None:
-                self.transport.stop(self._serve_connection or self._connection)
+            self._stop_transport_connection(observe_closed=True)
         except Exception:
             pass
         try:
-            target = self._serve_connection or self._connection
-            if target is not None and hasattr(target, "close"):
-                target.close()
+            if self._connection is not None and hasattr(self._connection, "close"):
+                self._connection.close()
         except Exception:
             pass
         self._connection = None
-        self._serve_connection = None
         try:
             if self._vault is not None:
                 self._vault.destroy()
@@ -3014,7 +4939,12 @@ class QuackStateServer:
                 raise QuackStateServerReadyError(
                     f"state-owner is not ready (lifecycle={self._lifecycle.value})"
                 )
-            if self._connection is None or self.transport is None or self._vault is None:
+            if (
+                self._connection is None
+                or self._transport_connection is None
+                or self.transport is None
+                or self._vault is None
+            ):
                 raise QuackStateServerReadyError("state-owner missing connection/transport")
             gateway_health = (
                 {} if self._command_gateway is None
@@ -3053,7 +4983,7 @@ class QuackStateServer:
             identity = self._identity
             token = self._vault.resolve(identity.secret_handle)
             observed = self.transport.live_query(
-                self._connection,
+                self._transport_connection,
                 identity=identity,
                 token=token,
             )
@@ -3076,45 +5006,29 @@ class QuackStateServer:
                 raise QuackStateServerReadyError(
                     "schema_revision drift between live store and published identity"
                 )
-
-            # Fail closed: live query must supply each identity field; do not
-            # silently substitute published values for missing observations.
-            required_fields = (
-                "store_id",
-                "generation",
-                "schema_revision",
-                "schema_fingerprint",
-                "server_id",
-                "database_uuid",
-                "process_birth_id",
-            )
-            missing = [
-                name
-                for name in required_fields
-                if observed.get(name) in (None, "")
-            ]
-            if missing:
+            replica_meta = self._read_meta(self._transport_connection)
+            if replica_meta != meta:
                 raise QuackStateServerReadyError(
-                    "live query missing identity fields: " + ", ".join(missing)
+                    "read-replica metadata differs from authoritative writer"
                 )
-            try:
-                observed_generation = int(observed["generation"])
-                observed_schema_revision = int(observed["schema_revision"])
-            except (TypeError, ValueError) as exc:
-                raise QuackStateServerReadyError(
-                    "live query identity fields are not integers"
-                ) from exc
-            if not identity.matches(
-                store_id=str(observed["store_id"]),
-                generation=observed_generation,
-                schema_revision=observed_schema_revision,
-                schema_fingerprint=str(observed["schema_fingerprint"]),
-                server_id=str(observed["server_id"]),
-                database_uuid=str(observed["database_uuid"]),
-                process_birth_id=str(observed["process_birth_id"]),
+            self._assert_live_identity_observation(observed)
+            replica = self._read_replica_observation
+            if (
+                replica.get("live") is not True
+                or replica.get("path") != str(self.read_replica_path())
+                or replica.get("source_database_path")
+                != str(self.config.database_path)
+                or replica.get("server_id") != identity.server_id
+                or replica.get("database_uuid") != identity.database_uuid
+                or replica.get("generation") != identity.generation
+                or replica.get("schema_revision") != identity.schema_revision
+                or replica.get("schema_fingerprint")
+                != identity.schema_fingerprint
+                or replica.get("storage_schema_fingerprint")
+                != self._mutation_binding().get("schema_fingerprint")
             ):
                 raise QuackStateServerReadyError(
-                    "live query identities do not match published state-owner identity"
+                    "read-replica freshness binding is absent or stale"
                 )
 
             result = {
@@ -3129,6 +5043,7 @@ class QuackStateServer:
                 "listen_uri": identity.listen_uri,
                 "secret_handle": identity.secret_handle,
                 "live": True,
+                "read_replica": dict(replica),
             }
             sanitized = sanitize_for_export(result, token=token)
             self._vault.assert_absent_from(sanitized, surface_name="ready")
@@ -3224,30 +5139,26 @@ class QuackStateServer:
                 self._log(f"typed command gateway stop warning: {type(exc).__name__}")
 
             try:
-                if self.transport is not None:
-                    self.transport.stop(self._serve_connection or self._connection)
+                self._stop_transport_connection(observe_closed=True)
             except Exception as exc:
                 self._log(f"transport stop warning: {type(exc).__name__}")
 
             try:
-                bookkeeping = self._serve_connection or self._connection
-                if bookkeeping is not None and identity is not None:
-                    self._mark_server_stopped(bookkeeping, identity)
+                if self._connection is not None and identity is not None:
+                    self._mark_server_stopped(self._connection, identity)
                     try:
-                        bookkeeping.execute("CHECKPOINT")
+                        self._connection.execute("CHECKPOINT")
                     except Exception:
                         pass
             except Exception as exc:
                 self._log(f"stop bookkeeping warning: {type(exc).__name__}")
 
             try:
-                target = self._serve_connection or self._connection
-                if target is not None and hasattr(target, "close"):
-                    target.close()
+                if self._connection is not None and hasattr(self._connection, "close"):
+                    self._connection.close()
             except Exception:
                 pass
             self._connection = None
-            self._serve_connection = None
 
             if self._vault is not None:
                 self._vault.destroy()
@@ -3299,6 +5210,14 @@ class QuackStateServer:
 
         with self._lock:
             identity = self._identity
+            storage_schema_fingerprint = ""
+            if identity is not None and self._connection is not None:
+                try:
+                    storage_schema_fingerprint = str(
+                        self._mutation_binding().get("schema_fingerprint") or ""
+                    )
+                except QuackStateServerMutationError:
+                    storage_schema_fingerprint = ""
             payload: dict[str, Any] = {
                 "schema": self.SCHEMA,
                 "interface": self.INTERFACE,
@@ -3307,6 +5226,10 @@ class QuackStateServer:
                 "state_dir": str(self.config.state_dir),
                 "host": self.config.host,
                 "port": int(self._bound_port or self.config.port),
+                "container_bind_host": self.config.container_bind_host,
+                "container_port": int(
+                    self.config.container_port or self._bound_port
+                ),
                 "store_id": self.config.store_id,
                 "secret_handle": identity.secret_handle if identity else self.secret_handle,
                 "identity": identity.to_dict() if identity else None,
@@ -3316,6 +5239,8 @@ class QuackStateServer:
                 "extension_fingerprint": (
                     self._capability.extension_fingerprint if self._capability else ""
                 ),
+                "storage_schema_fingerprint": storage_schema_fingerprint,
+                "read_replica": dict(self._read_replica_observation),
                 "owner_marker_path": str(self.owner_marker_path()),
                 "status_path": str(self.status_path()),
                 "event_wait": self.event_wait_capability(),
@@ -3366,7 +5291,11 @@ class QuackStateServer:
 
     def _write_status(self) -> None:
         try:
-            _atomic_write_json(self.status_path(), self.status(), mode=0o600)
+            _atomic_write_text(
+                self.status_path(),
+                canonical_json_bytes(self.status()).decode("utf-8") + "\n",
+                mode=0o600,
+            )
         except Exception as exc:
             self._log(f"status write warning: {type(exc).__name__}")
 
@@ -3383,6 +5312,8 @@ class QuackStateServer:
             str(self.config.state_dir),
             "--host",
             self.config.host,
+            "--container-bind-host",
+            self.config.container_bind_host,
             "--store-id",
             self.config.store_id,
         ]
@@ -3392,6 +5323,12 @@ class QuackStateServer:
             )
         if self._bound_port or self.config.port:
             argv.extend(["--port", str(int(self._bound_port or self.config.port))])
+            argv.extend(
+                [
+                    "--container-port",
+                    str(int(self.config.container_port or self._bound_port)),
+                ]
+            )
         if identity is not None:
             argv.extend(["--secret-handle", identity.secret_handle])
         elif self.config.secret_handle:
@@ -3469,17 +5406,23 @@ def build_server(
     repository_root: Path | str | None = None,
     host: str = DEFAULT_LOOPBACK_HOST,
     port: int = 0,
+    container_bind_host: str = "",
+    container_port: int = 0,
     repository_id: str = "",
     store_id: str = DEFAULT_STORE_ID,
     allow_experimental: bool = False,
     remote_bind_policy: RemoteBindPolicy | None = None,
     secret_handle: str = "",
+    isolation_receipt_path: Path | str | None = None,
     transport: QuackTransport | None = None,
     capability_probe: Callable[..., QuackCapabilityReport] | None = None,
     migrate: Callable[..., MigrationRunReport] | None = None,
     connection_factory: Callable[[Path], Any] | None = None,
     process_birth_factory: Callable[[], ProcessBirthIdentity] | None = None,
     owner_liveness_probe: Callable[[ProcessBirthIdentity], OwnerLiveness] | None = None,
+    isolation_observer: Callable[
+        [QuackStateServerConfig, Mapping[str, Any]], Mapping[str, Any]
+    ] | None = None,
     event_source: EventSource | None = None,
     typed_command_socket_path: Path | str | None = None,
 ) -> QuackStateServer:
@@ -3493,11 +5436,16 @@ def build_server(
         ),
         host=host,
         port=port,
+        container_bind_host=container_bind_host,
+        container_port=container_port,
         repository_id=repository_id,
         store_id=store_id,
         allow_experimental=allow_experimental,
         remote_bind_policy=remote_bind_policy,
         secret_handle=secret_handle,
+        isolation_receipt_path=(
+            None if isolation_receipt_path is None else Path(isolation_receipt_path)
+        ),
         typed_command_socket_path_override=(
             None
             if typed_command_socket_path is None
@@ -3512,6 +5460,7 @@ def build_server(
         connection_factory=connection_factory,
         process_birth_factory=process_birth_factory,
         owner_liveness_probe=owner_liveness_probe,
+        isolation_observer=isolation_observer,
     )
     if event_source is not None:
         server.bind_event_source(event_source)

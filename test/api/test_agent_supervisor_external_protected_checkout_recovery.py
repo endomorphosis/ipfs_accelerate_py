@@ -375,7 +375,7 @@ def test_managed_daemon_fences_supervisor_protected_recovery_journal(
     observed: dict[str, object] = {}
 
     def inspect_supervisor_journal() -> dict[str, object]:
-        lock_path = checkout_mutation_lock_path(repo)
+        lock_path = supervisor._repo_merge_lock_path()
         journal_before = lock_path.read_bytes()
         observed["daemon_context_empty_before"] = (
             daemon._current_checkout_mutation_lease() is None
@@ -441,7 +441,7 @@ def test_supervisor_does_not_maintenance_block_on_daemon_protected_recovery(
             "protected_paths": ["docs/generated.todo.md"],
         }
     )
-    lock_path = checkout_mutation_lock_path(repo)
+    lock_path = supervisor._repo_merge_lock_path()
     lock_path.write_text(json.dumps(metadata, sort_keys=True), encoding="utf-8")
 
     adoption = supervisor._adopt_supervisor_protected_recovery()

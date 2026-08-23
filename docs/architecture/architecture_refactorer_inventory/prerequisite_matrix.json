@@ -82,11 +82,11 @@
     },
     {
       "name": "ProofCarryingProcedureCompiler",
-      "status": "missing",
-      "source": null,
-      "test": null,
-      "blocker": "prerequisite.proof_carrying_procedure_compiler.current_tree_missing",
-      "response": "Expose a narrow future adapter; do not recreate the compiler."
+      "source": "ipfs_accelerate_py/agent_supervisor/procedure_compiler/runtime.py:70",
+      "source_blob": "b30e32c7710c8a4dc89f8beffe319e6b3c76f910",
+      "status": "available",
+      "test": "test/api/procedure_compiler/test_interpreter.py",
+      "test_blob": "8072cb86b19ca17cfcfe423913965b9dd37d70f8"
     }
   ]
 }

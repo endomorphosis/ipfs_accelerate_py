@@ -17,6 +17,33 @@ import sys
 from pathlib import Path
 
 
+def _operator_home_dir() -> Path:
+    try:
+        import pwd
+
+        return Path(pwd.getpwuid(os.getuid()).pw_dir)
+    except Exception:
+        return Path.home()
+
+
+def _host_cli_binary(name: str) -> str | None:
+    found = shutil.which(name)
+    if found:
+        return found
+    for path in (
+        _operator_home_dir() / ".local" / "bin" / name,
+        Path("/usr/local/bin") / name,
+        Path("/usr/bin") / name,
+        Path("/opt/cli-bin") / name,
+    ):
+        try:
+            if path.is_file() and os.access(path, os.X_OK):
+                return str(path)
+        except OSError:
+            continue
+    return None
+
+
 def _resolve_claude() -> str:
     for env in (
         "IPFS_ACCELERATE_AGENT_CLAUDE_BIN",
@@ -31,7 +58,7 @@ def _resolve_claude() -> str:
             found = shutil.which(configured.split()[0])
             if found:
                 return found
-    found = shutil.which("claude")
+    found = _host_cli_binary("claude")
     if not found:
         raise SystemExit("claude CLI not found on PATH")
     return found
@@ -65,8 +92,9 @@ def _resolve_gemini_argv() -> list[str]:
         found = shutil.which(parts[0])
         if found:
             return [found, *parts[1:]]
-    if shutil.which("gemini"):
-        return ["gemini"]
+    gemini = _host_cli_binary("gemini")
+    if gemini:
+        return [gemini]
     if shutil.which("npx"):
         return ["npx", "--yes", "@google/gemini-cli"]
     raise SystemExit("gemini CLI not found on PATH")
@@ -138,7 +166,7 @@ def _resolve_mistral() -> str:
             if found:
                 return found
     for candidate in ("vibe", "mistral-vibe"):
-        found = shutil.which(candidate)
+        found = _host_cli_binary(candidate)
         if found:
             return found
     raise SystemExit("mistral vibe CLI not found on PATH")

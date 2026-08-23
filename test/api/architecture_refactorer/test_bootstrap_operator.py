@@ -216,7 +216,7 @@ def test_database_daemon_builder_preserves_attempt_and_shard_bounds(
         daemon.close()
 
 
-def test_database_daemon_strict_shard_excludes_other_alias_homes(
+def test_database_daemon_strict_shard_defers_filter_until_after_lease(
     tmp_path: Path,
 ) -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -257,18 +257,10 @@ def test_database_daemon_strict_shard_excludes_other_alias_homes(
     )
 
     excluded = daemon._automatic_claim_exclusions()
-    expected = {
-        task.task_cid
-        for task in tasks
-        if int(
-            hashlib.sha256(task.task_alias.encode("utf-8")).hexdigest()[:8],
-            16,
-        )
-        % 3
-        != 1
-    }
-
-    assert excluded == expected
+    # Recovered-main authority claims from the shared ready frontier first,
+    # then verifies alias-home shard ownership under the accepted lease.  A
+    # pre-claim exclusion snapshot would race task identity changes.
+    assert excluded == set()
 
 
 def test_database_claim_releases_shared_cas_loser_and_continues(
