@@ -186,6 +186,7 @@ BOOTSTRAP_TASK_FIELDS = {
     "creates_new_supervisor", "creates_new_store", "required_before_materialization",
 }
 BOOTSTRAP_OUTPUTS = {
+    ".gitignore",
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
@@ -200,6 +201,7 @@ BOOTSTRAP_OUTPUTS = {
     "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
 }
 REQUIRED_PROTECTED_PATHS = {
+    ".gitignore",
     "docs/architecture/AGENT_SUPERVISOR_EFFICIENCY_AND_STATE_HARDENING_PLAN.md",
     "docs/architecture/agent_supervisor_efficiency_state_hardening.requirements.json",
     "docs/architecture/agent_supervisor_efficiency_state_hardening.objectives.md",

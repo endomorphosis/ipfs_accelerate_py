@@ -83,6 +83,7 @@
     "owning_repository": "ipfs_accelerate_py",
     "dependencies": [],
     "exact_declared_outputs": [
+      ".gitignore",
       "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
       "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
       "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
@@ -164,6 +165,7 @@
     "ipfs_kit_py"
   ],
   "protected_paths": [
+    ".gitignore",
     "docs/architecture/AGENT_SUPERVISOR_EFFICIENCY_AND_STATE_HARDENING_PLAN.md",
     "docs/architecture/agent_supervisor_efficiency_state_hardening.requirements.json",
     "docs/architecture/agent_supervisor_efficiency_state_hardening.objectives.md",
