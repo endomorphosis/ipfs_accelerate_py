@@ -73811,6 +73811,7 @@ class DatabaseImplementationDaemon:
         """
 
         tasks, ready_cids = self._stable_authoritative_task_projection()
+        self._unstall_in_progress_with_dead_lifecycle_owner(tasks)
         synchronize = getattr(
             self.coordinator,
             "synchronize_authoritative_task",
@@ -76149,17 +76150,11 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "task source returned a malformed board unstall receipt"
             )
-        outcomes = [item for item in unstalled if isinstance(item, Mapping)]
-        already = {str(item.get("task_cid") or "") for item in outcomes}
-        for item in self._unstall_in_progress_with_dead_lifecycle_owner():
-            task_cid = str(item.get("task_cid") or "")
-            if task_cid and task_cid not in already:
-                outcomes.append(item)
-                already.add(task_cid)
-        return outcomes
+        return [item for item in unstalled if isinstance(item, Mapping)]
 
     def _unstall_in_progress_with_dead_lifecycle_owner(
         self,
+        tasks: Iterable[Any] = (),
     ) -> list[dict[str, Any]]:
         """Retry in_progress gates whose worktree owner is provably dead.
 
@@ -76194,10 +76189,7 @@ class DatabaseImplementationDaemon:
             candidates.setdefault(key, []).append(record)
         if not candidates:
             return []
-        outcomes: list[dict[str, Any]] = []
-        getter = getattr(self.task_source, "get", None)
-        if not callable(getter):
-            return []
+        dead_keys: set[str] = set()
         for key, records in candidates.items():
             live = False
             unknown = False
@@ -76214,14 +76206,18 @@ class DatabaseImplementationDaemon:
                     dead = True
             if live or unknown or not dead:
                 continue
-            try:
-                task = getter(key)
-            except Exception as exc:
-                detail = str(exc).lower()
-                if "invalid connection id" in detail or "query interrupted" in detail:
-                    continue
-                raise
-            if task is None:
+            dead_keys.add(key)
+            for record in records:
+                cid = str(record.canonical_task_cid or "").strip()
+                if cid:
+                    dead_keys.add(cid)
+        if not dead_keys:
+            return []
+        outcomes: list[dict[str, Any]] = []
+        for task in tasks:
+            alias = str(getattr(task, "task_alias", "") or "").strip()
+            cid = str(getattr(task, "task_cid", "") or "").strip()
+            if alias not in dead_keys and cid not in dead_keys:
                 continue
             if str(getattr(task, "status", "") or "").strip().lower() != "in_progress":
                 continue
@@ -76241,8 +76237,8 @@ class DatabaseImplementationDaemon:
                 continue
             outcomes.append(
                 {
-                    "task_cid": str(task.task_cid),
-                    "task_alias": str(task.task_alias or key),
+                    "task_cid": cid,
+                    "task_alias": alias or cid,
                     "previous_status": "in_progress",
                     "status": "retrying",
                     "reason": "worktree_lifecycle_owner_dead",

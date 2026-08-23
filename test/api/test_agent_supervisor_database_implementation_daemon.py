@@ -5336,7 +5336,11 @@ def test_stale_in_progress_unstall_retries_dead_lifecycle_owner(
                 boot_id="dead-boot",
             ),
         )
-        unstalled = daemon.reconcile_stale_in_progress_gates()
+        stuck = daemon.task_source.get("task:cid:001")
+        assert stuck is not None
+        unstalled = daemon._unstall_in_progress_with_dead_lifecycle_owner(
+            tasks=(stuck,)
+        )
         assert [item["task_cid"] for item in unstalled] == ["task:cid:001"]
         assert unstalled[0]["reason"] == "worktree_lifecycle_owner_dead"
         retried = daemon.task_source.get("task:cid:001")
