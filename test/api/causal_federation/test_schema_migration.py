@@ -86,11 +86,14 @@ def test_extension_inventory_is_contiguous_and_preserves_base_profile() -> None:
     assert extension.sql_path().name == "0002_causal_event_federation_core.sql"
     assert set(extension.tables) == set(CAUSAL_EVENT_FEDERATION_TABLES)
 
-    assert catalog.latest_version == 2
+    assert catalog.latest_version == 3
     assert catalog.get(1).migration_id == CONTROL_PLANE_MIGRATION_ID
     assert catalog.get(2).migration_id == CAUSAL_EVENT_FEDERATION_MIGRATION_ID
     assert catalog.get(2).depends_on == (1,)
     assert catalog.get(2).checksum.startswith("sha256:")
+    assert catalog.get(3).migration_id == "0003_state_server_restart_identity"
+    assert catalog.get(3).depends_on == (1, 2)
+    assert catalog.get(3).checksum.startswith("sha256:")
 
     # The separately qualified datasets-authoritative @1 profile remains a
     # one-migration projection of 0001 and gains no federation relations.
@@ -104,7 +107,7 @@ def test_extension_inventory_is_contiguous_and_preserves_base_profile() -> None:
     assert "CREATE TABLE causal_nodes" not in operational_sql
 
 
-def test_fresh_and_one_to_two_upgrade_are_equivalent_and_replay_safe(
+def test_fresh_and_staged_upgrade_are_equivalent_and_replay_safe(
     tmp_path: Path,
 ) -> None:
     catalog = load_control_plane_catalog()
@@ -114,8 +117,8 @@ def test_fresh_and_one_to_two_upgrade_are_equivalent_and_replay_safe(
     fresh = _runner(fresh_database, catalog)
     fresh_report = fresh.apply()
     assert fresh_report.from_version == 0
-    assert fresh_report.to_version == 2
-    assert [receipt.version for receipt in fresh_report.receipts] == [1, 2]
+    assert fresh_report.to_version == 3
+    assert [receipt.version for receipt in fresh_report.receipts] == [1, 2, 3]
 
     upgraded = _runner(upgraded_database, catalog)
     foundation_report = upgraded.apply(target_version=1)
@@ -135,16 +138,21 @@ def test_fresh_and_one_to_two_upgrade_are_equivalent_and_replay_safe(
     assert upgrade_report.from_version == 1
     assert upgrade_report.to_version == 2
     assert [receipt.version for receipt in upgrade_report.receipts] == [2]
-    assert upgrade_report.schema_fingerprint == fresh_report.schema_fingerprint
 
     verified = verify_causal_event_federation_schema(upgraded_database)
     assert verified["valid"] is True
-    assert verified["schema_fingerprint"] == fresh_report.schema_fingerprint
     assert set(verified["tables_ok"]) == set(CAUSAL_EVENT_FEDERATION_TABLES)
+
+    latest_report = upgraded.apply()
+    assert latest_report.changed is True
+    assert latest_report.from_version == 2
+    assert latest_report.to_version == 3
+    assert [receipt.version for receipt in latest_report.receipts] == [3]
+    assert latest_report.schema_fingerprint == fresh_report.schema_fingerprint
 
     replay = upgraded.apply()
     assert replay.changed is False
-    assert replay.from_version == replay.to_version == 2
+    assert replay.from_version == replay.to_version == 3
     assert replay.schema_fingerprint == fresh_report.schema_fingerprint
 
 

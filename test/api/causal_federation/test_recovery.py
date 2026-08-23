@@ -191,7 +191,7 @@ def test_store_rejects_database_path(tmp_path: Path) -> None:
 def test_store_records_recovery_action_epoch_and_observation(tmp_path: Path) -> None:
     database = tmp_path / "control.duckdb"
     report = install_control_plane_schema(database, owner_id="owner:recovery")
-    assert report.to_version == 2
+    assert report.to_version == 3
     client = open_embedded_client(
         database,
         owner_id="owner:recovery",
