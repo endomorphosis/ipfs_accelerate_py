@@ -28,6 +28,9 @@ from .database_task_source import (
     TaskSourceSnapshot,
 )
 from .database_task_source import (
+    MAX_QUERY_LIMIT as TASK_SOURCE_MAX_QUERY_LIMIT,
+)
+from .database_task_source import (
     CASResult as DatabaseCASResult,
 )
 from .intent_repository import IntentReceipt
@@ -38,7 +41,7 @@ TYPED_DATABASE_TASK_SOURCE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/typed-database-task-source@1"
 )
 DEFAULT_QUERY_LIMIT: Final = 50
-MAX_QUERY_LIMIT: Final = 500
+_TRANSPORT_PAGE_LIMIT: Final = 500
 _MAX_JSON_BYTES: Final = 262_144
 _READY_STATUSES: Final[frozenset[str]] = frozenset(
     {"proposed", "admitted", "pending", "ready", "todo", "queued", "retrying"}
@@ -234,11 +237,30 @@ class TypedDatabaseTaskSource:
         if self._closed:
             raise TaskSourceIntegrityError("typed database task source is closed")
 
-    def _all_records(self) -> tuple[tuple[TaskRecord, Mapping[str, Any]], ...]:
+    def _all_records(
+        self, *, expected_count: int
+    ) -> tuple[tuple[TaskRecord, Mapping[str, Any]], ...]:
         self._require_open()
-        rows = self._client.execute(
-            "executor_task_projection_page", {"limit": MAX_QUERY_LIMIT, "offset": 0}
-        )
+        if expected_count < 0 or expected_count > TASK_SOURCE_MAX_QUERY_LIMIT:
+            raise TaskSourceBoundsError(
+                "typed task population exceeds its admitted projection bound"
+            )
+        rows: list[Mapping[str, Any]] = []
+        while len(rows) < expected_count:
+            page = self._client.execute(
+                "executor_task_projection_page",
+                {
+                    "limit": min(_TRANSPORT_PAGE_LIMIT, expected_count - len(rows)),
+                    "offset": len(rows),
+                },
+            )
+            if not page:
+                break
+            rows.extend(page)
+        if len(rows) != expected_count:
+            raise TaskSourceConflictError(
+                "typed task population changed during bounded projection"
+            )
         return tuple(_record_from_row(row) for row in rows)
 
     def _snapshot_material(
@@ -249,10 +271,10 @@ class TypedDatabaseTaskSource:
             rows = self._client.execute("executor_control_snapshot")
             if len(rows) != 1:
                 raise TaskSourceIntegrityError("typed control snapshot is absent or ambiguous")
-            records = self._all_records()
+            row = rows[0]
+            records = self._all_records(expected_count=int(row.get("task_count") or 0))
             after = self._client.load_generation()
             if before.content_id == after.content_id:
-                row = rows[0]
                 if int(row.get("task_count") or 0) != len(records):
                     raise TaskSourceBoundsError(
                         "typed task population exceeds its admitted projection bound"
@@ -354,9 +376,11 @@ class TypedDatabaseTaskSource:
         if (
             isinstance(limit, bool)
             or not isinstance(limit, int)
-            or not 1 <= limit <= MAX_QUERY_LIMIT
+            or not 1 <= limit <= TASK_SOURCE_MAX_QUERY_LIMIT
         ):
-            raise TaskSourceBoundsError(f"limit must be in [1, {MAX_QUERY_LIMIT}]")
+            raise TaskSourceBoundsError(
+                f"limit must be in [1, {TASK_SOURCE_MAX_QUERY_LIMIT}]"
+            )
         snapshot_row, stable_records, revision = self._snapshot_material()
         snapshot = self._snapshot_from_material(snapshot_row, stable_records, revision)
         offset = _cursor_decode(cursor, revision=snapshot.revision) if cursor else 0
@@ -385,9 +409,11 @@ class TypedDatabaseTaskSource:
         if (
             isinstance(limit, bool)
             or not isinstance(limit, int)
-            or not 1 <= limit <= MAX_QUERY_LIMIT
+            or not 1 <= limit <= TASK_SOURCE_MAX_QUERY_LIMIT
         ):
-            raise TaskSourceBoundsError(f"limit must be in [1, {MAX_QUERY_LIMIT}]")
+            raise TaskSourceBoundsError(
+                f"limit must be in [1, {TASK_SOURCE_MAX_QUERY_LIMIT}]"
+            )
         completed = {str(item).strip() for item in completed_ids if str(item).strip()}
         blocked = {str(item).strip() for item in blocked_ids if str(item).strip()}
         if completed & blocked:

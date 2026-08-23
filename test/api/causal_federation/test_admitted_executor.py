@@ -276,6 +276,77 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
         connection.close()
 
 
+def test_typed_database_task_source_pages_transport_for_public_maximum() -> None:
+    task_count = 501
+    rows = [
+        {
+            "task_cid": f"task:paged:{ordinal:04d}",
+            "task_alias": f"CASF-PAGED-{ordinal:04d}",
+            "goal_cid": "goal:paged",
+            "plan_cid": "plan:paged",
+            "objective_id": "objective:paged",
+            "ordinal": ordinal,
+            "status": "quarantined",
+            "revision": 1,
+            "priority": "normal",
+            "identity_json": json.dumps({"repository_tree_id": "tree:paged"}),
+            "body_json": "{}",
+            "dependencies_json": "[]",
+            "outputs_json": "[]",
+            "acceptance_json": "[]",
+            "validations_json": "[]",
+        }
+        for ordinal in range(task_count)
+    ]
+
+    class _PagedClient:
+        def __init__(self) -> None:
+            self.page_requests: list[dict[str, int]] = []
+
+        @staticmethod
+        def load_generation() -> SimpleNamespace:
+            return SimpleNamespace(content_id="generation:stable", revision=7)
+
+        def execute(
+            self, operation: str, parameters: Mapping[str, Any] | None = None
+        ) -> tuple[Mapping[str, Any], ...]:
+            if operation == "executor_control_snapshot":
+                return (
+                    {
+                        "objective_count": 1,
+                        "goal_count": 1,
+                        "plan_count": 1,
+                        "task_count": task_count,
+                        "dependency_count": 0,
+                        "event_watermark": 0,
+                        "goals_json": "[]",
+                        "plans_json": "[]",
+                        "tasks_json": "[]",
+                    },
+                )
+            assert operation == "executor_task_projection_page"
+            request = {key: int(value) for key, value in dict(parameters or {}).items()}
+            self.page_requests.append(request)
+            offset = request["offset"]
+            return tuple(rows[offset : offset + request["limit"]])
+
+    client = _PagedClient()
+    adapter = object.__new__(TypedDatabaseTaskSource)
+    adapter._client = client  # type: ignore[attr-defined]
+    adapter._closed = False  # type: ignore[attr-defined]
+    adapter.path = Path("typed-state-owner")
+    adapter.database_path = adapter.path
+
+    page = adapter.list_tasks(status="quarantined", limit=1_000)
+
+    assert len(page.tasks) == task_count
+    assert page.next_cursor == ""
+    assert client.page_requests == [
+        {"limit": 500, "offset": 0},
+        {"limit": 1, "offset": 500},
+    ]
+
+
 @pytest.mark.timeout(60)
 def test_real_duckdb_owner_bootstrap_claim_restart_status_and_stop(
     tmp_path: Path,
@@ -466,11 +537,26 @@ def test_real_duckdb_owner_bootstrap_claim_restart_status_and_stop(
 def test_actual_configured_supervisor_completes_typed_no_change_task(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     operator = _operator()
     board, _config = operator._load_config(CONFIG)
     repository_tree = subprocess.run(
         ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    protected_branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    protected_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
         cwd=ROOT,
         check=True,
         capture_output=True,
@@ -516,10 +602,65 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
         owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
     )
     identity = server.start()
+    request.addfinalizer(server.stop)
     runtime_root = Path(
         tempfile.mkdtemp(prefix=".casf-managed-e2e-", dir=ROOT / "data")
     )
-    relative_runtime = runtime_root.relative_to(ROOT).as_posix()
+    temporary_branch = f"test/casf-managed-e2e-{runtime_root.name.removeprefix('.')}"
+    temporary_ref = f"refs/heads/{temporary_branch}"
+    subprocess.run(
+        ["git", "update-ref", temporary_ref, "HEAD"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    isolated_repo = runtime_root / "repository"
+    subprocess.run(
+        ["git", "worktree", "add", str(isolated_repo), temporary_branch],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    def _cleanup_isolated_runtime() -> None:
+        listing = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        candidates: list[Path] = []
+        for line in listing.stdout.splitlines():
+            if not line.startswith("worktree "):
+                continue
+            candidate = Path(line.removeprefix("worktree ")).resolve(strict=False)
+            try:
+                candidate.relative_to(runtime_root.resolve())
+            except ValueError:
+                continue
+            candidates.append(candidate)
+        for candidate in sorted(
+            candidates, key=lambda item: len(item.parts), reverse=True
+        ):
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(candidate)],
+                cwd=ROOT,
+                check=False,
+                capture_output=True,
+            )
+        shutil.rmtree(runtime_root, ignore_errors=True)
+        subprocess.run(
+            ["git", "update-ref", "-d", temporary_ref],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+        )
+
+    request.addfinalizer(_cleanup_isolated_runtime)
+    relative_runtime = ".casf-runtime"
     runtime_paths = {
         "root": relative_runtime,
         "state": f"{relative_runtime}/state",
@@ -542,6 +683,7 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
     payload = dict(board.payload)
     payload.update(
         {
+            "merge_target_branch": temporary_branch,
             "runtime_paths": runtime_paths,
             "daemon_interval_seconds": 0.25,
             "check_interval_seconds": 0.25,
@@ -550,9 +692,12 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
     )
     managed_board = replace(
         board,
+        config_path=isolated_repo / CONFIG.relative_to(ROOT),
+        repo_root=isolated_repo,
         payload=payload,
         runtime_paths=runtime_paths,
         database_program=program,
+        merge_target_branch=temporary_branch,
     )
     paths = operator._runtime_paths(managed_board)
     paths["owner_socket"] = server.typed_command_socket_path()
@@ -617,6 +762,27 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
         assert projection["task_state_path"].startswith(str(paths["executor_state"]))
         assert "token" not in " ".join(supervisor.args).lower()
         assert str(server.typed_command_socket_path()) not in supervisor.args
+        assert temporary_branch in supervisor.args
+        assert (
+            subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            == protected_branch
+        )
+        assert (
+            subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            == protected_head
+        )
     finally:
         observer.close()
         if supervisor_birth is not None:
@@ -635,8 +801,6 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
         elif supervisor is not None and supervisor.poll() is None:
             os.killpg(supervisor.pid, signal.SIGKILL)
             supervisor.wait(timeout=5.0)
-        server.stop()
-        shutil.rmtree(runtime_root, ignore_errors=True)
 
 
 def test_launch_modes_are_unambiguous_and_no_change_remains_explicit() -> None:
