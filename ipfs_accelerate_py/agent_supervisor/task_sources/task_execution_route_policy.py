@@ -29,6 +29,9 @@ TASK_EXECUTION_ROUTE_POLICY_SCHEMA: Final = (
 TASK_EXECUTION_ROUTE_BINDING_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/task-execution-route-binding@1"
 )
+TASK_EXECUTION_ROUTE_SUMMARY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/task-execution-route-summary@1"
+)
 DETERMINISTIC_ONLY_EXECUTION_MODE: Final = "deterministic-only"
 GROK_CODEX_EXECUTION_MODE: Final = "grok-codex"
 TASK_EXECUTION_ROUTE_MODES: Final = frozenset(
@@ -377,6 +380,28 @@ class TaskExecutionRoutePolicy:
     def entries_by_cid(self) -> Mapping[str, TaskExecutionRouteEntry]:
         return MappingProxyType({entry.task_cid: entry for entry in self.entries})
 
+    def public_summary(self) -> dict[str, Any]:
+        """Return the bounded, task-detail-free launch/status projection."""
+
+        deterministic_count = sum(
+            entry.execution_mode == DETERMINISTIC_ONLY_EXECUTION_MODE
+            for entry in self.entries
+        )
+        model_count = sum(
+            entry.execution_mode == GROK_CODEX_EXECUTION_MODE
+            for entry in self.entries
+        )
+        return {
+            "schema": TASK_EXECUTION_ROUTE_SUMMARY_SCHEMA,
+            "policy_id": self.policy_id,
+            "plan_root_cid": self.plan_root_cid,
+            "repository_tree_id": self.repository_tree_id,
+            "source_revision": int(self.source_revision),
+            "task_count": len(self.entries),
+            "deterministic_task_count": deterministic_count,
+            "model_task_count": model_count,
+        }
+
     def binding_for_task(self, task: TaskRecord) -> TaskExecutionRouteBinding:
         entry = self.entries_by_cid.get(str(getattr(task, "task_cid", "") or ""))
         if entry is None:
@@ -437,6 +462,7 @@ __all__ = [
     "TASK_EXECUTION_ROUTE_BINDING_SCHEMA",
     "TASK_EXECUTION_ROUTE_MODES",
     "TASK_EXECUTION_ROUTE_POLICY_SCHEMA",
+    "TASK_EXECUTION_ROUTE_SUMMARY_SCHEMA",
     "TaskExecutionRouteBinding",
     "TaskExecutionRouteEntry",
     "TaskExecutionRoutePolicy",

@@ -229,6 +229,9 @@ class StateOwnerBootstrapCredentials:
             "execution_route_plan_root_cid": (
                 self.execution_route_policy.plan_root_cid
             ),
+            "execution_route_policy": (
+                self.execution_route_policy.public_summary()
+            ),
             "credential_transport": "private_inherited_socket",
             "credential_in_argv": False,
         }

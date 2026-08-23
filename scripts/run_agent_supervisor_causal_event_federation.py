@@ -102,6 +102,39 @@ CASF_TASK_ALIASES: Final = tuple(f"CASF-{ordinal:03d}" for ordinal in range(44))
 CASF_DETERMINISTIC_TASK_ALIASES: Final = frozenset(
     f"CASF-{ordinal:03d}" for ordinal in range(2, 33)
 )
+EXECUTOR_OWNER_READ_OPERATIONS: Final = frozenset(
+    {
+        "whoami_metadata",
+        "load_store_generation",
+        "executor_task_projection_page",
+        "executor_control_snapshot",
+        "executor_task_projection_by_identity",
+    }
+)
+EXECUTOR_OWNER_COMMAND_OPERATIONS: Final = frozenset(
+    {
+        "task.status.cas",
+        "task.status.cas.receipt",
+        "task.validation.record.passed",
+        "task.validation.record.nonpassing",
+    }
+)
+EXECUTOR_OWNER_TRANSACTION_OPERATIONS: Final = frozenset(
+    {
+        "txn_load_generation",
+        "txn_lookup_idempotency",
+        "txn_advance_store_revision",
+        "txn_record_idempotency",
+        "txn_cas_task_status",
+        "executor_cas_task_status_receipt",
+        "executor_insert_validation_run",
+        "executor_insert_validation_result",
+        "executor_insert_validation_evidence",
+    }
+)
+EXECUTOR_OWNER_ALLOWED_OPERATIONS: Final = (
+    EXECUTOR_OWNER_READ_OPERATIONS | EXECUTOR_OWNER_TRANSACTION_OPERATIONS
+)
 
 
 class OperatorError(RuntimeError):
@@ -123,6 +156,94 @@ def _casf_mixed_execution_modes() -> dict[str, str]:
         )
         for alias in CASF_TASK_ALIASES
     }
+
+
+def _validated_execution_route_summary(
+    value: Mapping[str, Any],
+    *,
+    require_casf_population: bool = False,
+) -> dict[str, Any]:
+    """Validate the public, task-detail-free route-policy projection."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        TASK_EXECUTION_ROUTE_SUMMARY_SCHEMA,
+    )
+
+    fields = {
+        "schema",
+        "policy_id",
+        "plan_root_cid",
+        "repository_tree_id",
+        "source_revision",
+        "task_count",
+        "deterministic_task_count",
+        "model_task_count",
+    }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise OperatorError(
+            "execution-route summary differs from its closed public schema"
+        )
+    summary = dict(value)
+    if summary.get("schema") != TASK_EXECUTION_ROUTE_SUMMARY_SCHEMA:
+        raise OperatorError("execution-route summary schema is invalid")
+    for name in ("policy_id", "plan_root_cid", "repository_tree_id"):
+        if not str(summary.get(name) or "").strip():
+            raise OperatorError(f"execution-route summary {name} is absent")
+    integers = (
+        "source_revision",
+        "task_count",
+        "deterministic_task_count",
+        "model_task_count",
+    )
+    if any(
+        isinstance(summary.get(name), bool)
+        or not isinstance(summary.get(name), int)
+        or int(summary[name]) < (1 if name in {"source_revision", "task_count"} else 0)
+        for name in integers
+    ):
+        raise OperatorError("execution-route summary counts are invalid")
+    if int(summary["task_count"]) != (
+        int(summary["deterministic_task_count"])
+        + int(summary["model_task_count"])
+    ):
+        raise OperatorError("execution-route summary counts do not partition tasks")
+    if require_casf_population and (
+        int(summary["task_count"]) != len(CASF_TASK_ALIASES)
+        or int(summary["deterministic_task_count"])
+        != len(CASF_DETERMINISTIC_TASK_ALIASES)
+        or int(summary["model_task_count"])
+        != len(CASF_TASK_ALIASES) - len(CASF_DETERMINISTIC_TASK_ALIASES)
+    ):
+        raise OperatorError("execution-route summary is not the exact CASF population")
+    return summary
+
+
+def _execution_route_policy_summary(
+    policy: Any,
+    *,
+    require_casf_population: bool = False,
+) -> dict[str, Any]:
+    """Project a sealed policy and optionally prove the canonical 44-way route."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+        TaskExecutionRoutePolicy,
+    )
+
+    if not isinstance(policy, TaskExecutionRoutePolicy):
+        raise OperatorError("execution-route policy is not a sealed typed policy")
+    if require_casf_population:
+        expected_modes = _casf_mixed_execution_modes()
+        observed_modes = {
+            entry.task_alias: entry.execution_mode for entry in policy.entries
+        }
+        if observed_modes != expected_modes:
+            raise OperatorError(
+                "execution-route policy is not the exact canonical CASF route"
+            )
+    return _validated_execution_route_summary(
+        policy.public_summary(),
+        require_casf_population=require_casf_population,
+    )
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -1492,10 +1613,6 @@ class _ExecutorBootstrapBroker:
             STATE_OWNER_BOOTSTRAP_REQUEST_SCHEMA,
             STATE_OWNER_BOOTSTRAP_RESPONSE_SCHEMA,
         )
-        from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
-            build_control_plane_operation_catalog,
-        )
-
         required = {
             "schema",
             "pid",
@@ -1540,12 +1657,9 @@ class _ExecutorBootstrapBroker:
         token, grant = self.server.issue_typed_client_grant_record(
             client_id=client_id,
             process_birth_id=str(request["process_birth_id"]),
-            allowed_operations=tuple(build_control_plane_operation_catalog()),
-            allowed_command_operations=(
-                "task.status.cas",
-                "task.status.cas.receipt",
-                "task.validation.record.passed",
-                "task.validation.record.nonpassing",
+            allowed_operations=tuple(sorted(EXECUTOR_OWNER_ALLOWED_OPERATIONS)),
+            allowed_command_operations=tuple(
+                sorted(EXECUTOR_OWNER_COMMAND_OPERATIONS)
             ),
             peer_pid=pid,
             ttl_seconds=86_400.0,
@@ -1556,6 +1670,9 @@ class _ExecutorBootstrapBroker:
         identity = self.server.identity
         if identity is None:
             raise OperatorError("state owner lost identity during executor bootstrap")
+        route_summary = _execution_route_policy_summary(
+            self.execution_route_policy
+        )
         record = {
             "schema": EXECUTOR_BOOTSTRAP_SCHEMA,
             "ready": True,
@@ -1573,6 +1690,7 @@ class _ExecutorBootstrapBroker:
             "execution_route_source_revision": int(
                 self.execution_route_policy.source_revision
             ),
+            "execution_route_policy": route_summary,
             "credential_transport": "private_inherited_socket",
             "credential_in_argv_or_environment_at_spawn": False,
         }
@@ -2082,17 +2200,29 @@ def state_owner(
     executor_process: subprocess.Popen[Any] | None = None
     executor_supervisor_birth: dict[str, Any] | None = None
     executor_broker: _ExecutorBootstrapBroker | None = None
+    execution_route_summary: dict[str, Any] | None = None
     if admit_task_execution:
         try:
             from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
                 TypedDatabaseTaskSource,
             )
 
-            route_projection = TypedDatabaseTaskSource(owner_client)
-            execution_route_policy = (
-                route_projection.seal_execution_route_policy(
-                    _casf_mixed_execution_modes()
+            route_projection = TypedDatabaseTaskSource(
+                owner_client,
+                owns_client=False,
+            )
+            try:
+                execution_route_policy = (
+                    route_projection.seal_execution_route_policy(
+                        _casf_mixed_execution_modes()
+                    )
                 )
+            finally:
+                # The state owner retains its client; this projection borrowed it.
+                route_projection.close()
+            execution_route_summary = _execution_route_policy_summary(
+                execution_route_policy,
+                require_casf_population=True,
             )
             (
                 executor_process,
@@ -2132,6 +2262,7 @@ def state_owner(
                     else None
                 ),
                 "task_execution_admitted": bool(admit_task_execution),
+                "execution_route_policy": execution_route_summary,
                 "event_wait_qualified": True,
                 "multi_supervisor_qualified": False,
             },
@@ -2533,6 +2664,18 @@ def _launch_plan(
         "server_owned_event_wait": True,
         "event_wait_qualified": True,
         "task_execution_admitted": bool(admit_task_execution),
+        "execution_route_expected_counts": (
+            {
+                "task_count": len(CASF_TASK_ALIASES),
+                "deterministic_task_count": len(
+                    CASF_DETERMINISTIC_TASK_ALIASES
+                ),
+                "model_task_count": len(CASF_TASK_ALIASES)
+                - len(CASF_DETERMINISTIC_TASK_ALIASES),
+            }
+            if admit_task_execution
+            else None
+        ),
         "execution_scope": (
             "one_configured_board_executor_lane"
             if admit_task_execution
@@ -2896,6 +3039,21 @@ def _wait_for_owner(
             except OperatorError:
                 time.sleep(0.1)
                 continue
+            route_summary = _validated_execution_route_summary(
+                executor_current.get("execution_route_policy"),
+                require_casf_population=True,
+            )
+            if (
+                executor_current.get("execution_route_policy_id")
+                != route_summary["policy_id"]
+                or executor_current.get("execution_route_plan_root_cid")
+                != route_summary["plan_root_cid"]
+                or executor_current.get("execution_route_source_revision")
+                != route_summary["source_revision"]
+            ):
+                raise OperatorError(
+                    "executor route-policy summary differs from bootstrap admission"
+                )
             ready.update(
                 {
                     "executor_supervisor_process_birth": (
@@ -2903,6 +3061,7 @@ def _wait_for_owner(
                     ),
                     "executor_process_birth": dict(executor_birth),
                     "executor_runtime": executor_current,
+                    "execution_route_policy": route_summary,
                 }
             )
         return ready
@@ -3239,6 +3398,20 @@ def _executor_runtime_projection(
     current = _read_optional_json(paths["executor_current"])
     status_payload = _read_optional_json(paths["executor_supervisor_status"])
     history = _read_optional_json(paths["executor_history"])
+    route_summary: dict[str, Any] = {}
+    raw_route_summary = current.get("execution_route_policy")
+    if raw_route_summary is not None:
+        route_summary = _validated_execution_route_summary(raw_route_summary)
+        if (
+            current.get("execution_route_policy_id") != route_summary["policy_id"]
+            or current.get("execution_route_plan_root_cid")
+            != route_summary["plan_root_cid"]
+            or current.get("execution_route_source_revision")
+            != route_summary["source_revision"]
+        ):
+            raise OperatorError(
+                "executor current route summary differs from its bootstrap record"
+            )
     daemon_birth = current.get("executor_process_birth")
     reported_supervisor_birth = current.get("supervisor_process_birth")
     process_bound = False
@@ -3351,6 +3524,7 @@ def _executor_runtime_projection(
         "history_path": str(paths["executor_history"]),
         "task_state_path": str(task_state_path),
         "task_state": task_state,
+        "execution_route_policy": route_summary,
     }
 
 
@@ -3856,6 +4030,24 @@ def _status_snapshot(config_path: Path, *, persist: bool = True) -> dict[str, An
             else None
         ),
     )
+    execution_route_summary: dict[str, Any] | None = None
+    if task_execution_admitted:
+        execution_route_summary = _validated_execution_route_summary(
+            launch.get("execution_route_policy"),
+            require_casf_population=True,
+        )
+        runtime_route_summary = runtime["executor"].get(
+            "execution_route_policy"
+        )
+        if (
+            not isinstance(runtime_route_summary, Mapping)
+            or dict(runtime_route_summary) != execution_route_summary
+        ):
+            raise OperatorError(
+                "live executor route policy differs from the admitted launch"
+            )
+    elif launch.get("execution_route_policy") is not None:
+        raise OperatorError("coordinator-only launch unexpectedly carries a route policy")
     outbox_worker = _outbox_worker_health(owner_status)
     runtime["outbox_worker"] = outbox_worker
     startup_grace = float(config.get("watchdog_startup_grace_seconds") or 300)
@@ -3906,6 +4098,7 @@ def _status_snapshot(config_path: Path, *, persist: bool = True) -> dict[str, An
         "runtime": runtime,
         "outbox_worker": outbox_worker,
         "task_execution_admitted": task_execution_admitted,
+        "execution_route_policy": execution_route_summary,
         **classification,
         "event_wait_qualified": bool(
             isinstance(runtime.get("supervisor_status"), Mapping)
@@ -4095,6 +4288,12 @@ def launch(
             or _birth_liveness(executor_birth) != "alive"
         ):
             raise OperatorError("state owner did not attest a live configured executor")
+        execution_route_summary = None
+        if admit_task_execution:
+            execution_route_summary = _validated_execution_route_summary(
+                owner_ready.get("execution_route_policy"),
+                require_casf_population=True,
+            )
         launch_receipt = _persist_receipt(
             paths,
             "launch",
@@ -4130,6 +4329,7 @@ def launch(
                 "credential_transport": "private_inherited_pipe",
                 "credential_in_argv_or_environment": False,
                 "task_execution_admitted": bool(admit_task_execution),
+                "execution_route_policy": execution_route_summary,
                 "executor_mode": executor_mode,
                 "relaunch_supported": True,
                 "relaunch_blocker": "",
@@ -4260,15 +4460,25 @@ def stop(config_path: Path) -> dict[str, Any]:
         "executor_supervisor_process_birth"
     )
     executor_birth: Mapping[str, Any] | None = None
+    execution_route_summary: dict[str, Any] | None = None
     if task_execution_admitted:
+        execution_route_summary = _validated_execution_route_summary(
+            launch_receipt.get("execution_route_policy"),
+            require_casf_population=True,
+        )
         executor_current = _json_object(paths["executor_current"])
         current_supervisor = executor_current.get("supervisor_process_birth")
         current_executor = executor_current.get("executor_process_birth")
+        current_route_summary = _validated_execution_route_summary(
+            executor_current.get("execution_route_policy"),
+            require_casf_population=True,
+        )
         if (
             not isinstance(executor_supervisor_birth, Mapping)
             or not isinstance(current_supervisor, Mapping)
             or dict(current_supervisor) != dict(executor_supervisor_birth)
             or not isinstance(current_executor, Mapping)
+            or current_route_summary != execution_route_summary
         ):
             raise OperatorError("executor runtime is not bound to the admitted launch")
         executor_birth = current_executor
@@ -4337,6 +4547,7 @@ def stop(config_path: Path) -> dict[str, Any]:
             "program_id": PROGRAM_ID,
             "stopped_at_ns": time.time_ns(),
             "launch_receipt_id": launch_receipt["launch_receipt_id"],
+            "execution_route_policy": execution_route_summary,
             "process_results": results,
             "executor_cleanup_failures": executor_cleanup_failures,
             "final_liveness": final_liveness,

@@ -75589,22 +75589,69 @@ class DatabaseImplementationDaemon:
                 "task source does not support compare_and_set_status"
             )
         receipt_payload = dict(receipt or {})
+        task = self.task_source.get(task_cid)
+        task_body = (
+            dict(getattr(task, "body", {}) or {})
+            if task is not None
+            else {}
+        )
+        prior_status_receipt = task_body.get("completion_receipt")
+        prior_status_receipt = (
+            prior_status_receipt
+            if isinstance(prior_status_receipt, Mapping)
+            else {}
+        )
+        supplied_route = receipt_payload.get("execution_route_binding")
+        prior_route = prior_status_receipt.get("execution_route_binding")
+        if (
+            isinstance(supplied_route, Mapping)
+            and isinstance(prior_route, Mapping)
+            and dict(supplied_route) != dict(prior_route)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "task status transition tried to rotate its launch execution route"
+            )
+        carried_route = (
+            supplied_route
+            if isinstance(supplied_route, Mapping)
+            else prior_route
+            if isinstance(prior_route, Mapping)
+            else None
+        )
+        if carried_route is not None:
+            validate_route = getattr(
+                self.task_source,
+                "validate_execution_route_binding",
+                None,
+            )
+            if task is None or not callable(validate_route):
+                raise DatabaseImplementationAuthorityError(
+                    "task execution route has no typed validation boundary"
+                )
+            normalized_route = dict(
+                validate_route(
+                    carried_route,
+                    task=task,
+                    allow_claim_revision=True,
+                )
+            )
+            lineage = {
+                "execution_route_binding": normalized_route,
+                "execution_route_policy_id": normalized_route["policy_id"],
+                "execution_route_origin_revision": int(
+                    normalized_route["task_revision"]
+                ),
+            }
+            for field, expected in lineage.items():
+                if field in receipt_payload and receipt_payload[field] != expected:
+                    raise DatabaseImplementationAuthorityError(
+                        "task status transition changed execution-route lineage"
+                    )
+            receipt_payload.update(lineage)
         if (
             new_status == "in_progress"
             and receipt_payload.get("operation") == "database_claim"
         ):
-            task = self.task_source.get(task_cid)
-            task_body = (
-                dict(getattr(task, "body", {}) or {})
-                if task is not None
-                else {}
-            )
-            prior_status_receipt = task_body.get("completion_receipt")
-            prior_status_receipt = (
-                prior_status_receipt
-                if isinstance(prior_status_receipt, Mapping)
-                else {}
-            )
             seed = prior_status_receipt.get("validation_retry_seed")
             protected_seed = prior_status_receipt.get(
                 "protected_path_recovery_seed"

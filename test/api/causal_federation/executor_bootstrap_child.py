@@ -18,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
     provider_subprocess_environment,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
+    QuackClientError,
     QuackStateClient,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
@@ -27,6 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
     TypedStateOwnerConnection,
+    TypedStateOwnerError,
 )
 
 
@@ -48,15 +50,23 @@ def main() -> int:
         store_id=arguments.store_id,
     )
     credentials.install_environment()
+    route_policy_id = credentials.execution_route_policy.policy_id
+    route_aliases = {
+        entry.task_alias for entry in credentials.execution_route_policy.entries
+    }
+
+    owner_connections: list[TypedStateOwnerConnection] = []
 
     def connection_factory(_endpoint: Any) -> TypedStateOwnerConnection:
-        return TypedStateOwnerConnection(
+        connection = TypedStateOwnerConnection(
             socket_path=Path(credentials.socket_path),
             token=credentials.token,
             client_id=credentials.client_id,
             process_birth_id=credentials.process_birth_id,
             store_id=credentials.store_id,
         )
+        owner_connections.append(connection)
+        return connection
 
     client = QuackStateClient(
         owner_id=credentials.client_id,
@@ -71,7 +81,30 @@ def main() -> int:
             "pid": os.getpid(),
             "attached": bool(metadata),
             "claimed": False,
+            "route_policy_in_argv": any(
+                route_policy_id in argument
+                or any(alias in argument for alias in route_aliases)
+                for argument in sys.argv
+            ),
+            "route_policy_in_environment": any(
+                route_policy_id in value
+                or any(alias in value for alias in route_aliases)
+                for value in os.environ.values()
+            ),
+            "granted_operations": sorted(
+                owner_connections[-1].grant.get("allowed_operations") or ()
+            ),
+            "granted_command_operations": sorted(
+                owner_connections[-1].grant.get("allowed_command_operations")
+                or ()
+            ),
         }
+        try:
+            client.execute("count_tasks")
+        except (QuackClientError, TypedStateOwnerError):
+            result["unrelated_read_denied"] = True
+        else:
+            result["unrelated_read_denied"] = False
         if arguments.claim:
             claim = client.cas_task_status(
                 task_cid=arguments.task_cid,

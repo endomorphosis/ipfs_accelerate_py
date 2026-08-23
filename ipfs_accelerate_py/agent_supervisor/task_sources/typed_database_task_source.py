@@ -40,6 +40,7 @@ from .task_execution_route_policy import (
     TaskExecutionRoutePolicy,
     task_execution_contract_cid,
 )
+from .typed_state_owner import TYPED_TASK_STATUS_VOCABULARY
 
 TYPED_DATABASE_TASK_SOURCE_INTERFACE: Final = "TypedDatabaseTaskSource@1"
 TYPED_DATABASE_TASK_SOURCE_SCHEMA: Final = (
@@ -224,12 +225,18 @@ class TypedDatabaseTaskSource:
         execution_route_policy: TaskExecutionRoutePolicy
         | Mapping[str, Any]
         | None = None,
+        owns_client: bool = True,
     ) -> None:
         if not isinstance(client, QuackStateClient) or not client.attached:
             raise TaskSourceIntegrityError(
                 "typed database task source requires an attached QuackStateClient"
             )
+        if not isinstance(owns_client, bool):
+            raise TaskSourceIntegrityError(
+                "typed database task source client ownership is invalid"
+            )
         self._client = client
+        self._owns_client = owns_client
         self._closed = False
         self.path = Path("typed-state-owner")
         self.database_path = self.path
@@ -246,7 +253,8 @@ class TypedDatabaseTaskSource:
     def close(self) -> None:
         if not self._closed:
             self._closed = True
-            self._client.close()
+            if self._owns_client:
+                self._client.close()
 
     def __enter__(self) -> TypedDatabaseTaskSource:
         return self
@@ -432,10 +440,32 @@ class TypedDatabaseTaskSource:
         self,
         task: TaskRecord,
     ) -> Mapping[str, Any]:
-        """Bind one exact pre-claim task revision to the launch route policy."""
+        """Bind a task to its exact launch route or its carried retry lineage."""
 
         policy = self._require_execution_route_plan_root()
-        return MappingProxyType(policy.binding_for_task(task).to_dict())
+        entry = policy.entries_by_cid.get(str(task.task_cid or ""))
+        if entry is None:
+            raise TaskSourceIntegrityError(
+                "task is absent from the launch route policy"
+            )
+        if task.revision == entry.task_revision:
+            return MappingProxyType(policy.binding_for_task(task).to_dict())
+        body = task.body if isinstance(task.body, Mapping) else {}
+        receipt = body.get("completion_receipt")
+        route = (
+            receipt.get("execution_route_binding")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        if not isinstance(route, Mapping):
+            raise TaskSourceIntegrityError(
+                "advanced task revision has no carried execution-route binding"
+            )
+        return self.validate_execution_route_binding(
+            route,
+            task=task,
+            allow_claim_revision=True,
+        )
 
     def validate_execution_route_binding(
         self,
@@ -451,6 +481,7 @@ class TypedDatabaseTaskSource:
         if (
             task.task_cid != binding.task_cid
             or task.task_alias != binding.task_alias
+            or task_execution_contract_cid(task) != binding.task_contract_cid
         ):
             raise TaskSourceIntegrityError(
                 "attempt execution route differs from its authoritative task"
@@ -470,13 +501,14 @@ class TypedDatabaseTaskSource:
         )
         if (
             not isinstance(receipt, Mapping)
-            or receipt.get("operation") != "database_claim"
-            or receipt.get("claimed_from_revision") != binding.task_revision
             or not isinstance(route, Mapping)
             or dict(route) != binding.to_dict()
+            or receipt.get("execution_route_policy_id") != binding.policy_id
+            or receipt.get("execution_route_origin_revision")
+            != binding.task_revision
         ):
             raise TaskSourceIntegrityError(
-                "advanced task revision has no exact execution-route claim receipt"
+                "advanced task revision has no exact carried execution-route lineage"
             )
         return MappingProxyType(binding.to_dict())
 
@@ -605,8 +637,10 @@ class TypedDatabaseTaskSource:
         if prior.revision != expected_revision:
             raise TaskSourceConflictError("task revision CAS failed")
         requested_status = str(status or "").strip().lower()
-        if not requested_status:
-            raise TaskSourceIntegrityError("task status must not be empty")
+        if requested_status not in TYPED_TASK_STATUS_VOCABULARY:
+            raise TaskSourceIntegrityError(
+                "task status is outside the closed typed vocabulary"
+            )
         merged_body = dict(prior.body)
         if receipt is not None:
             merged_body["completion_receipt"] = dict(receipt)
