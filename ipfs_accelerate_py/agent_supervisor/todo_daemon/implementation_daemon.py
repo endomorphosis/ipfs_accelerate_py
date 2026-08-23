@@ -76058,6 +76058,8 @@ class DatabaseImplementationDaemon:
                 return []
             if "pooled-worktree create recovery" in detail:
                 return []
+            if "not the latest fencing epoch" in detail:
+                return []
             raise
 
     def reconcile_stale_in_progress_gates(self) -> list[dict[str, Any]]:
