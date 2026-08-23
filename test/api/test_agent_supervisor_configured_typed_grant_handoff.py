@@ -15,21 +15,24 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
-    DatabaseProgramConfig,
-    provider_subprocess_environment,
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+    current_process_birth,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     configured_board_scheduler as configured_scheduler,
 )
-from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
-    current_process_birth,
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    DatabaseProgramConfig,
+    provider_subprocess_environment,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     QuackStateServerControlError,
     QuackStateServerReadyError,
     TypedStateOwnerGrantBroker,
     build_server,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    typed_state_owner as typed_state_owner_module,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
@@ -49,9 +52,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import 
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     DATABASE_TASK_COMMANDS,
     TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA,
-    TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME,
     TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV,
     TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV,
+    TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME,
     TYPED_STATE_OWNER_SOCKET_ENV,
     TypedStateOwnerAuthorizationError,
     TypedStateOwnerConnection,
@@ -61,12 +64,10 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     request_database_task_command_credential,
     request_quack_attach_credential,
 )
-from ipfs_accelerate_py.agent_supervisor.task_sources import (
-    typed_state_owner as typed_state_owner_module,
-)
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     build_validation_environment,
 )
+
 from scripts import run_agent_supervisor_efficiency_state_hardening as aseh_operator
 
 
@@ -733,6 +734,153 @@ def test_real_configured_supervisor_handoff_reads_and_mutates_via_owner(
     not hasattr(os, "memfd_create"),
     reason="sealed Linux memfd handoff is required",
 )
+def test_live_broker_status_replays_only_an_exact_disposable_replica(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capability = probe_quack_capabilities(allow_network_install=False)
+    if capability.status is not QuackCapabilityStatus.COMPATIBLE:
+        pytest.skip(f"reviewed preinstalled Quack unavailable: {capability.status.value}")
+
+    database = tmp_path / "control.duckdb"
+    owner_dir = tmp_path / "owner"
+    tree_id = "tree:aseh-bootstrap-test"
+    monkeypatch.chdir(tmp_path)
+    _materialize_one_task(database)
+    with DatabaseTaskSource(
+        database,
+        install_schema=False,
+        repository_tree_id=tree_id,
+    ) as source:
+        sealed_snapshot = source.snapshot().to_dict()
+        goal = source.get_goal("goal:aseh-bootstrap-test")
+        assert goal is not None
+    bootstrap = {
+        "schema": aseh_operator.BOOTSTRAP_SCHEMA,
+        "source_head": "commit:aseh-bootstrap-test",
+        "repository_tree_id": tree_id,
+        "plan_root_cid": sealed_snapshot["plan_root_cid"],
+        "source_forest": {},
+        "source_identities": {},
+        "database_task_source_receipt": {},
+        "snapshot": sealed_snapshot,
+        "integrity": {
+            "goal_records": {
+                "ASEH-G000": aseh_operator._immutable_goal_record(goal)
+            }
+        },
+        "initial_ready_task_ids": ["ASEH-000"],
+        "bootstrap_validation": {},
+        "recovered_after_interrupted_materialization": False,
+        "authority": {},
+        "ducklake_projection": {},
+    }
+    bootstrap["bootstrap_receipt_id"] = aseh_operator._identity(bootstrap)
+    bootstrap_path = tmp_path / "bootstrap.json"
+    aseh_operator._atomic_json(bootstrap_path, bootstrap)
+    paths = {
+        "runtime": tmp_path,
+        "database": database,
+        "owner": owner_dir,
+        "bootstrap_receipt": bootstrap_path,
+    }
+    server = build_server(
+        database_path=database,
+        state_dir=owner_dir,
+        repository_root=tmp_path,
+        port=0,
+        store_id=str(database),
+        secret_handle="handle:aseh-live-status-test",
+    )
+    identity = server.start()
+    try:
+        handoff = dict(server.start_supervisor_grant_broker())
+        monkeypatch.setenv(
+            TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV,
+            handoff[TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV],
+        )
+        monkeypatch.setenv(
+            TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV,
+            handoff[TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV],
+        )
+        monkeypatch.setenv(
+            TYPED_STATE_OWNER_SOCKET_ENV,
+            handoff[TYPED_STATE_OWNER_SOCKET_ENV],
+        )
+        monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(database))
+        monkeypatch.setenv(
+            "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION",
+            str(identity.generation),
+        )
+        monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", raising=False)
+        board = SimpleNamespace(
+            resolved_database_program=lambda: SimpleNamespace(
+                quack_endpoint=identity.listen_uri
+            )
+        )
+        real_replay = DatabaseTaskSource.projection_matches_events
+        replay_transports: list[bool] = []
+
+        def reject_live_rebuild(source: DatabaseTaskSource) -> bool:
+            replay_transports.append(source.intent.uses_quack_transport)
+            if source.intent.uses_quack_transport:
+                raise AssertionError("live Quack projection rebuild was invoked")
+            return real_replay(source)
+
+        monkeypatch.setattr(
+            DatabaseTaskSource,
+            "projection_matches_events",
+            reject_live_rebuild,
+        )
+        with aseh_operator._LIVE_REPLAY_CACHE_LOCK:
+            aseh_operator._LIVE_REPLAY_CACHE.clear()
+        event_cursor_before = int(
+            server._connection.execute(  # noqa: SLF001
+                "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+            ).fetchone()[0]
+        )
+        report = aseh_operator._broker_status_query(
+            board, paths, owner_status=server.status()
+        )
+        assert report["available"] is True
+        assert report["ready_task_ids"] == ["ASEH-000"]
+        assert report["event_cursor"] == event_cursor_before
+        assert report["projection_matches_events"] is True
+        witness = report["projection_reconciliation"]
+        assert witness["authoritative"] is False
+        assert witness["mutation_authority"] is False
+        assert replay_transports == [False]
+        assert not tuple(tmp_path.glob(".live-projection-replay*"))
+        assert int(
+            server._connection.execute(  # noqa: SLF001
+                "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+            ).fetchone()[0]
+        ) == event_cursor_before
+
+        tampered_status = json.loads(json.dumps(server.status()))
+        tampered_status["read_replica"]["sha256"] = f"sha256:{'0' * 64}"
+        with pytest.raises(aseh_operator.OperatorError):
+            aseh_operator._admit_live_projection_shadow_replay(
+                paths=paths,
+                owner_status=tampered_status,
+                expected_snapshot=report["snapshot"],
+            )
+        assert int(
+            server._connection.execute(  # noqa: SLF001
+                "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+            ).fetchone()[0]
+        ) == event_cursor_before
+    finally:
+        with aseh_operator._LIVE_REPLAY_CACHE_LOCK:
+            aseh_operator._LIVE_REPLAY_CACHE.clear()
+        reset_quack_transport_cache()
+        server.stop()
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "memfd_create"),
+    reason="sealed Linux memfd handoff is required",
+)
 def test_typed_owner_never_acknowledges_an_unpublished_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1064,14 +1212,50 @@ def _aseh_health_fixture(
     owner_identity = {
         **binding,
         "process_birth": {"pid": os.getpid()},
+        "status": "ready",
     }
     current_snapshot = {**bootstrap_snapshot, "event_cursor": event_cursor}
+    database_path = tmp_path / "control.duckdb"
+    replica_binding = {
+        "path": str(tmp_path / "control.read-replica.duckdb"),
+        "source_database_path": str(database_path),
+        "server_id": binding["server_id"],
+        "database_uuid": binding["database_uuid"],
+        "generation": binding["generation"],
+        "schema_revision": binding["schema_revision"],
+        "schema_fingerprint": binding["schema_fingerprint"],
+        "storage_schema_fingerprint": "storage-schema:aseh-health",
+        "sha256": f"sha256:{'a' * 64}",
+        "size_bytes": 1,
+        "refresh_sequence": 1,
+    }
+    replay_witness = {
+        "schema": aseh_operator.LIVE_REPLAY_SCHEMA,
+        "method": "disposable_exact_owner_published_replica_replay",
+        "authoritative": False,
+        "mutation_authority": False,
+        "projection_matches_events": True,
+        "replica": replica_binding,
+        "projection_cid": current_snapshot["projection_cid"],
+        "event_cursor": current_snapshot["event_cursor"],
+        "cache_key": aseh_operator._identity(
+            {
+                "replica": replica_binding,
+                "projection_cid": current_snapshot["projection_cid"],
+                "event_cursor": current_snapshot["event_cursor"],
+                "plan_root_cid": current_snapshot["plan_root_cid"],
+                "repository_tree_id": current_snapshot["repository_tree_id"],
+            }
+        ),
+    }
+    replay_witness["witness_cid"] = aseh_operator._identity(replay_witness)
     ready_task_ids = ["ASEH-000"] if ready else []
     authority = {
         "available": True,
         "transport": "quack",
         "credential_path": "sealed_memfd_broker",
         "projection_matches_events": True,
+        "projection_reconciliation": replay_witness,
         "owner_binding": binding,
         "snapshot": current_snapshot,
         "task_statuses": {"ASEH-000": status},
@@ -1111,7 +1295,18 @@ def _aseh_health_fixture(
         },
         "owner_status": {
             "lifecycle": "ready",
+            "database_path": str(database_path),
+            "storage_schema_fingerprint": "storage-schema:aseh-health",
             "identity": owner_identity,
+            "read_replica": {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "read-replica-observation@1"
+                ),
+                "authority": "non_authoritative_read_replica",
+                "live": True,
+                **replica_binding,
+            },
             "configured_supervisor_credential_broker": {
                 "available": True,
                 "last_error_type": "",
@@ -1143,7 +1338,11 @@ def _aseh_health_fixture(
             },
         },
     )
-    return board, {"bootstrap_receipt": bootstrap_path}, sample
+    return board, {
+        "bootstrap_receipt": bootstrap_path,
+        "database": database_path,
+        "runtime": tmp_path,
+    }, sample
 
 
 def test_aseh_health_heartbeat_only_cannot_mask_stuck_board(
@@ -1209,6 +1408,20 @@ def test_aseh_health_requires_two_sample_semantic_authority_and_exact_terminal(
         observed_at=now,
         lane_mtime_ns=int(now * 1_000_000_000),
     )
+    forged = json.loads(json.dumps(current))
+    forged["authority"].pop("projection_reconciliation")
+    forged["authority"]["projection_matches_events"] = True
+    forged_receipt = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, forged),
+        launched_at=now - 0.5,
+        last_progress_at=now,
+        failure={},
+    )
+    assert forged_receipt["source_identity_admitted"] is False
+    assert forged_receipt["healthy"] is False
+
     before["authority"]["objective_record"]["title"] = "amended"  # type: ignore[index]
     repaired = aseh_operator._health_receipt(
         board,
@@ -1507,7 +1720,7 @@ def test_aseh_health_rejects_outage_progress_and_bounds_recovery_edges(
         unhealthy_edges=edges,
     )
     assert action == "fail"
-    assert reason == "broker_health_recovery_grace_exhausted"
+    assert reason == "authoritative_status_recovery_grace_exhausted"
     assert edges == 3
 
 

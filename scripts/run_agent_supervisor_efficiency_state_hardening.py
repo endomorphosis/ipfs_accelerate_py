@@ -77,6 +77,20 @@ OWNER_LOCK_SUFFIX: Final = ".state-owner.lock"
 OWNER_MARKER_SUFFIX: Final = ".state-owner.json"
 STATUS_SAMPLE_INTERVAL_SECONDS: Final = 0.5
 STATUS_RECEIPT_MAX_BYTES: Final = 1_048_576
+LIVE_REPLAY_MAX_BYTES: Final = 1_073_741_824
+LIVE_REPLAY_IO_TIMEOUT_SECONDS: Final = 60.0
+LIVE_REPLAY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/live-projection-shadow-replay@1"
+)
+LIVE_REPLAY_FIELDS: Final = frozenset(
+    {
+        "schema", "method", "authoritative", "mutation_authority",
+        "projection_matches_events", "replica", "projection_cid",
+        "event_cursor", "cache_key", "witness_cid",
+    }
+)
+_LIVE_REPLAY_CACHE: dict[str, Any] = {}
+_LIVE_REPLAY_CACHE_LOCK = threading.Lock()
 
 
 class OperatorError(RuntimeError):
@@ -1730,15 +1744,15 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
     from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
         preflight_configured_board,
     )
-    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
-        harden_state_authority_process,
-        state_authority_pass_fds,
-    )
     from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
         STATE_LIVE_SCHEMA_REVISION_ENV,
         STATE_SCHEMA_REVISION_ENV,
         STATE_STORE_GENERATION_ENV,
         STATE_STORE_LIVE_GENERATION_ENV,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+        harden_state_authority_process,
+        state_authority_pass_fds,
     )
 
     board, _config = _load(config_path)
@@ -1900,7 +1914,360 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
                         os.environ[name] = prior
 
 
-def _broker_status_query(board: Any, paths: Mapping[str, Path]) -> dict[str, Any]:
+def _published_replica_binding(
+    owner_status: Mapping[str, Any], paths: Mapping[str, Path]
+) -> dict[str, Any]:
+    """Admit one exact owner-published, non-authoritative replica identity."""
+
+    identity = owner_status.get("identity")
+    identity = identity if isinstance(identity, Mapping) else {}
+    replica = owner_status.get("read_replica")
+    replica = replica if isinstance(replica, Mapping) else {}
+    expected_path = paths["database"].with_name(
+        f"{paths['database'].stem}.read-replica{paths['database'].suffix}"
+    )
+    digest = str(replica.get("sha256") or "")
+    size_bytes = replica.get("size_bytes")
+    refresh_sequence = replica.get("refresh_sequence")
+    exact_identity = all(
+        replica.get(field) == identity.get(field)
+        for field in (
+            "server_id", "database_uuid", "generation", "schema_revision",
+            "schema_fingerprint",
+        )
+    )
+    if (
+        owner_status.get("lifecycle") != "ready"
+        or identity.get("status") != "ready"
+        or replica.get("schema")
+        != "ipfs_accelerate_py/agent-supervisor/read-replica-observation@1"
+        or replica.get("authority") != "non_authoritative_read_replica"
+        or replica.get("live") is not True
+        or not exact_identity
+        or Path(str(replica.get("path") or "")).resolve(strict=False)
+        != expected_path.resolve(strict=False)
+        or Path(str(replica.get("source_database_path") or "")).resolve(
+            strict=False
+        )
+        != paths["database"].resolve(strict=False)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None
+        or type(size_bytes) is not int
+        or not 0 < size_bytes <= LIVE_REPLAY_MAX_BYTES
+        or type(refresh_sequence) is not int
+        or refresh_sequence < 1
+        or not str(replica.get("storage_schema_fingerprint") or "")
+        or replica.get("storage_schema_fingerprint")
+        != owner_status.get("storage_schema_fingerprint")
+    ):
+        raise OperatorError("live owner replica identity is incomplete or stale")
+    return {
+        "path": str(expected_path),
+        "source_database_path": str(paths["database"]),
+        "server_id": str(identity["server_id"]),
+        "database_uuid": str(identity["database_uuid"]),
+        "generation": int(identity["generation"]),
+        "schema_revision": int(identity["schema_revision"]),
+        "schema_fingerprint": str(identity["schema_fingerprint"]),
+        "storage_schema_fingerprint": str(
+            replica["storage_schema_fingerprint"]
+        ),
+        "sha256": digest,
+        "size_bytes": size_bytes,
+        "refresh_sequence": refresh_sequence,
+    }
+
+
+def _copy_published_replica(
+    binding: Mapping[str, Any], destination: Path
+) -> None:
+    """Copy exact stable replica bytes without following or racing a path."""
+
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if not nofollow:
+        raise OperatorError("live projection replay requires O_NOFOLLOW")
+    source = Path(str(binding["path"]))
+    source_descriptor = os.open(
+        source, os.O_RDONLY | os.O_CLOEXEC | nofollow
+    )
+    destination_descriptor = -1
+    started = time.monotonic()
+    try:
+        before = os.fstat(source_descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or before.st_size != int(binding["size_bytes"])
+        ):
+            raise OperatorError("published replica file identity is unsafe")
+        destination_descriptor = os.open(
+            destination,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | nofollow,
+            0o600,
+        )
+        digest = hashlib.sha256()
+        copied = 0
+        while copied < before.st_size:
+            if time.monotonic() - started > LIVE_REPLAY_IO_TIMEOUT_SECONDS:
+                raise OperatorError("published replica shadow copy timed out")
+            chunk = os.read(
+                source_descriptor, min(1_048_576, before.st_size - copied)
+            )
+            if not chunk:
+                raise OperatorError("published replica was truncated during copy")
+            digest.update(chunk)
+            remaining = memoryview(chunk)
+            while remaining:
+                written = os.write(destination_descriptor, remaining)
+                if written <= 0:
+                    raise OperatorError("published replica copy made no progress")
+                remaining = remaining[written:]
+            copied += len(chunk)
+        os.fsync(destination_descriptor)
+        after = os.fstat(source_descriptor)
+        path_after = os.lstat(source)
+
+        def file_identity(value: os.stat_result) -> tuple[int, ...]:
+            return (
+                value.st_dev, value.st_ino, value.st_mode, value.st_uid,
+                value.st_nlink, value.st_size, value.st_mtime_ns,
+                value.st_ctime_ns,
+            )
+
+        if (
+            file_identity(before) != file_identity(after)
+            or file_identity(before) != file_identity(path_after)
+            or stat.S_ISLNK(path_after.st_mode)
+            or copied != before.st_size
+            or f"sha256:{digest.hexdigest()}" != binding["sha256"]
+        ):
+            raise OperatorError("published replica changed during shadow copy")
+    finally:
+        os.close(source_descriptor)
+        if destination_descriptor >= 0:
+            os.close(destination_descriptor)
+
+
+def _published_replica_bytes_still_match(binding: Mapping[str, Any]) -> None:
+    """Re-hash the live pathname before reusing a content-bound replay."""
+
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if not nofollow:
+        raise OperatorError("live projection replay requires O_NOFOLLOW")
+    source = Path(str(binding["path"]))
+    descriptor = os.open(source, os.O_RDONLY | os.O_CLOEXEC | nofollow)
+    started = time.monotonic()
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != os.geteuid()
+            or before.st_nlink != 1
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or before.st_size != int(binding["size_bytes"])
+        ):
+            raise OperatorError("published replica file identity is unsafe")
+        digest = hashlib.sha256()
+        remaining = before.st_size
+        while remaining:
+            if time.monotonic() - started > LIVE_REPLAY_IO_TIMEOUT_SECONDS:
+                raise OperatorError("published replica verification timed out")
+            chunk = os.read(descriptor, min(1_048_576, remaining))
+            if not chunk:
+                raise OperatorError("published replica was truncated during hash")
+            digest.update(chunk)
+            remaining -= len(chunk)
+        after = os.fstat(descriptor)
+        path_after = os.lstat(source)
+
+        def file_identity(value: os.stat_result) -> tuple[int, ...]:
+            return (
+                value.st_dev, value.st_ino, value.st_mode, value.st_uid,
+                value.st_nlink, value.st_size, value.st_mtime_ns,
+                value.st_ctime_ns,
+            )
+
+        if (
+            file_identity(before) != file_identity(after)
+            or file_identity(before) != file_identity(path_after)
+            or stat.S_ISLNK(path_after.st_mode)
+            or f"sha256:{digest.hexdigest()}" != binding["sha256"]
+        ):
+            raise OperatorError("published replica bytes differ from owner status")
+    finally:
+        os.close(descriptor)
+
+
+def _retire_live_replay_directory(directory: Path) -> None:
+    """Remove only exact same-UID files created by one private replay."""
+
+    allowed = {
+        "control.duckdb",
+        "control.duckdb.wal",
+        ".control.duckdb.lock",
+        ".control.duckdb.intent.lock",
+        ".control.duckdb.migration.lock",
+    }
+    unexpected: list[str] = []
+    for child in directory.iterdir():
+        if child.name not in allowed:
+            unexpected.append(child.name)
+            continue
+        observed = os.lstat(child)
+        if (
+            stat.S_ISLNK(observed.st_mode)
+            or not stat.S_ISREG(observed.st_mode)
+            or observed.st_uid != os.geteuid()
+            or observed.st_nlink != 1
+        ):
+            unexpected.append(child.name)
+            continue
+        child.unlink()
+    if unexpected:
+        raise OperatorError(
+            "private live replay produced unexpected artifacts: "
+            + ", ".join(sorted(unexpected))
+        )
+    directory.rmdir()
+
+
+def _admit_live_projection_shadow_replay(
+    *,
+    paths: Mapping[str, Path],
+    owner_status: Mapping[str, Any],
+    expected_snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Replay exact published bytes privately; never mutate live authority."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    binding = _published_replica_binding(owner_status, paths)
+    cache_key = _identity(
+        {
+            "replica": binding,
+            "projection_cid": expected_snapshot.get("projection_cid"),
+            "event_cursor": expected_snapshot.get("event_cursor"),
+            "plan_root_cid": expected_snapshot.get("plan_root_cid"),
+            "repository_tree_id": expected_snapshot.get("repository_tree_id"),
+        }
+    )
+    with _LIVE_REPLAY_CACHE_LOCK:
+        cached = dict(_LIVE_REPLAY_CACHE) if _LIVE_REPLAY_CACHE.get(
+            "cache_key"
+        ) == cache_key else {}
+    if cached:
+        _published_replica_bytes_still_match(binding)
+        return cached
+
+    replay_directory = paths["runtime"] / (
+        f".live-projection-replay.{os.getpid()}.{time.time_ns()}"
+    )
+    replay_directory.mkdir(mode=0o700)
+    temporary = replay_directory / "control.duckdb"
+    try:
+        _copy_published_replica(binding, temporary)
+        with DatabaseTaskSource(
+            temporary,
+            install_schema=False,
+            repository_tree_id=str(expected_snapshot.get("repository_tree_id") or ""),
+            plan_root_cid=str(expected_snapshot.get("plan_root_cid") or ""),
+        ) as replay:
+            observed = replay.snapshot().to_dict()
+            fields = (
+                "source_schema", "schema_version", "plan_root_cid",
+                "repository_tree_id", "projection_cid", "formal_plan_id",
+                "source_identity", "revision", "event_cursor", "goal_count",
+                "task_count", "dependency_count", "terminal",
+                "objective_count", "plan_count",
+            )
+            if any(
+                observed.get(field) != expected_snapshot.get(field)
+                for field in fields
+            ):
+                raise OperatorError(
+                    "published replica differs from authenticated Quack snapshot"
+                )
+            if replay.projection_matches_events() is not True:
+                raise OperatorError(
+                    "published replica projection differs from admitted events"
+                )
+        witness = {
+            "schema": LIVE_REPLAY_SCHEMA,
+            "method": "disposable_exact_owner_published_replica_replay",
+            "authoritative": False,
+            "mutation_authority": False,
+            "projection_matches_events": True,
+            "replica": binding,
+            "projection_cid": str(expected_snapshot["projection_cid"]),
+            "event_cursor": int(expected_snapshot["event_cursor"]),
+            "cache_key": cache_key,
+        }
+        witness["witness_cid"] = _identity(witness)
+        with _LIVE_REPLAY_CACHE_LOCK:
+            _LIVE_REPLAY_CACHE.clear()
+            _LIVE_REPLAY_CACHE.update(witness)
+        return witness
+    finally:
+        _retire_live_replay_directory(replay_directory)
+
+
+def _live_projection_reconciliation_admitted(
+    sample: Mapping[str, Any], paths: Mapping[str, Path]
+) -> bool:
+    """Validate that one sample carries an exact current shadow replay."""
+
+    authority = sample.get("authority")
+    authority = authority if isinstance(authority, Mapping) else {}
+    snapshot = authority.get("snapshot")
+    snapshot = snapshot if isinstance(snapshot, Mapping) else {}
+    witness = authority.get("projection_reconciliation")
+    witness = witness if isinstance(witness, Mapping) else {}
+    owner_status = sample.get("owner_status")
+    owner_status = owner_status if isinstance(owner_status, Mapping) else {}
+    if (
+        set(witness) != LIVE_REPLAY_FIELDS
+        or witness.get("schema") != LIVE_REPLAY_SCHEMA
+        or witness.get("method")
+        != "disposable_exact_owner_published_replica_replay"
+        or witness.get("authoritative") is not False
+        or witness.get("mutation_authority") is not False
+        or witness.get("projection_matches_events") is not True
+        or witness.get("projection_cid") != snapshot.get("projection_cid")
+        or witness.get("event_cursor") != snapshot.get("event_cursor")
+    ):
+        return False
+    try:
+        if witness.get("replica") != _published_replica_binding(
+            owner_status, paths
+        ):
+            return False
+    except (OSError, OperatorError, TypeError, ValueError):
+        return False
+    unsigned = dict(witness)
+    witness_cid = unsigned.pop("witness_cid", "")
+    if witness_cid != _identity(unsigned):
+        return False
+    expected_cache_key = _identity(
+        {
+            "replica": witness.get("replica"),
+            "projection_cid": snapshot.get("projection_cid"),
+            "event_cursor": snapshot.get("event_cursor"),
+            "plan_root_cid": snapshot.get("plan_root_cid"),
+            "repository_tree_id": snapshot.get("repository_tree_id"),
+        }
+    )
+    return witness.get("cache_key") == expected_cache_key
+
+
+def _broker_status_query(
+    board: Any,
+    paths: Mapping[str, Path],
+    *,
+    owner_status: Mapping[str, Any],
+) -> dict[str, Any]:
     """Read the live portfolio through the sealed-broker Quack path."""
 
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
@@ -1943,8 +2310,6 @@ def _broker_status_query(board: Any, paths: Mapping[str, Path]) -> dict[str, Any
         if source.intent.uses_quack_transport is not True:
             raise OperatorError("live status did not use the Quack transport")
         snapshot = source.snapshot().to_dict()
-        if source.projection_matches_events() is not True:
-            raise OperatorError("live projection differs from admitted events")
         page = source.list_tasks(limit=100)
         if page.next_cursor:
             raise OperatorError("live task portfolio exceeds the sealed bound")
@@ -2039,11 +2404,19 @@ def _broker_status_query(board: Any, paths: Mapping[str, Path]) -> dict[str, Any
             and int(entry["retry_not_before_ms"]) > query_started_at_ms
         )
     )
+    replay_witness = _admit_live_projection_shadow_replay(
+        paths=paths,
+        owner_status=owner_status,
+        expected_snapshot=snapshot,
+    )
     return {
         "available": True,
         "transport": "quack",
         "credential_path": "sealed_memfd_broker",
-        "projection_matches_events": True,
+        "projection_matches_events": replay_witness.get(
+            "projection_matches_events"
+        ) is True,
+        "projection_reconciliation": replay_witness,
         "owner_binding": owner_binding,
         "snapshot": snapshot,
         "task_statuses": dict(sorted(aliases.items())),
@@ -2169,8 +2542,11 @@ def _status_sample(
     scheduler: subprocess.Popen[Any],
 ) -> dict[str, Any]:
     observed_at = time.time()
+    owner_status_before = server.status()
     try:
-        authority = _broker_status_query(board, paths)
+        authority = _broker_status_query(
+            board, paths, owner_status=owner_status_before
+        )
     except Exception as exc:
         authority = {
             "available": False,
@@ -2183,6 +2559,27 @@ def _status_sample(
             "task_statuses": {},
             "task_revisions": {},
         }
+    owner_status_after = server.status()
+    if authority.get("available") is True:
+        try:
+            if _published_replica_binding(
+                owner_status_before, paths
+            ) != _published_replica_binding(owner_status_after, paths):
+                raise OperatorError(
+                    "owner replica publication changed during status query"
+                )
+        except Exception as exc:
+            authority = {
+                "available": False,
+                "error_type": type(exc).__name__,
+                "ready_count": 0,
+                "active_count": 0,
+                "blocked_count": 0,
+                "terminal_count": 0,
+                "event_cursor": 0,
+                "task_statuses": {},
+                "task_revisions": {},
+            }
     scheduler_returncode = scheduler.poll()
     try:
         scheduler_process_group = os.getpgid(scheduler.pid)
@@ -2191,7 +2588,7 @@ def _status_sample(
     sample = {
         "observed_at": observed_at,
         "monotonic_ns": time.monotonic_ns(),
-        "owner_status": server.status(),
+        "owner_status": owner_status_after,
         "scheduler": {
             "pid": scheduler.pid,
             "process_group": scheduler_process_group,
@@ -2518,6 +2915,7 @@ def _health_receipt(
     source_identity_admitted = all(
         isinstance(candidate.get("snapshot"), Mapping)
         and candidate.get("projection_matches_events") is True
+        and _live_projection_reconciliation_admitted(sample, paths)
         and all(
             bootstrap_snapshot.get(field) not in (None, "")
             and candidate["snapshot"].get(field)
@@ -2535,7 +2933,10 @@ def _health_receipt(
                 "projection_cid": candidate["snapshot"].get("projection_cid"),
             }
         )
-        for candidate in (prior_authority, authority)
+        for sample, candidate in (
+            (before, prior_authority),
+            (current, authority),
+        )
     )
     bootstrap_integrity = bootstrap.get("integrity")
     bootstrap_integrity = (
@@ -2866,10 +3267,12 @@ def _await_initial_health(
         ):
             _record_control_failure(
                 paths, failure, failure_event,
-                reason_code="broker_status_unavailable_two_samples",
+                reason_code="authoritative_status_unavailable_two_samples",
                 error_type="ASEHHealthQueryFailure",
             )
-            raise OperatorError("broker health unavailable for two samples")
+            raise OperatorError(
+                "authoritative health query unavailable for two samples"
+            )
         if receipt.get("healthy") is True:
             return receipt, last_progress_at
         first = second
@@ -2895,7 +3298,11 @@ def _post_admission_health_action(
     if receipt.get("stuck") is True:
         return "fail", "authoritative_board_stuck", unhealthy_edges
     if not prior_available and not current_available:
-        return "fail", "broker_status_unavailable_two_samples", unhealthy_edges
+        return (
+            "fail",
+            "authoritative_status_unavailable_two_samples",
+            unhealthy_edges,
+        )
     if receipt.get("terminal") is True:
         if receipt.get("healthy") is True:
             return "stop", "", 0
@@ -2906,7 +3313,11 @@ def _post_admission_health_action(
         return "fail", "authoritative_health_admission_lost", unhealthy_edges
     next_edges = unhealthy_edges + 1
     if next_edges > 2:
-        return "fail", "broker_health_recovery_grace_exhausted", next_edges
+        return (
+            "fail",
+            "authoritative_status_recovery_grace_exhausted",
+            next_edges,
+        )
     return "continue", "", next_edges
 
 
@@ -2965,7 +3376,7 @@ def _status_monitor_loop(
                     reason_code=reason_code,
                     error_type=(
                         "ASEHHealthQueryFailure"
-                        if reason_code.startswith("broker_")
+                        if reason_code.startswith("authoritative_status_")
                         else "ASEHHealthGateFailure"
                     ),
                 )
