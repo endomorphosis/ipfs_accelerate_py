@@ -158,6 +158,30 @@ def test_admitted_health_requires_exact_live_executor_and_authoritative_progress
     assert unhealthy["healthy"] is False
 
 
+def test_runtime_projection_read_retries_only_a_bounded_parse_race(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    projection = tmp_path / "supervisor-status.json"
+    projection.write_text("{}", encoding="utf-8")
+    attempts = 0
+
+    def _flaky_read(_path: Path) -> dict[str, Any]:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise operator.OperatorError("transient partial JSON")
+        return {"status": "running"}
+
+    monkeypatch.setattr(operator, "_json_object", _flaky_read)
+
+    assert operator._read_optional_json(
+        projection, transient_retry_attempts=3
+    ) == {"status": "running"}
+    assert attempts == 3
+
+
 def test_typed_database_task_source_reads_claims_and_records_evidence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -563,6 +587,7 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
         text=True,
     ).stdout.strip()
     database = tmp_path / "managed-control.duckdb"
+    managed_store_id = "data/casf-managed-e2e-runtime/control.duckdb"
     source = DatabaseTaskSource(database)
     source.materialize(
         {
@@ -623,6 +648,7 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
         capture_output=True,
         text=True,
     )
+    operator.ROOT = isolated_repo
 
     def _cleanup_isolated_runtime() -> None:
         listing = subprocess.run(
@@ -660,7 +686,7 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
         )
 
     request.addfinalizer(_cleanup_isolated_runtime)
-    relative_runtime = "data/casf-managed-e2e-runtime"
+    relative_runtime = str(Path(managed_store_id).parent)
     runtime_paths = {
         "root": relative_runtime,
         "state": f"{relative_runtime}/state",
@@ -674,7 +700,7 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
     program = replace(
         board.resolved_database_program(),
         quack_endpoint=identity.listen_uri,
-        store_id=f"{relative_runtime}/control.duckdb",
+        store_id=managed_store_id,
         store_generation=identity.store_id,
         event_store_path=f"{relative_runtime}/events",
         runtime_registry_path=f"{relative_runtime}/registry",

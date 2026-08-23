@@ -1758,8 +1758,12 @@ def _spawn_configured_executor(
                 raise OperatorError("configured executor supervisor exited before readiness")
             if broker.failure:
                 raise OperatorError("executor credential bootstrap failed closed")
-            current = _read_optional_json(paths["executor_current"])
-            status_payload = _read_optional_json(paths["executor_supervisor_status"])
+            current = _read_optional_json(
+                paths["executor_current"], transient_retry_attempts=5
+            )
+            status_payload = _read_optional_json(
+                paths["executor_supervisor_status"], transient_retry_attempts=5
+            )
             executor_birth = current.get("executor_process_birth")
             if (
                 current.get("ready") is True
@@ -2107,23 +2111,36 @@ def state_owner(
     return 0 if runtime_exit_code in {None, 0, -signal.SIGTERM} else 1
 
 
-def _read_optional_json(path: Path, *, maximum_bytes: int = 4_194_304) -> dict[str, Any]:
+def _read_optional_json(
+    path: Path,
+    *,
+    maximum_bytes: int = 4_194_304,
+    transient_retry_attempts: int = 1,
+) -> dict[str, Any]:
     """Read one private runtime projection without following a symlink."""
 
-    try:
-        metadata = os.lstat(path)
-    except FileNotFoundError:
-        return {}
-    except OSError as exc:
-        raise OperatorError(f"runtime projection is uninspectable: {path}") from exc
-    if (
-        not stat.S_ISREG(metadata.st_mode)
-        or stat.S_ISLNK(metadata.st_mode)
-        or metadata.st_size > maximum_bytes
-        or metadata.st_nlink != 1
-    ):
-        raise OperatorError(f"runtime projection is not a bounded regular file: {path}")
-    return _json_object(path)
+    attempts = max(1, int(transient_retry_attempts))
+    for attempt in range(attempts):
+        try:
+            metadata = os.lstat(path)
+        except FileNotFoundError:
+            return {}
+        except OSError as exc:
+            raise OperatorError(f"runtime projection is uninspectable: {path}") from exc
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or metadata.st_size > maximum_bytes
+            or metadata.st_nlink != 1
+        ):
+            raise OperatorError(f"runtime projection is not a bounded regular file: {path}")
+        try:
+            return _json_object(path)
+        except OperatorError:
+            if attempt + 1 >= attempts:
+                raise
+            time.sleep(0.01)
+    raise AssertionError("bounded runtime projection read exhausted")
 
 
 def _read_pid(path: Path) -> int | None:
