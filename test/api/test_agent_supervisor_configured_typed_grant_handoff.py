@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import socket
 import subprocess
@@ -40,6 +41,21 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     build_validation_environment,
 )
+
+
+def test_aseh_parallel_quack_lanes_require_strict_deterministic_sharding() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    config = json.loads(
+        (
+            repository_root
+            / "config/agent_supervisor_efficiency_state_hardening_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert config["database_program"]["authority_mode"] == "quack"
+    assert config["max_lanes"] == 4
+    assert config["strict_task_sharding"] is True
+    assert config["idle_lane_work_stealing"] == ""
 
 
 def _materialize_one_task(path: Path) -> None:

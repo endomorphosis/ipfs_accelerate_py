@@ -187,6 +187,7 @@ BOOTSTRAP_TASK_FIELDS = {
 }
 BOOTSTRAP_OUTPUTS = {
     ".gitignore",
+    "config/agent_supervisor_efficiency_state_hardening_scheduler.json",
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
@@ -199,6 +200,7 @@ BOOTSTRAP_OUTPUTS = {
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
     "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
     "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
 }
 REQUIRED_PROTECTED_PATHS = {
@@ -513,6 +515,19 @@ def validate(*, check_git: bool) -> dict[str, Any]:
         errors.append("scheduler prefixes differ")
     if config.get("merge_target_branch") != BRANCH:
         errors.append("scheduler branch differs")
+    max_lanes = config.get("max_lanes")
+    if (
+        isinstance(max_lanes, bool)
+        or not isinstance(max_lanes, int)
+        or max_lanes < 1
+    ):
+        errors.append("scheduler max_lanes must be a positive integer")
+    elif max_lanes > 1 and config.get("strict_task_sharding") is not True:
+        errors.append(
+            "multi-lane Quack execution requires strict deterministic task sharding"
+        )
+    if config.get("idle_lane_work_stealing") not in (None, ""):
+        errors.append("Quack execution must not enable idle-lane work stealing")
     projection = config.get("initial_projection")
     if not isinstance(projection, Mapping):
         errors.append("initial_projection is absent")

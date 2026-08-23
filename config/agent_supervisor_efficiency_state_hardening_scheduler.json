@@ -79,11 +79,12 @@
   "bootstrap_handoff_repair": {
     "task_id": "ASEH-BOOTSTRAP-001",
     "stable_identity": "agent-supervisor-efficiency-and-state-hardening-v1/ASEH-BOOTSTRAP-001@ASEH-PLAN-R1",
-    "scope": "PID-bound typed state-owner grants for the existing configured implementation-supervisor path",
+    "scope": "PID-bound typed state-owner grants and strict deterministic lane sharding for the existing configured implementation-supervisor path",
     "owning_repository": "ipfs_accelerate_py",
     "dependencies": [],
     "exact_declared_outputs": [
       ".gitignore",
+      "config/agent_supervisor_efficiency_state_hardening_scheduler.json",
       "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
       "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
       "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
@@ -96,12 +97,13 @@
       "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
       "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
       "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+      "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
       "test/api/test_agent_supervisor_configured_typed_grant_handoff.py"
     ],
     "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
     "authority_requirement": "repair only the existing configured IntentRepository/DatabaseTaskSource to typed Quack-owner handoff; no new supervisor, store, daemon family, or writable authority",
-    "terminal_success_criteria": "The configured implementation-supervisor path obtains a kernel-PID-bound live handoff, opens no second writable DuckDB authority, rejects stale or foreign identities, strips the descriptor from provider and validator children, persists no raw credential, and passes the exact focused validator.",
-    "terminal_non_success_criteria": "Any second writable authority, direct multi-process DuckDB open, automatic file fallback, reusable or leaked credential, stale identity acceptance, child descriptor exposure, raw-token persistence, or failed focused validator prevents materialization; owner-restart qualification remains bounded to ASEH-044.",
+    "terminal_success_criteria": "The configured implementation-supervisor path obtains a kernel-PID-bound live handoff, opens no second writable DuckDB authority, rejects stale or foreign identities, strips the descriptor from provider and validator children, persists no raw credential, maps every parallel lane through strict deterministic task sharding, and passes the exact focused validator.",
+    "terminal_non_success_criteria": "Any second writable authority, direct multi-process DuckDB open, automatic file fallback, reusable or leaked credential, stale identity acceptance, child descriptor exposure, raw-token persistence, unsharded multi-lane execution, or failed focused validator prevents materialization; owner-restart qualification remains bounded to ASEH-044.",
     "creates_new_supervisor": false,
     "creates_new_store": false,
     "required_before_materialization": true,
@@ -139,7 +141,7 @@
     "may_grant_authority": false
   },
   "max_lanes": 4,
-  "strict_task_sharding": false,
+  "strict_task_sharding": true,
   "idle_lane_work_stealing": "",
   "exit_when_all_tracks_terminal": true,
   "objective_refill_enabled": false,

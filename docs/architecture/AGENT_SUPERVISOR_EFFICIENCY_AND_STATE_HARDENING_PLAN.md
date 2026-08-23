@@ -61,14 +61,16 @@ task, supervisor, daemon, state store, or alternate mutation path.
 - Exact outputs: the existing typed-owner/client, Quack owner, configured
   scheduler/supervisor descriptor-propagation paths, the bounded ASEH
   operator, their focused test, the exact ASEH runtime ignore rule, and the
-  bootstrap validation observation declared in scheduler config
+  bootstrap validation observation declared in scheduler config; the
+  configured four lanes are admitted only with strict deterministic sharding
 - Validation: `python3 -m pytest -q test/api/test_agent_supervisor_configured_typed_grant_handoff.py`
 - Risk: `R4_SECURITY_OR_PROTOCOL_SENSITIVE`
 - Authority: repair only the existing PID-bound, fail-closed typed handoff;
   no general task CAS, new owner, new store, or provider/validator credential
 - Terminal success: a real owner-to-configured-supervisor read/claim/transition
   path works without a legacy disk token, while untrusted children, stale
-  identities, unscoped operations, and direct DuckDB opens remain denied
+  identities, unscoped operations, unsharded parallel lanes, and direct DuckDB
+  opens remain denied
 - Terminal non-success: any broad grant, bypass, credential leak, stale-token
   preference, descriptor loss, or failed focused test prevents materialization
 
