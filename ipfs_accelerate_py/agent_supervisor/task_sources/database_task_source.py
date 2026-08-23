@@ -861,6 +861,14 @@ class DatabaseTaskSource:
 
     # -- reads ---------------------------------------------------------------
 
+    def event_watermark(self) -> int:
+        """Return the control-plane event head without a full snapshot."""
+
+        watermark_fn = getattr(self._intent, "event_watermark", None)
+        if callable(watermark_fn):
+            return max(1, int(watermark_fn()))
+        return max(1, int(self._intent.snapshot().event_watermark))
+
     def snapshot(self) -> TaskSourceSnapshot:
         snap = self._intent.snapshot()
         terminal = True

@@ -73673,7 +73673,12 @@ class DatabaseImplementationDaemon:
         """Read one bounded, generation-stable task and readiness projection."""
 
         for _attempt in range(_DATABASE_PROJECTION_READ_ATTEMPTS):
-            before = self.task_source.snapshot()
+            watermark_fn = getattr(self.task_source, "event_watermark", None)
+            before = (
+                int(watermark_fn())
+                if callable(watermark_fn)
+                else int(self.task_source.snapshot().event_cursor)
+            )
             population_tasks: list[Any] = []
             population_cursor = ""
             seen_population_cursors: set[str] = set()
@@ -73698,18 +73703,17 @@ class DatabaseImplementationDaemon:
                 seen_population_cursors.add(next_cursor)
                 population_cursor = next_cursor
             ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
-            after = self.task_source.snapshot()
-            if str(before.projection_cid) != str(after.projection_cid):
+            after = (
+                int(watermark_fn())
+                if callable(watermark_fn)
+                else int(self.task_source.snapshot().event_cursor)
+            )
+            if before != after:
                 continue
             tasks = tuple(population_tasks)
-            expected_count = int(after.task_count)
-            if expected_count > TASK_SOURCE_MAX_SNAPSHOT_TASKS:
+            if len(tasks) > TASK_SOURCE_MAX_SNAPSHOT_TASKS:
                 raise DatabaseImplementationAuthorityError(
                     "authoritative task population exceeds coordination sync bound"
-                )
-            if len(tasks) != expected_count:
-                raise DatabaseImplementationAuthorityError(
-                    "authoritative task population is incomplete"
                 )
             by_cid: dict[str, Any] = {}
             for task in tasks:
