@@ -876,14 +876,26 @@ def _read_owner_token(path: Path) -> str:
 
 
 def _port_is_free(host: str, port: int) -> bool:
-    family = socket.AF_INET6 if ":" in host else socket.AF_INET
-    with socket.socket(family, socket.SOCK_STREAM) as probe:
-        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
-        try:
-            probe.bind((host, port))
-        except OSError:
+    """Return whether nothing is accepting connections on the loopback port.
+
+    Bind probes treat TCP TIME_WAIT as occupied, which blocked complete stop
+    after a clean owner exit. Connection-refused means no listener remains.
+    """
+
+    try:
+        with socket.create_connection((host, port), timeout=0.25):
             return False
-    return True
+    except ConnectionRefusedError:
+        return True
+    except OSError:
+        family = socket.AF_INET6 if ":" in host else socket.AF_INET
+        with socket.socket(family, socket.SOCK_STREAM) as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                probe.bind((host, port))
+            except OSError:
+                return False
+        return True
 
 
 def _require_free_port(host: str, port: int) -> None:
