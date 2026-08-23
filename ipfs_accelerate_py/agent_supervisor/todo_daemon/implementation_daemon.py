@@ -73832,23 +73832,34 @@ class DatabaseImplementationDaemon:
                 and dependencies_satisfied
                 and restart_recovery_binding is not None
             )
-            synchronize(
-                task_cid=task_cid,
-                task_id=task.task_alias or task_cid,
-                dependency_task_cids=tuple(str(dep) for dep in task.dependencies),
-                authoritative_status=status,
-                authoritative_revision=int(task.revision),
-                authoritative_ready=task_cid in eligible_ready_cids,
-                authoritative_completed=status in _DATABASE_COMPLETED_TASK_STATUSES,
-                restart_recovery_ready=restart_recovery_ready,
-                restart_recovery_owner_session_id=(
-                    self.owner_session_id if restart_recovery_ready else ""
-                ),
-                restart_recovery_binding=(
-                    restart_recovery_binding if restart_recovery_ready else None
-                ),
-                now_ms=self._now_ms(),
-            )
+            try:
+                synchronize(
+                    task_cid=task_cid,
+                    task_id=task.task_alias or task_cid,
+                    dependency_task_cids=tuple(str(dep) for dep in task.dependencies),
+                    authoritative_status=status,
+                    authoritative_revision=int(task.revision),
+                    authoritative_ready=task_cid in eligible_ready_cids,
+                    authoritative_completed=status in _DATABASE_COMPLETED_TASK_STATUSES,
+                    restart_recovery_ready=restart_recovery_ready,
+                    restart_recovery_owner_session_id=(
+                        self.owner_session_id if restart_recovery_ready else ""
+                    ),
+                    restart_recovery_binding=(
+                        restart_recovery_binding if restart_recovery_ready else None
+                    ),
+                    now_ms=self._now_ms(),
+                )
+            except Exception as exc:
+                from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+                    DatabaseCoordinationConflictError,
+                )
+
+                if not isinstance(exc, DatabaseCoordinationConflictError):
+                    raise
+                # A leftover local coordination row from an earlier control-plane
+                # generation must not abort the rest of the board.
+                continue
         ready_task_cids = [
             str(task.task_cid)
             for task in tasks
@@ -83933,6 +83944,91 @@ class DatabaseImplementationDaemon:
                     "status": "retrying",
                 }
             )
+        list_fn = getattr(self.task_source, "list_tasks", None)
+        if callable(list_fn):
+            try:
+                page = list_fn(status="blocked", limit=TASK_SOURCE_QUERY_LIMIT)
+            except Exception as exc:
+                if self._is_quack_attach_contention(exc):
+                    raise
+                page = None
+            blocked_tasks = tuple(getattr(page, "tasks", ()) or ()) if page is not None else ()
+            head = ""
+            try:
+                head = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=self.repo_root,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                ).stdout.strip()
+            except Exception:
+                head = ""
+            for task in blocked_tasks:
+                alias = str(getattr(task, "task_alias", "") or getattr(task, "task_id", "") or "").strip()
+                cid = str(getattr(task, "task_cid", "") or "").strip()
+                key = alias or cid
+                if not key or key in seen:
+                    continue
+                body = getattr(task, "body", None)
+                receipt = (
+                    body.get("completion_receipt")
+                    if isinstance(body, Mapping)
+                    else None
+                )
+                reason = (
+                    str(receipt.get("reason") or "")
+                    if isinstance(receipt, Mapping)
+                    else ""
+                )
+                if reason not in {
+                    "portal_provider_failed",
+                    "declared_outputs_missing_or_untracked",
+                }:
+                    continue
+                invariant = (
+                    self._declared_output_tracking_invariant(
+                        [task],
+                        repository_ref=head,
+                    )
+                    if head
+                    else {"passed": False}
+                )
+                if invariant.get("passed") is not True:
+                    continue
+                compact = {
+                    "schema": schema,
+                    "operation": "database_declared_outputs_on_head_rearm",
+                    "task_alias": key,
+                    "reason": reason,
+                }
+                try:
+                    outcome = rearm_fn(key, receipt=compact)
+                except Exception as exc:
+                    if self._is_quack_attach_contention(exc):
+                        raise
+                    results.append(
+                        {
+                            "task_cid": key,
+                            "changed": False,
+                            "error_type": type(exc).__name__,
+                            "error": str(exc)[-500:],
+                        }
+                    )
+                    seen.add(key)
+                    continue
+                changed = bool(getattr(outcome, "changed", True))
+                if changed:
+                    rearmed += 1
+                seen.add(key)
+                results.append(
+                    {
+                        "task_cid": key,
+                        "changed": changed,
+                        "previous_status": "blocked",
+                        "status": "retrying",
+                    }
+                )
         return {
             "schema": schema,
             "attempted": True,
@@ -83949,6 +84045,18 @@ class DatabaseImplementationDaemon:
         except Exception as exc:
             if self._is_quack_attach_contention(exc):
                 return self._quack_attach_contention_deferral(exc)
+            from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+                DatabaseCoordinationConflictError,
+            )
+
+            if isinstance(exc, DatabaseCoordinationConflictError):
+                return {
+                    "active_task_id": "",
+                    "selection_idle_reason": "coordination_conflict_deferred",
+                    "write_count": 0,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:500],
+                }
             raise
 
     def _run_once_impl(self) -> dict[str, Any]:
