@@ -979,10 +979,27 @@ def _build_server(board: Any, paths: Mapping[str, Path]) -> Any:
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
         build_server,
     )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME,
+        TYPED_STATE_OWNER_SOCKET_FILENAME,
+    )
 
     program = board.resolved_database_program()
     endpoint = str(program.quack_endpoint)
     port = int(endpoint.rsplit(":", 1)[1])
+    if Path.cwd().resolve() != ROOT:
+        raise OperatorError(
+            "the configured owner must start from the sealed repository root"
+        )
+    owner_relative = paths["owner"].relative_to(ROOT)
+    socket_parent = Path("/proc/self/cwd") / owner_relative
+    typed_socket = socket_parent / TYPED_STATE_OWNER_SOCKET_FILENAME
+    broker_socket = socket_parent / TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME
+    if any(
+        len(os.fsencode(str(path))) >= 108
+        for path in (typed_socket, broker_socket)
+    ):
+        raise OperatorError("configured owner socket aliases exceed AF_UNIX bounds")
     return build_server(
         database_path=paths["database"],
         state_dir=paths["owner"],
@@ -992,6 +1009,7 @@ def _build_server(board: Any, paths: Mapping[str, Path]) -> Any:
         repository_id=PROGRAM,
         store_id=program.store_id,
         secret_handle=program.endpoint_secret_handle,
+        typed_command_socket_path=typed_socket,
     )
 
 

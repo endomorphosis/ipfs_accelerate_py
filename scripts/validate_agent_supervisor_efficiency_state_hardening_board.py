@@ -198,6 +198,7 @@ BOOTSTRAP_OUTPUTS = {
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
     "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
 }
 REQUIRED_PROTECTED_PATHS = {

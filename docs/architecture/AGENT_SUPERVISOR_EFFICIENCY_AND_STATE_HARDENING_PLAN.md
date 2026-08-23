@@ -59,9 +59,9 @@ task, supervisor, daemon, state store, or alternate mutation path.
 - Owning repository: `ipfs_accelerate_py`
 - Dependencies: none; it runs before materialization
 - Exact outputs: the existing typed-owner/client, Quack owner, configured
-  scheduler/supervisor descriptor-propagation paths, their focused test, the
-  exact ASEH runtime ignore rule, and the bootstrap validation observation
-  declared in scheduler config
+  scheduler/supervisor descriptor-propagation paths, the bounded ASEH
+  operator, their focused test, the exact ASEH runtime ignore rule, and the
+  bootstrap validation observation declared in scheduler config
 - Validation: `python3 -m pytest -q test/api/test_agent_supervisor_configured_typed_grant_handoff.py`
 - Risk: `R4_SECURITY_OR_PROTOCOL_SENSITIVE`
 - Authority: repair only the existing PID-bound, fail-closed typed handoff;

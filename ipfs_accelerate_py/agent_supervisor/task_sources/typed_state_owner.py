@@ -78,6 +78,16 @@ STATUS_BOOTSTRAP_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset(
         "casf_select_supervisor_bootstrap_health",
     }
 )
+DATABASE_TASK_COMMANDS: Final[frozenset[str]] = frozenset(
+    {
+        "compare_and_set_status",
+        "rearm_blocked_task",
+        "record_queue_backoff",
+        "record_queue_retry",
+        "record_evidence",
+        "record_validation_result",
+    }
+)
 _STATUS_BOOTSTRAP_ENTITY_SCOPE_NAMES: Final[tuple[str, ...]] = (
     "supervisor_id",
     "subscription_id",
@@ -246,6 +256,7 @@ class OwnerClientGrant:
     process_birth_id: str
     allowed_operations: frozenset[str]
     allowed_command_operations: frozenset[str]
+    allowed_database_task_commands: frozenset[str] = frozenset()
     tenant_id: str = ""
     federation_id: str = ""
     entity_scopes: tuple[tuple[str, str], ...] = ()
@@ -274,6 +285,18 @@ class OwnerClientGrant:
             self,
             "allowed_command_operations",
             frozenset(str(item) for item in self.allowed_command_operations),
+        )
+        database_task_commands = frozenset(
+            str(item) for item in self.allowed_database_task_commands
+        )
+        if not database_task_commands.issubset(DATABASE_TASK_COMMANDS):
+            raise TypedStateOwnerAuthorizationError(
+                "owner grant contains an unknown database-task command"
+            )
+        object.__setattr__(
+            self,
+            "allowed_database_task_commands",
+            database_task_commands,
         )
         object.__setattr__(self, "tenant_id", str(self.tenant_id or "").strip())
         object.__setattr__(self, "federation_id", str(self.federation_id or "").strip())
@@ -344,6 +367,9 @@ class OwnerClientGrant:
             "process_birth_id": self.process_birth_id,
             "allowed_operations": sorted(self.allowed_operations),
             "allowed_command_operations": sorted(self.allowed_command_operations),
+            "allowed_database_task_commands": sorted(
+                self.allowed_database_task_commands
+            ),
             "tenant_id": self.tenant_id,
             "federation_id": self.federation_id,
             "entity_scopes": dict(self.entity_scopes),
@@ -1012,6 +1038,7 @@ class TypedStateOwnerGateway:
         self._event_wait_handler: Any | None = None
         self._event_wait_cancel_handler: Any | None = None
         self._event_wait_clear_handler: Any | None = None
+        self._database_task_command_handler: Any | None = None
         self._commit_observer: Any | None = None
         self._last_observer_error_type = ""
 
@@ -1185,6 +1212,22 @@ class TypedStateOwnerGateway:
                 )
             self._commit_observer = observer
 
+    def bind_database_task_command_handler(self, handler: Any) -> None:
+        """Bind the owner's existing closed DatabaseTaskSource command facet."""
+
+        if not callable(handler):
+            raise TypedStateOwnerProtocolError(
+                "database-task command handler must be owner-owned and callable"
+            )
+        with self._grants_lock:
+            if self._database_task_command_handler is not None:
+                if self._database_task_command_handler is handler:
+                    return
+                raise TypedStateOwnerProtocolError(
+                    "database-task command handler is already bound"
+                )
+            self._database_task_command_handler = handler
+
     def bind_event_wait_handlers(
         self,
         *,
@@ -1226,6 +1269,7 @@ class TypedStateOwnerGateway:
         process_birth_id: str = "",
         allowed_operations: Sequence[str] = (),
         allowed_command_operations: Sequence[str] = (),
+        allowed_database_task_commands: Sequence[str] = (),
         tenant_id: str = "",
         federation_id: str = "",
         entity_scopes: Mapping[str, str] | None = None,
@@ -1236,6 +1280,9 @@ class TypedStateOwnerGateway:
 
         operations = frozenset(str(item) for item in allowed_operations)
         commands = frozenset(str(item) for item in allowed_command_operations)
+        database_task_commands = frozenset(
+            str(item) for item in allowed_database_task_commands
+        )
         if not operations.issubset(set(self.catalog) | set(_SERVICE_OPERATIONS)):
             raise TypedStateOwnerAuthorizationError(
                 "grant contains an operation absent from the server catalog"
@@ -1243,6 +1290,10 @@ class TypedStateOwnerGateway:
         if not commands.issubset(_COMMAND_MUTATION_CATALOG):
             raise TypedStateOwnerAuthorizationError(
                 "grant contains a command absent from the server policy"
+            )
+        if not database_task_commands.issubset(DATABASE_TASK_COMMANDS):
+            raise TypedStateOwnerAuthorizationError(
+                "grant contains a database-task command absent from server policy"
             )
         try:
             ttl = float(ttl_seconds)
@@ -1273,6 +1324,7 @@ class TypedStateOwnerGateway:
             process_birth_id=process_birth_id,
             allowed_operations=operations,
             allowed_command_operations=commands,
+            allowed_database_task_commands=database_task_commands,
             tenant_id=tenant_id,
             federation_id=federation_id,
             entity_scopes=tuple((entity_scopes or {}).items()),
@@ -1400,6 +1452,9 @@ class TypedStateOwnerGateway:
             "grant_expiry_required": True,
             "kernel_peer_credentials_required": True,
             "typed_event_wait_bound": self._event_wait_handler is not None,
+            "database_task_command_bound": (
+                self._database_task_command_handler is not None
+            ),
             # Status projections use canonical control-plane JSON, which
             # intentionally rejects floats.  This bound is an exact integer.
             "typed_event_wait_maximum_seconds": int(
@@ -3568,7 +3623,23 @@ def typed_owner_socket_path(store_id: str, explicit: str = "") -> Path:
 
     selected = str(explicit or os.environ.get(TYPED_STATE_OWNER_SOCKET_ENV, "") or "").strip()
     if selected:
-        path = Path(selected).expanduser().resolve(strict=False)
+        wire_path = Path(selected).expanduser()
+        resolved = wire_path.resolve(strict=False)
+        # Linux AF_UNIX counts the address bytes supplied to connect(), not
+        # the resolved filesystem path.  A configured owner may therefore
+        # publish a bounded /proc/self/cwd alias for a repository-local socket
+        # when an isolated worktree has a long absolute path.  Keep only this
+        # kernel alias on the wire; ordinary paths retain the prior resolved
+        # behavior.  The broker performs an exact resolved-store comparison.
+        if (
+            wire_path.is_absolute()
+            and wire_path.parts[:4] == ("/", "proc", "self", "cwd")
+            and ".." not in wire_path.parts
+            and len(os.fsencode(str(wire_path))) < 108
+        ):
+            path = wire_path
+        else:
+            path = resolved
     else:
         store = Path(str(store_id or "")).expanduser().resolve(strict=False)
         path = store.parent / "quack-owner" / TYPED_STATE_OWNER_SOCKET_FILENAME
@@ -3664,12 +3735,19 @@ def request_quack_attach_credential(
         raise TypedStateOwnerAuthorizationError(
             "typed owner grant bootstrap is unavailable"
         )
-    selected = Path(raw_path).expanduser().resolve(strict=False)
+    wire_path = Path(raw_path).expanduser()
+    use_bounded_cwd_alias = bool(
+        wire_path.is_absolute()
+        and wire_path.parts[:4] == ("/", "proc", "self", "cwd")
+        and ".." not in wire_path.parts
+        and len(os.fsencode(str(wire_path))) < 108
+    )
+    selected = wire_path.resolve(strict=False)
     store = Path(str(store_id or "")).expanduser().resolve(strict=False)
     expected = (
         typed_owner_socket_path(str(store)).parent
         / TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME
-    )
+    ).resolve(strict=False)
     if selected != expected:
         raise TypedStateOwnerAuthorizationError(
             "typed owner grant broker path differs from the store binding"
@@ -3696,7 +3774,7 @@ def request_quack_attach_credential(
     channel.settimeout(timeout)
     response = bytearray()
     try:
-        channel.connect(str(selected))
+        channel.connect(str(wire_path if use_bounded_cwd_alias else selected))
         channel.sendall(request)
         while b"\n" not in response:
             chunk = channel.recv(4096)

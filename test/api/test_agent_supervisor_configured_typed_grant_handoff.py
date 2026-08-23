@@ -12,7 +12,6 @@ import time
 from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     provider_subprocess_environment,
 )
@@ -115,7 +114,8 @@ def test_real_configured_supervisor_handoff_reads_and_mutates_via_owner(
 
     database = tmp_path / "control.duckdb"
     owner_dir = tmp_path / "quack-owner"
-    owner_socket = owner_dir / "custom-typed-owner.sock"
+    monkeypatch.chdir(tmp_path)
+    owner_socket = Path("/proc/self/cwd/quack-owner/custom-typed-owner.sock")
     _materialize_one_task(database)
     server = build_server(
         database_path=database,
@@ -160,7 +160,7 @@ def test_real_configured_supervisor_handoff_reads_and_mutates_via_owner(
         assert server.status()["configured_supervisor_credential_broker"] == {
             "available": True,
             "server_owned": True,
-            "socket_path": str(owner_dir / "typed-state-owner-grants.sock"),
+            "socket_path": "/proc/self/cwd/quack-owner/typed-state-owner-grants.sock",
             "credential_published": False,
             "task_mutation_path": "database_task_source_owner_command_inbox",
             "last_error_type": "",
