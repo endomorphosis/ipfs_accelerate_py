@@ -79492,11 +79492,6 @@ class DatabaseImplementationDaemon:
                     if isinstance(receipt, Mapping)
                     else ""
                 )
-                evidence_source = (
-                    str(receipt.get("evidence_source") or "")
-                    if isinstance(receipt, Mapping)
-                    else ""
-                )
                 if (
                     operation
                     == "database_portal_leftover_wait_deferral_budget_retry_recovery"
@@ -82160,6 +82155,11 @@ class DatabaseImplementationDaemon:
                     task_body.get("completion_receipt")
                     if isinstance(task_body, Mapping)
                     else None
+                )
+                evidence_source = (
+                    str(receipt.get("evidence_source") or "")
+                    if isinstance(receipt, Mapping)
+                    else ""
                 )
                 operation = (
                     str(receipt.get("operation") or "")
