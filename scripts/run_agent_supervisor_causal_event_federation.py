@@ -661,6 +661,7 @@ def _runtime_paths(board: Any) -> dict[str, Path]:
         ),
         "executor_current": state / "executor" / "executor-current.json",
         "executor_history": state / "executor" / "executor-history.json",
+        "executor_readiness": state / "executor" / "executor-readiness.json",
     }
 
 
@@ -1753,6 +1754,7 @@ def _spawn_configured_executor(
         )
         broker.start()
         deadline = time.monotonic() + 60.0
+        last_readiness: dict[str, Any] = {}
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 raise OperatorError("configured executor supervisor exited before readiness")
@@ -1765,19 +1767,75 @@ def _spawn_configured_executor(
                 paths["executor_supervisor_status"], transient_retry_attempts=5
             )
             executor_birth = current.get("executor_process_birth")
-            if (
-                current.get("ready") is True
-                and isinstance(executor_birth, Mapping)
-                and _birth_liveness(executor_birth) == "alive"
-                and int(status_payload.get("supervisor_pid") or 0) == process.pid
-                and status_payload.get("status") == "running"
-                and int(status_payload.get("daemon_pid") or 0)
-                == int(executor_birth.get("pid") or 0)
-                and status_payload.get("daemon_pid_alive") is True
-            ):
+            executor_liveness = (
+                _birth_liveness(executor_birth)
+                if isinstance(executor_birth, Mapping)
+                else "missing"
+            )
+            try:
+                status_supervisor_pid = int(status_payload.get("supervisor_pid") or 0)
+                status_daemon_pid = int(status_payload.get("daemon_pid") or 0)
+                executor_pid = (
+                    int(executor_birth.get("pid") or 0)
+                    if isinstance(executor_birth, Mapping)
+                    else 0
+                )
+            except (TypeError, ValueError):
+                status_supervisor_pid = 0
+                status_daemon_pid = 0
+                executor_pid = 0
+            predicates = {
+                "bootstrap_ready": current.get("ready") is True,
+                "executor_birth_present": isinstance(executor_birth, Mapping),
+                "executor_birth_alive": executor_liveness == "alive",
+                "supervisor_pid_matches": status_supervisor_pid == process.pid,
+                "supervisor_status_running": status_payload.get("status") == "running",
+                "daemon_pid_matches": status_daemon_pid == executor_pid and executor_pid > 1,
+                "daemon_pid_reported_alive": (
+                    status_payload.get("daemon_pid_alive") is True
+                ),
+            }
+            last_readiness = {
+                "schema": (
+                    "ipfs_accelerate_py.agent-supervisor."
+                    "casf-executor-readiness@1"
+                ),
+                "ready": all(predicates.values()),
+                "observed_at_ns": time.time_ns(),
+                "supervisor_process_birth": dict(supervisor_birth),
+                "executor_process_birth": (
+                    dict(executor_birth) if isinstance(executor_birth, Mapping) else {}
+                ),
+                "executor_liveness": executor_liveness,
+                "supervisor_status": {
+                    key: status_payload[key]
+                    for key in (
+                        "status",
+                        "updated_at",
+                        "supervisor_pid",
+                        "supervisor_pid_alive",
+                        "daemon_pid",
+                        "daemon_pid_alive",
+                        "restart_count",
+                        "last_exit_code",
+                        "last_recycle_reason",
+                        "current_status_path",
+                    )
+                    if key in status_payload
+                },
+                "predicates": predicates,
+                "broker_failed": broker.failure is not None,
+            }
+            if last_readiness["ready"] is True:
+                _atomic_json(paths["executor_readiness"], last_readiness)
                 return process, supervisor_birth, broker
             time.sleep(0.1)
-        raise OperatorError("configured executor did not prove managed-daemon readiness")
+        last_readiness["deadline_exhausted"] = True
+        _atomic_json(paths["executor_readiness"], last_readiness)
+        raise OperatorError(
+            "configured executor did not prove managed-daemon readiness: "
+            + json.dumps(last_readiness, sort_keys=True, separators=(",", ":"))
+        )
     except BaseException:
         fallback_birth: Mapping[str, Any] | None = None
         if broker is not None:
