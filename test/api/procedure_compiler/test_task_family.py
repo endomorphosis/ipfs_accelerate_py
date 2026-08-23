@@ -14,14 +14,25 @@ from ipfs_accelerate_py.agent_supervisor.procedure_compiler.contracts import (
     TaskFamilyMembership,
 )
 from ipfs_accelerate_py.agent_supervisor.procedure_compiler.task_family import (
+    CLASSIFIER_REVISION,
+    CLOSED_TASK_FAMILY_NAMES,
     REQUIRED_BOUNDARY_DIMENSIONS,
+    REQUIRED_DISCOVERY_DIMENSIONS,
     BoundaryCandidate,
     BoundarySeverity,
     BoundaryViolationClass,
     TaskFamilyBoundaryError,
     TaskFamilyBoundaryValidator,
+    TaskFamilyClassifier,
     TaskFamilyContractError,
+    TaskFamilyDiscovery,
+    TaskFamilyFeatures,
+    classify_task_family,
+    closed_task_families,
+    discover_task_family,
     parse_task_family,
+    task_family_features,
+    task_family_features_for,
     validate_task_family_contract,
 )
 
@@ -456,3 +467,199 @@ def test_known_unsafe_counterexample_invalidates_family_boundary() -> None:
     assert decision.counterexample == counterexample
     with pytest.raises(TaskFamilyContractError, match="materially splits"):
         validate_task_family_contract(value, counterexamples=(counterexample,))
+
+
+def test_discovery_classifies_by_semantics_preconditions_and_shapes() -> None:
+    value = family()
+    discovery = TaskFamilyDiscovery(families=(value,))
+    candidate = matching_candidate(value, example_cid="positive-new")
+
+    decision = discovery.discover(candidate)
+
+    assert decision.admitted is True
+    assert decision.membership is FamilyMembershipClass.POSITIVE
+    assert decision.family_name == "IMPORT_PURITY_REPAIR"
+    assert decision.family is value
+    assert decision.reason_code == "exact-structural-match"
+    assert decision.classifier_revision == CLASSIFIER_REVISION
+    assert tuple(decision.matched_dimensions) == REQUIRED_DISCOVERY_DIMENSIONS
+    assert decision.missing_features == ()
+
+
+def test_discovery_returns_unknown_on_insufficient_evidence() -> None:
+    discovery = TaskFamilyDiscovery.from_bindings(_bindings())
+    incomplete = TaskFamilyFeatures(
+        goal_semantics=("restore-import-purity",),
+        precondition_shape=("import-side-effect-observed",),
+        evidence_cids=("partial-shape",),
+    )
+
+    decision = discovery.classify(incomplete)
+
+    assert decision.membership is FamilyMembershipClass.UNKNOWN
+    assert decision.family is None
+    assert decision.reason_code == "insufficient-evidence"
+    assert "effect_classes" in decision.missing_features
+    assert "validation_structure" in decision.missing_features
+    assert "rollback_structure" in decision.missing_features
+    assert set(REQUIRED_DISCOVERY_DIMENSIONS).issuperset(decision.missing_features)
+
+
+@pytest.mark.parametrize("dimension", REQUIRED_DISCOVERY_DIMENSIONS)
+def test_discovery_missing_any_required_shape_dimension_is_unknown(dimension: str) -> None:
+    value = family()
+    discovery = TaskFamilyDiscovery(families=(value,))
+    features = task_family_features(value)
+    changes: dict[str, object] = {dimension: ()}
+
+    decision = discovery.classify(replace(features, **changes))
+
+    assert decision.membership is FamilyMembershipClass.UNKNOWN
+    assert decision.reason_code == "insufficient-evidence"
+    assert dimension in decision.missing_features
+
+
+def test_discovery_title_and_embedding_alone_cannot_join_family() -> None:
+    discovery = TaskFamilyDiscovery.from_bindings(_bindings())
+    title_only = {
+        "title": "IMPORT_PURITY_REPAIR",
+        "embedding_cid": "near-match-embedding",
+        "task_family_hint": "IMPORT_PURITY_REPAIR",
+    }
+
+    decision = discovery.classify(title_only)
+
+    assert decision.membership is FamilyMembershipClass.UNKNOWN
+    assert decision.family_name == ""
+    assert decision.reason_code == "title-or-embedding-only"
+    assert set(decision.missing_features) == set(REQUIRED_DISCOVERY_DIMENSIONS)
+    assert classify_task_family(
+        TaskFamilyFeatures(title="restore import purity"),
+        discovery.families,
+    ).membership is FamilyMembershipClass.UNKNOWN
+
+
+def test_discovery_task_family_hint_is_not_evidence() -> None:
+    discovery = TaskFamilyDiscovery.from_bindings(_bindings())
+    hinted = {
+        "task_family_hint": "IMPORT_PURITY_REPAIR",
+        "name": "IMPORT_PURITY_REPAIR",
+        "proposed_membership": FamilyMembershipClass.POSITIVE.value,
+    }
+
+    decision = discovery.classify(hinted)
+
+    assert decision.membership is FamilyMembershipClass.UNKNOWN
+    assert decision.family is None
+
+
+def test_discovery_closed_families_are_distinguishable() -> None:
+    families = closed_task_families(_bindings())
+    discovery = TaskFamilyDiscovery(families=families)
+    fingerprints = [task_family_features(item).fingerprint for item in families]
+
+    assert tuple(item.name for item in families) == CLOSED_TASK_FAMILY_NAMES
+    assert len(set(fingerprints)) == len(fingerprints)
+    assert len(families) == len(CLOSED_TASK_FAMILY_NAMES)
+    for item in families:
+        decision = discovery.classify(item)
+        assert decision.membership is FamilyMembershipClass.POSITIVE
+        assert decision.family_name == item.name
+        assert decision.family is item
+        assert decision.reason_code == "exact-structural-match"
+
+
+def test_discovery_one_shape_mismatch_does_not_join_another_family() -> None:
+    discovery = TaskFamilyDiscovery.from_bindings(_bindings())
+    purity = task_family_features_for("IMPORT_PURITY_REPAIR")
+    mismatched = replace(purity, postcondition_shape=("import-is-documented",))
+
+    decision = discovery.classify(mismatched)
+
+    assert decision.membership is FamilyMembershipClass.UNKNOWN
+    assert decision.reason_code == "no-family-match"
+    assert decision.family is None
+
+
+def test_discovery_does_not_promote_or_mutate_families() -> None:
+    value = family()
+    discovery = TaskFamilyDiscovery(families=(value,))
+    classifier = TaskFamilyClassifier()
+    before = value.state
+
+    decision = discovery.classify(value)
+
+    assert decision.family is value
+    assert value.state is before
+    with pytest.raises(TaskFamilyContractError, match="cannot promote or mutate"):
+        discovery.promote(value)
+    with pytest.raises(TaskFamilyContractError, match="cannot promote or mutate"):
+        classifier.promote(value)
+
+
+def test_discovery_membership_binds_classifier_revision() -> None:
+    value = family()
+    discovery = TaskFamilyDiscovery(families=(value,))
+    candidate = matching_candidate(value, example_cid="positive-new")
+
+    record = discovery.membership(candidate)
+
+    assert record.membership is FamilyMembershipClass.POSITIVE
+    assert record.task_family_cid == value.content_id
+    assert record.trajectory_cid == "positive-new"
+    assert record.classifier_revision == CLASSIFIER_REVISION
+    assert record.evidence_cids == ("classifier-receipt",)
+
+
+def test_discovery_unknown_classification_cannot_bind_membership() -> None:
+    discovery = TaskFamilyDiscovery.from_bindings(_bindings())
+    with pytest.raises(TaskFamilyContractError, match="cannot bind a family membership"):
+        discovery.membership({"title": "IMPORT_PURITY_REPAIR"})
+
+
+def test_discovery_ignores_proposed_membership_label() -> None:
+    value = family()
+    discovery = TaskFamilyDiscovery(families=(value,))
+    candidate = matching_candidate(
+        value,
+        example_cid="positive-new",
+        proposed_membership=FamilyMembershipClass.UNKNOWN,
+    )
+
+    decision = discovery.classify(candidate)
+
+    assert decision.membership is FamilyMembershipClass.POSITIVE
+    assert decision.family_name == value.name
+
+
+def test_discovery_helper_uses_closed_catalog() -> None:
+    decision = discover_task_family(
+        task_family_features_for("TEST_SELECTION_REPAIR"),
+        bindings=_bindings(),
+    )
+    assert decision.membership is FamilyMembershipClass.POSITIVE
+    assert decision.family_name == "TEST_SELECTION_REPAIR"
+
+
+def test_discovery_complete_feature_mapping_ignores_title_and_embedding() -> None:
+    discovery = TaskFamilyDiscovery.from_bindings(_bindings())
+    payload = {
+        "goal_semantics": ("restore-import-purity",),
+        "precondition_shape": ("import-side-effect-observed",),
+        "affected_artifact_classes": ("python-source",),
+        "effect_classes": ("repository_write", "validation"),
+        "required_operation_contracts": ("approved-patch-template@1", "test-runner@1"),
+        "validation_structure": ("focused-tests", "postcondition-check"),
+        "failure_signatures": ("import-side-effect",),
+        "postcondition_shape": ("import-is-pure",),
+        "rollback_structure": ("restore-exact-tree",),
+        "title": "IMPORT_PURITY_REPAIR",
+        "embedding_cid": "near-match-embedding",
+        "task_family_hint": "UNSAFE_NEAR_MATCH_TASK",
+    }
+
+    decision = discovery.classify(payload)
+
+    assert decision.membership is FamilyMembershipClass.POSITIVE
+    assert decision.family_name == "IMPORT_PURITY_REPAIR"
+    assert decision.reason_code == "exact-structural-match"
