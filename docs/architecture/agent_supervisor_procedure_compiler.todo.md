@@ -896,7 +896,7 @@ This board is a sealed bootstrap and human export. After materialization, DuckDB
 
 ## PCPC-024 Implement shadow experiment planner
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
