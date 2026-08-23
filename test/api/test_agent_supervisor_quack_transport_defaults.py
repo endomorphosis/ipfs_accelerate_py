@@ -385,6 +385,7 @@ def test_request_owner_board_unstall_writes_inbox_without_waiting(
     }
     assert list(inbox.glob("*.request.json")) == requests
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        BOARD_UNSTALL_COOLDOWN_NAME,
         clear_owner_board_unstall_bounce,
         owner_should_recycle_for_board_unstall,
     )
@@ -396,6 +397,14 @@ def test_request_owner_board_unstall_writes_inbox_without_waiting(
     for leftover in inbox.glob("*.request.json"):
         leftover.unlink()
     assert owner_should_recycle_for_board_unstall(inbox, min_age_seconds=0) is False
+    cooled = request_owner_board_unstall(wait=False)
+    assert cooled == {
+        "ok": True,
+        "requested": False,
+        "skipped": "bounce_cooldown",
+        "waited": False,
+    }
+    assert (inbox / BOARD_UNSTALL_COOLDOWN_NAME).is_file()
 
 
 def test_owner_mutation_bounce_is_not_reset(tmp_path) -> None:

@@ -70142,7 +70142,21 @@ class DatabaseImplementationDaemon:
         )
 
         try:
-            return request_owner_board_unstall(wait=False)
+            from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+                ABANDONED_IN_PROGRESS_UNSTALL_SECONDS,
+            )
+
+            stale_seconds = ABANDONED_IN_PROGRESS_UNSTALL_SECONDS
+            if self.list_running_attempts():
+                from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+                    STALE_IN_PROGRESS_UNSTALL_SECONDS,
+                )
+
+                stale_seconds = STALE_IN_PROGRESS_UNSTALL_SECONDS
+            return request_owner_board_unstall(
+                stale_seconds=stale_seconds,
+                wait=False,
+            )
         except Exception as exc:
             return {
                 "ok": False,

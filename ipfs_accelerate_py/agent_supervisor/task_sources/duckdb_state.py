@@ -810,7 +810,9 @@ def unstall_stale_in_progress_tasks(
 
 BOARD_UNSTALL_OWNER_OP = "board_unstall"
 BOARD_UNSTALL_BOUNCE_NAME = "board-unstall.bounce"
+BOARD_UNSTALL_COOLDOWN_NAME = "board-unstall.cooldown"
 OWNER_BOARD_UNSTALL_BOUNCE_MIN_AGE_SECONDS = 15.0
+OWNER_BOARD_UNSTALL_COOLDOWN_SECONDS = 600.0
 _OWNER_INBOX_DML_PREFIXES = _QUACK_OWNER_DML_PREFIXES + ("INSERT ",)
 
 
@@ -885,6 +887,7 @@ def request_owner_board_unstall(
 
     target.mkdir(parents=True, exist_ok=True)
     bounce = target / BOARD_UNSTALL_BOUNCE_NAME
+    cooldown = target / BOARD_UNSTALL_COOLDOWN_NAME
     pending = [
         request
         for request in target.glob("*.request.json")
@@ -899,6 +902,18 @@ def request_owner_board_unstall(
             "skipped": "bounce_already_pending",
             "waited": False,
         }
+    if cooldown.is_file():
+        try:
+            age = time.time() - cooldown.stat().st_mtime
+        except OSError:
+            age = OWNER_BOARD_UNSTALL_COOLDOWN_SECONDS
+        if age < float(OWNER_BOARD_UNSTALL_COOLDOWN_SECONDS):
+            return {
+                "ok": True,
+                "requested": False,
+                "skipped": "bounce_cooldown",
+                "waited": False,
+            }
     request_id = uuid.uuid4().hex
     request_path = target / f"{request_id}.request.json"
     done_path = target / f"{request_id}.done.json"
@@ -917,6 +932,18 @@ def request_owner_board_unstall(
         target,
         request_id=request_id,
         op=BOARD_UNSTALL_OWNER_OP,
+    )
+    cooldown.write_text(
+        json.dumps(
+            {
+                "op": BOARD_UNSTALL_OWNER_OP,
+                "request_id": request_id,
+                "stale_seconds": int(stale_seconds),
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
     )
     if not wait:
         return {

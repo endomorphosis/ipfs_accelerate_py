@@ -1371,6 +1371,7 @@ def test_quack_attach_contention_requests_owner_board_unstall(
         assert len(requests) == 1
         payload = json.loads(requests[0].read_text(encoding="utf-8"))
         assert payload["op"] == "board_unstall"
+        assert payload["stale_seconds"] == 60
         second = daemon.run_once()
         assert second.get("board_unstall_request", {}).get("requested") is False
         assert second.get("board_unstall_request", {}).get("skipped") == (
