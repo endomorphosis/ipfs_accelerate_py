@@ -81,9 +81,8 @@ from ..task_sources.control_plane_schema import (
     install_control_plane_schema,
 )
 from ..task_sources.duckdb_state import (
-    DUCKDB_CONNECTION_POLICY_SETTINGS,
     DEFAULT_MEMORY_LIMIT,
-    DuckDBConnection,
+    DUCKDB_CONNECTION_POLICY_SETTINGS,
     QUACK_MUTATION_COMPLETION_RECEIPT_INSERT,
     QUACK_MUTATION_DOMAIN_EVENT_INSERT,
     QUACK_MUTATION_EVIDENCE_DELETE,
@@ -97,14 +96,15 @@ from ..task_sources.duckdb_state import (
     QUACK_MUTATION_VALIDATION_RECORD,
     QUACK_MUTATION_VALIDATION_RESULT_INSERT,
     QUACK_MUTATION_VALIDATION_RUN_INSERT,
+    QUACK_OWNER_MUTATION_MAX_CLOCK_SKEW_MS,
     QUACK_OWNER_MUTATION_MAX_PARAMETER_BYTES,
     QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES,
     QUACK_OWNER_MUTATION_MAX_STEPS,
-    QUACK_OWNER_MUTATION_MAX_CLOCK_SKEW_MS,
     QUACK_OWNER_MUTATION_PROTOCOL_REVISION,
-    QUACK_OWNER_MUTATION_REQUEST_TTL_MS,
     QUACK_OWNER_MUTATION_REQUEST_SCHEMA,
+    QUACK_OWNER_MUTATION_REQUEST_TTL_MS,
     QUACK_OWNER_MUTATION_RESULT_SCHEMA,
+    DuckDBConnection,
     open_duckdb_connection,
     open_quack_state_owner_connection,
     quack_owner_mutation_content_id,
@@ -1682,17 +1682,22 @@ class InProcessQuackTransport:
             ) from last_error
         if rows is None or len(rows) != 1:
             raise QuackStateServerReadyError(
-                "authenticated remote live query returned an unexpected result"
+                "authenticated remote live query returned an unexpected result: "
+                f"{rows!r}"
             )
         live_row = rows[0]
-        live_value = (
-            live_row[0]
-            if not isinstance(live_row, Mapping)
-            else live_row.get("quack_live")
-        )
-        if live_value != 1:
+        if isinstance(live_row, Mapping):
+            live_value = live_row.get("quack_live")
+            if live_value is None and len(live_row) == 1:
+                live_value = next(iter(live_row.values()))
+        elif isinstance(live_row, (list, tuple)):
+            live_value = live_row[0] if live_row else None
+        else:
+            live_value = live_row
+        if live_value not in (1, "1", True):
             raise QuackStateServerReadyError(
-                "authenticated remote live query returned an unexpected result"
+                "authenticated remote live query returned an unexpected result: "
+                f"{rows!r}"
             )
         observed = dict(self._server_identity)
         observed["live"] = True

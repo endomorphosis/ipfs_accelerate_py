@@ -940,36 +940,45 @@ def materialize(config_path: Path) -> dict[str, Any]:
             or prior.get("program_id") != PROGRAM_ID
         ):
             raise OperatorError("existing bootstrap receipt has stale authority")
-        if any(
+        stale_identity = any(
             prior.get(field) != population.get(field)
             for field in ("source_head", "repository_tree_id", "plan_root_cid")
-        ):
-            raise OperatorError("existing control plane is bound to a stale identity")
-        with DatabaseTaskSource(
-            paths["database"],
-            owner_id="casf-bootstrap:verify-existing",
-            install_schema=False,
-            repository_tree_id=str(population["repository_tree_id"]),
-            plan_root_cid=str(population["plan_root_cid"]),
-        ) as source:
-            snapshot = source.snapshot().to_dict()
-            ready = [item.task_alias for item in source.ready_tasks(limit=100).tasks]
-        if (
-            int(snapshot["task_count"]) != 44
-            or int(snapshot["goal_count"]) != 17
-            or int(snapshot["dependency_count"]) != 191
-            or ready != expected_ready
-        ):
-            raise OperatorError("existing control-plane population differs from seal")
-        verify_causal_event_federation_schema(paths["database"])
-        return {
-            "schema": OPERATOR_SCHEMA,
-            "command": "materialize",
-            "ok": True,
-            "idempotent_replay": True,
-            "bootstrap_receipt": prior,
-            "snapshot": snapshot,
-        }
+        )
+        if stale_identity:
+            if _owner_liveness(owner_status) in {"alive", "unknown"}:
+                raise OperatorError("existing control plane is bound to a stale identity")
+            if paths["launch_receipt"].is_file():
+                raise OperatorError("existing control plane is bound to a stale identity")
+            _retire_consumed_generation(
+                paths,
+                launch_id=str(prior.get("bootstrap_receipt_id") or "bootstrap"),
+            )
+        else:
+            with DatabaseTaskSource(
+                paths["database"],
+                owner_id="casf-bootstrap:verify-existing",
+                install_schema=False,
+                repository_tree_id=str(population["repository_tree_id"]),
+                plan_root_cid=str(population["plan_root_cid"]),
+            ) as source:
+                snapshot = source.snapshot().to_dict()
+                ready = [item.task_alias for item in source.ready_tasks(limit=100).tasks]
+            if (
+                int(snapshot["task_count"]) != 44
+                or int(snapshot["goal_count"]) != 17
+                or int(snapshot["dependency_count"]) != 191
+                or ready != expected_ready
+            ):
+                raise OperatorError("existing control-plane population differs from seal")
+            verify_causal_event_federation_schema(paths["database"])
+            return {
+                "schema": OPERATOR_SCHEMA,
+                "command": "materialize",
+                "ok": True,
+                "idempotent_replay": True,
+                "bootstrap_receipt": prior,
+                "snapshot": snapshot,
+            }
 
     paths["runtime"].mkdir(parents=True, exist_ok=True)
     with DatabaseTaskSource(
@@ -2020,13 +2029,43 @@ def _wait_for_owner(
     raise OperatorError("timed out waiting for exact Quack owner readiness")
 
 
+def _retire_consumed_generation(paths: Mapping[str, Path], *, launch_id: str) -> None:
+    """Archive a fully stopped generation so the next launch can rematerialize.
+
+    The consumed supervisor identity stays terminal.  A later launch mints a
+    fresh identity against the current tree rather than reopening a stale
+    control plane.
+    """
+
+    runtime = paths.get("runtime")
+    database = paths.get("database")
+    if runtime is None or database is None:
+        return
+    compact = launch_id.replace("sha256:", "")[:16] or "unknown"
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    destination = runtime / "quarantine" / f"consumed-{compact}-{stamp}"
+    destination.mkdir(parents=True, exist_ok=True)
+    control = destination / "control-plane"
+    control.mkdir(exist_ok=True)
+    parent = database.parent
+    for extra in list(parent.glob(f"{database.name}*")) + list(parent.glob(f".{database.name}*")):
+        extra.rename(control / extra.name)
+    for key, label in (("owner", "quack-owner"), ("state", "state")):
+        source = paths.get(key)
+        if source is not None and source.exists():
+            source.rename(destination / label)
+    evidence = paths.get("operator_evidence")
+    if evidence is not None and evidence.parent.exists():
+        evidence.parent.rename(destination / "evidence")
+
+
 def _require_unused_launch_generation(paths: Mapping[str, Path]) -> None:
     """Reject reuse of a supervisor identity whose lifecycle is terminal.
 
-    Tranche 1 deliberately has no crash/relaunch identity transfer.  A stopped
-    supervisor cannot be revived by replaying its deterministic registration
-    result, and CASF-029 owns fresh-identity recovery.  Fail before starting a
-    process rather than discovering the stale lifecycle inside the child.
+    A stopped supervisor cannot be revived by replaying its deterministic
+    registration result.  After a complete matching stop, CASF-029 admits a
+    later launch only by minting a fresh identity.  Fail before starting a
+    process rather than discovering a stale lifecycle inside the child.
     """
 
     if not paths["launch_receipt"].is_file():
@@ -2046,10 +2085,9 @@ def _require_unused_launch_generation(paths: Mapping[str, Path]) -> None:
         raise OperatorError("prior stop receipt has stale authority")
     if stop.get("complete") is not True or stop.get("launch_receipt_id") != launch_id:
         raise OperatorError("a prior launch has no complete matching stop receipt")
-    raise OperatorError(
-        "this control-plane generation already consumed its single-use "
-        "supervisor identity; fresh-identity recovery is unavailable until CASF-029"
-    )
+    # The consumed identity stays terminal.  Retire the stale control plane so
+    # launch can rematerialize and mint a fresh supervisor/process-birth/lease.
+    _retire_consumed_generation(paths, launch_id=launch_id)
 
 
 def _launch_owner(
@@ -2845,8 +2883,8 @@ def launch(
                 "credential_transport": "private_inherited_pipe",
                 "credential_in_argv_or_environment": False,
                 "task_execution_admitted": False,
-                "relaunch_supported": False,
-                "relaunch_blocker": "CASF-029",
+                "relaunch_supported": True,
+                "relaunch_blocker": "",
                 "event_wait_qualified": True,
                 "event_driven_qualified": False,
                 "multi_supervisor_qualified": False,
