@@ -79849,7 +79849,11 @@ class DatabaseImplementationDaemon:
                     cooldown_started_at_ms = prior_deadline - delay_ms
                 return record_task_retry_cooldown(
                     task_cid=attempt.task_cid,
-                    expected_task_revision=int(task.revision),
+                    expected_task_revision=(
+                        int(task.revision) - 1
+                        if task_status == "retrying"
+                        else int(task.revision)
+                    ),
                     expected_task_status=task_status,
                     attempt_id=attempt.attempt_id,
                     claim_id=attempt.claim_id,

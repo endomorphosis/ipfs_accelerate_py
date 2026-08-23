@@ -640,6 +640,15 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
         "fencing_token": 37,
         "fence_epoch": 17,
     }
+    bool_claim = {
+        "attempt_id": "attempt:typed-bool-receipt",
+        "claim_id": "claim:typed-bool-receipt",
+        "lease_id": "lease:typed-bool-receipt",
+        "owner_session_id": "session:typed-bool-receipt",
+        "attempt_number": True,
+        "fencing_token": 41,
+        "fence_epoch": 19,
+    }
     source = DatabaseTaskSource(database)
     source.materialize(
         {
@@ -701,6 +710,17 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
                         "control_expected_revision": 0,
                     },
                 },
+                {
+                    "task_cid": "task:typed-bool-receipt",
+                    "task_id": "CASF-TYPED-BOOL-RECEIPT",
+                    "goal_cid": "goal:typed-retry-cooldown",
+                    "status": "in_progress",
+                    "completion_receipt": {
+                        "operation": "database_claim",
+                        **bool_claim,
+                        "claimed_from_revision": 0,
+                    },
+                },
             ],
         }
     )
@@ -753,6 +773,28 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
             clock_ms=lambda: clock["now_ms"],
         )
 
+        bool_task = adapter.get("CASF-TYPED-BOOL-RECEIPT")
+        assert bool_task is not None
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            adapter.record_task_retry_cooldown(
+                task_cid=bool_task.task_cid,
+                expected_task_revision=bool_task.revision,
+                expected_task_status="in_progress",
+                attempt_id=bool_claim["attempt_id"],
+                claim_id=bool_claim["claim_id"],
+                lease_id=bool_claim["lease_id"],
+                owner_session_id=bool_claim["owner_session_id"],
+                attempt_number=1,
+                fencing_token=bool_claim["fencing_token"],
+                fence_epoch=bool_claim["fence_epoch"],
+                delay_ms=1,
+                reason=(
+                    "database_portal_retry:attempt:typed-bool-receipt:"
+                    "strict_numeric_receipt"
+                ),
+                now_ms=clock["now_ms"],
+            )
+
         recovery = adapter.get("CASF-TYPED-RETRY-RECOVERY")
         assert recovery is not None
         assert recovery.status == "retrying"
@@ -783,7 +825,7 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
             with pytest.raises(TransactionError, match="authorization_denied"):
                 adapter.record_task_retry_cooldown(
                     task_cid=recovery.task_cid,
-                    expected_task_revision=recovery.revision,
+                    expected_task_revision=recovery.revision - 1,
                     expected_task_status="retrying",
                     delay_ms=6_000,
                     reason=retry_reason,
@@ -798,7 +840,7 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
 
         recovery_receipt = adapter.record_task_retry_cooldown(
             task_cid=recovery.task_cid,
-            expected_task_revision=recovery.revision,
+            expected_task_revision=recovery.revision - 1,
             expected_task_status="retrying",
             delay_ms=6_000,
             reason=retry_reason,
@@ -1239,6 +1281,37 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
         assert post_merge_control_receipt["retry_not_before_ms"] == (
             post_merge_entry.retry_not_before_ms
         )
+
+        # An exact idempotency replay must validate the durable row before
+        # the owner can reproduce its prior receipt.  Simulate corruption
+        # below the typed boundary and prove the replay fails closed without
+        # advancing any owner generation or mutating the damaged row again.
+        gateway._connection.execute(
+            "UPDATE leases SET state = 'active' WHERE task_cid = ?",
+            [claimed_again.task.task_cid],
+        )
+        corrupt_generation = client.load_generation()
+        with pytest.raises(ValueError, match="prior queue state is malformed"):
+            adapter.record_task_retry_cooldown(
+                task_cid=claimed_again.task.task_cid,
+                expected_task_revision=claimed_again.task.revision,
+                expected_task_status="in_progress",
+                delay_ms=2_000,
+                reason=second_reason,
+                now_ms=clock["now_ms"],
+                **second_cooldown,
+            )
+        after_corrupt_replay = client.load_generation()
+        assert after_corrupt_replay.revision == corrupt_generation.revision
+        corrupt_row = gateway._connection.execute(
+            "SELECT state, revision FROM leases WHERE task_cid = ?",
+            [claimed_again.task.task_cid],
+        ).fetchone()
+        assert corrupt_row is not None
+        assert (corrupt_row["state"], corrupt_row["revision"]) == (
+            "active",
+            2,
+        )
     finally:
         if adapter is not None:
             adapter.close()
@@ -1319,7 +1392,10 @@ def test_typed_database_task_source_pages_transport_for_public_maximum() -> None
     ]
 
 
-@pytest.mark.parametrize("lease_kind", ("legacy", "malformed_typed"))
+@pytest.mark.parametrize(
+    "lease_kind",
+    ("legacy", "malformed_typed", "forged_typed", "valid_old", "missing"),
+)
 def test_typed_ready_projection_rejects_a_foreign_lease_row(
     lease_kind: str,
 ) -> None:
@@ -1336,36 +1412,105 @@ def test_typed_ready_projection_rejects_a_foreign_lease_row(
         "identity_json": json.dumps(
             {"repository_tree_id": "tree:foreign-lease"}
         ),
-        "body_json": "{}",
+        "body_json": json.dumps(
+            {
+                "completion_receipt": {
+                    "operation": "database_portal_retry",
+                    "attempt_id": "attempt:newer",
+                    "claim_id": "claim:newer",
+                    "lease_id": "lease:newer",
+                    "owner_session_id": "owner:newer",
+                    "attempt_number": 9,
+                    "fencing_token": 9,
+                    "fence_epoch": 9,
+                    "queue_reason": "typed-backoff",
+                    "backoff_ms": 98_000,
+                    "retry_not_before_ms": 99_000,
+                    "control_expected_revision": 2,
+                }
+            }
+        ),
         "dependencies_json": "[]",
         "outputs_json": "[]",
         "acceptance_json": "[]",
         "validations_json": "[]",
     }
     extension_schema = (
-        TYPED_RETRY_COOLDOWN_SCHEMA
-        if lease_kind == "malformed_typed"
-        else "ipfs_accelerate_py/agent-supervisor/queue-entry@1"
+        "ipfs_accelerate_py/agent-supervisor/queue-entry@1"
+        if lease_kind == "legacy"
+        else TYPED_RETRY_COOLDOWN_SCHEMA
     )
-    extension = (
-        {
+    if lease_kind == "malformed_typed":
+        extension = {
             "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
             "task_cid": task_row["task_cid"],
             "claim_id": "claim:legacy-queue",
             "attempt_number": 1,
             "retry_not_before_ms": 99_000,
         }
-        if lease_kind == "malformed_typed"
-        else {
+    elif lease_kind == "forged_typed":
+        extension = {
+            "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "task_cid": task_row["task_cid"],
+            "expected_task_revision": -9,
+            "attempt_id": "",
+            "claim_id": "claim:legacy-queue",
+            "lease_id": "",
+            "owner_session_id": "owner:legacy-queue",
+            "attempt_number": 1,
+            "fencing_token": 1,
+            "fence_epoch": 1,
+            "delay_ms": -5,
+            "started_at_ms": 1_000,
+            "retry_not_before_ms": 995,
+            "selection_penalty": -1,
+            "consecutive_failures": -1,
+            "reason": "legacy-backoff",
+            "expected_queue_revision": -1,
+            "expected_queue_attempt": 0,
+            "unexpected": "caller-selected-extension",
+        }
+    elif lease_kind == "valid_old":
+        extension = {
+            "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "task_cid": task_row["task_cid"],
+            "expected_task_revision": 2,
+            "attempt_id": "attempt:legacy-queue",
+            "claim_id": "claim:legacy-queue",
+            "lease_id": "lease:legacy-queue",
+            "owner_session_id": "owner:legacy-queue",
+            "attempt_number": 1,
+            "fencing_token": 1,
+            "fence_epoch": 1,
+            "delay_ms": 98_000,
+            "started_at_ms": 1_000,
+            "retry_not_before_ms": 99_000,
+            "selection_penalty": 0,
+            "consecutive_failures": 1,
+            "reason": "typed-backoff",
+            "expected_queue_revision": -1,
+            "expected_queue_attempt": 0,
+        }
+    else:
+        extension = {
             "selection_penalty": 0,
             "consecutive_failures": 1,
             "reason": "legacy-backoff",
         }
+    resolution_cid = (
+        content_identity(
+            {
+                "typed_retry_cooldown": extension,
+                "started_at_ms": extension.get("started_at_ms", 1_000),
+            }
+        )
+        if lease_kind in {"forged_typed", "valid_old"}
+        else "resolution:legacy-queue"
     )
     foreign_page_row = {
         "task_cid": task_row["task_cid"],
         "claim_cid": "claim:legacy-queue",
-        "resolution_cid": "resolution:legacy-queue",
+        "resolution_cid": resolution_cid,
         "claimant_did": "owner:legacy-queue",
         "logical_epoch": 1,
         "fencing_token": 1,
@@ -1373,8 +1518,10 @@ def test_typed_ready_projection_rejects_a_foreign_lease_row(
         "attempt": 1,
         "state": "released",
         "started_at_ms": 1_000,
-        "release_reason": "legacy-backoff",
-        "retry_not_before_ms": 99_000,
+        "release_reason": str(extension.get("reason") or "legacy-backoff"),
+        "retry_not_before_ms": int(
+            extension.get("retry_not_before_ms", 99_000)
+        ),
         "owner_session_id": "owner:legacy-queue",
         "fence_epoch": 1,
         "revision": 1,
@@ -1409,9 +1556,9 @@ def test_typed_ready_projection_rejects_a_foreign_lease_row(
             if operation == "executor_task_projection_page":
                 return (task_row,)
             if operation == "executor_retry_cooldown_page":
-                return (foreign_page_row,)
+                return () if lease_kind == "missing" else (foreign_page_row,)
             if operation == "executor_retry_cooldown_by_task":
-                return (foreign_page_row,)
+                return () if lease_kind == "missing" else (foreign_page_row,)
             raise AssertionError(operation)
 
     adapter = object.__new__(TypedDatabaseTaskSource)
@@ -1421,10 +1568,18 @@ def test_typed_ready_projection_rejects_a_foreign_lease_row(
     adapter.path = Path("typed-state-owner")
     adapter.database_path = adapter.path
 
-    with pytest.raises(TaskSourceIntegrityError, match="foreign|differs"):
+    with pytest.raises(
+        TaskSourceIntegrityError,
+        match="foreign|differs|no typed cooldown",
+    ):
         adapter.ready_tasks()
-    with pytest.raises(TaskSourceIntegrityError, match="foreign"):
-        adapter.get_queue_entry(task_row["task_cid"])
+    if lease_kind in {"legacy", "malformed_typed", "forged_typed"}:
+        with pytest.raises(TaskSourceIntegrityError, match="foreign"):
+            adapter.get_queue_entry(task_row["task_cid"])
+    elif lease_kind == "valid_old":
+        assert adapter.get_queue_entry(task_row["task_cid"]) is not None
+    else:
+        assert adapter.get_queue_entry(task_row["task_cid"]) is None
 
 
 def test_executor_typed_operation_catalog_is_closed_and_full_fidelity() -> None:

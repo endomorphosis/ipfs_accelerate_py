@@ -47,6 +47,22 @@ TYPED_STATE_OWNER_TOKEN_FILENAME: Final = "typed-state-owner.token"
 TYPED_RETRY_COOLDOWN_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/typed-retry-cooldown@1"
 )
+TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "database_portal_retry",
+        "database_portal_validation_retry",
+        "database_portal_validation_retry_recovery",
+        "database_portal_protected_path_retry_recovery",
+        "database_portal_external_protected_checkout_retry_recovery",
+        "database_portal_inflight_process_retry_recovery",
+        "database_portal_validation_retry_seed_conflict_retry_recovery",
+        "database_portal_leftover_wait_deferral_budget_retry_recovery",
+        "database_portal_pooled_worktree_create_retry_recovery",
+        "database_post_merge_declared_outputs_repair_recovery",
+        "database_post_merge_declared_outputs_requalification_recovery",
+        "database_portal_inflight_deferral_unstall",
+    }
+)
 # Linux permits 107 pathname bytes in ``sockaddr_un.sun_path`` while other
 # supported Unix platforms can be slightly smaller.  Keep a little headroom
 # for the trailing NUL and fail over before ``bind(2)`` becomes platform
@@ -447,6 +463,12 @@ def _normalize_sql(sql: str) -> str:
     return " ".join(str(sql or "").strip().split())
 
 
+def _strict_scalar_equal(observed: Any, expected: Any) -> bool:
+    """Compare receipt scalars without Python's bool/int equivalence."""
+
+    return type(observed) is type(expected) and observed == expected
+
+
 def _validated_retry_cooldown_parameters(
     value: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -514,7 +536,6 @@ def _validated_retry_cooldown_parameters(
                 f"retry cooldown {name} is invalid"
             )
     positive = (
-        "expected_task_revision",
         "attempt_number",
         "fencing_token",
         "fence_epoch",
@@ -529,6 +550,10 @@ def _validated_retry_cooldown_parameters(
             "retry cooldown positive revision/fence identity is invalid"
         )
     bounded_nonnegative = {
+        # A materialized retrying task at revision 1 canonically binds the
+        # transition's predecessor revision 0.  The owner separately proves
+        # the current durable task revision is exactly predecessor + 1.
+        "expected_task_revision": 9_223_372_036_854_775_807,
         "delay_ms": 86_400_000,
         "started_at_ms": 9_223_372_036_854_775_807,
         "retry_not_before_ms": 9_223_372_036_854_775_807,
@@ -2488,32 +2513,30 @@ class TypedStateOwnerGateway:
             if parameters["expected_task_status"] == "in_progress":
                 receipt_state_matches = bool(
                     receipt_operation == "database_claim"
-                    and receipt_values.get("claimed_from_revision")
-                    == parameters["expected_task_revision"] - 1
+                    and _strict_scalar_equal(
+                        receipt_values.get("claimed_from_revision"),
+                        parameters["expected_task_revision"] - 1,
+                    )
                 )
             elif parameters["expected_task_status"] == "retrying":
                 receipt_state_matches = bool(
-                    receipt_operation
-                    in {
-                        "database_portal_retry",
-                        "database_portal_validation_retry",
-                        "database_portal_validation_retry_recovery",
-                        "database_portal_protected_path_retry_recovery",
-                        "database_portal_external_protected_checkout_retry_recovery",
-                        "database_portal_inflight_process_retry_recovery",
-                        "database_portal_validation_retry_seed_conflict_retry_recovery",
-                        "database_portal_leftover_wait_deferral_budget_retry_recovery",
-                        "database_portal_pooled_worktree_create_retry_recovery",
-                        "database_post_merge_declared_outputs_repair_recovery",
-                        "database_post_merge_declared_outputs_requalification_recovery",
-                        "database_portal_inflight_deferral_unstall",
-                    }
-                    and receipt_values.get("control_expected_revision")
-                    == parameters["expected_task_revision"] - 1
-                    and receipt_values.get("queue_reason") == parameters["reason"]
-                    and receipt_values.get("backoff_ms") == parameters["delay_ms"]
-                    and receipt_values.get("retry_not_before_ms")
-                    == parameters["retry_not_before_ms"]
+                    receipt_operation in TYPED_RETRYING_RECEIPT_OPERATIONS
+                    and _strict_scalar_equal(
+                        receipt_values.get("control_expected_revision"),
+                        parameters["expected_task_revision"],
+                    )
+                    and _strict_scalar_equal(
+                        receipt_values.get("queue_reason"),
+                        parameters["reason"],
+                    )
+                    and _strict_scalar_equal(
+                        receipt_values.get("backoff_ms"),
+                        parameters["delay_ms"],
+                    )
+                    and _strict_scalar_equal(
+                        receipt_values.get("retry_not_before_ms"),
+                        parameters["retry_not_before_ms"],
+                    )
                 )
             else:
                 receipt_state_matches = bool(
@@ -2523,19 +2546,28 @@ class TypedStateOwnerGateway:
                         "database_portal_typed_deferral_budget_exhausted",
                     }
                     and receipt_values.get("retryable") is False
-                    and receipt_values.get("control_expected_status")
+                    and type(receipt_values.get("control_expected_status"))
+                    is str
+                    and receipt_values["control_expected_status"]
                     in {"in_progress", "retrying"}
-                    and receipt_values.get("control_expected_revision")
-                    == parameters["expected_task_revision"] - 1
+                    and _strict_scalar_equal(
+                        receipt_values.get("control_expected_revision"),
+                        parameters["expected_task_revision"] - 1,
+                    )
                 )
             if (
                 str(task_row[0] or "").strip().lower()
                 != parameters["expected_task_status"]
-                or int(task_row[1]) != parameters["expected_task_revision"]
+                or int(task_row[1])
+                != (
+                    parameters["expected_task_revision"] + 1
+                    if parameters["expected_task_status"] == "retrying"
+                    else parameters["expected_task_revision"]
+                )
                 or not isinstance(receipt, Mapping)
                 or not receipt_state_matches
                 or any(
-                    receipt_values.get(name) != expected
+                    not _strict_scalar_equal(receipt_values.get(name), expected)
                     for name, expected in exact_receipt.items()
                 )
             ):
@@ -3508,10 +3540,15 @@ class TypedStateOwnerGateway:
                     "retry cooldown transaction contains both mutation roles"
                 )
             task = dict(authority.get("task") or {})
+            authoritative_task_revision = (
+                values["expected_task_revision"] + 1
+                if values["expected_task_status"] == "retrying"
+                else values["expected_task_revision"]
+            )
             if (
                 task.get("task_cid") != values["task_cid"]
                 or task.get("status") != values["expected_task_status"]
-                or task.get("revision") != values["expected_task_revision"]
+                or task.get("revision") != authoritative_task_revision
                 or values["expected_queue_revision"]
                 != (prior_queue.get("revision") if prior_queue else -1)
                 or values["expected_queue_attempt"]

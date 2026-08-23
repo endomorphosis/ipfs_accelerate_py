@@ -43,7 +43,10 @@ from .task_execution_route_policy import (
 )
 from .typed_state_owner import (
     TYPED_RETRY_COOLDOWN_SCHEMA,
+    TYPED_RETRYING_RECEIPT_OPERATIONS,
     TYPED_TASK_STATUS_VOCABULARY,
+    TypedStateOwnerError,
+    _validated_stored_retry_cooldown,
 )
 
 TYPED_DATABASE_TASK_SOURCE_INTERFACE: Final = "TypedDatabaseTaskSource@1"
@@ -356,71 +359,16 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "retry cooldown owner row differs from its closed projection"
             )
-        for name in (
-            "logical_epoch",
-            "fencing_token",
-            "expires_at_ms",
-            "attempt",
-            "started_at_ms",
-            "retry_not_before_ms",
-            "fence_epoch",
-            "revision",
-        ):
-            value = row.get(name)
-            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise TaskSourceIntegrityError(
-                    f"retry cooldown {name} is invalid"
-                )
-        for name in (
-            "claim_cid",
-            "resolution_cid",
-            "claimant_did",
-            "state",
-            "release_reason",
-            "owner_session_id",
-            "extension_schema",
-        ):
-            if not isinstance(row.get(name), str):
-                raise TaskSourceIntegrityError(
-                    f"retry cooldown {name} is invalid"
-                )
-        extension = _mapping_json(
-            row["extension_json"], noun="retry cooldown extension"
-        )
-        if (
-            row["extension_schema"] != TYPED_RETRY_COOLDOWN_SCHEMA
-            or extension.get("schema") != TYPED_RETRY_COOLDOWN_SCHEMA
-            or row["state"] != "released"
-            or row["expires_at_ms"] != 0
-            or row["attempt"] < 1
-            or row["fencing_token"] < 1
-            or row["fence_epoch"] < 1
-            or row["revision"] < 1
-            or row["claimant_did"] != row["owner_session_id"]
-            or row["logical_epoch"] != row["fence_epoch"]
-            or extension.get("task_cid") != task
-            or extension.get("claim_id") != row["claim_cid"]
-            or extension.get("owner_session_id") != row["owner_session_id"]
-            or extension.get("attempt_number") != row["attempt"]
-            or extension.get("fencing_token") != row["fencing_token"]
-            or extension.get("fence_epoch") != row["fence_epoch"]
-            or extension.get("started_at_ms") != row["started_at_ms"]
-            or extension.get("retry_not_before_ms")
-            != row["retry_not_before_ms"]
-            or extension.get("reason") != row["release_reason"]
-            or row["resolution_cid"]
-            != content_identity(
-                {
-                    "typed_retry_cooldown": extension,
-                    "started_at_ms": row["started_at_ms"],
-                }
+        try:
+            validated = _validated_stored_retry_cooldown(
+                row,
+                task_cid=task,
             )
-        ):
+        except TypedStateOwnerError as exc:
             raise TaskSourceIntegrityError(
                 "retry cooldown row is foreign or differs from its receipt"
-            )
-        row["extension"] = extension
-        return MappingProxyType(row)
+            ) from exc
+        return MappingProxyType(validated)
 
     def _retry_cooldown_row(
         self,
@@ -449,14 +397,14 @@ class TypedDatabaseTaskSource:
         Mapping[str, Any],
         tuple[tuple[TaskRecord, Mapping[str, Any]], ...],
         int,
-        Mapping[str, int],
+        Mapping[str, Mapping[str, Any]],
     ]:
         """Read tasks and typed cooldowns under one generation identity."""
 
         for _attempt in range(4):
             before = self._client.load_generation()
             snapshot_row, records, revision = self._snapshot_material()
-            cooldowns: dict[str, int] = {}
+            cooldowns: dict[str, Mapping[str, Any]] = {}
             offset = 0
             while offset <= len(records):
                 rows = self._client.execute(
@@ -479,9 +427,7 @@ class TypedDatabaseTaskSource:
                         row,
                         task_cid=task_cid,
                     )
-                    cooldowns[task_cid] = int(
-                        validated["retry_not_before_ms"]
-                    )
+                    cooldowns[task_cid] = validated
                 offset += len(rows)
                 if len(rows) < min(_TRANSPORT_PAGE_LIMIT, len(records) + 1):
                     break
@@ -499,10 +445,81 @@ class TypedDatabaseTaskSource:
                     raise TaskSourceIntegrityError(
                         "retry cooldown projection contains a foreign task"
                     )
+                for record, _identity in records:
+                    if record.status == "retrying":
+                        cooldown = cooldowns.get(record.task_cid)
+                        if cooldown is None:
+                            raise TaskSourceIntegrityError(
+                                "retrying task has no typed cooldown receipt"
+                            )
+                        self._validate_retrying_cooldown_binding(
+                            record,
+                            cooldown,
+                        )
                 return snapshot_row, records, revision, MappingProxyType(cooldowns)
         raise TaskSourceConflictError(
             "typed task/cooldown projection changed during bounded snapshot"
         )
+
+    @staticmethod
+    def _validate_retrying_cooldown_binding(
+        task: TaskRecord,
+        cooldown: Mapping[str, Any],
+    ) -> None:
+        """Bind ready retry admission to its exact task control receipt."""
+
+        body = task.body if isinstance(task.body, Mapping) else {}
+        receipt = body.get("completion_receipt")
+        extension = cooldown.get("extension")
+        if not isinstance(receipt, Mapping) or not isinstance(
+            extension, Mapping
+        ):
+            raise TaskSourceIntegrityError(
+                "retrying task has no complete typed cooldown binding"
+            )
+        receipt_values = dict(receipt)
+        extension_values = dict(extension)
+        operation = receipt_values.get("operation")
+        if type(operation) is not str or operation not in (
+            TYPED_RETRYING_RECEIPT_OPERATIONS
+        ):
+            raise TaskSourceIntegrityError(
+                "retrying task receipt is not an admitted retry transition"
+            )
+        expected_task_revision = extension_values.get(
+            "expected_task_revision"
+        )
+        if (
+            isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or expected_task_revision != task.revision - 1
+        ):
+            raise TaskSourceIntegrityError(
+                "retry cooldown differs from the task revision lineage"
+            )
+        exact_bindings = {
+            "attempt_id": extension_values.get("attempt_id"),
+            "claim_id": extension_values.get("claim_id"),
+            "lease_id": extension_values.get("lease_id"),
+            "owner_session_id": extension_values.get("owner_session_id"),
+            "attempt_number": extension_values.get("attempt_number"),
+            "fencing_token": extension_values.get("fencing_token"),
+            "fence_epoch": extension_values.get("fence_epoch"),
+            "queue_reason": extension_values.get("reason"),
+            "backoff_ms": extension_values.get("delay_ms"),
+            "retry_not_before_ms": extension_values.get(
+                "retry_not_before_ms"
+            ),
+            "control_expected_revision": task.revision - 1,
+        }
+        if any(
+            type(receipt_values.get(name)) is not type(expected)
+            or receipt_values.get(name) != expected
+            for name, expected in exact_bindings.items()
+        ):
+            raise TaskSourceIntegrityError(
+                "retrying task receipt differs from its typed cooldown"
+            )
 
     def _snapshot_from_material(
         self,
@@ -801,7 +818,13 @@ class TypedDatabaseTaskSource:
             if (
                 identities & (completed | blocked)
                 or record.status not in _READY_STATUSES
-                or int(cooldowns.get(record.task_cid, 0)) > now_ms
+                or int(
+                    cooldowns.get(record.task_cid, {}).get(
+                        "retry_not_before_ms",
+                        0,
+                    )
+                )
+                > now_ms
             ):
                 continue
             if all(
