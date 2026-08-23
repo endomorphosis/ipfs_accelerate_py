@@ -4059,31 +4059,45 @@ def _docker_start_attach_target(command: Sequence[str]) -> tuple[str, str] | Non
     return config, container_id
 
 
-def _docker_attach_target_missing(config: str, container_id: str) -> bool:
-    """Return whether the attached container can no longer be inspected."""
+def _docker_inspect_running(container_id: str, *, config: str = "") -> tuple[int, str]:
+    """Return ``(returncode, Running field)`` for one docker inspect."""
 
+    command = ["/usr/bin/docker", f"--host={_DOCKER_LOCAL_HOST}"]
+    if config:
+        command.extend(["--config", config])
+    command.extend(["inspect", "-f", "{{.State.Running}}", container_id])
     try:
         inspected = subprocess.run(
-            [
-                "/usr/bin/docker",
-                f"--host={_DOCKER_LOCAL_HOST}",
-                "--config",
-                config,
-                "inspect",
-                "-f",
-                "{{.State.Running}}",
-                container_id,
-            ],
+            command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=5.0,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return False
-    if inspected.returncode != 0:
+        return -1, ""
+    return (
+        int(inspected.returncode),
+        inspected.stdout.decode("utf-8", errors="replace").strip().lower(),
+    )
+
+
+def _docker_attach_target_missing(config: str, container_id: str) -> bool:
+    """Return whether the attached container can no longer be inspected.
+
+    Isolated ``--config`` docker contexts can keep ``Running=true`` after
+    the host object is already gone. Host inspect is the vanish signal.
+    """
+
+    host_code, host_running = _docker_inspect_running(container_id)
+    if host_code != 0 or host_running == "false":
         return True
-    return inspected.stdout.decode("utf-8", errors="replace").strip().lower() == "false"
+    if not config:
+        return False
+    config_code, config_running = _docker_inspect_running(container_id, config=config)
+    if config_code != 0 or config_running == "false":
+        return True
+    return False
 
 
 def _run_grok_with_typed_failure_capture(
