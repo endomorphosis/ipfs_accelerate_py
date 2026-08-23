@@ -331,7 +331,45 @@ GROK_PRIMARY_SANDBOX_PROFILE = "ipfs-accelerate-provider-isolated"
 GROK_ISOLATION_GROK_SANDBOX = "grok-sandbox"
 GROK_ISOLATION_DOCKER = "docker"
 DEFAULT_GROK_ISOLATION_IMAGE = "ubuntu:24.04"
+_SEALED_PROVIDER_ISOLATION_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_EXTERNAL_ISOLATION_JSON"
+)
 _DOCKER_LOCAL_HOST = "unix:///var/run/docker.sock"
+
+
+def _sealed_provider_isolation_image_id() -> str:
+    """Prefer the PCPC sealed isolation image when the daemon pinned one."""
+
+    raw = os.environ.get(_SEALED_PROVIDER_ISOLATION_ENV, "").strip()
+    if not raw:
+        return ""
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    image = str(payload.get("image_id") or "").strip()
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", image):
+        return image
+    return ""
+
+
+def _docker_isolation_host() -> str:
+    raw = os.environ.get(_SEALED_PROVIDER_ISOLATION_ENV, "").strip()
+    if raw:
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            endpoint = str(payload.get("runtime_endpoint") or "").strip()
+            if endpoint in {
+                "unix:///var/run/docker.sock",
+                f"unix:///run/user/{os.getuid()}/docker.sock",
+            }:
+                return endpoint
+    return _DOCKER_LOCAL_HOST
 _DOCKER_CLEANUP_WATCHDOG_ARG = "--internal-docker-cleanup-watchdog"
 _CODEX_CONTAINER_HOME = Path("/opt/codex-home")
 _CODEX_CONTAINER_AUTH_PATH = _CODEX_CONTAINER_HOME / "auth.json"
@@ -1336,10 +1374,30 @@ def _isolated_grok_home(
             else user_home_from_env(base_env) / ".grok"
         )
         source_auth = source_home / "auth.json"
+        if not source_auth.is_file():
+            try:
+                import pwd
+
+                source_auth = (
+                    Path(pwd.getpwuid(os.getuid()).pw_dir) / ".grok" / "auth.json"
+                )
+            except Exception:
+                source_auth = Path.home() / ".grok" / "auth.json"
         if source_auth.is_file():
-            # Preserve Grok's own authority without copying a credential.  The
-            # alternate-provider stores are independently kernel-denied.
-            (grok_home / "auth.json").symlink_to(source_auth.resolve(strict=True))
+            # Copy, do not bind-mount, the operator credential.  A read-only
+            # bind of ~/.grok/auth.json cannot refresh OIDC tokens; a host-path
+            # bind is also hideable by later ~/.grok deny-masks.
+            nested_home = grok_home / ".grok"
+            nested_home.mkdir(mode=0o700)
+            _install_ephemeral_credential(source_auth, grok_home / "auth.json")
+            _install_ephemeral_credential(source_auth, nested_home / "auth.json")
+            for name in ("config.toml", "agent_id"):
+                extra = source_auth.parent / name
+                if extra.is_file():
+                    try:
+                        _install_ephemeral_credential(extra, nested_home / name)
+                    except ValueError:
+                        continue
 
         isolated_env = dict(child_env)
         isolated_env["GROK_HOME"] = str(grok_home)
@@ -1358,6 +1416,80 @@ def user_home_from_env(env: dict[str, str]) -> Path:
 
     configured = str(env.get("HOME") or "").strip()
     return Path(configured).expanduser() if configured else Path.home()
+
+
+_MAX_ISOLATED_CREDENTIAL_BYTES = 256 * 1024
+_MAX_ISOLATED_CREDENTIAL_LEASES = 16
+_ISOLATED_CREDENTIAL_LEASES: list[tempfile.TemporaryDirectory[str]] = []
+
+
+def _retain_isolated_credential_home() -> Path:
+    """Keep an ephemeral 0700 directory alive for the Docker argv lifetime."""
+
+    lease = tempfile.TemporaryDirectory(prefix="asref-isol-cred-")
+    path = Path(lease.name)
+    try:
+        path.chmod(0o700)
+    except OSError:
+        lease.cleanup()
+        raise
+    _ISOLATED_CREDENTIAL_LEASES.append(lease)
+    while len(_ISOLATED_CREDENTIAL_LEASES) > _MAX_ISOLATED_CREDENTIAL_LEASES:
+        old = _ISOLATED_CREDENTIAL_LEASES.pop(0)
+        try:
+            old.cleanup()
+        except OSError:
+            pass
+    return path
+
+
+def _install_ephemeral_credential(source: Path, destination: Path) -> None:
+    """Copy a bounded operator credential into ephemeral isolated state.
+
+    The operator file is never bind-mounted and never appears in argv.  The
+    container may refresh tokens only on this copy, so host login state cannot
+    be mutated and deny-masks of ``~/.grok`` cannot hide auth.
+    """
+
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        source_fd = os.open(source, flags)
+    except OSError as exc:
+        raise ValueError("isolated credential is unavailable") from exc
+    try:
+        info = os.fstat(source_fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("isolated credential is not a regular file")
+        if info.st_size > _MAX_ISOLATED_CREDENTIAL_BYTES or info.st_size < 1:
+            raise ValueError("isolated credential is not bounded regular data")
+        data = os.read(source_fd, info.st_size)
+        if len(data) != info.st_size:
+            raise ValueError("isolated credential changed while read")
+    finally:
+        os.close(source_fd)
+    destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    write_flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        dest_fd = os.open(destination, write_flags, 0o600)
+    except OSError as exc:
+        raise ValueError("isolated credential copy could not be created") from exc
+    try:
+        written = os.write(dest_fd, data)
+        if written != len(data):
+            raise ValueError("isolated credential copy is incomplete")
+        os.fchmod(dest_fd, 0o600)
+    finally:
+        os.close(dest_fd)
 
 
 def _grok_executable_extension_paths(workspace: Path) -> tuple[Path, ...]:
@@ -1669,39 +1801,45 @@ def _docker_isolation_image_id(
 ) -> str:
     """Resolve the configured cached tag to an immutable local image ID."""
 
-    # The quota route never accepts an environment-selected execution image.
-    # Resolve the shipped local tag, then launch its exact immutable image ID.
+    # Prefer the sealed PCPC isolation image when the daemon pinned one; the
+    # ubuntu:24.04 tag remains the standalone Grok-runner default. Create and
+    # start stay on the same Docker host so the container ID remains visible.
     del base_env
-    image = DEFAULT_GROK_ISOLATION_IMAGE
-    try:
-        completed = subprocess.run(
-            [
-                docker_bin,
-                f"--host={_DOCKER_LOCAL_HOST}",
-                "--config",
-                str(docker_config),
-                "image",
-                "inspect",
-                "--format",
-                "{{.Id}}",
-                image,
-            ],
-            env=_docker_control_env(),
-            stdin=subprocess.DEVNULL,
-            text=True,
-            capture_output=True,
-            timeout=10,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
-    candidate = completed.stdout.strip()
-    return (
-        candidate
-        if completed.returncode == 0
-        and re.fullmatch(r"sha256:[0-9a-f]{64}", candidate)
-        else ""
-    )
+    images = []
+    sealed = _sealed_provider_isolation_image_id()
+    if sealed:
+        images.append(sealed)
+    images.append(DEFAULT_GROK_ISOLATION_IMAGE)
+    for image in images:
+        try:
+            completed = subprocess.run(
+                [
+                    docker_bin,
+                    f"--host={_DOCKER_LOCAL_HOST}",
+                    "--config",
+                    str(docker_config),
+                    "image",
+                    "inspect",
+                    "--format",
+                    "{{.Id}}",
+                    image,
+                ],
+                env=_docker_control_env(),
+                stdin=subprocess.DEVNULL,
+                text=True,
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        candidate = completed.stdout.strip()
+        if (
+            completed.returncode == 0
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", candidate)
+        ):
+            return candidate
+    return ""
 
 
 def _docker_codex_task_toolchain_image_id(
@@ -1711,6 +1849,36 @@ def _docker_codex_task_toolchain_image_id(
 ) -> str:
     """Verify the immutable image that supplies the bounded test toolchain."""
 
+    sealed = _sealed_provider_isolation_image_id()
+    if sealed:
+        try:
+            completed = subprocess.run(
+                [
+                    docker_bin,
+                    f"--host={_DOCKER_LOCAL_HOST}",
+                    "--config",
+                    str(docker_config),
+                    "image",
+                    "inspect",
+                    "--format",
+                    "{{.Id}}",
+                    sealed,
+                ],
+                env=_docker_control_env(),
+                stdin=subprocess.DEVNULL,
+                text=True,
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        candidate = completed.stdout.strip()
+        return (
+            sealed
+            if completed.returncode == 0 and candidate == sealed
+            else ""
+        )
     try:
         completed = subprocess.run(
             [
@@ -2619,18 +2787,9 @@ def _docker_grok_command(
         _docker_mount(grok_bin, destination=container_grok, read_only=True)
     )
 
-    source_home_raw = str(base_env.get("GROK_HOME") or "").strip()
-    source_home = (
-        Path(source_home_raw).expanduser()
-        if source_home_raw
-        else user_home_from_env(base_env) / ".grok"
-    )
-    source_auth = _existing_path(source_home / "auth.json")
-    if source_auth is not None:
-        # The symlink in the ephemeral home resolves to this exact path.  No
-        # alternate-provider home or credential directory is mounted, and the
-        # isolated child cannot mutate the parent's Grok credential either.
-        command.extend(_docker_mount(source_auth, read_only=True))
+    # Operator secrets stay in the ephemeral grok_home copy.  Do not bind-mount
+    # ~/.grok/auth.json: argv would name the operator path, and a later deny
+    # mask of ~/.grok would hide it.
 
     mask_root.mkdir(mode=0o700)
     sentinel = grok_home / "alternate-provider-deny-sentinel"
@@ -2643,7 +2802,6 @@ def _docker_grok_command(
                 Path("/dev"),
                 container_grok,
                 git_control_path,
-                source_auth,
             }
             or denied.is_relative_to(grok_home)
         ):
@@ -2793,7 +2951,11 @@ def _docker_codex_fallback_command(
 
     docker = str(docker_bin)
     image = str(isolation_image).strip()
-    if not docker or image != AGENT_IMPLEMENTATION_CODEX_IMAGE_ID:
+    allowed_images = {AGENT_IMPLEMENTATION_CODEX_IMAGE_ID}
+    sealed = _sealed_provider_isolation_image_id()
+    if sealed:
+        allowed_images.add(sealed)
+    if not docker or image not in allowed_images:
         raise ValueError(
             "Codex fallback requires the exact pinned task-toolchain image"
         )
@@ -2806,6 +2968,8 @@ def _docker_codex_fallback_command(
         source_auth=source_auth,
         workspace=workspace,
     )
+    isolated_auth = _retain_isolated_credential_home() / "auth.json"
+    _install_ephemeral_credential(source_auth, isolated_auth)
     host_python = _host_codex_task_toolchain_python()
     expected_environment = _codex_task_container_environment()
     if child_env != expected_environment:
@@ -2876,6 +3040,31 @@ def _docker_codex_fallback_command(
     if host_usr is None:
         raise ValueError("Codex fallback requires the pinned host /usr toolchain")
     command.extend(_docker_mount(host_usr, read_only=True))
+    try:
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+            _host_codex_vendor_binaries,
+        )
+
+        vendor = _host_codex_vendor_binaries()
+    except Exception:
+        vendor = None
+    if vendor is not None:
+        host_codex, host_companion = vendor
+        command.extend(
+            _docker_mount(
+                host_codex,
+                destination=Path("/usr/local/bin/codex"),
+                read_only=True,
+            )
+        )
+        command.extend(
+            _docker_mount(
+                host_companion,
+                destination=Path("/usr/local/bin/codex-code-mode-host"),
+                read_only=True,
+            )
+        )
+        inner[0] = "/usr/local/bin/codex"
     host_ca_certificates = _existing_path(Path("/etc/ssl/certs"))
     if host_ca_certificates is None:
         raise ValueError("Codex fallback requires pinned host CA certificates")
@@ -2895,9 +3084,9 @@ def _docker_codex_fallback_command(
         command.extend(_docker_mount(git_control_path, read_only=True))
     command.extend(
         _docker_mount(
-            source_auth,
+            isolated_auth,
             destination=_CODEX_CONTAINER_AUTH_PATH,
-            read_only=True,
+            read_only=False,
         )
     )
     # The authority-validation image contains a large CUDA-oriented Config.Env.

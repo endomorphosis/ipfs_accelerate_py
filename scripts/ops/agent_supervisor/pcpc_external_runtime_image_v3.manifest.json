@@ -1,0 +1,87 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.pcpc-external-runtime-image-manifest@1",
+  "captured_at": "2026-08-20T22:38:31.511257919Z",
+  "image": {
+    "id": "sha256:ca52183d6e3f6d472b36092fc07a76fde0b7962da92b84dad2dc1038d93009ad",
+    "tag": "ipfs-accelerate-pcpc-runtime:2026-08-20-v3",
+    "os": "linux",
+    "architecture": "arm64",
+    "size_bytes": 291689007,
+    "rootfs_layers": [
+      "sha256:646eea22414270d74b0c9e9d6d3b9550701ae62e658a099825d4d15045a3630b",
+      "sha256:031de3acac59fcc30444d16f6b198afedb93887e44292e390c3530e088b29a9e",
+      "sha256:88dd612efca1243fe33534087a7186b373aec8b03798cb9ea1f455e1c10b0635",
+      "sha256:e118489eaf4ffada29b0f00f054fc485a5c03f7f5c1dcb9804b1c3f1e580602c",
+      "sha256:a9c9e1f1f36072b989667940ac8a6faefcb2b6520c433c5d5334b930ee6629f6",
+      "sha256:f1718043ce1aa241f6eb13859306d3bd1f0b6970c08a1741eae876a2c5d59db2",
+      "sha256:579142b3ceb8fcb47021a3abaca29abc5cf832d70214647090d74a0114fce049"
+    ]
+  },
+  "parents": {
+    "base": "ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517",
+    "runtime_v1": "sha256:237b2130be2c067d4b1c040d5a0ff2f5bfecbc0647748433d1136cdf63d6d98f",
+    "runtime_v2": "sha256:472a27484b7d9804a7d2f256a5d573c81c19ff57f228dc41a8237c754a17cd20"
+  },
+  "codex": {
+    "version": "0.148.0",
+    "container_path": "/usr/local/bin/codex",
+    "sha256": "7515d0b61e723374c68d4acdcb8815e378f84d088b0c50638f27d1094bffe536",
+    "source_path": "/usr/local/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex"
+  },
+  "apt_inputs": {
+    "install_command": "apt-get update && apt-get install --yes --no-install-recommends ca-certificates git python3.12 python3.12-venv ripgrep && rm -rf /var/lib/apt/lists/*",
+    "observed_versions": {
+      "ca-certificates": "20260601~24.04.1",
+      "git": "1:2.43.0-1ubuntu7.3",
+      "python3.12": "3.12.3-1ubuntu0.15",
+      "python3.12-venv": "3.12.3-1ubuntu0.15",
+      "ripgrep": "14.1.0-1"
+    }
+  },
+  "python": {
+    "executable": "/opt/pcpc-runtime/bin/python",
+    "version": "3.12.3",
+    "packages": [
+      "anyio==4.14.2",
+      "cffi==2.1.0",
+      "cryptography==49.0.0",
+      "duckdb==1.5.5",
+      "idna==3.18",
+      "iniconfig==2.3.0",
+      "packaging==26.2",
+      "pip==24.0",
+      "pluggy==1.6.0",
+      "pycparser==3.0",
+      "Pygments==2.17.2",
+      "pytest==9.1.1",
+      "sniffio==1.3.1",
+      "typing_extensions==4.16.0"
+    ]
+  },
+  "build_history": [
+    "FROM ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517",
+    "RUN apt-get update && apt-get install --yes --no-install-recommends ca-certificates git python3.12 python3.12-venv ripgrep && rm -rf /var/lib/apt/lists/*",
+    "RUN python3.12 -m venv /opt/pcpc-runtime && /opt/pcpc-runtime/bin/pip install --no-cache-dir duckdb==1.5.5",
+    "COPY bin/codex /usr/local/bin/codex",
+    "RUN chown 0:0 /usr/local/bin/codex && chmod 0555 /usr/local/bin/codex && verify the sealed Codex digest/version and Python/DuckDB versions",
+    "ENV PATH=/opt/pcpc-runtime/bin:/usr/local/bin:/usr/bin:/bin",
+    "FROM sha256:237b2130be2c067d4b1c040d5a0ff2f5bfecbc0647748433d1136cdf63d6d98f",
+    "RUN /opt/pcpc-runtime/bin/pip install --no-cache-dir iniconfig==2.3.0 packaging==26.2 pluggy==1.6.0 pygments==2.17.2 pytest==9.1.1",
+    "FROM sha256:472a27484b7d9804a7d2f256a5d573c81c19ff57f228dc41a8237c754a17cd20",
+    "RUN /opt/pcpc-runtime/bin/pip install --no-cache-dir anyio==4.14.2 cffi==2.1.0 cryptography==49.0.0 idna==3.18 pycparser==3.0 sniffio==1.3.1 typing_extensions==4.16.0",
+    "LABEL org.ipfs-accelerate.pcpc-runtime=2026-08-20-v3 org.ipfs-accelerate.pcpc-pytest=9.1.1"
+  ],
+  "labels": {
+    "org.ipfs-accelerate.codex.sha256": "7515d0b61e723374c68d4acdcb8815e378f84d088b0c50638f27d1094bffe536",
+    "org.ipfs-accelerate.pcpc-pytest": "9.1.1",
+    "org.ipfs-accelerate.pcpc-runtime": "2026-08-20-v3",
+    "org.opencontainers.image.base.digest": "sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517",
+    "org.opencontainers.image.description": "Bounded PCPC Codex and Quack-owner runtime",
+    "org.opencontainers.image.version": "24.04"
+  },
+  "qualification": {
+    "identity_authority": "exact image ID and rootfs layer identities",
+    "rebuild_note": "The recorded recipe and input pins describe the build, but exact bit-for-bit rebuilding additionally requires the original Ubuntu archive snapshot or an OCI export of the sealed image.",
+    "generated_image_committed": false
+  }
+}

@@ -5,14 +5,16 @@ task sharding, worktree isolation, and merge serialization.  This module is a
 small configuration boundary that turns a reviewed ``scheduler_config@1``
 JSON document into arguments for that existing runtime.
 
-No provider is imported or probed while loading, preflighting, or rendering a
-launch plan.  In particular, dry runs do not read credentials or install
-optional tools.
+Loading performs only structural provider validation.  A configured external
+isolation boundary deliberately probes its pinned local runtime, image, and
+provider credential while rendering the trusted launch plan; it never installs
+optional tools or falls back to an unsealed provider command.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import fcntl
 import grp
 import hashlib
@@ -21,8 +23,8 @@ import math
 import os
 import pwd
 import re
+import secrets
 import shutil
-import signal
 import stat
 import subprocess
 import sys
@@ -45,6 +47,20 @@ from ...llm_router import (
     verify_agent_implementation_sealed_control_plane,
 )
 from ..contracts.execution import InvocationBudget
+from ..control.lifecycle_orchestrator import (
+    CONFIGURATION_ROOT_ENV,
+    FENCING_EPOCH_ENV,
+    PROFILE_ID_ENV,
+    REPOSITORY_ROOT_ENV,
+    RUN_ID_ENV,
+    RUN_ROOT_ENV,
+    STATE_ROOT_ENV,
+    TARGET_ID_ENV,
+    LifecycleProfile,
+    LinuxProcessAdapter,
+    ProcessIdentity,
+    ProcessIdentityMismatch,
+)
 from ..control.plan_execution_store import (
     ConfiguredBoardExecutionSlices,
     ExecutionPlanError,
@@ -93,13 +109,22 @@ from ..validation.validation_commands import split_validation_commands
 from .multi_supervisor_runner import (
     AUTHORITY_MODE_LEGACY_MARKDOWN,
     DATABASE_PROGRAM_CONFIG_INTERFACE,
+    STATE_LIVE_SCHEMA_REVISION_ENV,
+    STATE_STORE_LIVE_GENERATION_ENV,
+    TRUSTED_DUCKDB_HOME_ENV,
+    TRUSTED_PYTHON_USER_BASE_ENV,
+    TRUSTED_RUNTIME_CACHE_ENV_NAMES,
     DatabaseProgramConfig,
     DatabaseProgramConfigError,
     ImplementationSupervisorTrackConfig,
     PlanBoundSupervisorChild,
+    _parse_status_timestamp,
+    _plan_bound_positive_child_environment,
+    _plan_bound_profile_environment,
     _read_stable_regular_bytes,
     _read_stable_regular_json,
     _StableArtifactReadError,
+    _trusted_duckdb_runtime_environment,
     accepted_control_plane_pin_json,
     build_configured_multi_supervisor_cli_runner,
     build_sealed_control_plane_module_command,
@@ -136,6 +161,9 @@ CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
 CODEX_REASONING_EFFORT_ENV = (
     "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT"
 )
+EXTERNAL_PROVIDER_ISOLATION_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_EXTERNAL_ISOLATION_JSON"
+)
 GROK_BIN_ENV = "IPFS_ACCELERATE_AGENT_GROK_BIN"
 ROUTE_BOARD_NAMESPACE_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_BOARD_NAMESPACE"
@@ -160,6 +188,56 @@ ROUTE_SOURCE_TREE_ENV = (
 )
 ROUTE_ID_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_ID"
 MAX_COORDINATOR_WAVES = 4096
+COORDINATOR_LAUNCH_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/configured-board-coordinator-launch@1"
+)
+COORDINATOR_LAUNCH_RECEIPT_FIELDS = frozenset(
+    {
+        "schema",
+        "repository_commit",
+        "repository_tree",
+        "configuration_revision",
+        "board_namespace",
+        "launch_session_id",
+        "coordinator_pid",
+        "coordinator_pid_path",
+        "coordinator_log",
+        "coordinator_status_path",
+        "coordinator_status_cid",
+        "coordinator_profile",
+        "coordinator_process_identity",
+        "coordinator_argv_cid",
+        "receipt_cid",
+    }
+)
+COORDINATOR_STATUS_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/configured-board-coordinator-status@1"
+)
+# The configured watchdog startup grace is the admitted availability bound for
+# launch readiness.  These constants are only a bounded fallback and ceiling;
+# a procedure-specific value is derived from the closed board below.
+COORDINATOR_READY_TIMEOUT_SECONDS = 60.0
+COORDINATOR_READY_TIMEOUT_MAX_SECONDS = 600.0
+COORDINATOR_STATUS_MAX_AGE_MS = 30_000
+COORDINATOR_STATUS_FIELDS = frozenset(
+    {
+        "schema",
+        "repository_commit",
+        "repository_tree",
+        "configuration_revision",
+        "board_namespace",
+        "launch_session_id",
+        "lifecycle_profile_id",
+        "coordinator_pid",
+        "coordinator_process_start_ticks",
+        "coordinator_argv_cid",
+        "started_at_ms",
+        "attested_at_ms",
+        "phase",
+        "lane_status_paths",
+        "receipt_cid",
+    }
+)
 FRESH_RECOVERY_POLICY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "lgcvf-fresh-generation-recovery-policy@3"
@@ -276,6 +354,7 @@ SCHEDULER_PROVIDER_ENV_NAMES = (
     GROK_MODEL_ENV,
     CODEX_MODEL_ENV,
     CODEX_REASONING_EFFORT_ENV,
+    EXTERNAL_PROVIDER_ISOLATION_ENV,
     GROK_BIN_ENV,
     ROUTE_BOARD_NAMESPACE_ENV,
     ROUTE_AUTHORIZATION_PATH_ENV,
@@ -2177,6 +2256,38 @@ def load_configured_board(
             raise ConfiguredBoardError(
                 "provider.provider_id is not a supported identifier"
             )
+    external_isolation = provider.get("external_isolation")
+    if external_isolation is not None:
+        if ordered_provider:
+            raise ConfiguredBoardError(
+                "provider.external_isolation is supported only for a direct "
+                "Codex route"
+            )
+        if provider_id not in {"codex", "auto"}:
+            raise ConfiguredBoardError(
+                "provider.external_isolation requires provider_id 'codex' or 'auto'"
+            )
+        if not isinstance(external_isolation, dict):
+            raise ConfiguredBoardError(
+                "provider.external_isolation must be an object"
+            )
+        try:
+            from ..todo_daemon.implementation_daemon import (
+                validate_external_provider_isolation_config,
+            )
+
+            # Loading is a deterministic structural operation and must remain
+            # usable in the credential-free validation container.  Host
+            # runtime/image/credential admission is repeated fail-closed by
+            # ``configured_board_launch_plan`` immediately before launch.
+            validate_external_provider_isolation_config(
+                external_isolation,
+                verify_host=False,
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ConfiguredBoardError(
+                f"provider.external_isolation is unavailable: {exc}"
+            ) from exc
     concurrency = _positive_int(
         provider.get("max_concurrency"),
         field="provider.max_concurrency",
@@ -4628,10 +4739,36 @@ def configured_board_launch_plan(
         provider_id = str(provider.get("provider_id") or "").strip()
         model_id = str(provider.get("model_id") or "").strip()
         environment = {}
-        if provider_id and provider_id != "auto":
+        if provider_id:
+            # Always pin the scheduler value, including ``auto``. Leaving the
+            # variable unset lets an ambient Grok-session
+            # IMPLEMENTATION_PROVIDER leak into sealed lanes and force a
+            # Grok-only pin that then fail-closes without login in the
+            # qualification HOME.
             environment[PROVIDER_ENV] = provider_id
         if model_id and provider_id in {"", "auto", "codex", "openai"}:
             environment[CODEX_MODEL_ENV] = model_id
+        external_isolation = provider.get("external_isolation")
+        if external_isolation is not None:
+            from ..todo_daemon.implementation_daemon import (
+                validate_external_provider_isolation_config,
+            )
+
+            try:
+                isolation_config = (
+                    validate_external_provider_isolation_config(
+                        external_isolation,
+                        verify_host=True,
+                    )
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise ConfiguredBoardError(
+                    "provider.external_isolation launch preflight failed: "
+                    f"{exc}"
+                ) from exc
+            environment[EXTERNAL_PROVIDER_ISOLATION_ENV] = (
+                isolation_config.environment_json()
+            )
     # Database authority is explicit and non-secret. The endpoint field is an
     # opaque secret handle; raw credentials are never copied into this plan.
     if board.database_program is not None:
@@ -4730,6 +4867,17 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--coordinator-launch-session",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--coordinator-status-path",
+        type=Path,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser(
         "preflight",
@@ -4759,16 +4907,25 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=float("inf"),
     )
+    launch.add_argument(
+        "--launch-receipt-only",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     return parser
 
 
 def _apply_configured_board_environment(plan: Mapping[str, Any]) -> None:
     environment = plan.get("environment")
     environment = environment if isinstance(environment, Mapping) else {}
+    for name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+        os.environ.pop(name, None)
     for name in SCHEDULER_PROVIDER_ENV_NAMES:
         if name not in environment:
             os.environ.pop(name, None)
     for name, value in environment.items():
+        if name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+            continue
         os.environ[str(name)] = str(value)
 
 
@@ -4812,6 +4969,476 @@ def _ensure_plan_bound_runtime_directory(repo_root: Path, path: Path) -> Path:
                 f"runtime path component is not a real directory: {current}"
             )
     return directory
+
+
+def _coordinator_lane_status_paths(board: ConfiguredBoard) -> tuple[Path, ...]:
+    """Derive every configured lane heartbeat path from admitted board fields."""
+
+    state_dir = board.path(board.runtime_paths["state"])
+    state_prefix = _slug(board.task_prefix)
+    return tuple(
+        state_dir
+        / f"lane-{index}"
+        / f"{state_prefix}_lane_{index}_supervisor_status.json"
+        for index in range(board.max_lanes)
+    )
+
+
+def _expected_coordinator_status_path(
+    board: ConfiguredBoard,
+    launch_session_id: str,
+) -> Path:
+    if re.fullmatch(r"[0-9a-f]{64}", launch_session_id) is None:
+        raise ConfiguredBoardError("coordinator launch session is invalid")
+    return board.path(board.runtime_paths["state"]) / (
+        f"configured-board-{launch_session_id}.status.json"
+    )
+
+
+def _atomic_publish_coordinator_status(
+    path: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    """Publish one immutable single-link status without replacing a pathname."""
+
+    body = (
+        json.dumps(
+            dict(payload),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+    if len(body) > 1_048_576:
+        raise ConfiguredBoardError("coordinator status exceeds its byte bound")
+    temporary = path.with_name(
+        f".{path.name}.{os.getpid()}.{secrets.token_hex(16)}.tmp"
+    )
+    descriptor = -1
+    with serialized_lock_update(path):
+        try:
+            os.lstat(path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise ConfiguredBoardError(
+                "cannot inspect coordinator status destination"
+            ) from exc
+        else:
+            raise ConfiguredBoardError("coordinator status already exists")
+        try:
+            descriptor = os.open(
+                temporary,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_CLOEXEC", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            written = 0
+            while written < len(body):
+                count = os.write(descriptor, body[written:])
+                if count <= 0:
+                    raise OSError("short coordinator status write")
+                written += count
+            os.fsync(descriptor)
+            opened = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or int(opened.st_nlink) != 1
+                or int(opened.st_uid) != os.geteuid()
+                or stat.S_IMODE(opened.st_mode) != 0o600
+            ):
+                raise ConfiguredBoardError(
+                    "coordinator status staging file is unsafe"
+                )
+            os.close(descriptor)
+            descriptor = -1
+            os.link(temporary, path, follow_symlinks=False)
+            temporary.unlink()
+            observed = os.lstat(path)
+            if (
+                stat.S_ISLNK(observed.st_mode)
+                or not stat.S_ISREG(observed.st_mode)
+                or int(observed.st_nlink) != 1
+                or int(observed.st_uid) != os.geteuid()
+                or stat.S_IMODE(observed.st_mode) != 0o600
+                or int(observed.st_size) != len(body)
+            ):
+                raise ConfiguredBoardError(
+                    "published coordinator status is unsafe"
+                )
+            directory = os.open(
+                path.parent,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+            )
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        except (FileExistsError, OSError) as exc:
+            raise ConfiguredBoardError(
+                "cannot atomically publish coordinator status"
+            ) from exc
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def _read_coordinator_status(path: Path) -> dict[str, Any]:
+    try:
+        payload, evidence = _read_stable_regular_json(path)
+    except _StableArtifactReadError as exc:
+        raise ConfiguredBoardError("coordinator status is not stable") from exc
+    if payload is None or set(payload) != COORDINATOR_STATUS_FIELDS:
+        raise ConfiguredBoardError("coordinator status is absent or not closed")
+    if (
+        evidence.get("state") != "present"
+        or int(evidence.get("link_count", -1)) != 1
+        or int(evidence.get("uid", -1)) != os.geteuid()
+        or stat.S_IMODE(int(evidence.get("mode", 0))) != 0o600
+    ):
+        raise ConfiguredBoardError("coordinator status file identity is unsafe")
+    receipt_cid = payload.get("receipt_cid")
+    unsigned = dict(payload)
+    unsigned.pop("receipt_cid", None)
+    if receipt_cid != content_identity(unsigned):
+        raise ConfiguredBoardError("coordinator status CID is invalid")
+    return payload
+
+
+def _coordinator_readiness_timeout_seconds(board: ConfiguredBoard) -> float:
+    """Return the bounded startup horizon declared by the admitted board."""
+
+    value = board.payload.get("watchdog_startup_grace_seconds")
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or float(value) <= 0.0
+    ):
+        raise ConfiguredBoardError(
+            "watchdog startup grace is not a positive finite duration"
+        )
+    return min(float(value), COORDINATOR_READY_TIMEOUT_MAX_SECONDS)
+
+
+def _coordinator_launch_attestation_max_age_ms(board: ConfiguredBoard) -> int:
+    """Bind the immutable birth attestation to the same startup horizon."""
+
+    return max(1, int(_coordinator_readiness_timeout_seconds(board) * 1_000))
+
+
+def _exact_process_option(
+    argv: Sequence[str],
+    name: str,
+    expected: str,
+) -> bool:
+    """Require one exact option/value occurrence in an observed process argv."""
+
+    if argv.count(name) != 1:
+        return False
+    index = argv.index(name)
+    return index + 1 < len(argv) and argv[index + 1] == expected
+
+
+def _configured_lane_process_ready(
+    board: ConfiguredBoard,
+    *,
+    lane_index: int,
+    supervisor_pid: int,
+    coordinator_pid: int,
+    coordinator_start_ticks: int,
+    repository_commit: str,
+    repository_tree: str,
+) -> bool:
+    """Re-observe one exact lifecycle-marked implementation supervisor."""
+
+    adapter = LinuxProcessAdapter()
+    try:
+        parent, group, session, start_ticks = adapter._stat(  # noqa: SLF001
+            supervisor_pid
+        )
+        argv = adapter._argv(supervisor_pid)  # noqa: SLF001
+        environment = adapter._environ(supervisor_pid)  # noqa: SLF001
+        cwd = Path(os.readlink(f"/proc/{supervisor_pid}/cwd")).resolve(
+            strict=False
+        )
+        executable = Path(os.readlink(f"/proc/{supervisor_pid}/exe")).resolve(
+            strict=False
+        )
+    except (
+        FileNotFoundError,
+        ProcessLookupError,
+        OSError,
+        UnicodeError,
+        ValueError,
+    ):
+        return False
+
+    plan_bound = _plan_bound_profile(board)
+    # Plan-bound v3 children keep the explicit "-lane-" token.  Ordinary
+    # configured boards expand shards as "{namespace}-{index}".
+    lane_name = (
+        f"{board.board_namespace}-lane-{lane_index}"
+        if plan_bound
+        else f"{board.board_namespace}-{lane_index}"
+    )
+    state_relative = Path(board.runtime_paths["state"]) / f"lane-{lane_index}"
+    state_dir = board.path(state_relative.as_posix()).resolve(strict=False)
+    expected_state_arg = state_relative.as_posix() if plan_bound else str(state_dir)
+    state_prefix = f"{_slug(board.task_prefix)}_lane_{lane_index}"
+    expected_run_id = (
+        "multi-supervisor:"
+        + hashlib.sha256(
+            f"{board.repo_root.resolve()}:{lane_name}".encode("utf-8")
+        ).hexdigest()
+    )
+    expected_markers = {
+        RUN_ID_ENV: expected_run_id,
+        TARGET_ID_ENV: f"supervisor-track:{lane_name}",
+        REPOSITORY_ROOT_ENV: str(board.repo_root.resolve()),
+        STATE_ROOT_ENV: str(state_dir),
+        RUN_ROOT_ENV: str(state_dir / "lifecycle-runs" / lane_name),
+        FENCING_EPOCH_ENV: "0",
+    }
+    if (
+        parent != coordinator_pid
+        or group != supervisor_pid
+        or session != supervisor_pid
+        or start_ticks < coordinator_start_ticks
+        or cwd != board.repo_root.resolve()
+        or executable != Path(sys.executable).resolve()
+        or not argv
+        or Path(argv[0]).resolve(strict=False)
+        != Path(sys.executable).resolve(strict=False)
+        or any(environment.get(name) != value for name, value in expected_markers.items())
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", environment.get(PROFILE_ID_ENV, ""))
+        is None
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            environment.get(CONFIGURATION_ROOT_ENV, ""),
+        )
+        is None
+        or not _exact_process_option(
+            argv, "--todo-path", str(board.path(board.taskboard_path))
+        )
+        or not _exact_process_option(
+            argv, "--task-prefix", board.task_header_prefix
+        )
+        or not _exact_process_option(argv, "--state-dir", expected_state_arg)
+        or not _exact_process_option(argv, "--state-prefix", state_prefix)
+    ):
+        return False
+    if plan_bound:
+        return bool(
+            len(argv) > 9
+            and argv[1:3] == ("-I", "-c")
+            and argv[6]
+            == (
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_supervisor"
+            )
+            and argv[7]
+            == "sha256:" + hashlib.sha256(argv[3].encode("utf-8")).hexdigest()
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", argv[8]) is not None
+            and _exact_process_option(
+                argv, "--plan-bound-accepted-tree-root", str(board.repo_root)
+            )
+            and _exact_process_option(
+                argv, "--plan-bound-source-head", repository_commit
+            )
+            and _exact_process_option(
+                argv, "--plan-bound-source-tree", repository_tree
+            )
+            and _exact_process_option(argv, "--task-shard-count", "1")
+            and _exact_process_option(argv, "--task-shard-index", "0")
+        )
+    return bool(
+        len(argv) > 2
+        and Path(argv[1]).resolve(strict=False)
+        == board.path(IMPLEMENTATION_ENTRY_PATH.as_posix())
+        and _exact_process_option(
+            argv, "--task-shard-count", str(board.max_lanes)
+        )
+        and _exact_process_option(argv, "--task-shard-index", str(lane_index))
+    )
+
+
+def _lane_statuses_ready(
+    board: ConfiguredBoard,
+    paths: Sequence[Path],
+    *,
+    started_at_ms: int,
+    now_ms: int,
+    coordinator_pid: int,
+    coordinator_start_ticks: int,
+    repository_commit: str,
+    repository_tree: str,
+) -> bool:
+    """Require every configured lane's fresh status and exact live identity."""
+
+    lane_pids: set[int] = set()
+    for lane_index, path in enumerate(paths):
+        try:
+            payload, evidence = _read_stable_regular_json(path)
+        except _StableArtifactReadError:
+            return False
+        if payload is None or (
+            evidence.get("state") != "present"
+            or int(evidence.get("link_count", -1)) != 1
+            or int(evidence.get("uid", -1)) != os.geteuid()
+            or stat.S_IMODE(int(evidence.get("mode", 0))) != 0o600
+            or payload.get("schema")
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "todo_implementation_supervisor.supervisor"
+            )
+            or str(payload.get("status") or "")
+            not in {
+                "starting",
+                "running",
+                "restarting",
+                "agentic_maintenance_started",
+            }
+            or payload.get("repo_root") != str(board.repo_root)
+            or payload.get("task_prefix") != board.task_header_prefix
+            or payload.get("state_prefix")
+            != f"{_slug(board.task_prefix)}_lane_{lane_index}"
+        ):
+            return False
+        updated_at = _parse_status_timestamp(payload.get("updated_at"))
+        try:
+            supervisor_pid = int(payload.get("supervisor_pid") or 0)
+        except (TypeError, ValueError):
+            return False
+        if (
+            updated_at is None
+            or supervisor_pid < 2
+            or supervisor_pid in lane_pids
+        ):
+            return False
+        updated_at_ms = int(updated_at.timestamp() * 1000)
+        if (
+            updated_at_ms < started_at_ms
+            or updated_at_ms > now_ms + 5_000
+            or now_ms - updated_at_ms > COORDINATOR_STATUS_MAX_AGE_MS
+        ):
+            return False
+        if not _configured_lane_process_ready(
+            board,
+            lane_index=lane_index,
+            supervisor_pid=supervisor_pid,
+            coordinator_pid=coordinator_pid,
+            coordinator_start_ticks=coordinator_start_ticks,
+            repository_commit=repository_commit,
+            repository_tree=repository_tree,
+        ):
+            return False
+        lane_pids.add(supervisor_pid)
+    return True
+
+
+def _publish_coordinator_launch_attestation(
+    board: ConfiguredBoard,
+    *,
+    launch_session_id: str,
+    status_path: Path,
+) -> dict[str, Any]:
+    expected_path = _expected_coordinator_status_path(board, launch_session_id)
+    if status_path != expected_path:
+        raise ConfiguredBoardError("coordinator status path differs from its session")
+    head, tree = _git_identity(board.repo_root)
+    adapter = LinuxProcessAdapter()
+    try:
+        _parent, _group, _session, started = adapter._stat(os.getpid())  # noqa: SLF001
+        argv = adapter._argv(os.getpid())  # noqa: SLF001
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "cannot observe coordinator process birth"
+        ) from exc
+    now_ms = int(time.time() * 1000)
+    unsigned = {
+        "schema": COORDINATOR_STATUS_SCHEMA,
+        "repository_commit": head,
+        "repository_tree": tree,
+        "configuration_revision": board.configuration_revision,
+        "board_namespace": board.board_namespace,
+        "launch_session_id": launch_session_id,
+        "lifecycle_profile_id": str(os.environ.get(PROFILE_ID_ENV) or ""),
+        "coordinator_pid": os.getpid(),
+        "coordinator_process_start_ticks": started,
+        "coordinator_argv_cid": content_identity({"argv": list(argv)}),
+        "started_at_ms": now_ms,
+        "attested_at_ms": now_ms,
+        "phase": "launch_attested",
+        "lane_status_paths": [
+            str(path) for path in _coordinator_lane_status_paths(board)
+        ],
+    }
+    payload = {**unsigned, "receipt_cid": content_identity(unsigned)}
+    _atomic_publish_coordinator_status(status_path, payload)
+    return payload
+
+
+def _bind_foreground_wave_pid(plan: dict[str, Any], board: ConfiguredBoard) -> None:
+    """Keep the child runner PID distinct from the outer coordinator marker."""
+
+    argv = plan.get("argv")
+    if not isinstance(argv, list) or argv.count("--master-pid-path") != 1:
+        raise ConfiguredBoardError("coordinator runner master PID binding is ambiguous")
+    index = argv.index("--master-pid-path")
+    if index + 1 >= len(argv):
+        raise ConfiguredBoardError("coordinator runner master PID binding is incomplete")
+    wave_path = board.path(board.runtime_paths["state"]) / "configured-board-wave.pid"
+    argv[index + 1] = str(wave_path)
+    plan["master_pid_path"] = str(wave_path)
+
+
+def _prepare_coordinator_lane_status_permissions(board: ConfiguredBoard) -> None:
+    """Make only safe pre-existing lane projections owner-private before reuse."""
+
+    for path in _coordinator_lane_status_paths(board):
+        _ensure_plan_bound_runtime_directory(board.repo_root, path.parent)
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(path, flags)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise ConfiguredBoardError(
+                "cannot inspect pre-existing lane status safely"
+            ) from exc
+        try:
+            opened = os.fstat(descriptor)
+            observed = os.lstat(path)
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or int(opened.st_nlink) != 1
+                or int(opened.st_uid) != os.geteuid()
+                or stat.S_ISLNK(observed.st_mode)
+                or (int(opened.st_dev), int(opened.st_ino))
+                != (int(observed.st_dev), int(observed.st_ino))
+            ):
+                raise ConfiguredBoardError(
+                    "pre-existing lane status is not a safe owned file"
+                )
+            os.fchmod(descriptor, 0o600)
+            private = os.fstat(descriptor)
+            if stat.S_IMODE(private.st_mode) != 0o600:
+                raise ConfiguredBoardError(
+                    "pre-existing lane status could not be made private"
+                )
+        finally:
+            os.close(descriptor)
 
 
 def _open_plan_bound_coordinator_log(log_path: Path):
@@ -5017,6 +5644,8 @@ def _plan_bound_coordinator_module_argv(
     pin: AgentImplementationControlPlanePin,
     sealed: AgentImplementationSealedControlPlane,
     capsule_parent: Path,
+    launch_session_id: str = "",
+    coordinator_status_path: Path | None = None,
 ) -> list[str]:
     argv = [
         "--repo-root",
@@ -5031,11 +5660,31 @@ def _plan_bound_coordinator_module_argv(
         str(sealed.descriptor),
         "--accepted-control-plane-capsule-parent",
         str(capsule_parent),
-        "launch",
-        "--foreground",
-        "--duration-seconds",
-        str(duration_seconds),
     ]
+    if launch_session_id or coordinator_status_path is not None:
+        if (
+            re.fullmatch(r"[0-9a-f]{64}", launch_session_id) is None
+            or coordinator_status_path is None
+        ):
+            raise ConfiguredBoardError(
+                "coordinator launch session binding is incomplete"
+            )
+        argv.extend(
+            [
+                "--coordinator-launch-session",
+                launch_session_id,
+                "--coordinator-status-path",
+                str(coordinator_status_path),
+            ]
+        )
+    argv.extend(
+        [
+            "launch",
+            "--foreground",
+            "--duration-seconds",
+            str(duration_seconds),
+        ]
+    )
     if implement:
         argv.append("--implement")
     return argv
@@ -5074,6 +5723,57 @@ def _cleanup_plan_bound_control_plane(
         return
 
 
+def _plan_bound_coordinator_environment() -> dict[str, str]:
+    """Retain only locale and exact live database identities across reseal."""
+
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if name
+        in {
+            "LANG",
+            "LC_ALL",
+            "LC_CTYPE",
+            "TZ",
+            STATE_STORE_LIVE_GENERATION_ENV,
+            STATE_LIVE_SCHEMA_REVISION_ENV,
+            TRUSTED_DUCKDB_HOME_ENV,
+            TRUSTED_PYTHON_USER_BASE_ENV,
+        }
+    }
+    for name in (
+        STATE_STORE_LIVE_GENERATION_ENV,
+        STATE_LIVE_SCHEMA_REVISION_ENV,
+    ):
+        value = str(environment.get(name, "") or "")
+        if value and (
+            re.fullmatch(r"[0-9]{1,20}", value) is None
+            or int(value) > 2**63 - 1
+        ):
+            raise ConfiguredBoardError(
+                f"plan-bound coordinator {name} is not a bounded identity"
+            )
+    trusted_home = str(environment.get(TRUSTED_DUCKDB_HOME_ENV, "") or "")
+    if trusted_home:
+        try:
+            environment.update(
+                _trusted_duckdb_runtime_environment(
+                    os.environ,
+                    repository_root=Path(__file__).absolute().parents[3],
+                )
+            )
+        except ValueError as exc:
+            raise ConfiguredBoardError(
+                "plan-bound coordinator trusted DuckDB HOME is invalid"
+            ) from exc
+    else:
+        environment.pop(TRUSTED_PYTHON_USER_BASE_ENV, None)
+        for name in TRUSTED_RUNTIME_CACHE_ENV_NAMES:
+            environment.pop(name, None)
+    environment["PATH"] = "/usr/bin:/bin"
+    return environment
+
+
 def _launch_foreground_plan_bound_coordinator(
     board: ConfiguredBoard,
     *,
@@ -5099,12 +5799,7 @@ def _launch_foreground_plan_bound_coordinator(
                 capsule_parent=capsule_parent,
             ),
         )
-        environment = {
-            name: value
-            for name, value in os.environ.items()
-            if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-        }
-        environment["PATH"] = "/usr/bin:/bin"
+        environment = _plan_bound_coordinator_environment()
         process = subprocess.Popen(
             command,
             cwd=board.repo_root,
@@ -5184,12 +5879,7 @@ def _launch_detached_plan_bound_coordinator(
             ),
         )
         with _open_plan_bound_coordinator_log(log_path) as stream:
-            launch_environment = {
-                name: value
-                for name, value in os.environ.items()
-                if name in {"LANG", "LC_ALL", "LC_CTYPE", "TZ"}
-            }
-            launch_environment["PATH"] = "/usr/bin:/bin"
+            launch_environment = _plan_bound_coordinator_environment()
             process = subprocess.Popen(
                 command,
                 cwd=accepted_tree_root,
@@ -5206,26 +5896,23 @@ def _launch_detached_plan_bound_coordinator(
             reserved_identity,
             process.pid,
         )
-    except BaseException:
-        if process is not None and process.poll() is None:
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-                process.wait(timeout=2.0)
-            except (OSError, subprocess.TimeoutExpired):
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except OSError:
-                    pass
-                try:
-                    process.wait(timeout=2.0)
-                except subprocess.TimeoutExpired:
-                    pass
+    except BaseException as exc:
+        fenced = True
+        if process is not None:
+            fenced = _fence_exact_coordinator_group(
+                process,
+                observed_start_ticks=0,
+            )
         _remove_reserved_coordinator_pid(pid_path, reserved_identity)
         if capsule_parent is not None:
             try:
                 shutil.rmtree(capsule_parent)
             except OSError:
                 pass
+        if not fenced:
+            raise ConfiguredBoardError(
+                "detached coordinator failure could not be exactly fenced"
+            ) from exc
         raise
     finally:
         os.close(descriptor)
@@ -5237,6 +5924,328 @@ def _launch_detached_plan_bound_coordinator(
         "coordinator_pid_path": str(pid_path),
         "coordinator_log": str(log_path),
     }
+
+
+def _fence_exact_coordinator_group(
+    process: subprocess.Popen[bytes],
+    *,
+    observed_start_ticks: int,
+) -> bool:
+    """Fence the exact unreaped child handle without group-signal races."""
+
+    if process.poll() is not None:
+        return True
+    # Popen retains the exact, unreaped direct-child relationship.  When an
+    # observed birth is available, require it before signaling.  Signaling a
+    # process group after a separate /proc observation would introduce a
+    # mutable-membership and PGID-reuse race, so use only the exact child
+    # handle and let the coordinator's bounded shutdown fence its own lanes.
+    if observed_start_ticks > 0:
+        try:
+            _parent, _group, _session, start_ticks = LinuxProcessAdapter._stat(  # noqa: SLF001
+                process.pid
+            )
+        except (OSError, UnicodeError, ValueError):
+            # The unreaped Popen handle is still an exact direct-child
+            # identity even when procfs cannot be sampled during cleanup.
+            pass
+        else:
+            if start_ticks != observed_start_ticks:
+                return False
+    try:
+        process.terminate()
+        process.wait(timeout=35.0)
+    except (OSError, subprocess.TimeoutExpired):
+        if process.poll() is None:
+            try:
+                process.kill()
+            except OSError:
+                return False
+            try:
+                process.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                return False
+    return process.poll() is not None
+
+
+def _launch_detached_receipt_coordinator(
+    board: ConfiguredBoard,
+    *,
+    implement: bool,
+    duration_seconds: float,
+) -> dict[str, Any]:
+    """Launch one lifecycle-bound coordinator and admit all lane heartbeats."""
+
+    state_dir = _ensure_plan_bound_runtime_directory(
+        board.repo_root,
+        board.path(board.runtime_paths["state"]),
+    )
+    log_dir = _ensure_plan_bound_runtime_directory(
+        board.repo_root,
+        board.path(board.runtime_paths["logs"]),
+    )
+    launch_session_id = secrets.token_hex(32)
+    status_path = _expected_coordinator_status_path(board, launch_session_id)
+    log_path = log_dir / (
+        f"configured-board-{utc_run_stamp()}-{launch_session_id}.log"
+    )
+    pid_path = state_dir / "configured-board-master.pid"
+    accepted_tree_root = Path(__file__).absolute().parents[3]
+    if board.repo_root != accepted_tree_root:
+        raise ConfiguredBoardError(
+            "receipt coordinator repo root is not the accepted module tree"
+        )
+    entry = accepted_tree_root / CONFIGURED_SCHEDULER_ENTRY_PATH
+    _lexical_repo_artifact(accepted_tree_root, pid_path)
+    head, tree = _git_identity(accepted_tree_root)
+    for authority_path in (
+        entry,
+        board.config_path,
+        board.path(board.taskboard_path),
+    ):
+        _tracked_head_snapshot(
+            repo_root=accepted_tree_root,
+            path=authority_path,
+            source_head=head,
+        )
+    try:
+        os.lstat(status_path)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise ConfiguredBoardError(
+            "cannot inspect coordinator status destination"
+        ) from exc
+    else:
+        raise ConfiguredBoardError("coordinator status destination already exists")
+
+    descriptor, reserved_identity = _reserve_coordinator_pid_projection(pid_path)
+    process: subprocess.Popen[bytes] | None = None
+    sealed: AgentImplementationSealedControlPlane | None = None
+    capsule_parent: Path | None = None
+    process_identity: ProcessIdentity | None = None
+    observed_start_ticks = 0
+    try:
+        pin, sealed, capsule_parent = _materialize_plan_bound_control_plane(board)
+        command = build_sealed_control_plane_module_command(
+            python_executable=sys.executable,
+            pin=pin,
+            descriptor=sealed.descriptor,
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.runtime."
+                "configured_board_scheduler"
+            ),
+            argv=_plan_bound_coordinator_module_argv(
+                board,
+                implement=implement,
+                duration_seconds=duration_seconds,
+                pin=pin,
+                sealed=sealed,
+                capsule_parent=capsule_parent,
+                launch_session_id=launch_session_id,
+                coordinator_status_path=status_path,
+            ),
+        )
+        base_environment = _plan_bound_coordinator_environment()
+        readiness_timeout_seconds = _coordinator_readiness_timeout_seconds(board)
+        launch_attestation_max_age_ms = (
+            _coordinator_launch_attestation_max_age_ms(board)
+        )
+        profile = LifecycleProfile(
+            target_id=f"configured-board-coordinator:{board.board_namespace}",
+            run_id=f"configured-board:{board.board_namespace}:{launch_session_id}",
+            configuration_root=board.configuration_revision,
+            repository_root=str(board.repo_root),
+            state_root=str(state_dir),
+            run_root=str(state_dir),
+            argv=tuple(command),
+            cwd=str(board.repo_root),
+            environment=_plan_bound_profile_environment(base_environment),
+            health_path=str(status_path),
+            health_stale_ms=launch_attestation_max_age_ms,
+        )
+        launch_environment = _plan_bound_positive_child_environment(
+            profile.launch_environment(0)
+        )
+        with _open_plan_bound_coordinator_log(log_path) as stream:
+            process = subprocess.Popen(
+                command,
+                cwd=accepted_tree_root,
+                env=launch_environment,
+                stdin=subprocess.DEVNULL,
+                stdout=stream,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                pass_fds=(sealed.descriptor,),
+            )
+        identity_deadline = time.monotonic() + 10.0
+        adapter = LinuxProcessAdapter()
+        while time.monotonic() < identity_deadline:
+            if process.poll() is not None:
+                raise ConfiguredBoardError(
+                    "coordinator exited before process identity admission"
+                )
+            try:
+                _parent, group, session, observed_start_ticks = (
+                    adapter._stat(process.pid)  # noqa: SLF001
+                )
+                candidate = adapter._identity(process.pid, profile)  # noqa: SLF001
+            except (
+                FileNotFoundError,
+                ProcessLookupError,
+                ProcessIdentityMismatch,
+                OSError,
+                UnicodeError,
+                ValueError,
+            ):
+                time.sleep(0.02)
+                continue
+            if (
+                group == process.pid
+                and session == process.pid
+                and candidate.argv == profile.argv
+                and candidate.cwd == str(board.repo_root)
+            ):
+                process_identity = candidate
+                break
+            time.sleep(0.02)
+        if process_identity is None:
+            raise ConfiguredBoardError(
+                "coordinator process identity did not become admissible"
+            )
+        _publish_reserved_coordinator_pid(
+            pid_path,
+            descriptor,
+            reserved_identity,
+            process.pid,
+        )
+        status: dict[str, Any] | None = None
+        expected_lane_paths = _coordinator_lane_status_paths(board)
+        readiness_deadline = time.monotonic() + readiness_timeout_seconds
+        while time.monotonic() < readiness_deadline:
+            if process.poll() is not None:
+                raise ConfiguredBoardError(
+                    "coordinator exited before lane readiness admission"
+                )
+            try:
+                candidate_status = _read_coordinator_status(status_path)
+            except ConfiguredBoardError:
+                time.sleep(0.1)
+                continue
+            now_ms = int(time.time() * 1000)
+            if (
+                candidate_status.get("schema") == COORDINATOR_STATUS_SCHEMA
+                and candidate_status.get("repository_commit") == head
+                and candidate_status.get("repository_tree") == tree
+                and candidate_status.get("configuration_revision")
+                == board.configuration_revision
+                and candidate_status.get("board_namespace")
+                == board.board_namespace
+                and candidate_status.get("launch_session_id")
+                == launch_session_id
+                and candidate_status.get("lifecycle_profile_id")
+                == profile.profile_id
+                and candidate_status.get("coordinator_pid") == process.pid
+                and candidate_status.get("coordinator_process_start_ticks")
+                == process_identity.start_time_ticks
+                and candidate_status.get("coordinator_argv_cid")
+                == content_identity({"argv": list(profile.argv)})
+                and candidate_status.get("phase") == "launch_attested"
+                and candidate_status.get("lane_status_paths")
+                == [str(path) for path in expected_lane_paths]
+                and type(candidate_status.get("started_at_ms")) is int
+                and type(candidate_status.get("attested_at_ms")) is int
+                and candidate_status["started_at_ms"]
+                <= candidate_status["attested_at_ms"]
+                <= now_ms + 5_000
+                and now_ms - candidate_status["attested_at_ms"]
+                <= launch_attestation_max_age_ms
+                and _lane_statuses_ready(
+                    board,
+                    expected_lane_paths,
+                    started_at_ms=candidate_status["started_at_ms"],
+                    now_ms=now_ms,
+                    coordinator_pid=process.pid,
+                    coordinator_start_ticks=process_identity.start_time_ticks,
+                    repository_commit=head,
+                    repository_tree=tree,
+                )
+            ):
+                status = candidate_status
+                break
+            time.sleep(0.1)
+        if status is None:
+            raise ConfiguredBoardError(
+                "coordinator launch attestation or lane heartbeat readiness "
+                "timed out"
+            )
+        if _git_identity(accepted_tree_root) != (head, tree):
+            raise ConfiguredBoardError(
+                "repository identity changed during coordinator launch"
+            )
+        try:
+            final_process_identity = adapter._identity(  # noqa: SLF001
+                process.pid,
+                profile,
+            )
+        except (
+            FileNotFoundError,
+            ProcessLookupError,
+            ProcessIdentityMismatch,
+            OSError,
+            UnicodeError,
+            ValueError,
+        ) as exc:
+            raise ConfiguredBoardError(
+                "coordinator identity disappeared after lane readiness"
+            ) from exc
+        if process.poll() is not None or final_process_identity != process_identity:
+            raise ConfiguredBoardError(
+                "coordinator identity changed after lane readiness"
+            )
+        argv_cid = content_identity({"argv": list(profile.argv)})
+        unsigned_receipt = {
+            "schema": COORDINATOR_LAUNCH_RECEIPT_SCHEMA,
+            "repository_commit": head,
+            "repository_tree": tree,
+            "configuration_revision": board.configuration_revision,
+            "board_namespace": board.board_namespace,
+            "launch_session_id": launch_session_id,
+            "coordinator_pid": process.pid,
+            "coordinator_pid_path": str(pid_path),
+            "coordinator_log": str(log_path),
+            "coordinator_status_path": str(status_path),
+            "coordinator_status_cid": status["receipt_cid"],
+            "coordinator_profile": profile.to_dict(),
+            "coordinator_process_identity": process_identity.to_dict(),
+            "coordinator_argv_cid": argv_cid,
+        }
+        return {
+            **unsigned_receipt,
+            "receipt_cid": content_identity(unsigned_receipt),
+        }
+    except BaseException as exc:
+        fenced = True
+        if process is not None:
+            fenced = _fence_exact_coordinator_group(
+                process,
+                observed_start_ticks=observed_start_ticks,
+            )
+        _remove_reserved_coordinator_pid(pid_path, reserved_identity)
+        if capsule_parent is not None:
+            try:
+                shutil.rmtree(capsule_parent)
+            except OSError:
+                pass
+        if not fenced:
+            raise ConfiguredBoardError(
+                "receipt coordinator failure could not be exactly fenced"
+            ) from exc
+        raise
+    finally:
+        os.close(descriptor)
+        if sealed is not None:
+            os.close(sealed.descriptor)
 
 
 def _run_plan_bound_coordinator(
@@ -5374,9 +6383,59 @@ def _remove_owned_coordinator_pid(board: ConfiguredBoard) -> bool:
         return False
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = _build_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
+@contextlib.contextmanager
+def _isolated_launch_receipt_stream() -> Any:
+    """Keep the machine receipt on stdout and route every other writer away."""
+
+    try:
+        stdout_descriptor = 1
+        stderr_descriptor = 2
+        os.fstat(stdout_descriptor)
+        os.fstat(stderr_descriptor)
+    except OSError as exc:
+        raise ConfiguredBoardError(
+            "launch receipt descriptors are unavailable"
+        ) from exc
+
+    sys.stdout.flush()
+    sys.stderr.flush()
+    restore_descriptor = os.dup(stdout_descriptor)
+    try:
+        receipt_descriptor = os.dup(stdout_descriptor)
+    except BaseException:
+        os.close(restore_descriptor)
+        raise
+    receipt_stream = os.fdopen(
+        receipt_descriptor,
+        "w",
+        encoding=getattr(sys.stdout, "encoding", None) or "utf-8",
+        errors="strict",
+        newline="\n",
+        closefd=True,
+    )
+    redirected = False
+    try:
+        os.dup2(stderr_descriptor, stdout_descriptor)
+        redirected = True
+        with contextlib.redirect_stdout(sys.stderr):
+            yield receipt_stream
+    finally:
+        try:
+            if redirected:
+                try:
+                    sys.stdout.flush()
+                finally:
+                    os.dup2(restore_descriptor, stdout_descriptor)
+        finally:
+            os.close(restore_descriptor)
+            receipt_stream.close()
+
+
+def _run_parsed_command(
+    args: argparse.Namespace,
+    *,
+    launch_receipt_stream: Any | None = None,
+) -> int:
     control_plane_pin: AgentImplementationControlPlanePin | None = None
     control_plane_descriptor = -1
     control_plane_parent: Path | None = None
@@ -5444,6 +6503,33 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise ConfiguredBoardError(
                     "configured scheduler accepted-tree root is foreign"
                 )
+        has_coordinator_session = bool(args.coordinator_launch_session)
+        has_coordinator_status = args.coordinator_status_path is not None
+        if has_coordinator_session != has_coordinator_status:
+            raise ConfiguredBoardError(
+                "coordinator launch session binding is incomplete"
+            )
+        if has_coordinator_session:
+            expected_status_path = _expected_coordinator_status_path(
+                board,
+                args.coordinator_launch_session,
+            )
+            if (
+                args.command != "launch"
+                or not bool(args.foreground)
+                or bool(args.dry_run)
+                or control_plane_pin is None
+                or args.accepted_tree_root is None
+                or args.coordinator_status_path != expected_status_path
+                or _plan_bound_profile(board)
+            ):
+                raise ConfiguredBoardError(
+                    "coordinator launch session is not an admitted foreground child"
+                )
+        if launch_receipt_stream is not None and _plan_bound_profile(board):
+            raise ConfiguredBoardError(
+                "launch-receipt-only does not admit adaptive plan-bound profiles"
+            )
     except ConfiguredBoardError as exc:
         print(
             json.dumps(
@@ -5469,6 +6555,48 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     detach = not bool(args.foreground)
+    if launch_receipt_stream is not None:
+        try:
+            launch_receipt = _launch_detached_receipt_coordinator(
+                board,
+                implement=bool(args.implement),
+                duration_seconds=float(args.duration_seconds),
+            )
+            receipt_cid = launch_receipt.get("receipt_cid")
+            unsigned_receipt = dict(launch_receipt)
+            unsigned_receipt.pop("receipt_cid", None)
+            if (
+                set(launch_receipt) != COORDINATOR_LAUNCH_RECEIPT_FIELDS
+                or receipt_cid != content_identity(unsigned_receipt)
+            ):
+                raise ConfiguredBoardError(
+                    "coordinator launch returned a non-closed receipt"
+                )
+        except (ConfiguredBoardError, OSError, ValueError) as exc:
+            print(
+                json.dumps(
+                    {
+                        "valid": False,
+                        "errors": [f"coordinator_launch: {exc}"],
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+            return 2
+        launch_receipt_stream.write(
+            json.dumps(
+                launch_receipt,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            + "\n"
+        )
+        launch_receipt_stream.flush()
+        return 0
+
     if _plan_bound_profile(board):
         if args.dry_run:
             plan = configured_board_launch_plan(
@@ -5487,13 +6615,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 duration_seconds=float(args.duration_seconds),
             )
             try:
-                plan.update(
-                    _launch_detached_plan_bound_coordinator(
-                        board,
-                        implement=bool(args.implement),
-                        duration_seconds=float(args.duration_seconds),
-                    )
+                launch_receipt = _launch_detached_plan_bound_coordinator(
+                    board,
+                    implement=bool(args.implement),
+                    duration_seconds=float(args.duration_seconds),
                 )
+                plan.update(launch_receipt)
             except (ConfiguredBoardError, OSError) as exc:
                 print(
                     json.dumps(
@@ -5503,7 +6630,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 )
                 return 2
-            print(json.dumps(plan, indent=2, sort_keys=True))
+            if launch_receipt_stream is None:
+                print(json.dumps(plan, indent=2, sort_keys=True))
+            else:
+                launch_receipt_stream.write(
+                    json.dumps(launch_receipt, indent=2, sort_keys=True) + "\n"
+                )
+                launch_receipt_stream.flush()
             return 0
         if control_plane_pin is None:
             try:
@@ -5546,13 +6679,58 @@ def main(argv: Sequence[str] | None = None) -> int:
         detach=detach,
         duration_seconds=float(args.duration_seconds),
     )
+    if has_coordinator_session:
+        _bind_foreground_wave_pid(plan, board)
     print(json.dumps(plan, indent=2, sort_keys=True))
     if args.dry_run:
         return 0
     _apply_configured_board_environment(plan)
     from .multi_supervisor_runner import main as multi_supervisor_main
 
-    return int(multi_supervisor_main(plan["argv"]))
+    previous_umask: int | None = None
+    try:
+        if has_coordinator_session:
+            assert args.coordinator_status_path is not None
+            previous_umask = os.umask(0o077)
+            _prepare_coordinator_lane_status_permissions(board)
+            _publish_coordinator_launch_attestation(
+                board,
+                launch_session_id=args.coordinator_launch_session,
+                status_path=args.coordinator_status_path,
+            )
+        return int(multi_supervisor_main(plan["argv"]))
+    finally:
+        if has_coordinator_session:
+            _remove_owned_coordinator_pid(board)
+            if control_plane_parent is not None:
+                assert control_plane_pin is not None
+                _cleanup_plan_bound_control_plane(
+                    control_plane_pin,
+                    control_plane_parent,
+                )
+        if previous_umask is not None:
+            os.umask(previous_umask)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    receipt_only = bool(getattr(args, "launch_receipt_only", False))
+    if receipt_only and (bool(args.dry_run) or bool(args.foreground)):
+        parser.error(
+            "--launch-receipt-only requires a detached, non-dry launch"
+        )
+    if not receipt_only:
+        return _run_parsed_command(args)
+
+    # Preserve a dedicated receipt descriptor before redirecting stdout at the
+    # descriptor boundary. This also fences native code and inherited child
+    # stdout, not only Python ``print`` calls.
+    with _isolated_launch_receipt_stream() as receipt_stream:
+        return _run_parsed_command(
+            args,
+            launch_receipt_stream=receipt_stream,
+        )
 
 
 __all__ = (

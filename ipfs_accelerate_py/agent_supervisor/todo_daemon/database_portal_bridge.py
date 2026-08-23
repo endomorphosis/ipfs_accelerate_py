@@ -100,6 +100,34 @@ _INFLIGHT_PROCESS_SKIP_REASON: Final[str] = "inflight_process"
 _MAX_DATABASE_PORTAL_TASK_ATTEMPTS: Final[int] = 10_000
 _MAX_DATABASE_PORTAL_EVENT_BYTES: Final[int] = 64 * 1024 * 1024
 _MAX_DATABASE_PORTAL_EVENTS: Final[int] = 4096
+# Closed post-dispatch reasons that consumed a provider attempt but produced
+# no mergeable candidate.  These must retry while budget remains instead of
+# being collapsed into untyped ``portal_provider_failed``.
+DATABASE_PORTAL_CANDIDATE_RETRY_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "proposal_gate_failed",
+        "proposal_validation_failed",
+        "no_change_completion_not_allowed",
+        "incomplete_expected_outputs",
+        "expected_output_ignored_or_unstaged",
+        "empty_or_no_change",
+        "empty_patch_reserved_for_no_change_gate",
+        "no_changes",
+    }
+)
+# A sibling supervisor or daemon holds the shared checkout-mutation lock.
+# Markdown Portal treats that as an unchanged deferral; the database path
+# must not consume the claimed task as a terminal Portal failure.
+DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "external_protected_checkout_recovery_required",
+        "protected_recovery_owner_active",
+        "supervisor_protected_recovery_owner_active",
+        "protected_recovery_adoption_raced",
+        "checkout_mutation_lock_exists",
+    }
+)
+DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS: Final[int] = 15
 
 
 class DatabasePortalBridgeError(RuntimeError):
@@ -164,6 +192,36 @@ class DatabasePortalValidationRetry(DatabasePortalBridgeError):
         self.attempt_consumed = True
         self.provider_dispatched = True
         self.retry_receipt = value
+
+
+class DatabasePortalCandidateRetry(DatabasePortalBridgeError):
+    """A dispatched provider attempt produced an unusable candidate.
+
+    Empty diffs, rejected proposals, and incomplete declared outputs consume
+    the attempt and must retry from the failure-review addendum while the
+    Portal attempt budget remains.  Callers must not infer this from generic
+    provider error strings.
+    """
+
+    def __init__(self, reason: str, *, backoff_seconds: int = 0) -> None:
+        if (
+            isinstance(backoff_seconds, bool)
+            or not isinstance(backoff_seconds, int)
+            or backoff_seconds < 0
+            or backoff_seconds > _MAX_DATABASE_PORTAL_BACKOFF_SECONDS
+        ):
+            raise ValueError(
+                "backoff_seconds must be an integer in "
+                f"[0, {_MAX_DATABASE_PORTAL_BACKOFF_SECONDS}]"
+            )
+        reason_text = str(reason or "").strip()
+        if reason_text not in DATABASE_PORTAL_CANDIDATE_RETRY_REASONS:
+            raise ValueError("candidate retry reason is not a closed retry code")
+        super().__init__(reason_text)
+        self.reason = reason_text
+        self.backoff_seconds = int(backoff_seconds)
+        self.attempt_consumed = True
+        self.provider_dispatched = True
 
 
 class DatabasePortalBridgeConsumedNoProgressError(DatabasePortalBridgeError):
@@ -1266,6 +1324,8 @@ class DatabasePortalExecutionBridge:
     def _terminal_failure(result: Mapping[str, Any]) -> str:
         if result.get("blocked") is True:
             reason = str(result.get("reason") or "portal_execution_blocked")
+            if reason in DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS:
+                return ""
             if is_protected_recovery_fence_contention(reason):
                 # Peer-owner recovery is a wait, not a task defect. The
                 # typed-deferral classifier admits retry; do not CAS blocked.
@@ -1577,6 +1637,16 @@ class DatabasePortalExecutionBridge:
     ) -> tuple[str, int] | None:
         """Return exact Portal deferral data without parsing reason text."""
 
+        blocked_reason = str(result.get("reason") or "").strip()
+        if (
+            result.get("blocked") is True
+            and result.get("unchanged") is True
+            and blocked_reason in DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS
+        ):
+            return (
+                blocked_reason,
+                DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS,
+            )
         if result.get("blocked") is True:
             reason = str(result.get("reason") or "")
             if is_protected_recovery_fence_contention(reason):
@@ -1672,6 +1742,35 @@ class DatabasePortalExecutionBridge:
                 "validation_command_failed",
             }
         )
+
+    @classmethod
+    def _candidate_retry_reason(
+        cls,
+        implementation: Mapping[str, Any],
+    ) -> str:
+        """Return the closed retry code for an unusable dispatched candidate."""
+
+        if cls._looks_like_validation_retry(implementation):
+            return ""
+        if implementation.get("returncode") in (None, 0):
+            return ""
+        if implementation.get("attempt_consumed") is not True:
+            return ""
+        if implementation.get("provider_dispatched") is not True:
+            return ""
+        validation = implementation.get("validation_result")
+        commit_result = implementation.get("commit_result")
+        observed = [
+            implementation.get("reason"),
+            validation.get("reason") if isinstance(validation, Mapping) else None,
+            validation.get("error") if isinstance(validation, Mapping) else None,
+            commit_result.get("reason") if isinstance(commit_result, Mapping) else None,
+        ]
+        for value in observed:
+            text = str(value or "").strip()
+            if text in DATABASE_PORTAL_CANDIDATE_RETRY_REASONS:
+                return text
+        return ""
 
     @staticmethod
     def _verified_event_chain(paths: DatabasePortalAttemptPaths) -> list[dict[str, Any]]:
@@ -2471,6 +2570,28 @@ class DatabasePortalExecutionBridge:
                     )
                     if retry_receipt is not None:
                         raise DatabasePortalValidationRetry(retry_receipt)
+                if isinstance(implementation, Mapping):
+                    candidate_reason = self._candidate_retry_reason(implementation)
+                    portal_attempt = implementation.get("attempt")
+                    durable_attempt = getattr(attempt, "attempt_number", 0)
+                    local_attempt = (
+                        portal_attempt
+                        if type(portal_attempt) is int
+                        else 0
+                    )
+                    bounded_attempt = max(
+                        durable_attempt if type(durable_attempt) is int else 0,
+                        local_attempt,
+                    )
+                    # Portal-local attempt counters reset on every database
+                    # claim. Bound retries with the durable claim number so
+                    # empty Codex candidates cannot spin forever at attempt 1.
+                    if (
+                        candidate_reason
+                        and self.max_task_attempts > 0
+                        and 1 <= bounded_attempt < self.max_task_attempts
+                    ):
+                        raise DatabasePortalCandidateRetry(candidate_reason)
                 failure = self._terminal_failure(raw_result)
                 if failure:
                     implementation = raw_result.get("implementation_result")
@@ -2580,9 +2701,13 @@ __all__ = (
     "DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA",
     "DatabasePortalAttemptPaths",
+    "DATABASE_PORTAL_CANDIDATE_RETRY_REASONS",
+    "DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS",
+    "DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeConsumedNoProgressError",
     "DatabasePortalBridgeError",
+    "DatabasePortalCandidateRetry",
     "DatabasePortalExecutionBridge",
     "DatabasePortalValidationRetry",
     "PortalDaemonFactory",

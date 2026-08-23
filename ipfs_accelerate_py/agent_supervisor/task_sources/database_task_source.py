@@ -54,6 +54,8 @@ from .intent_repository import (
     IntentRepositoryConflictError,
     IntentRepositoryError,
     IntentRepositoryIntegrityError,
+    IntentRepositoryTransitionError,
+    IntentRepositoryUnknownOutcomeError,
     PlanRevisionRepository,
     QueueEntry,
     open_intent_repository,
@@ -93,6 +95,16 @@ class TaskSourceIntegrityError(DatabaseTaskSourceError, IntentRepositoryIntegrit
 
 class TaskSourceConflictError(DatabaseTaskSourceError, IntentRepositoryConflictError):
     """CAS head or expected-revision conflict."""
+
+
+class TaskSourceTransitionError(DatabaseTaskSourceError, IntentRepositoryTransitionError):
+    """Owner rejected a status transition outside the closed matrix."""
+
+
+class TaskSourceUnknownOutcomeError(
+    DatabaseTaskSourceError, IntentRepositoryUnknownOutcomeError
+):
+    """A remote owner effect requires exact post-restart reconciliation."""
 
 
 class TaskSourceBoundsError(DatabaseTaskSourceError, IntentRepositoryBoundsError):
@@ -853,7 +865,19 @@ class DatabaseTaskSource:
         snap = self._intent.snapshot()
         terminal = True
         plan_root = self.plan_root_cid
-        for task in self._intent.list_tasks(limit=MAX_QUERY_LIMIT):
+        tasks = self._intent.list_tasks(limit=MAX_QUERY_LIMIT)
+        task_plan_cids = {
+            str(task.get("plan_cid") or "")
+            for task in tasks
+            if str(task.get("plan_cid") or "")
+        }
+        if not plan_root and len(task_plan_cids) == 1:
+            # A reopened adapter has no in-memory materialization root.  The
+            # task rows retain their admitted canonical plan binding, even
+            # when their refinement-goal heads do not own the root plan.
+            plan_root = next(iter(task_plan_cids))
+        infer_from_goal_heads = not task_plan_cids
+        for task in tasks:
             status = str(task.get("status") or "")
             if status not in {
                 "completed",
@@ -865,7 +889,7 @@ class DatabaseTaskSource:
                 "done",
             }:
                 terminal = False
-            if not plan_root:
+            if not plan_root and infer_from_goal_heads:
                 head = self.plans.head(str(task.get("goal_cid") or ""))
                 if head is not None:
                     plan_root = head.plan_cid
@@ -1453,6 +1477,10 @@ class DatabaseTaskSource:
             raise TaskSourceCompletionError(str(exc)) from exc
         except IntentRepositoryConflictError as exc:
             raise TaskSourceConflictError(str(exc)) from exc
+        except IntentRepositoryTransitionError as exc:
+            raise TaskSourceTransitionError(str(exc)) from exc
+        except IntentRepositoryUnknownOutcomeError as exc:
+            raise TaskSourceUnknownOutcomeError(str(exc)) from exc
         updated = self._intent.get_task(str(prior["task_cid"]))
         if updated is None:
             raise TaskSourceIntegrityError("task disappeared after CAS")
@@ -1648,14 +1676,17 @@ class DatabaseTaskSource:
             except QuackOwnerCommandRemoteError as exc:
                 _raise_typed_owner_error(exc)
             return _intent_receipt_from_dict(result)
-        return self._intent.record_validation_result(
-            task_cid=task_cid,
-            outcome=outcome,
-            evidence_digest=evidence_digest,
-            argv=argv,
-            attempt_id=attempt_id,
-            body=body,
-        )
+        try:
+            return self._intent.record_validation_result(
+                task_cid=task_cid,
+                outcome=outcome,
+                evidence_digest=evidence_digest,
+                argv=argv,
+                attempt_id=attempt_id,
+                body=body,
+            )
+        except IntentRepositoryUnknownOutcomeError as exc:
+            raise TaskSourceUnknownOutcomeError(str(exc)) from exc
 
     def current_evidence_for_task(
         self,
@@ -1699,6 +1730,7 @@ __all__ = (
     "DatabaseTaskSourceError",
     "TaskSourceIntegrityError",
     "TaskSourceConflictError",
+    "TaskSourceUnknownOutcomeError",
     "TaskSourceBoundsError",
     "TaskSourceCompletionError",
     "TaskRecord",
