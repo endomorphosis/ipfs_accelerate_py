@@ -75903,6 +75903,17 @@ class DatabaseImplementationDaemon:
                     "attempt to match the terminal control receipt"
                 )
         if status == "retrying":
+            if callable(record_task_retry_cooldown):
+                validate_retrying_cooldown = getattr(
+                    self.task_source,
+                    "validate_retrying_task_cooldown",
+                    None,
+                )
+                if not callable(validate_retrying_cooldown):
+                    raise DatabaseImplementationAuthorityError(
+                        "typed post-merge retry has no exact cooldown validator"
+                    )
+                validate_retrying_cooldown(task_cid)
             self._verified_post_merge_declared_output_recovery_state(
                 latest,
                 task,
@@ -75945,31 +75956,33 @@ class DatabaseImplementationDaemon:
             and str(getattr(queue_entry, "reason", "") or "")
             == queue_reason
         )
-        if queue_reused:
-            queue_receipt_dict: dict[str, Any] = {}
+        if callable(record_task_retry_cooldown):
+            queue_receipt = record_task_retry_cooldown(
+                task_cid=task_cid,
+                expected_task_revision=int(task.revision),
+                expected_task_status="blocked",
+                attempt_id=latest.attempt_id,
+                claim_id=latest.claim_id,
+                lease_id=latest.lease_id,
+                owner_session_id=latest.owner_session_id,
+                attempt_number=int(latest.attempt_number),
+                fencing_token=int(latest.fencing_token),
+                fence_epoch=int(latest.fence_epoch),
+                delay_ms=0,
+                reason=queue_reason,
+                now_ms=self._now_ms(),
+            )
+            queue_reused = not bool(queue_receipt.changed)
+            queue_receipt_dict = queue_receipt.to_dict()
+            queue_entry = get_queue_entry(task_cid)
+        elif queue_reused:
+            queue_receipt_dict = {}
         else:
-            if callable(record_task_retry_cooldown):
-                queue_receipt = record_task_retry_cooldown(
-                    task_cid=task_cid,
-                    expected_task_revision=int(task.revision),
-                    expected_task_status="blocked",
-                    attempt_id=latest.attempt_id,
-                    claim_id=latest.claim_id,
-                    lease_id=latest.lease_id,
-                    owner_session_id=latest.owner_session_id,
-                    attempt_number=int(latest.attempt_number),
-                    fencing_token=int(latest.fencing_token),
-                    fence_epoch=int(latest.fence_epoch),
-                    delay_ms=0,
-                    reason=queue_reason,
-                    now_ms=self._now_ms(),
-                )
-            else:
-                queue_receipt = record_queue_backoff(
-                    task_cid=task_cid,
-                    delay_ms=0,
-                    reason=queue_reason,
-                )
+            queue_receipt = record_queue_backoff(
+                task_cid=task_cid,
+                delay_ms=0,
+                reason=queue_reason,
+            )
             queue_receipt_dict = queue_receipt.to_dict()
             queue_entry = get_queue_entry(task_cid)
         if (
@@ -81843,7 +81856,21 @@ class DatabaseImplementationDaemon:
                 raise DatabaseImplementationConflictError(
                     "typed retry recovery found a foreign queue entry"
                 )
-            if existing_entry is None:
+            if callable(record_task_retry_cooldown) and existing_entry is not None:
+                validate_retrying_cooldown = getattr(
+                    self.task_source,
+                    "validate_retrying_task_cooldown",
+                    None,
+                )
+                if not callable(validate_retrying_cooldown):
+                    raise DatabaseImplementationAuthorityError(
+                        "typed retry repair has no exact cooldown validator"
+                    )
+                existing_entry = validate_retrying_cooldown(
+                    attempt.task_cid
+                )
+                queue_receipt_dict = {}
+            elif existing_entry is None:
                 self._protect_retry_transition_authority(
                     attempt,
                     coordination_evidence,
@@ -81893,8 +81920,17 @@ class DatabaseImplementationDaemon:
             queue_entry is not None
             and str(getattr(queue_entry, "reason", "") or "") == queue_reason
         )
-        if queue_reused:
-            queue_receipt_dict: dict[str, Any] = {}
+        if callable(record_task_retry_cooldown):
+            self._protect_retry_transition_authority(
+                attempt,
+                coordination_evidence,
+            )
+            queue_receipt = persist_retry_cooldown()
+            queue_receipt_dict = queue_receipt.to_dict()
+            queue_reused = not bool(queue_receipt.changed)
+            queue_entry = get_queue_entry(attempt.task_cid)
+        elif queue_reused:
+            queue_receipt_dict = {}
         else:
             self._protect_retry_transition_authority(
                 attempt,
@@ -87586,14 +87622,17 @@ class DatabaseImplementationDaemon:
                 # the bound post-merge reconciler immediately after this
                 # observation; that path verifies repair evidence and writes
                 # the attempt-bound cooldown before its control CAS.
+                if not callable(self._post_merge_recovery_fn):
+                    raise DatabaseImplementationAuthorityError(
+                        "typed output rearm requires a bound post-merge "
+                        "recovery callback"
+                    )
                 return {
                     **empty,
                     "attempted": True,
                     "delegated": True,
                     "reason": "typed_post_merge_recovery_supersedes_legacy_rearm",
-                    "post_merge_recovery_configured": callable(
-                        self._post_merge_recovery_fn
-                    ),
+                    "post_merge_recovery_configured": True,
                 }
             return empty
         results: list[dict[str, Any]] = []
