@@ -31,6 +31,10 @@ ROOT: Final = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (  # noqa: E402
+    content_identity,
+)
+
 DEFAULT_CONFIG: Final = Path(
     "config/agent_supervisor_efficiency_state_hardening_scheduler.json"
 )
@@ -1345,7 +1349,7 @@ def _admit_current_projection_against_bootstrap(
             "current projection immutable snapshot differs from bootstrap"
         )
     for candidate in (sealed_snapshot, snapshot):
-        expected_source_identity = _identity(
+        expected_source_identity = content_identity(
             {
                 "plan_root_cid": candidate.get("plan_root_cid"),
                 "repository_tree_id": candidate.get("repository_tree_id"),
@@ -2518,7 +2522,7 @@ def _health_receipt(
         )
         and bool(candidate["snapshot"].get("projection_cid"))
         and candidate["snapshot"].get("source_identity")
-        == _identity(
+        == content_identity(
             {
                 "plan_root_cid": candidate["snapshot"].get("plan_root_cid"),
                 "repository_tree_id": candidate["snapshot"].get(

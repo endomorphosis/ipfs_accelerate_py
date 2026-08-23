@@ -1018,7 +1018,7 @@ def _aseh_health_fixture(
         "objective_count": 1,
         "plan_count": 1,
     }
-    bootstrap_snapshot["source_identity"] = aseh_operator._identity(
+    bootstrap_snapshot["source_identity"] = aseh_operator.content_identity(
         {
             "plan_root_cid": bootstrap_snapshot["plan_root_cid"],
             "repository_tree_id": bootstrap_snapshot["repository_tree_id"],
@@ -1324,7 +1324,7 @@ def test_aseh_restart_admits_only_monotonic_lifecycle_on_sealed_corpus(
     snapshot = dict(bootstrap["snapshot"])
     snapshot["event_cursor"] = int(snapshot["event_cursor"]) + 1
     snapshot["projection_cid"] = "projection:advanced"
-    snapshot["source_identity"] = aseh_operator._identity(
+    snapshot["source_identity"] = aseh_operator.content_identity(
         {
             "plan_root_cid": snapshot["plan_root_cid"],
             "repository_tree_id": snapshot["repository_tree_id"],
