@@ -143,10 +143,23 @@ _TASK_STATUSES: Final[frozenset[str]] = frozenset(
     }
 )
 _GOAL_OPEN_STATUSES: Final[frozenset[str]] = frozenset(
-    {"open", "active", "reopened", "provisionally_complete", "analysis_inconclusive"}
+    {
+        "open",
+        "active",
+        "reopened",
+        "provisionally_complete",
+        "analysis_inconclusive",
+        "waiting",
+    }
+)
+_GOAL_COMPLETED_STATUSES: Final[frozenset[str]] = frozenset(
+    {"verified_complete", "completed", "complete", "done"}
 )
 _GOAL_CLOSED_STATUSES: Final[frozenset[str]] = frozenset(
-    {"verified_complete", "completed", "complete", "done", "blocked"}
+    {*_GOAL_COMPLETED_STATUSES, "blocked"}
+)
+_GOAL_STATUSES: Final[frozenset[str]] = frozenset(
+    {*_GOAL_OPEN_STATUSES, *_GOAL_CLOSED_STATUSES}
 )
 
 # Intent-owned projection tables fully rebuilt from admitted intent events.
@@ -1437,6 +1450,138 @@ class IntentRepository:
                 "body": _decode_json(row[10], noun="goal body"),
             }
         )
+
+    def cas_goal_status(
+        self,
+        *,
+        goal_cid: str,
+        expected_revision: int,
+        new_status: str,
+        receipt: Mapping[str, Any] | None = None,
+    ) -> IntentReceipt:
+        """CAS one goal status after child tasks and child goals are complete."""
+
+        gcid = _identifier(goal_cid, noun="goal_cid")
+        expected = _positive_int(expected_revision, noun="expected_revision")
+        status_text = _status(new_status, allowed=_GOAL_STATUSES, noun="goal")
+        receipt_map = _mapping(receipt, noun="goal status receipt")
+        now = _utc_iso()
+
+        with self._connection(write=True) as connection:
+            rows = connection.execute(
+                """
+                SELECT goal_cid, goal_alias, objective_id, parent_goal_cid,
+                       ordinal, title, status, revision, body_json
+                FROM goals WHERE goal_cid = ? OR goal_alias = ?
+                ORDER BY goal_cid LIMIT 2
+                """,
+                [gcid, gcid],
+            ).fetchall()
+            if not rows:
+                raise KeyError(gcid)
+            if len(rows) > 1:
+                raise IntentRepositoryIntegrityError("goal CID/alias lookup is ambiguous")
+            goal_row = rows[0]
+            resolved_cid = str(goal_row[0])
+            previous_status = str(goal_row[6])
+            current_revision = int(goal_row[7])
+            if current_revision != expected:
+                raise IntentRepositoryConflictError("goal revision CAS is stale")
+            if previous_status == status_text:
+                return IntentReceipt(
+                    event_id="",
+                    event_type=IntentEventType.GOAL_UPSERTED.value,
+                    global_sequence=self._next_global_sequence(connection) - 1,
+                    recorded_at=now,
+                    subject_id=resolved_cid,
+                    revision=current_revision,
+                    changed=False,
+                    details=MappingProxyType(
+                        {
+                            "goal_cid": resolved_cid,
+                            "goal_alias": str(goal_row[1]),
+                            "status": status_text,
+                            "previous_status": previous_status,
+                        }
+                    ),
+                )
+
+            if status_text in _GOAL_COMPLETED_STATUSES:
+                incomplete_tasks = [
+                    str(item[0] or item[1] or "")
+                    for item in connection.execute(
+                        """
+                        SELECT task_alias, task_cid, status
+                        FROM tasks WHERE goal_cid = ?
+                        ORDER BY ordinal, task_alias
+                        """,
+                        [resolved_cid],
+                    ).fetchall()
+                    if str(item[2] or "").strip().lower() not in _COMPLETED_STATUSES
+                ]
+                incomplete_children = [
+                    str(item[0] or item[1] or "")
+                    for item in connection.execute(
+                        """
+                        SELECT goal_alias, goal_cid, status
+                        FROM goals WHERE parent_goal_cid = ?
+                        ORDER BY ordinal, goal_alias
+                        """,
+                        [resolved_cid],
+                    ).fetchall()
+                    if str(item[2] or "").strip().lower() not in _GOAL_COMPLETED_STATUSES
+                ]
+                missing = [
+                    *(f"task:{alias}" for alias in incomplete_tasks if alias),
+                    *(f"goal:{alias}" for alias in incomplete_children if alias),
+                ]
+                if missing:
+                    raise IntentCompletionError(
+                        "goal completion refused while children remain open: "
+                        + ", ".join(missing)
+                    )
+
+            revision = current_revision + 1
+            body_map = _decode_json(goal_row[8], noun="goal body")
+            if not isinstance(body_map, dict):
+                body_map = {}
+            body_map = dict(body_map)
+            if receipt_map:
+                body_map["completion_receipt"] = receipt_map
+            connection.execute(
+                """
+                UPDATE goals SET status = ?, updated_at = ?, revision = ?,
+                    body_json = ?
+                WHERE goal_cid = ? AND revision = ?
+                """,
+                [
+                    status_text,
+                    now,
+                    revision,
+                    _canonical(body_map, noun="goal body"),
+                    resolved_cid,
+                    current_revision,
+                ],
+            )
+            return self._append_event(
+                connection,
+                event_type=IntentEventType.GOAL_UPSERTED,
+                subject_id=resolved_cid,
+                body={
+                    "goal_cid": resolved_cid,
+                    "goal_alias": str(goal_row[1]),
+                    "objective_id": str(goal_row[2] or ""),
+                    "parent_goal_cid": str(goal_row[3] or ""),
+                    "ordinal": int(goal_row[4]),
+                    "title": str(goal_row[5]),
+                    "previous_status": previous_status,
+                    "status": status_text,
+                    "revision": revision,
+                    "receipt": receipt_map,
+                    "recorded_at": now,
+                    "body": body_map,
+                },
+            )
 
     def link_goal_edge(
         self,

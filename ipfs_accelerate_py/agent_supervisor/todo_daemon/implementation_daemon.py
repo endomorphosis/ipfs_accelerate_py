@@ -76227,18 +76227,41 @@ class DatabaseImplementationDaemon:
                     f"failed attempt {attempt.attempt_id} has no control task"
                 )
             status = str(task.status or "").strip().lower()
-            if status == "blocked":
+            if status in {
+                "blocked",
+                "completed",
+                "complete",
+                "done",
+                "skipped",
+                "todo",
+                "cancelled",
+                "failed",
+            }:
                 continue
             if status == "retrying":
                 # The immutable legacy attempt still says terminal failure.
                 # Suppress that old projection only when the exact typed
                 # blocked-to-retrying recovery and its latest fence reproduce.
+                # Board-unstall / owner retry can move control to retrying
+                # without that receipt; crashing here freezes claim_next.
+                task_body = getattr(task, "body", None)
+                receipt = (
+                    task_body.get("completion_receipt")
+                    if isinstance(task_body, Mapping)
+                    else None
+                )
+                operation = (
+                    str(receipt.get("operation") or "")
+                    if isinstance(receipt, Mapping)
+                    else ""
+                )
                 if reason == "post_merge_declared_outputs_missing":
-                    self._verified_post_merge_declared_output_recovery_state(
-                        attempt,
-                        task,
-                    )
-                else:
+                    if operation == "database_portal_post_merge_declared_output_recovery":
+                        self._verified_post_merge_declared_output_recovery_state(
+                            attempt,
+                            task,
+                        )
+                elif operation == "database_portal_validation_retry_recovery":
                     self._verified_validation_retry_recovery_state(
                         attempt,
                         task,

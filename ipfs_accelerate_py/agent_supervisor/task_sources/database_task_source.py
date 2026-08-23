@@ -31,6 +31,7 @@ from typing import Any, ClassVar, Final
 from .control_plane_contracts import content_identity
 from .control_plane_migrations import duckdb_available
 from .duckdb_state import (
+    QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
     QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
     QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
@@ -448,6 +449,14 @@ def execute_quack_owner_command(
                 evidence_digests=args.get("evidence_digests"),
             )
             return result.to_dict()
+        if command == QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS:
+            receipt = source.compare_and_set_goal_status(
+                args["goal_cid_or_alias"],
+                args["expected_revision"],
+                args["status"],
+                args.get("receipt"),
+            )
+            return receipt.to_dict()
         if command == QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK:
             result = source.rearm_blocked_task(
                 args["task_cid_or_alias"],
@@ -1456,6 +1465,51 @@ class DatabaseTaskSource:
         )
 
     cas_status = compare_and_set_status
+
+    def compare_and_set_goal_status(
+        self,
+        goal_cid_or_alias: str | Mapping[str, Any],
+        expected_revision: int,
+        status: str,
+        receipt: Mapping[str, Any] | None = None,
+    ) -> IntentReceipt:
+        """CAS a goal after child tasks and child goals are complete."""
+
+        if isinstance(goal_cid_or_alias, Mapping):
+            key = str(
+                goal_cid_or_alias.get("goal_cid")
+                or goal_cid_or_alias.get("goal_alias")
+                or ""
+            ).strip()
+        else:
+            key = str(goal_cid_or_alias or "").strip()
+        if not key:
+            raise TaskSourceIntegrityError("goal CAS requires a goal CID or alias")
+        if self._intent.uses_quack_transport:
+            try:
+                result = submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
+                    {
+                        "goal_cid_or_alias": key,
+                        "expected_revision": expected_revision,
+                        "status": status,
+                        "receipt": dict(receipt) if receipt is not None else None,
+                    },
+                )
+            except QuackOwnerCommandRemoteError as exc:
+                _raise_typed_owner_error(exc)
+            return _intent_receipt_from_dict(result)
+        try:
+            return self._intent.cas_goal_status(
+                goal_cid=key,
+                expected_revision=int(expected_revision),
+                new_status=status,
+                receipt=receipt,
+            )
+        except IntentCompletionError as exc:
+            raise TaskSourceCompletionError(str(exc)) from exc
+        except IntentRepositoryConflictError as exc:
+            raise TaskSourceConflictError(str(exc)) from exc
 
     def rearm_blocked_task(
         self,
