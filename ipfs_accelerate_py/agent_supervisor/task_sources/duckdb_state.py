@@ -1083,11 +1083,65 @@ def _read_quack_token_vault(path: Path) -> str:
     return token
 
 
+def persist_quack_attach_token_vault(token: str = "") -> Path | None:
+    """Re-materialize the 0600 owner vault when it is missing.
+
+    The operator used to unlink the vault after supervisor launch. Owner
+    recycle, operator status, and later ATTACH then fail closed even though
+    a live daemon still holds the credential. Write the vault from a trusted
+    env or explicit token only when the file is absent or empty so remaining
+    board drain can keep attaching.
+    """
+
+    secret = str(
+        token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or ""
+    ).strip()
+    if not secret or not _QUACK_TOKEN_RE.fullmatch(secret):
+        return None
+    vault = quack_token_vault_path()
+    if vault is None:
+        return None
+    existing = _read_quack_token_vault(vault)
+    if existing:
+        return vault
+    try:
+        vault.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError:
+        return None
+    tmp = vault.with_name(f".{vault.name}.{os.getpid()}.tmp")
+    try:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        fd = os.open(tmp, flags, 0o600)
+        try:
+            os.write(fd, f"{secret}\n".encode("utf-8"))
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, vault)
+        os.chmod(vault, 0o600)
+        dir_fd = os.open(vault.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        return None
+    if _read_quack_token_vault(vault) != secret:
+        return None
+    return vault
+
+
 def resolve_quack_attach_token(token: str = "") -> str:
     """Resolve the current owner attach token.
 
     The vault file is preferred over a process environment value so a
     restarted owner generation is not blocked by a stale supervisor env.
+    When the vault is missing, persist the live env token so owner recycle
+    and operator status can keep draining the board.
     """
 
     explicit = str(token or "").strip()
@@ -1107,6 +1161,8 @@ def resolve_quack_attach_token(token: str = "") -> str:
         raise DuckDBConnectionPolicyError(
             "quack attach token must be an opaque url-safe secret"
         )
+    if secret:
+        persist_quack_attach_token_vault(secret)
     return secret
 
 
