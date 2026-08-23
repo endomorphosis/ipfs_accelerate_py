@@ -21,6 +21,7 @@ from typing import Any, ClassVar, Final
 
 from ..proof.formal_verification_contracts import CanonicalContract
 from .contracts import (
+    ARTIFACT_TYPES_BY_SCHEMA,
     MAX_ITEMS,
     MAX_MAPPING_ITEMS,
     PROCEDURE_CONTRACT_VERSION,
@@ -957,7 +958,6 @@ class ExperimentDecision(CanonicalContract):
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": PROCEDURE_CONTRACT_VERSION,
-            "planner_revision": PLANNER_REVISION,
             "bindings": self.bindings,
             "experiment_id": self.experiment_id,
             "action": self.action.value,
@@ -1144,10 +1144,9 @@ def _privacy_complete(experiment: ShadowExperiment) -> bool:
 def _effect_matches_isolation(experiment: ShadowExperiment) -> bool:
     if experiment.isolation.kind is IsolationKind.FIXTURE:
         return experiment.effects == (ExperimentEffectClass.OBSERVE_FIXTURE,)
-    return (
-        ExperimentEffectClass.OBSERVE_DISPOSABLE_WORKTREE in experiment.effects
-        and not _forbidden_effects(experiment)
-    )
+    if experiment.isolation.kind is IsolationKind.AUTHORIZED_DISPOSABLE_WORKTREE:
+        return experiment.effects == (ExperimentEffectClass.OBSERVE_DISPOSABLE_WORKTREE,)
+    return False
 
 
 def _worktree_cost_valid(experiment: ShadowExperiment) -> bool:
@@ -1369,6 +1368,12 @@ class ShadowExperimentRunner:
             raise ExperimentError("decision and experiment identities differ")
         if decision.bindings != experiment.bindings:
             raise ExperimentError("decision and experiment exact bindings differ")
+        if decision.question_id != experiment.question_id:
+            raise ExperimentError("decision and experiment questions differ")
+        if decision.isolation != experiment.isolation:
+            raise ExperimentIsolationError("decision isolation does not match the experiment")
+        if decision.decision_rule != experiment.decision_rule:
+            raise ExperimentError("decision rule does not match the experiment")
         isolation_reason = experiment.isolation.refusal_reason()
         if isolation_reason is not None:
             raise ExperimentIsolationError(
@@ -1428,6 +1433,9 @@ class ShadowExperimentRunner:
             observation_artifact=observation_artifact,
             evaluation_artifact=evaluation_artifact,
         )
+
+
+ARTIFACT_TYPES_BY_SCHEMA[ExperimentDecision.SCHEMA] = ExperimentDecision
 
 
 __all__ = [

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from ipfs_accelerate_py.agent_supervisor.procedure_compiler.contracts import (
     ArtifactBindings,
@@ -403,6 +405,18 @@ def test_cost_privacy_risk_and_bounds_are_fail_closed() -> None:
     assert over_bound.action is ExperimentAction.REFUSE
     assert over_bound.reason_code is ExperimentReason.COST_EXCEEDS_BOUND
 
+    unbounded = _plan(
+        _experiment(
+            isolation=_worktree_isolation(),
+            effects=(ExperimentEffectClass.OBSERVE_DISPOSABLE_WORKTREE,),
+            cost=_cost(worktree_count=1),
+            execution_bound=_bound(max_worktrees=0),
+            risk_class=RiskClass.REVERSIBLE_LOCAL,
+        )
+    )
+    assert unbounded.action is ExperimentAction.REFUSE
+    assert unbounded.reason_code is ExperimentReason.UNBOUNDED
+
     risky = _plan(_experiment(risk_class=RiskClass.REPOSITORY_WRITE))
     assert risky.action is ExperimentAction.REFUSE
     assert risky.reason_code is ExperimentReason.RISK_CEILING
@@ -628,3 +642,63 @@ def test_generic_experiment_plan_envelope_is_unchanged() -> None:
     decoded = parse_procedure_artifact(record.to_dict())
     assert decoded == record
     assert isinstance(decoded, contracts.BoundedArtifact)
+
+
+def test_missing_pending_decision_and_binding_mismatch_are_fail_closed() -> None:
+    planner = ExperimentPlanner()
+    skipped = planner.plan(_experiment(), questions=_questions())
+    assert skipped.action is ExperimentAction.SKIP
+    assert skipped.reason_code is ExperimentReason.NO_PENDING_DECISION
+    assert skipped.can_authorize is False
+
+    mismatched = _plan(
+        world=_world(
+            bindings=ArtifactBindings(
+                repository_id="other-repo",
+                repository_commit="commit-1",
+                tree_id="tree-1",
+                objective_id="PCPC-G000",
+                task_id="PCPC-024",
+                contract_revision="contract-1",
+                policy_revision="policy-1",
+                environment_id="environment-1",
+            )
+        )
+    )
+    assert mismatched.action is ExperimentAction.REFUSE
+    assert mismatched.reason_code is ExperimentReason.BINDING_MISMATCH
+
+    mixed_effects = _plan(
+        _experiment(
+            isolation=_worktree_isolation(),
+            effects=(
+                ExperimentEffectClass.OBSERVE_DISPOSABLE_WORKTREE,
+                ExperimentEffectClass.OBSERVE_FIXTURE,
+            ),
+            cost=_cost(worktree_count=1),
+            execution_bound=_bound(max_worktrees=1),
+            risk_class=RiskClass.REVERSIBLE_LOCAL,
+        )
+    )
+    assert mixed_effects.action is ExperimentAction.REFUSE
+    assert mixed_effects.reason_code is ExperimentReason.FORBIDDEN_EFFECT
+
+
+def test_typed_decision_is_admitted_by_the_closed_artifact_decoder() -> None:
+    decision = _plan()
+    assert parse_procedure_artifact(decision.to_dict()) == decision
+    assert decision.planner_revision == "shadow-experiment-planner@1"
+    assert decision.allows_use(ObservationUse.COST)
+    assert decision.allows_use(ObservationUse.PRIORITY)
+
+
+def test_runner_rejects_decision_experiment_isolation_mismatch() -> None:
+    experiment = _experiment()
+    decision = _plan(experiment)
+    mismatched = replace(decision, isolation=_fixture_isolation(production=True))
+    with pytest.raises(ExperimentIsolationError, match="does not match"):
+        ShadowExperimentRunner().run(
+            mismatched,
+            experiment,
+            observed_facts={"proof_status_current": True},
+        )
