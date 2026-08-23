@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 
 import pytest
@@ -14,9 +16,13 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBConnectionPolicyError,
     QuackTransportContentionError,
+    defer_owner_inbox_until_recycle,
     is_quack_transport_target,
+    mark_owner_mutation_bounce,
     open_quack_transport_connection,
     persist_quack_attach_token_vault,
+    quack_attach_error_is_contention,
+    quack_owner_mutation_error_is_retryable,
     quack_token_vault_path,
     quack_transport_uri,
     reset_quack_transport_cache,
@@ -378,7 +384,93 @@ def test_request_owner_board_unstall_writes_inbox_without_waiting(
     assert owner_should_recycle_for_board_unstall(inbox, min_age_seconds=0) is True
     assert owner_should_recycle_for_board_unstall(inbox, min_age_seconds=10_000) is False
     clear_owner_board_unstall_bounce(inbox)
+    assert owner_should_recycle_for_board_unstall(inbox, min_age_seconds=0) is True
+    for leftover in inbox.glob("*.request.json"):
+        leftover.unlink()
     assert owner_should_recycle_for_board_unstall(inbox, min_age_seconds=0) is False
+
+
+def test_owner_mutation_bounce_is_not_reset(tmp_path) -> None:
+    inbox = tmp_path / "mutations"
+    inbox.mkdir()
+    first = mark_owner_mutation_bounce(inbox, request_id="one")
+    mtime = first.stat().st_mtime
+    second = mark_owner_mutation_bounce(inbox, request_id="two")
+    assert second == first
+    assert first.stat().st_mtime == mtime
+
+
+def test_defer_owner_inbox_leaves_request_and_marks_bounce(tmp_path) -> None:
+    inbox = tmp_path / "mutations"
+    inbox.mkdir()
+    request = inbox / "abc.request.json"
+    request.write_text('{"sql":"UPDATE tasks SET status = \'retrying\'"}\n', encoding="utf-8")
+    assert defer_owner_inbox_until_recycle(inbox) == 1
+    assert request.is_file()
+    assert (inbox / "board-unstall.bounce").is_file()
+    assert list(inbox.glob("*.done.json")) == []
+
+
+def test_owner_recycles_for_pending_request_without_bounce(tmp_path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        owner_should_recycle_for_board_unstall,
+    )
+
+    inbox = tmp_path / "mutations"
+    inbox.mkdir()
+    request = inbox / "abc.request.json"
+    request.write_text("{}\n", encoding="utf-8")
+    old = time.time() - 20
+    os.utime(request, (old, old))
+    assert owner_should_recycle_for_board_unstall(inbox, min_age_seconds=15) is True
+
+
+def test_owner_mutation_retries_after_listen_handle_reject(
+    tmp_path, monkeypatch
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    inbox = tmp_path / "mutations"
+    inbox.mkdir()
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
+    monkeypatch.setattr(ds, "QUACK_OWNER_MUTATION_TIMEOUT_SECONDS", 2.0)
+    sleeps = {"n": 0}
+
+    def fake_sleep(_seconds: float) -> None:
+        sleeps["n"] += 1
+        pending = list(inbox.glob("*.request.json"))
+        if not pending:
+            return
+        request = pending[0]
+        done = request.with_name(request.name.replace(".request.json", ".done.json"))
+        if sleeps["n"] == 1:
+            done.write_text(
+                '{"ok": false, "error": "FatalException: mutation rejected"}\n',
+                encoding="utf-8",
+            )
+            return
+        done.write_text('{"ok": true, "rowcount": 1}\n', encoding="utf-8")
+
+    monkeypatch.setattr(ds.time, "sleep", fake_sleep)
+    cursor = ds._execute_quack_owner_mutation(
+        "UPDATE tasks SET status = 'retrying' WHERE task_cid = ?",
+        ["cid-021"],
+        dml=True,
+    )
+    assert cursor.rowcount == 1
+    assert sleeps["n"] >= 2
+
+
+def test_attach_connect_failure_is_contention() -> None:
+    assert quack_attach_error_is_contention(
+        RuntimeError("IO Error: Could not connect to server error for HTTP POST")
+    )
+    assert quack_attach_error_is_contention(
+        RuntimeError("Failed to send message: IO Error")
+    )
+    assert quack_owner_mutation_error_is_retryable(
+        "FatalException: mutation rejected"
+    )
 
 
 def test_quack_attach_exhausted_contention_raises_typed_error(monkeypatch) -> None:

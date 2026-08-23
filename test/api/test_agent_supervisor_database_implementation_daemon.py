@@ -1590,6 +1590,67 @@ def test_reconcile_reopens_inflight_deferral_budget_block(
         daemon.close()
 
 
+def test_reconcile_reopens_mixed_capacity_and_inflight_budget_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:capacity-inflight-unstall",
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            status="blocked",
+            receipt={
+                "operation": "database_portal_typed_deferral_budget_exhausted",
+                "retry_budget": {
+                    "matching_attempts": [
+                        {"reason": "provider_capacity_exhausted"},
+                        {"reason": "inflight_process"},
+                        {"reason": "quack_attach_contended"},
+                    ]
+                },
+            },
+        )
+        outcomes = daemon.reconcile_inflight_deferral_blocks()
+        assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        retried = daemon.task_source.get("task:cid:001")
+        assert retried is not None
+        assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_owner_mutation_reject_is_attach_contention(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        DuckDBConnectionPolicyError,
+    )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:mutation-contention",
+        max_task_attempts=3,
+    )
+    try:
+        exc = DuckDBConnectionPolicyError(
+            "quack owner mutation failed: FatalException: mutation rejected"
+        )
+        assert daemon._is_quack_attach_contention(exc) is True
+        assert daemon._database_portal_reason(str(exc)) == "quack_attach_contended"
+        result = daemon.run_once()
+        # no exception: run_once maps owner mutation/attach misses to a deferral
+        assert result.get("reason") in (None, "quack_attach_contended", "no_ready_tasks") or (
+            result.get("selection_idle_reason") == "no_ready_tasks"
+        )
+    finally:
+        daemon.close()
+
+
 @pytest.mark.parametrize(
     ("mutation", "error_type"),
     [

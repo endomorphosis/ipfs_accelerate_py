@@ -576,7 +576,7 @@ _QUACK_OWNER_DML_PREFIXES = (
 STALE_IN_PROGRESS_UNSTALL_SECONDS = 16_200
 _QUACK_ATTACH_LOCK = threading.RLock()
 _QUACK_TRANSPORT_CACHE: dict[str, DuckDBConnection] = {}
-QUACK_ATTACH_ATTEMPTS = 8
+QUACK_ATTACH_ATTEMPTS = 12
 QUACK_ATTACH_BACKOFF_SECONDS: tuple[float, ...] = (
     0.05,
     0.1,
@@ -585,7 +585,13 @@ QUACK_ATTACH_BACKOFF_SECONDS: tuple[float, ...] = (
     0.8,
     1.6,
     3.2,
+    5.0,
+    8.0,
+    8.0,
+    8.0,
+    8.0,
 )
+QUACK_OWNER_MUTATION_TIMEOUT_SECONDS = 90.0
 _QUACK_ATTACH_CONTENTION_MARKERS = (
     "authentication failed",
     "could not set lock",
@@ -595,6 +601,12 @@ _QUACK_ATTACH_CONTENTION_MARKERS = (
     "connection refused",
     "connection reset",
     "connection timed out",
+    "could not connect",
+    "failed to send message",
+    "io error",
+    "mutation rejected",
+    "timed out waiting for quack state-owner",
+    "fatalexception",
     "temporarily unavailable",
     "resource temporarily unavailable",
     "too many clients",
@@ -840,7 +852,7 @@ def request_owner_board_unstall(
     *,
     stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
     wait: bool = True,
-    timeout_seconds: float = 15.0,
+    timeout_seconds: float = QUACK_OWNER_MUTATION_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     """Ask the exclusive owner to retry leftover in_progress gates.
 
@@ -871,18 +883,10 @@ def request_owner_board_unstall(
         + "\n",
         encoding="utf-8",
     )
-    bounce_path = target / BOARD_UNSTALL_BOUNCE_NAME
-    bounce_path.write_text(
-        json.dumps(
-            {
-                "op": BOARD_UNSTALL_OWNER_OP,
-                "request_id": request_id,
-                "stale_seconds": int(stale_seconds),
-            },
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
+    mark_owner_mutation_bounce(
+        target,
+        request_id=request_id,
+        op=BOARD_UNSTALL_OWNER_OP,
     )
     if not wait:
         return {
@@ -916,11 +920,12 @@ def owner_should_recycle_for_board_unstall(
     *,
     min_age_seconds: float = OWNER_BOARD_UNSTALL_BOUNCE_MIN_AGE_SECONDS,
 ) -> bool:
-    """Return whether the exclusive owner should restart to apply board unstall.
+    """Return whether the exclusive owner should restart to apply inbox DML.
 
-    ``quack_serve`` occupies the listen connection, so leftover in_progress
-    UPDATEs only land in the pre-listen writer window. A bounce marker older
-    than ``min_age_seconds`` means the live owner could not apply it.
+    ``quack_serve`` occupies the listen connection, so UPDATE/DELETE and
+    leftover in_progress unstalls only land in the pre-listen writer window.
+    Recycle when the bounce marker or a pending request is older than
+    ``min_age_seconds``.
     """
 
     if mutation_dir is not None:
@@ -929,14 +934,25 @@ def owner_should_recycle_for_board_unstall(
         target = quack_owner_mutation_dir()
     if target is None:
         return False
+    now = time.time()
     bounce = target / BOARD_UNSTALL_BOUNCE_NAME
-    if not bounce.is_file():
-        return False
-    try:
-        age = time.time() - bounce.stat().st_mtime
-    except OSError:
-        return False
-    return age >= float(min_age_seconds)
+    if bounce.is_file():
+        try:
+            if now - bounce.stat().st_mtime >= float(min_age_seconds):
+                return True
+        except OSError:
+            return True
+    for request in target.glob("*.request.json"):
+        done = request.with_name(request.name.replace(".request.json", ".done.json"))
+        if done.is_file():
+            continue
+        try:
+            age = now - request.stat().st_mtime
+        except OSError:
+            return True
+        if age >= float(min_age_seconds):
+            return True
+    return False
 
 
 def clear_owner_board_unstall_bounce(mutation_dir: object = None) -> None:
@@ -959,6 +975,81 @@ def _quack_owner_mutation_required(normalized: str) -> bool:
     return normalized.startswith(_QUACK_OWNER_DML_PREFIXES)
 
 
+def _write_owner_mutation_request(
+    target: Path,
+    payload: Mapping[str, Any],
+) -> tuple[Path, Path, str]:
+    import json
+    import uuid
+
+    request_id = uuid.uuid4().hex
+    request_path = target / f"{request_id}.request.json"
+    done_path = target / f"{request_id}.done.json"
+    request_path.write_text(
+        json.dumps(dict(payload), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    mark_owner_mutation_bounce(target, request_id=request_id)
+    return request_path, done_path, request_id
+
+
+def mark_owner_mutation_bounce(
+    mutation_dir: Path,
+    *,
+    request_id: str = "",
+    op: str = "owner_dml",
+) -> Path:
+    """Ask watch to recycle the owner without resetting an existing bounce."""
+
+    bounce = mutation_dir / BOARD_UNSTALL_BOUNCE_NAME
+    if bounce.is_file():
+        return bounce
+    bounce.write_text(
+        json.dumps(
+            {"op": str(op), "request_id": str(request_id or "")},
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return bounce
+
+
+def defer_owner_inbox_until_recycle(command_dir: Path) -> int:
+    """Leave pending DML on disk so the next exclusive writer can apply it.
+
+    The listen handle FatalExceptions on UPDATE/DELETE. Writing ``ok: false``
+    there makes clients treat a recycle-able mutation as terminal.
+    """
+
+    pending = 0
+    for request in command_dir.glob("*.request.json"):
+        done = request.with_name(request.name.replace(".request.json", ".done.json"))
+        if done.is_file():
+            continue
+        pending += 1
+    if pending:
+        mark_owner_mutation_bounce(command_dir)
+    return pending
+
+
+def quack_owner_mutation_error_is_retryable(error: object) -> bool:
+    """Return whether the owner must recycle before DML can land."""
+
+    text = " ".join(str(error or "").lower().split())
+    return any(
+        marker in text
+        for marker in (
+            "mutation rejected",
+            "fatalexception",
+            "timed out waiting for quack state-owner",
+            "could not connect",
+            "failed to send message",
+            "authentication failed",
+        )
+    )
+
+
 def _execute_quack_owner_mutation(
     statement: str,
     parameters: Iterable[Any] | Mapping[str, Any] | None,
@@ -968,13 +1059,12 @@ def _execute_quack_owner_mutation(
     """Apply UPDATE/DELETE on the exclusive owner connection.
 
     This Quack ATTACH build can SELECT/INSERT new rows but cannot UPDATE or
-    DELETE attached base tables. Mutations stay on the state-owner that
-    already holds the exclusive file connection.
+    DELETE attached base tables. The listen handle also FatalExceptions on
+    those statements. Queue the mutation, bounce the owner, and wait for the
+    pre-listen exclusive writer to apply it.
     """
 
-    import json
-    import uuid
-
+    del dml
     target = quack_owner_mutation_dir()
     if target is None:
         raise DuckDBConnectionPolicyError(
@@ -984,21 +1074,16 @@ def _execute_quack_owner_mutation(
             "apply the mutation"
         )
     target.mkdir(parents=True, exist_ok=True)
-    request_id = uuid.uuid4().hex
-    request_path = target / f"{request_id}.request.json"
-    done_path = target / f"{request_id}.done.json"
     if parameters is None:
         bound: Any = None
     elif isinstance(parameters, Mapping):
         bound = dict(parameters)
     else:
         bound = list(parameters)
-    request_path.write_text(
-        json.dumps({"sql": statement, "parameters": bound}, sort_keys=True)
-        + "\n",
-        encoding="utf-8",
-    )
-    deadline = time.monotonic() + 15.0
+    body = {"sql": statement, "parameters": bound}
+    request_path, done_path, _request_id = _write_owner_mutation_request(target, body)
+    deadline = time.monotonic() + float(QUACK_OWNER_MUTATION_TIMEOUT_SECONDS)
+    last_error = "timed out waiting for quack state-owner to apply mutation"
     while time.monotonic() < deadline:
         if done_path.is_file():
             payload = json.loads(done_path.read_text(encoding="utf-8"))
@@ -1007,21 +1092,23 @@ def _execute_quack_owner_mutation(
                 done_path.unlink(missing_ok=True)
             except OSError:
                 pass
-            if payload.get("ok") is not True:
+            if payload.get("ok") is True:
+                cursor = DuckDBCursor.__new__(DuckDBCursor)
+                cursor._columns = ()
+                cursor._rows = []
+                cursor._offset = 0
+                cursor.rowcount = int(payload.get("rowcount") or -1)
+                return cursor
+            last_error = str(payload.get("error") or "unknown")
+            if not quack_owner_mutation_error_is_retryable(last_error):
                 raise DuckDBConnectionPolicyError(
-                    "quack owner mutation failed: "
-                    + str(payload.get("error") or "unknown")
+                    "quack owner mutation failed: " + last_error
                 )
-            cursor = DuckDBCursor.__new__(DuckDBCursor)
-            cursor._columns = ()
-            cursor._rows = []
-            cursor._offset = 0
-            cursor.rowcount = int(payload.get("rowcount") or -1)
-            return cursor
+            request_path, done_path, _request_id = _write_owner_mutation_request(
+                target, body
+            )
         time.sleep(0.05)
-    raise DuckDBConnectionPolicyError(
-        "timed out waiting for quack state-owner to apply mutation"
-    )
+    raise DuckDBConnectionPolicyError(last_error)
 
 
 def _consume_duckdb_result(connection: Any) -> None:

@@ -67689,6 +67689,7 @@ _PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
         "inflight_process",
         "quack_attach_contended",
         "authentication_failed",
+        "provider_capacity_exhausted",
     }
 )
 _QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS = 30
@@ -69966,6 +69967,10 @@ class DatabaseImplementationDaemon:
             "authentication failed" in lowered
             or "quack control-plane attach contended" in lowered
             or "could not connect to server" in lowered
+            or "failed to send message" in lowered
+            or "mutation rejected" in lowered
+            or "timed out waiting for quack state-owner" in lowered
+            or "quack owner mutation failed" in lowered
         ):
             return "quack_attach_contended"
         return (reason or "portal_execution_deferred")[:1024]
@@ -69977,8 +69982,19 @@ class DatabaseImplementationDaemon:
             quack_attach_error_is_contention,
         )
 
-        return isinstance(exc, QuackTransportContentionError) or (
-            quack_attach_error_is_contention(exc)
+        if isinstance(exc, QuackTransportContentionError):
+            return True
+        if quack_attach_error_is_contention(exc):
+            return True
+        try:
+            from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+                DuckDBConnectionPolicyError,
+                quack_owner_mutation_error_is_retryable,
+            )
+        except ImportError:
+            return False
+        return isinstance(exc, DuckDBConnectionPolicyError) and (
+            quack_owner_mutation_error_is_retryable(exc)
         )
 
     def _run_reconciliation_step(
