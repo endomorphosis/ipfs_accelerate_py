@@ -1150,7 +1150,6 @@ def _spawn_event_supervisor(
             ),
             entity_scopes={
                 "subscription_id": admission.subscription.subscription_id,
-                "consumer_id": admission.subscription.consumer_id,
             },
             **common,
         )

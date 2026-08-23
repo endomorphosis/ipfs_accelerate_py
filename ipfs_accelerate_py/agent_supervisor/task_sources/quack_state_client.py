@@ -1694,14 +1694,41 @@ class QuackStateClient:
                 "store generation is missing; seed or migrate the database first"
             )
         row = rows[0]
+        names = (
+            "generation",
+            "schema_revision",
+            "fence_epoch",
+            "revision",
+            "database_uuid",
+            "birth_id",
+        )
+        values = []
+        for index, name in enumerate(names):
+            if name in row:
+                values.append(row[name])
+                continue
+            if str(index) in row:
+                values.append(row[str(index)])
+                continue
+            if isinstance(row, Sequence) and not isinstance(
+                row, (str, bytes, bytearray)
+            ) and index < len(row):
+                values.append(row[index])
+                continue
+            raise StaleGenerationError(
+                "store generation row is missing field "
+                + name
+                + " keys="
+                + str(list(row) if isinstance(row, Mapping) else type(row).__name__)
+            )
         return StoreGeneration(
             store_id=self.store_id,
-            generation=int(row["generation"]),
-            schema_revision=int(row["schema_revision"]),
-            fence_epoch=int(row["fence_epoch"]),
-            revision=int(row["revision"]),
-            database_uuid=str(row["database_uuid"]),
-            birth_id=str(row.get("birth_id") or ""),
+            generation=int(values[0]),
+            schema_revision=int(values[1]),
+            fence_epoch=int(values[2]),
+            revision=int(values[3]),
+            database_uuid=str(values[4]),
+            birth_id=str(values[5] or ""),
         )
 
     def _seed_generation_if_missing(self, adapter: _ConnectionAdapter) -> None:

@@ -31,6 +31,14 @@ from ipfs_accelerate_py.agent_supervisor.federation.bootstrap_runtime import (
 )
 from ipfs_accelerate_py.agent_supervisor.federation.contracts import (
     FederationLifecycleState,
+    utc_now,
+)
+from ipfs_accelerate_py.agent_supervisor.federation.durable_event_router import (
+    DurableEventRouter,
+)
+from ipfs_accelerate_py.agent_supervisor.federation.registry import (
+    FederationRepositoryError,
+    FederationStateRepository,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.database_worktree_registry import (
     process_birth_id,
@@ -163,6 +171,187 @@ def test_failure_observation_is_bounded_and_message_free() -> None:
     encoded = json.dumps(observation)
     assert "driver text" not in encoded
     assert "typed state-owner" not in encoded
+
+
+@pytest.mark.timeout(30)
+def test_child_event_grant_can_take_and_acknowledge_routed_delivery(
+    tmp_path: Path,
+) -> None:
+    """The child's exact event grant must record the first routed delivery."""
+
+    server = build_server(
+        database_path=tmp_path / "control.duckdb",
+        state_dir=tmp_path / "owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-supervisor-runtime-e2e-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    catalog = build_control_plane_operation_catalog()
+    central_token = server.issue_typed_client_grant(
+        client_id="client:casf-child-take",
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=tuple(catalog),
+        allowed_command_operations=(
+            "federation.create",
+            "budget.reserve",
+            "budget.release",
+            "supervisor.register",
+            "subagent.register",
+            "subscription.register",
+            "event.route.persist",
+            "event.outbox.disposition",
+        ),
+        peer_pid=os.getpid(),
+        ttl_seconds=120.0,
+    )
+
+    def central_connection(_endpoint: Any) -> TypedStateOwnerConnection:
+        return TypedStateOwnerConnection(
+            socket_path=server.typed_command_socket_path(),
+            token=central_token,
+            client_id="client:casf-child-take",
+            process_birth_id=identity.process_birth_id,
+            store_id=identity.store_id,
+        )
+
+    client = QuackStateClient(
+        owner_id="client:casf-child-take",
+        store_id=identity.store_id,
+        process_birth_id=identity.process_birth_id,
+        expected_identity=identity.store_identity(),
+        connection_factory=central_connection,
+    )
+    event_client: QuackStateClient | None = None
+    try:
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        repository = server.bind_federation_repository(
+            client,
+            require_quack_authority=True,
+        )
+        generation = client.load_generation()
+        admission = admit_bootstrap_federation(
+            repository,
+            profile=_profile(),
+            repository_id="repository:ipfs_accelerate_py",
+            repository_tree_id="tree:casf-supervisor-runtime-e2e-v1",
+            plan_root_ref="plan-root:casf-supervisor-runtime-e2e-v1",
+            operation_catalog_ref=catalog_fingerprint(catalog),
+            control_plane_generation=generation.generation,
+            fencing_epoch=generation.fence_epoch,
+            ready_task_refs=("CASF-013",),
+            authentication_key=b"casf-supervisor-runtime-e2e-key",
+            now=datetime(2030, 1, 1, tzinfo=timezone.utc),
+        )
+        pump = server.start_federation_outbox_worker(health_deadline_seconds=2.0)
+        assert pump["initial_delivery_count"] >= 1
+        event_token = server.issue_typed_client_grant(
+            client_id="casf-supervisor-events:" + admission.supervisor.record_id,
+            process_birth_id=identity.process_birth_id,
+            allowed_operations=tuple(SUPERVISOR_EVENT_CHILD_ALLOWED_OPERATIONS),
+            allowed_command_operations=(
+                "event.delivery.record",
+                "event.acknowledge",
+            ),
+            entity_scopes={
+                "subscription_id": admission.subscription.subscription_id,
+            },
+            tenant_id=admission.federation_identity.binding.tenant_id,
+            federation_id=admission.federation_identity.record_id,
+            peer_pid=os.getpid(),
+            ttl_seconds=120.0,
+        )
+
+        def event_connection(_endpoint: Any) -> TypedStateOwnerConnection:
+            return TypedStateOwnerConnection(
+                socket_path=server.typed_command_socket_path(),
+                token=event_token,
+                client_id="casf-supervisor-events:" + admission.supervisor.record_id,
+                process_birth_id=identity.process_birth_id,
+                store_id=identity.store_id,
+            )
+
+        event_client = QuackStateClient(
+            owner_id="casf-supervisor-events:" + admission.supervisor.record_id,
+            store_id=identity.store_id,
+            process_birth_id=identity.process_birth_id,
+            expected_identity=identity.store_identity(),
+            connection_factory=event_connection,
+        )
+        event_client.attach(identity.listen_uri, server_id=identity.server_id)
+        event_repository = FederationStateRepository(
+            event_client,
+            require_quack_authority=True,
+        )
+        router = DurableEventRouter(event_repository)
+        router.restore_subscription(
+            tenant_id=admission.subscription.tenant_id,
+            federation_id=admission.subscription.federation_id,
+            subscription_id=admission.subscription.subscription_id,
+        )
+        try:
+            deliveries = router.take(
+                admission.subscription.subscription_id,
+                tenant_id=admission.subscription.tenant_id,
+                federation_id=admission.subscription.federation_id,
+                maximum=admission.subscription.maximum_batch,
+                expected_fencing_epoch=admission.fencing_epoch,
+                recorded_at=utc_now(),
+            )
+        except Exception as exc:
+            pytest.fail(
+                f"child take failed: {type(exc).__name__}: {exc}; "
+                f"cause={type(exc.__cause__).__name__ if exc.__cause__ else None}: "
+                f"{exc.__cause__}"
+            )
+        assert deliveries
+        event = deliveries[0].queued.delivery.decision.representative_event
+        from ipfs_accelerate_py.agent_supervisor.federation.events import (
+            EventAcknowledgement,
+        )
+
+        acknowledgement = EventAcknowledgement(
+            acknowledgement_id="acknowledgement:"
+            + content_identity(
+                {
+                    "supervisor_id": admission.supervisor.record_id,
+                    "event_id": event.event_id,
+                    "attempt_id": deliveries[0].attempt.attempt_id,
+                }
+            ),
+            event_id=event.event_id,
+            consumer_id=admission.subscription.consumer_id,
+            subscription_id=admission.subscription.subscription_id,
+            subscription_revision=admission.subscription.revision,
+            global_sequence=event.global_sequence,
+            processed_effect_ref="effect:observed:" + event.event_cid,
+            recorded_at=utc_now(),
+        )
+        cursor = event_repository.get_cursor(
+            tenant_id=admission.subscription.tenant_id,
+            federation_id=admission.subscription.federation_id,
+            consumer_id=admission.subscription.consumer_id,
+            subscription_id=admission.subscription.subscription_id,
+        )
+        advanced = event_repository.acknowledge_event(
+            acknowledgement,
+            tenant_id=admission.subscription.tenant_id,
+            federation_id=admission.subscription.federation_id,
+            delivery_attempt_id=deliveries[0].attempt.attempt_id,
+            expected_cursor_revision=cursor.revision,
+            expected_fencing_epoch=admission.fencing_epoch,
+            idempotency_key="acknowledge:" + acknowledgement.cid,
+        )
+        assert advanced.global_sequence >= event.global_sequence
+    finally:
+        if event_client is not None:
+            event_client.close()
+        client.close()
+        server.stop()
 
 
 @pytest.mark.timeout(45)

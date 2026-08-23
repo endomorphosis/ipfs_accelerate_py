@@ -3326,15 +3326,18 @@ class TypedStateOwnerGateway:
             operation.sql,
             parameters if parameters else None,
         )
-        # Materialize rows before inspecting column metadata.  Some DuckDB
-        # result objects consume the cursor when ``description`` / ``columns``
-        # is read, which made live lookups look empty.
-        rows = _result_rows(result)
+        # Read description before fetchall.  Skip an empty ``_columns``
+        # default; do not touch ``.columns``, which can consume the cursor.
         columns = list(_result_columns(result))
+        rows = _result_rows(result)
         if not columns and rows:
             first = rows[0]
             if isinstance(first, Mapping):
-                columns = [str(key) for key in first]
+                columns = [
+                    str(key)
+                    for key in first
+                    if isinstance(key, str) and key and not key.isdigit()
+                ]
         return {
             "ok": True,
             "columns": columns,
