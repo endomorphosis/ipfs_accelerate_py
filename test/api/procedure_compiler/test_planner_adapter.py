@@ -29,6 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.procedure_compiler.planner_adapter impo
     ADAPTIVE_PLANNER_MODULE,
     COMPOSITION_VALIDATOR_REVISION,
     HAMMER_TRACE_SCHEMA_SIGNATURE,
+    MULTI_PROVER_ROUTER_MODULE,
     OPERATOR_REVISION,
     PLANNER_OPERATOR_ORDER,
     REQUIRED_COMPOSITION_DIMENSIONS,
@@ -54,6 +55,11 @@ from ipfs_accelerate_py.agent_supervisor.procedure_compiler.planner_adapter impo
     match_procedure_operator,
     probe_adaptive_planner_compatibility,
     qualified_planner_compatibility,
+)
+from ipfs_accelerate_py.agent_supervisor.procedure_compiler.registry import (
+    REGISTRY_REVISION,
+    ProcedureRegistry,
+    RegistryLifecycleState,
 )
 from ipfs_accelerate_py.agent_supervisor.procedure_compiler.runtime import (
     compiler_capabilities,
@@ -119,6 +125,7 @@ def _operator(
     *,
     claim_scope: ProcedureClaimScope = ProcedureClaimScope.TASK,
     claim_id: str = "task.import-purity",
+    registry_state: str = "",
     **certificate_changes: object,
 ) -> ProcedureOperator:
     spec = spec or valid_spec()
@@ -128,6 +135,7 @@ def _operator(
         certificate=_certificate(spec, **certificate_changes),
         claim_scope=claim_scope,
         claim_id=claim_id,
+        registry_state=registry_state,
     )
 
 
@@ -367,11 +375,6 @@ def _assert_other_runtime_usable() -> None:
     assert capabilities["deterministic_invoke"] is True
     spec = valid_spec()
     assert spec.content_id
-    from ipfs_accelerate_py.agent_supervisor.procedure_compiler.registry import (
-        ProcedureRegistry,
-        REGISTRY_REVISION,
-    )
-
     assert REGISTRY_REVISION == "ProcedureRegistry@1"
     assert ProcedureRegistry is not None
 
@@ -402,6 +405,7 @@ def test_live_adaptive_planner_probe_qualifies_or_is_typed_unavailable() -> None
         assert compatibility.blocker == ADAPTIVE_PLANNER_HAMMER_BLOCKER
         assert compatibility.diagnostic == HAMMER_TRACE_SCHEMA_SIGNATURE
         assert HAMMER_TRACE_SCHEMA_SIGNATURE in compatibility.diagnostic
+        assert compatibility.reached_module == MULTI_PROVER_ROUTER_MODULE
     _assert_other_runtime_usable()
 
 
@@ -884,3 +888,100 @@ def test_operator_and_decisions_round_trip_without_authority() -> None:
         assert parse_procedure_artifact(unavailable.to_dict()) == unavailable
         assert unavailable.other_runtime_usable is True
         assert unavailable.procedure_cids == ()
+
+
+def test_match_and_compose_remain_usable_when_planner_is_typed_unavailable() -> None:
+    spec = valid_spec()
+    operator = _operator(spec)
+    compatibility = PlannerCompatibility(
+        status=PlannerCompatibilityStatus.TYPED_UNAVAILABLE,
+        reason_code=ADAPTIVE_PLANNER_HAMMER_BLOCKER,
+        diagnostic=HAMMER_TRACE_SCHEMA_SIGNATURE,
+        planner_class_present=False,
+        blocker=ADAPTIVE_PLANNER_HAMMER_BLOCKER,
+    )
+    adapter = ProcedurePlannerAdapter(compatibility_probe=lambda: compatibility)
+    match = adapter.match(_match_request(spec), operator)
+    assert match.matched is True
+    assert match.reason_code is PlannerMatchReason.EXACT_COMPATIBLE
+    predecessor, successor = _composed_operators()
+    composition = adapter.compose(_composition_request(predecessor, successor))
+    assert composition.accepted is True
+    decision = adapter.plan(
+        PlannerDispatchRequest(
+            match=_match_request(spec),
+            operators=(operator,),
+            composition=_composition_request(predecessor, successor),
+        )
+    )
+    assert decision.action is PlannerDispatchAction.UNAVAILABLE
+    assert decision.dispatched is False
+    assert decision.procedure_cids == ()
+    assert decision.selected_kind == ""
+    assert decision.other_runtime_usable is True
+    _assert_other_runtime_usable()
+
+
+def test_unusable_registry_state_cannot_match() -> None:
+    spec = valid_spec()
+    operator = _operator(spec, registry_state=RegistryLifecycleState.REVOKED.value)
+    decision = match_procedure_operator(_match_request(spec), operator)
+    assert decision.matched is False
+    assert decision.action is PlannerMatchAction.REJECT
+    assert decision.reason_code is PlannerMatchReason.REGISTRY_UNUSABLE
+    assert "certificate" in decision.incompatible_dimensions
+
+
+def test_promoted_registry_state_still_matches_exact_boundary() -> None:
+    spec = valid_spec()
+    operator = _operator(spec, registry_state=RegistryLifecycleState.PROMOTED.value)
+    decision = match_procedure_operator(_match_request(spec), operator)
+    assert decision.matched is True
+    assert decision.reason_code is PlannerMatchReason.EXACT_COMPATIBLE
+    assert decision.claims_task is True
+
+
+def test_qualified_planner_uses_composition_when_supplied_operators_do_not_match() -> None:
+    predecessor, successor = _composed_operators()
+    unmatched = _operator(
+        valid_spec(),
+        claim_scope=ProcedureClaimScope.CRITERION,
+        claim_id=CRITERION_ID,
+    )
+    request = PlannerDispatchRequest(
+        match=_match_request(valid_spec()),
+        operators=(unmatched,),
+        composition=_composition_request(predecessor, successor),
+    )
+    decision = _qualified_adapter().plan(request)
+    assert decision.selected_kind == PlannerOperatorKind.COMPOSABLE_VERIFIED_PROCEDURES.value
+    assert decision.procedure_cids == (predecessor.procedure_cid, successor.procedure_cid)
+    assert decision.dispatched is True
+    assert decision.action is PlannerDispatchAction.CANDIDATES
+
+
+def test_cycle_composition_does_not_dispatch_procedures() -> None:
+    predecessor, _successor = _composed_operators()
+    request = PlannerDispatchRequest(
+        match=_match_request(valid_spec()),
+        operators=(),
+        composition=_composition_request(
+            predecessor,
+            predecessor,
+            entailment=(
+                EntailmentEvidence(
+                    predecessor_procedure_cid=predecessor.procedure_cid,
+                    successor_procedure_cid=predecessor.procedure_cid,
+                    predecessor_postcondition_id="postcondition.bridge",
+                    successor_precondition_id="precondition.current-tree",
+                    evidence_cid="cycle-1",
+                ),
+            ),
+        ),
+    )
+    decision = _qualified_adapter().plan(request)
+    assert decision.selected_kind == PlannerOperatorKind.DETERMINISTIC_BASELINE.value
+    assert decision.procedure_cids == ()
+    assert decision.dispatched is False
+    assert decision.action is PlannerDispatchAction.CANDIDATES
+    assert decision.other_runtime_usable is True
