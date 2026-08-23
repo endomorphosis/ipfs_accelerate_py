@@ -5,11 +5,15 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shutil
 import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
+from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
@@ -456,6 +460,182 @@ def test_real_duckdb_owner_bootstrap_claim_restart_status_and_stop(
                 process.wait(timeout=5.0)
         broker.stop()
         server.stop()
+
+
+@pytest.mark.timeout(180)
+def test_actual_configured_supervisor_completes_typed_no_change_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    board, _config = operator._load_config(CONFIG)
+    repository_tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    database = tmp_path / "managed-control.duckdb"
+    source = DatabaseTaskSource(database)
+    source.materialize(
+        {
+            "repository_tree_id": repository_tree,
+            "plan_root_cid": "plan:managed-no-change",
+            "goals": [
+                {
+                    "goal_cid": "goal:managed-no-change",
+                    "goal_alias": "CASF-G-MANAGED",
+                    "title": "Managed typed no-change execution",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": "task:managed-no-change",
+                    "task_id": "CASF-MANAGED",
+                    "goal_cid": "goal:managed-no-change",
+                    "status": "ready",
+                    "description": "Revalidate an output already present on target",
+                    "No-change completion": "allowed",
+                    "outputs": [{"path": "pyproject.toml", "effect": {}}],
+                    "validations": [{"argv": ["/usr/bin/true"], "policy": {}}],
+                }
+            ],
+        }
+    )
+    source.close()
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "managed-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-managed-no-change-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    runtime_root = Path(
+        tempfile.mkdtemp(prefix=".casf-managed-e2e-", dir=ROOT / "data")
+    )
+    relative_runtime = runtime_root.relative_to(ROOT).as_posix()
+    runtime_paths = {
+        "root": relative_runtime,
+        "state": f"{relative_runtime}/state",
+        "worktrees": f"{relative_runtime}/worktrees",
+        "merge_queue": f"{relative_runtime}/merge-queue",
+        "logs": f"{relative_runtime}/logs",
+        "evidence": f"{relative_runtime}/evidence",
+        "quack_owner": f"{relative_runtime}/owner",
+        "generated_runtime_artifacts_are_completion_authority": False,
+    }
+    program = replace(
+        board.resolved_database_program(),
+        quack_endpoint=identity.listen_uri,
+        store_id=f"{relative_runtime}/control.duckdb",
+        store_generation=identity.store_id,
+        event_store_path=f"{relative_runtime}/events",
+        runtime_registry_path=f"{relative_runtime}/registry",
+        worktree_root=f"{relative_runtime}/worktrees",
+    )
+    payload = dict(board.payload)
+    payload.update(
+        {
+            "daemon_interval_seconds": 0.25,
+            "check_interval_seconds": 0.25,
+            "max_restarts": 2,
+        }
+    )
+    managed_board = replace(
+        board,
+        payload=payload,
+        runtime_paths=runtime_paths,
+        database_program=program,
+    )
+    paths = operator._runtime_paths(managed_board)
+    paths["owner_socket"] = server.typed_command_socket_path()
+
+    observer_id = "client:casf-managed-e2e-observer"
+    observer_token = server.issue_typed_client_grant(
+        client_id=observer_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=tuple(build_control_plane_operation_catalog()),
+        allowed_command_operations=(),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV, str(server.typed_command_socket_path())
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, observer_token)
+    observer_client = QuackStateClient(
+        owner_id=observer_id,
+        store_id=identity.store_id,
+        process_birth_id=identity.process_birth_id,
+    )
+    observer_client.attach(identity.listen_uri, server_id=identity.server_id)
+    observer = TypedDatabaseTaskSource(observer_client)
+    supervisor: subprocess.Popen[Any] | None = None
+    supervisor_birth: Mapping[str, Any] | None = None
+    broker: Any = None
+    executor_birth: Mapping[str, Any] | None = None
+    try:
+        supervisor, supervisor_birth, broker = operator._spawn_configured_executor(
+            server=server,
+            board=managed_board,
+            paths=paths,
+            owner_identity=identity.to_dict(),
+            implementation_command="/usr/bin/true",
+        )
+        deadline = time.monotonic() + 120.0
+        completed = None
+        while time.monotonic() < deadline:
+            if supervisor.poll() is not None:
+                pytest.fail(
+                    "configured supervisor exited during no-change execution: "
+                    + paths["executor_log"].read_text(
+                        encoding="utf-8", errors="replace"
+                    )[-8_000:]
+                )
+            completed = observer.get("CASF-MANAGED")
+            if completed is not None and completed.status == "completed":
+                break
+            time.sleep(0.25)
+        assert completed is not None and completed.status == "completed", (
+            paths["executor_log"].read_text(encoding="utf-8", errors="replace")[-8_000:]
+        )
+        current = json.loads(paths["executor_current"].read_text(encoding="utf-8"))
+        executor_birth = current["executor_process_birth"]
+        projection = operator._executor_runtime_projection(
+            paths,
+            expected_supervisor_birth=supervisor_birth,
+        )
+        assert projection["supervisor_process_bound"] is True
+        assert projection["executor_process_bound"] is True
+        assert projection["clean_error_state"] is True
+        assert projection["task_state_path"].startswith(str(paths["executor_state"]))
+        assert "token" not in " ".join(supervisor.args).lower()
+        assert str(server.typed_command_socket_path()) not in supervisor.args
+    finally:
+        observer.close()
+        if supervisor_birth is not None:
+            cleanup, failures = operator._retire_configured_executor(
+                paths=paths,
+                supervisor_birth=supervisor_birth,
+                broker=broker,
+                fallback_executor_birth=executor_birth,
+                grace_seconds=10.0,
+            )
+            assert failures == []
+            assert cleanup
+            assert operator._birth_liveness(supervisor_birth) == "dead"
+            if executor_birth is not None:
+                assert operator._birth_liveness(executor_birth) == "dead"
+        elif supervisor is not None and supervisor.poll() is None:
+            os.killpg(supervisor.pid, signal.SIGKILL)
+            supervisor.wait(timeout=5.0)
+        server.stop()
+        shutil.rmtree(runtime_root, ignore_errors=True)
 
 
 def test_launch_modes_are_unambiguous_and_no_change_remains_explicit() -> None:
