@@ -10,7 +10,7 @@
     "artifact_cid": "baguqeerawdf35trejzfiyba7imycb5dvuingalcpmuyua73y6atlbk5c4d7a",
     "artifact_verification_receipt_cid": "baguqeeraksm3urog6ord76h3lfpv7jljoiazly5ehagrbacpg3rdtvtskcva",
     "fresh_execution_receipts_reproducible": false,
-    "vertical_result_cid": "baguqeeragfmk3mmz6m6ek54xhy4573iczddiqhslky3sm26dkuf4heckbfra"
+    "vertical_result_cid": "baguqeerackgw7k463d2tf7nea3kupwzd5stcsmii5xzt2vl76yzwmrn6ifyq"
   },
   "interface": "LgcvfSymbolicDisplacementBenchmark@1",
   "limitations": [
@@ -66,7 +66,7 @@
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "report_cid": "baguqeerap3dxf3pvll4qiyre7tgkc4axcfr6imsz4sl7ov7cin5pimr4xeaq",
+  "report_cid": "baguqeera3u6urm3mfxaqf2tvk2ivmu5vuyoyur2l4cwvr3a6rjfetnt3rrpq",
   "reproducible_projection_cid": "baguqeerabyhu42o4vnsyjbkux3sbgkg4k2qwadwheclvfusjy5j5nmrq3ptq",
   "schema": "lgcvf-symbolic-displacement-benchmark@1",
   "task_class_coverage": {
