@@ -643,6 +643,10 @@ def _runtime_paths(board: Any) -> dict[str, Path]:
         "daemon_pid": state / "casf_managed_daemon.pid",
         "supervisor_status": state / "casf_supervisor_status.json",
         "task_state": state / "casf_task_state.json",
+        "coordinator_log": state / "casf_event_coordinator.log",
+        "executor_state": state / "executor",
+        "executor_pid": state / "executor" / "casf_exec.pid",
+        "executor_log": state / "executor" / "casf_exec.log",
     }
 
 
@@ -1098,13 +1102,17 @@ def _spawn_event_supervisor(
     read_descriptor, write_descriptor = os.pipe()
     os.set_inheritable(read_descriptor, True)
     process: subprocess.Popen[Any] | None = None
+    log_handle: Any = None
     try:
+        paths["state"].mkdir(parents=True, exist_ok=True)
+        log_handle = paths["coordinator_log"].open("ab")
+        os.chmod(paths["coordinator_log"], 0o600)
         process = subprocess.Popen(
             _supervisor_runtime_command(config_path, read_descriptor),
             cwd=ROOT,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
             env=_state_owner_environment(),
             pass_fds=(read_descriptor,),
             start_new_session=True,
@@ -1187,7 +1195,12 @@ def _spawn_event_supervisor(
         deadline = time.monotonic() + 30.0
         while time.monotonic() < deadline:
             if process.poll() is not None:
-                raise OperatorError("event coordinator exited before IDLE readiness")
+                status_payload = _read_optional_json(paths["supervisor_status"])
+                error_class = str(status_payload.get("error_class") or "").strip()
+                detail = f" error_class={error_class}" if error_class else ""
+                raise OperatorError(
+                    "event coordinator exited before IDLE readiness" + detail
+                )
             status_payload = _read_optional_json(paths["supervisor_status"])
             if (
                 int(status_payload.get("supervisor_pid") or 0) == process.pid
@@ -1211,6 +1224,11 @@ def _spawn_event_supervisor(
                 pass
         raise
     finally:
+        if log_handle is not None:
+            try:
+                log_handle.close()
+            except OSError:
+                pass
         for descriptor in (read_descriptor, write_descriptor):
             if descriptor >= 0:
                 try:
@@ -1219,7 +1237,111 @@ def _spawn_event_supervisor(
                     pass
 
 
-def state_owner(config_path: Path) -> int:
+def _plan_executor_command(board: Any, config: Mapping[str, Any], paths: Mapping[str, Path]) -> list[str]:
+    """Build the isolated plan-executor argv that shares the live Quack owner."""
+
+    program = board.resolved_database_program()
+    worktree_root = (
+        str(board.path(program.worktree_root))
+        if program.worktree_root
+        else str(paths["runtime"] / "worktrees")
+    )
+    runtime_paths = config.get("runtime_paths")
+    runtime_paths = runtime_paths if isinstance(runtime_paths, Mapping) else {}
+    merge_queue = str(runtime_paths.get("merge_queue") or "").strip()
+    merge_queue_dir = (
+        str(board.path(merge_queue))
+        if merge_queue
+        else str(paths["runtime"] / "merge-queue")
+    )
+    argv = [
+        sys.executable,
+        "-P",
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+        "--interval",
+        str(float(config.get("daemon_interval_seconds") or 60)),
+        "--todo-path",
+        str(board.path(board.taskboard_path)),
+        "--state-dir",
+        str(paths["executor_state"]),
+        "--task-prefix",
+        str(board.task_header_prefix),
+        "--state-prefix",
+        "casf_exec",
+        "--board-namespace",
+        BOARD_NAMESPACE,
+        "--max-task-attempts",
+        str(int(config.get("max_task_attempts") or 4)),
+        "--task-source-kind",
+        "duckdb",
+        "--authority-mode",
+        "quack",
+        "--state-failover-policy",
+        "fail_closed",
+        "--quack-endpoint",
+        str(program.quack_endpoint),
+        "--endpoint-secret-handle",
+        str(program.endpoint_secret_handle),
+        "--state-store-id",
+        str(program.store_id),
+        "--state-store-generation",
+        str(program.store_generation),
+        "--state-schema-revision",
+        str(program.schema_revision),
+        "--event-store-path",
+        str(program.event_store_path),
+        "--runtime-registry-path",
+        str(program.runtime_registry_path),
+        "--export-profile",
+        str(program.export_profile),
+        "--implement",
+        "--implementation-timeout",
+        str(float(config.get("implementation_timeout_seconds") or 14400)),
+        "--worktree-root",
+        worktree_root,
+        "--merge-target-branch",
+        str(board.merge_target_branch),
+        "--merge-queue-dir",
+        merge_queue_dir,
+    ]
+    for relative in board.protected_paths:
+        argv.extend(["--implementation-protected-path", str(relative)])
+    lowered = " ".join(argv).lower()
+    if "token=" in lowered or STATE_TOKEN_ENV.lower() in lowered:
+        raise OperatorError("plan executor argv would expose credential material")
+    return argv
+
+
+def _spawn_plan_executor(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+) -> tuple[subprocess.Popen[Any], dict[str, Any]]:
+    """Start one plan executor against the live owner without clobbering coordinator status."""
+
+    paths["executor_state"].mkdir(parents=True, exist_ok=True)
+    log_handle = paths["executor_log"].open("ab")
+    os.chmod(paths["executor_log"], 0o600)
+    try:
+        process = subprocess.Popen(
+            _plan_executor_command(board, config, paths),
+            cwd=ROOT,
+            stdin=subprocess.DEVNULL,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            env=_state_owner_environment(),
+            start_new_session=True,
+        )
+    finally:
+        log_handle.close()
+    birth = _process_birth(process.pid)
+    _atomic_text(paths["executor_pid"], f"{process.pid}\n")
+    return process, birth
+
+
+def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int:
     """Run the exclusive Quack owner in the foreground (internal command)."""
 
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
@@ -1366,6 +1488,22 @@ def state_owner(config_path: Path) -> int:
         raise OperatorError(
             "state-owner outbox worker failed coordinator-admission health"
         )
+    executor_process: subprocess.Popen[Any] | None = None
+    executor_birth: dict[str, Any] | None = None
+    if admit_task_execution:
+        try:
+            executor_process, executor_birth = _spawn_plan_executor(
+                board=board,
+                config=config,
+                paths=paths,
+            )
+        except BaseException:
+            try:
+                _terminate_birth(supervisor_birth, grace_seconds=15.0)
+            finally:
+                owner_client.close()
+                server.stop()
+            raise
     print(
         json.dumps(
             {
@@ -1378,7 +1516,8 @@ def state_owner(config_path: Path) -> int:
                 "outbox_health": final_outbox_health,
                 "federation_admission": admission.public_dict(),
                 "supervisor_process_birth": supervisor_birth,
-                "task_execution_admitted": False,
+                "executor_process_birth": executor_birth,
+                "task_execution_admitted": bool(admit_task_execution),
                 "event_wait_qualified": True,
                 "multi_supervisor_qualified": False,
             },
@@ -1394,6 +1533,8 @@ def state_owner(config_path: Path) -> int:
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)
     runtime_exit_code: int | None = None
+    executor_restarts = 0
+    max_executor_restarts = int(config.get("max_restarts") or 8)
     if server.lifecycle is ServerLifecycle.READY:
         while not stopping.wait(2.0):
             if _state_owner_outbox_health(server)["healthy"] is not True:
@@ -1402,6 +1543,26 @@ def state_owner(config_path: Path) -> int:
             runtime_exit_code = supervisor_process.poll()
             if runtime_exit_code is not None:
                 break
+            if executor_process is not None and executor_process.poll() is not None:
+                if executor_restarts >= max_executor_restarts:
+                    runtime_exit_code = executor_process.returncode or 1
+                    break
+                executor_restarts += 1
+                try:
+                    executor_process, executor_birth = _spawn_plan_executor(
+                        board=board,
+                        config=config,
+                        paths=paths,
+                    )
+                except Exception:
+                    runtime_exit_code = 1
+                    break
+    if executor_birth is not None:
+        try:
+            _terminate_birth(executor_birth, grace_seconds=15.0)
+        except OperatorError:
+            if runtime_exit_code in {None, 0}:
+                runtime_exit_code = 1
     if supervisor_process.poll() is None:
         try:
             _terminate_birth(supervisor_birth, grace_seconds=15.0)
@@ -1416,6 +1577,7 @@ def state_owner(config_path: Path) -> int:
             {
                 **result,
                 "supervisor_exit_code": runtime_exit_code,
+                "executor_restarts": executor_restarts,
             },
             sort_keys=True,
         ),
@@ -2118,14 +2280,18 @@ def _launch_owner(
     paths: Mapping[str, Path],
     *,
     timeout_seconds: float,
+    admit_task_execution: bool = False,
 ) -> tuple[subprocess.Popen[Any], dict[str, Any]]:
     paths["owner"].mkdir(parents=True, exist_ok=True)
     log_handle = paths["owner_log"].open("ab")
     os.chmod(paths["owner_log"], 0o600)
     not_before_ns = time.time_ns()
+    argv = _operator_command(config_path, "state-owner")
+    if admit_task_execution:
+        argv.append("--admit-task-execution")
     try:
         process = subprocess.Popen(
-            _operator_command(config_path, "state-owner"),
+            argv,
             cwd=ROOT,
             stdin=subprocess.DEVNULL,
             stdout=log_handle,
@@ -2810,6 +2976,7 @@ def launch(
     owner_timeout_seconds: float = 45.0,
     health_timeout_seconds: float = 120.0,
     allow_coordinator_only: bool = False,
+    admit_task_execution: bool = False,
 ) -> dict[str, Any]:
     """Materialize, start one Quack owner, and admit one event coordinator."""
 
@@ -2837,6 +3004,7 @@ def launch(
             config_path,
             paths,
             timeout_seconds=owner_timeout_seconds,
+            admit_task_execution=admit_task_execution,
         )
         identity = owner_ready["identity"]
         if not isinstance(identity, Mapping):
@@ -2905,7 +3073,7 @@ def launch(
                 "active_subagent_processes": 0,
                 "credential_transport": "private_inherited_pipe",
                 "credential_in_argv_or_environment": False,
-                "task_execution_admitted": False,
+                "task_execution_admitted": bool(admit_task_execution),
                 "relaunch_supported": True,
                 "relaunch_blocker": "",
                 "event_wait_qualified": True,
@@ -2922,7 +3090,7 @@ def launch(
             last = _status_snapshot(config_path, persist=True)
             success_mode = _launch_success_mode(
                 last,
-                allow_coordinator_only=allow_coordinator_only,
+                allow_coordinator_only=allow_coordinator_only or admit_task_execution,
             )
             if success_mode == "coordinator_transport_only":
                 coordinator_receipt = _persist_receipt(
@@ -3072,7 +3240,6 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("preflight", help="verify Quack capability and free endpoint")
     commands.add_parser("materialize", help="materialize sealed goals/tasks into DuckDB")
     commands.add_parser("plan", help="render the bounded native coordinator plan")
-    commands.add_parser("state-owner", help=argparse.SUPPRESS)
     runtime_parser = commands.add_parser("supervisor-runtime", help=argparse.SUPPRESS)
     runtime_parser.add_argument("--credential-fd", type=int, required=True)
     launch_parser = commands.add_parser(
@@ -3087,6 +3254,20 @@ def _parser() -> argparse.ArgumentParser:
             "leave an exactly qualified transport coordinator running even "
             "when plan-task execution is explicitly unadmitted"
         ),
+    )
+    launch_parser.add_argument(
+        "--admit-task-execution",
+        action="store_true",
+        help=(
+            "after the event coordinator is IDLE, start one isolated plan "
+            "executor against the live Quack owner so remaining CASF tasks "
+            "can run without clobbering coordinator status"
+        ),
+    )
+    state_owner_parser = commands.add_parser("state-owner", help=argparse.SUPPRESS)
+    state_owner_parser.add_argument(
+        "--admit-task-execution",
+        action="store_true",
     )
     status_parser = commands.add_parser("status", help="emit typed progress/idle status")
     status_requirement = status_parser.add_mutually_exclusive_group()
@@ -3119,7 +3300,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "launch_plan": _launch_plan(board),
             }
         elif arguments.command == "state-owner":
-            return state_owner(config_path)
+            return state_owner(
+                config_path,
+                admit_task_execution=bool(
+                    getattr(arguments, "admit_task_execution", False)
+                ),
+            )
         elif arguments.command == "supervisor-runtime":
             from ipfs_accelerate_py.agent_supervisor.federation.supervisor_runtime import (
                 run_supervisor_runtime,
@@ -3132,6 +3318,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 owner_timeout_seconds=arguments.owner_timeout_seconds,
                 health_timeout_seconds=arguments.health_timeout_seconds,
                 allow_coordinator_only=arguments.allow_coordinator_only,
+                admit_task_execution=arguments.admit_task_execution,
             )
         elif arguments.command == "status":
             result = status(config_path)

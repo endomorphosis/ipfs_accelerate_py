@@ -29,16 +29,47 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from ..task_sources.control_plane_contracts import content_identity
-from ..task_sources.quack_state_client import QuackStateClient
-from ..task_sources.typed_state_owner import TypedStateOwnerConnection
+from ..task_sources.control_plane_transactions import TransactionError
+from ..task_sources.quack_state_client import QuackClientError, QuackStateClient
+from ..task_sources.typed_state_owner import (
+    TypedStateOwnerConnection,
+    TypedStateOwnerError,
+)
 from .contracts import FederationContractError, FederationLifecycleState, utc_now
-from .durable_event_router import DurableEventRouter
+from .durable_event_router import DurableEventRouter, DurableEventRouterError
 from .events import EventAcknowledgement, EventWaitRequest
-from .registry import FederationStateRepository
+from .registry import FederationRepositoryError, FederationStateRepository
 
 MAX_CREDENTIAL_BUNDLE_BYTES = 65_536
 WAIT_DEADLINE_SECONDS = 10
 HEARTBEAT_SECONDS = 20
+WAIT_RETRY_SECONDS = 0.25
+MAX_CONSECUTIVE_WAIT_FAILURES = 8
+
+
+def _maybe_heartbeat(
+    *,
+    credentials: SupervisorRuntimeCredentials,
+    runtime_repository: FederationStateRepository,
+    lifecycle_revision: int,
+    heartbeat_count: int,
+    last_heartbeat: float,
+) -> tuple[int, float, bool]:
+    if time.monotonic() - last_heartbeat < HEARTBEAT_SECONDS:
+        return heartbeat_count, last_heartbeat, False
+    heartbeat_count += 1
+    runtime_repository.attest_supervisor_runtime(
+        supervisor_id=credentials.supervisor_id,
+        tenant_id=credentials.tenant_id,
+        federation_id=credentials.federation_id,
+        expected_revision=lifecycle_revision,
+        expected_fencing_epoch=credentials.fencing_epoch,
+        idempotency_key=(
+            f"runtime-heartbeat:{credentials.process_birth_id}:"
+            f"{heartbeat_count}"
+        ),
+    )
+    return heartbeat_count, time.monotonic(), True
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -460,6 +491,7 @@ def run_supervisor_runtime(descriptor: int) -> int:
             last_batch_size=last_batch_size,
         )
         last_heartbeat = time.monotonic()
+        consecutive_wait_failures = 0
         while not stopping.is_set():
             deadline = datetime.now(timezone.utc) + timedelta(
                 seconds=WAIT_DEADLINE_SECONDS
@@ -472,79 +504,104 @@ def run_supervisor_runtime(descriptor: int) -> int:
                 deadline=deadline.isoformat().replace("+00:00", "Z"),
                 maximum_events=subscription.maximum_batch,
             )
-            batch = event_client.wait_for_events(request)
-            wait_calls += 1
-            last_batch_size = len(batch.events)
-            projection_changed = False
-            if batch.events:
-                deliveries = router.take(
-                    credentials.subscription_id,
-                    tenant_id=credentials.tenant_id,
-                    federation_id=credentials.federation_id,
-                    maximum=min(len(batch.events), subscription.maximum_batch),
-                    expected_fencing_epoch=credentials.fencing_epoch,
-                    recorded_at=utc_now(),
-                )
-                if not deliveries:
-                    raise FederationContractError(
-                        "event wait woke without a durable deliverable record"
-                    )
-                for exposed in deliveries:
-                    event = exposed.queued.delivery.decision.representative_event
-                    acknowledgement = EventAcknowledgement(
-                        acknowledgement_id=(
-                            "acknowledgement:"
-                            + content_identity(
-                                {
-                                    "supervisor_id": credentials.supervisor_id,
-                                    "event_id": event.event_id,
-                                    "attempt_id": exposed.attempt.attempt_id,
-                                }
-                            )
-                        ),
-                        event_id=event.event_id,
-                        consumer_id=credentials.consumer_id,
-                        subscription_id=credentials.subscription_id,
-                        subscription_revision=subscription.revision,
-                        global_sequence=event.global_sequence,
-                        processed_effect_ref="effect:observed:" + event.event_cid,
-                        recorded_at=utc_now(),
-                    )
-                    cursor = event_repository.acknowledge_event(
-                        acknowledgement,
+            try:
+                batch = event_client.wait_for_events(request)
+                wait_calls += 1
+                last_batch_size = len(batch.events)
+                projection_changed = False
+                if batch.events:
+                    deliveries = router.take(
+                        credentials.subscription_id,
                         tenant_id=credentials.tenant_id,
                         federation_id=credentials.federation_id,
-                        delivery_attempt_id=exposed.attempt.attempt_id,
-                        expected_cursor_revision=cursor.revision,
+                        maximum=min(len(batch.events), subscription.maximum_batch),
                         expected_fencing_epoch=credentials.fencing_epoch,
-                        idempotency_key="acknowledge:" + acknowledgement.cid,
+                        recorded_at=utc_now(),
                     )
-                    event_cursor = cursor.global_sequence
-                    events_processed += 1
-                    last_event_id = event.event_id
-                    last_acknowledgement_id = acknowledgement.acknowledgement_id
-                    last_delivery_attempt_id = exposed.attempt.attempt_id
-                    if not first_event_id:
-                        first_event_id = event.event_id
-                        first_acknowledgement_id = acknowledgement.acknowledgement_id
-                        first_delivery_attempt_id = exposed.attempt.attempt_id
-                projection_changed = True
-            if time.monotonic() - last_heartbeat >= HEARTBEAT_SECONDS:
-                heartbeat_count += 1
-                runtime_repository.attest_supervisor_runtime(
-                    supervisor_id=credentials.supervisor_id,
-                    tenant_id=credentials.tenant_id,
-                    federation_id=credentials.federation_id,
-                    expected_revision=lifecycle_revision,
-                    expected_fencing_epoch=credentials.fencing_epoch,
-                    idempotency_key=(
-                        f"runtime-heartbeat:{credentials.process_birth_id}:"
-                        f"{heartbeat_count}"
-                    ),
+                    if not deliveries:
+                        raise FederationContractError(
+                            "event wait woke without a durable deliverable record"
+                        )
+                    for exposed in deliveries:
+                        event = exposed.queued.delivery.decision.representative_event
+                        acknowledgement = EventAcknowledgement(
+                            acknowledgement_id=(
+                                "acknowledgement:"
+                                + content_identity(
+                                    {
+                                        "supervisor_id": credentials.supervisor_id,
+                                        "event_id": event.event_id,
+                                        "attempt_id": exposed.attempt.attempt_id,
+                                    }
+                                )
+                            ),
+                            event_id=event.event_id,
+                            consumer_id=credentials.consumer_id,
+                            subscription_id=credentials.subscription_id,
+                            subscription_revision=subscription.revision,
+                            global_sequence=event.global_sequence,
+                            processed_effect_ref="effect:observed:" + event.event_cid,
+                            recorded_at=utc_now(),
+                        )
+                        cursor = event_repository.acknowledge_event(
+                            acknowledgement,
+                            tenant_id=credentials.tenant_id,
+                            federation_id=credentials.federation_id,
+                            delivery_attempt_id=exposed.attempt.attempt_id,
+                            expected_cursor_revision=cursor.revision,
+                            expected_fencing_epoch=credentials.fencing_epoch,
+                            idempotency_key="acknowledge:" + acknowledgement.cid,
+                        )
+                        event_cursor = cursor.global_sequence
+                        events_processed += 1
+                        last_event_id = event.event_id
+                        last_acknowledgement_id = acknowledgement.acknowledgement_id
+                        last_delivery_attempt_id = exposed.attempt.attempt_id
+                        if not first_event_id:
+                            first_event_id = event.event_id
+                            first_acknowledgement_id = acknowledgement.acknowledgement_id
+                            first_delivery_attempt_id = (
+                                exposed.attempt.attempt_id
+                            )
+                    projection_changed = True
+                heartbeat_count, last_heartbeat, heartbeated = _maybe_heartbeat(
+                    credentials=credentials,
+                    runtime_repository=runtime_repository,
+                    lifecycle_revision=lifecycle_revision,
+                    heartbeat_count=heartbeat_count,
+                    last_heartbeat=last_heartbeat,
                 )
-                last_heartbeat = time.monotonic()
-                projection_changed = True
-            if projection_changed:
+                if heartbeated:
+                    projection_changed = True
+                if projection_changed:
+                    _write_runtime_projection(
+                        credentials,
+                        lifecycle_state=FederationLifecycleState.IDLE.value,
+                        lifecycle_revision=lifecycle_revision,
+                        event_cursor=event_cursor,
+                        events_processed=events_processed,
+                        wait_calls=wait_calls,
+                        heartbeat_count=heartbeat_count,
+                        last_batch_size=last_batch_size,
+                        last_event_id=last_event_id,
+                        last_acknowledgement_id=last_acknowledgement_id,
+                        last_delivery_attempt_id=last_delivery_attempt_id,
+                        first_event_id=first_event_id,
+                        first_acknowledgement_id=first_acknowledgement_id,
+                        first_delivery_attempt_id=first_delivery_attempt_id,
+                    )
+                consecutive_wait_failures = 0
+            except FederationContractError as exc:
+                if str(exc) == "typed remote event wait is not qualified":
+                    raise
+                consecutive_wait_failures += 1
+                heartbeat_count, last_heartbeat, _heartbeated = _maybe_heartbeat(
+                    credentials=credentials,
+                    runtime_repository=runtime_repository,
+                    lifecycle_revision=lifecycle_revision,
+                    heartbeat_count=heartbeat_count,
+                    last_heartbeat=last_heartbeat,
+                )
                 _write_runtime_projection(
                     credentials,
                     lifecycle_state=FederationLifecycleState.IDLE.value,
@@ -560,7 +617,54 @@ def run_supervisor_runtime(descriptor: int) -> int:
                     first_event_id=first_event_id,
                     first_acknowledgement_id=first_acknowledgement_id,
                     first_delivery_attempt_id=first_delivery_attempt_id,
+                    error_class=type(exc).__name__,
+                    error_observation=_failure_observation(exc),
                 )
+                time.sleep(
+                    WAIT_RETRY_SECONDS
+                    if consecutive_wait_failures < MAX_CONSECUTIVE_WAIT_FAILURES
+                    else WAIT_RETRY_SECONDS * 4
+                )
+                continue
+            except (
+                DurableEventRouterError,
+                FederationRepositoryError,
+                QuackClientError,
+                TransactionError,
+                TypedStateOwnerError,
+            ) as exc:
+                consecutive_wait_failures += 1
+                heartbeat_count, last_heartbeat, _heartbeated = _maybe_heartbeat(
+                    credentials=credentials,
+                    runtime_repository=runtime_repository,
+                    lifecycle_revision=lifecycle_revision,
+                    heartbeat_count=heartbeat_count,
+                    last_heartbeat=last_heartbeat,
+                )
+                _write_runtime_projection(
+                    credentials,
+                    lifecycle_state=FederationLifecycleState.IDLE.value,
+                    lifecycle_revision=lifecycle_revision,
+                    event_cursor=event_cursor,
+                    events_processed=events_processed,
+                    wait_calls=wait_calls,
+                    heartbeat_count=heartbeat_count,
+                    last_batch_size=last_batch_size,
+                    last_event_id=last_event_id,
+                    last_acknowledgement_id=last_acknowledgement_id,
+                    last_delivery_attempt_id=last_delivery_attempt_id,
+                    first_event_id=first_event_id,
+                    first_acknowledgement_id=first_acknowledgement_id,
+                    first_delivery_attempt_id=first_delivery_attempt_id,
+                    error_class=type(exc).__name__,
+                    error_observation=_failure_observation(exc),
+                )
+                time.sleep(
+                    WAIT_RETRY_SECONDS
+                    if consecutive_wait_failures < MAX_CONSECUTIVE_WAIT_FAILURES
+                    else WAIT_RETRY_SECONDS * 4
+                )
+                continue
 
         stopped = runtime_repository.transition_supervisor(
             supervisor_id=credentials.supervisor_id,

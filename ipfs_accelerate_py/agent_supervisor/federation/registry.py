@@ -28,6 +28,7 @@ from ..merge.worktree_lifecycle import (
 )
 from ..task_sources.control_plane_contracts import (
     CommandKind,
+    CommandOutcome,
     StateAuthorityClass,
     StateCommand,
     content_identity,
@@ -3935,6 +3936,13 @@ class FederationStateRepository:
         apply: Callable[[StateTransaction, StateCommand, Any], Mapping[str, Any]],
     ) -> CASResult:
         result = self.__client.submit_command(command, apply=apply)
+        if result.outcome not in {
+            CommandOutcome.ACCEPTED,
+            CommandOutcome.IDEMPOTENT_REPLAY,
+        }:
+            raise FederationRepositoryConflict(
+                "typed command did not commit: " + str(result.outcome.value)
+            )
         # Waiters consume the persist-first delivery queue, not raw domain
         # events.  Waking them before a routing disposition commits creates a
         # check/register race with no later signal.  Only a durable route
