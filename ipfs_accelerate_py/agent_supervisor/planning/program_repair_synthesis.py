@@ -855,28 +855,52 @@ def _unbound_rhs_pattern_vars(
     return tuple(sorted(extra))
 
 
-def _rewrite_equality_term_once(
+def _try_rewrite_root(
     term: EqualityTerm, lhs: EqualityTerm, rhs: EqualityTerm
 ) -> tuple[EqualityTerm, bool]:
     subst: dict[str, EqualityTerm] = {}
-    if _match_equality_term(lhs, term, subst):
-        if _unbound_rhs_pattern_vars(lhs, rhs, subst):
-            return term, False
-        return _instantiate_equality_term(rhs, subst), True
-    if not term.children:
+    if not _match_equality_term(lhs, term, subst):
+        return term, False
+    if _unbound_rhs_pattern_vars(lhs, rhs, subst):
+        return term, False
+    return _instantiate_equality_term(rhs, subst), True
+
+
+def _rewrite_equality_term_everywhere(
+    term: EqualityTerm, lhs: EqualityTerm, rhs: EqualityTerm
+) -> tuple[EqualityTerm, bool]:
+    """Rewrite every matching redex bottom-up, independent of e-graph state."""
+
+    if term.is_var:
         return term, False
     children: list[EqualityTerm] = []
     changed = False
     for child in term.children:
-        if changed:
-            children.append(child)
-            continue
-        rewritten, applied = _rewrite_equality_term_once(child, lhs, rhs)
+        rewritten, applied = _rewrite_equality_term_everywhere(child, lhs, rhs)
         children.append(rewritten)
-        changed = applied
-    if not changed:
-        return term, False
-    return EqualityTerm(op=term.op, children=tuple(children)), True
+        changed = changed or applied
+    current = EqualityTerm(op=term.op, children=tuple(children)) if changed else term
+    rewritten, applied = _try_rewrite_root(current, lhs, rhs)
+    if applied:
+        return rewritten, True
+    return current, changed
+
+
+def _ground_rule_from_substitution(
+    lhs: EqualityTerm,
+    rhs: EqualityTerm,
+    substitution: Sequence[tuple[str, str]],
+) -> tuple[EqualityTerm, EqualityTerm]:
+    if not substitution:
+        return lhs, rhs
+    subst = {name: parse_equality_term(text) for name, text in substitution}
+    try:
+        return (
+            _instantiate_equality_term(lhs, subst),
+            _instantiate_equality_term(rhs, subst),
+        )
+    except ProgramRepairSynthesisError:
+        return lhs, rhs
 
 
 def _collect_term_effects(
@@ -1625,12 +1649,15 @@ class EqualityEGraph:
             return "Int"
         return self.theory.default_sort
 
+    def _wildcard_sorts(self) -> frozenset[str]:
+        return frozenset({DEFAULT_ECLASS_SORT, self.theory.default_sort})
+
     def _enode_sort(self, op: str, child_sorts: Sequence[str]) -> str:
         signature = self.theory.operator_signature(op)
         if signature is None:
             if not child_sorts:
                 return self._infer_leaf_sort(op)
-            unique = {sort for sort in child_sorts if sort != DEFAULT_ECLASS_SORT}
+            unique = {sort for sort in child_sorts if sort not in self._wildcard_sorts()}
             if len(unique) == 1:
                 return next(iter(unique))
             return self.theory.default_sort
@@ -1640,9 +1667,12 @@ class EqualityEGraph:
     def _compatible_sorts(self, left: str, right: str) -> str | None:
         if left == right:
             return left
-        if left == DEFAULT_ECLASS_SORT:
+        wildcards = self._wildcard_sorts()
+        if left in wildcards and right in wildcards:
+            return self.theory.default_sort
+        if left in wildcards:
             return right
-        if right == DEFAULT_ECLASS_SORT:
+        if right in wildcards:
             return left
         return None
 
@@ -1671,9 +1701,13 @@ class EqualityEGraph:
         if self._rank[root_a] == self._rank[root_b]:
             self._rank[root_a] += 1
         self._sorts[root_a] = merged_sort
-        self._nodes_of[root_a].extend(self._nodes_of[root_b])
+        seen_nids = set(self._nodes_of[root_a])
         for nid in self._nodes_of[root_b]:
+            if nid not in seen_nids:
+                self._nodes_of[root_a].append(nid)
+                seen_nids.add(nid)
             self._enode_class[nid] = root_a
+        self._nodes_of[root_b] = []
         keep = self._repr.get(root_a)
         other = self._repr.get(root_b)
         if other is not None and (keep is None or len(other) < len(keep)):
@@ -1758,6 +1792,21 @@ class EqualityEGraph:
         self._repr[self._find(cid)] = parsed.render()
         return cid
 
+    def _reindex_classes(self) -> None:
+        nodes_of: list[list[int]] = [[] for _ in self._parent]
+        hashcons: dict[tuple[str, tuple[int, ...]], int] = {}
+        for nid, node in enumerate(self._enodes):
+            canon_children = tuple(self._find(child) for child in node.children)
+            if canon_children != node.children:
+                node = _ENode(op=node.op, children=canon_children)
+                self._enodes[nid] = node
+            cid = self._find(self._enode_class[nid])
+            self._enode_class[nid] = cid
+            nodes_of[cid].append(nid)
+            hashcons.setdefault((node.op, canon_children), nid)
+        self._nodes_of = nodes_of
+        self._hashcons = hashcons
+
     def _rebuild(self) -> int:
         merges = 0
         progressed = True
@@ -1784,49 +1833,58 @@ class EqualityEGraph:
                         merges += 1
                         progressed = True
                         root = self._find(root)
+            self._reindex_classes()
         return merges
 
-    def _match_pattern(
-        self, pattern: EqualityTerm, eclass: int, subst: dict[str, int]
-    ) -> bool:
+    def _substitutions(
+        self,
+        pattern: EqualityTerm,
+        eclass: int,
+        subst: Mapping[str, int],
+    ) -> list[dict[str, int]]:
+        """Yield every substitution matching ``pattern`` against ``eclass``."""
+
         eclass = self._find(eclass)
         if pattern.is_var:
             bound = subst.get(pattern.op)
             if bound is None:
-                subst[pattern.op] = eclass
-                return True
-            return self._find(bound) == eclass
-        for nid in self._nodes_of[eclass]:
+                local = dict(subst)
+                local[pattern.op] = eclass
+                return [local]
+            return [dict(subst)] if self._find(bound) == eclass else []
+        found: list[dict[str, int]] = []
+        for nid in list(self._nodes_of[eclass]):
             node = self._enodes[nid]
             if node.op != pattern.op or len(node.children) != len(pattern.children):
                 continue
-            local = dict(subst)
-            if all(
-                self._match_pattern(child_pat, child_id, local)
-                for child_pat, child_id in zip(pattern.children, node.children)
-            ):
-                subst.clear()
-                subst.update(local)
-                return True
-        return False
+            frames: list[dict[str, int]] = [dict(subst)]
+            matched = True
+            for child_pat, child_id in zip(pattern.children, node.children):
+                next_frames: list[dict[str, int]] = []
+                for frame in frames:
+                    next_frames.extend(self._substitutions(child_pat, child_id, frame))
+                if not next_frames:
+                    matched = False
+                    break
+                frames = next_frames
+            if matched:
+                found.extend(frames)
+        return found
 
     def _ematch(self, pattern: EqualityTerm) -> list[tuple[int, dict[str, int]]]:
         matches: list[tuple[int, dict[str, int]]] = []
         seen: set[tuple[int, tuple[tuple[str, int], ...]]] = set()
         for eclass in self._canonical_classes():
-            subst: dict[str, int] = {}
-            if not self._match_pattern(pattern, eclass, subst):
-                continue
-            key = (
-                eclass,
-                tuple(sorted((name, self._find(cid)) for name, cid in subst.items())),
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            matches.append(
-                (eclass, {name: self._find(cid) for name, cid in subst.items()})
-            )
+            for subst in self._substitutions(pattern, eclass, {}):
+                canon_subst = {name: self._find(cid) for name, cid in subst.items()}
+                key = (
+                    self._find(eclass),
+                    tuple(sorted(canon_subst.items())),
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                matches.append((self._find(eclass), canon_subst))
         return matches
 
     def _instantiate(self, pattern: EqualityTerm, subst: Mapping[str, int]) -> int:
@@ -2033,6 +2091,7 @@ class EqualityEGraph:
         while changed and depth < self.max_depth:
             changed = False
             depth += 1
+            self._reindex_classes()
             pending: list[tuple[EqualityRule, int, dict[str, int], EqualityRewriteStep]] = []
             for rule in self.theory.rules:
                 pending.extend(self._collect_rule_applications(rule))
@@ -2153,6 +2212,8 @@ class EqualityEGraph:
         source_t = _text(source, "source_term", limit=MAX_SPAN_BYTES)
         target_t = _text(target, "target_term", limit=MAX_SPAN_BYTES)
         depth = 0
+        source_sort = ""
+        target_sort = ""
         try:
             source_term = parse_equality_term(source_t, name="source_term")
             target_term = parse_equality_term(target_t, name="target_term")
@@ -2226,6 +2287,8 @@ class EqualityEGraph:
                 status=EqualityRewriteStatus.BUDGET_EXHAUSTED,
                 reason_code=ProgramRepairReason.BOUNDS_EXCEEDED.value,
                 depth=depth,
+                source_sort=source_sort,
+                target_sort=target_sort,
             )
         except ProgramRepairSynthesisError as exc:
             status = (
@@ -2348,35 +2411,50 @@ def _ast_replay(
     rules = theory.rule_map()
     term = source
     applications = 0
+
+    def apply_pair(
+        current: EqualityTerm, lhs: EqualityTerm, rhs: EqualityTerm
+    ) -> tuple[EqualityTerm, bool]:
+        return _rewrite_equality_term_everywhere(current, lhs, rhs)
+
     for step in steps:
         rule = rules.get(step.rule_id)
         if rule is None:
             continue
-        lhs = rule.parsed_lhs()
-        rhs = rule.parsed_rhs()
-        rewritten, applied = _rewrite_equality_term_once(term, lhs, rhs)
+        lhs, rhs = _ground_rule_from_substitution(
+            rule.parsed_lhs(), rule.parsed_rhs(), step.substitution
+        )
+        rewritten, applied = apply_pair(term, lhs, rhs)
         if applied:
             term = rewritten
             applications += 1
         if applications >= max_depth:
-            break
-    if term == source and steps:
-        # Fall back to applying the recorded rule set to a bounded fixpoint.
-        depth = 0
-        changed = True
-        while changed and depth < max_depth:
-            changed = False
-            depth += 1
-            for step in steps:
-                rule = rules.get(step.rule_id)
-                if rule is None:
-                    continue
-                rewritten, applied = _rewrite_equality_term_once(
-                    term, rule.parsed_lhs(), rule.parsed_rhs()
-                )
-                if applied:
-                    term = rewritten
-                    changed = True
+            return term
+
+    recorded: list[EqualityRule] = []
+    seen_rules: set[str] = set()
+    for step in steps:
+        rule = rules.get(step.rule_id)
+        if rule is None or rule.rule_id in seen_rules:
+            continue
+        seen_rules.add(rule.rule_id)
+        recorded.append(rule)
+    seen_terms = {term.render()}
+    depth = 0
+    changed = True
+    while changed and depth < max_depth:
+        changed = False
+        depth += 1
+        for rule in recorded:
+            rewritten, applied = apply_pair(term, rule.parsed_lhs(), rule.parsed_rhs())
+            if not applied:
+                continue
+            rendered = rewritten.render()
+            if rendered in seen_terms:
+                continue
+            seen_terms.add(rendered)
+            term = rewritten
+            changed = True
     return term
 
 
@@ -2390,7 +2468,18 @@ def _independent_equivalence_check(
     max_depth: int,
     max_nodes: int,
 ) -> tuple[str, str]:
-    del applied_rule_ids
+    rules = theory.rule_map()
+    for rule_id in applied_rule_ids:
+        rule = rules.get(rule_id)
+        if rule is None:
+            return "failed", f"unknown_rule:{rule_id}"
+        if rule.review_ref not in theory.review_refs:
+            return "failed", f"unreviewed_rule:{rule_id}"
+    for step in steps:
+        if step.rule_id not in rules:
+            return "failed", f"unknown_step:{step.rule_id}"
+        if step.review_ref not in theory.review_refs:
+            return "failed", f"unreviewed_step:{step.rule_id}"
     replayed = _ast_replay(source, steps, theory, max_depth=max_depth)
     if replayed == target:
         return "passed:replay", "passed:replay"
