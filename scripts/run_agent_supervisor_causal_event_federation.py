@@ -1488,9 +1488,101 @@ def plan_executor(config_path: Path, credential_fd: int) -> int:
     environment = _plan_executor_environment()
     environment[STATE_TOKEN_ENV] = token
     environment[STATE_OWNER_SOCKET_ENV] = socket_path
+    program = board.resolved_database_program()
+    environment["IPFS_ACCELERATE_AGENT_STATE_STORE_ID"] = str(program.store_id)
+    environment["IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION"] = str(
+        program.store_generation
+    )
+    environment["IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"] = str(
+        paths["owner"] / "mutations"
+    )
     argv = _plan_executor_command(board, config, paths)
     os.execvpe(argv[0], argv, environment)
     raise OperatorError("plan executor exec returned")
+
+
+def _process_owner_commands(
+    repository: Any,
+    command_dir: Path,
+    *,
+    token: str,
+    expected_store_id: str,
+    expected_store_generation: str,
+) -> None:
+    """Apply executor CAS/evidence commands on the exclusive owner connection."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        execute_quack_owner_command,
+        quack_owner_command_error_code,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        quack_owner_command_response,
+        validate_quack_owner_command_request,
+    )
+
+    command_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(command_dir, 0o700)
+    for request in sorted(command_dir.glob("*.request.json")):
+        done = request.with_name(request.name.replace(".request.json", ".done.json"))
+        payload: Mapping[str, Any] = {}
+        expected_request_id = request.name.removesuffix(".request.json")
+        try:
+            metadata = request.lstat()
+            if not stat.S_ISREG(metadata.st_mode) or request.is_symlink():
+                raise OperatorError("owner command must be a regular non-symlink file")
+            if metadata.st_uid != os.getuid() or metadata.st_size > 262_144:
+                raise OperatorError("owner command file owner or size is invalid")
+            try:
+                decoded = json.loads(request.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(decoded, Mapping):
+                raise OperatorError("owner command request must be an object")
+            payload = decoded
+            command, command_payload = validate_quack_owner_command_request(
+                payload,
+                token=token,
+                expected_request_id=expected_request_id,
+                expected_store_id=expected_store_id,
+                expected_store_generation=expected_store_generation,
+            )
+            result = execute_quack_owner_command(
+                repository,
+                command,
+                command_payload,
+                request_id=expected_request_id,
+                store_id=expected_store_id,
+                store_generation=expected_store_generation,
+            )
+            _atomic_json(
+                done,
+                quack_owner_command_response(payload, token=token, result=result),
+            )
+        except Exception as exc:
+            response_request = (
+                payload
+                if payload
+                else {
+                    "request_id": expected_request_id,
+                    "command": "invalid",
+                    "store_id": expected_store_id,
+                    "store_generation": expected_store_generation,
+                }
+            )
+            error_code = quack_owner_command_error_code(exc)
+            _atomic_json(
+                done,
+                quack_owner_command_response(
+                    response_request,
+                    token=token,
+                    error_code=error_code,
+                    error_message=str(exc)[:500],
+                ),
+            )
+        try:
+            request.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int:
@@ -1676,6 +1768,26 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
                 owner_client.close()
                 server.stop()
             raise
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        IntentRepository,
+    )
+
+    owner_connection = getattr(server, "_connection", None)
+    if owner_connection is None:
+        raise OperatorError("state-owner connection is unavailable")
+    owner_repository = IntentRepository(
+        paths["database"],
+        bound_connection=owner_connection,
+        owner_id="casf-state-owner",
+        session_id=f"casf-state-owner-{os.getpid()}",
+        install_schema=False,
+    )
+    vault = getattr(server, "_vault", None)
+    resolve = getattr(vault, "resolve", None)
+    owner_token = str(resolve(program.endpoint_secret_handle) if callable(resolve) else "")
+    if not owner_token:
+        raise OperatorError("state-owner attach token is unavailable for command inbox")
+    command_dir = paths["owner"] / "mutations"
     print(
         json.dumps(
             {
@@ -1708,7 +1820,14 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
     executor_restarts = 0
     max_executor_restarts = int(config.get("max_restarts") or 8)
     if server.lifecycle is ServerLifecycle.READY:
-        while not stopping.wait(2.0):
+        while not stopping.wait(0.05):
+            _process_owner_commands(
+                owner_repository,
+                command_dir,
+                token=owner_token,
+                expected_store_id=str(program.store_id),
+                expected_store_generation=str(program.store_generation),
+            )
             if _state_owner_outbox_health(server)["healthy"] is not True:
                 runtime_exit_code = 1
                 break
@@ -1752,6 +1871,10 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
             runtime_exit_code = 1
     else:
         runtime_exit_code = supervisor_process.returncode
+    try:
+        owner_repository.close()
+    except Exception:
+        pass
     owner_client.close()
     result = server.stop()
     print(
