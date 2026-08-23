@@ -71779,7 +71779,20 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
         "authentication_failed",
     }
 )
+# Grok/wrapper deaths and Quack attach races are retryable, but they are not
+# model attempts. Counting them as typed deferrals blocked PCCE-021 after
+# three inflight_process events and froze dependents.
+_PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
+    {
+        "inflight_process",
+        "quack_attach_contended",
+        "authentication_failed",
+    }
+)
 _QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS = 30
+DATABASE_DECLARED_OUTPUT_REARM_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/database-declared-output-rearm@1"
+)
 _TERMINAL_PORTAL_RECONCILE_SKIP_STATUSES = frozenset(
     {
         "blocked",
@@ -72187,6 +72200,7 @@ class DatabaseImplementationDaemon:
         repo_root: Path | str | None = None,
         merge_target_ref: str = "HEAD",
         task_prefix: str = "",
+        merge_queue: Any = None,
     ) -> None:
         normalized_authority_mode = str(authority_mode or "quack").strip().lower().replace(
             "-", "_"
@@ -72423,6 +72437,8 @@ class DatabaseImplementationDaemon:
         self._markdown_status_writes = 0
         self.repo_root = Path(repo_root).resolve() if repo_root else None
         self.merge_target_ref = str(merge_target_ref or "HEAD").strip() or "HEAD"
+        self.merge_queue = merge_queue
+        self._quack_attach_blocked_until = 0.0
         # Renew long-running provider/effect/validation calls well before the
         # task lease expires.  Tests may shorten this private interval without
         # weakening the production lease duration.
@@ -75846,6 +75862,71 @@ class DatabaseImplementationDaemon:
             )
         return [item for item in unstalled if isinstance(item, Mapping)]
 
+    def reconcile_inflight_deferral_blocks(self) -> list[dict[str, Any]]:
+        """Retry gates blocked only by process-death / attach deferral caps.
+
+        ``max_task_attempts`` typed-deferral exhaustion is meant to stop
+        spin. Inflight Grok/wrapper deaths are not model usage, but they
+        still blocked PCCE-021 and froze Epic B-H. Reopen those rows so
+        claim_next can continue the board.
+        """
+
+        self._require_execution_authority("inflight deferral block unstall")
+        page = self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        outcomes: list[dict[str, Any]] = []
+        for task in page.tasks:
+            if str(getattr(task, "status", "") or "").strip().lower() != "blocked":
+                continue
+            body = getattr(task, "body", None)
+            receipt = (
+                body.get("completion_receipt")
+                if isinstance(body, Mapping)
+                else None
+            )
+            if not isinstance(receipt, Mapping):
+                continue
+            if (
+                str(receipt.get("operation") or "")
+                != "database_portal_typed_deferral_budget_exhausted"
+            ):
+                continue
+            budget = receipt.get("retry_budget")
+            matching = (
+                budget.get("matching_attempts")
+                if isinstance(budget, Mapping)
+                else None
+            )
+            reasons = {
+                str(item.get("reason") or "")
+                for item in matching
+                if isinstance(item, Mapping)
+            } if isinstance(matching, list) else set()
+            if not reasons or not reasons <= _PROCESS_TRANSIENT_PORTAL_REASONS:
+                continue
+            try:
+                self._cas_task_status_database(
+                    task.task_cid,
+                    expected_revision=int(task.revision),
+                    new_status="retrying",
+                    receipt={
+                        "operation": "database_portal_inflight_deferral_unstall",
+                        "reason": "inflight_process_deferral_budget_unstall",
+                        "previous_operation": receipt.get("operation"),
+                    },
+                )
+            except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
+                continue
+            outcomes.append(
+                {
+                    "task_cid": str(task.task_cid),
+                    "task_alias": str(task.task_alias or ""),
+                    "previous_status": "blocked",
+                    "status": "retrying",
+                    "reason": "inflight_process_deferral_budget_unstall",
+                }
+            )
+        return outcomes
+
     def _request_owner_board_unstall(self) -> dict[str, Any]:
         """Ask the exclusive owner to unstall gates when ATTACH cannot run."""
 
@@ -75878,6 +75959,7 @@ class DatabaseImplementationDaemon:
         except Exception:
             expired = []
         board_unstall = self._request_owner_board_unstall()
+        self._arm_quack_attach_cooldown()
         return {
             "unchanged": not expired and not board_unstall.get("requested"),
             "deferred": True,
@@ -82066,6 +82148,8 @@ class DatabaseImplementationDaemon:
                 # The immutable legacy attempt still says terminal failure.
                 # Suppress that old projection only when the exact typed
                 # blocked-to-retrying recovery and its latest fence reproduce.
+                # Board-unstall / owner retry can move control to retrying
+                # without that receipt; crashing here freezes claim_next.
                 task_body = getattr(task, "body", None)
                 receipt = (
                     task_body.get("completion_receipt")
@@ -82074,11 +82158,6 @@ class DatabaseImplementationDaemon:
                 )
                 operation = (
                     str(receipt.get("operation") or "")
-                    if isinstance(receipt, Mapping)
-                    else ""
-                )
-                evidence_source = (
-                    str(receipt.get("evidence_source") or "")
                     if isinstance(receipt, Mapping)
                     else ""
                 )
@@ -82130,11 +82209,10 @@ class DatabaseImplementationDaemon:
                         attempt,
                         task,
                     )
-                elif evidence_source not in {
-                    "portal_candidate_retry",
-                    "portal_provider_failed_reclassified",
-                    "portal_checkout_contention_reclassified",
-                }:
+                elif (
+                    operation
+                    == "database_portal_validation_retry_recovery"
+                ):
                     self._verified_validation_retry_recovery_state(
                         attempt,
                         task,
@@ -82878,6 +82956,10 @@ class DatabaseImplementationDaemon:
             )
             candidate_retry = isinstance(exc, DatabasePortalCandidateRetry)
             reason = self._database_portal_reason(str(exc))
+            if reason in _PROCESS_TRANSIENT_PORTAL_REASONS:
+                # Keep the claim retryable without consuming the typed
+                # deferral anti-spin budget that would block the gate.
+                deferred = False
             retryable = (
                 deferred
                 or validation_retry
@@ -83503,6 +83585,138 @@ class DatabaseImplementationDaemon:
                 outcomes.append(outcome)
         return outcomes
 
+    def _arm_quack_attach_cooldown(self) -> None:
+        """Pause ATTACH so a failed token does not wedge the exclusive owner."""
+
+        shard = int(getattr(self, "task_shard_index", 0) or 0)
+        self._quack_attach_blocked_until = (
+            time.monotonic()
+            + float(_QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS)
+            + (shard * 4.0)
+        )
+
+    def _quack_attach_cooldown_active(self) -> bool:
+        return time.monotonic() < float(self._quack_attach_blocked_until or 0.0)
+
+    def _completed_repair_receipt_snapshots(self) -> tuple[Any, ...]:
+        """Load post-merge repair receipts without attaching to Quack."""
+
+        class _Snapshot:
+            __slots__ = ("task_id", "canonical_task_id", "metadata")
+
+            def __init__(self, payload: Mapping[str, Any]) -> None:
+                self.task_id = str(payload.get("task_id") or "")
+                self.canonical_task_id = str(payload.get("canonical_task_id") or "")
+                metadata = payload.get("metadata")
+                self.metadata = metadata if isinstance(metadata, Mapping) else {}
+
+        snapshots: list[Any] = []
+        queue = getattr(self, "merge_queue", None)
+        completed_dir = getattr(queue, "completed_dir", None)
+        if isinstance(completed_dir, Path) and completed_dir.is_dir():
+            files = sorted(
+                (
+                    path
+                    for path in completed_dir.glob("*.json")
+                    if path.is_file() and not path.is_symlink()
+                ),
+                key=lambda path: path.stat().st_mtime,
+                reverse=True,
+            )
+            for path in files[:32]:
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, UnicodeError, json.JSONDecodeError):
+                    continue
+                if isinstance(payload, Mapping):
+                    snapshots.append(_Snapshot(payload))
+        if snapshots:
+            return tuple(snapshots)
+        completed = getattr(queue, "completed_requests", None)
+        if not callable(completed):
+            return ()
+        try:
+            return tuple(completed(limit=32) or ())
+        except Exception:
+            return ()
+
+    def _rearm_blocked_tasks_with_outputs_on_head(self) -> dict[str, Any]:
+        """Rearm blocked DuckDB tasks whose declared outputs already exist.
+
+        Uses the typed owner command when present so this path does not ATTACH.
+        """
+
+        schema = DATABASE_DECLARED_OUTPUT_REARM_SCHEMA
+        rearm_fn = getattr(self.task_source, "rearm_blocked_task", None)
+        empty = {
+            "schema": schema,
+            "attempted": False,
+            "rearmed": 0,
+            "results": [],
+            "write_count": 0,
+        }
+        if not callable(rearm_fn):
+            return empty
+        results: list[dict[str, Any]] = []
+        rearmed = 0
+        seen: set[str] = set()
+        for snapshot in self._completed_repair_receipt_snapshots():
+            metadata = getattr(snapshot, "metadata", None)
+            if not isinstance(metadata, Mapping):
+                continue
+            completion = metadata.get("completion")
+            if (
+                not isinstance(completion, Mapping)
+                or completion.get("reason") != "post_merge_declared_outputs_repaired"
+            ):
+                continue
+            task_id = str(
+                getattr(snapshot, "canonical_task_id", "")
+                or getattr(snapshot, "task_id", "")
+                or ""
+            ).strip()
+            if not task_id or task_id in seen:
+                continue
+            compact = {
+                "schema": schema,
+                "operation": "database_declared_outputs_on_head_rearm",
+                "task_alias": task_id,
+            }
+            try:
+                outcome = rearm_fn(task_id, receipt=compact)
+            except Exception as exc:
+                if self._is_quack_attach_contention(exc):
+                    raise
+                results.append(
+                    {
+                        "task_cid": task_id,
+                        "changed": False,
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[-500:],
+                    }
+                )
+                seen.add(task_id)
+                continue
+            changed = bool(getattr(outcome, "changed", True))
+            if changed:
+                rearmed += 1
+            seen.add(task_id)
+            results.append(
+                {
+                    "task_cid": task_id,
+                    "changed": changed,
+                    "previous_status": "blocked",
+                    "status": "retrying",
+                }
+            )
+        return {
+            "schema": schema,
+            "attempted": True,
+            "rearmed": rearmed,
+            "results": results,
+            "write_count": rearmed,
+        }
+
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
@@ -83518,6 +83732,7 @@ class DatabaseImplementationDaemon:
 
         if not self.require_real_execution:
             return self._execution_disabled_observation()
+        output_rearm = self._rearm_blocked_tasks_with_outputs_on_head()
         completion_reconciliations = self._run_reconciliation_step(
             self.reconcile_prepared_task_completions
         )
@@ -83556,6 +83771,9 @@ class DatabaseImplementationDaemon:
         )
         pooled_worktree_create_recovery_reconciliations = self._run_reconciliation_step(
             self.reconcile_blocked_pooled_worktree_create_recoveries
+        )
+        inflight_deferral_unstalls = self._run_reconciliation_step(
+            self.reconcile_inflight_deferral_blocks
         )
         reconciliation_write_count = (
             len(completion_reconciliations)
@@ -83601,6 +83819,8 @@ class DatabaseImplementationDaemon:
                 if item.get("changed") is True
             )
             + len(stale_in_progress_unstalls)
+            + len(inflight_deferral_unstalls)
+            + int(output_rearm.get("write_count") or 0)
         )
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
@@ -83690,9 +83910,13 @@ class DatabaseImplementationDaemon:
                         pooled_worktree_create_recovery_reconciliations
                     ),
                     "stale_in_progress_unstalls": stale_in_progress_unstalls,
+                    "inflight_deferral_unstalls": inflight_deferral_unstalls,
+                    "declared_output_rearm": output_rearm,
                 }
 
         attempt = self.claim_next()
+        if attempt is None and int(output_rearm.get("write_count") or 0):
+            attempt = self.claim_next()
         if attempt is None:
             return {
                 "unchanged": reconciliation_write_count == 0,
@@ -83736,6 +83960,8 @@ class DatabaseImplementationDaemon:
                     pooled_worktree_create_recovery_reconciliations
                 ),
                 "stale_in_progress_unstalls": stale_in_progress_unstalls,
+                "inflight_deferral_unstalls": inflight_deferral_unstalls,
+                "declared_output_rearm": output_rearm,
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -83774,6 +84000,8 @@ class DatabaseImplementationDaemon:
                 pooled_worktree_create_recovery_reconciliations
             ),
             "stale_in_progress_unstalls": stale_in_progress_unstalls,
+            "inflight_deferral_unstalls": inflight_deferral_unstalls,
+            "declared_output_rearm": output_rearm,
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,
@@ -83782,8 +84010,12 @@ class DatabaseImplementationDaemon:
     def wait_for_wake(self, timeout: float = 0.0) -> None:
         """Bounded idle wait; database authority uses polling, not FS notify."""
 
-        if timeout and timeout > 0:
-            time.sleep(min(float(timeout), 1.0))
+        timeout = max(0.0, float(timeout or 0.0))
+        cooldown = float(self._quack_attach_blocked_until or 0.0) - time.monotonic()
+        sleep_for = max(timeout, cooldown if cooldown > 0 else 0.0)
+        if sleep_for > 0:
+            # A 1s cap made four lanes retry Quack ATTACH continuously.
+            time.sleep(min(sleep_for, 30.0))
 
     def close_event_runtime(self) -> None:
         self.close()
