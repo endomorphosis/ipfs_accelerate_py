@@ -1267,9 +1267,16 @@ class InProcessQuackTransport:
             raise QuackStateServerReadyError(
                 f"authenticated remote live query failed: {type(last_error).__name__}"
             ) from last_error
-        if rows is None or len(rows) != 1 or tuple(rows[0]) != (1,):
+        live_ok = False
+        if rows is not None and len(rows) == 1:
+            raw_row = rows[0]
+            cells = tuple(raw_row) if isinstance(raw_row, (list, tuple)) else (raw_row,)
+            if cells == (1,) or (cells and cells[0] in (1, "1", True)):
+                live_ok = True
+        if not live_ok:
             raise QuackStateServerReadyError(
-                "authenticated remote live query returned an unexpected result"
+                "authenticated remote live query returned an unexpected result: "
+                f"{rows!r}"
             )
         observed = dict(self._server_identity)
         observed["live"] = True
