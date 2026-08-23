@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any, Final, Protocol, runtime_checkable
 
 from .eaaef_reconciliation_lifecycle import (
@@ -404,6 +405,7 @@ def translate_compiled_eaaef_population(
     *,
     current_board: Mapping[str, Any],
     current_forest: Mapping[str, Any],
+    repo_root: str | Path | None = None,
     owner_active: bool,
     historical_task_statuses: Mapping[str, str]
     | Sequence[Mapping[str, Any]]
@@ -419,6 +421,7 @@ def translate_compiled_eaaef_population(
         population,
         current_board=current_board,
         current_forest=current_forest,
+        repo_root=repo_root,
     )
     goals, goal_edges, root_goal_cid = _translated_goals(population)
     plan = _translated_plan(population, root_goal_cid=root_goal_cid)
@@ -467,6 +470,7 @@ def verify_translated_eaaef_population(
     population: CompiledEAAEFPopulation,
     current_board: Mapping[str, Any],
     current_forest: Mapping[str, Any],
+    repo_root: str | Path | None = None,
 ) -> dict[str, Any]:
     """Verify a caller-held translation against a fresh deterministic rebuild."""
 
@@ -474,6 +478,7 @@ def verify_translated_eaaef_population(
         population,
         current_board=current_board,
         current_forest=current_forest,
+        repo_root=repo_root,
         owner_active=False,
         historical_task_statuses=None,
     )
@@ -490,6 +495,7 @@ def materialize_offline_eaaef_population(
     *,
     current_board: Mapping[str, Any],
     current_forest: Mapping[str, Any],
+    repo_root: str | Path | None = None,
     owner_active: bool,
     historical_task_statuses: Mapping[str, str]
     | Sequence[Mapping[str, Any]]
@@ -517,6 +523,7 @@ def materialize_offline_eaaef_population(
         population,
         current_board=current_board,
         current_forest=current_forest,
+        repo_root=repo_root,
         owner_active=False,
         historical_task_statuses=None,
     )

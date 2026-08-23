@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import subprocess
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import replace
@@ -27,6 +28,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_eaaef_reconciliation
     EAAEFTypedReconciliationOwnerUnavailable,
     open_eaaef_typed_reconciliation_owner,
 )
+
+_REAL_INSPECT_CURRENT_REPOSITORY_FOREST = lifecycle.inspect_current_repository_forest
 
 
 @pytest.fixture
@@ -105,8 +108,21 @@ def _sealed_forest(*, accelerator_commit: str = "1" * 40) -> dict[str, Any]:
     }
 
 
+@pytest.fixture(autouse=True)
+def _explicit_trusted_forest_inspection(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        lifecycle,
+        "inspect_current_repository_forest",
+        lambda _root: _sealed_forest(),
+    )
+
+
 def _population(repo_root: Path) -> lifecycle.CompiledEAAEFPopulation:
-    return lifecycle.compile_fresh_eaaef_population(_board(repo_root), forest=_sealed_forest())
+    return lifecycle.compile_fresh_eaaef_population(
+        _board(repo_root),
+        forest=_sealed_forest(),
+        repo_root=repo_root,
+    )
 
 
 def _board(repo_root: Path) -> dict[str, Any]:
@@ -115,6 +131,49 @@ def _board(repo_root: Path) -> dict[str, Any]:
 
 def _plain(value: Any) -> Any:
     return json.loads(lifecycle._canonical_bytes(value))
+
+
+def _git(repo_root: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _commit_test_repository(repo_root: Path, *, marker: str) -> str:
+    repo_root.mkdir(parents=True, exist_ok=True)
+    _git(repo_root, "init", "--quiet")
+    _git(repo_root, "config", "user.name", "EAAEF provenance test")
+    _git(repo_root, "config", "user.email", "eaaef-provenance@example.invalid")
+    (repo_root / "identity.txt").write_text(marker, encoding="utf-8")
+    _git(repo_root, "add", "identity.txt")
+    _git(repo_root, "commit", "--quiet", "-m", "test repository identity")
+    return _git(repo_root, "rev-parse", "HEAD")
+
+
+def _real_git_forest(repo_root: Path, *, board_bytes: bytes) -> dict[str, Any]:
+    repo_root.mkdir(parents=True)
+    _git(repo_root, "init", "--quiet")
+    _git(repo_root, "config", "user.name", "EAAEF provenance test")
+    _git(repo_root, "config", "user.email", "eaaef-provenance@example.invalid")
+    board_path = repo_root / lifecycle.EAAEF_BOARD_PATH
+    board_path.parent.mkdir(parents=True)
+    board_path.write_bytes(board_bytes)
+    _git(repo_root, "add", lifecycle.EAAEF_BOARD_PATH)
+    for name, relative_path in lifecycle._SUBMODULES:
+        nested_head = _commit_test_repository(repo_root / relative_path, marker=name)
+        _git(
+            repo_root,
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"160000,{nested_head},{relative_path}",
+        )
+    _git(repo_root, "commit", "--quiet", "-m", "sealed EAAEF test forest")
+    return _REAL_INSPECT_CURRENT_REPOSITORY_FOREST(repo_root)
 
 
 def _replace_bootstrap_task(
@@ -199,6 +258,7 @@ def test_translation_is_exact_database_task_source_population(repo_root: Path) -
         population,
         current_board=_board(repo_root),
         current_forest=_sealed_forest(),
+        repo_root=repo_root,
         owner_active=False,
     )
 
@@ -230,7 +290,65 @@ def test_translation_is_exact_database_task_source_population(repo_root: Path) -
         population=population,
         current_board=_board(repo_root),
         current_forest=_sealed_forest(),
+        repo_root=repo_root,
     ) == translated
+
+
+def test_public_population_apis_require_keyword_only_trusted_repo_root(repo_root: Path) -> None:
+    population = _population(repo_root)
+    translated = offline.translate_compiled_eaaef_population(
+        population,
+        current_board=_board(repo_root),
+        current_forest=_sealed_forest(),
+        repo_root=repo_root,
+        owner_active=False,
+    )
+    for function in (
+        lifecycle.compile_fresh_eaaef_population,
+        lifecycle.verify_compiled_eaaef_population_commitments,
+        offline.translate_compiled_eaaef_population,
+        offline.verify_translated_eaaef_population,
+        offline.materialize_offline_eaaef_population,
+    ):
+        parameter = inspect.signature(function).parameters["repo_root"]
+        assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameter.default is None
+
+    with pytest.raises(lifecycle.EAAEFReconciliationBlocked, match="explicit trusted repo_root"):
+        lifecycle.compile_fresh_eaaef_population(
+            _board(repo_root),
+            forest=_sealed_forest(),
+        )
+    with pytest.raises(lifecycle.EAAEFReconciliationBlocked, match="explicit trusted repo_root"):
+        lifecycle.verify_compiled_eaaef_population_commitments(
+            population,
+            current_board=_board(repo_root),
+            current_forest=_sealed_forest(),
+        )
+    with pytest.raises(lifecycle.EAAEFReconciliationBlocked, match="explicit trusted repo_root"):
+        offline.translate_compiled_eaaef_population(
+            population,
+            current_board=_board(repo_root),
+            current_forest=_sealed_forest(),
+            owner_active=False,
+        )
+    with pytest.raises(lifecycle.EAAEFReconciliationBlocked, match="explicit trusted repo_root"):
+        offline.verify_translated_eaaef_population(
+            translated,
+            population=population,
+            current_board=_board(repo_root),
+            current_forest=_sealed_forest(),
+        )
+    sink = _ForbiddenMaterializer()
+    with pytest.raises(lifecycle.EAAEFReconciliationBlocked, match="explicit trusted repo_root"):
+        offline.materialize_offline_eaaef_population(
+            sink,
+            population,
+            current_board=_board(repo_root),
+            current_forest=_sealed_forest(),
+            owner_active=False,
+        )
+    assert sink.called is False
 
 
 def test_offline_materialization_preserves_all_contract_rows(
@@ -246,6 +364,7 @@ def test_offline_materialization_preserves_all_contract_rows(
             population,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(),
+            repo_root=repo_root,
             owner_active=False,
         )
         page = source.list_tasks(limit=200)
@@ -283,6 +402,7 @@ def test_translation_rejects_live_owner_history_stale_forest_and_terminal_status
             population,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(),
+            repo_root=repo_root,
             owner_active=True,
         )
     with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="historical"):
@@ -290,14 +410,16 @@ def test_translation_rejects_live_owner_history_stale_forest_and_terminal_status
             population,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(),
+            repo_root=repo_root,
             owner_active=False,
             historical_task_statuses={"EAAEF-000": "done"},
         )
-    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="stale"):
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="forest"):
         offline.translate_compiled_eaaef_population(
             population,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(accelerator_commit="9" * 40),
+            repo_root=repo_root,
             owner_active=False,
         )
 
@@ -309,6 +431,7 @@ def test_translation_rejects_live_owner_history_stale_forest_and_terminal_status
             forged_population,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(),
+            repo_root=repo_root,
             owner_active=False,
         )
 
@@ -344,6 +467,7 @@ def test_retained_population_cids_reject_commitment_bearing_task_mutations(
             forged,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(),
+            repo_root=repo_root,
             owner_active=False,
         )
 
@@ -361,6 +485,7 @@ def test_forged_dependency_and_held_partition_cids_fail_closed(repo_root: Path) 
             forged_dependencies,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(),
+            repo_root=repo_root,
             owner_active=False,
         )
 
@@ -375,6 +500,7 @@ def test_forged_dependency_and_held_partition_cids_fail_closed(repo_root: Path) 
             forged_held,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(),
+            repo_root=repo_root,
             owner_active=False,
         )
 
@@ -402,6 +528,7 @@ def test_each_population_commitment_is_recomputed(
             forged,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(),
+            repo_root=repo_root,
             owner_active=False,
         )
 
@@ -416,6 +543,7 @@ def test_goal_and_r1_plan_mutations_reject_retained_commitments(repo_root: Path)
             forged_goal,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(),
+            repo_root=repo_root,
             owner_active=False,
         )
 
@@ -427,6 +555,7 @@ def test_goal_and_r1_plan_mutations_reject_retained_commitments(repo_root: Path)
             forged_plan,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(),
+            repo_root=repo_root,
             owner_active=False,
         )
 
@@ -435,7 +564,11 @@ def test_current_board_and_task_specs_must_remain_self_addressed(repo_root: Path
     board = _board(repo_root)
     board["goals"][0]["title"] = "forged board title"
     with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="board CID"):
-        lifecycle.compile_fresh_eaaef_population(board, forest=_sealed_forest())
+        lifecycle.compile_fresh_eaaef_population(
+            board,
+            forest=_sealed_forest(),
+            repo_root=repo_root,
+        )
 
     board = _board(repo_root)
     board["tasks"][0]["execution_owned_files"][0] = "forged/task-output.txt"
@@ -443,7 +576,11 @@ def test_current_board_and_task_specs_must_remain_self_addressed(repo_root: Path
     projection.pop("board_cid")
     board["board_cid"] = lifecycle._eaaef_source_cid(projection)
     with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="task spec CID"):
-        lifecycle.compile_fresh_eaaef_population(board, forest=_sealed_forest())
+        lifecycle.compile_fresh_eaaef_population(
+            board,
+            forest=_sealed_forest(),
+            repo_root=repo_root,
+        )
 
 
 def test_resealed_forged_rows_still_differ_from_current_sealed_board(repo_root: Path) -> None:
@@ -455,6 +592,7 @@ def test_resealed_forged_rows_still_differ_from_current_sealed_board(repo_root: 
             forged,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(),
+            repo_root=repo_root,
             owner_active=False,
         )
 
@@ -478,7 +616,11 @@ def test_resealed_board_and_population_must_match_sealed_git_source(
         lifecycle.EAAEFReconciliationIdentityError,
         match="sealed Git board source",
     ):
-        lifecycle.compile_fresh_eaaef_population(forged_board, forest=forest)
+        lifecycle.compile_fresh_eaaef_population(
+            forged_board,
+            forest=forest,
+            repo_root=repo_root,
+        )
 
     # Reconstruct the fully self-consistent population accepted before the
     # provenance gate, then prove the offline verifier independently rejects it.
@@ -494,6 +636,7 @@ def test_resealed_board_and_population_must_match_sealed_git_source(
         forged_population = lifecycle.compile_fresh_eaaef_population(
             forged_board,
             forest=forest,
+            repo_root=repo_root,
         )
 
     with pytest.raises(
@@ -504,6 +647,117 @@ def test_resealed_board_and_population_must_match_sealed_git_source(
             forged_population,
             current_board=forged_board,
             current_forest=forest,
+            repo_root=repo_root,
+            owner_active=False,
+        )
+
+
+def test_fully_resealed_forest_cannot_claim_blob_absent_from_real_tree(
+    repo_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trusted_root = tmp_path / "trusted-eaaef-repository"
+    honest_board_bytes = (repo_root / lifecycle.EAAEF_BOARD_PATH).read_bytes()
+    honest_board = json.loads(honest_board_bytes)
+    honest_forest = _real_git_forest(trusted_root, board_bytes=honest_board_bytes)
+    assert honest_forest["valid"] is True
+    monkeypatch.setattr(
+        lifecycle,
+        "inspect_current_repository_forest",
+        _REAL_INSPECT_CURRENT_REPOSITORY_FOREST,
+    )
+    lifecycle.compile_fresh_eaaef_population(
+        honest_board,
+        forest=honest_forest,
+        repo_root=trusted_root,
+    )
+
+    forged_board = _plain(honest_board)
+    forged_task = forged_board["tasks"][0]
+    forged_task["execution_owned_files"][0] = "forged/absent-tree-output.txt"
+    task_projection = dict(forged_task)
+    task_projection.pop("task_spec_cid")
+    forged_task["task_spec_cid"] = lifecycle._eaaef_source_cid(task_projection)
+    board_projection = dict(forged_board)
+    board_projection.pop("board_cid")
+    forged_board["board_cid"] = lifecycle._eaaef_source_cid(board_projection)
+    forged_board_bytes = json.dumps(
+        forged_board,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    forged_blob_oid = hashlib.sha1(
+        b"blob " + str(len(forged_board_bytes)).encode("ascii") + b"\0" + forged_board_bytes,
+        usedforsecurity=False,
+    ).hexdigest()
+    forged_board_source = lifecycle._board_source_binding(
+        forged_board_bytes,
+        source_head=honest_forest["source_head"],
+        source_tree=honest_forest["source_tree"],
+        git_mode="100644",
+        blob_oid=forged_blob_oid,
+    )
+    forged_identity = {
+        "schema": lifecycle.EAAEF_FOREST_SCHEMA,
+        "repositories": _plain(honest_forest["repositories"]),
+        "board_source": forged_board_source,
+    }
+    forged_forest_root = lifecycle._cid(forged_identity)
+    forged_forest = {
+        **forged_identity,
+        "valid": True,
+        "blockers": [],
+        "source_head": honest_forest["source_head"],
+        "source_tree": honest_forest["source_tree"],
+        "source_forest_root": forged_forest_root,
+        "source_generation_cid": forged_forest_root,
+        "binding_cid": lifecycle._cid(
+            {**forged_identity, "source_forest_root": forged_forest_root}
+        ),
+    }
+    tree_entry = _git(
+        trusted_root,
+        "ls-tree",
+        honest_forest["source_tree"],
+        "--",
+        lifecycle.EAAEF_BOARD_PATH,
+    )
+    assert honest_forest["board_source"]["blob_oid"] in tree_entry
+    assert forged_blob_oid not in tree_entry
+
+    # Reconstruct the population that a descriptor-only gate accepted.
+    with monkeypatch.context() as descriptor_only:
+        descriptor_only.setattr(
+            lifecycle,
+            "inspect_current_repository_forest",
+            lambda _root: forged_forest,
+        )
+        forged_population = lifecycle.compile_fresh_eaaef_population(
+            forged_board,
+            forest=forged_forest,
+            repo_root=trusted_root,
+        )
+
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="trusted current Git inspection",
+    ):
+        lifecycle.compile_fresh_eaaef_population(
+            forged_board,
+            forest=forged_forest,
+            repo_root=trusted_root,
+        )
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="trusted current Git inspection",
+    ):
+        offline.translate_compiled_eaaef_population(
+            forged_population,
+            current_board=forged_board,
+            current_forest=forged_forest,
+            repo_root=trusted_root,
             owner_active=False,
         )
 
@@ -521,6 +775,7 @@ def test_commitment_failure_occurs_before_offline_sink_call(repo_root: Path) -> 
             forged,
             current_board=_board(repo_root),
             current_forest=_sealed_forest(),
+            repo_root=repo_root,
             owner_active=False,
         )
     assert sink.called is False

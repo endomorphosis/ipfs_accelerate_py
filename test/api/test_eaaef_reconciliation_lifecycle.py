@@ -92,6 +92,15 @@ def _sealed_forest(*, accelerator_commit: str = "1" * 40) -> dict[str, Any]:
     }
 
 
+@pytest.fixture(autouse=True)
+def _explicit_trusted_forest_inspection(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        lifecycle,
+        "inspect_current_repository_forest",
+        lambda _root: _sealed_forest(),
+    )
+
+
 def _board(repo_root: Path) -> dict[str, Any]:
     return json.loads((repo_root / lifecycle.EAAEF_BOARD_PATH).read_text(encoding="utf-8"))
 
@@ -100,6 +109,7 @@ def _population(repo_root: Path) -> lifecycle.CompiledEAAEFPopulation:
     return lifecycle.compile_fresh_eaaef_population(
         _board(repo_root),
         forest=_sealed_forest(),
+        repo_root=repo_root,
     )
 
 
@@ -364,19 +374,37 @@ def test_fresh_population_is_exact_22_plus_94_and_plan_r2_releases_all(
     assert "security_reviewer_signature" not in statement
 
 
-def test_stale_forest_and_bootstrap_bindings_fail_closed(repo_root: Path) -> None:
+def test_stale_forest_and_bootstrap_bindings_fail_closed(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     original = _sealed_forest()
     stale = json.loads(json.dumps(original))
     stale["repositories"][0]["tree"] = "e" * 40
     with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="forest"):
-        lifecycle.compile_fresh_eaaef_population(_board(repo_root), forest=stale)
+        lifecycle.compile_fresh_eaaef_population(
+            _board(repo_root),
+            forest=stale,
+            repo_root=repo_root,
+        )
 
     original_population = lifecycle.compile_fresh_eaaef_population(
-        _board(repo_root), forest=original
+        _board(repo_root),
+        forest=original,
+        repo_root=repo_root,
     )
-    fresh_population = lifecycle.compile_fresh_eaaef_population(
-        _board(repo_root), forest=_sealed_forest(accelerator_commit="9" * 40)
-    )
+    fresh_forest = _sealed_forest(accelerator_commit="9" * 40)
+    with monkeypatch.context() as fresh_inspection:
+        fresh_inspection.setattr(
+            lifecycle,
+            "inspect_current_repository_forest",
+            lambda _root: fresh_forest,
+        )
+        fresh_population = lifecycle.compile_fresh_eaaef_population(
+            _board(repo_root),
+            forest=fresh_forest,
+            repo_root=repo_root,
+        )
     with pytest.raises(
         lifecycle.EAAEFReconciliationIdentityError,
         match="bootstrap owner snapshot differs",

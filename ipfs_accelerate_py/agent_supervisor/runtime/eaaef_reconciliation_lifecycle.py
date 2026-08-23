@@ -644,6 +644,20 @@ def inspect_current_repository_forest(repo_root: str | Path) -> dict[str, Any]:
             blockers.append(f"gitlink_checkout_mismatch:{relative_path}")
         if initialized and nested_status:
             blockers.append(f"required_gitlink_dirty:{relative_path}")
+        final_nested_head = (
+            _git(nested, "rev-parse", "HEAD", check=False) if initialized else ""
+        )
+        final_nested_status = (
+            _git(nested, "status", "--porcelain=v1", "--untracked-files=all", check=False)
+            if initialized
+            else ""
+        )
+        if initialized and final_nested_head != nested_head:
+            blockers.append(f"required_gitlink_head_changed_during_inspection:{relative_path}")
+        if initialized and final_nested_status != nested_status:
+            blockers.append(
+                f"required_gitlink_worktree_changed_during_inspection:{relative_path}"
+            )
         repositories.append(
             {
                 "name": name,
@@ -652,7 +666,12 @@ def inspect_current_repository_forest(repo_root: str | Path) -> dict[str, Any]:
                 "tree": nested_tree if initialized else "",
                 "gitlink": True,
                 "initialized": initialized,
-                "clean": initialized and not bool(nested_status),
+                "clean": bool(
+                    initialized
+                    and not nested_status
+                    and not final_nested_status
+                    and final_nested_head == nested_head
+                ),
             }
         )
     final_head = _git(root, "rev-parse", "HEAD")
@@ -684,7 +703,7 @@ def inspect_current_repository_forest(repo_root: str | Path) -> dict[str, Any]:
 
 
 def _require_sealed_forest(forest: Mapping[str, Any]) -> dict[str, Any]:
-    value = dict(forest)
+    value = json.loads(_canonical_bytes(dict(forest)))
     if (
         value.get("schema") != EAAEF_FOREST_SCHEMA
         or value.get("valid") is not True
@@ -760,6 +779,32 @@ def _require_sealed_forest(forest: Mapping[str, Any]) -> dict[str, Any]:
     ):
         raise EAAEFReconciliationIdentityError("repository forest self-address differs")
     return value
+
+
+def _require_trusted_current_forest(
+    forest: Mapping[str, Any],
+    *,
+    repo_root: str | Path | None,
+) -> dict[str, Any]:
+    """Anchor a caller-held forest to a fresh inspection of one explicit Git root."""
+
+    if repo_root is None:
+        raise EAAEFReconciliationBlocked(
+            "EAAEF population verification requires an explicit trusted repo_root"
+        )
+    try:
+        root = Path(repo_root).resolve(strict=True)
+    except OSError as exc:
+        raise EAAEFReconciliationIdentityError(
+            "trusted EAAEF repository root is unavailable"
+        ) from exc
+    supplied = _require_sealed_forest(forest)
+    observed = _require_sealed_forest(inspect_current_repository_forest(root))
+    if _canonical_bytes(supplied) != _canonical_bytes(observed):
+        raise EAAEFReconciliationIdentityError(
+            "caller-held repository forest differs from the trusted current Git inspection"
+        )
+    return observed
 
 
 @dataclass(frozen=True)
@@ -864,6 +909,7 @@ def compile_fresh_eaaef_population(
     board: Mapping[str, Any],
     *,
     forest: Mapping[str, Any],
+    repo_root: str | Path | None = None,
 ) -> CompiledEAAEFPopulation:
     """Compile exactly 22 R1 bootstrap plus 94 held R2 tasks.
 
@@ -872,7 +918,7 @@ def compile_fresh_eaaef_population(
     ``todo`` only after the owner verifies its complete authorization.
     """
 
-    sealed = _require_sealed_forest(forest)
+    sealed = _require_trusted_current_forest(forest, repo_root=repo_root)
     try:
         board = json.loads(_canonical_bytes(dict(board)))
     except (TypeError, ValueError) as exc:
@@ -1237,6 +1283,7 @@ def verify_compiled_eaaef_population_commitments(
     *,
     current_board: Mapping[str, Any],
     current_forest: Mapping[str, Any],
+    repo_root: str | Path | None = None,
 ) -> CompiledEAAEFPopulation:
     """Rebuild every population commitment from the current sealed inputs.
 
@@ -1249,7 +1296,7 @@ def verify_compiled_eaaef_population_commitments(
 
     if type(population) is not CompiledEAAEFPopulation:
         raise EAAEFReconciliationIdentityError("EAAEF population was not freshly compiled")
-    sealed = _require_sealed_forest(current_forest)
+    sealed = _require_trusted_current_forest(current_forest, repo_root=repo_root)
     source_mismatches = sorted(
         field_name
         for field_name in ("source_head", "source_tree", "source_forest_root")
@@ -1396,7 +1443,11 @@ def verify_compiled_eaaef_population_commitments(
             "compiled EAAEF execution-contract counts differ"
         )
 
-    canonical = compile_fresh_eaaef_population(current_board, forest=sealed)
+    canonical = compile_fresh_eaaef_population(
+        current_board,
+        forest=sealed,
+        repo_root=repo_root,
+    )
     if _canonical_bytes(vars(population)) != _canonical_bytes(vars(canonical)):
         raise EAAEFReconciliationIdentityError(
             "compiled EAAEF population differs from the current sealed board"
@@ -2555,7 +2606,7 @@ def prepare_fresh_generation(
     root = Path(repo_root).resolve(strict=True)
     sealed = _require_sealed_forest(inspect_current_repository_forest(root))
     board = _json_object(root / EAAEF_BOARD_PATH, noun="EAAEF task board")
-    population = compile_fresh_eaaef_population(board, forest=sealed)
+    population = compile_fresh_eaaef_population(board, forest=sealed, repo_root=root)
     typed_owner = require_typed_reconciliation_owner(
         owner,
         source_forest_root=population.source_forest_root,
@@ -2591,6 +2642,7 @@ def prepare_fresh_generation(
             population,
             current_board=board,
             current_forest=sealed,
+            repo_root=root,
         )
         receipt, snapshot = _validate_offline_population_receipt(
             typed_owner.materialize_offline_population(
@@ -2646,7 +2698,7 @@ def materialize_fresh_generation(
     selected_forest = inspect_current_repository_forest(root)
     sealed = _require_sealed_forest(selected_forest)
     board = _json_object(root / EAAEF_BOARD_PATH, noun="EAAEF task board")
-    population = compile_fresh_eaaef_population(board, forest=sealed)
+    population = compile_fresh_eaaef_population(board, forest=sealed, repo_root=root)
     admission = verify_fresh_authority_bundle(
         authority,
         population=population,
@@ -2717,6 +2769,7 @@ def materialize_fresh_generation(
             population,
             current_board=board,
             current_forest=sealed,
+            repo_root=root,
         )
         receipt = _validate_owner_receipt(
             typed_owner.apply_signed_plan_r2(
@@ -3118,7 +3171,7 @@ def preflight_reconciliation(
     try:
         sealed = _require_sealed_forest(selected_forest)
         board = _json_object(root / EAAEF_BOARD_PATH, noun="EAAEF task board")
-        population = compile_fresh_eaaef_population(board, forest=sealed)
+        population = compile_fresh_eaaef_population(board, forest=sealed, repo_root=root)
         unsigned_request = build_unsigned_fresh_authority_request(
             population=population,
             bootstrap_snapshot=bootstrap_snapshot,
