@@ -709,6 +709,35 @@ def test_hidden_effect_escalation_is_rejected() -> None:
     assert "effect" in decision.incompatible_dimensions
 
 
+def test_omitted_component_effect_is_incompatible_not_hidden_escalation() -> None:
+    predecessor, successor = _composed_operators()
+    decision = compose_procedure_operators(
+        _composition_request(
+            predecessor,
+            successor,
+            composed_effects=(EffectClass.VALIDATION,),
+        )
+    )
+    assert decision.accepted is False
+    assert decision.reason_code is CompositionReason.EFFECT_INCOMPATIBLE
+    assert "effect" in decision.incompatible_dimensions
+
+
+def test_invalid_composition_does_not_dispatch_procedures() -> None:
+    predecessor, successor = _composed_operators()
+    request = PlannerDispatchRequest(
+        match=_match_request(valid_spec()),
+        operators=(),
+        composition=_composition_request(predecessor, successor, entailment=()),
+    )
+    decision = _qualified_adapter().plan(request)
+    assert decision.selected_kind == PlannerOperatorKind.DETERMINISTIC_BASELINE.value
+    assert decision.procedure_cids == ()
+    assert decision.dispatched is False
+    assert decision.action is PlannerDispatchAction.CANDIDATES
+    assert decision.other_runtime_usable is True
+
+
 def test_hidden_authority_escalation_is_rejected() -> None:
     predecessor, successor = _composed_operators()
     authority = replace(
@@ -813,3 +842,11 @@ def test_operator_and_decisions_round_trip_without_authority() -> None:
     match = adapter.match(_match_request(spec), operator)
     assert match.adapter_revision == ADAPTER_REVISION
     assert parse_procedure_artifact(match.to_dict()) == match
+    live = ProcedurePlannerAdapter()
+    unavailable = live.plan(
+        PlannerDispatchRequest(match=_match_request(spec), operators=(operator,))
+    )
+    if unavailable.action is PlannerDispatchAction.UNAVAILABLE:
+        assert parse_procedure_artifact(unavailable.to_dict()) == unavailable
+        assert unavailable.other_runtime_usable is True
+        assert unavailable.procedure_cids == ()
