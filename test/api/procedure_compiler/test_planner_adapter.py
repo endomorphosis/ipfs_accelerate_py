@@ -37,6 +37,7 @@ from ipfs_accelerate_py.agent_supervisor.procedure_compiler.planner_adapter impo
     CompositionReason,
     CompositionRequest,
     EntailmentEvidence,
+    PlannerCompatibility,
     PlannerCompatibilityStatus,
     PlannerDispatchAction,
     PlannerDispatchReason,
@@ -401,6 +402,39 @@ def test_live_adaptive_planner_probe_qualifies_or_is_typed_unavailable() -> None
         assert compatibility.blocker == ADAPTIVE_PLANNER_HAMMER_BLOCKER
         assert compatibility.diagnostic == HAMMER_TRACE_SCHEMA_SIGNATURE
         assert HAMMER_TRACE_SCHEMA_SIGNATURE in compatibility.diagnostic
+    _assert_other_runtime_usable()
+
+
+def test_typed_unavailable_probe_blocks_dispatch_and_keeps_runtime_usable() -> None:
+    spec = valid_spec()
+    operator = _operator(spec)
+    compatibility = PlannerCompatibility(
+        status=PlannerCompatibilityStatus.TYPED_UNAVAILABLE,
+        reason_code=ADAPTIVE_PLANNER_HAMMER_BLOCKER,
+        diagnostic=HAMMER_TRACE_SCHEMA_SIGNATURE,
+        planner_class_present=False,
+        blocker=ADAPTIVE_PLANNER_HAMMER_BLOCKER,
+    )
+    adapter = ProcedurePlannerAdapter(compatibility_probe=lambda: compatibility)
+    decision = adapter.plan(
+        PlannerDispatchRequest(
+            match=_match_request(spec),
+            operators=(operator,),
+            composition=_composition_request(*_composed_operators()),
+        )
+    )
+    assert decision.action is PlannerDispatchAction.UNAVAILABLE
+    assert decision.reason_code is PlannerDispatchReason.ADAPTIVE_PLANNER_INCOMPATIBLE
+    assert decision.compatibility_status is PlannerCompatibilityStatus.TYPED_UNAVAILABLE
+    assert decision.dispatched is False
+    assert decision.procedure_cids == ()
+    assert decision.selected_kind == ""
+    assert decision.considered_kinds == ()
+    assert decision.compatibility_reason_code == ADAPTIVE_PLANNER_HAMMER_BLOCKER
+    assert decision.diagnostic == HAMMER_TRACE_SCHEMA_SIGNATURE
+    assert decision.blocker == ADAPTIVE_PLANNER_HAMMER_BLOCKER
+    assert decision.other_runtime_usable is True
+    assert parse_procedure_artifact(decision.to_dict()) == decision
     _assert_other_runtime_usable()
 
 
