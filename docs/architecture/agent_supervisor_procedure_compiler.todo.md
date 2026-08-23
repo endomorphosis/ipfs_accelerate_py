@@ -378,7 +378,7 @@ This board is a sealed bootstrap and human export. After materialization, DuckDB
 
 ## PCPC-010 Implement task-family discovery baseline
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
