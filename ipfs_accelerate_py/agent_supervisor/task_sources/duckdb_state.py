@@ -1018,14 +1018,17 @@ class DuckDBConnection:
                 {"template_id": template_id, "parameters": bound}
             )
             return _empty_duckdb_cursor()
-        if catalog and not normalized.startswith("USE "):
-            # Always USE the attached catalog. Skipping this after wrap() can
-            # run against the empty :memory: schema and look like "no ready
-            # tasks". A consumed remote handle retries below without ATTACH.
+        if (
+            catalog
+            and not normalized.startswith("USE ")
+            and f"{str(catalog).upper()}." not in normalized
+        ):
+            # Qualified control_plane.table SQL does not need a separate USE.
+            # Unqualified statements still switch the attached catalog.
             used = self._connection.execute(f"USE {catalog}")
             _consume_duckdb_result(used)
             self._active_catalog = catalog
-        attempts = 2 if self._is_quack_attach_session() else 1
+        attempts = 6 if self._is_quack_attach_session() else 1
         executed: Any = None
         for attempt in range(attempts):
             try:

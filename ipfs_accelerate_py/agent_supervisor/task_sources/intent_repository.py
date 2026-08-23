@@ -2498,54 +2498,16 @@ class IntentRepository:
 
     def _task_hydrate_sql(self, *, where_clause: str = "", order_clause: str = "") -> str:
         tasks = self._relation("tasks")
-        deps = self._relation("task_dependencies")
-        outputs = self._relation("task_outputs")
-        acceptance = self._relation("task_acceptance")
-        validations = self._relation("task_validations")
         where_sql = f" WHERE {where_clause}" if where_clause else ""
         order_sql = f" {order_clause}" if order_clause else ""
+        # Quack 1.5.5 remote scans reject joins and correlated subqueries
+        # ("multiple streaming scans"). Hydrate child tables separately.
         return f"""
                 SELECT
                     t.task_cid, t.task_alias, t.goal_cid, t.plan_cid, t.objective_id,
                     t.ordinal, t.status, t.revision, t.priority, t.created_at,
-                    t.updated_at, t.identity_json, t.body_json,
-                    coalesce(dep.deps, '[]'),
-                    coalesce(out.outputs, '[]'),
-                    coalesce(acc.acceptance, '[]'),
-                    coalesce(val.validations, '[]')
+                    t.updated_at, t.identity_json, t.body_json
                 FROM {tasks} t
-                LEFT JOIN (
-                    SELECT task_cid, json_group_array(dependency_task_cid) AS deps
-                    FROM {deps}
-                    GROUP BY task_cid
-                ) dep ON dep.task_cid = t.task_cid
-                LEFT JOIN (
-                    SELECT task_cid, json_group_array(json_object(
-                        'ordinal', ordinal,
-                        'path', path,
-                        'effect', effect_json
-                    )) AS outputs
-                    FROM {outputs}
-                    GROUP BY task_cid
-                ) out ON out.task_cid = t.task_cid
-                LEFT JOIN (
-                    SELECT task_cid, json_group_array(json_object(
-                        'ordinal', ordinal,
-                        'criterion', criterion,
-                        'evidence_policy', evidence_policy_json
-                    )) AS acceptance
-                    FROM {acceptance}
-                    GROUP BY task_cid
-                ) acc ON acc.task_cid = t.task_cid
-                LEFT JOIN (
-                    SELECT task_cid, json_group_array(json_object(
-                        'ordinal', ordinal,
-                        'argv', argv_json,
-                        'policy', policy_json
-                    )) AS validations
-                    FROM {validations}
-                    GROUP BY task_cid
-                ) val ON val.task_cid = t.task_cid
                 {where_sql}
                 {order_sql}
                 """
@@ -2558,49 +2520,6 @@ class IntentRepository:
         return list(_decode_json(value, noun=noun) or [])
 
     def _task_mapping_from_hydrate(self, row: Sequence[Any]) -> Mapping[str, Any]:
-        deps = [str(item) for item in self._decode_relation_list(row[13], noun="dependencies")]
-        outputs = []
-        for item in self._decode_relation_list(row[14], noun="outputs"):
-            if not isinstance(item, Mapping):
-                continue
-            outputs.append(
-                {
-                    "ordinal": int(item.get("ordinal") or 0),
-                    "path": str(item.get("path") or ""),
-                    "effect": _decode_json(item.get("effect"), noun="output effect")
-                    if not isinstance(item.get("effect"), Mapping)
-                    else dict(item.get("effect") or {}),
-                }
-            )
-        acceptance = []
-        for item in self._decode_relation_list(row[15], noun="acceptance"):
-            if not isinstance(item, Mapping):
-                continue
-            policy = item.get("evidence_policy")
-            acceptance.append(
-                {
-                    "ordinal": int(item.get("ordinal") or 0),
-                    "criterion": str(item.get("criterion") or ""),
-                    "evidence_policy": policy
-                    if isinstance(policy, Mapping)
-                    else _decode_json(policy, noun="acceptance policy"),
-                }
-            )
-        validations = []
-        for item in self._decode_relation_list(row[16], noun="validations"):
-            if not isinstance(item, Mapping):
-                continue
-            argv = item.get("argv")
-            policy = item.get("policy")
-            validations.append(
-                {
-                    "ordinal": int(item.get("ordinal") or 0),
-                    "argv": argv if isinstance(argv, list) else _decode_json(argv, noun="validation argv"),
-                    "policy": policy
-                    if isinstance(policy, Mapping)
-                    else _decode_json(policy, noun="validation policy"),
-                }
-            )
         return MappingProxyType(
             {
                 "task_cid": str(row[0]),
@@ -2616,12 +2535,77 @@ class IntentRepository:
                 "updated_at": str(row[10] or ""),
                 "identity": _decode_json(row[11], noun="task identity"),
                 "body": _decode_json(row[12], noun="task body"),
-                "dependencies": tuple(deps),
-                "outputs": tuple(outputs),
-                "acceptance": tuple(acceptance),
-                "validations": tuple(validations),
+                "dependencies": (),
+                "outputs": (),
+                "acceptance": (),
+                "validations": (),
             }
         )
+
+    def _task_relations(
+        self,
+        connection: Any,
+        task_cids: Sequence[str],
+    ) -> tuple[
+        dict[str, list[str]],
+        dict[str, list[dict[str, Any]]],
+        dict[str, list[dict[str, Any]]],
+        dict[str, list[dict[str, Any]]],
+    ]:
+        deps: dict[str, list[str]] = {str(cid): [] for cid in task_cids}
+        outputs: dict[str, list[dict[str, Any]]] = {str(cid): [] for cid in task_cids}
+        acceptance: dict[str, list[dict[str, Any]]] = {str(cid): [] for cid in task_cids}
+        validations: dict[str, list[dict[str, Any]]] = {str(cid): [] for cid in task_cids}
+        if not task_cids:
+            return deps, outputs, acceptance, validations
+        placeholders = ", ".join("?" for _ in task_cids)
+        bound = [str(cid) for cid in task_cids]
+        for item in connection.execute(
+            f"SELECT task_cid, dependency_task_cid FROM {self._relation('task_dependencies')} "
+            f"WHERE task_cid IN ({placeholders}) "
+            "ORDER BY task_cid, dependency_task_cid",
+            bound,
+        ).fetchall():
+            deps.setdefault(str(item[0]), []).append(str(item[1]))
+        for item in connection.execute(
+            f"SELECT task_cid, ordinal, path, effect_json FROM {self._relation('task_outputs')} "
+            f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid, ordinal",
+            bound,
+        ).fetchall():
+            outputs.setdefault(str(item[0]), []).append(
+                {
+                    "ordinal": int(item[1]),
+                    "path": str(item[2]),
+                    "effect": _decode_json(item[3], noun="output effect"),
+                }
+            )
+        for item in connection.execute(
+            "SELECT task_cid, ordinal, criterion, evidence_policy_json "
+            f"FROM {self._relation('task_acceptance')} "
+            f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid, ordinal",
+            bound,
+        ).fetchall():
+            acceptance.setdefault(str(item[0]), []).append(
+                {
+                    "ordinal": int(item[1]),
+                    "criterion": str(item[2]),
+                    "evidence_policy": _decode_json(item[3], noun="acceptance policy"),
+                }
+            )
+        for item in connection.execute(
+            "SELECT task_cid, ordinal, argv_json, policy_json "
+            f"FROM {self._relation('task_validations')} "
+            f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid, ordinal",
+            bound,
+        ).fetchall():
+            validations.setdefault(str(item[0]), []).append(
+                {
+                    "ordinal": int(item[1]),
+                    "argv": _decode_json(item[2], noun="validation argv"),
+                    "policy": _decode_json(item[3], noun="validation policy"),
+                }
+            )
+        return deps, outputs, acceptance, validations
 
     def get_task(self, task_cid_or_alias: str) -> Mapping[str, Any] | None:
         key = _identifier(task_cid_or_alias, noun="task_cid")
@@ -2637,7 +2621,19 @@ class IntentRepository:
                 return None
             if len(rows) > 1:
                 raise IntentRepositoryIntegrityError("task CID/alias lookup is ambiguous")
-            return self._task_mapping_from_hydrate(rows[0])
+            row = rows[0]
+            tcid = str(row[0])
+            rel = self._task_relations(connection, (tcid,))
+            mapping = self._task_mapping_from_hydrate(row)
+            return MappingProxyType(
+                {
+                    **dict(mapping),
+                    "dependencies": tuple(rel[0].get(tcid, ())),
+                    "outputs": tuple(rel[1].get(tcid, ())),
+                    "acceptance": tuple(rel[2].get(tcid, ())),
+                    "validations": tuple(rel[3].get(tcid, ())),
+                }
+            )
 
     def list_tasks(
         self,
@@ -2674,7 +2670,17 @@ class IntentRepository:
                     ),
                     [selected, off],
                 ).fetchall()
-        return tuple(self._task_mapping_from_hydrate(row) for row in rows)
+            rel = self._task_relations(connection, tuple(str(row[0]) for row in rows))
+        results = []
+        for row in rows:
+            mapping = dict(self._task_mapping_from_hydrate(row))
+            tcid = str(row[0])
+            mapping["dependencies"] = tuple(rel[0].get(tcid, ()))
+            mapping["outputs"] = tuple(rel[1].get(tcid, ()))
+            mapping["acceptance"] = tuple(rel[2].get(tcid, ()))
+            mapping["validations"] = tuple(rel[3].get(tcid, ()))
+            results.append(MappingProxyType(mapping))
+        return tuple(results)
 
     # -- evidence / completion -----------------------------------------------
 
