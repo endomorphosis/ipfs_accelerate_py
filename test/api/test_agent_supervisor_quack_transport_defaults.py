@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
-import threading
 from pathlib import Path
+import threading
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
@@ -490,6 +491,73 @@ def test_quack_attach_retries_authentication_failed_contention(monkeypatch) -> N
         connection = open_quack_transport_connection("quack:127.0.0.1:41347")
         assert attempts["n"] == 3
         assert connection._pooled is True
+    finally:
+        reset_quack_transport_cache()
+
+
+def test_quack_attach_releases_lock_before_retry_sleep(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    reset_quack_transport_cache()
+    lock_held = {"value": False}
+    held_during_sleep: list[bool] = []
+    attempts = {"n": 0}
+
+    @contextmanager
+    def fake_lock(*_args, **_kwargs):
+        lock_held["value"] = True
+        try:
+            yield
+        finally:
+            lock_held["value"] = False
+
+    def fake_sleep(_seconds: float) -> None:
+        held_during_sleep.append(lock_held["value"])
+
+    def fake_attach(uri: str, secret: str):
+        del uri, secret
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise RuntimeError("Invalid Input Error: Authentication failed")
+        return _FakeQuackRaw()
+
+    monkeypatch.setattr(ds, "exclusive_file_lock", fake_lock)
+    monkeypatch.setattr(ds.time, "sleep", fake_sleep)
+    monkeypatch.setattr(ds, "_attach_quack_once", fake_attach)
+    monkeypatch.setattr(ds, "resolve_quack_attach_token", lambda token="": "tok")
+    try:
+        connection = open_quack_transport_connection("quack:127.0.0.1:41347")
+        assert attempts["n"] == 3
+        assert held_during_sleep == [False, False]
+        assert connection._pooled is True
+    finally:
+        reset_quack_transport_cache()
+
+
+def test_quack_attach_lock_timeout_becomes_policy_error(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    reset_quack_transport_cache()
+    attaches = {"n": 0}
+
+    @contextmanager
+    def timeout_lock(*_args, **_kwargs):
+        raise TimeoutError("timed out acquiring DuckDB process lock: attach.lock")
+        yield
+
+    def fake_attach(uri: str, secret: str):
+        del uri, secret
+        attaches["n"] += 1
+        return _FakeQuackRaw()
+
+    monkeypatch.setattr(ds, "exclusive_file_lock", timeout_lock)
+    monkeypatch.setattr(ds, "_attach_quack_once", fake_attach)
+    monkeypatch.setattr(ds.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(ds, "resolve_quack_attach_token", lambda token="": "tok")
+    try:
+        with pytest.raises(DuckDBConnectionPolicyError, match="attach lock"):
+            open_quack_transport_connection("quack:127.0.0.1:41347")
+        assert attaches["n"] == 0
     finally:
         reset_quack_transport_cache()
 
