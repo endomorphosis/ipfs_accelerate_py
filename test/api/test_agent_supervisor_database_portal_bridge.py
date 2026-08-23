@@ -2901,6 +2901,23 @@ def test_post_merge_rearm_endpoints_fail_closed_on_invalid_payloads(
         daemon.close()
 
 
+def test_typed_output_rearm_requires_bound_post_merge_recovery() -> None:
+    daemon = SimpleNamespace(
+        task_source=SimpleNamespace(
+            record_task_retry_cooldown=lambda **_kwargs: None,
+        ),
+        _post_merge_recovery_fn=None,
+    )
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="requires a bound post-merge recovery callback",
+    ):
+        DatabaseImplementationDaemon._rearm_blocked_tasks_with_outputs_on_head(
+            daemon
+        )
+
+
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
 def test_configured_runner_binds_post_merge_recovery_when_queue_is_target_bound(
     tmp_path: Path,
@@ -2971,6 +2988,10 @@ def test_configured_runner_binds_post_merge_recovery_when_queue_is_target_bound(
         assert daemon._merge_queue is not None
         assert daemon._merge_target_branch == "main"
         assert daemon._post_merge_recovery_fn is not None
+        recovery = daemon._run_post_merge_recovery()
+        assert recovery["attempted"] is True
+        assert recovery["recovered"] is False
+        assert recovery["reason"] == "no_recoverable_post_merge_request"
         assert checkout_repository_id(repo) == daemon._merge_queue.target_repository_id
     finally:
         daemon.close()

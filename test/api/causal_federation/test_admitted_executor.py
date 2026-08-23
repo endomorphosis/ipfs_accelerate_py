@@ -1256,6 +1256,16 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
             _cas_task_status_database=post_merge_control_cas,
             _now_ms=lambda: clock["now_ms"],
         )
+        post_merge_daemon._verified_post_merge_declared_output_recovery_state = (
+            lambda attempt, selected_task, expected_evidence=None: (
+                DatabaseImplementationDaemon._verified_post_merge_declared_output_recovery_state(
+                    post_merge_daemon,
+                    attempt,
+                    selected_task,
+                    expected_evidence=expected_evidence,
+                )
+            )
+        )
         post_merge_result = (
             DatabaseImplementationDaemon.recover_blocked_post_merge_declared_outputs(
                 post_merge_daemon,
@@ -1281,6 +1291,14 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
         assert post_merge_control_receipt["retry_not_before_ms"] == (
             post_merge_entry.retry_not_before_ms
         )
+        post_merge_replay = (
+            DatabaseImplementationDaemon.recover_blocked_post_merge_declared_outputs(
+                post_merge_daemon,
+                post_merge_evidence,
+            )
+        )
+        assert post_merge_replay["changed"] is False
+        assert post_merge_replay["status"] == "retrying"
 
         # An exact idempotency replay must validate the durable row before
         # the owner can reproduce its prior receipt.  Simulate corruption

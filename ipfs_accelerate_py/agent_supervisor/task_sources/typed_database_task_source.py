@@ -1103,12 +1103,10 @@ class TypedDatabaseTaskSource:
             details=frozen,
         )
 
-    def get_queue_entry(self, task_cid: str) -> QueueEntry | None:
-        """Return canonical selection state through the closed owner query."""
-
-        row = self._retry_cooldown_row(task_cid)
-        if row is None:
-            return None
+    @staticmethod
+    def _queue_entry_from_cooldown_row(
+        row: Mapping[str, Any],
+    ) -> QueueEntry:
         extension = dict(row.get("extension") or {})
         for name in ("selection_penalty", "consecutive_failures"):
             value = extension.get(name, 0)
@@ -1127,6 +1125,41 @@ class TypedDatabaseTaskSource:
             state=str(row["state"]),
             reason=str(row["release_reason"] or extension.get("reason") or ""),
         )
+
+    def validate_retrying_task_cooldown(
+        self,
+        task_cid_or_alias: str,
+    ) -> QueueEntry:
+        """Return an exact retrying task/queue binding under one generation."""
+
+        for _attempt in range(4):
+            before = self._client.load_generation()
+            task = self.get(task_cid_or_alias)
+            if task is None or task.status != "retrying":
+                raise TaskSourceIntegrityError(
+                    "typed cooldown validation requires a retrying task"
+                )
+            row = self._retry_cooldown_row(task.task_cid)
+            after = self._client.load_generation()
+            if before.content_id != after.content_id:
+                continue
+            if row is None:
+                raise TaskSourceIntegrityError(
+                    "retrying task has no typed cooldown receipt"
+                )
+            self._validate_retrying_cooldown_binding(task, row)
+            return self._queue_entry_from_cooldown_row(row)
+        raise TaskSourceConflictError(
+            "typed retrying task/cooldown changed during bounded validation"
+        )
+
+    def get_queue_entry(self, task_cid: str) -> QueueEntry | None:
+        """Return canonical selection state through the closed owner query."""
+
+        row = self._retry_cooldown_row(task_cid)
+        if row is None:
+            return None
+        return self._queue_entry_from_cooldown_row(row)
 
 
 __all__ = [

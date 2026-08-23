@@ -6234,7 +6234,10 @@ def test_typed_blocked_recovery_persists_cooldown_before_control_cas() -> None:
                 retry_not_before_ms=1_000,
                 reason=kwargs["reason"],
             )
-            return SimpleNamespace(to_dict=lambda: {"changed": True})
+            return SimpleNamespace(
+                changed=True,
+                to_dict=lambda: {"changed": True},
+            )
 
     source = _TypedRecoverySource()
     daemon = SimpleNamespace(
@@ -6301,6 +6304,82 @@ def test_typed_blocked_recovery_persists_cooldown_before_control_cas() -> None:
     )
     assert result["status"] == "retrying"
     assert result["control_previous_status"] == "blocked"
+
+
+def test_typed_retrying_reuse_requires_exact_task_queue_validation() -> None:
+    calls: list[str] = []
+
+    class _TypedRetryingSource:
+        task = SimpleNamespace(
+            task_cid="task:typed-retrying-exact-reuse",
+            status="retrying",
+            revision=4,
+            body={"completion_receipt": {"operation": "database_portal_retry"}},
+        )
+        entry = SimpleNamespace(
+            retry_not_before_ms=5_000,
+            reason=(
+                "database_portal_retry:attempt:typed-retrying-exact-reuse:"
+                "typed_deferral"
+            ),
+        )
+
+        def get(self, _task_cid: str) -> SimpleNamespace:
+            return self.task
+
+        def get_queue_entry(self, _task_cid: str) -> SimpleNamespace:
+            return self.entry
+
+        @staticmethod
+        def record_task_retry_cooldown(**_kwargs: object) -> None:
+            raise AssertionError("already-retrying path must not write a new digest")
+
+        @staticmethod
+        def validate_retrying_task_cooldown(_task_cid: str) -> None:
+            calls.append("validate")
+            raise DatabaseImplementationAuthorityError(
+                "retrying task receipt differs from its typed cooldown"
+            )
+
+    source = _TypedRetryingSource()
+    daemon = SimpleNamespace(
+        task_source=source,
+        _database_portal_backoff_ms=lambda value: int(value),
+        _now_ms=lambda: 5_000,
+        _protect_retry_transition_authority=(
+            lambda _attempt, _coordination: None
+        ),
+    )
+    attempt = DatabaseTaskAttempt(
+        attempt_id="attempt:typed-retrying-exact-reuse",
+        claim_id="claim:typed-retrying-exact-reuse",
+        task_cid=source.task.task_cid,
+        task_alias="CASF-TYPED-RETRYING-EXACT-REUSE",
+        attempt_number=1,
+        owner_session_id="session:typed-retrying-exact-reuse",
+        fencing_token=7,
+        fence_epoch=3,
+        lease_id="lease:typed-retrying-exact-reuse",
+        committed_phase=ATTEMPT_PHASE_FAILED,
+        status="failed",
+        started_at_ms=100,
+        finished_at_ms=900,
+        revision=5,
+    )
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="differs from its typed cooldown",
+    ):
+        DatabaseImplementationDaemon._persist_task_retry_state(
+            daemon,
+            attempt,
+            reason="typed_deferral",
+            backoff_ms=0,
+            evidence_source="portal_provider_failed",
+        )
+
+    assert calls == ["validate"]
 
 
 def test_retry_reconciliation_repairs_retrying_without_queue(
