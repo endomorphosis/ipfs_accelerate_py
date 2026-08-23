@@ -20,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.procedure_compiler.contracts import (
     ProcedureStep,
     ProcedureValidationPlan,
     ProcedureVersion,
+    RetryPolicy,
     RiskClass,
     StepOperation,
     TaskFamily,
@@ -331,6 +332,8 @@ def test_independently_verified_candidate_passes_every_required_layer() -> None:
     assert set(result.artifact.facts["layers"].values()) == {True}
     assert set(REQUIRED_EVIDENCE_KINDS).issubset(set(policy.required_evidence_kinds))
     assert "promote" not in result.artifact.facts
+    assert candidate.state is ArtifactState.CANDIDATE
+    assert spec.state is ArtifactState.CANDIDATE
 
 
 def test_verify_procedure_helper_matches_class() -> None:
@@ -721,3 +724,74 @@ def test_duplicate_evidence_identities_fail_closed() -> None:
     spec = valid_spec()
     with pytest.raises(ProcedureVerificationError, match="duplicate identities"):
         evidence_for(spec, proof_receipt_cids=("proof-1", "proof-1"), include_receipts=False)
+
+
+def test_unknown_receipt_kind_and_forbidden_receipt_producer_fail_closed() -> None:
+    with pytest.raises(ProcedureVerificationError, match="required evidence kind"):
+        receipt("proof-1", "invented-kind")
+    with pytest.raises(ProcedureVerificationError, match="not independent"):
+        receipt("proof-1", "proof", producer_id="self")
+
+
+def test_temporal_layer_rejects_retry_without_new_evidence() -> None:
+    spec = valid_spec()
+    read, tests, check, receipt_step = spec.steps
+    tests = replace(
+        tests,
+        retry_policy=RetryPolicy(
+            max_attempts=2,
+            retryable_failure_codes=("timeout",),
+            requires_new_evidence=False,
+        ),
+    )
+    broken = replace(spec, steps=(read, tests, check, receipt_step))
+    result = ProcedureVerifier().verify(
+        candidate_for(broken), evidence_for(broken), policy_for(broken), now_ms=100
+    )
+    assert not result.accepted
+    assert (
+        result.outcome(VerificationLayer.TEMPORAL).reason_code
+        == VerificationReasonCode.TEMPORAL_UNSAFE.value
+    )
+
+
+def test_receipt_producer_cannot_be_the_candidate() -> None:
+    spec = valid_spec()
+    candidate = candidate_for(spec)
+    result = ProcedureVerifier().verify(
+        candidate,
+        evidence_for(
+            spec,
+            receipts=(
+                receipt(
+                    "proof-1",
+                    "proof",
+                    contract_id="proof-runner@1",
+                    producer_id=candidate.content_id,
+                ),
+                receipt("test-1", "test", contract_id="focused-tests@1"),
+                receipt("assurance-1", "adversarial"),
+                receipt("held-out-1", "held_out"),
+                receipt("shadow-1", "shadow"),
+            ),
+        ),
+        policy_for(spec),
+        now_ms=100,
+    )
+    assert not result.accepted
+    assert result.reason_code is VerificationReasonCode.SELF_CERTIFICATION
+
+
+def test_step_timeout_exceeding_resources_fails_temporal() -> None:
+    spec = valid_spec()
+    read, tests, check, receipt_step = spec.steps
+    tests = replace(tests, timeout_ms=spec.resources.wall_time_ms + 1)
+    broken = replace(spec, steps=(read, tests, check, receipt_step))
+    result = ProcedureVerifier().verify(
+        candidate_for(broken), evidence_for(broken), policy_for(broken), now_ms=100
+    )
+    assert not result.accepted
+    assert result.outcome(VerificationLayer.TEMPORAL).reason_code in {
+        VerificationReasonCode.TEMPORAL_UNSAFE.value,
+        VerificationReasonCode.STRUCTURAL_UNSAFE.value,
+    }

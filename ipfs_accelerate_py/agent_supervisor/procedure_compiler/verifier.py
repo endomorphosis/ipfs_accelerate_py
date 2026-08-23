@@ -183,7 +183,11 @@ class AdmittedReceipt:
     def __post_init__(self) -> None:
         object.__setattr__(self, "receipt_cid", _identifier(self.receipt_cid, "receipt_cid"))
         object.__setattr__(self, "kind", _identifier(self.kind, "kind"))
+        if self.kind not in REQUIRED_EVIDENCE_KINDS:
+            raise ProcedureVerificationError("receipt kind is not a required evidence kind")
         object.__setattr__(self, "producer_id", _identifier(self.producer_id, "producer_id"))
+        if self.producer_id.lower() in FORBIDDEN_SELF_PRODUCERS:
+            raise ProcedureVerificationError("receipt producer is not independent")
         object.__setattr__(self, "bindings", _nested(self.bindings, ArtifactBindings, "bindings"))
         object.__setattr__(
             self, "observed_at_ms", _nonnegative_int(self.observed_at_ms, "observed_at_ms")
@@ -373,6 +377,11 @@ class IndependentEvidence:
         object.__setattr__(self, "receipts", _optional_receipts(self.receipts, "receipts"))
         if self.producer_id.lower() in FORBIDDEN_SELF_PRODUCERS:
             raise ProcedureVerificationError("evidence producer is not independent")
+        for receipt in self.receipts:
+            if receipt.producer_id.lower() in FORBIDDEN_SELF_PRODUCERS:
+                raise ProcedureVerificationError("receipt producer is not independent")
+            if receipt.kind not in REQUIRED_EVIDENCE_KINDS:
+                raise ProcedureVerificationError("receipt kind is not a required evidence kind")
 
     @property
     def evidence_cids(self) -> tuple[str, ...]:
