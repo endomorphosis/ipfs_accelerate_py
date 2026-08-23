@@ -431,6 +431,59 @@ def test_current_review_horizon_cannot_exceed_policy() -> None:
     assert admission.reason_code is CertificateReasonCode.STALE_CERTIFICATE
 
 
+def test_family_or_evidence_identity_cannot_be_the_issuer() -> None:
+    spec, _candidate, _evidence, _policy, _verification, certificate, context = issue_valid()
+    verifier = ProcedureCertificateVerifier(trust_policy(), keyring())
+    family_issued = replace(certificate, issuer=spec.task_family_id)
+    admission = verifier.verify(family_issued, context)
+    assert not admission.accepted
+    assert admission.reason_code is CertificateReasonCode.SELF_ISSUED
+
+
+def test_pending_signature_is_not_a_usable_certificate() -> None:
+    _spec, _candidate, _evidence, _policy, _verification, certificate, context = issue_valid()
+    pending = replace(certificate, signature="pending-signature")
+    admission = ProcedureCertificateVerifier(trust_policy(), keyring()).verify(
+        pending, context
+    )
+    assert not admission.accepted
+    assert admission.usable is False
+    assert admission.reason_code in {
+        CertificateReasonCode.INCOMPLETE_CERTIFICATE,
+        CertificateReasonCode.UNKNOWN_SIGNATURE_ALGORITHM,
+    }
+
+
+def test_future_certificate_is_stale() -> None:
+    _spec, _candidate, _evidence, _policy, _verification, certificate, context = issue_valid()
+    admission = ProcedureCertificateVerifier(trust_policy(), keyring()).verify(
+        certificate, replace(context, now_ms=0)
+    )
+    assert not admission.accepted
+    assert admission.reason_code is CertificateReasonCode.STALE_CERTIFICATE
+
+
+def test_promoted_state_does_not_grant_promotion_or_authority() -> None:
+    _spec, _candidate, _evidence, _policy, _verification, certificate, context = issue_valid()
+    promoted = resign(certificate, state=ArtifactState.PROMOTED)
+    admission = ProcedureCertificateVerifier(trust_policy(), keyring()).verify(
+        promoted, context
+    )
+    assert admission.accepted
+    assert admission.grants_authority is False
+    assert admission.grants_promotion is False
+    assert admission.to_dict()["grants_promotion"] is False
+
+
+def test_forbidden_issuer_name_is_rejected_at_construction() -> None:
+    with pytest.raises(ProcedureCertificateError, match="not independent"):
+        ProcedureCertificateIssuer(
+            trust_policy(issuer_id="self"),
+            keyring(issuer_id="self"),
+            issuer_id="self",
+        )
+
+
 def test_issue_and_verify_helpers_do_not_grant_authority() -> None:
     spec, candidate, evidence, policy, verification, _certificate, context = issue_valid()
     issued = issue_procedure_certificate(

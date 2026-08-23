@@ -378,7 +378,33 @@ def _reject_admission(
     )
 
 
-def _is_self_issuer(issuer: str, candidate: ProcedureCandidate | None, procedure_cid: str) -> bool:
+def _certificate_subject_identities(certificate: ProcedureCertificate) -> frozenset[str]:
+    """Identities that cannot also be the independent issuer."""
+
+    return frozenset(
+        item.lower()
+        for item in (
+            certificate.procedure_cid,
+            certificate.task_family_cid,
+            certificate.counterexample_set_cid,
+            certificate.held_out_evaluation_cid,
+            certificate.shadow_evaluation_cid,
+            *certificate.source_episode_cids,
+            *certificate.specification_cids,
+            *certificate.proof_receipt_cids,
+            *certificate.test_receipt_cids,
+            *certificate.adversarial_assurance_cids,
+        )
+        if item
+    )
+
+
+def _is_self_issuer(
+    issuer: str,
+    candidate: ProcedureCandidate | None,
+    procedure_cid: str,
+    extra_identities: Sequence[str] = (),
+) -> bool:
     normalized = issuer.lower()
     if normalized in FORBIDDEN_SELF_PRODUCERS:
         return True
@@ -386,7 +412,7 @@ def _is_self_issuer(issuer: str, candidate: ProcedureCandidate | None, procedure
         return True
     if candidate is not None and normalized in _self_identities(candidate):
         return True
-    return False
+    return normalized in {item.lower() for item in extra_identities if item}
 
 
 def _decode_certificate(value: ProcedureCertificate | Mapping[str, Any]) -> ProcedureCertificate:
@@ -474,6 +500,8 @@ class ProcedureCertificateIssuer:
         self._registry = _signer_registry(trust)
         self._keyring = keyring
         self._issuer_id = _identifier(issuer_id, "issuer_id")
+        if self._issuer_id.lower() in FORBIDDEN_SELF_PRODUCERS:
+            raise ProcedureCertificateError("issuer identity is not independent")
         if self._issuer_id not in self._keyring:
             raise ProcedureCertificateError("issuer has no authorized signing key")
         decision = _evaluate_signer(self._trust, self._registry, self._issuer_id)
@@ -524,9 +552,26 @@ class ProcedureCertificateIssuer:
         reported = tuple(item.layer.value for item in verification.layers)
         if reported != REQUIRED_VERIFICATION_LAYERS:
             raise ProcedureCertificateError("verification layers do not bind every required obligation")
-        if _is_self_issuer(self._issuer_id, candidate, candidate.procedure.content_id):
+        subject_identities = (
+            candidate.procedure.content_id,
+            candidate.procedure.task_family_id,
+            candidate.counterexample_set_cid,
+            *candidate.source_episode_cids,
+            *evidence.evidence_cids,
+        )
+        if _is_self_issuer(
+            self._issuer_id,
+            candidate,
+            candidate.procedure.content_id,
+            extra_identities=subject_identities,
+        ):
             raise ProcedureCertificateError("a procedure cannot issue its own certificate")
-        if _is_self_issuer(evidence.producer_id, candidate, candidate.procedure.content_id):
+        if _is_self_issuer(
+            evidence.producer_id,
+            candidate,
+            candidate.procedure.content_id,
+            extra_identities=subject_identities,
+        ):
             raise ProcedureCertificateError("self-produced evidence cannot be certified")
         independent = ProcedureVerifier().verify(
             candidate, evidence, policy, now_ms=issued_at
@@ -613,6 +658,8 @@ class ProcedureCertificateIssuer:
         )
         if certificate.state is ArtifactState.PROMOTED:
             raise ProcedureCertificateError("certificate issuance cannot promote")
+        if certificate.state is not ArtifactState.VERIFIED:
+            raise ProcedureCertificateError("issued certificates must remain verified and unpromoted")
         return certificate
 
 
@@ -694,7 +741,12 @@ class ProcedureCertificateVerifier:
                 issuer=issuer,
                 bound_identities=identities,
             )
-        if _is_self_issuer(issuer, candidate, parsed.procedure_cid):
+        if _is_self_issuer(
+            issuer,
+            candidate,
+            parsed.procedure_cid,
+            extra_identities=_certificate_subject_identities(parsed),
+        ):
             return _reject_admission(
                 reason=CertificateReasonCode.SELF_ISSUED,
                 message="certificate issuer is not independent of the procedure",
@@ -826,6 +878,29 @@ class ProcedureCertificateVerifier:
             return _reject_admission(
                 reason=CertificateReasonCode.WEAKER_VALIDATION,
                 message="certificate omitted required proof or test receipts",
+                certificate_cid=certificate_cid,
+                issuer=issuer,
+                bound_identities=identities,
+            )
+        kind_values = {
+            "proof": parsed.proof_receipt_cids,
+            "test": parsed.test_receipt_cids,
+            "adversarial": parsed.adversarial_assurance_cids,
+            "held_out": (parsed.held_out_evaluation_cid,) if parsed.held_out_evaluation_cid else (),
+            "shadow": (parsed.shadow_evaluation_cid,) if parsed.shadow_evaluation_cid else (),
+            "specification": parsed.specification_cids,
+            "source_episode": parsed.source_episode_cids,
+            "counterexample_set": (
+                (parsed.counterexample_set_cid,) if parsed.counterexample_set_cid else ()
+            ),
+        }
+        missing_kinds = [
+            kind for kind in context.required_evidence_kinds if not kind_values.get(kind)
+        ]
+        if missing_kinds:
+            return _reject_admission(
+                reason=CertificateReasonCode.WEAKER_VALIDATION,
+                message="certificate omitted required evidence kinds: " + ",".join(missing_kinds),
                 certificate_cid=certificate_cid,
                 issuer=issuer,
                 bound_identities=identities,
