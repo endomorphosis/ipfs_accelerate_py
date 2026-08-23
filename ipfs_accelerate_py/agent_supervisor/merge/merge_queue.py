@@ -949,6 +949,24 @@ class MergeQueue:
             == self.target_branch
         )
 
+    def _target_binding_sql(self) -> tuple[str, tuple[str, ...]]:
+        """Return an exact SQL target fence for bounded stage snapshots."""
+
+        if not self.target_repository_id:
+            return "", ()
+        return (
+            " AND json_extract_string(metadata_json, "
+            "'$.target_binding_schema') = ?"
+            " AND json_extract_string(metadata_json, "
+            "'$.target_repository_id') = ?"
+            " AND json_extract_string(metadata_json, '$.target_branch') = ?",
+            (
+                MERGE_TARGET_BINDING_SCHEMA,
+                self.target_repository_id,
+                self.target_branch,
+            ),
+        )
+
     def _require_row_target(
         self,
         row: DuckDBRow,
@@ -969,6 +987,120 @@ class MergeQueue:
 
         claimed = self.dequeue_many(1, consumer_id=consumer_id)
         return claimed[0] if claimed else None
+
+    def claim_pending_request(
+        self,
+        request: MergeRequest | str,
+        *,
+        consumer_id: str = "",
+    ) -> Optional[MergeRequest]:
+        """Atomically claim one exact pending request.
+
+        A request-specific recovery consumer must not accidentally dequeue a
+        different board's work after reconstructing the original request's
+        completion authority.  This path retains the ordinary processing and
+        worktree-capacity fences while binding the claim to one request id.
+        """
+
+        request_id = (
+            request.request_id
+            if isinstance(request, MergeRequest)
+            else str(request)
+        )
+        if not request_id:
+            return None
+        self._purge_stale()
+        consumer = str(consumer_id or os.getpid())
+        now = self._clock()
+        claimed_row: DuckDBRow | None = None
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT * FROM merge_requests WHERE request_id=?",
+                    (request_id,),
+                ).fetchone()
+                if row is None:
+                    connection.commit()
+                    return None
+                self._require_row_target(
+                    row,
+                    operation="claim_pending_request",
+                    request_id=request_id,
+                )
+                if (
+                    str(row["status"]) != "pending"
+                    or float(row["retry_not_before"] or 0) > now
+                ):
+                    connection.commit()
+                    return None
+
+                processing_rows = connection.execute(
+                    "SELECT metadata_json FROM merge_requests "
+                    "WHERE status='processing'"
+                ).fetchall()
+                if self.target_repository_id or self.require_target_binding:
+                    processing_rows = [
+                        item
+                        for item in processing_rows
+                        if self._metadata_matches_target(item["metadata_json"])
+                    ]
+                if len(processing_rows) >= self.max_processing:
+                    connection.commit()
+                    return None
+                reserved_bytes = sum(
+                    self._worktree_bytes_from_metadata_json(
+                        item["metadata_json"]
+                    )
+                    for item in processing_rows
+                )
+                observed_bytes = self._observed_worktree_bytes()
+                requested_bytes = self._worktree_bytes_from_metadata_json(
+                    row["metadata_json"]
+                )
+                if (
+                    self.max_worktree_bytes is not None
+                    and (
+                        self.max_worktree_bytes <= 0
+                        or max(reserved_bytes, observed_bytes)
+                        + requested_bytes
+                        > self.max_worktree_bytes
+                    )
+                ):
+                    connection.commit()
+                    return None
+
+                claim_token = uuid.uuid4().hex
+                updated = connection.execute(
+                    """UPDATE merge_requests
+                       SET status='processing', claimed_at=?, consumer_id=?,
+                           claim_token=?, claim_generation=claim_generation + 1,
+                           retry_not_before=0, updated_at=?
+                       WHERE request_id=? AND status='pending'
+                         AND retry_not_before <= ?""",
+                    (
+                        now,
+                        consumer,
+                        claim_token,
+                        now,
+                        request_id,
+                        now,
+                    ),
+                )
+                if updated.rowcount == 1:
+                    claimed_row = connection.execute(
+                        "SELECT * FROM merge_requests WHERE request_id=?",
+                        (request_id,),
+                    ).fetchone()
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        if claimed_row is None:
+            return None
+        claimed = self._request_from_row(claimed_row)
+        receipt_path = self._write_stage_receipt(claimed)
+        return replace(claimed, file_path=receipt_path)
 
     def dequeue_many(
         self,
@@ -1628,6 +1760,7 @@ class MergeQueue:
         self,
         *,
         limit: int = 32,
+        after_request_id: str | None = None,
     ) -> tuple[MergeRequest, ...]:
         """Return a bounded deterministic snapshot of target-bound quarantines.
 
@@ -1641,17 +1774,173 @@ class MergeQueue:
         requested = max(0, min(int(limit), 256))
         if requested == 0:
             return ()
-        # A shared legacy database can contain rows for another target.  Scan
-        # a small multiple of the requested bound, then apply the authoritative
-        # metadata predicate in Python just like the other queue projections.
-        scan_limit = min(256, max(requested, requested * 4))
+        target_sql, target_parameters = self._target_binding_sql()
+        recovery_order = after_request_id is not None
+        cursor = str(after_request_id or "")
+        cursor_sql = " AND request_id > ?" if cursor else ""
+        cursor_parameters = (cursor,) if cursor else ()
         with self._connect() as connection:
             rows = connection.execute(
-                """SELECT * FROM merge_requests
-                   WHERE status='quarantined'
-                   ORDER BY finished_at, request_id
-                   LIMIT ?""",
-                (scan_limit,),
+                "SELECT * FROM merge_requests "
+                "WHERE status='quarantined'"
+                + target_sql
+                + cursor_sql
+                + (
+                    " ORDER BY request_id LIMIT ?"
+                    if recovery_order
+                    else " ORDER BY finished_at, request_id LIMIT ?"
+                ),
+                (*target_parameters, *cursor_parameters, requested),
+            ).fetchall()
+        return tuple(
+            self._request_from_row(row)
+            for row in rows
+            if self._metadata_matches_target(row["metadata_json"])
+        )[:requested]
+
+    def completed_requests(
+        self,
+        *,
+        limit: int = 32,
+        completion_schema: str = "",
+        completion_reason: str = "",
+        before_request_id: str = "",
+    ) -> tuple[MergeRequest, ...]:
+        """Return a bounded target-bound completion snapshot.
+
+        Recovery consumers may filter the nested completion contract before
+        ``LIMIT`` and paginate by the immutable time-prefixed request id.  An
+        unfiltered call preserves the historical finished-time ordering.
+        """
+
+        requested = max(0, min(int(limit), 256))
+        if requested == 0:
+            return ()
+        target_sql, target_parameters = self._target_binding_sql()
+        schema = str(completion_schema or "")
+        reason = str(completion_reason or "")
+        cursor = str(before_request_id or "")
+        completion_sql = ""
+        completion_parameters: tuple[str, ...] = ()
+        if schema:
+            completion_sql += (
+                " AND json_extract_string(metadata_json, "
+                "'$.completion.schema') = ?"
+            )
+            completion_parameters += (schema,)
+        if reason:
+            completion_sql += (
+                " AND json_extract_string(metadata_json, "
+                "'$.completion.reason') = ?"
+            )
+            completion_parameters += (reason,)
+        cursor_sql = " AND request_id < ?" if cursor else ""
+        cursor_parameters = (cursor,) if cursor else ()
+        ordered_for_recovery = bool(schema or reason or cursor)
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM merge_requests "
+                "WHERE status='completed'"
+                + target_sql
+                + completion_sql
+                + cursor_sql
+                + (
+                    " ORDER BY request_id DESC LIMIT ?"
+                    if ordered_for_recovery
+                    else " ORDER BY finished_at DESC, request_id DESC LIMIT ?"
+                ),
+                (
+                    *target_parameters,
+                    *completion_parameters,
+                    *cursor_parameters,
+                    requested,
+                ),
+            ).fetchall()
+        return tuple(
+            self._request_from_row(row)
+            for row in rows
+            if self._metadata_matches_target(row["metadata_json"])
+        )[:requested]
+
+    def pending_requests(
+        self,
+        *,
+        limit: int = 32,
+        after_request_id: str | None = None,
+    ) -> tuple[MergeRequest, ...]:
+        """Return a bounded fair-order snapshot of target-bound pending work."""
+
+        requested = max(0, min(int(limit), 256))
+        if requested == 0:
+            return ()
+        now = self._clock()
+        target_sql, target_parameters = self._target_binding_sql()
+        recovery_order = after_request_id is not None
+        cursor = str(after_request_id or "")
+        cursor_sql = " AND request_id > ?" if cursor else ""
+        cursor_parameters = (cursor,) if cursor else ()
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM merge_requests "
+                "WHERE status='pending' AND retry_not_before <= ?"
+                + target_sql
+                + cursor_sql
+                + (" ORDER BY request_id LIMIT ?" if recovery_order else " LIMIT ?"),
+                (
+                    now,
+                    *target_parameters,
+                    *cursor_parameters,
+                    requested,
+                ),
+            ).fetchall()
+        matching = [
+            row
+            for row in rows
+            if self._metadata_matches_target(row["metadata_json"])
+        ]
+        ordered = (
+            matching
+            if recovery_order
+            else sorted(
+                matching,
+                key=lambda item: self._fairness_key(item, now),
+            )
+        )
+        return tuple(self._request_from_row(row) for row in ordered[:requested])
+
+    def processing_requests(
+        self,
+        *,
+        limit: int = 32,
+        after_request_id: str | None = None,
+    ) -> tuple[MergeRequest, ...]:
+        """Return a bounded oldest-first target-bound processing snapshot.
+
+        Visibility is not abandonment authority.  A caller may use this
+        snapshot to discover an exact request id after a crash, but only the
+        merge train consumer lease may recover a processing claim.
+        """
+
+        requested = max(0, min(int(limit), 256))
+        if requested == 0:
+            return ()
+        target_sql, target_parameters = self._target_binding_sql()
+        recovery_order = after_request_id is not None
+        cursor = str(after_request_id or "")
+        cursor_sql = " AND request_id > ?" if cursor else ""
+        cursor_parameters = (cursor,) if cursor else ()
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM merge_requests "
+                "WHERE status='processing'"
+                + target_sql
+                + cursor_sql
+                + (
+                    " ORDER BY request_id LIMIT ?"
+                    if recovery_order
+                    else " ORDER BY claimed_at, request_id LIMIT ?"
+                ),
+                (*target_parameters, *cursor_parameters, requested),
             ).fetchall()
         return tuple(
             self._request_from_row(row)
