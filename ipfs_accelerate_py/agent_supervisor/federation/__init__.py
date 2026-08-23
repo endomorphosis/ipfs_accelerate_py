@@ -34,6 +34,7 @@ FEDERATION_OWNED_MODULES: Final[tuple[str, ...]] = (
     "parallel_frontier",
     "policy",
     "proof_projection",
+    "rebalancing",
     "registry",
     "retrieval_projection",
     "scheduler",
