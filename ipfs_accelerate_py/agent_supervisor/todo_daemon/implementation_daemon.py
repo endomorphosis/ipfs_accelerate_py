@@ -76042,6 +76042,11 @@ class DatabaseImplementationDaemon:
         except Exception as exc:
             if self._is_quack_attach_contention(exc):
                 return []
+            detail = str(exc).lower()
+            if "invalid connection id" in detail or "query interrupted" in detail:
+                # A consumed Quack handle must not freeze later rearm/unstall
+                # steps on the same pass.
+                return []
             raise
 
     def reconcile_stale_in_progress_gates(self) -> list[dict[str, Any]]:

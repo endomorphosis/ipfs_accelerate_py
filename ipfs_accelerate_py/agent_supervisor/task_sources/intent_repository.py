@@ -4677,37 +4677,64 @@ class IntentRepository:
 
         # Recovery and unknown types are intentionally no-ops for projection.
 
+    def event_watermark(self) -> int:
+        """Return the domain-event head without a full projection snapshot."""
+
+        with self._connection(write=False) as connection:
+            row = connection.execute(
+                "SELECT COALESCE(MAX(global_sequence), 0) "
+                f"FROM {self._relation('domain_events')}"
+            ).fetchone()
+        return int(row[0] if row else 0)
+
     def snapshot(self) -> IntentSnapshot:
         with self._connection(write=False) as connection:
             objective_count = int(
-                connection.execute("SELECT COUNT(*) FROM objectives").fetchone()[0]
+                connection.execute(
+                    f"SELECT COUNT(*) FROM {self._relation('objectives')}"
+                ).fetchone()[0]
             )
-            goal_count = int(connection.execute("SELECT COUNT(*) FROM goals").fetchone()[0])
-            plan_count = int(connection.execute("SELECT COUNT(*) FROM plans").fetchone()[0])
-            task_count = int(connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0])
+            goal_count = int(
+                connection.execute(
+                    f"SELECT COUNT(*) FROM {self._relation('goals')}"
+                ).fetchone()[0]
+            )
+            plan_count = int(
+                connection.execute(
+                    f"SELECT COUNT(*) FROM {self._relation('plans')}"
+                ).fetchone()[0]
+            )
+            task_count = int(
+                connection.execute(
+                    f"SELECT COUNT(*) FROM {self._relation('tasks')}"
+                ).fetchone()[0]
+            )
             dependency_count = int(
-                connection.execute("SELECT COUNT(*) FROM task_dependencies").fetchone()[0]
+                connection.execute(
+                    f"SELECT COUNT(*) FROM {self._relation('task_dependencies')}"
+                ).fetchone()[0]
             )
             watermark = int(
                 connection.execute(
-                    "SELECT COALESCE(MAX(global_sequence), 0) FROM domain_events"
+                    "SELECT COALESCE(MAX(global_sequence), 0) "
+                    f"FROM {self._relation('domain_events')}"
                 ).fetchone()[0]
             )
             task_rows = connection.execute(
-                """
-                SELECT task_cid, status, revision FROM tasks
+                f"""
+                SELECT task_cid, status, revision FROM {self._relation('tasks')}
                 ORDER BY task_cid
                 """
             ).fetchall()
             plan_rows = connection.execute(
-                """
-                SELECT plan_cid, status, revision FROM plans
+                f"""
+                SELECT plan_cid, status, revision FROM {self._relation('plans')}
                 ORDER BY plan_cid
                 """
             ).fetchall()
             goal_rows = connection.execute(
-                """
-                SELECT goal_cid, status, revision FROM goals
+                f"""
+                SELECT goal_cid, status, revision FROM {self._relation('goals')}
                 ORDER BY goal_cid
                 """
             ).fetchall()

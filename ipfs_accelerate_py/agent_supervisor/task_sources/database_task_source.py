@@ -1348,8 +1348,11 @@ class DatabaseTaskSource:
             or limit > MAX_QUERY_LIMIT
         ):
             raise TaskSourceBoundsError(f"limit must be in [1, {MAX_QUERY_LIMIT}]")
-        snap = self._intent.snapshot()
-        revision = max(1, snap.event_watermark)
+        watermark_fn = getattr(self._intent, "event_watermark", None)
+        if callable(watermark_fn):
+            revision = max(1, int(watermark_fn()))
+        else:
+            revision = max(1, int(self._intent.snapshot().event_watermark))
         offset = _cursor_decode(cursor, revision=revision) if cursor else 0
         # Intent repository max page is MAX_QUERY_LIMIT; requesting limit+1 at
         # the ceiling raises. Cap the probe and treat a full max page as more.
@@ -1399,10 +1402,14 @@ class DatabaseTaskSource:
             filtered.append(_as_task_record(full))
             if len(filtered) >= limit:
                 break
-        snap = self._intent.snapshot()
+        watermark_fn = getattr(self._intent, "event_watermark", None)
+        if callable(watermark_fn):
+            revision = max(1, int(watermark_fn()))
+        else:
+            revision = max(1, int(self._intent.snapshot().event_watermark))
         return TaskPage(
             tasks=tuple(filtered),
-            revision=max(1, snap.event_watermark),
+            revision=revision,
         )
 
     readiness = ready_tasks
