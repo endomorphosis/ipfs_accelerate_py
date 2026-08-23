@@ -894,6 +894,68 @@ def _immutable_plan_record(value: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _immutable_objective_record(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Project immutable semantic authority for the sole ASEH objective."""
+
+    return {
+        "objective_id": str(value.get("objective_id") or ""),
+        "objective_alias": str(value.get("objective_alias") or ""),
+        "parent_objective_id": str(value.get("parent_objective_id") or ""),
+        "title": str(value.get("title") or ""),
+        "priority": str(value.get("priority") or ""),
+        "body": dict(value.get("body") or {}),
+        "extension_schema": str(value.get("extension_schema") or ""),
+        "extension": dict(value.get("extension") or {}),
+    }
+
+
+def _objective_record_from_projection(
+    projection: Mapping[str, Any],
+) -> dict[str, Any]:
+    objectives = projection.get("objectives")
+    if not isinstance(objectives, list) or len(objectives) != 1:
+        raise OperatorError("ASEH projection must contain exactly one objective")
+    objective = objectives[0]
+    if not isinstance(objective, Mapping):
+        raise OperatorError("ASEH objective projection is malformed")
+    record = _immutable_objective_record(objective)
+    if not record["objective_id"] or not record["objective_alias"]:
+        raise OperatorError("ASEH objective identity is incomplete")
+    return record
+
+
+def _expected_objective_record(population: Mapping[str, Any]) -> dict[str, Any]:
+    roots = [
+        item
+        for item in population["objectives"]
+        if isinstance(item, Mapping) and str(item.get("objective_id") or "")
+    ]
+    if len(roots) != 1:
+        raise OperatorError("sealed ASEH population must define one objective")
+    root = roots[0]
+    return _immutable_objective_record(
+        {
+            "objective_id": root["objective_id"],
+            "objective_alias": root.get("objective_alias")
+            or root["objective_id"],
+            "parent_objective_id": "",
+            "title": root.get("title") or root["objective_id"],
+            "priority": root.get("priority") or "P2",
+            "body": {
+                key: value
+                for key, value in root.items()
+                if key
+                not in {
+                    "objective_id", "objective_alias", "title", "status",
+                    "priority",
+                }
+            },
+            "extension_schema": "",
+            "extension": {},
+        }
+    )
+
+
 def _expected_task_authority_spec_cids(
     population: Mapping[str, Any],
 ) -> dict[str, str]:
@@ -1046,6 +1108,7 @@ def _verify_materialized_source(
     *,
     population: Mapping[str, Any],
     config: Mapping[str, Any],
+    require_initial_frontier: bool = True,
 ) -> tuple[dict[str, Any], list[str], dict[str, Any]]:
     """Prove the bounded projection and its admitted-event replay agree."""
 
@@ -1094,13 +1157,23 @@ def _verify_materialized_source(
         raise OperatorError(
             "materialized task authority differs from the sealed board"
         )
+    objective_record = _objective_record_from_projection(plan_projection)
+    if objective_record != _expected_objective_record(population):
+        raise OperatorError(
+            "materialized objective authority differs from the sealed board"
+        )
     ready = [item.task_alias for item in source.ready_tasks(limit=100).tasks]
     expected_ready = list(config["initial_projection"]["ready_task_ids"])
-    if ready != expected_ready:
+    if require_initial_frontier and ready != expected_ready:
         raise OperatorError(
             f"initial ready frontier differs: expected {expected_ready}, "
             f"observed {ready}"
         )
+    if (
+        len(ready) != len(set(ready))
+        or not set(ready).issubset(expected_aliases)
+    ):
+        raise OperatorError("materialized ready frontier is not task-corpus bound")
     projection = config["initial_projection"]
     expected_counts = {
         "task_count": int(projection["task_count"]),
@@ -1207,6 +1280,7 @@ def _verify_materialized_source(
             item.task_alias: list(item.dependencies) for item in page.tasks
         },
         "task_authority_spec_cids": task_authority_spec_cids,
+        "objective_record": objective_record,
         "goal_records": dict(sorted(goal_records.items())),
         "goal_edges": observed_edges,
         "plan_record": plan_record,
@@ -1214,6 +1288,121 @@ def _verify_materialized_source(
     }
     integrity["integrity_receipt_id"] = _identity(integrity)
     return snapshot, ready, integrity
+
+
+_IMMUTABLE_SNAPSHOT_FIELDS = (
+    "source_schema",
+    "schema_version",
+    "plan_root_cid",
+    "repository_tree_id",
+    "formal_plan_id",
+    "task_count",
+    "goal_count",
+    "dependency_count",
+    "objective_count",
+    "plan_count",
+)
+_IMMUTABLE_INTEGRITY_FIELDS = (
+    "schema",
+    "projection_matches_events",
+    "task_cids",
+    "task_owner_bindings",
+    "task_dependencies",
+    "task_authority_spec_cids",
+    "objective_record",
+    "goal_records",
+    "goal_edges",
+    "plan_record",
+    "task_count",
+    "goal_count",
+    "dependency_count",
+    "objective_count",
+    "plan_count",
+)
+
+
+def _admit_current_projection_against_bootstrap(
+    bootstrap: Mapping[str, Any],
+    snapshot: Mapping[str, Any],
+    integrity: Mapping[str, Any],
+) -> None:
+    """Admit monotonic lifecycle state without rewriting initial truth."""
+
+    sealed_snapshot = bootstrap.get("snapshot")
+    sealed_snapshot = (
+        sealed_snapshot if isinstance(sealed_snapshot, Mapping) else {}
+    )
+    sealed_integrity = bootstrap.get("integrity")
+    sealed_integrity = (
+        sealed_integrity if isinstance(sealed_integrity, Mapping) else {}
+    )
+    if any(
+        sealed_snapshot.get(field) in (None, "")
+        or snapshot.get(field) != sealed_snapshot.get(field)
+        for field in _IMMUTABLE_SNAPSHOT_FIELDS
+    ):
+        raise OperatorError(
+            "current projection immutable snapshot differs from bootstrap"
+        )
+    for candidate in (sealed_snapshot, snapshot):
+        expected_source_identity = _identity(
+            {
+                "plan_root_cid": candidate.get("plan_root_cid"),
+                "repository_tree_id": candidate.get("repository_tree_id"),
+                "projection_cid": candidate.get("projection_cid"),
+            }
+        )
+        if (
+            not candidate.get("projection_cid")
+            or candidate.get("source_identity") != expected_source_identity
+        ):
+            raise OperatorError("projection source identity is not self-authenticating")
+    if any(
+        integrity.get(field) != sealed_integrity.get(field)
+        for field in _IMMUTABLE_INTEGRITY_FIELDS
+    ):
+        raise OperatorError(
+            "current projection immutable corpus differs from bootstrap"
+        )
+    sealed_revisions = sealed_integrity.get("task_revisions")
+    current_revisions = integrity.get("task_revisions")
+    sealed_statuses = sealed_integrity.get("task_statuses")
+    current_statuses = integrity.get("task_statuses")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (
+            sealed_revisions, current_revisions, sealed_statuses,
+            current_statuses,
+        )
+    ) or not (
+        set(sealed_revisions)
+        == set(current_revisions)
+        == set(sealed_statuses)
+        == set(current_statuses)
+    ):
+        raise OperatorError("current lifecycle task corpus differs from bootstrap")
+    for task_alias in sealed_revisions:
+        sealed_revision = sealed_revisions[task_alias]
+        current_revision = current_revisions[task_alias]
+        if type(sealed_revision) is not int or type(current_revision) is not int:
+            raise OperatorError("task lifecycle revisions are not exact integers")
+        if current_revision < sealed_revision:
+            raise OperatorError("task lifecycle revision regressed from bootstrap")
+        if (
+            current_revision == sealed_revision
+            and current_statuses[task_alias] != sealed_statuses[task_alias]
+        ):
+            raise OperatorError("task status changed without a revision advance")
+    sealed_cursor = sealed_snapshot.get("event_cursor")
+    current_cursor = snapshot.get("event_cursor")
+    if (
+        type(sealed_cursor) is not int
+        or type(current_cursor) is not int
+        or current_cursor < sealed_cursor
+        or integrity.get("event_cursor") != current_cursor
+        or integrity.get("projection_cid") != snapshot.get("projection_cid")
+    ):
+        raise OperatorError("current event cursor regressed or diverged")
 
 
 def _recovered_control_receipt(
@@ -1296,6 +1485,7 @@ def materialize(config_path: Path) -> dict[str, Any]:
         if database.exists() and not database.is_file():
             raise OperatorError("database authority is not a regular file")
         if database.is_file():
+            has_bootstrap_receipt = bootstrap.is_file()
             with DatabaseTaskSource(
                 database, owner_id="aseh-bootstrap:verify",
                 install_schema=False,
@@ -1303,9 +1493,12 @@ def materialize(config_path: Path) -> dict[str, Any]:
                 plan_root_cid=population["plan_root_cid"],
             ) as source:
                 snapshot, ready, integrity = _verify_materialized_source(
-                    source, population=population, config=config,
+                    source,
+                    population=population,
+                    config=config,
+                    require_initial_frontier=not has_bootstrap_receipt,
                 )
-            if bootstrap.is_file():
+            if has_bootstrap_receipt:
                 prior = _secure_runtime_json(
                     bootstrap, max_bytes=STATUS_RECEIPT_MAX_BYTES
                 )
@@ -1323,14 +1516,9 @@ def materialize(config_path: Path) -> dict[str, Any]:
                     raise OperatorError(
                         "existing authority differs from the sealed source forest"
                     )
-                if (
-                    prior.get("snapshot") != snapshot
-                    or prior.get("integrity") != integrity
-                    or prior.get("initial_ready_task_ids") != ready
-                ):
-                    raise OperatorError(
-                        "existing bootstrap receipt differs from its database projection"
-                    )
+                _admit_current_projection_against_bootstrap(
+                    prior, snapshot, integrity
+                )
                 return {
                     "schema": OPERATOR_SCHEMA, "command": "materialize",
                     "ok": True, "idempotent_replay": True,
@@ -1429,16 +1617,14 @@ def _admit_materialized_launch(
             plan_root_cid=population["plan_root_cid"],
         ) as source:
             snapshot, ready, integrity = _verify_materialized_source(
-                source, population=population, config=config
+                source,
+                population=population,
+                config=config,
+                require_initial_frontier=False,
             )
-    if (
-        bootstrap.get("snapshot") != snapshot
-        or bootstrap.get("integrity") != integrity
-        or bootstrap.get("initial_ready_task_ids") != ready
-    ):
-        raise OperatorError(
-            "bootstrap receipt differs from the exact materialized projection"
-        )
+    _admit_current_projection_against_bootstrap(
+        bootstrap, snapshot, integrity
+    )
     admission = {
         "source_head": population["source_head"],
         "repository_tree_id": population["repository_tree_id"],
@@ -1447,6 +1633,9 @@ def _admit_materialized_launch(
         "bootstrap_receipt_id": receipt_id,
         "projection_cid": snapshot["projection_cid"],
         "event_cursor": snapshot["event_cursor"],
+        "ready_task_ids": list(ready),
+        "task_statuses": dict(integrity["task_statuses"]),
+        "task_revisions": dict(integrity["task_revisions"]),
     }
     admission["admission_cid"] = _identity(admission)
     return admission
@@ -1746,6 +1935,8 @@ def _broker_status_query(board: Any, paths: Mapping[str, Path]) -> dict[str, Any
         if source.intent.uses_quack_transport is not True:
             raise OperatorError("live status did not use the Quack transport")
         snapshot = source.snapshot().to_dict()
+        if source.projection_matches_events() is not True:
+            raise OperatorError("live projection differs from admitted events")
         page = source.list_tasks(limit=100)
         if page.next_cursor:
             raise OperatorError("live task portfolio exceeds the sealed bound")
@@ -1794,6 +1985,7 @@ def _broker_status_query(board: Any, paths: Mapping[str, Path]) -> dict[str, Any
             task_cids=[item.task_cid for item in page.tasks]
         )
         task_authority_spec_cids = _task_authority_spec_cids(plan_projection)
+        objective_record = _objective_record_from_projection(plan_projection)
         with source.intent._connection(write=False) as connection:  # noqa: SLF001
             raw_binding = getattr(connection, "_quack_mutation_binding", None)
             if not isinstance(raw_binding, Mapping):
@@ -1843,6 +2035,7 @@ def _broker_status_query(board: Any, paths: Mapping[str, Path]) -> dict[str, Any
         "available": True,
         "transport": "quack",
         "credential_path": "sealed_memfd_broker",
+        "projection_matches_events": True,
         "owner_binding": owner_binding,
         "snapshot": snapshot,
         "task_statuses": dict(sorted(aliases.items())),
@@ -1851,6 +2044,7 @@ def _broker_status_query(board: Any, paths: Mapping[str, Path]) -> dict[str, Any
         "task_owner_bindings": dict(sorted(owner_bindings.items())),
         "task_dependencies": dict(sorted(task_dependencies.items())),
         "task_authority_spec_cids": task_authority_spec_cids,
+        "objective_record": objective_record,
         "queue_entries": dict(sorted(queue_entries.items())),
         "query_started_at_ms": query_started_at_ms,
         "delayed_ready_task_ids": delayed_ready_task_ids,
@@ -2311,14 +2505,29 @@ def _health_receipt(
     )
     immutable_snapshot_fields = (
         "source_schema", "schema_version", "plan_root_cid",
-        "repository_tree_id", "formal_plan_id", "source_identity",
+        "repository_tree_id", "formal_plan_id",
     )
-    source_identity_admitted = bool(
-        all(
+    source_identity_admitted = all(
+        isinstance(candidate.get("snapshot"), Mapping)
+        and candidate.get("projection_matches_events") is True
+        and all(
             bootstrap_snapshot.get(field) not in (None, "")
-            and snapshot.get(field) == bootstrap_snapshot.get(field)
+            and candidate["snapshot"].get(field)
+            == bootstrap_snapshot.get(field)
             for field in immutable_snapshot_fields
         )
+        and bool(candidate["snapshot"].get("projection_cid"))
+        and candidate["snapshot"].get("source_identity")
+        == _identity(
+            {
+                "plan_root_cid": candidate["snapshot"].get("plan_root_cid"),
+                "repository_tree_id": candidate["snapshot"].get(
+                    "repository_tree_id"
+                ),
+                "projection_cid": candidate["snapshot"].get("projection_cid"),
+            }
+        )
+        for candidate in (prior_authority, authority)
     )
     bootstrap_integrity = bootstrap.get("integrity")
     bootstrap_integrity = (
@@ -2364,6 +2573,12 @@ def _health_receipt(
     sealed_plan_record = (
         sealed_plan_record if isinstance(sealed_plan_record, Mapping) else {}
     )
+    sealed_objective_record = bootstrap_integrity.get("objective_record")
+    sealed_objective_record = (
+        sealed_objective_record
+        if isinstance(sealed_objective_record, Mapping)
+        else {}
+    )
     task_cids = authority.get("task_cids")
     task_cids = task_cids if isinstance(task_cids, Mapping) else {}
     task_owner_bindings = authority.get("task_owner_bindings")
@@ -2386,24 +2601,45 @@ def _health_receipt(
     goal_edges = goal_edges if isinstance(goal_edges, list) else []
     plan_record = authority.get("plan_record")
     plan_record = plan_record if isinstance(plan_record, Mapping) else {}
+    objective_record = authority.get("objective_record")
+    objective_record = (
+        objective_record if isinstance(objective_record, Mapping) else {}
+    )
     task_statuses = authority.get("task_statuses")
     task_statuses = task_statuses if isinstance(task_statuses, Mapping) else {}
     task_revisions = authority.get("task_revisions")
     task_revisions = task_revisions if isinstance(task_revisions, Mapping) else {}
-    task_corpus_admitted = bool(
-        sealed_task_cids
-        and task_cids == sealed_task_cids
-        and task_owner_bindings == sealed_owner_bindings
-        and task_dependencies == sealed_task_dependencies
-        and task_authority_spec_cids == sealed_task_authority_spec_cids
-        and set(task_statuses) == set(sealed_task_cids)
-        and set(task_revisions) == set(sealed_task_cids)
+    def admitted_task_corpus(candidate: Mapping[str, Any]) -> bool:
+        return bool(
+            sealed_task_cids
+            and candidate.get("task_cids") == sealed_task_cids
+            and candidate.get("task_owner_bindings") == sealed_owner_bindings
+            and candidate.get("task_dependencies") == sealed_task_dependencies
+            and candidate.get("task_authority_spec_cids")
+            == sealed_task_authority_spec_cids
+            and isinstance(candidate.get("task_statuses"), Mapping)
+            and isinstance(candidate.get("task_revisions"), Mapping)
+            and set(candidate["task_statuses"]) == set(sealed_task_cids)
+            and set(candidate["task_revisions"]) == set(sealed_task_cids)
+        )
+
+    task_corpus_admitted = all(
+        admitted_task_corpus(candidate)
+        for candidate in (prior_authority, authority)
     )
-    semantic_corpus_admitted = bool(
-        sealed_goal_records
-        and goal_records == sealed_goal_records
-        and goal_edges == sealed_goal_edges
-        and plan_record == sealed_plan_record
+
+    def admitted_semantic_corpus(candidate: Mapping[str, Any]) -> bool:
+        return bool(
+            sealed_goal_records
+            and candidate.get("goal_records") == sealed_goal_records
+            and candidate.get("goal_edges") == sealed_goal_edges
+            and candidate.get("plan_record") == sealed_plan_record
+            and candidate.get("objective_record") == sealed_objective_record
+        )
+
+    semantic_corpus_admitted = all(
+        admitted_semantic_corpus(candidate)
+        for candidate in (prior_authority, authority)
     )
     blocked_count = int(authority.get("blocked_count") or 0)
     terminal_count = int(authority.get("terminal_count") or 0)
@@ -2537,6 +2773,7 @@ def _health_receipt(
         "goal_records": dict(sorted(goal_records.items())),
         "goal_edges": list(goal_edges),
         "plan_record": dict(plan_record),
+        "objective_record": dict(objective_record),
         "scheduler_alive": scheduler_alive,
         "healthy": healthy,
         "blocked": blocked,
@@ -2652,7 +2889,9 @@ def _post_admission_health_action(
     if not prior_available and not current_available:
         return "fail", "broker_status_unavailable_two_samples", unhealthy_edges
     if receipt.get("terminal") is True:
-        return "stop", "", 0
+        if receipt.get("healthy") is True:
+            return "stop", "", 0
+        return "fail", "authoritative_terminal_not_admitted", unhealthy_edges
     if receipt.get("healthy") is True:
         return "continue", "", 0
     if prior_available and current_available:

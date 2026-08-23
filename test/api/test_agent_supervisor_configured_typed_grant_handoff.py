@@ -993,13 +993,23 @@ def _aseh_health_fixture(
         "plan_alias": "ASEH-PLAN-R1",
         "body": {"plan_cid": "plan:aseh-health"},
     }
+    objective_record = {
+        "objective_id": "objective:aseh-root",
+        "objective_alias": "ASEH-G000",
+        "parent_objective_id": "",
+        "title": "ASEH root objective",
+        "priority": "P0",
+        "body": {"program_id": aseh_operator.PROGRAM},
+        "extension_schema": "",
+        "extension": {},
+    }
     bootstrap_snapshot = {
         "source_schema": "source@1",
         "schema_version": "1",
         "plan_root_cid": "plan:aseh-health",
         "repository_tree_id": "tree:aseh-health",
         "formal_plan_id": "formal:aseh-health",
-        "source_identity": "source:aseh-health",
+        "source_identity": "",
         "projection_cid": "projection:aseh-health",
         "event_cursor": 10,
         "task_count": 1,
@@ -1008,6 +1018,13 @@ def _aseh_health_fixture(
         "objective_count": 1,
         "plan_count": 1,
     }
+    bootstrap_snapshot["source_identity"] = aseh_operator._identity(
+        {
+            "plan_root_cid": bootstrap_snapshot["plan_root_cid"],
+            "repository_tree_id": bootstrap_snapshot["repository_tree_id"],
+            "projection_cid": bootstrap_snapshot["projection_cid"],
+        }
+    )
     integrity = {
         "schema": "ipfs_accelerate_py/agent-supervisor/aseh-integrity@1",
         "projection_matches_events": True,
@@ -1032,6 +1049,7 @@ def _aseh_health_fixture(
         "goal_records": {"ASEH-G000": goal_record},
         "goal_edges": [],
         "plan_record": plan_record,
+        "objective_record": objective_record,
         "task_count": 1,
         "goal_count": 1,
         "dependency_count": 0,
@@ -1080,6 +1098,7 @@ def _aseh_health_fixture(
         "available": True,
         "transport": "quack",
         "credential_path": "sealed_memfd_broker",
+        "projection_matches_events": True,
         "owner_binding": binding,
         "snapshot": current_snapshot,
         "task_statuses": {"ASEH-000": status},
@@ -1091,6 +1110,7 @@ def _aseh_health_fixture(
         "goal_records": integrity["goal_records"],
         "goal_edges": integrity["goal_edges"],
         "plan_record": integrity["plan_record"],
+        "objective_record": integrity["objective_record"],
         "ready_task_ids": ready_task_ids,
         "ready_count": len(ready_task_ids),
         "queue_entries": {
@@ -1200,6 +1220,138 @@ def test_aseh_health_heartbeat_only_cannot_mask_stuck_board(
     assert stalled["lane_stalled_without_active_worker"] is True
     assert stalled["stuck"] is True
     assert stalled["healthy"] is False
+
+
+def test_aseh_health_requires_two_sample_semantic_authority_and_exact_terminal(
+    tmp_path: Path,
+) -> None:
+    now = time.time()
+    board, paths, before = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now - 1.0,
+        lane_mtime_ns=int((now - 1.0) * 1_000_000_000),
+    )
+    _board, _paths, current = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    before["authority"]["objective_record"]["title"] = "amended"  # type: ignore[index]
+    repaired = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 0.5,
+        last_progress_at=now,
+        failure={},
+    )
+    assert repaired["semantic_corpus_admitted"] is False
+    assert repaired["healthy"] is False
+    assert aseh_operator._post_admission_health_action(
+        repaired,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=0,
+    )[:2] == ("fail", "authoritative_health_admission_lost")
+
+    _board, _paths, terminal_before = _aseh_health_fixture(
+        tmp_path,
+        status="failed",
+        revision=2,
+        ready=False,
+        observed_at=now - 1.0,
+        lane_mtime_ns=int((now - 1.0) * 1_000_000_000),
+    )
+    _board, _paths, terminal_current = _aseh_health_fixture(
+        tmp_path,
+        status="failed",
+        revision=2,
+        ready=False,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    terminal_receipt = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(terminal_before, terminal_current),
+        launched_at=now - 10.0,
+        last_progress_at=now - 1.0,
+        failure={},
+    )
+    assert terminal_receipt["terminal"] is True
+    assert terminal_receipt["healthy"] is True
+    assert aseh_operator._post_admission_health_action(
+        terminal_receipt,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=0,
+    )[:2] == ("stop", "")
+
+    terminal_current["authority"]["task_authority_spec_cids"][  # type: ignore[index]
+        "ASEH-000"
+    ] = "sha256:amended"
+    rejected_terminal = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(terminal_before, terminal_current),
+        launched_at=now - 10.0,
+        last_progress_at=now - 1.0,
+        failure={},
+    )
+    assert rejected_terminal["terminal"] is True
+    assert rejected_terminal["healthy"] is False
+    assert aseh_operator._post_admission_health_action(
+        rejected_terminal,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=0,
+    )[:2] == ("fail", "authoritative_terminal_not_admitted")
+
+
+def test_aseh_restart_admits_only_monotonic_lifecycle_on_sealed_corpus(
+    tmp_path: Path,
+) -> None:
+    now = time.time()
+    _board, paths, sample = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    bootstrap = aseh_operator._secure_runtime_json(
+        paths["bootstrap_receipt"],
+        max_bytes=aseh_operator.STATUS_RECEIPT_MAX_BYTES,
+    )
+    snapshot = dict(bootstrap["snapshot"])
+    snapshot["event_cursor"] = int(snapshot["event_cursor"]) + 1
+    snapshot["projection_cid"] = "projection:advanced"
+    snapshot["source_identity"] = aseh_operator._identity(
+        {
+            "plan_root_cid": snapshot["plan_root_cid"],
+            "repository_tree_id": snapshot["repository_tree_id"],
+            "projection_cid": snapshot["projection_cid"],
+        }
+    )
+    integrity = json.loads(json.dumps(bootstrap["integrity"]))
+    integrity["event_cursor"] = snapshot["event_cursor"]
+    integrity["task_revisions"]["ASEH-000"] += 1
+    integrity["task_statuses"]["ASEH-000"] = "in_progress"
+    integrity["projection_cid"] = "projection:advanced"
+    integrity["integrity_receipt_id"] = aseh_operator._identity(
+        {
+            key: value
+            for key, value in integrity.items()
+            if key != "integrity_receipt_id"
+        }
+    )
+    aseh_operator._admit_current_projection_against_bootstrap(
+        bootstrap, snapshot, integrity
+    )
+
+    integrity["objective_record"]["title"] = "amended"
+    with pytest.raises(aseh_operator.OperatorError, match="immutable corpus"):
+        aseh_operator._admit_current_projection_against_bootstrap(
+            bootstrap, snapshot, integrity
+        )
 
 
 def test_aseh_lane_status_projects_worker_watchdog(
