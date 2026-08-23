@@ -1650,10 +1650,15 @@ def submit_quack_owner_command(
             result = response.get("result")
             if not isinstance(result, Mapping):
                 raise DuckDBConnectionPolicyError("quack owner command result must be a mapping")
+            # The owner replaces and restarts the read replica before signing
+            # success.  Retire this process's attachment to the withdrawn
+            # replica so the next authoritative read binds the new snapshot.
+            reset_quack_transport_cache()
             return dict(result)
         time.sleep(0.05)
     raise DuckDBConnectionPolicyError(
-        "timed out waiting for quack state-owner to apply typed command"
+        "quack typed owner command has an unknown outcome; preserve the "
+        "exact request for owner-side reconciliation"
     )
 
 def quack_owner_mutation_inbox_path(
@@ -3015,7 +3020,11 @@ def reset_quack_transport_cache() -> None:
 
 
 def _probe_quack_connection(connection: Any) -> None:
-    probed = connection.execute("SELECT 1")
+    catalog = str(
+        getattr(connection, "_default_catalog", "")
+        or _QUACK_CONTROL_CATALOG
+    )
+    probed = connection.execute(f"SELECT count(*) FROM {catalog}.tasks")
     _consume_duckdb_result(probed)
 
 

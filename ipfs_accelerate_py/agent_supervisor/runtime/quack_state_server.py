@@ -5218,11 +5218,56 @@ class QuackStateServer:
                             error_message="typed owner command rejected",
                         )
                     else:
-                        response = quack_owner_command_response(
-                            request,
-                            token=token,
-                            result=result,
-                        )
+                        # The typed task command commits on the exclusive
+                        # writer connection.  Do not acknowledge that effect
+                        # while Quack still serves the pre-command snapshot:
+                        # strict claim admission immediately re-reads the task
+                        # and must observe the exact claim receipt/revision.
+                        # This is the same synchronous publication barrier used
+                        # by the closed mutation-bundle path.
+                        try:
+                            self._refresh_read_replica()
+                            self._write_status()
+                        except BaseException as refresh_exc:
+                            try:
+                                self._stop_transport_connection(
+                                    observe_closed=True
+                                )
+                            except Exception:
+                                pass
+                            if self._read_replica_observation:
+                                self._read_replica_observation["live"] = False
+                            self._lifecycle = ServerLifecycle.FAILED
+                            self._log(
+                                "typed owner command replica publication "
+                                "failed: " + type(refresh_exc).__name__
+                            )
+                            try:
+                                self._write_status()
+                            except Exception:
+                                pass
+                            # Publish no response: the exact signed request
+                            # remains durable and its owner-side idempotency
+                            # record permits recovery to replay publication
+                            # without replaying the effect.
+                            raise QuackStateServerMutationError(
+                                "read_replica_refresh_unknown_outcome",
+                                observed={
+                                    "canonical_effects_present": True,
+                                    "read_replica": dict(
+                                        self._read_replica_observation
+                                    ),
+                                    "refresh_failure_class": type(
+                                        refresh_exc
+                                    ).__name__,
+                                },
+                            ) from refresh_exc
+                        else:
+                            response = quack_owner_command_response(
+                                request,
+                                token=token,
+                                result=result,
+                            )
                 finally:
                     repository.close()
                 write_envelope_atomic_at(

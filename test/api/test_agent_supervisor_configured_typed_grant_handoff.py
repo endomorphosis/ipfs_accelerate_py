@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
     provider_subprocess_environment,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+    QuackStateServerMutationError,
     QuackStateServerReadyError,
     build_server,
 )
@@ -24,7 +25,10 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
     DatabaseTaskSource,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+    DuckDBConnectionPolicyError,
     reset_quack_transport_cache,
+    submit_quack_owner_command,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
     QuackCapabilityStatus,
@@ -211,10 +215,41 @@ def test_real_configured_supervisor_handoff_reads_and_mutates_via_owner(
             ready = source.ready_tasks(limit=10).tasks
             assert [item.task_alias for item in ready] == ["ASEH-000"]
             changed = source.compare_and_set_status(
-                ready[0], ready[0].revision, "in_progress"
+                ready[0],
+                ready[0].revision,
+                "in_progress",
+                receipt={
+                    "operation": "database_claim",
+                    "claim_id": "claim:aseh-bootstrap-test",
+                    "attempt_id": "attempt:aseh-bootstrap-test",
+                    "owner_session_id": "owner:aseh-bootstrap-test",
+                    "lease_id": "lease:aseh-bootstrap-test",
+                    "fencing_token": 1,
+                    "fence_epoch": 1,
+                    "claimed_from_revision": 1,
+                },
             )
             assert changed.changed is True
             assert changed.task.status == "in_progress"
+            # A successful owner acknowledgement is also a synchronous
+            # Quack-publication barrier.  Strict sharding re-reads this exact
+            # binding immediately after claim and must not see the startup
+            # replica's stale ``todo`` projection.
+            observed = source.get("ASEH-000")
+            assert observed is not None
+            assert observed.status == "in_progress"
+            assert observed.revision == changed.revision
+            assert observed.body["completion_receipt"] == {
+                "operation": "database_claim",
+                "claim_id": "claim:aseh-bootstrap-test",
+                "attempt_id": "attempt:aseh-bootstrap-test",
+                "owner_session_id": "owner:aseh-bootstrap-test",
+                "lease_id": "lease:aseh-bootstrap-test",
+                "fencing_token": 1,
+                "fence_epoch": 1,
+                "claimed_from_revision": 1,
+            }
+        assert server.status()["read_replica"]["refresh_sequence"] >= 2
         assert server._connection is not None  # noqa: SLF001
         idempotency = server._connection.execute(  # noqa: SLF001
             "SELECT COUNT(*) FROM idempotency_records "
@@ -274,6 +309,120 @@ def test_real_configured_supervisor_handoff_reads_and_mutates_via_owner(
         reset_quack_transport_cache()
         server.stop()
         assert not any("transport stop warning" in item for item in server.logs())
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "memfd_create"),
+    reason="sealed Linux memfd handoff is required",
+)
+def test_typed_owner_never_acknowledges_an_unpublished_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capability = probe_quack_capabilities(allow_network_install=False)
+    if capability.status is not QuackCapabilityStatus.COMPATIBLE:
+        pytest.skip(
+            f"reviewed preinstalled Quack unavailable: {capability.status.value}"
+        )
+
+    database = tmp_path / "control.duckdb"
+    owner_dir = tmp_path / "quack-owner"
+    _materialize_one_task(database)
+    server = build_server(
+        database_path=database,
+        state_dir=owner_dir,
+        repository_root=tmp_path,
+        port=0,
+        store_id=str(database),
+        secret_handle="handle:aseh-publication-failure-test",
+    )
+    identity = server.start()
+    client: threading.Thread | None = None
+    outcome: dict[str, BaseException] = {}
+    try:
+        handoff = dict(server.start_supervisor_grant_broker())
+        monkeypatch.setenv(
+            TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV,
+            handoff[TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV],
+        )
+        monkeypatch.setenv(
+            TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV,
+            handoff[TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV],
+        )
+        monkeypatch.setenv(
+            "IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(database)
+        )
+        monkeypatch.setenv(
+            "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION",
+            str(identity.generation),
+        )
+        monkeypatch.setenv(
+            "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
+            str(owner_dir / "mutations"),
+        )
+
+        def fail_publication(*_args: object, **_kwargs: object) -> dict[str, object]:
+            raise RuntimeError("injected read-replica publication failure")
+
+        monkeypatch.setattr(server, "_refresh_read_replica", fail_publication)
+
+        def submit() -> None:
+            try:
+                submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+                    {
+                        "task_cid_or_alias": "ASEH-000",
+                        "expected_revision": 1,
+                        "status": "in_progress",
+                        "receipt": {"operation": "database_claim"},
+                        "evidence_digests": None,
+                    },
+                    timeout_seconds=0.5,
+                )
+            except BaseException as exc:  # noqa: BLE001 - assert exact boundary
+                outcome["error"] = exc
+
+        client = threading.Thread(target=submit, daemon=True)
+        client.start()
+        request_deadline = time.monotonic() + 2.0
+        while (
+            not tuple((owner_dir / "mutations").glob("*.request.json"))
+            and time.monotonic() < request_deadline
+        ):
+            time.sleep(0.01)
+        requests = tuple((owner_dir / "mutations").glob("*.request.json"))
+        assert len(requests) == 1
+
+        with pytest.raises(
+            QuackStateServerMutationError,
+            match="read_replica_refresh_unknown_outcome",
+        ):
+            server.service_database_task_command_inbox(
+                expected_store_generation=str(identity.generation),
+                max_requests=1,
+            )
+        client.join(timeout=2.0)
+        assert not client.is_alive()
+        assert isinstance(outcome.get("error"), DuckDBConnectionPolicyError)
+        assert "unknown outcome" in str(outcome["error"])
+        assert requests[0].is_file()
+        assert not tuple((owner_dir / "mutations").glob("*.done.json"))
+        assert server._connection is not None  # noqa: SLF001
+        row = server._connection.execute(  # noqa: SLF001
+            "SELECT status, revision FROM tasks WHERE task_alias = 'ASEH-000'"
+        ).fetchone()
+        assert row is not None
+        assert (str(row[0]), int(row[1])) == ("in_progress", 2)
+        idempotency = server._connection.execute(  # noqa: SLF001
+            "SELECT COUNT(*) FROM idempotency_records "
+            "WHERE command_kind = 'compare_and_set_status'"
+        ).fetchone()
+        assert idempotency is not None and int(idempotency[0]) == 1
+    finally:
+        if client is not None:
+            client.join(timeout=2.0)
+        reset_quack_transport_cache()
+        server.stop()
 
 
 @pytest.mark.skipif(
