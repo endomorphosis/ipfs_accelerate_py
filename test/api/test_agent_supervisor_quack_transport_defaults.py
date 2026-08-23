@@ -963,6 +963,7 @@ def test_apply_owner_command_payload_unstalls_without_client_sql(tmp_path) -> No
     reply = apply_owner_command_payload(
         connection,
         {"op": "board_unstall", "stale_seconds": 16_200},
+        environment={},
     )
     assert reply["ok"] is True
     assert reply["rowcount"] == 1
@@ -971,6 +972,56 @@ def test_apply_owner_command_payload_unstalls_without_client_sql(tmp_path) -> No
         "SELECT status, revision FROM tasks WHERE task_alias = 'PCCE-021'"
     ).fetchone()
     assert tuple(status) == ("retrying", 10)
+
+
+def test_typed_policy_rejects_legacy_board_unstall_before_any_mutation(
+    tmp_path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        LEGACY_BOARD_UNSTALL_DISABLED,
+        LEGACY_BOARD_UNSTALL_POLICY_ENV,
+        apply_owner_command_payload,
+        owner_should_recycle_for_board_unstall,
+        request_owner_board_unstall,
+    )
+
+    class _NoMutationConnection:
+        def execute(self, *_args, **_kwargs):
+            raise AssertionError("typed policy reached raw owner SQL")
+
+    environment = {
+        LEGACY_BOARD_UNSTALL_POLICY_ENV: LEGACY_BOARD_UNSTALL_DISABLED,
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR": str(tmp_path / "mutations"),
+    }
+    with pytest.raises(
+        DuckDBConnectionPolicyError,
+        match="disabled for typed task authority",
+    ):
+        apply_owner_command_payload(
+            _NoMutationConnection(),
+            {"op": "board_unstall", "stale_seconds": 16_200},
+            environment=environment,
+        )
+
+    result = request_owner_board_unstall(
+        wait=False,
+        environment=environment,
+    )
+    assert result == {
+        "ok": False,
+        "requested": False,
+        "error": "legacy_board_unstall_disabled",
+    }
+    assert not (tmp_path / "mutations").exists()
+
+    bounce_dir = tmp_path / "old-owner-inbox"
+    bounce_dir.mkdir()
+    (bounce_dir / "board-unstall.bounce").write_text("{}\n", encoding="utf-8")
+    assert owner_should_recycle_for_board_unstall(
+        bounce_dir,
+        min_age_seconds=0,
+        environment=environment,
+    ) is False
 
 
 def test_request_owner_board_unstall_writes_inbox_without_waiting(

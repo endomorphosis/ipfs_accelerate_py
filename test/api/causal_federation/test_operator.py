@@ -345,8 +345,79 @@ def test_owner_argv_and_environment_exclude_raw_credentials(
     assert "raw-password-test" not in json.dumps(environment)
     assert operator.STATE_TOKEN_ENV not in environment
     assert "SOME_PASSWORD" not in environment
+    assert environment[operator.LEGACY_BOARD_UNSTALL_POLICY_ENV] == "disabled"
     assert supervisor_argv[-2:] == ["--credential-fd", "7"]
     assert "supervisor-runtime" in supervisor_argv
+
+
+def test_executor_environment_disables_legacy_board_unstall() -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        LEGACY_BOARD_UNSTALL_POLICY_ENV,
+    )
+
+    operator = _operator()
+    board, _config = operator._load_config(CONFIG)
+    route = operator._route_preflight(board)
+
+    environment = operator._executor_environment(
+        board,
+        route,
+        owner_identity={"generation": 3, "schema_revision": 3},
+    )
+
+    assert (
+        operator.LEGACY_BOARD_UNSTALL_POLICY_ENV
+        == LEGACY_BOARD_UNSTALL_POLICY_ENV
+    )
+    assert environment[operator.LEGACY_BOARD_UNSTALL_POLICY_ENV] == "disabled"
+
+
+def test_state_owner_build_disables_legacy_board_unstall(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        quack_state_server as server_module,
+    )
+
+    operator = _operator()
+    board, config = operator._load_config(CONFIG)
+    paths = {
+        "database": tmp_path / "control.duckdb",
+        "bootstrap_receipt": tmp_path / "bootstrap.json",
+        "owner": tmp_path / "owner",
+        "owner_socket": tmp_path / "owner" / "typed-owner.sock",
+    }
+    paths["database"].write_bytes(b"sealed-test-placeholder")
+    paths["bootstrap_receipt"].write_text("{}\n", encoding="utf-8")
+    bootstrap = {
+        "schema": operator.BOOTSTRAP_SCHEMA,
+        "program_id": operator.PROGRAM_ID,
+    }
+    observed: dict[str, object] = {}
+
+    class _BuildObserved(Exception):
+        pass
+
+    def observe_build(**kwargs):
+        observed.update(kwargs)
+        raise _BuildObserved
+
+    monkeypatch.setattr(operator, "_load_config", lambda _path: (board, config))
+    monkeypatch.setattr(operator, "_runtime_paths", lambda _board: paths)
+    monkeypatch.setattr(operator, "_json_object", lambda _path: bootstrap)
+    monkeypatch.setattr(operator, "_verify_receipt", lambda *_a, **_k: None)
+    monkeypatch.setattr(operator, "_require_free_port", lambda *_a, **_k: None)
+    monkeypatch.setattr(operator, "_quack_capability", lambda: None)
+    monkeypatch.setattr(operator, "_prepare_private_socket_parent", lambda _p: None)
+    monkeypatch.setattr(server_module, "build_server", observe_build)
+    monkeypatch.setenv(operator.LEGACY_BOARD_UNSTALL_POLICY_ENV, "enabled")
+
+    with pytest.raises(_BuildObserved):
+        operator.state_owner(CONFIG)
+
+    assert observed["allow_legacy_board_unstall"] is False
+    assert os.environ[operator.LEGACY_BOARD_UNSTALL_POLICY_ENV] == "disabled"
 
 
 def test_route_preflight_uses_complete_configured_tuple_without_self_authority() -> None:
