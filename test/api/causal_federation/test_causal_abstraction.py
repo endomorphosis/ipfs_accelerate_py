@@ -201,7 +201,7 @@ def _open_abstraction_store(
     report = install_control_plane_schema(
         database, owner_id="owner:causal-abstraction-migration"
     )
-    assert report.to_version == 2
+    assert report.to_version == 3
     client = open_embedded_client(
         database,
         owner_id="owner:causal-abstraction",

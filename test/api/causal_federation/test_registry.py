@@ -113,7 +113,7 @@ def _open_repository(
 ]:
     database = tmp_path / "control.duckdb"
     report = install_control_plane_schema(database, owner_id="owner:registry-migration")
-    assert report.to_version == 2
+    assert report.to_version == 3
     client = open_embedded_client(
         database,
         owner_id="owner:registry",
@@ -790,10 +790,10 @@ def test_repository_seals_typed_catalog_and_rejects_raw_sql(tmp_path: Path) -> N
         client.close()
 
 
-def test_every_casf_template_prepares_against_migration_two(tmp_path: Path) -> None:
+def test_every_casf_template_prepares_against_canonical_schema(tmp_path: Path) -> None:
     database = tmp_path / "control.duckdb"
     report = install_control_plane_schema(database, owner_id="owner:prepare")
-    assert report.to_version == 2
+    assert report.to_version == 3
     templates = _casf_templates()
 
     assert len(templates) >= 26
