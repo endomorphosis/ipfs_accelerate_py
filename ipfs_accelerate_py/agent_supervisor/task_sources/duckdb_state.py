@@ -3498,14 +3498,13 @@ def _attach_quack_once(uri: str, secret: str) -> Any:
             raise DuckDBConnectionPolicyError(
                 "quack transport store generation does not match server binding"
             )
-        connection._quack_live_binding = binding
+        return connection, binding
     except Exception:
         try:
             connection.close()
         except Exception:
             pass
         raise
-    return connection
 
 
 def _open_quack_transport_connection_once(
@@ -3583,7 +3582,15 @@ def _open_quack_transport_connection_once(
                         uri=text
                     )
                 try:
-                    raw = _attach_quack_once(text, secret)
+                    attached = _attach_quack_once(text, secret)
+                    if (
+                        isinstance(attached, tuple)
+                        and len(attached) == 2
+                    ):
+                        raw, binding = attached
+                    else:
+                        raw = attached
+                        binding = getattr(raw, "_quack_live_binding", None)
                 except BaseException as exc:
                     last_error = exc
                     if (
@@ -3600,7 +3607,6 @@ def _open_quack_transport_connection_once(
                 wrapped._default_catalog = _QUACK_CONTROL_CATALOG
                 wrapped._pooled = True
                 wrapped._quack_uri = text
-                binding = getattr(raw, "_quack_live_binding", None)
                 wrapped._quack_mutation_binding = (
                     dict(binding) if isinstance(binding, Mapping) else None
                 )
