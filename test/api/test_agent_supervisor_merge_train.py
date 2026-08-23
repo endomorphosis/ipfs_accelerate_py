@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -15,7 +16,11 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     conflict_fingerprint,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DatabasePortalExecutionBridge,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DatabaseTaskAttempt,
     PortalImplementationDaemon,
     PortalTask,
 )
@@ -39,6 +44,92 @@ def _repo(tmp_path: Path) -> Path:
     _git(repo, "add", "base.txt")
     _git(repo, "commit", "-m", "base")
     return repo
+
+
+class _DatabaseProjectionTaskSource:
+    def __init__(self, record: object) -> None:
+        self.record = record
+
+    def get_task(self, task_cid: str) -> object | None:
+        return (
+            self.record
+            if task_cid == str(getattr(self.record, "task_cid", ""))
+            else None
+        )
+
+    def snapshot(self) -> object:
+        return SimpleNamespace(repository_tree_id="tree:merge-continuation")
+
+
+def _database_projection_record(
+    *, task_cid: str = "task:cid:ref-040", revision: int = 1
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        task_cid=task_cid,
+        task_alias="REF-040",
+        goal_cid="goal:ref-040",
+        plan_cid="plan:merge-continuation",
+        revision=revision,
+        priority="P0",
+        dependencies=(),
+        outputs=({"path": "base.txt"},),
+        validations=(),
+        acceptance=({"criterion": "The exact candidate is integrated"},),
+        body={
+            "objective": "Continue one exact database task merge",
+            "completion": "auto",
+            "track": "implementation",
+        },
+    )
+
+
+def _database_projection_attempt(
+    *, attempt_id: str, claim_id: str, task_cid: str, attempt_number: int
+) -> DatabaseTaskAttempt:
+    return DatabaseTaskAttempt(
+        attempt_id=attempt_id,
+        claim_id=claim_id,
+        task_cid=task_cid,
+        task_alias="REF-040",
+        attempt_number=attempt_number,
+        owner_session_id="session:merge-continuation",
+        fencing_token=attempt_number,
+        fence_epoch=1,
+        lease_id=f"lease:{attempt_number}",
+        committed_phase="claimed",
+        status="running",
+        started_at_ms=attempt_number,
+    )
+
+
+def _database_projection_daemon(
+    *,
+    repo: Path,
+    attempt_root: Path,
+    merge_queue_dir: Path,
+    attempt: DatabaseTaskAttempt,
+    record: SimpleNamespace,
+) -> tuple[PortalImplementationDaemon, object, dict[str, object]]:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_DatabaseProjectionTaskSource(record),
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, _alias: None,
+        repository_root=repo,
+        task_header_prefix="## REF-",
+    )
+    paths, binding = bridge._ensure_attempt_projection(attempt, record)
+    daemon = PortalImplementationDaemon(
+        todo_path=paths.task_projection,
+        state_path=paths.state,
+        strategy_path=paths.strategy,
+        events_path=paths.events,
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        merge_target_branch="main",
+        merge_queue_dir=merge_queue_dir,
+        worktree_pool_enabled=False,
+    )
+    return daemon, paths, dict(binding)
 
 
 def test_queue_deduplicates_canonical_task_and_commit_across_lanes(tmp_path: Path) -> None:
@@ -570,6 +661,73 @@ def test_cross_lane_completion_without_authority_policy_fails_closed(
     assert consumer.merge_queue.target_branch == "benchmark/semantic-roundtrip"
 
 
+def test_database_portal_retry_continues_merge_into_current_projection(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    task_cid = "task:cid:ref-040"
+    producer_attempt = _database_projection_attempt(
+        attempt_id="attempt:producer",
+        claim_id="claim:producer",
+        task_cid=task_cid,
+        attempt_number=1,
+    )
+    consumer_attempt = _database_projection_attempt(
+        attempt_id="attempt:consumer",
+        claim_id="claim:consumer",
+        task_cid=task_cid,
+        attempt_number=2,
+    )
+    producer, producer_paths, producer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=producer_attempt,
+        record=_database_projection_record(revision=2),
+    )
+    consumer, consumer_paths, consumer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=consumer_attempt,
+        record=_database_projection_record(revision=4),
+    )
+    _git(repo, "branch", "implementation/ref-040")
+    task = producer._load_tasks()[0]
+    commit = _git(repo, "rev-parse", "HEAD")
+    request, _queued = producer._enqueue_merge_candidate(
+        branch_name="implementation/ref-040",
+        implementation_commit=commit,
+        baseline_ref=commit,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+
+    result = consumer._merge_train_callback(request)
+
+    assert result.get("merged") is True or result.get("already_merged") is True
+    continuation = result["database_portal_merge_continuation"]
+    assert continuation["task_id"] == "REF-040"
+    assert continuation["task_cid"] == task_cid
+    assert continuation["producer_binding_id"] == producer_binding["binding_id"]
+    assert continuation["consumer_binding_id"] == consumer_binding["binding_id"]
+    assert "- Status: ready" in producer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert "- Status: completed" in consumer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+
+
 def test_same_git_worktree_todo_path_is_not_cross_board(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     todo = repo / "tasks.md"
@@ -738,3 +896,588 @@ def test_bound_merge_train_receipts_are_namespaced_by_exact_target(
     assert upper._dedupe_key("canonical-task", "a" * 40) != (
         lower._dedupe_key("canonical-task", "a" * 40)
     )
+
+
+def test_queue_claim_pending_request_never_claims_a_fairer_foreign_request(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(tmp_path / "queue")
+    fairer = queue.enqueue(
+        branch_name="implementation/fairer",
+        task_id="FAIRER",
+        priority="P0",
+        commit_sha="a" * 40,
+    )
+    selected = queue.enqueue(
+        branch_name="implementation/exact",
+        task_id="EXACT",
+        priority="P3",
+        commit_sha="b" * 40,
+    )
+
+    claimed = queue.claim_pending_request(
+        selected.request_id,
+        consumer_id="request-routed-recovery",
+    )
+
+    assert claimed is not None
+    assert claimed.request_id == selected.request_id
+    assert claimed.consumer_id == "request-routed-recovery"
+    assert queue.get(fairer.request_id).status == "pending"
+    assert [item.request_id for item in queue.pending_requests()] == [
+        fairer.request_id
+    ]
+
+
+def test_bound_quarantine_snapshot_filters_target_before_limit(
+    tmp_path: Path,
+) -> None:
+    queue_dir = tmp_path / "queue"
+    producer = MergeQueue(queue_dir, max_queue_size=32)
+    for index in range(6):
+        foreign = producer.enqueue(
+            branch_name=f"implementation/foreign-{index}",
+            task_id=f"FOREIGN-{index}",
+            commit_sha=f"{index + 1:040x}",
+            target_repository_id="repository:foreign",
+            target_branch="main",
+        )
+        producer.quarantine(foreign, reason="foreign terminal row")
+    selected = producer.enqueue(
+        branch_name="implementation/selected-target",
+        task_id="SELECTED-TARGET",
+        commit_sha="f" * 40,
+        target_repository_id="repository:selected",
+        target_branch="main",
+    )
+    producer.quarantine(
+        selected,
+        reason="post_merge_declared_outputs_missing",
+    )
+    consumer = MergeQueue(
+        queue_dir,
+        target_repository_id="repository:selected",
+        target_branch="main",
+        require_target_binding=True,
+    )
+
+    visible = consumer.quarantined_requests(limit=1)
+
+    assert [request.request_id for request in visible] == [
+        selected.request_id
+    ]
+
+
+def test_completed_recovery_snapshot_filters_and_paginates_before_limit(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id="repository:selected",
+        target_branch="main",
+        require_target_binding=True,
+    )
+    completion_schema = "repair-completion@test"
+    completion_reason = "post_merge_declared_outputs_repaired"
+
+    def complete(task_id: str, *, repair: bool) -> object:
+        request = queue.enqueue(
+            branch_name=f"implementation/{task_id.casefold()}",
+            task_id=task_id,
+            commit_sha=(task_id[-1].casefold() * 40),
+        )
+        claimed = queue.claim_pending_request(
+            request.request_id,
+            consumer_id="fixture",
+        )
+        assert claimed is not None
+        queue.complete(
+            claimed,
+            metadata=(
+                {
+                    "schema": completion_schema,
+                    "reason": completion_reason,
+                }
+                if repair
+                else {"schema": "ordinary-completion@test"}
+            ),
+        )
+        stored = queue.get(request.request_id)
+        assert stored is not None
+        return stored
+
+    older = complete("TASK-A", repair=True)
+    complete("TASK-B", repair=False)
+    newer = complete("TASK-C", repair=True)
+
+    first_page = queue.completed_requests(
+        limit=1,
+        completion_schema=completion_schema,
+        completion_reason=completion_reason,
+    )
+    second_page = queue.completed_requests(
+        limit=1,
+        completion_schema=completion_schema,
+        completion_reason=completion_reason,
+        before_request_id=newer.request_id,
+    )
+
+    assert [request.request_id for request in first_page] == [
+        newer.request_id
+    ]
+    assert [request.request_id for request in second_page] == [
+        older.request_id
+    ]
+
+
+def test_active_recovery_snapshot_keyset_reaches_later_same_target_row(
+    tmp_path: Path,
+) -> None:
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id="repository:selected",
+        target_branch="main",
+        require_target_binding=True,
+    )
+    rows = []
+    for index in range(3):
+        request = queue.enqueue(
+            branch_name=f"implementation/recovery-{index}",
+            task_id=f"RECOVERY-{index}",
+            commit_sha=f"{index + 1:040x}",
+        )
+        claimed = queue.claim_pending_request(
+            request.request_id,
+            consumer_id="fixture",
+        )
+        assert claimed is not None
+        queue.quarantine(
+            claimed,
+            reason="post_merge_declared_outputs_missing",
+        )
+        stored = queue.get(request.request_id)
+        assert stored is not None
+        rows.append(stored)
+
+    first_page = queue.quarantined_requests(
+        limit=2,
+        after_request_id="",
+    )
+    second_page = queue.quarantined_requests(
+        limit=2,
+        after_request_id=first_page[-1].request_id,
+    )
+
+    assert [request.request_id for request in first_page] == [
+        rows[0].request_id,
+        rows[1].request_id,
+    ]
+    assert [request.request_id for request in second_page] == [
+        rows[2].request_id
+    ]
+
+
+def test_recover_one_integrated_quarantine_processes_only_filtered_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    repository_id = checkout_repository_id(repo)
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="main",
+        require_target_binding=True,
+    )
+    selected = queue.enqueue(
+        branch_name="implementation/selected",
+        task_id="SELECTED",
+        canonical_task_id="task:cid:selected",
+        commit_sha=_git(repo, "rev-parse", "HEAD"),
+        metadata={"changed_submodule_paths": []},
+    )
+    unrelated = queue.enqueue(
+        branch_name="implementation/unrelated",
+        task_id="UNRELATED",
+        canonical_task_id="task:cid:unrelated",
+        commit_sha=_git(repo, "rev-parse", "HEAD"),
+        metadata={"changed_submodule_paths": []},
+    )
+    queue.quarantine(
+        selected,
+        reason="post_merge_declared_outputs_missing",
+    )
+    queue.quarantine(
+        unrelated,
+        reason="post_merge_declared_outputs_missing",
+    )
+    candidate = selected.commit_sha
+    repair_commit = _git(repo, "rev-parse", "HEAD")
+
+    train = MergeTrain(
+        repo,
+        queue,
+        merge_callback=lambda request: {
+            "merged": True,
+            "reason": "post_merge_declared_outputs_repaired",
+            "post_merge_declared_output_repair": {
+                "passed": True,
+                "reason": "post_merge_declared_outputs_repaired",
+                "receipt": {
+                    "schema": "repair@test",
+                    "task_ids": [request.task_id],
+                    "candidate_commit": request.commit_sha,
+                    "repair_commit": repair_commit,
+                    "receipt_id": "receipt:test",
+                },
+            },
+        },
+    )
+    monkeypatch.setattr(
+        queue,
+        "pending_requests",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("exact recovery must not rescan pending rows")
+        ),
+    )
+    monkeypatch.setattr(
+        queue,
+        "quarantined_requests",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("exact recovery must not rescan quarantined rows")
+        ),
+    )
+
+    result = train.recover_one_integrated_quarantine(
+        request_filter=lambda request: request.request_id
+        == selected.request_id,
+        request_id=selected.request_id,
+    )
+
+    assert result is not None
+    assert result["status"] == "merged"
+    completed = queue.get(selected.request_id)
+    assert completed is not None and completed.status == "completed"
+    assert completed.metadata["completion"]["candidate_commit"] == candidate
+    untouched = queue.get(unrelated.request_id)
+    assert untouched is not None and untouched.status == "quarantined"
+
+
+def test_invalid_authority_metadata_quarantine_settles_when_outputs_on_target(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    _git(repo, "switch", "-c", "implementation/side")
+    (repo / "side.txt").write_text("side\n", encoding="utf-8")
+    _git(repo, "add", "side.txt")
+    _git(repo, "commit", "-m", "side")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    head_before = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/side",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            "todo_path": str(tmp_path / "attempts" / "x" / "task-projection.md"),
+            "completion_task_cids": {"REF-040": "task:cid:ref-040"},
+            "manual_completion_authority_task_ids": [],
+            "manual_completion_authority_required_task_ids": [],
+            "manual_completion_authority_epoch_id": "",
+            "manual_completion_authority_revocation_generation": 0,
+            "manual_completion_authority_context_id": "baguqeera-invalid",
+            "task": {
+                "task_id": "REF-040",
+                "outputs": ["base.txt"],
+            },
+            "changed_submodule_paths": [],
+        },
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None
+    queue.quarantine(
+        claimed,
+        reason="cross_board_manual_completion_authority_metadata_invalid",
+    )
+
+    callback_calls: list[str] = []
+
+    def fail_closed(_request: object) -> dict[str, object]:
+        callback_calls.append("called")
+        return {
+            "attempted": False,
+            "merged": False,
+            "returncode": 2,
+            "reason": "cross_board_manual_completion_authority_metadata_invalid",
+        }
+
+    train = MergeTrain(repo, queue, merge_callback=fail_closed)
+    result = train.run_once()
+
+    assert result is not None
+    assert result.get("status") == "already_merged"
+    assert result.get("already_merged") is True
+    assert result.get("reason") == "declared_outputs_already_on_target"
+    assert callback_calls == []
+    assert _git(repo, "rev-parse", "HEAD") == head_before
+    side_probe = subprocess.run(
+        ["git", "cat-file", "-e", "HEAD:side.txt"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert side_probe.returncode != 0
+    completed = queue.get(request.request_id)
+    assert completed is not None
+    assert completed.status == "completed"
+
+
+def test_custom_train_state_dirs_share_one_queue_consumer_lease(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/canonical-consumer-lease",
+        task_id="CANONICAL-LEASE",
+        commit_sha=_git(repo, "rev-parse", "HEAD"),
+    )
+    first = MergeTrain(repo, queue, state_dir=tmp_path / "lane-a")
+    second = MergeTrain(repo, queue, state_dir=tmp_path / "lane-b")
+
+    assert first.consumer_lock_path == second.consumer_lock_path
+    with first._consumer_lease() as acquired:
+        assert acquired is True
+        claimed = queue.claim_pending_request(
+            request.request_id,
+            consumer_id=first.owner_id,
+        )
+        assert claimed is not None
+        assert second.run_once() is None
+        assert queue.owns_claim(claimed, consumer_id=first.owner_id)
+
+    recovered = second.run_once()
+
+    assert recovered is not None
+    assert recovered["status"] == "already_merged"
+    stored = queue.get(request.request_id)
+    assert stored is not None and stored.status == "completed"
+    assert second.run_once() is None
+
+
+def test_queue_quarantine_preserves_callback_failure_metadata(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/missing-outputs",
+        task_id="MISSING-OUTPUTS",
+        commit_sha=candidate,
+        metadata={"changed_submodule_paths": []},
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == request.request_id
+    failure = {
+        "status": "quarantined",
+        "reason": "post_merge_declared_outputs_missing",
+        "merge_result": {
+            "reason": "post_merge_declared_outputs_missing",
+            "automatic_repair_attempted": True,
+            "automatic_repair_terminal": True,
+            "repair_reason": "declared_output_repair_conflict",
+        },
+    }
+
+    MergeTrain._call_queue_failure(
+        queue.quarantine,
+        claimed,
+        "post_merge_declared_outputs_missing",
+        failure,
+    )
+
+    stored = queue.get(request.request_id)
+    assert stored is not None and stored.status == "quarantined"
+    assert stored.metadata["quarantine"] == failure
+
+
+def test_terminal_missing_output_repair_quarantine_is_not_revived(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/missing-outputs",
+        task_id="MISSING-OUTPUTS",
+        commit_sha=candidate,
+        metadata={"changed_submodule_paths": []},
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == request.request_id
+    queue.quarantine(
+        claimed,
+        reason="post_merge_declared_outputs_missing",
+        metadata={
+            "merge_result": {
+                "reason": "post_merge_declared_outputs_missing",
+                "automatic_repair_attempted": True,
+                "automatic_repair_terminal": True,
+                "repair_reason": "declared_output_repair_conflict",
+            }
+        },
+    )
+    train = MergeTrain(repo, queue)
+    quarantined = queue.get(request.request_id)
+    assert quarantined is not None
+    assert train._quarantined_candidate_is_integrated(quarantined) is True
+
+    assert train._recover_integrated_quarantines() == 0
+
+    stored = queue.get(request.request_id)
+    assert stored is not None and stored.status == "quarantined"
+    assert "revivals" not in stored.metadata
+
+
+def test_declared_output_recovery_may_revive_terminal_missing_output_quarantine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/missing-outputs",
+        task_id="MISSING-OUTPUTS",
+        commit_sha=candidate,
+        metadata={"changed_submodule_paths": []},
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == request.request_id
+    queue.quarantine(
+        claimed,
+        reason="post_merge_declared_outputs_missing",
+        metadata={
+            "merge_result": {
+                "reason": "post_merge_declared_outputs_missing",
+                "automatic_repair_attempted": True,
+                "automatic_repair_terminal": True,
+                "repair_reason": "declared_output_repair_conflict",
+            }
+        },
+    )
+    train = MergeTrain(repo, queue)
+    quarantined = queue.get(request.request_id)
+    assert quarantined is not None
+    assert train._quarantine_auto_recovery_allowed(quarantined) is False
+    assert (
+        train._quarantine_auto_recovery_allowed(
+            quarantined,
+            allow_post_merge_declared_output_recovery=True,
+        )
+        is True
+    )
+
+    processed: list[str] = []
+
+    def process_claimed(_request: object) -> dict[str, object]:
+        current = queue.get(request.request_id)
+        assert current is not None
+        processed.append(str(current.status))
+        return {"merged": True, "reason": "declared_output_recovery_fixture"}
+
+    monkeypatch.setattr(train, "_process_claimed", process_claimed)
+    result = train.recover_one_integrated_quarantine(
+        request_id=request.request_id,
+        allow_post_merge_declared_output_recovery=True,
+    )
+    assert result is not None
+    assert processed
+    assert train.recover_one_integrated_quarantine(
+        request_id=request.request_id,
+    ) is None
+
+
+def test_portal_projection_cross_board_quarantine_revives_when_outputs_landed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    _git(repo, "switch", "-c", "implementation/side")
+    (repo / "side.txt").write_text("side\n", encoding="utf-8")
+    _git(repo, "add", "side.txt")
+    _git(repo, "commit", "-m", "side")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/side",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            "todo_path": str(tmp_path / "attempts" / "x" / "task-projection.md"),
+            "completion_task_cids": {"REF-040": "task:cid:ref-040"},
+            "task": {
+                "task_id": "REF-040",
+                "outputs": ["base.txt"],
+            },
+            "changed_submodule_paths": [],
+        },
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None
+    queue.quarantine(
+        claimed,
+        reason="cross_board_manual_completion_authority_metadata_invalid",
+    )
+    train = MergeTrain(repo, queue)
+    quarantined = queue.get(request.request_id)
+    assert quarantined is not None
+    assert train._quarantined_candidate_is_integrated(quarantined) is False
+    assert train._quarantine_auto_recovery_allowed(quarantined) is True
+    assert train._quarantine_may_auto_recover(quarantined) is True
+
+    processed: list[str] = []
+
+    def process_claimed(_request: object) -> dict[str, object]:
+        current = queue.get(request.request_id)
+        assert current is not None
+        processed.append(str(current.status))
+        return {
+            "already_merged": True,
+            "reason": "declared_outputs_already_on_target",
+        }
+
+    monkeypatch.setattr(train, "_process_claimed", process_claimed)
+    result = train.recover_one_integrated_quarantine(
+        request_id=request.request_id,
+    )
+    assert result is not None
+    assert processed
