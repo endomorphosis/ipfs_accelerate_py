@@ -888,28 +888,18 @@ class DuckDBConnection:
                     )
                 try:
                     result = self._execute_locked(statement, normalized, parameters)
-                except BaseException as exc:
-                    if self._should_reattach_quack_locked(
-                        exc,
-                        begins_transaction=begins_transaction,
-                        ends_transaction=ends_transaction,
-                    ):
-                        self._reattach_quack_locked()
-                        result = self._execute_locked(
-                            statement, normalized, parameters
-                        )
-                    else:
-                        if begins_transaction:
-                            self._quack_pending_mutations = []
-                            try:
-                                self._connection.rollback()
-                            except Exception:
-                                evict_uri = self._poison_locked()
-                            else:
-                                self._transaction_finished_locked()
-                        elif ends_transaction:
+                except BaseException:
+                    if begins_transaction:
+                        self._quack_pending_mutations = []
+                        try:
+                            self._connection.rollback()
+                        except Exception:
                             evict_uri = self._poison_locked()
-                        raise
+                        else:
+                            self._transaction_finished_locked()
+                    elif ends_transaction:
+                        evict_uri = self._poison_locked()
+                    raise
                 if begins_transaction and self._transaction_active:
                     self._transaction_lock_owner = thread_id
                 elif ends_transaction and not self._transaction_active:
@@ -1013,51 +1003,6 @@ class DuckDBConnection:
             self._active_catalog = catalog or getattr(self, "_active_catalog", None)
         dml = normalized.startswith(("INSERT ", "UPDATE ", "DELETE "))
         return DuckDBCursor(executed, dml=dml)
-
-    def _should_reattach_quack_locked(
-        self,
-        exc: BaseException,
-        *,
-        begins_transaction: bool,
-        ends_transaction: bool,
-    ) -> bool:
-        if begins_transaction or ends_transaction:
-            return False
-        if not getattr(self, "_quack_uri", ""):
-            return False
-        if self._connection is None or self._poisoned or self._closed:
-            return False
-        return _is_quack_invalid_connection(exc)
-
-    def _reattach_quack_locked(self) -> None:
-        """Replace a dead Quack ATTACH handle without dropping the wrapper."""
-
-        uri = str(getattr(self, "_quack_uri", "") or "")
-        secret = str(getattr(self, "_quack_mutation_token", "") or "")
-        if not uri or not secret:
-            raise DuckDBConnectionPolicyError(
-                "quack transport session died and cannot be reattached"
-            )
-        previous = self._connection
-        if previous is not None:
-            _unregister_duckdb_wrapper(self, previous)
-            try:
-                previous.close()
-            except Exception:
-                pass
-        attached = _attach_quack_once(uri, secret)
-        if isinstance(attached, tuple) and len(attached) == 2:
-            raw, binding = attached
-        else:
-            raw = attached
-            binding = getattr(raw, "_quack_live_binding", None)
-        self._connection = raw
-        self._active_catalog = getattr(self, "_default_catalog", None)
-        self._transaction_active = False
-        self._quack_pending_mutations = []
-        if isinstance(binding, Mapping):
-            self._quack_mutation_binding = dict(binding)
-        _register_duckdb_wrapper(self, raw)
 
     def executemany(
         self,
