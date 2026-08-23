@@ -231,6 +231,28 @@ def _tracked_bytes(path: Path, *, head: str) -> bytes:
     return current
 
 
+def _require_canonical_schema_revision(schema_revision: Any) -> int:
+    """Require the scheduler pin to match the packaged physical schema head."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
+        load_control_plane_catalog,
+    )
+
+    try:
+        configured_revision = int(str(schema_revision or "").strip())
+    except ValueError as exc:
+        raise OperatorError(
+            "scheduler schema revision must identify the canonical migration head"
+        ) from exc
+    latest_revision = load_control_plane_catalog().latest_version
+    if configured_revision != latest_revision:
+        raise OperatorError(
+            "scheduler schema revision differs from the canonical migration head "
+            f"(configured={configured_revision}, latest={latest_revision})"
+        )
+    return configured_revision
+
+
 def _load_config(config_path: Path) -> tuple[Any, dict[str, Any]]:
     from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
         load_configured_board,
@@ -285,6 +307,7 @@ def _load_config(config_path: Path) -> tuple[Any, dict[str, Any]]:
     ):
         raise OperatorError("bootstrap may not claim event-driven qualification")
     program = board.resolved_database_program()
+    _require_canonical_schema_revision(program.schema_revision)
     if program.authority_mode != "quack" or program.task_source_kind != "duckdb":
         raise OperatorError("CASF requires DuckDB authority through Quack")
     if program.failover_policy != "fail_closed":

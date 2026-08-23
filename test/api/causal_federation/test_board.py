@@ -132,7 +132,10 @@ def test_generic_scheduler_accepts_one_lane_quack_program() -> None:
     assert program.endpoint_secret_handle == "handle:casf-v1"
     assert program.quack_endpoint == "quack:127.0.0.1:41417"
     assert program.store_generation == "casf-v1"
-    assert program.schema_revision == "2"
+    assert program.schema_revision == "3"
+    assert args.count("--state-schema-revision") == 1
+    revision_index = args.index("--state-schema-revision")
+    assert args[revision_index + 1] == "3"
     assert program.failover_policy == "fail_closed"
 
 
