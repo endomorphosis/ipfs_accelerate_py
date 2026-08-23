@@ -1404,10 +1404,7 @@ class DatabaseTaskSource:
                 continue
             if tcid in completed or alias in completed:
                 continue
-            full = self._intent.get_task(tcid)
-            if full is None:
-                continue
-            filtered.append(_as_task_record(full))
+            filtered.append(_as_task_record(item))
             if len(filtered) >= limit:
                 break
         watermark_fn = getattr(self._intent, "event_watermark", None)

@@ -2670,17 +2670,7 @@ class IntentRepository:
                     ),
                     [selected, off],
                 ).fetchall()
-            rel = self._task_relations(connection, tuple(str(row[0]) for row in rows))
-        results = []
-        for row in rows:
-            mapping = dict(self._task_mapping_from_hydrate(row))
-            tcid = str(row[0])
-            mapping["dependencies"] = tuple(rel[0].get(tcid, ()))
-            mapping["outputs"] = tuple(rel[1].get(tcid, ()))
-            mapping["acceptance"] = tuple(rel[2].get(tcid, ()))
-            mapping["validations"] = tuple(rel[3].get(tcid, ()))
-            results.append(MappingProxyType(mapping))
-        return tuple(results)
+        return tuple(self._task_mapping_from_hydrate(row) for row in rows)
 
     # -- evidence / completion -----------------------------------------------
 
@@ -3749,32 +3739,42 @@ class IntentRepository:
         _ = include_completion_candidates  # reserved for future selection modes
         with self._connection(write=False) as connection:
             task_rows = connection.execute(
-                """
+                f"""
                 SELECT task_cid, task_alias, goal_cid, ordinal, status, revision
-                FROM tasks
+                FROM {self._relation("tasks")}
                 ORDER BY ordinal, task_cid
                 """
             ).fetchall()
-            dep_rows = connection.execute(
-                "SELECT task_cid, dependency_task_cid FROM task_dependencies"
-            ).fetchall()
-            lease_rows = connection.execute(
-                "SELECT task_cid, retry_not_before_ms FROM leases"
-            ).fetchall()
+            def _optional_rows(sql: str, params: list[Any] | None = None) -> list[Any]:
+                try:
+                    if params is None:
+                        return list(connection.execute(sql).fetchall())
+                    return list(connection.execute(sql, params).fetchall())
+                except Exception as exc:
+                    if "invalid connection id" not in str(exc).lower():
+                        raise
+                    return []
+
+            dep_rows = _optional_rows(
+                "SELECT task_cid, dependency_task_cid "
+                f"FROM {self._relation('task_dependencies')}"
+            )
+            lease_rows = _optional_rows(
+                "SELECT task_cid, retry_not_before_ms "
+                f"FROM {self._relation('leases')}"
+            )
             active_blocks = {
                 str(row[0])
-                for row in connection.execute(
-                    "SELECT DISTINCT task_cid FROM task_blocks WHERE state = 'active'"
-                ).fetchall()
+                for row in _optional_rows(
+                    "SELECT DISTINCT task_cid "
+                    f"FROM {self._relation('task_blocks')} "
+                    "WHERE state = 'active'"
+                )
             }
             completed = {
                 str(row[0])
-                for row in connection.execute(
-                    "SELECT task_cid FROM tasks WHERE status IN ("
-                    + ", ".join("?" for _ in _COMPLETED_STATUSES)
-                    + ")",
-                    list(_COMPLETED_STATUSES),
-                ).fetchall()
+                for row in task_rows
+                if str(row[4]) in _COMPLETED_STATUSES
             }
         dependencies: dict[str, set[str]] = {}
         # DuckDBRow is a Mapping: iterate rows and index columns, never unpack.
