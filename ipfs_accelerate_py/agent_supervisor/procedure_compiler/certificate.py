@@ -21,6 +21,7 @@ from typing import Any, Final
 from ..proof.formal_verification_contracts import canonical_json_bytes
 from ..proof.incremental_sealing.trust import (
     SignerTrustRegistry,
+    TrustDecision,
     TrustedProofPolicy,
 )
 from .contracts import (
@@ -33,6 +34,7 @@ from .contracts import (
     _identifier,
     _nested,
     _nonnegative_int,
+    _positive_int,
     _strings,
     _text,
 )
@@ -42,6 +44,7 @@ from .verifier import (
     REQUIRED_VERIFICATION_LAYERS,
     IndependentEvidence,
     ProcedureVerification,
+    ProcedureVerifier,
     VerificationPolicy,
     VerificationStatus,
     _self_identities,
@@ -142,6 +145,18 @@ def _signer_registry(trust: TrustedProofPolicy | SignerTrustRegistry) -> SignerT
     raise ProcedureCertificateError("trust policy must be TrustedProofPolicy or SignerTrustRegistry")
 
 
+def _evaluate_signer(
+    trust: TrustedProofPolicy | SignerTrustRegistry,
+    registry: SignerTrustRegistry,
+    issuer_id: str,
+) -> TrustDecision:
+    if isinstance(trust, TrustedProofPolicy):
+        return trust.select_signer(issuer_id, scope=CERTIFICATE_SIGNING_SCOPE)
+    return registry.evaluate(
+        issuer_id, scope=CERTIFICATE_SIGNING_SCOPE, required_trusted=True
+    )
+
+
 def unsigned_certificate_statement(
     certificate: ProcedureCertificate | Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -198,7 +213,10 @@ class CertificateKeyRing:
             return False
         if not isinstance(signature, str) or not signature:
             return False
-        return hmac.compare_digest(expected, signature)
+        try:
+            return hmac.compare_digest(expected, signature)
+        except (TypeError, ValueError):
+            return False
 
 
 @dataclass(frozen=True)
@@ -217,6 +235,7 @@ class CurrentCertificateContext:
     require_held_out: bool = True
     require_shadow: bool = True
     required_evidence_kinds: tuple[str, ...] = REQUIRED_EVIDENCE_KINDS
+    review_horizon_ms: int = 86_400_000
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "bindings", _nested(self.bindings, ArtifactBindings, "bindings"))
@@ -228,6 +247,11 @@ class CurrentCertificateContext:
         ):
             object.__setattr__(self, name, _identifier(getattr(self, name), name))
         object.__setattr__(self, "now_ms", _nonnegative_int(self.now_ms, "now_ms"))
+        object.__setattr__(
+            self,
+            "review_horizon_ms",
+            _positive_int(self.review_horizon_ms, "review_horizon_ms", maximum=31_536_000_000),
+        )
         object.__setattr__(
             self,
             "required_test_contracts",
@@ -272,6 +296,7 @@ class CurrentCertificateContext:
             require_held_out=policy.require_held_out,
             require_shadow=policy.require_shadow,
             required_evidence_kinds=policy.required_evidence_kinds,
+            review_horizon_ms=policy.review_horizon_ms,
         )
 
 
@@ -451,9 +476,7 @@ class ProcedureCertificateIssuer:
         self._issuer_id = _identifier(issuer_id, "issuer_id")
         if self._issuer_id not in self._keyring:
             raise ProcedureCertificateError("issuer has no authorized signing key")
-        decision = self._registry.evaluate(
-            self._issuer_id, scope=CERTIFICATE_SIGNING_SCOPE, required_trusted=True
-        )
+        decision = _evaluate_signer(self._trust, self._registry, self._issuer_id)
         if not decision.accepted:
             raise ProcedureCertificateError(
                 "issuer {} is not admitted for procedure certificates: {}".format(
@@ -492,6 +515,10 @@ class ProcedureCertificateIssuer:
             raise ProcedureCertificateError("verification does not bind this procedure")
         if verification.policy_revision != policy.revision:
             raise ProcedureCertificateError("verification policy is not the current policy")
+        if verification.producer_id != evidence.producer_id:
+            raise ProcedureCertificateError("verification does not bind this evidence producer")
+        if tuple(verification.evidence_cids) != tuple(evidence.evidence_cids):
+            raise ProcedureCertificateError("verification does not bind this evidence")
         if not all(item.accepted for item in verification.layers):
             raise ProcedureCertificateError("verification omitted a required layer")
         reported = tuple(item.layer.value for item in verification.layers)
@@ -499,15 +526,24 @@ class ProcedureCertificateIssuer:
             raise ProcedureCertificateError("verification layers do not bind every required obligation")
         if _is_self_issuer(self._issuer_id, candidate, candidate.procedure.content_id):
             raise ProcedureCertificateError("a procedure cannot issue its own certificate")
-        if evidence.producer_id == self._issuer_id:
-            # The evidence producer may be a distinct campaign; the issuer must
-            # still be an independent signing authority, not the evidence bundle.
-            pass
         if _is_self_issuer(evidence.producer_id, candidate, candidate.procedure.content_id):
             raise ProcedureCertificateError("self-produced evidence cannot be certified")
+        independent = ProcedureVerifier().verify(
+            candidate, evidence, policy, now_ms=issued_at
+        )
+        if independent.status is not VerificationStatus.ACCEPTED or not independent.accepted:
+            raise ProcedureCertificateError(
+                "only independently verified candidates receive certificates"
+            )
+        if independent.candidate_cid != candidate.content_id:
+            raise ProcedureCertificateError("verification does not bind this candidate")
+        if independent.procedure_cid != candidate.procedure.content_id:
+            raise ProcedureCertificateError("verification does not bind this procedure")
         limitations = evidence.known_limitations if known_limitations is None else _strings(
             known_limitations, "known_limitations", limit=64
         )
+        if not set(evidence.known_limitations).issubset(set(limitations)):
+            raise ProcedureCertificateError("certificate cannot drop known limitations")
         expires_at = issued_at + policy.review_horizon_ms
         if expires_at <= issued_at:
             raise ProcedureCertificateError("certificate review horizon must be positive")
@@ -666,9 +702,7 @@ class ProcedureCertificateVerifier:
                 issuer=issuer,
                 bound_identities=identities,
             )
-        decision = self._registry.evaluate(
-            issuer, scope=CERTIFICATE_SIGNING_SCOPE, required_trusted=True
-        )
+        decision = _evaluate_signer(self._trust, self._registry, issuer)
         if not decision.accepted:
             reason = CertificateReasonCode.UNTRUSTED_ISSUER
             code = decision.reason_code or ""
@@ -712,6 +746,14 @@ class ProcedureCertificateVerifier:
             return _reject_admission(
                 reason=CertificateReasonCode.STALE_CERTIFICATE,
                 message="certificate is expired or not yet valid",
+                certificate_cid=certificate_cid,
+                issuer=issuer,
+                bound_identities=identities,
+            )
+        if parsed.expires_at_ms - parsed.issued_at_ms > context.review_horizon_ms:
+            return _reject_admission(
+                reason=CertificateReasonCode.STALE_CERTIFICATE,
+                message="certificate review horizon exceeds the current policy horizon",
                 certificate_cid=certificate_cid,
                 issuer=issuer,
                 bound_identities=identities,
@@ -788,10 +830,6 @@ class ProcedureCertificateVerifier:
                 issuer=issuer,
                 bound_identities=identities,
             )
-        if parsed.state is ArtifactState.PROMOTED:
-            # Promoted is a certificate-tier state the registry may later
-            # assign; this verifier still never treats promotion as granted.
-            pass
         return CertificateAdmission(
             status=CertificateVerificationStatus.ACCEPTED,
             reason_code=CertificateReasonCode.ACCEPTED,

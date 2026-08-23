@@ -17,7 +17,9 @@ from ipfs_accelerate_py.agent_supervisor.procedure_compiler.certificate import (
     ProcedureCertificateIssuer,
     ProcedureCertificateVerifier,
     encode_certificate_statement,
+    issue_procedure_certificate,
     unsigned_certificate_statement,
+    verify_procedure_certificate,
 )
 from ipfs_accelerate_py.agent_supervisor.procedure_compiler.contracts import (
     ArtifactState,
@@ -407,3 +409,42 @@ def test_issuer_construction_requires_trusted_in_scope_signer() -> None:
             keyring(),
             issuer_id=ISSUER_ID,
         )
+
+
+def test_issuer_refuses_dropped_limitations_and_mismatched_evidence() -> None:
+    spec, candidate, evidence, policy, verification, _certificate, _context = issue_valid()
+    with pytest.raises(ProcedureCertificateError, match="cannot drop known limitations"):
+        issuer_for().issue(
+            candidate, verification, evidence, policy, now_ms=100, known_limitations=()
+        )
+    weaker = evidence_for(spec, proof_receipt_cids=("proof-other",), include_receipts=False)
+    with pytest.raises(ProcedureCertificateError, match="does not bind this evidence"):
+        issuer_for().issue(candidate, verification, weaker, policy, now_ms=100)
+
+
+def test_current_review_horizon_cannot_exceed_policy() -> None:
+    _spec, _candidate, _evidence, _policy, _verification, certificate, context = issue_valid()
+    admission = ProcedureCertificateVerifier(trust_policy(), keyring()).verify(
+        certificate, replace(context, review_horizon_ms=1)
+    )
+    assert not admission.accepted
+    assert admission.reason_code is CertificateReasonCode.STALE_CERTIFICATE
+
+
+def test_issue_and_verify_helpers_do_not_grant_authority() -> None:
+    spec, candidate, evidence, policy, verification, _certificate, context = issue_valid()
+    issued = issue_procedure_certificate(
+        candidate, verification, evidence, policy, issuer_for(), now_ms=100
+    )
+    assert issued.procedure_cid == spec.content_id
+    assert issued.state is ArtifactState.VERIFIED
+    admission = verify_procedure_certificate(
+        issued,
+        context,
+        ProcedureCertificateVerifier(trust_policy(), keyring()),
+        candidate=candidate,
+    )
+    assert admission.accepted
+    assert admission.usable
+    assert admission.grants_authority is False
+    assert admission.grants_promotion is False

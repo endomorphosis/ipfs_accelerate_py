@@ -631,3 +631,93 @@ def test_forbidden_self_producer_names_are_rejected_at_construction() -> None:
     spec = valid_spec()
     with pytest.raises(ProcedureVerificationError, match="not independent"):
         evidence_for(spec, producer_id="self")
+
+
+def test_authority_layer_rejects_omitted_confirmation() -> None:
+    spec = valid_spec()
+    result = ProcedureVerifier().verify(
+        candidate_for(spec),
+        evidence_for(spec),
+        policy_for(spec, confirmation_required=True),
+        now_ms=100,
+    )
+    assert not result.accepted
+    assert (
+        result.outcome(VerificationLayer.AUTHORITY).reason_code
+        == VerificationReasonCode.AUTHORITY_UNSAFE.value
+    )
+
+
+def test_semantic_layer_rejects_stale_family_bindings() -> None:
+    spec = valid_spec()
+    family = family_for(spec, bindings=bindings(tree_id="tree-other"))
+    result = ProcedureVerifier().verify(
+        candidate_for(spec),
+        evidence_for(spec, family=family),
+        policy_for(spec),
+        now_ms=100,
+    )
+    assert not result.accepted
+    assert (
+        result.outcome(VerificationLayer.SEMANTIC).reason_code
+        == VerificationReasonCode.STALE_BINDINGS.value
+    )
+
+
+def test_validation_requires_admitted_receipts_covering_each_kind() -> None:
+    spec = valid_spec()
+    missing_receipts = ProcedureVerifier().verify(
+        candidate_for(spec),
+        evidence_for(spec, include_receipts=False),
+        policy_for(spec),
+        now_ms=100,
+    )
+    assert not missing_receipts.accepted
+    assert (
+        missing_receipts.outcome(VerificationLayer.VALIDATION).reason_code
+        == VerificationReasonCode.VALIDATION_INCOMPLETE.value
+    )
+
+    reused = ProcedureVerifier().verify(
+        candidate_for(spec),
+        evidence_for(
+            spec,
+            include_receipts=False,
+            proof_receipt_cids=("shared-1",),
+            test_receipt_cids=("shared-1",),
+        ),
+        policy_for(spec),
+        now_ms=100,
+    )
+    assert not reused.accepted
+    assert (
+        reused.outcome(VerificationLayer.VALIDATION).reason_code
+        == VerificationReasonCode.VALIDATION_INCOMPLETE.value
+    )
+
+    mismatched = ProcedureVerifier().verify(
+        candidate_for(spec),
+        evidence_for(
+            spec,
+            receipts=(
+                receipt("proof-1", "test", contract_id="focused-tests@1"),
+                receipt("test-1", "test", contract_id="focused-tests@1"),
+                receipt("assurance-1", "adversarial"),
+                receipt("held-out-1", "held_out"),
+                receipt("shadow-1", "shadow"),
+            ),
+        ),
+        policy_for(spec),
+        now_ms=100,
+    )
+    assert not mismatched.accepted
+    assert (
+        mismatched.outcome(VerificationLayer.VALIDATION).reason_code
+        == VerificationReasonCode.VALIDATION_INCOMPLETE.value
+    )
+
+
+def test_duplicate_evidence_identities_fail_closed() -> None:
+    spec = valid_spec()
+    with pytest.raises(ProcedureVerificationError, match="duplicate identities"):
+        evidence_for(spec, proof_receipt_cids=("proof-1", "proof-1"), include_receipts=False)
