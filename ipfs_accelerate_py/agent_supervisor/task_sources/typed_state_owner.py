@@ -629,6 +629,9 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
             }
         ),
         "task.status.cas": frozenset({"txn_cas_task_status"}),
+        "task.status.cas.receipt": frozenset(
+            {"executor_cas_task_status_receipt"}
+        ),
         "task.validation.record.passed": frozenset(
             {
                 "executor_insert_validation_run",
@@ -649,6 +652,7 @@ _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
     set(_COMMAND_MUTATION_CATALOG)
     - {
         "task.status.cas",
+        "task.status.cas.receipt",
         "task.validation.record.passed",
         "task.validation.record.nonpassing",
     }
@@ -716,6 +720,9 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
             ),
             "event.acknowledge": _COMMAND_MUTATION_CATALOG["event.acknowledge"],
             "task.status.cas": frozenset({"txn_cas_task_status"}),
+            "task.status.cas.receipt": _COMMAND_MUTATION_CATALOG[
+                "task.status.cas.receipt"
+            ],
             "task.validation.record.passed": _COMMAND_MUTATION_CATALOG[
                 "task.validation.record.passed"
             ],
@@ -1884,6 +1891,7 @@ class TypedStateOwnerGateway:
             "subagent.slot.reserve": "claim",
             "subagent.slot.release": "release",
             "task.status.cas": "claim",
+            "task.status.cas.receipt": "claim",
         }.get(operation, "append")
         if command.command_kind.value != expected_kind:
             raise TypedStateOwnerAuthorizationError(
@@ -2723,6 +2731,69 @@ class TypedStateOwnerGateway:
             if any(bound.get(field) != value for field, value in expected.items()):
                 raise TypedStateOwnerAuthorizationError(
                     "task status mutation differs from the admitted command"
+                )
+        elif name == "executor_cas_task_status_receipt":
+            expected_task_revision = command.parameters.get(
+                "expected_task_revision"
+            )
+            expected = {
+                "task_cid": command.parameters.get("task_cid"),
+                "expected_task_revision": expected_task_revision,
+                "new_revision": (
+                    expected_task_revision + 1
+                    if isinstance(expected_task_revision, int)
+                    and not isinstance(expected_task_revision, bool)
+                    else None
+                ),
+                "status": command.parameters.get("status"),
+                "body_json": command.parameters.get("body_json"),
+            }
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "task status receipt mutation differs from the admitted command"
+                )
+        elif name == "executor_insert_validation_run":
+            expected = {
+                "run_id": command.parameters.get("run_id"),
+                "task_cid": command.parameters.get("task_cid"),
+                "attempt_id": command.parameters.get("attempt_id"),
+                "started_at": command.parameters.get("started_at"),
+                "finished_at": command.parameters.get("finished_at"),
+                "status": command.parameters.get("outcome"),
+                "command_digest": command.parameters.get("command_digest"),
+                "body_json": command.parameters.get("run_body_json"),
+            }
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "validation run mutation differs from the admitted command"
+                )
+        elif name == "executor_insert_validation_result":
+            expected = {
+                "result_id": command.parameters.get("result_id"),
+                "run_id": command.parameters.get("run_id"),
+                "task_cid": command.parameters.get("task_cid"),
+                "ordinal": 0,
+                "outcome": command.parameters.get("outcome"),
+                "evidence_digest": command.parameters.get("evidence_digest"),
+                "body_json": command.parameters.get("result_body_json"),
+            }
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "validation result mutation differs from the admitted command"
+                )
+        elif name == "executor_insert_validation_evidence":
+            expected = {
+                "evidence_id": command.parameters.get("evidence_id"),
+                "parent_evidence_id": "",
+                "task_cid": command.parameters.get("task_cid"),
+                "evidence_kind": "validation",
+                "digest": command.parameters.get("evidence_digest"),
+                "created_at": command.parameters.get("finished_at"),
+                "body_json": command.parameters.get("evidence_body_json"),
+            }
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "validation evidence mutation differs from the admitted command"
                 )
         manifest.append((name, bound))
 

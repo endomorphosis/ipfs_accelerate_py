@@ -28,6 +28,17 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source impor
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
+    QuackStateClient,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+    TypedDatabaseTaskSource,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    TYPED_STATE_OWNER_SOCKET_ENV,
+    TYPED_STATE_OWNER_TOKEN_ENV,
+    build_control_plane_operation_catalog,
+)
 from test.api.causal_federation.test_bootstrap_runtime import (
     _capability,
     _migrate,
@@ -141,6 +152,124 @@ def test_admitted_health_requires_exact_live_executor_and_authoritative_progress
     )
     assert unhealthy["classification"] == "stuck"
     assert unhealthy["healthy"] is False
+
+
+def test_typed_database_task_source_reads_claims_and_records_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "typed-control.duckdb"
+    source = DatabaseTaskSource(database)
+    source.materialize(
+        {
+            "repository_tree_id": "tree:typed-executor",
+            "plan_root_cid": "plan:typed-executor",
+            "goals": [
+                {
+                    "goal_cid": "goal:typed-executor",
+                    "goal_alias": "CASF-G-TYPED",
+                    "title": "Typed executor",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": "task:typed-executor",
+                    "task_id": "CASF-TYPED",
+                    "goal_cid": "goal:typed-executor",
+                    "status": "ready",
+                    "body": {"No-change completion": "allowed"},
+                    "outputs": [{"path": "pyproject.toml", "effect": {}}],
+                    "validations": [{"argv": ["/usr/bin/true"], "policy": {}}],
+                }
+            ],
+        }
+    )
+    source.close()
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-typed-executor-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    client_id = "database-implementation-daemon:typed-test"
+    operator_birth_id = identity.process_birth_id
+    token = server.issue_typed_client_grant(
+        client_id=client_id,
+        process_birth_id=operator_birth_id,
+        allowed_operations=tuple(build_control_plane_operation_catalog()),
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.validation.record.passed",
+            "task.validation.record.nonpassing",
+        ),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV, str(server.typed_command_socket_path())
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id=identity.store_id,
+        process_birth_id=operator_birth_id,
+    )
+    adapter: TypedDatabaseTaskSource | None = None
+    try:
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        adapter = TypedDatabaseTaskSource(client)
+        snapshot = adapter.snapshot()
+        assert snapshot.task_count == 1
+        assert snapshot.repository_tree_id == "tree:typed-executor"
+        assert adapter.ready_tasks().tasks[0].task_alias == "CASF-TYPED"
+        ready = adapter.get("CASF-TYPED")
+        assert ready is not None
+        claimed = adapter.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            {"operation": "database_claim", "claim_id": "claim:typed-test"},
+        )
+        assert claimed.changed is True
+        assert claimed.task.body["completion_receipt"]["operation"] == "database_claim"
+        evidence_digest = "sha256:" + ("a" * 64)
+        validation = adapter.record_validation_result(
+            task_cid=claimed.task.task_cid,
+            outcome="passed",
+            evidence_digest=evidence_digest,
+            argv=["/usr/bin/true"],
+            attempt_id="attempt:typed-test",
+            body={"status": "passed"},
+        )
+        assert validation.changed is True
+        completed = adapter.compare_and_set_status(
+            claimed.task.task_cid,
+            claimed.task.revision,
+            "completed",
+            {"operation": "database_complete", "evidence_digest": evidence_digest},
+            evidence_digests=[evidence_digest],
+        )
+        assert completed.task.status == "completed"
+        assert adapter.snapshot().terminal is True
+    finally:
+        if adapter is not None:
+            adapter.close()
+        else:
+            client.close()
+        server.stop()
+
+    connection = open_duckdb_connection(database)
+    try:
+        assert connection.execute("SELECT COUNT(*) FROM validation_runs").fetchone()[0] == 1
+        assert connection.execute("SELECT COUNT(*) FROM validation_results").fetchone()[0] == 1
+        assert connection.execute("SELECT COUNT(*) FROM evidence_nodes").fetchone()[0] == 1
+    finally:
+        connection.close()
 
 
 @pytest.mark.timeout(60)

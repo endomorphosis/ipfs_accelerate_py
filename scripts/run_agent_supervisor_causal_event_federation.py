@@ -1274,6 +1274,24 @@ def _executor_command(
     common = _without_endpoint_secret_handle(
         configured_board_common_args(board, implement=True)
     )
+    prefix_indexes = [
+        index for index, item in enumerate(common) if item == "--task-prefix"
+    ]
+    if (
+        len(prefix_indexes) != 1
+        or prefix_indexes[0] + 1 >= len(common)
+    ):
+        raise OperatorError("configured executor has no exact task-prefix binding")
+    configured_prefix = re.sub(
+        r"^\s*#{1,6}\s*", "", common[prefix_indexes[0] + 1]
+    ).strip()
+    canonical_prefix = re.sub(
+        r"^\s*#{1,6}\s*", "", str(board.task_prefix or "")
+    ).strip()
+    if not canonical_prefix or configured_prefix != canonical_prefix:
+        raise OperatorError(
+            "configured executor task-prefix differs from canonical aliases"
+        )
     command = [
         sys.executable,
         "-P",
@@ -1491,7 +1509,12 @@ class _ExecutorBootstrapBroker:
             client_id=client_id,
             process_birth_id=str(request["process_birth_id"]),
             allowed_operations=tuple(build_control_plane_operation_catalog()),
-            allowed_command_operations=("task.status.cas",),
+            allowed_command_operations=(
+                "task.status.cas",
+                "task.status.cas.receipt",
+                "task.validation.record.passed",
+                "task.validation.record.nonpassing",
+            ),
             peer_pid=pid,
             ttl_seconds=86_400.0,
         )
@@ -3806,17 +3829,30 @@ def _launch_success_mode(
 
 
 def _cleanup_failed_launch(
+    paths: Mapping[str, Path],
     owner_birth: Mapping[str, Any] | None,
     master_birth: Mapping[str, Any] | None,
     executor_supervisor_birth: Mapping[str, Any] | None = None,
     executor_birth: Mapping[str, Any] | None = None,
 ) -> None:
-    for birth in (
-        executor_birth,
-        executor_supervisor_birth,
-        master_birth,
-        owner_birth,
-    ):
+    if isinstance(executor_supervisor_birth, Mapping):
+        try:
+            _retire_configured_executor(
+                paths=paths,
+                supervisor_birth=executor_supervisor_birth,
+                fallback_executor_birth=(
+                    executor_birth if isinstance(executor_birth, Mapping) else None
+                ),
+                grace_seconds=10.0,
+            )
+        except Exception:
+            pass
+    elif isinstance(executor_birth, Mapping):
+        try:
+            _terminate_birth(executor_birth, grace_seconds=10.0)
+        except Exception:
+            pass
+    for birth in (master_birth, owner_birth):
         if isinstance(birth, Mapping):
             try:
                 _terminate_birth(birth, grace_seconds=10.0)
@@ -4057,6 +4093,7 @@ def launch(
         # Once a launch receipt exists, ``stop`` is the authoritative cleanup.
         if not paths["launch_receipt"].is_file():
             _cleanup_failed_launch(
+                paths,
                 owner_birth,
                 master_birth,
                 executor_supervisor_birth,
@@ -4114,26 +4151,21 @@ def stop(config_path: Path) -> dict[str, Any]:
         if current_identity.get("process_birth") != owner_birth:
             raise OperatorError("refusing to stop a Quack owner from another launch")
     results: list[dict[str, Any]] = []
-    if executor_birth is not None:
+    executor_cleanup_failures: list[str] = []
+    if isinstance(executor_supervisor_birth, Mapping):
+        executor_results, executor_cleanup_failures = _retire_configured_executor(
+            paths=paths,
+            supervisor_birth=executor_supervisor_birth,
+            fallback_executor_birth=executor_birth,
+            grace_seconds=30.0,
+        )
+        results.extend(executor_results)
+    elif executor_birth is not None:
         results.append(
             {
                 "role": "executor_daemon",
                 "birth": dict(executor_birth),
-                "result": _terminate_birth(
-                    executor_birth,
-                    grace_seconds=30.0,
-                ),
-            }
-        )
-    if isinstance(executor_supervisor_birth, Mapping):
-        results.append(
-            {
-                "role": "executor_supervisor",
-                "birth": dict(executor_supervisor_birth),
-                "result": _terminate_birth(
-                    executor_supervisor_birth,
-                    grace_seconds=30.0,
-                ),
+                "result": _terminate_birth(executor_birth, grace_seconds=30.0),
             }
         )
     results.append(
@@ -4153,16 +4185,11 @@ def stop(config_path: Path) -> dict[str, Any]:
             "result": _terminate_birth(owner_birth, grace_seconds=15.0),
         }
     )
-    final_births = [
-        *([dict(executor_birth)] if executor_birth is not None else []),
-        *(
-            [dict(executor_supervisor_birth)]
-            if isinstance(executor_supervisor_birth, Mapping)
-            else []
-        ),
-        dict(master_birth),
-        dict(owner_birth),
-    ]
+    final_births: list[dict[str, Any]] = []
+    for item in results:
+        birth = item.get("birth")
+        if isinstance(birth, Mapping) and dict(birth) not in final_births:
+            final_births.append(dict(birth))
     final_liveness = [_birth_liveness(item) for item in final_births]
     program = board.resolved_database_program()
     endpoint = QUACK_ENDPOINT_RE.fullmatch(program.quack_endpoint)
@@ -4170,7 +4197,10 @@ def stop(config_path: Path) -> dict[str, Any]:
     token_destroyed = not _token_path(paths["owner"], program.endpoint_secret_handle).exists()
     endpoint_released = _port_is_free(endpoint.group(1), int(endpoint.group(2)))
     complete = bool(
-        all(item == "dead" for item in final_liveness) and token_destroyed and endpoint_released
+        not executor_cleanup_failures
+        and all(item == "dead" for item in final_liveness)
+        and token_destroyed
+        and endpoint_released
     )
     payload = _persist_receipt(
         paths,
@@ -4181,6 +4211,7 @@ def stop(config_path: Path) -> dict[str, Any]:
             "stopped_at_ns": time.time_ns(),
             "launch_receipt_id": launch_receipt["launch_receipt_id"],
             "process_results": results,
+            "executor_cleanup_failures": executor_cleanup_failures,
             "final_liveness": final_liveness,
             "token_vault_destroyed": token_destroyed,
             "endpoint_released": endpoint_released,

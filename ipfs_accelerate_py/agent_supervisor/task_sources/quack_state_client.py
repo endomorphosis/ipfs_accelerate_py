@@ -55,6 +55,7 @@ from .control_plane_contracts import (
     StateCommand,
     StoreGeneration,
     canonical_json_bytes,
+    content_identity,
 )
 from .control_plane_transactions import (
     CASResult,
@@ -575,6 +576,26 @@ def _default_templates() -> dict[str, StatementTemplate]:
             ),
             kind=StatementKind.MUTATION,
             description="Insert passing executor validation evidence",
+        ),
+        "executor_cas_task_status_receipt": StatementTemplate(
+            name="executor_cas_task_status_receipt",
+            sql=(
+                "UPDATE tasks SET status = ?, revision = ?, updated_at = ?, "
+                "body_json = ? WHERE task_cid = ? AND revision = ? "
+                "RETURNING revision"
+            ),
+            parameter_names=(
+                "status",
+                "new_revision",
+                "updated_at",
+                "body_json",
+                "task_cid",
+                "expected_task_revision",
+            ),
+            kind=StatementKind.MUTATION,
+            description=(
+                "CAS task status while retaining its authoritative transition receipt"
+            ),
         ),
         "insert_goal": StatementTemplate(
             name="insert_goal",
@@ -1691,13 +1712,25 @@ class QuackStateClient:
         new_status: str,
         idempotency_key: str,
         command_id: str | None = None,
+        body: Mapping[str, Any] | None = None,
     ) -> CASResult:
         """Convenience CAS for task status using the closed template set."""
 
         session = self._require_session()
         live = self.load_generation()
+        body_json = (
+            canonical_json_bytes(dict(body)).decode("utf-8")
+            if body is not None
+            else ""
+        )
+        operation = "task.status.cas.receipt" if body is not None else "task.status.cas"
         command = StateCommand(
-            command_id=command_id or f"cmd:cas-status:{task_cid}:{expected_task_revision}",
+            command_id=command_id
+            or (
+                f"cmd:cas-status-receipt:{task_cid}:{expected_task_revision}"
+                if body is not None
+                else f"cmd:cas-status:{task_cid}:{expected_task_revision}"
+            ),
             command_kind=CommandKind.CLAIM,
             store_id=self.store_id,
             session_id=session.session_id,
@@ -1707,13 +1740,206 @@ class QuackStateClient:
             idempotency_key=idempotency_key,
             authority_class=StateAuthorityClass.AUTHORITATIVE,
             parameters={
-                "operation": "task.status.cas",
+                "operation": operation,
                 "task_cid": task_cid,
                 "expected_task_revision": expected_task_revision,
                 "status": new_status,
+                **({"body_json": body_json} if body is not None else {}),
             },
         )
-        return self.submit_command(command)
+        if body is None:
+            return self.submit_command(command)
+
+        def apply_receipt(
+            txn: StateTransaction,
+            active: StateCommand,
+            generation: StoreGeneration,
+        ) -> Mapping[str, Any]:
+            parameters = dict(active.parameters)
+            expected = int(parameters["expected_task_revision"])
+            result = txn.execute_named_operation(
+                "executor_cas_task_status_receipt",
+                (
+                    str(parameters["status"]),
+                    expected + 1,
+                    self._clock(),
+                    str(parameters["body_json"]),
+                    str(parameters["task_cid"]),
+                    expected,
+                ),
+            )
+            row = _fetch_one(result)
+            if row is None:
+                raise OptimisticConflictError(
+                    "task status receipt CAS failed",
+                    details={
+                        "task_cid": str(parameters["task_cid"]),
+                        "expected_task_revision": expected,
+                    },
+                )
+            return {
+                "task_cid": str(parameters["task_cid"]),
+                "status": str(parameters["status"]),
+                "task_revision": expected + 1,
+                "store_revision_before": generation.revision,
+                "command_id": active.command_id,
+                "receipt_persisted": True,
+            }
+
+        return self.submit_command(command, apply=apply_receipt)
+
+    def record_task_validation(
+        self,
+        *,
+        task_cid: str,
+        outcome: str,
+        evidence_digest: str,
+        argv: Sequence[str] | None = None,
+        attempt_id: str = "",
+        body: Mapping[str, Any] | None = None,
+        idempotency_key: str,
+        command_id: str | None = None,
+    ) -> CASResult:
+        """Record one bounded validation result through an admitted command."""
+
+        task = str(task_cid or "").strip()
+        selected_outcome = str(outcome or "").strip().lower()
+        digest = str(evidence_digest or "").strip().lower()
+        if not task:
+            raise QuackClientError("validation task_cid is required")
+        if selected_outcome not in {"passed", "failed", "error", "skipped"}:
+            raise QuackClientError("validation outcome is outside the closed vocabulary")
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+            raise QuackClientError("validation evidence_digest must be sha256")
+        command_argv = tuple(str(item) for item in (argv or ("database-validation",)))
+        if not command_argv or len(command_argv) > 128:
+            raise QuackClientError("validation argv is empty or exceeds its bound")
+        if any(len(item.encode("utf-8")) > 8_192 for item in command_argv):
+            raise QuackClientError("validation argv item exceeds its byte bound")
+        result_body = dict(body or {})
+        now = self._clock()
+        material = {
+            "task_cid": task,
+            "attempt_id": str(attempt_id or ""),
+            "outcome": selected_outcome,
+            "evidence_digest": digest,
+            "argv": list(command_argv),
+            "body": result_body,
+            "idempotency_key": str(idempotency_key),
+        }
+        run_id = content_identity({"validation_run": material})
+        result_id = content_identity({"validation_result": material})
+        evidence_id = content_identity({"validation_evidence": material})
+        effective_attempt_id = str(attempt_id or f"validation:{run_id}")
+        command_digest = "sha256:" + hashlib.sha256(
+            canonical_json_bytes(list(command_argv))
+        ).hexdigest()
+        run_body_json = canonical_json_bytes(
+            {"argv": list(command_argv), "body": result_body}
+        ).decode("utf-8")
+        result_body_json = canonical_json_bytes(result_body).decode("utf-8")
+        evidence_body_json = canonical_json_bytes(
+            {
+                "outcome": selected_outcome,
+                "run_id": run_id,
+                "result_id": result_id,
+                "body": result_body,
+            }
+        ).decode("utf-8")
+        operation = (
+            "task.validation.record.passed"
+            if selected_outcome == "passed"
+            else "task.validation.record.nonpassing"
+        )
+        session = self._require_session()
+        live = self.load_generation()
+        parameters = {
+            "operation": operation,
+            "task_cid": task,
+            "run_id": run_id,
+            "result_id": result_id,
+            "evidence_id": evidence_id,
+            "attempt_id": effective_attempt_id,
+            "outcome": selected_outcome,
+            "evidence_digest": digest,
+            "started_at": now,
+            "finished_at": now,
+            "command_digest": command_digest,
+            "run_body_json": run_body_json,
+            "result_body_json": result_body_json,
+            "evidence_body_json": evidence_body_json,
+        }
+        command = StateCommand(
+            command_id=command_id or f"cmd:validation:{result_id}",
+            command_kind=CommandKind.APPEND,
+            store_id=self.store_id,
+            session_id=session.session_id,
+            expected_generation=live.generation,
+            expected_revision=live.revision,
+            fence_epoch=live.fence_epoch,
+            idempotency_key=idempotency_key,
+            authority_class=StateAuthorityClass.AUTHORITATIVE,
+            parameters=parameters,
+        )
+
+        def apply_validation(
+            txn: StateTransaction,
+            active: StateCommand,
+            generation: StoreGeneration,
+        ) -> Mapping[str, Any]:
+            values = dict(active.parameters)
+            txn.execute_named_operation(
+                "executor_insert_validation_run",
+                (
+                    values["run_id"],
+                    values["task_cid"],
+                    values["attempt_id"],
+                    values["started_at"],
+                    values["finished_at"],
+                    values["outcome"],
+                    values["command_digest"],
+                    values["run_body_json"],
+                ),
+            )
+            txn.execute_named_operation(
+                "executor_insert_validation_result",
+                (
+                    values["result_id"],
+                    values["run_id"],
+                    values["task_cid"],
+                    0,
+                    values["outcome"],
+                    values["evidence_digest"],
+                    values["result_body_json"],
+                ),
+            )
+            if values["outcome"] == "passed":
+                txn.execute_named_operation(
+                    "executor_insert_validation_evidence",
+                    (
+                        values["evidence_id"],
+                        "",
+                        values["task_cid"],
+                        "validation",
+                        values["evidence_digest"],
+                        values["finished_at"],
+                        values["evidence_body_json"],
+                    ),
+                )
+            return {
+                "task_cid": str(values["task_cid"]),
+                "run_id": str(values["run_id"]),
+                "result_id": str(values["result_id"]),
+                "evidence_id": (
+                    str(values["evidence_id"])
+                    if values["outcome"] == "passed"
+                    else ""
+                ),
+                "outcome": str(values["outcome"]),
+                "store_revision_before": generation.revision,
+            }
+
+        return self.submit_command(command, apply=apply_validation)
 
     # ------------------------------------------------------------------
     # Internal helpers
