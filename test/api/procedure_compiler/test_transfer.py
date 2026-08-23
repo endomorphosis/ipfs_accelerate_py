@@ -10,7 +10,9 @@ from ipfs_accelerate_py.agent_supervisor.procedure_compiler.contracts import (
     EffectClass,
     ProcedureAuthorityEnvelope,
     ProcedureCertificate,
+    ProcedureContractError,
     ProcedureEffect,
+    ProcedureIdentityError,
     ProcedureLocal,
     ProcedureObservation,
     ProcedurePostcondition,
@@ -40,6 +42,7 @@ from ipfs_accelerate_py.agent_supervisor.procedure_compiler.transfer import (
     TransferAction,
     TransferDecision,
     TransferDimension,
+    TransferError,
     TransferReason,
     TransferRefusalError,
     TransferRequest,
@@ -670,3 +673,152 @@ def test_certificate_or_policy_binding_mismatch_is_refused() -> None:
     )
     assert higher_risk.reason_code is TransferReason.RISK_CEILING
     assert TransferDimension.AUTHORITY.value in higher_risk.changed_assumptions
+
+
+def test_stale_revoked_and_mismatched_source_artifacts_are_refused() -> None:
+    spec = _spec()
+    stale = ProcedureTransferGate().evaluate(
+        _request(procedure=spec, certificate=_certificate(spec, state=ArtifactState.STALE))
+    )
+    assert stale.action is TransferAction.REFUSE
+    assert stale.reason_code is TransferReason.MISSING_CERTIFICATE
+    assert stale.eligible is False
+    assert stale.unsafe_transfer_count == 0
+
+    revoked = ProcedureTransferGate().evaluate(
+        _request(procedure=spec, certificate=_certificate(spec, state=ArtifactState.REVOKED))
+    )
+    assert revoked.reason_code is TransferReason.MISSING_CERTIFICATE
+
+    other_family = ProcedureTransferGate().evaluate(
+        _request(procedure=spec, family=_family(spec, name="OTHER_FAMILY"))
+    )
+    assert other_family.reason_code is TransferReason.FAMILY_INCOMPATIBLE
+    assert TransferDimension.FAMILY.value in other_family.changed_assumptions
+
+    other_tree = ProcedureTransferGate().evaluate(
+        _request(
+            procedure=spec,
+            certificate=_certificate(spec, bindings=_bindings(repository="other-repo")),
+        )
+    )
+    assert other_tree.reason_code is TransferReason.BINDING_MISMATCH
+    assert other_tree.can_promote is False
+
+
+def test_source_held_out_and_shadow_results_cannot_be_reused() -> None:
+    spec = _spec()
+    reused_source = ProcedureTransferGate().evaluate(
+        _request(procedure=spec, held_out=_held_out(evaluation_cid="source-held-out-1"))
+    )
+    assert reused_source.action is TransferAction.REFUSE
+    assert reused_source.reason_code is TransferReason.HELD_OUT_REPOSITORY_MISMATCH
+    assert TransferDimension.HELD_OUT.value in reused_source.changed_assumptions
+
+    reused_shadow = ProcedureTransferGate().evaluate(
+        _request(procedure=spec, held_out=_held_out(evaluation_cid="shadow-1"))
+    )
+    assert reused_shadow.reason_code is TransferReason.HELD_OUT_REPOSITORY_MISMATCH
+
+    empty_scope = ProcedureTransferGate().evaluate(
+        _request(procedure=spec, held_out=_held_out(scope_paths=()))
+    )
+    assert empty_scope.reason_code is TransferReason.HELD_OUT_UNSAFE
+
+    outside_scope = ProcedureTransferGate().evaluate(
+        _request(
+            procedure=spec,
+            held_out=_held_out(scope_paths=("vendor/other",)),
+        )
+    )
+    assert outside_scope.reason_code is TransferReason.HELD_OUT_UNSAFE
+    assert outside_scope.unsafe_transfer_count == 0
+
+
+def test_path_prefix_does_not_admit_sibling_escape() -> None:
+    spec = _spec()
+    sibling = ProcedureTransferGate().evaluate(
+        _request(
+            procedure=spec,
+            target=_target(spec, path_prefixes=("ipfs_accelerate_py/agent_supervisor_other",)),
+        )
+    )
+    assert sibling.action is TransferAction.REFUSE
+    assert sibling.reason_code is TransferReason.PATH_INCOMPATIBLE
+    assert TransferDimension.PATH.value in sibling.changed_assumptions
+    assert sibling.eligible is False
+
+
+def test_undeclared_isolation_flags_are_fail_closed() -> None:
+    spec = _spec()
+    target_record = _target(spec).to_record()
+    del target_record["authorized"]
+    del target_record["production"]
+    del target_record["policy_mutable"]
+    unsafe_target = TargetRepository.from_record(target_record)
+    assert unsafe_target.authorized is False
+    assert unsafe_target.production is True
+    assert unsafe_target.policy_mutable is True
+    target_decision = ProcedureTransferGate().evaluate(
+        _request(procedure=spec, target=unsafe_target)
+    )
+    assert target_decision.action is TransferAction.REFUSE
+    assert target_decision.reason_code is TransferReason.PRODUCTION_MUTATION
+    assert TransferReason.POLICY_MUTATION in target_decision.reason_codes
+    assert TransferReason.TARGET_NOT_AUTHORIZED in target_decision.reason_codes
+    assert target_decision.unsafe_transfer_count == 0
+
+    held_out_record = _held_out().to_record()
+    for field_name in (
+        "read_only",
+        "disposable",
+        "production",
+        "policy_mutable",
+        "authorized",
+        "mutate",
+    ):
+        del held_out_record[field_name]
+    unsafe_held_out = HeldOutRepositoryResult.from_record(held_out_record)
+    assert unsafe_held_out.read_only is False
+    assert unsafe_held_out.disposable is False
+    assert unsafe_held_out.production is True
+    assert unsafe_held_out.mutate is True
+    held_out_decision = ProcedureTransferGate().evaluate(
+        _request(procedure=spec, held_out=unsafe_held_out)
+    )
+    assert held_out_decision.action is TransferAction.REFUSE
+    assert held_out_decision.reason_code is TransferReason.CROSS_REPOSITORY_MUTATION
+    assert held_out_decision.can_mutate_target is False
+
+
+def test_transfer_decision_rejects_authority_claims_and_forged_identity() -> None:
+    decision = ProcedureTransferGate().evaluate(_request())
+    payload = decision.to_dict()
+    payload["can_promote"] = True
+    with pytest.raises(TransferError, match="cannot mutate, authorize, or promote"):
+        TransferDecision.from_dict(payload)
+
+    payload = decision.to_dict()
+    payload["unsafe_transfer_count"] = 1
+    with pytest.raises(TransferError, match="unsafe transfer count"):
+        TransferDecision.from_dict(payload)
+
+    payload = decision.to_dict()
+    payload["eligibility_state"] = ArtifactState.PROMOTED.value
+    with pytest.raises(TransferError, match="candidate-only"):
+        TransferDecision.from_dict(payload)
+
+    payload = decision.to_dict()
+    payload["claim_completion"] = True
+    with pytest.raises(ProcedureContractError, match="unsupported fields"):
+        TransferDecision.from_dict(payload)
+
+    payload = decision.to_dict()
+    payload["content_id"] = "forged"
+    with pytest.raises(ProcedureIdentityError):
+        TransferDecision.from_dict(payload)
+
+    required = ProcedureTransferGate().require(_request())
+    assert required.eligibility_state is ArtifactState.CANDIDATE
+    assert required.can_grant_authority is False
+    assert ProcedureTransferGate().transfer(_request()).eligible is True

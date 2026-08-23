@@ -157,6 +157,8 @@ _DIMENSION_REASON: Final[dict[TransferDimension, TransferReason]] = {
     TransferDimension.PATH: TransferReason.PATH_INCOMPATIBLE,
     TransferDimension.HELD_OUT: TransferReason.HELD_OUT_MISSING,
 }
+if frozenset(_DIMENSION_REASON) != frozenset(TransferDimension):
+    raise TransferError("every transfer dimension must have a typed refusal")
 
 
 def _bool(value: Any, field_name: str) -> bool:
@@ -324,9 +326,9 @@ class TargetRepository:
     risk_ceiling: RiskClass
     operation_catalog_revision: str
     effect_policy_revision: str
-    authorized: bool = True
-    production: bool = False
-    policy_mutable: bool = False
+    authorized: bool = False
+    production: bool = True
+    policy_mutable: bool = True
     name: str = ""
     maintainer_id: str = ""
     description: str = ""
@@ -448,9 +450,9 @@ class TargetRepository:
             risk_ceiling=payload.get("risk_ceiling", ""),
             operation_catalog_revision=payload.get("operation_catalog_revision", ""),
             effect_policy_revision=payload.get("effect_policy_revision", ""),
-            authorized=payload.get("authorized", True),
-            production=payload.get("production", False),
-            policy_mutable=payload.get("policy_mutable", False),
+            authorized=payload.get("authorized", False),
+            production=payload.get("production", True),
+            policy_mutable=payload.get("policy_mutable", True),
             name=payload.get("name", ""),
             maintainer_id=payload.get("maintainer_id", ""),
             description=payload.get("description", ""),
@@ -466,12 +468,12 @@ class HeldOutRepositoryResult:
     repository_id: str
     tree_id: str
     passed: bool
-    read_only: bool = True
-    disposable: bool = True
-    production: bool = False
-    policy_mutable: bool = False
-    authorized: bool = True
-    mutate: bool = False
+    read_only: bool = False
+    disposable: bool = False
+    production: bool = True
+    policy_mutable: bool = True
+    authorized: bool = False
+    mutate: bool = True
     scope_paths: tuple[str, ...] = ()
     observed_postcondition_count: int = 0
     observed_validation_count: int = 0
@@ -564,12 +566,12 @@ class HeldOutRepositoryResult:
             repository_id=payload.get("repository_id", ""),
             tree_id=payload.get("tree_id", ""),
             passed=payload.get("passed", False),
-            read_only=payload.get("read_only", True),
-            disposable=payload.get("disposable", True),
-            production=payload.get("production", False),
-            policy_mutable=payload.get("policy_mutable", False),
-            authorized=payload.get("authorized", True),
-            mutate=payload.get("mutate", False),
+            read_only=payload.get("read_only", False),
+            disposable=payload.get("disposable", False),
+            production=payload.get("production", True),
+            policy_mutable=payload.get("policy_mutable", True),
+            authorized=payload.get("authorized", False),
+            mutate=payload.get("mutate", True),
             scope_paths=payload.get("scope_paths", ()),
             observed_postcondition_count=payload.get("observed_postcondition_count", 0),
             observed_validation_count=payload.get("observed_validation_count", 0),
@@ -951,8 +953,25 @@ def _procedure_validation_contracts(procedure: ProcedureSpec) -> tuple[str, ...]
     )
 
 
+_USABLE_CERTIFICATE_STATES: Final[frozenset[ArtifactState]] = frozenset(
+    {ArtifactState.VERIFIED, ArtifactState.PROMOTED}
+)
+_UNUSABLE_ARTIFACT_STATES: Final[frozenset[ArtifactState]] = frozenset(
+    {
+        ArtifactState.REVOKED,
+        ArtifactState.STALE,
+        ArtifactState.SUPERSEDED,
+        ArtifactState.REJECTED,
+    }
+)
+
+
 def _family_matches_certificate(family: TaskFamily, certificate: ProcedureCertificate) -> bool:
     return certificate.task_family_cid in {family.name, family.content_id}
+
+
+def _family_matches_procedure(family: TaskFamily, procedure: ProcedureSpec) -> bool:
+    return procedure.task_family_id in {family.name, family.content_id}
 
 
 class GeneralizationBoundaryEvaluator:
@@ -1052,6 +1071,9 @@ class GeneralizationBoundaryEvaluator:
             ):
                 changed.append(TransferDimension.OPERATION)
                 reasons.append(TransferReason.OPERATION_INCOMPATIBLE)
+            if not _family_matches_procedure(family, procedure):
+                changed.append(TransferDimension.FAMILY)
+                reasons.append(TransferReason.FAMILY_INCOMPATIBLE)
         if certificate is not None:
             if not isinstance(certificate, ProcedureCertificate):
                 raise TransferDeclarationError("certificate must be ProcedureCertificate")
@@ -1236,11 +1258,18 @@ def _check_validation(
 
 
 def _check_family(
-    family: TaskFamily, certificate: ProcedureCertificate, target: TargetRepository
+    family: TaskFamily,
+    certificate: ProcedureCertificate,
+    target: TargetRepository,
+    procedure: ProcedureSpec,
 ) -> TransferReason | None:
+    if family.state in _UNUSABLE_ARTIFACT_STATES:
+        return TransferReason.MISSING_FAMILY
     missing = _incomplete_family_dimensions(family)
     if missing:
         return TransferReason.INCOMPLETE_BOUNDARY
+    if not _family_matches_procedure(family, procedure):
+        return TransferReason.FAMILY_INCOMPATIBLE
     if not _family_matches_certificate(family, certificate):
         return TransferReason.FAMILY_INCOMPATIBLE
     if target.repository_id not in family.boundary.permitted_repositories:
@@ -1269,6 +1298,14 @@ def _check_path(procedure: ProcedureSpec, target: TargetRepository) -> TransferR
     return None
 
 
+def _source_evaluation_cids(certificate: ProcedureCertificate) -> frozenset[str]:
+    return frozenset(
+        cid
+        for cid in (certificate.held_out_evaluation_cid, certificate.shadow_evaluation_cid)
+        if cid
+    )
+
+
 def _check_held_out(
     request: TransferRequest,
 ) -> TransferReason | None:
@@ -1280,8 +1317,16 @@ def _check_held_out(
         return isolation
     if held_out.repository_id != request.target.repository_id:
         return TransferReason.HELD_OUT_REPOSITORY_MISMATCH
-    if held_out.tree_id and held_out.tree_id != request.target.tree_id:
+    if held_out.tree_id != request.target.tree_id:
         return TransferReason.HELD_OUT_REPOSITORY_MISMATCH
+    if held_out.evaluation_cid in _source_evaluation_cids(request.certificate):
+        return TransferReason.HELD_OUT_REPOSITORY_MISMATCH
+    if not held_out.scope_paths:
+        return TransferReason.HELD_OUT_UNSAFE
+    if request.target.path_prefixes and any(
+        not _path_is_within(path, request.target.path_prefixes) for path in held_out.scope_paths
+    ):
+        return TransferReason.HELD_OUT_UNSAFE
     if not held_out.is_nonvacuous_pass:
         return TransferReason.HELD_OUT_FAILED
     return None
@@ -1327,12 +1372,16 @@ class ProcedureTransferGate:
 
         if procedure.bindings != request.bindings:
             safety_reasons.append(TransferReason.BINDING_MISMATCH)
-        if certificate.bindings.policy_revision != request.bindings.policy_revision:
+        if certificate.bindings != request.bindings:
+            safety_reasons.append(TransferReason.BINDING_MISMATCH)
+        if family.bindings != request.bindings:
             safety_reasons.append(TransferReason.BINDING_MISMATCH)
         if certificate.procedure_cid != procedure.content_id:
             safety_reasons.append(TransferReason.BINDING_MISMATCH)
-        if family.bindings.policy_revision != request.bindings.policy_revision:
-            safety_reasons.append(TransferReason.BINDING_MISMATCH)
+        if certificate.state not in _USABLE_CERTIFICATE_STATES:
+            safety_reasons.append(TransferReason.MISSING_CERTIFICATE)
+        if procedure.state in _UNUSABLE_ARTIFACT_STATES:
+            safety_reasons.append(TransferReason.MISSING_CERTIFICATE)
 
         boundary = self._boundary.evaluate(
             family,
@@ -1360,7 +1409,9 @@ class ProcedureTransferGate:
             TransferDimension.VALIDATION: lambda: _check_validation(
                 procedure, family, target
             ),
-            TransferDimension.FAMILY: lambda: _check_family(family, certificate, target),
+            TransferDimension.FAMILY: lambda: _check_family(
+                family, certificate, target, procedure
+            ),
             TransferDimension.PATH: lambda: _check_path(procedure, target),
             TransferDimension.HELD_OUT: lambda: _check_held_out(request),
         }
@@ -1375,7 +1426,11 @@ class ProcedureTransferGate:
         for dimension in boundary.changed_dimensions:
             if dimension.value not in changed:
                 changed.append(dimension.value)
-                reasons.append(_DIMENSION_REASON[dimension])
+        for reason in boundary.reason_codes:
+            if reason is TransferReason.COMPATIBLE:
+                continue
+            if reason not in reasons:
+                reasons.append(reason)
 
         held_out_cid = request.held_out.evaluation_cid if request.held_out is not None else ""
         held_out_passed = bool(
@@ -1468,3 +1523,27 @@ def evaluate_transfer(
     """Module-level transfer check.  Unsafe transfers are never admitted."""
 
     return ProcedureTransferGate().evaluate(request, emitted_at_ms=emitted_at_ms)
+
+
+__all__ = (
+    "BOUNDARY_EVALUATOR_REVISION",
+    "GATE_REVISION",
+    "INSUFFICIENT_SIMILARITY_SIGNALS",
+    "REQUIRED_COMPATIBILITY_DIMENSIONS",
+    "UNSAFE_TRANSFER_COUNT",
+    "GeneralizationBoundaryEvaluation",
+    "GeneralizationBoundaryEvaluator",
+    "HeldOutRepositoryResult",
+    "ProcedureTransferGate",
+    "SimilaritySignals",
+    "TargetRepository",
+    "TransferAction",
+    "TransferDecision",
+    "TransferDeclarationError",
+    "TransferDimension",
+    "TransferError",
+    "TransferReason",
+    "TransferRefusalError",
+    "TransferRequest",
+    "evaluate_transfer",
+)
