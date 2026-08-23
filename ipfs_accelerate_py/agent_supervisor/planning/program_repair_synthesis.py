@@ -4,12 +4,14 @@ Interface: ``ProgramRepairSynthesizer@1`` (PDR-051)
 
 Orchestrates constraint / e-graph / enumerative / CEGIS search over *reviewed*
 repair operators and grammars under exact obligations, bounds, and roots.
-Every candidate remains **proposal-only** — no write, semantic, or proof
-authority. Deterministic mode proves zero model calls. When deterministic
-search leaves only behavior-fixed syntax debt, a separately named hybrid
-service may request residual syntax under an exact target/path/semantics/
-postconditions/tests packet and may not change authority, dependencies, or
-meaning.
+CEGIS refines that grammar with counterexamples, unsat cores, failed
+assumptions, and independently validated interpolants. Every candidate remains
+**proposal-only** — no write, semantic, or proof authority — and cannot add
+undeclared imports, dependencies, files, authority, effects, or behavior.
+Deterministic mode proves zero model calls. When deterministic search leaves
+only behavior-fixed syntax debt, a separately named hybrid service may request
+residual syntax under an exact target/path/semantics/postconditions/tests
+packet and may not change authority, dependencies, or meaning.
 
 This module never imports LLM / model-provider surfaces. Hybrid packets are
 emitted for a *separate* residual service; the synthesizer itself does not
@@ -46,7 +48,10 @@ from ..proof.counterexample_guided_tactician import (
     RefinementCandidate,
     run_counterexample_guided_loop,
 )
-from ..proof.formal_counterexamples import FormalCounterexample
+from ..proof.formal_counterexamples import (
+    FormalCounterexample,
+    normalize_counterexample,
+)
 from ..proof.formal_verification_contracts import (
     CanonicalContract,
     ContractValidationError,
@@ -60,16 +65,22 @@ from .deterministic_doctor_synthesis import (
     create_deterministic_doctor_synthesizer,
 )
 from .repair_operator_registry import (
+    CANONICAL_EFFECT_RESTRICTIONS,
     REPAIR_OPERATOR_REGISTRY_INTERFACE,
+    RepairBehaviorClass,
+    RepairCounterevidenceClass,
     RepairOperatorKind,
     RepairOperatorLookupDisposition,
+    RepairOperatorLookupReason,
     RepairOperatorLookupRequest,
     RepairOperatorLookupResult,
     RepairOperatorRegistry,
     ReviewedRepairHook,
     UnknownRepairOperatorError,
     build_default_repair_operator_registry,
+    candidate_effect_violations,
     normalize_repair_operator_kind,
+    refine_repair_operators,
 )
 
 # ---------------------------------------------------------------------------
@@ -106,6 +117,17 @@ RESIDUAL_HYBRID_ADMISSION_SCHEMA: Final[str] = (
 HYBRID_USAGE_RECEIPT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/residual-hybrid-usage-receipt@1"
 )
+COUNTEREVIDENCE_PACKET_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/program-repair-counterevidence@1"
+)
+VALIDATED_INTERPOLANT_EVIDENCE_SCHEMA: Final[str] = "validated-craig-interpolant/v1"
+VALIDATED_INTERPOLANT_INTERFACE: Final[str] = "ValidatedCraigInterpolation@1"
+UNSAT_CORE_EVIDENCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/program-repair-unsat-core@1"
+)
+FAILED_ASSUMPTION_EVIDENCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/program-repair-failed-assumption@1"
+)
 
 PRODUCER_ID: Final[str] = "program-repair-synthesis@1"
 CONTRACT_VERSION: Final[int] = 1
@@ -126,6 +148,9 @@ MAX_REPLAY_STEPS: Final[int] = 128
 MAX_SIDE_CONDITIONS: Final[int] = 16
 DEFAULT_MAX_ENUMERATIVE_CANDIDATES: Final[int] = 8
 DEFAULT_MAX_CEGIS_ITERATIONS: Final[int] = 8
+MAX_UNSAT_CORES: Final[int] = 32
+MAX_FAILED_ASSUMPTIONS: Final[int] = 64
+MAX_INTERPOLANTS: Final[int] = 8
 DEFAULT_MAX_REWRITE_DEPTH: Final[int] = 16
 DEFAULT_ECLASS_SORT: Final[str] = "Term"
 
@@ -323,6 +348,12 @@ class ProgramRepairReason(str, Enum):
     CEGIS_CLOSED = "cegis_closed_on_fresh_receipt"
     CEGIS_OPEN = "cegis_open_or_budget_exhausted"
     CEGIS_INDEPENDENT_REJECT = "cegis_independent_validation_rejected"
+    CEGIS_REFINED = "cegis_refined_by_counterevidence"
+    CORE_REFINED = "unsat_core_refined_search"
+    ASSUMPTION_REFINED = "failed_assumption_refined_search"
+    INTERPOLANT_REFINED = "validated_interpolant_refined_search"
+    INTERPOLANT_UNVALIDATED = "interpolant_not_independently_validated"
+    EFFECT_RESTRICTED = "undeclared_effect_or_security_restriction"
     RESIDUAL_PACKET_EMITTED = "behavior_fixed_syntax_debt_residual"
     HYBRID_REJECTED = "hybrid_residual_rejected"
     HYBRID_ADMITTED = "hybrid_residual_syntax_admitted"
@@ -677,6 +708,608 @@ class ProgramRepairBounds:
             max_identical_failures=self.max_identical_failures,
             finite_bounds=dict(finite_bounds or {}),
         )
+
+
+# ---------------------------------------------------------------------------
+# Counterevidence used to refine reviewed-operator search
+# ---------------------------------------------------------------------------
+
+
+def _mapping_or_none(value: Any, name: str) -> Mapping[str, Any] | None:
+    if value is None:
+        return None
+    if isinstance(value, Mapping):
+        return MappingProxyType(dict(value))
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        payload = to_dict()
+        if isinstance(payload, Mapping):
+            return MappingProxyType(dict(payload))
+    raise ProgramRepairSynthesisError(f"{name} must be a mapping or typed receipt")
+
+
+@dataclass(frozen=True)
+class UnsatCoreEvidence:
+    """Named unsat-core clauses used to refine operator search."""
+
+    SCHEMA: ClassVar[str] = UNSAT_CORE_EVIDENCE_SCHEMA
+
+    core_id: str
+    clause_ids: tuple[str, ...] = ()
+    assumption_ids: tuple[str, ...] = ()
+    predicates: tuple[str, ...] = ()
+    validated: bool = True
+    reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "core_id", _text(self.core_id, "core_id"))
+        object.__setattr__(
+            self, "clause_ids", _ids(self.clause_ids, "clause_ids", limit=MAX_UNSAT_CORES)
+        )
+        object.__setattr__(
+            self,
+            "assumption_ids",
+            _ids(self.assumption_ids, "assumption_ids", limit=MAX_FAILED_ASSUMPTIONS),
+        )
+        object.__setattr__(
+            self, "predicates", _ids(self.predicates, "predicates", limit=MAX_UNSAT_CORES)
+        )
+        object.__setattr__(self, "validated", _bool(self.validated, "validated"))
+        object.__setattr__(
+            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
+        )
+
+    def tokens(self) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys(
+                (
+                    self.core_id,
+                    *self.clause_ids,
+                    *self.assumption_ids,
+                    *self.predicates,
+                )
+            )
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "core_id": self.core_id,
+            "clause_ids": list(self.clause_ids),
+            "assumption_ids": list(self.assumption_ids),
+            "predicates": list(self.predicates),
+            "validated": self.validated,
+            "reason_codes": list(self.reason_codes),
+        }
+
+    @classmethod
+    def from_value(cls, value: Any) -> "UnsatCoreEvidence":
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, str):
+            return cls(core_id=value, clause_ids=(value,), predicates=(value,))
+        if isinstance(value, Sequence) and not isinstance(
+            value, (bytes, bytearray, memoryview)
+        ):
+            clauses = tuple(str(item) for item in value if str(item).strip())
+            core_id = "core:" + content_identity({"clauses": list(clauses)})[-24:]
+            return cls(
+                core_id=core_id,
+                clause_ids=clauses,
+                predicates=clauses,
+            )
+        payload = _mapping_or_none(value, "unsat_core") or {}
+        core_id = str(
+            payload.get("core_id")
+            or payload.get("unsat_core_id")
+            or payload.get("id")
+            or ""
+        )
+        clauses = payload.get("clause_ids") or payload.get("clauses") or payload.get(
+            "unsat_core"
+        ) or payload.get("core") or ()
+        if isinstance(clauses, str):
+            clauses = (clauses,)
+        assumptions = payload.get("assumption_ids") or payload.get(
+            "conflicting_assumptions"
+        ) or ()
+        predicates = payload.get("predicates") or payload.get("labels") or clauses
+        if not core_id:
+            core_id = "core:" + content_identity(
+                {"clauses": list(clauses), "assumptions": list(assumptions)}
+            )[-24:]
+        return cls(
+            core_id=core_id,
+            clause_ids=tuple(clauses or ()),
+            assumption_ids=tuple(assumptions or ()),
+            predicates=tuple(predicates or ()),
+            validated=bool(payload.get("validated", True)),
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+        )
+
+
+@dataclass(frozen=True)
+class FailedAssumptionEvidence:
+    """A concrete failed assumption that localizes the repair grammar."""
+
+    SCHEMA: ClassVar[str] = FAILED_ASSUMPTION_EVIDENCE_SCHEMA
+
+    assumption_id: str
+    predicates: tuple[str, ...] = ()
+    obligation_refs: tuple[str, ...] = ()
+    reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "assumption_id", _text(self.assumption_id, "assumption_id")
+        )
+        object.__setattr__(
+            self,
+            "predicates",
+            _ids(self.predicates, "predicates", limit=MAX_FAILED_ASSUMPTIONS),
+        )
+        object.__setattr__(
+            self,
+            "obligation_refs",
+            _ids(self.obligation_refs, "obligation_refs"),
+        )
+        object.__setattr__(
+            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
+        )
+
+    def tokens(self) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys((self.assumption_id, *self.predicates, *self.obligation_refs))
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "assumption_id": self.assumption_id,
+            "predicates": list(self.predicates),
+            "obligation_refs": list(self.obligation_refs),
+            "reason_codes": list(self.reason_codes),
+        }
+
+    @classmethod
+    def from_value(cls, value: Any) -> "FailedAssumptionEvidence":
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, str):
+            return cls(assumption_id=value, predicates=(value,))
+        payload = _mapping_or_none(value, "failed_assumption") or {}
+        assumption_id = str(
+            payload.get("assumption_id")
+            or payload.get("id")
+            or payload.get("failed_assumption")
+            or ""
+        )
+        if not assumption_id:
+            raise ProgramRepairSynthesisError("failed_assumption_id is required")
+        predicates = payload.get("predicates") or payload.get("labels") or (assumption_id,)
+        return cls(
+            assumption_id=assumption_id,
+            predicates=tuple(predicates or ()),
+            obligation_refs=tuple(payload.get("obligation_refs") or ()),
+            reason_codes=tuple(payload.get("reason_codes") or ()),
+        )
+
+
+@dataclass(frozen=True)
+class ValidatedInterpolantEvidence:
+    """Independently checked interpolant receipt used as a search constraint.
+
+    This object never calls a solver.  Admission requires the producer flags
+    ``A => I``, ``I /\\ B`` unsat, shared vocabulary, identity, and bounds.
+    Unavailable, fallback, or incomplete receipts cannot refine search as
+    interpolants; a validated fallback core may still be used as a core.
+    """
+
+    SCHEMA: ClassVar[str] = VALIDATED_INTERPOLANT_EVIDENCE_SCHEMA
+    INTERFACE: ClassVar[str] = VALIDATED_INTERPOLANT_INTERFACE
+
+    admitted: bool
+    status: str
+    partition_a_cid: str = ""
+    partition_b_cid: str = ""
+    interpolant_cid: str = ""
+    shared_vocabulary: tuple[str, ...] = ()
+    interpolant_vocabulary: tuple[str, ...] = ()
+    predicates: tuple[str, ...] = ()
+    fallback_core: tuple[str, ...] = ()
+    fallback_validated: bool = False
+    reason_codes: tuple[str, ...] = ()
+    a_implies_i: bool = False
+    i_and_b_unsat: bool = False
+    shared_vocabulary_ok: bool = False
+    identity_ok: bool = False
+    bounds_ok: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "admitted", _bool(self.admitted, "admitted"))
+        object.__setattr__(self, "status", _text(self.status, "status"))
+        for name in (
+            "partition_a_cid",
+            "partition_b_cid",
+            "interpolant_cid",
+        ):
+            object.__setattr__(
+                self, name, _optional_text(getattr(self, name), name)
+            )
+        for name in ("shared_vocabulary", "interpolant_vocabulary", "predicates", "fallback_core"):
+            object.__setattr__(
+                self, name, _ids(getattr(self, name), name, limit=MAX_UNSAT_CORES)
+            )
+        for name in (
+            "fallback_validated",
+            "a_implies_i",
+            "i_and_b_unsat",
+            "shared_vocabulary_ok",
+            "identity_ok",
+            "bounds_ok",
+        ):
+            object.__setattr__(self, name, _bool(getattr(self, name), name))
+        object.__setattr__(
+            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
+        )
+        if self.admitted:
+            if self.status != "validated":
+                raise ProgramRepairSynthesisError(
+                    "admitted interpolant status must be validated"
+                )
+            if not (
+                self.a_implies_i
+                and self.i_and_b_unsat
+                and self.shared_vocabulary_ok
+                and self.identity_ok
+                and self.bounds_ok
+            ):
+                raise ProgramRepairSynthesisError(
+                    "admitted interpolant requires independent implication, "
+                    "unsat, vocabulary, identity, and bounds checks"
+                )
+            extra_vocab = set(self.interpolant_vocabulary) - set(self.shared_vocabulary)
+            if extra_vocab:
+                raise ProgramRepairSynthesisError(
+                    "admitted interpolant vocabulary must be shared"
+                )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "interface": self.INTERFACE,
+            "admitted": self.admitted,
+            "status": self.status,
+            "partition_a_cid": self.partition_a_cid,
+            "partition_b_cid": self.partition_b_cid,
+            "interpolant_cid": self.interpolant_cid,
+            "shared_vocabulary": list(self.shared_vocabulary),
+            "interpolant_vocabulary": list(self.interpolant_vocabulary),
+            "predicates": list(self.predicates),
+            "fallback_core": list(self.fallback_core),
+            "fallback_validated": self.fallback_validated,
+            "reason_codes": list(self.reason_codes),
+            "a_implies_i": self.a_implies_i,
+            "i_and_b_unsat": self.i_and_b_unsat,
+            "shared_vocabulary_ok": self.shared_vocabulary_ok,
+            "identity_ok": self.identity_ok,
+            "bounds_ok": self.bounds_ok,
+        }
+
+    @classmethod
+    def from_value(cls, value: Any) -> "ValidatedInterpolantEvidence":
+        if isinstance(value, cls):
+            return value
+        payload = _mapping_or_none(value, "interpolant") or {}
+        schema = str(payload.get("schema") or cls.SCHEMA)
+        interface = str(
+            payload.get("interface") or payload.get("INTERFACE") or cls.INTERFACE
+        )
+        if schema not in {cls.SCHEMA, VALIDATED_INTERPOLANT_EVIDENCE_SCHEMA}:
+            return cls(
+                admitted=False,
+                status="unsupported",
+                reason_codes=(ProgramRepairReason.INTERPOLANT_UNVALIDATED.value,),
+            )
+        if interface not in {cls.INTERFACE, VALIDATED_INTERPOLANT_INTERFACE}:
+            return cls(
+                admitted=False,
+                status="unsupported",
+                reason_codes=(ProgramRepairReason.INTERPOLANT_UNVALIDATED.value,),
+            )
+        status = str(getattr(payload.get("status"), "value", payload.get("status") or ""))
+        a_implies_i = bool(payload.get("a_implies_i"))
+        i_and_b_unsat = bool(payload.get("i_and_b_unsat"))
+        shared_ok = bool(payload.get("shared_vocabulary_ok"))
+        identity_ok = bool(payload.get("identity_ok"))
+        bounds_ok = bool(payload.get("bounds_ok"))
+        shared_vocab = tuple(payload.get("shared_vocabulary") or ())
+        interp_vocab = tuple(payload.get("interpolant_vocabulary") or ())
+        interpolant = payload.get("interpolant")
+        interpolant_cid = str(payload.get("interpolant_cid") or "")
+        predicates = tuple(
+            payload.get("predicates")
+            or payload.get("labels")
+            or interp_vocab
+            or shared_vocab
+        )
+        fallback_core = tuple(
+            payload.get("fallback_core") or payload.get("core") or ()
+        )
+        fallback_validated = bool(payload.get("fallback_validated"))
+        vocab_subset = set(interp_vocab).issubset(set(shared_vocab)) if interp_vocab else True
+        admitted = (
+            status == "validated"
+            and interpolant not in (None, "", (), [])
+            and bool(interpolant_cid)
+            and a_implies_i
+            and i_and_b_unsat
+            and shared_ok
+            and identity_ok
+            and bounds_ok
+            and vocab_subset
+        )
+        reasons: list[str] = []
+        if admitted:
+            reasons.append(ProgramRepairReason.INTERPOLANT_REFINED.value)
+        else:
+            reasons.append(ProgramRepairReason.INTERPOLANT_UNVALIDATED.value)
+            if status == "fallback" and fallback_validated and fallback_core:
+                reasons.append(ProgramRepairReason.CORE_REFINED.value)
+        return cls(
+            admitted=admitted,
+            status=status or "unknown",
+            partition_a_cid=str(payload.get("partition_a_cid") or ""),
+            partition_b_cid=str(payload.get("partition_b_cid") or ""),
+            interpolant_cid=interpolant_cid,
+            shared_vocabulary=shared_vocab,
+            interpolant_vocabulary=interp_vocab,
+            predicates=predicates,
+            fallback_core=fallback_core,
+            fallback_validated=fallback_validated,
+            reason_codes=tuple(dict.fromkeys(reasons)),
+            a_implies_i=a_implies_i,
+            i_and_b_unsat=i_and_b_unsat,
+            shared_vocabulary_ok=shared_ok,
+            identity_ok=identity_ok,
+            bounds_ok=bounds_ok,
+        )
+
+
+@dataclass(frozen=True)
+class CounterevidencePacket:
+    """Closed bundle of counterevidence that may refine CEGIS search."""
+
+    SCHEMA: ClassVar[str] = COUNTEREVIDENCE_PACKET_SCHEMA
+
+    counterexample_kind: str = ""
+    repair_classes: tuple[str, ...] = ()
+    assumption_ids: tuple[str, ...] = ()
+    cores: tuple[UnsatCoreEvidence, ...] = ()
+    failed_assumptions: tuple[FailedAssumptionEvidence, ...] = ()
+    interpolants: tuple[ValidatedInterpolantEvidence, ...] = ()
+    reason_codes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "counterexample_kind",
+            _optional_text(self.counterexample_kind, "counterexample_kind"),
+        )
+        object.__setattr__(
+            self, "repair_classes", _ids(self.repair_classes, "repair_classes")
+        )
+        object.__setattr__(
+            self,
+            "assumption_ids",
+            _ids(self.assumption_ids, "assumption_ids", limit=MAX_FAILED_ASSUMPTIONS),
+        )
+        cores = tuple(self.cores or ())
+        for item in cores:
+            if not isinstance(item, UnsatCoreEvidence):
+                raise ProgramRepairSynthesisError("cores must be UnsatCoreEvidence")
+        object.__setattr__(self, "cores", cores)
+        assumptions = tuple(self.failed_assumptions or ())
+        for item in assumptions:
+            if not isinstance(item, FailedAssumptionEvidence):
+                raise ProgramRepairSynthesisError(
+                    "failed_assumptions must be FailedAssumptionEvidence"
+                )
+        object.__setattr__(self, "failed_assumptions", assumptions)
+        interpolants = tuple(self.interpolants or ())
+        for item in interpolants:
+            if not isinstance(item, ValidatedInterpolantEvidence):
+                raise ProgramRepairSynthesisError(
+                    "interpolants must be ValidatedInterpolantEvidence"
+                )
+        object.__setattr__(self, "interpolants", interpolants)
+        object.__setattr__(
+            self, "reason_codes", _ids(self.reason_codes, "reason_codes")
+        )
+
+    @property
+    def validated_interpolants(self) -> tuple[ValidatedInterpolantEvidence, ...]:
+        return tuple(item for item in self.interpolants if item.admitted)
+
+    @property
+    def interpolant_validated(self) -> bool:
+        return bool(self.validated_interpolants)
+
+    def core_ids(self) -> tuple[str, ...]:
+        ids: list[str] = []
+        for core in self.cores:
+            ids.extend(core.tokens())
+        for interpolant in self.interpolants:
+            if interpolant.admitted:
+                continue
+            if interpolant.fallback_validated:
+                ids.extend(interpolant.fallback_core)
+        return tuple(dict.fromkeys(ids))
+
+    def failed_assumption_ids(self) -> tuple[str, ...]:
+        ids: list[str] = []
+        ids.extend(self.assumption_ids)
+        for item in self.failed_assumptions:
+            ids.extend(item.tokens())
+        return tuple(dict.fromkeys(ids))
+
+    def interpolant_vocabulary(self) -> tuple[str, ...]:
+        vocab: list[str] = []
+        for item in self.validated_interpolants:
+            vocab.extend(item.interpolant_vocabulary or item.shared_vocabulary)
+        return tuple(dict.fromkeys(vocab))
+
+    def interpolant_predicates(self) -> tuple[str, ...]:
+        predicates: list[str] = []
+        for item in self.validated_interpolants:
+            predicates.extend(item.predicates)
+        return tuple(dict.fromkeys(predicates))
+
+    def predicates(self) -> tuple[str, ...]:
+        tokens: list[str] = []
+        for core in self.cores:
+            tokens.extend(core.tokens())
+        for item in self.failed_assumptions:
+            tokens.extend(item.tokens())
+        tokens.extend(self.interpolant_predicates())
+        tokens.extend(self.interpolant_vocabulary())
+        if self.counterexample_kind:
+            tokens.append(self.counterexample_kind)
+        return tuple(dict.fromkeys(tokens))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.SCHEMA,
+            "counterexample_kind": self.counterexample_kind,
+            "repair_classes": list(self.repair_classes),
+            "assumption_ids": list(self.assumption_ids),
+            "cores": [item.to_dict() for item in self.cores],
+            "failed_assumptions": [item.to_dict() for item in self.failed_assumptions],
+            "interpolants": [item.to_dict() for item in self.interpolants],
+            "reason_codes": list(self.reason_codes),
+        }
+
+
+def collect_counterevidence_packet(
+    *,
+    counterexample: FormalCounterexample | Mapping[str, Any] | None = None,
+    unsat_cores: Sequence[Any] = (),
+    failed_assumptions: Sequence[Any] = (),
+    interpolants: Sequence[Any] = (),
+) -> CounterevidencePacket:
+    """Normalize caller-supplied counterevidence without invoking a prover."""
+
+    witness: FormalCounterexample | None = None
+    extracted_cores: list[Any] = list(unsat_cores or ())
+    if counterexample is not None:
+        raw_mapping = None
+        if isinstance(counterexample, FormalCounterexample):
+            witness = counterexample
+        elif isinstance(counterexample, Mapping):
+            raw_mapping = counterexample
+            witness = normalize_counterexample(counterexample)
+        else:
+            raise ProgramRepairSynthesisError(
+                "counterexample must be FormalCounterexample or a mapping"
+            )
+        source = dict(raw_mapping or (witness.payload if witness is not None else {}))
+        for key in ("unsat_core", "core", "clauses", "conflicting_assumptions"):
+            extra = source.get(key)
+            if extra not in (None, "", (), []):
+                extracted_cores.append(extra)
+    cores = tuple(UnsatCoreEvidence.from_value(item) for item in extracted_cores)
+    if len(cores) > MAX_UNSAT_CORES:
+        raise ProgramRepairBoundsError(
+            "unsat_cores exceeds its bound",
+            reason_code=ProgramRepairReason.BOUNDS_EXCEEDED,
+        )
+    assumptions = tuple(
+        FailedAssumptionEvidence.from_value(item) for item in failed_assumptions or ()
+    )
+    if len(assumptions) > MAX_FAILED_ASSUMPTIONS:
+        raise ProgramRepairBoundsError(
+            "failed_assumptions exceeds its bound",
+            reason_code=ProgramRepairReason.BOUNDS_EXCEEDED,
+        )
+    interpolant_records = tuple(
+        ValidatedInterpolantEvidence.from_value(item) for item in interpolants or ()
+    )
+    if len(interpolant_records) > MAX_INTERPOLANTS:
+        raise ProgramRepairBoundsError(
+            "interpolants exceeds its bound",
+            reason_code=ProgramRepairReason.BOUNDS_EXCEEDED,
+        )
+    repair_classes: tuple[str, ...] = ()
+    assumption_ids: tuple[str, ...] = ()
+    kind = ""
+    reasons: list[str] = []
+    if witness is not None:
+        kind = witness.kind.value
+        repair_classes = tuple(item.value for item in witness.repair_classes)
+        assumption_ids = witness.assumption_ids
+        payload = dict(witness.payload or {})
+        for key in ("unsat_core", "core", "clauses", "conflicting_assumptions"):
+            extra = payload.get(key)
+            if extra in (None, "", (), []):
+                continue
+            cores = cores + (UnsatCoreEvidence.from_value(extra),)
+        if assumption_ids or assumptions:
+            reasons.append(ProgramRepairReason.ASSUMPTION_REFINED.value)
+    if cores:
+        reasons.append(ProgramRepairReason.CORE_REFINED.value)
+    if interpolant_records:
+        if any(item.admitted for item in interpolant_records):
+            reasons.append(ProgramRepairReason.INTERPOLANT_REFINED.value)
+        if any(not item.admitted for item in interpolant_records):
+            reasons.append(ProgramRepairReason.INTERPOLANT_UNVALIDATED.value)
+        for item in interpolant_records:
+            if not item.admitted and item.fallback_validated and item.fallback_core:
+                cores = cores + (
+                    UnsatCoreEvidence.from_value(
+                        {
+                            "core_id": f"fallback:{item.interpolant_cid or item.status}",
+                            "clause_ids": item.fallback_core,
+                            "predicates": item.fallback_core,
+                            "validated": True,
+                        }
+                    ),
+                )
+                reasons.append(ProgramRepairReason.CORE_REFINED.value)
+    if cores and ProgramRepairReason.CORE_REFINED.value not in reasons:
+        reasons.append(ProgramRepairReason.CORE_REFINED.value)
+    if assumptions and ProgramRepairReason.ASSUMPTION_REFINED.value not in reasons:
+        reasons.append(ProgramRepairReason.ASSUMPTION_REFINED.value)
+    return CounterevidencePacket(
+        counterexample_kind=kind,
+        repair_classes=repair_classes,
+        assumption_ids=assumption_ids,
+        cores=cores,
+        failed_assumptions=assumptions,
+        interpolants=interpolant_records,
+        reason_codes=tuple(dict.fromkeys(reasons)),
+    )
+
+
+def refine_operators_from_counterevidence(
+    packet: CounterevidencePacket,
+    *,
+    registry: RepairOperatorRegistry | None = None,
+    operator_kinds: Sequence[str] = (),
+) -> tuple[str, ...]:
+    """Select reviewed operators using counterexamples/cores/assumptions/interpolants."""
+
+    return refine_repair_operators(
+        registry,
+        operator_kinds=operator_kinds,
+        repair_classes=packet.repair_classes,
+        predicates=packet.predicates(),
+        core_ids=packet.core_ids(),
+        failed_assumption_ids=packet.failed_assumption_ids(),
+        interpolant_vocabulary=packet.interpolant_vocabulary(),
+        interpolant_predicates=packet.interpolant_predicates(),
+        interpolant_validated=packet.interpolant_validated,
+        counterexample_kind=packet.counterexample_kind,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -3003,6 +3636,11 @@ class ProgramRepairRequest:
         [FormalCounterexample, Mapping[str, Any]], Sequence[Any]
     ] | None = None
     previous_witness_id: str | None = None
+    unsat_cores: tuple[Any, ...] = ()
+    failed_assumptions: tuple[Any, ...] = ()
+    interpolants: tuple[Any, ...] = ()
+    declared_imports: tuple[str, ...] = ()
+    declared_dependencies: tuple[str, ...] = ()
     allow_hybrid_residual: bool = True
     behavior_fixed_syntax_debt: bool = False
     syntax_slot_id: str = ""
@@ -3101,6 +3739,46 @@ class ProgramRepairRequest:
             self, "syntax_slot_id", _optional_text(self.syntax_slot_id, "syntax_slot_id")
         )
         object.__setattr__(self, "language", _text(self.language, "language"))
+        object.__setattr__(
+            self,
+            "unsat_cores",
+            tuple(self.unsat_cores or ()),
+        )
+        if len(self.unsat_cores) > MAX_UNSAT_CORES:
+            raise ProgramRepairBoundsError(
+                "unsat_cores exceeds its bound",
+                reason_code=ProgramRepairReason.BOUNDS_EXCEEDED,
+            )
+        object.__setattr__(
+            self,
+            "failed_assumptions",
+            tuple(self.failed_assumptions or ()),
+        )
+        if len(self.failed_assumptions) > MAX_FAILED_ASSUMPTIONS:
+            raise ProgramRepairBoundsError(
+                "failed_assumptions exceeds its bound",
+                reason_code=ProgramRepairReason.BOUNDS_EXCEEDED,
+            )
+        object.__setattr__(
+            self,
+            "interpolants",
+            tuple(self.interpolants or ()),
+        )
+        if len(self.interpolants) > MAX_INTERPOLANTS:
+            raise ProgramRepairBoundsError(
+                "interpolants exceeds its bound",
+                reason_code=ProgramRepairReason.BOUNDS_EXCEEDED,
+            )
+        object.__setattr__(
+            self,
+            "declared_imports",
+            _ids(self.declared_imports, "declared_imports"),
+        )
+        object.__setattr__(
+            self,
+            "declared_dependencies",
+            _ids(self.declared_dependencies, "declared_dependencies"),
+        )
         if not isinstance(self.metadata, Mapping):
             raise ProgramRepairSynthesisError("metadata must be a mapping")
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
@@ -3265,6 +3943,8 @@ class ProgramRepairReceipt(CanonicalContract):
     doctor_receipt: DoctorSynthesisReceipt | None = None
     equality_receipt: EqualityRewriteReceipt | None = None
     cegis_result: CegisLoopResult | None = None
+    counterevidence: CounterevidencePacket | None = None
+    refined_operator_kinds: tuple[str, ...] = ()
     residual_packet: ResidualHybridPacket | None = None
     hybrid_admission: ResidualHybridAdmission | None = None
     operator_lookup_ids: tuple[str, ...] = ()
@@ -3323,6 +4003,17 @@ class ProgramRepairReceipt(CanonicalContract):
             self.cegis_result, CegisLoopResult
         ):
             raise ProgramRepairSynthesisError("cegis_result must be CegisLoopResult")
+        if self.counterevidence is not None and not isinstance(
+            self.counterevidence, CounterevidencePacket
+        ):
+            raise ProgramRepairSynthesisError(
+                "counterevidence must be CounterevidencePacket"
+            )
+        object.__setattr__(
+            self,
+            "refined_operator_kinds",
+            _ids(self.refined_operator_kinds, "refined_operator_kinds"),
+        )
         if self.residual_packet is not None and not isinstance(
             self.residual_packet, ResidualHybridPacket
         ):
@@ -3438,6 +4129,12 @@ class ProgramRepairReceipt(CanonicalContract):
             "cegis_result": (
                 self.cegis_result.to_dict() if self.cegis_result is not None else None
             ),
+            "counterevidence": (
+                self.counterevidence.to_dict()
+                if self.counterevidence is not None
+                else None
+            ),
+            "refined_operator_kinds": list(self.refined_operator_kinds),
             "residual_packet": (
                 self.residual_packet.to_dict()
                 if self.residual_packet is not None
@@ -3475,9 +4172,12 @@ class ProgramRepairSynthesizer:
     """Bounded deterministic synthesis / CEGIS with residual-only hybrid path.
 
     Search is restricted to reviewed operators/grammars under exact obligations,
-    bounds, and roots. CEGIS independently validates counterexamples and
-    terminates on fixed budgets. E-graph rewrites prove equivalence only under
-    a declared theory. Every candidate is proposal-only.
+    bounds, and roots. CEGIS independently validates counterexamples, refines
+    the grammar with cores, failed assumptions, and validated interpolants, and
+    terminates on fixed budgets. Candidates that add undeclared imports,
+    dependencies, files, authority, effects, or behavior are rejected. E-graph
+    rewrites prove equivalence only under a declared theory. Every candidate is
+    proposal-only.
     """
 
     INTERFACE: ClassVar[str] = PROGRAM_REPAIR_SYNTHESIZER_INTERFACE
@@ -3852,16 +4552,30 @@ class ProgramRepairSynthesizer:
                 mode=ProgramRepairMode.CEGIS,
                 bounds=request.bounds,
             )
+        packet = collect_counterevidence_packet(
+            counterexample=request.counterexample,
+            unsat_cores=request.unsat_cores,
+            failed_assumptions=request.failed_assumptions,
+            interpolants=request.interpolants,
+        )
+        refined_kinds = refine_operators_from_counterevidence(
+            packet,
+            registry=self._registry,
+            operator_kinds=request.operator_kinds,
+        )
         budget = request.bounds.to_cegis_budget(
             finite_bounds={
                 "repository_id": request.roots.repository_id,
                 "tree_id": request.roots.tree_id,
                 "max_search_states": request.bounds.max_search_states,
+                "refined_operator_kinds": list(refined_kinds),
             }
         )
+        refinement_reasons = [
+            ProgramRepairReason.CEGIS_REFINED.value,
+            *packet.reason_codes,
+        ]
 
-        # Independent validation defaults to rejecting candidates that do not
-        # address the witness; callers may inject a custom validator.
         validate = request.cegis_validate
         if validate is None:
 
@@ -3877,17 +4591,33 @@ class ProgramRepairSynthesizer:
                         CandidateValidationStatus.INVALID,
                         ProgramRepairReason.CEGIS_INDEPENDENT_REJECT.value,
                     )
+                effect_reasons = self._cegis_effect_reasons(candidate, request)
+                if effect_reasons:
+                    return (
+                        CandidateValidationStatus.INVALID,
+                        effect_reasons[0],
+                    )
                 return CandidateValidationStatus.VALID, "independent_validation_passed"
 
         refine = request.cegis_refine
-        if refine is None and request.operator_kinds:
+        if refine is None:
 
             def refine(witness: FormalCounterexample, context: Mapping[str, Any]):
                 del witness
+                kinds = refined_kinds[: budget.max_candidates_per_iteration]
                 out: list[RefinementCandidate] = []
-                for index, kind in enumerate(
-                    request.operator_kinds[: budget.max_candidates_per_iteration]
-                ):
+                for index, kind in enumerate(kinds):
+                    try:
+                        spec = self._registry.get(kind)
+                    except UnknownRepairOperatorError:
+                        continue
+                    lookup = None
+                    try:
+                        lookup = self._lookup_operator(request, kind)
+                    except (UnknownRepairOperatorError, ProgramRepairSynthesisError):
+                        lookup = None
+                    if lookup is not None and not lookup.proposal_eligible:
+                        continue
                     out.append(
                         RefinementCandidate(
                             candidate_id=f"candidate:cegis:{kind}:{index}",
@@ -3907,7 +4637,23 @@ class ProgramRepairSynthesizer:
                             addresses_witness=True,
                             parameters={
                                 "operator_kind": kind,
+                                "operator_id": spec.operator_id,
                                 "obligation_refs": list(request.obligation_refs),
+                                "effect_restrictions": list(
+                                    spec.effect_restrictions
+                                    or CANONICAL_EFFECT_RESTRICTIONS
+                                ),
+                                "counterevidence_classes": list(
+                                    spec.counterevidence_classes
+                                ),
+                                "behavior_class": RepairBehaviorClass.PURE_LOCAL.value,
+                                "extra_imports": [],
+                                "extra_files": [],
+                                "new_dependencies": [],
+                                "undeclared_effects": [],
+                                "write_authority": False,
+                                "semantic_authority": False,
+                                "proposal_only": True,
                             },
                         )
                     )
@@ -3927,7 +4673,17 @@ class ProgramRepairSynthesizer:
                 context={
                     "obligation_refs": list(request.obligation_refs),
                     "target_paths": list(request.target_paths),
-                    "operator_kinds": list(request.operator_kinds),
+                    "operator_kinds": list(refined_kinds),
+                    "counterevidence": packet.to_dict(),
+                    RepairCounterevidenceClass.UNSAT_CORE.value: [
+                        item.to_dict() for item in packet.cores
+                    ],
+                    RepairCounterevidenceClass.FAILED_ASSUMPTION.value: [
+                        item.to_dict() for item in packet.failed_assumptions
+                    ],
+                    RepairCounterevidenceClass.VALIDATED_INTERPOLANT.value: [
+                        item.to_dict() for item in packet.validated_interpolants
+                    ],
                 },
             )
         except (CegisValidationError, ContractValidationError) as exc:
@@ -3941,6 +4697,8 @@ class ProgramRepairSynthesizer:
                 ),
                 roots=request.roots,
                 mode=ProgramRepairMode.CEGIS,
+                counterevidence=packet,
+                refined_operator_kinds=refined_kinds,
                 bounds=request.bounds,
             )
 
@@ -3948,12 +4706,37 @@ class ProgramRepairSynthesizer:
         selected: ProgramRepairCandidate | None = None
         if result.selected_candidate is not None:
             sc = result.selected_candidate
+            effect_reasons = self._cegis_effect_reasons(sc, request)
+            if effect_reasons:
+                return ProgramRepairReceipt(
+                    disposition=ProgramRepairDisposition.ABSTAIN,
+                    reason_codes=(
+                        ProgramRepairReason.EFFECT_RESTRICTED.value,
+                        ProgramRepairReason.PROPOSAL_ONLY.value,
+                        ProgramRepairReason.ZERO_MODEL_CALLS.value,
+                        *effect_reasons,
+                    ),
+                    roots=request.roots,
+                    mode=ProgramRepairMode.CEGIS,
+                    cegis_result=result,
+                    counterevidence=packet,
+                    refined_operator_kinds=refined_kinds,
+                    search_states=result.iteration_count,
+                    bounds=request.bounds,
+                )
+            operator_kind = str(
+                (sc.parameters or {}).get("operator_kind") or sc.kind.value
+            )
+            operator_id = str((sc.parameters or {}).get("operator_id") or "")
+            if not operator_id:
+                try:
+                    operator_id = self._registry.get(operator_kind).operator_id
+                except UnknownRepairOperatorError:
+                    operator_id = ""
             selected = ProgramRepairCandidate(
                 candidate_id=sc.candidate_id,
-                operator_kind=str(
-                    (sc.parameters or {}).get("operator_kind") or sc.kind.value
-                ),
-                operator_id="",
+                operator_kind=operator_kind,
+                operator_id=operator_id,
                 path=request.target_paths[0],
                 mode=ProgramRepairMode.CEGIS,
                 obligation_refs=request.obligation_refs,
@@ -3963,6 +4746,7 @@ class ProgramRepairSynthesizer:
                     if result.closed
                     else ProgramRepairReason.CEGIS_OPEN.value,
                     ProgramRepairReason.PROPOSAL_ONLY.value,
+                    ProgramRepairReason.CEGIS_REFINED.value,
                 ),
             )
             candidates.append(selected)
@@ -3970,16 +4754,23 @@ class ProgramRepairSynthesizer:
         if result.closed and selected is not None:
             return ProgramRepairReceipt(
                 disposition=ProgramRepairDisposition.SUPPORTED,
-                reason_codes=(
-                    ProgramRepairReason.CEGIS_CLOSED.value,
-                    ProgramRepairReason.PROPOSAL_ONLY.value,
-                    ProgramRepairReason.ZERO_MODEL_CALLS.value,
+                reason_codes=tuple(
+                    dict.fromkeys(
+                        (
+                            ProgramRepairReason.CEGIS_CLOSED.value,
+                            ProgramRepairReason.PROPOSAL_ONLY.value,
+                            ProgramRepairReason.ZERO_MODEL_CALLS.value,
+                            *refinement_reasons,
+                        )
+                    )
                 ),
                 roots=request.roots,
                 mode=ProgramRepairMode.CEGIS,
                 candidates=tuple(candidates),
                 selected_candidate=selected,
                 cegis_result=result,
+                counterevidence=packet,
+                refined_operator_kinds=refined_kinds,
                 search_states=result.iteration_count,
                 bounds=request.bounds,
             )
@@ -4001,20 +4792,74 @@ class ProgramRepairSynthesizer:
 
         return ProgramRepairReceipt(
             disposition=disposition,
-            reason_codes=(
-                ProgramRepairReason.CEGIS_OPEN.value,
-                ProgramRepairReason.PROPOSAL_ONLY.value,
-                ProgramRepairReason.ZERO_MODEL_CALLS.value,
-                str(getattr(stop, "value", stop)),
+            reason_codes=tuple(
+                dict.fromkeys(
+                    (
+                        ProgramRepairReason.CEGIS_OPEN.value,
+                        ProgramRepairReason.PROPOSAL_ONLY.value,
+                        ProgramRepairReason.ZERO_MODEL_CALLS.value,
+                        str(getattr(stop, "value", stop)),
+                        *refinement_reasons,
+                    )
+                )
             ),
             roots=request.roots,
             mode=ProgramRepairMode.CEGIS,
             candidates=tuple(candidates),
             cegis_result=result,
+            counterevidence=packet,
+            refined_operator_kinds=refined_kinds,
             residual_packet=residual,
             search_states=result.iteration_count,
             bounds=request.bounds,
         )
+
+    def _cegis_effect_reasons(
+        self,
+        candidate: RefinementCandidate,
+        request: ProgramRepairRequest,
+    ) -> tuple[str, ...]:
+        params = dict(candidate.parameters or {})
+        operator_kind = str(params.get("operator_kind") or "")
+        reasons = candidate_effect_violations(
+            operator_kind=operator_kind,
+            extra_imports=tuple(params.get("extra_imports") or ()),
+            extra_files=tuple(params.get("extra_files") or ()),
+            extra_paths=tuple(params.get("extra_paths") or ()),
+            new_dependencies=tuple(
+                params.get("new_dependencies") or params.get("dependency_paths") or ()
+            ),
+            undeclared_effects=tuple(params.get("undeclared_effects") or ()),
+            behavior_class=str(
+                params.get("behavior_class")
+                or RepairBehaviorClass.PURE_LOCAL.value
+            ),
+            write_authority=bool(params.get("write_authority")),
+            semantic_authority=bool(params.get("semantic_authority")),
+            grants_proof_authority=bool(params.get("grants_proof_authority")),
+            grants_write_authority=bool(params.get("grants_write_authority")),
+            replacement=str(params.get("replacement") or candidate.statement or ""),
+            declared_imports=request.declared_imports,
+            declared_paths=request.target_paths,
+            declared_dependencies=request.declared_dependencies,
+        )
+        forbidden = _walk_forbidden_claims(params)
+        if forbidden:
+            reasons = reasons + (ProgramRepairReason.AUTHORITY_CLAIM.value,)
+        if reasons:
+            return (ProgramRepairReason.EFFECT_RESTRICTED.value, *reasons)
+        if not operator_kind:
+            return ()
+        try:
+            spec = self._registry.get(operator_kind)
+        except UnknownRepairOperatorError:
+            return (
+                ProgramRepairReason.OPERATOR_NOT_REVIEWED.value,
+                RepairOperatorLookupReason.UNKNOWN_OPERATOR.value,
+            )
+        if spec.proposal_only is not True:
+            return (ProgramRepairReason.AUTHORITY_CLAIM.value,)
+        return ()
 
     # -- hybrid residual only ---------------------------------------------
 
@@ -4191,8 +5036,10 @@ def synthesize_program_repair(
 
 __all__ = (
     "CONTRACT_VERSION",
+    "COUNTEREVIDENCE_PACKET_SCHEMA",
     "EQUALITY_REWRITE_RECEIPT_SCHEMA",
     "EQUALITY_THEORY_SCHEMA",
+    "FAILED_ASSUMPTION_EVIDENCE_SCHEMA",
     "HYBRID_USAGE_RECEIPT_SCHEMA",
     "PROGRAM_REPAIR_BOUNDS_SCHEMA",
     "PROGRAM_REPAIR_CANDIDATE_SCHEMA",
@@ -4204,7 +5051,11 @@ __all__ = (
     "RESIDUAL_HYBRID_ADMISSION_SCHEMA",
     "RESIDUAL_HYBRID_PACKET_SCHEMA",
     "RESIDUAL_HYBRID_SERVICE_INTERFACE",
+    "UNSAT_CORE_EVIDENCE_SCHEMA",
+    "VALIDATED_INTERPOLANT_EVIDENCE_SCHEMA",
+    "VALIDATED_INTERPOLANT_INTERFACE",
     "CEGIS_LOOP_RESULT_SCHEMA",
+    "CounterevidencePacket",
     "DeclaredEqualityTheory",
     "EqualityEGraph",
     "EqualityFeatureStatus",
@@ -4214,9 +5065,14 @@ __all__ = (
     "EqualityRule",
     "EqualitySaturationCapability",
     "EqualityTerm",
+    "FailedAssumptionEvidence",
+    "UnsatCoreEvidence",
+    "ValidatedInterpolantEvidence",
+    "collect_counterevidence_packet",
     "equality_saturation_capabilities",
     "extract_under_equality_theory",
     "parse_equality_term",
+    "refine_operators_from_counterevidence",
     "replay_equality_rewrites",
     "HybridUsageReceipt",
     "ProgramRepairAuthorityError",
