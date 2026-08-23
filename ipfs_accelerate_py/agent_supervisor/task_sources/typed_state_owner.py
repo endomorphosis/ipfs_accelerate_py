@@ -57,6 +57,30 @@ MIN_GRANT_TTL_SECONDS: Final = 1.0
 MAX_GRANT_TTL_SECONDS: Final = 86_400.0
 DEFAULT_GRANT_TTL_SECONDS: Final = 3_600.0
 MAX_REMOTE_EVENT_WAIT_SECONDS: Final = 60.0
+TYPED_TASK_STATUS_VOCABULARY: Final[frozenset[str]] = frozenset(
+    {
+        "ready",
+        "todo",
+        "queued",
+        "pending",
+        "proposed",
+        "admitted",
+        "retrying",
+        "claimed",
+        "in_progress",
+        "running",
+        "blocked",
+        "completed",
+        "complete",
+        "done",
+        "skipped",
+        "cancelled",
+        "canceled",
+        "failed",
+        "quarantined",
+        "rejected",
+    }
+)
 STATUS_BOOTSTRAP_CLIENT_ID: Final = "casf-bootstrap-operator:typed-status"
 STATUS_BOOTSTRAP_GRANT_TTL_SECONDS: Final = 60.0
 STATUS_BOOTSTRAP_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset(
@@ -1912,6 +1936,15 @@ class TypedStateOwnerGateway:
             raise TypedStateOwnerAuthorizationError(
                 "command kind differs from the server operation policy"
             )
+        if operation in {"task.status.cas", "task.status.cas.receipt"}:
+            requested_status = command.parameters.get("status")
+            if (
+                not isinstance(requested_status, str)
+                or requested_status not in TYPED_TASK_STATUS_VOCABULARY
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "task status is outside the closed command vocabulary"
+                )
         if operation in _FEDERATION_COMMANDS:
             for field in ("tenant_id", "federation_id"):
                 value = str(command.parameters.get(field) or "").strip()
@@ -3690,6 +3723,7 @@ __all__ = [
     "TYPED_STATE_OWNER_TOKEN_ENV",
     "TYPED_STATE_OWNER_TOKEN_FILENAME",
     "compact_default_owner_socket_path",
+    "TYPED_TASK_STATUS_VOCABULARY",
     "TypedOwnerResult",
     "TypedStateOwnerAuthorizationError",
     "TypedStateOwnerConnection",

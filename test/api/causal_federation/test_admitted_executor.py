@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shlex
 import shutil
 import signal
 import socket
@@ -26,8 +27,14 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     FakeQuackTransport,
     build_server,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import (
+    TransactionError,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
+    TaskRecord,
+    TaskSourceIntegrityError,
+    TaskSourceSnapshot,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
@@ -35,13 +42,24 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
     QuackStateClient,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
+    DETERMINISTIC_ONLY_EXECUTION_MODE,
+    GROK_CODEX_EXECUTION_MODE,
+    TaskExecutionRoutePolicy,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
     TypedDatabaseTaskSource,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
+    TypedStateOwnerAuthorizationError,
+    TypedStateOwnerConnection,
+    TypedStateOwnerError,
     build_control_plane_operation_catalog,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    DatabaseImplementationDaemon,
 )
 from test.api.causal_federation.test_bootstrap_runtime import (
     _capability,
@@ -52,6 +70,56 @@ ROOT = Path(__file__).resolve().parents[3]
 OPERATOR_PATH = ROOT / "scripts/run_agent_supervisor_causal_event_federation.py"
 CONFIG = ROOT / "config/agent_supervisor_causal_event_federation_scheduler.json"
 CHILD = Path(__file__).with_name("executor_bootstrap_child.py")
+
+
+def _execution_route_policy(
+    *aliases: str,
+    deterministic_aliases: tuple[str, ...] = (),
+    plan_root_cid: str = "plan:test-execution-route",
+    repository_tree_id: str = "tree:test-execution-route",
+) -> TaskExecutionRoutePolicy:
+    tasks = tuple(
+        TaskRecord(
+            task_cid=f"task:test-route:{index}",
+            task_alias=alias,
+            goal_cid="goal:test-route",
+            plan_cid=plan_root_cid,
+            ordinal=index,
+            status="ready",
+            revision=1,
+        )
+        for index, alias in enumerate(aliases)
+    )
+    snapshot = TaskSourceSnapshot(
+        source_schema="test-task-source@1",
+        schema_version=1,
+        plan_root_cid=plan_root_cid,
+        repository_tree_id=repository_tree_id,
+        projection_cid="projection:test-execution-route",
+        formal_plan_id=plan_root_cid,
+        source_identity="source:test-execution-route",
+        revision=1,
+        event_cursor=0,
+        goal_count=1,
+        task_count=len(tasks),
+        dependency_count=0,
+        terminal=False,
+        objective_count=1,
+        plan_count=1,
+    )
+    deterministic = set(deterministic_aliases)
+    return TaskExecutionRoutePolicy.seal(
+        snapshot=snapshot,
+        tasks=tasks,
+        execution_modes={
+            task.task_alias: (
+                DETERMINISTIC_ONLY_EXECUTION_MODE
+                if task.task_alias in deterministic
+                else GROK_CODEX_EXECUTION_MODE
+            )
+            for task in tasks
+        },
+    )
 
 
 def _operator() -> ModuleType:
@@ -106,6 +174,185 @@ def test_admitted_plan_uses_configured_builder_and_env_only_handle() -> None:
     ] == "handle:casf-v1"
     assert operator.STATE_TOKEN_ENV not in environment
     assert operator.STATE_OWNER_SOCKET_ENV not in environment
+    assert plan["execution_route_expected_counts"] == {
+        "task_count": 44,
+        "deterministic_task_count": 31,
+        "model_task_count": 13,
+    }
+
+
+def test_execution_route_policy_fails_closed_on_population_and_task_drift() -> None:
+    task = TaskRecord(
+        task_cid="task:test-route:0",
+        task_alias="CASF-DRIFT",
+        goal_cid="goal:test-route",
+        plan_cid="plan:test-execution-route",
+        ordinal=0,
+        status="ready",
+        revision=1,
+    )
+    snapshot = TaskSourceSnapshot(
+        source_schema="test-task-source@1",
+        schema_version=1,
+        plan_root_cid=task.plan_cid,
+        repository_tree_id="tree:test-execution-route",
+        projection_cid="projection:test-execution-route",
+        formal_plan_id=task.plan_cid,
+        source_identity="source:test-execution-route",
+        revision=1,
+        event_cursor=0,
+        goal_count=1,
+        task_count=1,
+        dependency_count=0,
+        terminal=False,
+        objective_count=1,
+        plan_count=1,
+    )
+    with pytest.raises(TaskSourceIntegrityError, match="exact task population"):
+        TaskExecutionRoutePolicy.seal(
+            snapshot=snapshot,
+            tasks=(task,),
+            execution_modes={},
+        )
+    with pytest.raises(TaskSourceIntegrityError, match="exact task population"):
+        TaskExecutionRoutePolicy.seal(
+            snapshot=snapshot,
+            tasks=(task,),
+            execution_modes={
+                task.task_alias: DETERMINISTIC_ONLY_EXECUTION_MODE,
+                "CASF-EXTRA": GROK_CODEX_EXECUTION_MODE,
+            },
+        )
+
+    policy = TaskExecutionRoutePolicy.seal(
+        snapshot=snapshot,
+        tasks=(task,),
+        execution_modes={task.task_alias: DETERMINISTIC_ONLY_EXECUTION_MODE},
+    )
+    binding = policy.binding_for_task(task).to_dict()
+    summary = policy.public_summary()
+    assert summary["task_count"] == 1
+    assert summary["deterministic_task_count"] == 1
+    assert summary["model_task_count"] == 0
+    with pytest.raises(TaskSourceIntegrityError):
+        policy.binding_for_task(replace(task, revision=2))
+    with pytest.raises(TaskSourceIntegrityError):
+        policy.binding_for_task(replace(task, body={"description": "drift"}))
+    with pytest.raises(TaskSourceIntegrityError):
+        policy.binding_for_task(replace(task, plan_cid="plan:other"))
+
+    adapter = object.__new__(TypedDatabaseTaskSource)
+    adapter._execution_route_policy = policy  # type: ignore[attr-defined]
+    adapter._require_execution_route_plan_root = lambda: policy  # type: ignore[method-assign]
+    carried = replace(
+        task,
+        revision=2,
+        status="retrying",
+        body={
+            "completion_receipt": {
+                "operation": "database_portal_validation_retry",
+                "execution_route_binding": binding,
+                "execution_route_policy_id": policy.policy_id,
+                "execution_route_origin_revision": task.revision,
+            }
+        },
+    )
+    assert dict(adapter.execution_route_binding_for_task(carried)) == binding
+    with pytest.raises(TaskSourceIntegrityError, match="carried"):
+        adapter.execution_route_binding_for_task(
+            replace(carried, body={"completion_receipt": {}})
+        )
+
+
+def test_status_cas_preserves_execution_route_across_requeue() -> None:
+    policy = _execution_route_policy(
+        "CASF-REQUEUE",
+        deterministic_aliases=("CASF-REQUEUE",),
+    )
+    task = TaskRecord(
+        task_cid="task:test-route:0",
+        task_alias="CASF-REQUEUE",
+        goal_cid="goal:test-route",
+        plan_cid="plan:test-execution-route",
+        ordinal=0,
+        status="in_progress",
+        revision=2,
+        body={},
+    )
+    binding = policy.entries[0]
+    route = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "task-execution-route-binding@1"
+        ),
+        "policy_id": policy.policy_id,
+        "plan_root_cid": policy.plan_root_cid,
+        "repository_tree_id": policy.repository_tree_id,
+        "source_revision": policy.source_revision,
+        **binding.to_dict(),
+    }
+    task = replace(
+        task,
+        body={
+            "completion_receipt": {
+                "operation": "database_claim",
+                "execution_route_binding": route,
+                "execution_route_policy_id": policy.policy_id,
+                "execution_route_origin_revision": 1,
+            }
+        },
+    )
+    observed: dict[str, Any] = {}
+
+    class _Source:
+        @staticmethod
+        def get(_task_cid: str) -> TaskRecord:
+            return task
+
+        @staticmethod
+        def validate_execution_route_binding(
+            value: Mapping[str, Any],
+            *,
+            task: TaskRecord,
+            allow_claim_revision: bool,
+        ) -> Mapping[str, Any]:
+            assert task.revision == 2
+            assert allow_claim_revision is True
+            assert dict(value) == route
+            return route
+
+        @staticmethod
+        def compare_and_set_status(
+            task_cid: str,
+            *,
+            expected_revision: int,
+            status: str,
+            receipt: Mapping[str, Any],
+            evidence_digests: Any,
+        ) -> dict[str, Any]:
+            observed.update(
+                {
+                    "task_cid": task_cid,
+                    "expected_revision": expected_revision,
+                    "status": status,
+                    "receipt": dict(receipt),
+                    "evidence_digests": evidence_digests,
+                }
+            )
+            return observed
+
+    daemon = SimpleNamespace(task_source=_Source(), markdown_path=None)
+    result = DatabaseImplementationDaemon._cas_task_status_database(
+        daemon,
+        task.task_cid,
+        expected_revision=task.revision,
+        new_status="retrying",
+        receipt={"operation": "database_portal_validation_retry"},
+    )
+
+    assert result["receipt"]["execution_route_binding"] == route
+    assert result["receipt"]["execution_route_policy_id"] == policy.policy_id
+    assert result["receipt"]["execution_route_origin_revision"] == 1
 
 
 def test_admitted_health_requires_exact_live_executor_and_authoritative_progress() -> None:
@@ -227,7 +474,7 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
     identity = server.start()
     client_id = "database-implementation-daemon:typed-test"
     operator_birth_id = identity.process_birth_id
-    token = server.issue_typed_client_grant(
+    token, grant = server.issue_typed_client_grant_record(
         client_id=client_id,
         process_birth_id=operator_birth_id,
         allowed_operations=tuple(build_control_plane_operation_catalog()),
@@ -251,12 +498,33 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
     try:
         client.attach(identity.listen_uri, server_id=identity.server_id)
         adapter = TypedDatabaseTaskSource(client)
+        borrowed_projection = TypedDatabaseTaskSource(
+            client,
+            owns_client=False,
+        )
+        borrowed_projection.close()
         snapshot = adapter.snapshot()
         assert snapshot.task_count == 1
         assert snapshot.repository_tree_id == "tree:typed-executor"
         assert adapter.ready_tasks().tasks[0].task_alias == "CASF-TYPED"
         ready = adapter.get("CASF-TYPED")
         assert ready is not None
+        with pytest.raises(TaskSourceIntegrityError, match="closed typed vocabulary"):
+            adapter.compare_and_set_status(
+                ready.task_cid,
+                ready.revision,
+                "invented-status",
+            )
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            client.cas_task_status(
+                task_cid=ready.task_cid,
+                expected_task_revision=ready.revision,
+                new_status="invented-status",
+                idempotency_key="executor-cas:unknown-status",
+                body={"operation": "unknown-status-negative-test"},
+            )
+        ready = adapter.get("CASF-TYPED")
+        assert ready is not None and ready.revision == 1
         claimed = adapter.compare_and_set_status(
             ready.task_cid,
             ready.revision,
@@ -284,11 +552,37 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
         )
         assert completed.task.status == "completed"
         assert adapter.snapshot().terminal is True
+
+        with pytest.raises(TypedStateOwnerAuthorizationError):
+            TypedStateOwnerConnection(
+                socket_path=server.typed_command_socket_path(),
+                token="",
+                client_id=client_id,
+                process_birth_id=operator_birth_id,
+                store_id=identity.store_id,
+            )
+        with pytest.raises(TypedStateOwnerError):
+            TypedStateOwnerConnection(
+                socket_path=server.typed_command_socket_path(),
+                token=token,
+                client_id=client_id,
+                process_birth_id="birth:wrong",
+                store_id=identity.store_id,
+            )
     finally:
         if adapter is not None:
             adapter.close()
         else:
             client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+        with pytest.raises(TypedStateOwnerError):
+            TypedStateOwnerConnection(
+                socket_path=server.typed_command_socket_path(),
+                token=token,
+                client_id=client_id,
+                process_birth_id=operator_birth_id,
+                store_id=identity.store_id,
+            )
         server.stop()
 
     connection = open_duckdb_connection(database)
@@ -371,6 +665,128 @@ def test_typed_database_task_source_pages_transport_for_public_maximum() -> None
     ]
 
 
+def test_executor_typed_operation_catalog_is_closed_and_full_fidelity() -> None:
+    catalog = build_control_plane_operation_catalog()
+
+    assert catalog["executor_task_projection_page"].parameter_names == (
+        "limit",
+        "offset",
+    )
+    assert catalog["executor_task_projection_page"].mutation is False
+    assert catalog["executor_task_projection_by_identity"].parameter_names == (
+        "task_identity",
+        "task_alias",
+    )
+    assert catalog["executor_control_snapshot"].parameter_names == ()
+    assert catalog["executor_control_snapshot"].mutation is False
+
+
+@pytest.mark.timeout(10)
+def test_executor_bootstrap_broker_stop_unblocks_an_accepted_peer(
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    address = "\0casf-broker-stop-" + os.urandom(8).hex()
+    listener.bind(address)
+    listener.listen(1)
+    broker = operator._ExecutorBootstrapBroker(
+        channel=listener,
+        server=SimpleNamespace(revoke_typed_client_grant=lambda _grant: None),
+        board=SimpleNamespace(),
+        paths={
+            "executor_history": tmp_path / "history.json",
+            "executor_current": tmp_path / "current.json",
+        },
+        supervisor_birth=operator._process_birth(os.getpid()),
+        execution_route_policy=_execution_route_policy("CASF-BROKER-STOP"),
+    )
+    peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    broker.start()
+    try:
+        peer.connect(address)
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            with broker._accepted_lock:
+                if broker._accepted is not None:
+                    break
+            time.sleep(0.01)
+        else:
+            pytest.fail("broker did not accept the intentionally stalled peer")
+
+        broker.stop()
+
+        assert broker._thread.is_alive() is False
+        assert broker.active_grant_id == ""
+    finally:
+        peer.close()
+        if broker._thread.is_alive():
+            broker.stop()
+
+
+def test_executor_retirement_freezes_supervisor_before_reading_latest_rotation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    supervisor_birth = {"pid": 101, "start_time_ticks": 1, "boot_id": "boot"}
+    stale_executor = {"pid": 202, "start_time_ticks": 2, "boot_id": "boot"}
+    latest_executor = {"pid": 303, "start_time_ticks": 3, "boot_id": "boot"}
+    current_path = tmp_path / "executor-current.json"
+    current_path.write_text(
+        json.dumps(
+            {
+                "supervisor_process_birth": supervisor_birth,
+                "executor_process_birth": stale_executor,
+            }
+        ),
+        encoding="utf-8",
+    )
+    events: list[Any] = []
+
+    class _Broker:
+        @staticmethod
+        def stop() -> None:
+            events.append("broker.stop")
+
+    def _terminate(birth: Mapping[str, Any], *, grace_seconds: float) -> str:
+        events.append(("terminate", dict(birth), grace_seconds))
+        if dict(birth) == supervisor_birth:
+            current_path.write_text(
+                json.dumps(
+                    {
+                        "supervisor_process_birth": supervisor_birth,
+                        "executor_process_birth": latest_executor,
+                    }
+                ),
+                encoding="utf-8",
+            )
+        return "terminated"
+
+    monkeypatch.setattr(operator, "_terminate_birth", _terminate)
+
+    cleanup, failures = operator._retire_configured_executor(
+        paths={"executor_current": current_path},
+        supervisor_birth=supervisor_birth,
+        broker=_Broker(),
+        fallback_executor_birth=stale_executor,
+        grace_seconds=7.0,
+    )
+
+    assert failures == []
+    assert events == [
+        "broker.stop",
+        ("terminate", supervisor_birth, 7.0),
+        ("terminate", latest_executor, 7.0),
+        ("terminate", stale_executor, 7.0),
+    ]
+    assert [item["role"] for item in cleanup] == [
+        "executor_supervisor",
+        "executor_daemon",
+        "executor_daemon",
+    ]
+
+
 @pytest.mark.timeout(60)
 def test_real_duckdb_owner_bootstrap_claim_restart_status_and_stop(
     tmp_path: Path,
@@ -434,6 +850,7 @@ def test_real_duckdb_owner_bootstrap_claim_restart_status_and_stop(
         board=board,
         paths=paths,
         supervisor_birth=supervisor_birth,
+        execution_route_policy=_execution_route_policy("CASF-E2E"),
     )
     revoked: list[str] = []
     original_revoke = server.revoke_typed_client_grant
@@ -475,6 +892,19 @@ def test_real_duckdb_owner_bootstrap_claim_restart_status_and_stop(
         assert first_result["claimed"] is True
         assert first_result["provider_received_token"] is False
         assert first_result["provider_received_socket"] is False
+        assert first_result["route_policy_in_argv"] is False
+        assert first_result["route_policy_in_environment"] is False
+        assert first_result["granted_operations"] == sorted(
+            operator.EXECUTOR_OWNER_ALLOWED_OPERATIONS
+        )
+        assert first_result["granted_command_operations"] == sorted(
+            operator.EXECUTOR_OWNER_COMMAND_OPERATIONS
+        )
+        assert first_result["unrelated_read_denied"] is True
+        assert set(first_result["granted_operations"]).isdisjoint(
+            set(build_control_plane_operation_catalog())
+            - operator.EXECUTOR_OWNER_ALLOWED_OPERATIONS
+        )
         assert "token" not in " ".join(first.args).lower()
         assert str(server.typed_command_socket_path()) not in first.args
 
@@ -557,8 +987,8 @@ def test_real_duckdb_owner_bootstrap_claim_restart_status_and_stop(
         server.stop()
 
 
-@pytest.mark.timeout(180)
-def test_actual_configured_supervisor_completes_typed_no_change_task(
+@pytest.mark.timeout(360)
+def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     request: pytest.FixtureRequest,
@@ -592,24 +1022,43 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
     source.materialize(
         {
             "repository_tree_id": repository_tree,
-            "plan_root_cid": "plan:managed-no-change",
+            "plan_root_cid": "plan:managed-mixed-route",
             "goals": [
                 {
                     "goal_cid": "goal:managed-no-change",
                     "goal_alias": "CASF-G-MANAGED",
-                    "title": "Managed typed no-change execution",
+                    "title": "Managed typed mixed-route execution",
                 }
             ],
             "tasks": [
                 {
-                    "task_cid": "task:managed-no-change",
-                    "task_id": "CASF-MANAGED",
+                    "task_cid": "task:managed-deterministic",
+                    "task_id": "CASF-MANAGED-DET",
                     "goal_cid": "goal:managed-no-change",
                     "status": "ready",
+                    "ordinal": 0,
                     "description": "Revalidate an output already present on target",
                     "No-change completion": "allowed",
                     "outputs": [{"path": "pyproject.toml", "effect": {}}],
                     "validations": [{"argv": ["/usr/bin/true"], "policy": {}}],
+                },
+                {
+                    "task_cid": "task:managed-model",
+                    "task_id": "CASF-MANAGED-MODEL",
+                    "goal_cid": "goal:managed-no-change",
+                    "status": "ready",
+                    "ordinal": 1,
+                    "description": "Require configured provider execution",
+                    "dependencies": ["task:managed-deterministic"],
+                    "outputs": [
+                        {
+                            "path": "data/casf-model-provider-output.txt",
+                            "effect": {},
+                        }
+                    ],
+                    "validations": [
+                        {"argv": ["/usr/bin/true"], "policy": {}}
+                    ],
                 }
             ],
         }
@@ -747,6 +1196,22 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
     )
     observer_client.attach(identity.listen_uri, server_id=identity.server_id)
     observer = TypedDatabaseTaskSource(observer_client)
+    managed_route_policy = observer.seal_execution_route_policy(
+        {
+            "CASF-MANAGED-DET": DETERMINISTIC_ONLY_EXECUTION_MODE,
+            "CASF-MANAGED-MODEL": GROK_CODEX_EXECUTION_MODE,
+        }
+    )
+    initial_generation = observer_client.load_generation()
+    provider_command = (
+        f"{shlex.quote(sys.executable)} -c "
+        + shlex.quote(
+            "from pathlib import Path; "
+            "output = Path('data/casf-model-provider-output.txt'); "
+            "output.parent.mkdir(parents=True, exist_ok=True); "
+            "output.write_text('model provider dispatched\\n', encoding='utf-8')"
+        )
+    )
     supervisor: subprocess.Popen[Any] | None = None
     supervisor_birth: Mapping[str, Any] | None = None
     broker: Any = None
@@ -757,10 +1222,12 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
             board=managed_board,
             paths=paths,
             owner_identity=identity.to_dict(),
-            implementation_command="/usr/bin/true",
+            execution_route_policy=managed_route_policy,
+            implementation_command=provider_command,
         )
-        deadline = time.monotonic() + 120.0
-        completed = None
+        deadline = time.monotonic() + 240.0
+        deterministic = None
+        model = None
         while time.monotonic() < deadline:
             if supervisor.poll() is not None:
                 pytest.fail(
@@ -769,15 +1236,28 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
                         encoding="utf-8", errors="replace"
                     )[-8_000:]
                 )
-            completed = observer.get("CASF-MANAGED")
-            if completed is not None and completed.status == "completed":
+            deterministic = observer.get("CASF-MANAGED-DET")
+            model = observer.get("CASF-MANAGED-MODEL")
+            if (
+                deterministic is not None
+                and deterministic.status == "completed"
+                and model is not None
+                and model.status == "completed"
+            ):
                 break
             time.sleep(0.25)
-        assert completed is not None and completed.status == "completed", (
-            paths["executor_log"].read_text(encoding="utf-8", errors="replace")[-8_000:]
-        )
+        current_generation = observer_client.load_generation()
+        assert current_generation.generation == initial_generation.generation
+        assert current_generation.database_uuid == initial_generation.database_uuid
+        assert current_generation.revision > initial_generation.revision
         current = json.loads(paths["executor_current"].read_text(encoding="utf-8"))
         executor_birth = current["executor_process_birth"]
+        assert current["execution_route_policy"] == (
+            managed_route_policy.public_summary()
+        )
+        assert current["execution_route_policy"]["task_count"] == 2
+        assert current["execution_route_policy"]["deterministic_task_count"] == 1
+        assert current["execution_route_policy"]["model_task_count"] == 1
         projection = operator._executor_runtime_projection(
             paths,
             expected_supervisor_birth=supervisor_birth,
@@ -788,6 +1268,9 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
         assert projection["task_state_path"].startswith(str(paths["executor_state"]))
         assert "token" not in " ".join(supervisor.args).lower()
         assert str(server.typed_command_socket_path()) not in supervisor.args
+        assert managed_route_policy.policy_id not in " ".join(supervisor.args)
+        assert "CASF-MANAGED-DET" not in " ".join(supervisor.args)
+        assert "CASF-MANAGED-MODEL" not in " ".join(supervisor.args)
         assert temporary_branch in supervisor.args
         assert (
             subprocess.run(
@@ -809,6 +1292,45 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
             ).stdout.strip()
             == protected_head
         )
+        diagnostics = {
+            "deterministic": (
+                {
+                    "alias": deterministic.task_alias,
+                    "status": deterministic.status,
+                    "revision": deterministic.revision,
+                    "completion_receipt": deterministic.body.get(
+                        "completion_receipt"
+                    ),
+                }
+                if deterministic is not None
+                else None
+            ),
+            "model": (
+                {
+                    "alias": model.task_alias,
+                    "status": model.status,
+                    "revision": model.revision,
+                    "completion_receipt": model.body.get("completion_receipt"),
+                }
+                if model is not None
+                else None
+            ),
+            "executor_current": {
+                "executor_process_birth": current.get("executor_process_birth"),
+                "execution_route_policy": current.get("execution_route_policy"),
+                "readiness_state": current.get("readiness_state"),
+                "status": current.get("status"),
+            },
+            "supervisor_status": operator._read_optional_json(
+                paths["executor_supervisor_status"]
+            ),
+            "readiness": operator._read_optional_json(
+                paths["executor_readiness"]
+            ),
+            "log_tail": paths["executor_log"].read_text(
+                encoding="utf-8", errors="replace"
+            )[-8_000:],
+        }
     finally:
         observer.close()
         if supervisor_birth is not None:
@@ -827,6 +1349,73 @@ def test_actual_configured_supervisor_completes_typed_no_change_task(
         elif supervisor is not None and supervisor.poll() is None:
             os.killpg(supervisor.pid, signal.SIGKILL)
             supervisor.wait(timeout=5.0)
+
+    execution_database = (
+        paths["executor_state"] / "casf_executor_database_execution.duckdb"
+    )
+    execution = open_duckdb_connection(execution_database)
+    try:
+        phase_rows = execution.execute(
+            """
+            SELECT
+                attempts.task_alias,
+                phases.phase,
+                CAST(phases.body_json AS VARCHAR)
+            FROM database_task_attempts AS attempts
+            JOIN attempt_phases AS phases USING (attempt_id)
+            ORDER BY attempts.task_alias, phases.committed_at_ms
+            """
+        ).fetchall()
+    finally:
+        execution.close()
+    evidence: dict[str, list[Any]] = {}
+    compact_phase_evidence: dict[str, list[Any]] = {}
+    for row in phase_rows:
+        alias, phase, body_json = row[0], row[1], row[2]
+        decoded = json.loads(str(body_json))
+        evidence.setdefault(str(alias), []).append(decoded)
+        compact_phase_evidence.setdefault(str(alias), []).append(
+            {
+                "phase": str(phase),
+                "body_json_prefix": str(body_json)[:2_000],
+            }
+        )
+    diagnostic_text = json.dumps(
+        {"runtime": diagnostics, "phase_evidence": compact_phase_evidence},
+        indent=2,
+        sort_keys=True,
+        default=str,
+    )
+
+    assert deterministic is not None and deterministic.status == "completed", (
+        diagnostic_text
+    )
+    assert model is not None and model.status == "completed", diagnostic_text
+
+    def _contains_provider_disposition(value: Any, expected: bool) -> bool:
+        if isinstance(value, Mapping):
+            return value.get("provider_dispatched") is expected or any(
+                _contains_provider_disposition(item, expected)
+                for item in value.values()
+            )
+        if isinstance(value, list):
+            return any(
+                _contains_provider_disposition(item, expected) for item in value
+            )
+        return False
+
+    assert any(
+        _contains_provider_disposition(item, False)
+        for item in evidence.get("CASF-MANAGED-DET", [])
+    ), diagnostic_text
+    assert not any(
+        _contains_provider_disposition(item, True)
+        for item in evidence.get("CASF-MANAGED-DET", [])
+    ), diagnostic_text
+    assert any(
+        _contains_provider_disposition(item, True)
+        for item in evidence.get("CASF-MANAGED-MODEL", [])
+    ), diagnostic_text
 
 
 def test_launch_modes_are_unambiguous_and_no_change_remains_explicit() -> None:

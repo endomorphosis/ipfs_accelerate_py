@@ -7157,6 +7157,7 @@ class PortalImplementationDaemon:
         self.state_path = state_path
         self.strategy_path = strategy_path
         self.events_path = events_path
+        self._launch_task_execution_route_binding: Mapping[str, Any] | None = None
         self._checkout_mutation_context = threading.local()
         self.repo_root = (repo_root or REPO_ROOT).resolve()
         self._scoped_recovery_attempts: dict[str, int] = {}
@@ -63397,11 +63398,12 @@ class PortalImplementationDaemon:
 
         if task is None:
             return ""
+        launch_mode = self._launch_execution_mode_for_task(task)
         raw_role = self._task_metadata_value(task, "provider role")
         if not raw_role and _env_bool(
             REQUIRE_TASK_EXECUTION_METADATA_ENV,
             False,
-        ):
+        ) and not launch_mode:
             raise ImplementationRetryDeferred(
                 "task provider role is required by execution policy",
                 backoff_seconds=300,
@@ -63415,6 +63417,19 @@ class PortalImplementationDaemon:
             ExecutionMode.DETERMINISTIC_ONLY.value,
             "operator-only",
         }
+        if launch_mode == ExecutionMode.DETERMINISTIC_ONLY.value:
+            if roles and roles not in (
+                {ExecutionMode.DETERMINISTIC_ONLY.value},
+                {"operator-only"},
+            ):
+                raise RuntimeError(
+                    "launch deterministic-only route conflicts with task provider role"
+                )
+            return ExecutionMode.DETERMINISTIC_ONLY.value
+        if launch_mode == ExecutionMode.GROK_CODEX.value and local_only_roles:
+            raise RuntimeError(
+                "launch Grok/Codex route conflicts with task local-only role"
+            )
         if local_only_roles:
             if len(roles) != 1:
                 raise RuntimeError(
@@ -63443,6 +63458,46 @@ class PortalImplementationDaemon:
         if wants_codex:
             return "codex"
         return ""
+
+    def bind_launch_task_execution_route(
+        self,
+        value: Mapping[str, Any],
+    ) -> None:
+        """Bind one owner-admitted route to this private single-task Portal."""
+
+        from ..task_sources.task_execution_route_policy import (
+            TaskExecutionRouteBinding,
+        )
+
+        binding = TaskExecutionRouteBinding.from_dict(value)
+        normalized = MappingProxyType(binding.to_dict())
+        if (
+            self._launch_task_execution_route_binding is not None
+            and dict(self._launch_task_execution_route_binding) != dict(normalized)
+        ):
+            raise RuntimeError("launch task execution route is immutable")
+        self._launch_task_execution_route_binding = normalized
+
+    def _launch_execution_mode_for_task(
+        self,
+        task: PortalTask | None,
+    ) -> str:
+        binding = self._launch_task_execution_route_binding
+        if binding is None:
+            return ""
+        if task is None:
+            raise RuntimeError("launch execution route requires an exact task")
+        if (
+            binding.get("task_alias") != task.task_id
+            or binding.get("task_cid") != task.canonical_task_cid
+        ):
+            raise RuntimeError(
+                "Portal task differs from its launch execution-route binding"
+            )
+        try:
+            return ExecutionMode(str(binding.get("execution_mode") or "")).value
+        except ValueError as exc:
+            raise RuntimeError("launch task execution route mode is unknown") from exc
 
     def _task_uses_typed_local_execution(
         self,
@@ -75401,6 +75456,55 @@ class DatabaseImplementationDaemon:
 
         return self._shared_claim_binding_for_this_owner(task) is not None
 
+    def _execution_route_binding_for_claim(
+        self,
+        task: Any,
+        *,
+        fenced_retry: bool,
+    ) -> dict[str, Any]:
+        """Resolve the launch route before claim CAS or validate its retry."""
+
+        bind = getattr(self.task_source, "execution_route_binding_for_task", None)
+        validate = getattr(
+            self.task_source,
+            "validate_execution_route_binding",
+            None,
+        )
+        if not callable(bind) and not callable(validate):
+            return {}
+        if not callable(bind) or not callable(validate):
+            raise DatabaseImplementationAuthorityError(
+                "task source exposes an incomplete execution-route boundary"
+            )
+        if not fenced_retry:
+            value = bind(task)
+        else:
+            body = getattr(task, "body", None)
+            receipt = (
+                body.get("completion_receipt")
+                if isinstance(body, Mapping)
+                else None
+            )
+            value = (
+                receipt.get("execution_route_binding")
+                if isinstance(receipt, Mapping)
+                else None
+            )
+            if not isinstance(value, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "fenced task retry has no immutable execution-route binding"
+                )
+            value = validate(
+                value,
+                task=task,
+                allow_claim_revision=True,
+            )
+        if not isinstance(value, Mapping) or not value:
+            raise DatabaseImplementationAuthorityError(
+                "task source returned no execution-route binding"
+            )
+        return dict(value)
+
     def _shared_claim_binding_matches_attempt(
         self,
         task: Any,
@@ -75837,6 +75941,10 @@ class DatabaseImplementationDaemon:
                 continue
 
             task_alias = str(task.task_alias or claim.task_cid)
+            execution_route_binding = self._execution_route_binding_for_claim(
+                task,
+                fenced_retry=fenced_retry,
+            )
             self._protect_new_claim(claim)
             try:
                 # The owner-side status CAS is the shared exclusion point for
@@ -75855,6 +75963,15 @@ class DatabaseImplementationDaemon:
                             "fencing_token": int(claim.fencing_token),
                             "fence_epoch": int(claim.fence_epoch),
                             "claimed_from_revision": int(task.revision),
+                            **(
+                                {
+                                    "execution_route_binding": dict(
+                                        execution_route_binding
+                                    )
+                                }
+                                if execution_route_binding
+                                else {}
+                            ),
                         },
                     )
             except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
@@ -75868,6 +75985,7 @@ class DatabaseImplementationDaemon:
             attempt = self._insert_attempt_from_claim(
                 claim,
                 task_alias=task_alias,
+                execution_route_binding=execution_route_binding,
             )
             self._record_event(
                 "task_claimed",
@@ -75885,6 +76003,7 @@ class DatabaseImplementationDaemon:
         claim: Any,
         *,
         task_alias: str,
+        execution_route_binding: Mapping[str, Any] | None = None,
     ) -> DatabaseTaskAttempt:
         self._protect_new_claim(claim)
         now = self._now_ms()
@@ -75902,7 +76021,18 @@ class DatabaseImplementationDaemon:
             status="running",
             started_at_ms=int(getattr(claim, "claimed_at_ms", now) or now),
             revision=1,
-            body={"worktree_id": str(getattr(claim, "worktree_id", "") or "")},
+            body={
+                "worktree_id": str(getattr(claim, "worktree_id", "") or ""),
+                **(
+                    {
+                        "execution_route_binding": dict(
+                            execution_route_binding
+                        )
+                    }
+                    if execution_route_binding
+                    else {}
+                ),
+            },
         )
         connection = self._require_connection()
         existing = connection.execute(
@@ -75912,6 +76042,12 @@ class DatabaseImplementationDaemon:
         if existing is not None:
             stored = self.get_attempt(attempt.attempt_id)
             if stored is not None:
+                if execution_route_binding and stored.body.get(
+                    "execution_route_binding"
+                ) != dict(execution_route_binding):
+                    raise DatabaseImplementationConflictError(
+                        "existing attempt has a different execution-route binding"
+                    )
                 return stored
         connection.execute(
             """
@@ -76811,22 +76947,69 @@ class DatabaseImplementationDaemon:
                 "task source does not support compare_and_set_status"
             )
         receipt_payload = dict(receipt or {})
+        task = self.task_source.get(task_cid)
+        task_body = (
+            dict(getattr(task, "body", {}) or {})
+            if task is not None
+            else {}
+        )
+        prior_status_receipt = task_body.get("completion_receipt")
+        prior_status_receipt = (
+            prior_status_receipt
+            if isinstance(prior_status_receipt, Mapping)
+            else {}
+        )
+        supplied_route = receipt_payload.get("execution_route_binding")
+        prior_route = prior_status_receipt.get("execution_route_binding")
+        if (
+            isinstance(supplied_route, Mapping)
+            and isinstance(prior_route, Mapping)
+            and dict(supplied_route) != dict(prior_route)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "task status transition tried to rotate its launch execution route"
+            )
+        carried_route = (
+            supplied_route
+            if isinstance(supplied_route, Mapping)
+            else prior_route
+            if isinstance(prior_route, Mapping)
+            else None
+        )
+        if carried_route is not None:
+            validate_route = getattr(
+                self.task_source,
+                "validate_execution_route_binding",
+                None,
+            )
+            if task is None or not callable(validate_route):
+                raise DatabaseImplementationAuthorityError(
+                    "task execution route has no typed validation boundary"
+                )
+            normalized_route = dict(
+                validate_route(
+                    carried_route,
+                    task=task,
+                    allow_claim_revision=True,
+                )
+            )
+            lineage = {
+                "execution_route_binding": normalized_route,
+                "execution_route_policy_id": normalized_route["policy_id"],
+                "execution_route_origin_revision": int(
+                    normalized_route["task_revision"]
+                ),
+            }
+            for field, expected in lineage.items():
+                if field in receipt_payload and receipt_payload[field] != expected:
+                    raise DatabaseImplementationAuthorityError(
+                        "task status transition changed execution-route lineage"
+                    )
+            receipt_payload.update(lineage)
         if (
             new_status == "in_progress"
             and receipt_payload.get("operation") == "database_claim"
         ):
-            task = self.task_source.get(task_cid)
-            task_body = (
-                dict(getattr(task, "body", {}) or {})
-                if task is not None
-                else {}
-            )
-            prior_status_receipt = task_body.get("completion_receipt")
-            prior_status_receipt = (
-                prior_status_receipt
-                if isinstance(prior_status_receipt, Mapping)
-                else {}
-            )
             seed = prior_status_receipt.get("validation_retry_seed")
             protected_seed = prior_status_receipt.get(
                 "protected_path_recovery_seed"
@@ -84490,7 +84673,13 @@ class DatabaseImplementationDaemon:
             )
             if (
                 isinstance(exc, DatabasePortalBridgeError)
-                and not isinstance(exc, DatabasePortalValidationRetry)
+                and not isinstance(
+                    exc,
+                    (
+                        DatabasePortalValidationRetry,
+                        DatabasePortalCandidateRetry,
+                    ),
+                )
                 and not recovery_owned_terminal_failure
                 and (
                     not isinstance(exc, DatabasePortalBridgeDeferred)
@@ -84520,7 +84709,11 @@ class DatabaseImplementationDaemon:
                 }
             if not isinstance(
                 exc,
-                (DatabasePortalBridgeDeferred, DatabasePortalValidationRetry),
+                (
+                    DatabasePortalBridgeDeferred,
+                    DatabasePortalValidationRetry,
+                    DatabasePortalCandidateRetry,
+                ),
             ) and not recovery_owned_terminal_failure:
                 # Generic Portal/provider failures carry no retry authority.
                 # The durable callback-start intent prevents a cold restart
@@ -86356,7 +86549,10 @@ def main(argv: list[str] | None = None) -> None:
                     credentials.endpoint,
                     server_id=credentials.server_id,
                 )
-                typed_task_source = TypedDatabaseTaskSource(client)
+                typed_task_source = TypedDatabaseTaskSource(
+                    client,
+                    execution_route_policy=credentials.execution_route_policy,
+                )
             except BaseException:
                 client.close()
                 raise
