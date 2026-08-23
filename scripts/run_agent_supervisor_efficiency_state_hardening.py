@@ -3209,14 +3209,47 @@ def _health_receipt(
     task_statuses = task_statuses if isinstance(task_statuses, Mapping) else {}
     task_revisions = authority.get("task_revisions")
     task_revisions = task_revisions if isinstance(task_revisions, Mapping) else {}
+    sealed_revisions = bootstrap_integrity.get("task_revisions")
+    sealed_revisions = (
+        sealed_revisions if isinstance(sealed_revisions, Mapping) else {}
+    )
+
+    def admitted_authority_spec_cids(candidate: Mapping[str, Any]) -> bool:
+        specs = candidate.get("task_authority_spec_cids")
+        revisions = candidate.get("task_revisions")
+        if (
+            not isinstance(specs, Mapping)
+            or not isinstance(revisions, Mapping)
+            or set(specs) != set(sealed_task_authority_spec_cids)
+        ):
+            return False
+        for alias, sealed_spec in sealed_task_authority_spec_cids.items():
+            observed = specs.get(alias)
+            if not isinstance(observed, str) or not observed:
+                return False
+            sealed_revision = sealed_revisions.get(alias)
+            current_revision = revisions.get(alias)
+            if (
+                type(sealed_revision) is int
+                and type(current_revision) is int
+                and current_revision > sealed_revision
+            ):
+                if observed == sealed_spec:
+                    continue
+                if re.fullmatch(r"b[a-z2-7]{50,}", observed) is None:
+                    return False
+                continue
+            if observed != sealed_spec:
+                return False
+        return True
+
     def admitted_task_corpus(candidate: Mapping[str, Any]) -> bool:
         return bool(
             sealed_task_cids
             and candidate.get("task_cids") == sealed_task_cids
             and candidate.get("task_owner_bindings") == sealed_owner_bindings
             and candidate.get("task_dependencies") == sealed_task_dependencies
-            and candidate.get("task_authority_spec_cids")
-            == sealed_task_authority_spec_cids
+            and admitted_authority_spec_cids(candidate)
             and isinstance(candidate.get("task_statuses"), Mapping)
             and isinstance(candidate.get("task_revisions"), Mapping)
             and set(candidate["task_statuses"]) == set(sealed_task_cids)
