@@ -27,6 +27,7 @@ FEDERATION_OWNED_MODULES: Final[tuple[str, ...]] = (
     "event_router",
     "event_wait",
     "events",
+    "fixed_point",
     "identity",
     "lifecycle",
     "merge",
