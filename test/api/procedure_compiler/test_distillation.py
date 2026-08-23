@@ -14,6 +14,7 @@ from ipfs_accelerate_py.agent_supervisor.procedure_compiler.contracts import (
 from ipfs_accelerate_py.agent_supervisor.procedure_compiler.distillation import (
     BUILDER_REVISION,
     REQUIRED_PARTITIONS,
+    REQUIRED_PRIVACY_CLASSES,
     REQUIRED_PROVENANCE_FIELDS,
     CorpusPartition,
     DistillationAdmissionError,
@@ -214,6 +215,10 @@ def test_corpus_admits_validated_accepted_and_rejected_examples() -> None:
     assert rejected.can_authorize is False
     assert accepted.builder_revision == BUILDER_REVISION
 
+    assert accepted.to_row().example_cid == accepted.content_id
+    assert accepted.to_row().validation_cid == accepted.validation_cid
+    assert accepted.to_row().counterexample_cids == accepted.counterexample_cids
+
     corpus = builder.build()
     assert corpus.accepted_count == 1
     assert corpus.rejected_count == 1
@@ -226,6 +231,13 @@ def test_corpus_admits_validated_accepted_and_rejected_examples() -> None:
     assert evaluation.disjoint is True
     assert evaluation.complete_provenance is True
     assert evaluation.admitted_count == 2
+    assert sum(evaluation.partition_counts.values()) == evaluation.admitted_count
+    decoded_evaluation = DistillationEvaluation.from_dict(evaluation.to_dict())
+    assert decoded_evaluation == evaluation
+    parsed_evaluation = parse_procedure_artifact(evaluation.to_dict())
+    assert isinstance(parsed_evaluation, DistillationEvaluation)
+    assert parsed_evaluation.can_promote is False
+    assert parsed_evaluation.can_skip_validation is False
 
 
 def test_corpus_rows_are_bounded_disjoint_and_carry_complete_provenance() -> None:
@@ -268,6 +280,27 @@ def test_corpus_rows_are_bounded_disjoint_and_carry_complete_provenance() -> Non
         partition=CorpusPartition.NEGATIVE,
         example_id="ex.negative.rejected",
     )
+    _admit(
+        builder,
+        _bundle(
+            hole_id="hole.select-symbol.boundary",
+            selected="pkg.mod:symbol_a",
+            fingerprint="cid-ev-boundary",
+        ),
+        partition=CorpusPartition.BOUNDARY,
+        example_id="ex.boundary.accepted",
+    )
+    _admit(
+        builder,
+        _bundle(
+            hole_id="hole.select-symbol.adversarial",
+            selected="pkg.mod:not-allowed",
+            fingerprint="cid-ev-adv",
+            accepted=False,
+        ),
+        partition=CorpusPartition.ADVERSARIAL,
+        example_id="ex.adversarial.rejected",
+    )
 
     corpus = builder.build()
     decoded = DistillationCorpus.from_dict(corpus.to_dict())
@@ -275,7 +308,10 @@ def test_corpus_rows_are_bounded_disjoint_and_carry_complete_provenance() -> Non
     parsed = parse_procedure_artifact(corpus.to_dict())
     assert isinstance(parsed, DistillationCorpus)
     assert parsed.disjoint is True
+    assert parsed.accepted_count == 3
+    assert parsed.rejected_count == 3
     assert set(parsed.partition_example_cids) == set(REQUIRED_PARTITIONS)
+    assert all(parsed.partition_example_cids[name] for name in REQUIRED_PARTITIONS)
     partition_sets = [set(parsed.partition_example_cids[name]) for name in REQUIRED_PARTITIONS]
     for index, left in enumerate(partition_sets):
         for right in partition_sets[index + 1 :]:
@@ -294,7 +330,17 @@ def test_corpus_rows_are_bounded_disjoint_and_carry_complete_provenance() -> Non
         assert "input_payload" not in record
 
     assert parsed.can_authorize is False
+    assert parsed.can_skip_validation is False
     assert parsed.state is ArtifactState.CANDIDATE
+    assert set(REQUIRED_PARTITIONS) == {item.value for item in CorpusPartition}
+    assert set(REQUIRED_PRIVACY_CLASSES) == {
+        "no-secrets",
+        "no-credentials",
+        "no-private-prompts",
+        "no-chain-of-thought",
+        "no-source-bodies",
+        "no-model-transcripts",
+    }
     with pytest.raises(FrozenInstanceError):
         parsed.disjoint = False  # type: ignore[misc]
 
@@ -341,6 +387,7 @@ def test_corpus_rejects_prompt_bodies() -> None:
         )
     assert caught.value.reason_code is DistillationReason.PROMPT_REJECTED
     assert builder.examples == ()
+    assert builder.rejected_admission_count == 1
 
 
 def test_corpus_rejects_stale_examples() -> None:
@@ -440,6 +487,12 @@ def test_corpus_detects_partition_leakage() -> None:
         )
     assert caught.value.reason_code is DistillationReason.PARTITION_LEAKAGE
     assert len(builder.examples) == 1
+    assert builder.rejected_admission_count == 1
+    corpus = builder.build()
+    assert corpus.accepted_count == 1
+    assert builder.evaluation is not None
+    assert builder.evaluation.rejected_admission_count == 1
+    assert builder.evaluation.admitted_count == 1
 
 
 def test_corpus_rejects_unbound_proof_and_missing_counterexamples() -> None:
@@ -486,6 +539,111 @@ def test_corpus_cannot_authorize_or_leave_candidate_tier() -> None:
     corpus = builder.build()
     assert corpus.can_grant_authority is False
     assert corpus.can_promote is False
+    assert corpus.can_skip_validation is False
+    assert example.can_skip_validation is False
     assert builder.evaluation is not None
     assert builder.evaluation.can_authorize is False
     assert builder.evaluation.can_grant_authority is False
+    assert builder.evaluation.can_promote is False
+    payload = corpus.to_dict()
+    payload["can_authorize"] = True
+    with pytest.raises(DistillationAdmissionError, match="cannot authorize"):
+        DistillationCorpus.from_dict(payload)
+    payload = builder.evaluation.to_dict()
+    payload["can_authorize"] = True
+    with pytest.raises(DistillationAdmissionError, match="cannot authorize"):
+        DistillationEvaluation.from_dict(payload)
+    payload = builder.evaluation.to_dict()
+    payload["state"] = ArtifactState.PROMOTED.value
+    with pytest.raises(DistillationAdmissionError, match="candidate-tier"):
+        DistillationEvaluation.from_dict(payload)
+
+
+def test_corpus_refuses_build_without_validated_examples() -> None:
+    builder = _builder()
+    with pytest.raises(DistillationAdmissionError, match="no independently validated") as caught:
+        builder.build()
+    assert caught.value.reason_code is DistillationReason.INCOMPLETE_PROVENANCE
+
+
+def test_corpus_rejects_duplicate_examples() -> None:
+    builder = _builder()
+    _admit(
+        builder,
+        _bundle(
+            hole_id="hole.select-symbol.dup-a",
+            selected="pkg.mod:symbol_a",
+            fingerprint="cid-ev-dup-a",
+        ),
+        partition=CorpusPartition.TRAINING,
+        example_id="ex.train.duplicate",
+    )
+    with pytest.raises(DistillationAdmissionError, match="already admitted") as caught:
+        _admit(
+            builder,
+            _bundle(
+                hole_id="hole.select-symbol.dup-b",
+                selected="pkg.mod:symbol_b",
+                fingerprint="cid-ev-dup-b",
+            ),
+            partition=CorpusPartition.TRAINING,
+            example_id="ex.train.duplicate",
+        )
+    assert caught.value.reason_code is DistillationReason.DUPLICATE_EXAMPLE
+    assert len(builder.examples) == 1
+
+
+def test_corpus_rejects_binding_mismatch() -> None:
+    builder = _builder(bindings=_bindings(task_id="PCPC-999"))
+    with pytest.raises(DistillationAdmissionError, match="bindings") as caught:
+        _admit(
+            builder,
+            _bundle(
+                hole_id="hole.select-symbol.bind",
+                selected="pkg.mod:symbol_a",
+                fingerprint="cid-ev-bind",
+            ),
+            partition=CorpusPartition.TRAINING,
+        )
+    assert caught.value.reason_code is DistillationReason.BINDING_MISMATCH
+
+
+def test_corpus_rejects_missing_validation() -> None:
+    builder = _builder()
+    request, candidate, resolution, _receipt = _bundle(
+        hole_id="hole.select-symbol.missing-validation",
+        selected="pkg.mod:symbol_a",
+        fingerprint="cid-ev-missing-validation",
+    )
+    with pytest.raises(DistillationAdmissionError, match="HoleValidationReceipt") as caught:
+        builder.admit(
+            request=request,
+            candidate=candidate,
+            resolution=resolution,
+            receipt=None,  # type: ignore[arg-type]
+            partition=CorpusPartition.TRAINING,
+            proof_cid="proof.hole-outcome",
+            counterexample_cids=("cex.boundary-near-match",),
+            family_id="family.import-purity",
+            language="python",
+            framework="pytest",
+        )
+    assert caught.value.reason_code is DistillationReason.MISSING_VALIDATION
+
+
+@pytest.mark.parametrize("partition", [CorpusPartition.NEGATIVE, CorpusPartition.ADVERSARIAL])
+def test_corpus_rejects_accepted_labels_in_negative_partitions(
+    partition: CorpusPartition,
+) -> None:
+    builder = _builder()
+    with pytest.raises(DistillationAdmissionError, match="rejected labels") as caught:
+        _admit(
+            builder,
+            _bundle(
+                hole_id=f"hole.select-symbol.{partition.value}",
+                selected="pkg.mod:symbol_a",
+                fingerprint=f"cid-ev-{partition.value}",
+            ),
+            partition=partition,
+        )
+    assert caught.value.reason_code is DistillationReason.MISLABELED_EXAMPLE
