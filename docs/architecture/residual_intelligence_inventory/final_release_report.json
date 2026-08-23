@@ -1,0 +1,17 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/residual-intelligence-release-report@1",
+  "start_tree": "tree:start-fixture",
+  "end_tree": "tree:end-fixture",
+  "corpus_admission_id": "admission:fixture",
+  "expert_dispositions": {"fixture-expert": "candidate"},
+  "before": {"accept": 0, "abstain": 0},
+  "after": {"accept": 0, "abstain": 0},
+  "costs": {"tokens": 0, "break_even": 0},
+  "promotion_eligible": false,
+  "rollback_target": "tree:start-fixture",
+  "gaps": {
+    "blockers": ["training_unavailable"],
+    "unsupported_claims": ["learned", "verified", "safe", "autonomous", "token-efficient", "production-ready"],
+    "not_run": ["gpu_live_qualification"]
+  }
+}
