@@ -1023,10 +1023,26 @@ class DuckDBConnection:
                 used = self._connection.execute(f"USE {catalog}")
                 _consume_duckdb_result(used)
                 self._active_catalog = catalog
-        if parameters is None:
-            executed = self._connection.execute(statement)
-        else:
-            executed = self._connection.execute(statement, parameters)
+        attempts = 2 if self._is_quack_attach_session() else 1
+        executed: Any = None
+        for attempt in range(attempts):
+            try:
+                if parameters is None:
+                    executed = self._connection.execute(statement)
+                else:
+                    executed = self._connection.execute(statement, parameters)
+                break
+            except BaseException as exc:
+                if (
+                    attempt + 1 < attempts
+                    and _is_quack_invalid_connection(exc)
+                ):
+                    # The remote query handle was consumed, but the ATTACH
+                    # session is still live. Retry the same statement; a new
+                    # ATTACH here interrupts the exclusive owner.
+                    _consume_duckdb_result(self._connection)
+                    continue
+                raise
         if executed is None:
             executed = self._connection
         if normalized.startswith("BEGIN"):
@@ -1036,7 +1052,10 @@ class DuckDBConnection:
         elif normalized.startswith("USE "):
             self._active_catalog = catalog or getattr(self, "_active_catalog", None)
         dml = normalized.startswith(("INSERT ", "UPDATE ", "DELETE "))
-        return self._cursor(executed, dml=dml)
+        cursor = self._cursor(executed, dml=dml)
+        if executed is not self._connection:
+            _consume_duckdb_result(self._connection)
+        return cursor
 
     def executemany(
         self,

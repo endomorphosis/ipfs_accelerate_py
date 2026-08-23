@@ -939,3 +939,44 @@ def test_quack_wrapper_skips_description_across_sequential_queries() -> None:
         assert raw.executes == 3
     finally:
         connection.close()
+
+
+def test_quack_wrapper_retries_invalid_connection_id_without_reattach() -> None:
+    class FlakyRaw:
+        def __init__(self) -> None:
+            self.executes = 0
+            self._rows = [(1,)]
+            self.closed = False
+
+        def execute(self, sql, params=None):
+            del sql, params
+            self.executes += 1
+            if self.executes == 2:
+                raise RuntimeError("Invalid Input Error: Invalid connection id")
+            self._rows = [(self.executes,)]
+            return self
+
+        def fetchall(self):
+            rows = list(self._rows)
+            self._rows = []
+            return rows
+
+        def close(self) -> None:
+            self.closed = True
+
+        def rollback(self) -> None:
+            return None
+
+    raw = FlakyRaw()
+    connection = DuckDBConnection.wrap(raw)
+    connection._default_catalog = "control_plane"
+    connection._active_catalog = "control_plane"
+    connection._quack_uri = "quack:127.0.0.1:41417"
+    try:
+        first = connection.execute("SELECT 1").fetchone()
+        second = connection.execute("SELECT 2").fetchone()
+        assert first is not None and first[0] == 1
+        assert second is not None and second[0] == 3
+        assert raw.executes == 3
+    finally:
+        connection.close()

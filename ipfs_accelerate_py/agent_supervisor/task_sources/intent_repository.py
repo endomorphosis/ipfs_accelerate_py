@@ -58,7 +58,6 @@ from .duckdb_state import (
     is_quack_transport_target,
     open_duckdb_connection,
     quack_owner_mutation_write_lock_path,
-    quack_session_is_live,
     quack_transport_uri,
     unstall_stale_in_progress_tasks as apply_stale_in_progress_unstall,
 )
@@ -915,11 +914,7 @@ class IntentRepository:
         if self._quack_transport:
             with self._bound_connection_lock:
                 connection = self._quack_read_connection
-                if connection is not None and not quack_session_is_live(connection):
-                    try:
-                        connection.close()
-                    except Exception:
-                        pass
+                if connection is not None and getattr(connection, "_closed", False):
                     self._quack_read_connection = None
                     connection = None
                 if connection is None:
@@ -2491,6 +2486,104 @@ class IntentRepository:
                 },
             )
 
+    def _task_relations(
+        self,
+        connection: Any,
+        task_cids: Sequence[str],
+    ) -> tuple[
+        dict[str, list[str]],
+        dict[str, list[dict[str, Any]]],
+        dict[str, list[dict[str, Any]]],
+        dict[str, list[dict[str, Any]]],
+    ]:
+        """Load child rows for many tasks in four statements, not N+1."""
+
+        deps: dict[str, list[str]] = {str(cid): [] for cid in task_cids}
+        outputs: dict[str, list[dict[str, Any]]] = {str(cid): [] for cid in task_cids}
+        acceptance: dict[str, list[dict[str, Any]]] = {str(cid): [] for cid in task_cids}
+        validations: dict[str, list[dict[str, Any]]] = {str(cid): [] for cid in task_cids}
+        if not task_cids:
+            return deps, outputs, acceptance, validations
+        placeholders = ", ".join("?" for _ in task_cids)
+        bound = [str(cid) for cid in task_cids]
+        for item in connection.execute(
+            "SELECT task_cid, dependency_task_cid FROM task_dependencies "
+            f"WHERE task_cid IN ({placeholders}) "
+            "ORDER BY task_cid, dependency_task_cid",
+            bound,
+        ).fetchall():
+            deps.setdefault(str(item[0]), []).append(str(item[1]))
+        for item in connection.execute(
+            "SELECT task_cid, ordinal, path, effect_json FROM task_outputs "
+            f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid, ordinal",
+            bound,
+        ).fetchall():
+            outputs.setdefault(str(item[0]), []).append(
+                {
+                    "ordinal": int(item[1]),
+                    "path": str(item[2]),
+                    "effect": _decode_json(item[3], noun="output effect"),
+                }
+            )
+        for item in connection.execute(
+            "SELECT task_cid, ordinal, criterion, evidence_policy_json "
+            "FROM task_acceptance "
+            f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid, ordinal",
+            bound,
+        ).fetchall():
+            acceptance.setdefault(str(item[0]), []).append(
+                {
+                    "ordinal": int(item[1]),
+                    "criterion": str(item[2]),
+                    "evidence_policy": _decode_json(item[3], noun="acceptance policy"),
+                }
+            )
+        for item in connection.execute(
+            "SELECT task_cid, ordinal, argv_json, policy_json "
+            "FROM task_validations "
+            f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid, ordinal",
+            bound,
+        ).fetchall():
+            validations.setdefault(str(item[0]), []).append(
+                {
+                    "ordinal": int(item[1]),
+                    "argv": _decode_json(item[2], noun="validation argv"),
+                    "policy": _decode_json(item[3], noun="validation policy"),
+                }
+            )
+        return deps, outputs, acceptance, validations
+
+    def _task_mapping(
+        self,
+        row: Sequence[Any],
+        *,
+        deps: Sequence[str],
+        outputs: Sequence[Mapping[str, Any]],
+        acceptance: Sequence[Mapping[str, Any]],
+        validations: Sequence[Mapping[str, Any]],
+    ) -> Mapping[str, Any]:
+        return MappingProxyType(
+            {
+                "task_cid": str(row[0]),
+                "task_alias": str(row[1]),
+                "goal_cid": str(row[2]),
+                "plan_cid": str(row[3] or ""),
+                "objective_id": str(row[4] or ""),
+                "ordinal": int(row[5]),
+                "status": str(row[6]),
+                "revision": int(row[7]),
+                "priority": str(row[8] or ""),
+                "created_at": str(row[9] or ""),
+                "updated_at": str(row[10] or ""),
+                "identity": _decode_json(row[11], noun="task identity"),
+                "body": _decode_json(row[12], noun="task body"),
+                "dependencies": tuple(deps),
+                "outputs": tuple(outputs),
+                "acceptance": tuple(acceptance),
+                "validations": tuple(validations),
+            }
+        )
+
     def get_task(self, task_cid_or_alias: str) -> Mapping[str, Any] | None:
         key = _identifier(task_cid_or_alias, noun="task_cid")
         with self._connection(write=False) as connection:
@@ -2512,70 +2605,15 @@ class IntentRepository:
                 raise IntentRepositoryIntegrityError("task CID/alias lookup is ambiguous")
             row = rows[0]
             tcid = str(row[0])
-            deps = [
-                str(item[0])
-                for item in connection.execute(
-                    "SELECT dependency_task_cid FROM task_dependencies "
-                    "WHERE task_cid = ? ORDER BY dependency_task_cid",
-                    [tcid],
-                ).fetchall()
-            ]
-            outputs = [
-                {
-                    "ordinal": int(item[0]),
-                    "path": str(item[1]),
-                    "effect": _decode_json(item[2], noun="output effect"),
-                }
-                for item in connection.execute(
-                    "SELECT ordinal, path, effect_json FROM task_outputs "
-                    "WHERE task_cid = ? ORDER BY ordinal",
-                    [tcid],
-                ).fetchall()
-            ]
-            acceptance = [
-                {
-                    "ordinal": int(item[0]),
-                    "criterion": str(item[1]),
-                    "evidence_policy": _decode_json(item[2], noun="acceptance policy"),
-                }
-                for item in connection.execute(
-                    "SELECT ordinal, criterion, evidence_policy_json "
-                    "FROM task_acceptance WHERE task_cid = ? ORDER BY ordinal",
-                    [tcid],
-                ).fetchall()
-            ]
-            validations = [
-                {
-                    "ordinal": int(item[0]),
-                    "argv": _decode_json(item[1], noun="validation argv"),
-                    "policy": _decode_json(item[2], noun="validation policy"),
-                }
-                for item in connection.execute(
-                    "SELECT ordinal, argv_json, policy_json "
-                    "FROM task_validations WHERE task_cid = ? ORDER BY ordinal",
-                    [tcid],
-                ).fetchall()
-            ]
-        return MappingProxyType(
-            {
-                "task_cid": tcid,
-                "task_alias": str(row[1]),
-                "goal_cid": str(row[2]),
-                "plan_cid": str(row[3] or ""),
-                "objective_id": str(row[4] or ""),
-                "ordinal": int(row[5]),
-                "status": str(row[6]),
-                "revision": int(row[7]),
-                "priority": str(row[8] or ""),
-                "created_at": str(row[9] or ""),
-                "updated_at": str(row[10] or ""),
-                "identity": _decode_json(row[11], noun="task identity"),
-                "body": _decode_json(row[12], noun="task body"),
-                "dependencies": tuple(deps),
-                "outputs": tuple(outputs),
-                "acceptance": tuple(acceptance),
-                "validations": tuple(validations),
-            }
+            deps, outputs, acceptance, validations = self._task_relations(
+                connection, (tcid,)
+            )
+        return self._task_mapping(
+            row,
+            deps=deps.get(tcid, ()),
+            outputs=outputs.get(tcid, ()),
+            acceptance=acceptance.get(tcid, ()),
+            validations=validations.get(tcid, ()),
         )
 
     def list_tasks(
@@ -2601,7 +2639,10 @@ class IntentRepository:
                 placeholders = ", ".join("?" for _ in statuses)
                 rows = connection.execute(
                     f"""
-                    SELECT task_cid FROM tasks
+                    SELECT task_cid, task_alias, goal_cid, plan_cid, objective_id,
+                           ordinal, status, revision, priority, created_at,
+                           updated_at, identity_json, body_json
+                    FROM tasks
                     WHERE status IN ({placeholders})
                     ORDER BY ordinal, task_cid
                     LIMIT ? OFFSET ?
@@ -2611,18 +2652,29 @@ class IntentRepository:
             else:
                 rows = connection.execute(
                     """
-                    SELECT task_cid FROM tasks
+                    SELECT task_cid, task_alias, goal_cid, plan_cid, objective_id,
+                           ordinal, status, revision, priority, created_at,
+                           updated_at, identity_json, body_json
+                    FROM tasks
                     ORDER BY ordinal, task_cid
                     LIMIT ? OFFSET ?
                     """,
                     [selected, off],
                 ).fetchall()
-        results: list[Mapping[str, Any]] = []
-        for row in rows:
-            task = self.get_task(str(row[0]))
-            if task is not None:
-                results.append(task)
-        return tuple(results)
+            cids = tuple(str(row[0]) for row in rows)
+            deps, outputs, acceptance, validations = self._task_relations(
+                connection, cids
+            )
+        return tuple(
+            self._task_mapping(
+                row,
+                deps=deps.get(str(row[0]), ()),
+                outputs=outputs.get(str(row[0]), ()),
+                acceptance=acceptance.get(str(row[0]), ()),
+                validations=validations.get(str(row[0]), ()),
+            )
+            for row in rows
+        )
 
     # -- evidence / completion -----------------------------------------------
 
