@@ -23,6 +23,7 @@ FEDERATION_OWNED_MODULES: Final[tuple[str, ...]] = (
     "causal_graph",
     "contracts",
     "deduplication",
+    "ducklake_projection",
     "durable_event_router",
     "event_router",
     "event_wait",
