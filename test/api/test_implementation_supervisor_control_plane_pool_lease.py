@@ -299,6 +299,79 @@ def test_control_plane_reload_defers_for_exact_nested_database_pool_lease(
     assert fixture["state_path"].read_bytes() == original_state
 
 
+@pytest.mark.parametrize("include_observation", [True, False])
+def test_watchdog_threads_one_exact_census_into_both_stuck_checks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    include_observation: bool,
+) -> None:
+    fixture = _seed_active_database_pool_lease(tmp_path)
+    supervisor = fixture["supervisor"]
+    supervisor._last_supervisor_maintenance_at = 0.0
+    census = {
+        "worker_metrics_available": True,
+        "phase": "implementing",
+        "required": True,
+        "active_worker_count": 1,
+        "active_worker_pids": [8765],
+        "stalled_without_active_worker": False,
+    }
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    if include_observation:
+        loop._last_worker_status = census
+    expected = census if include_observation else {}
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        supervisor,
+        "_refresh_loop_proof_rollout_status",
+        lambda _loop: None,
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_status_projection",
+        lambda: {"control_plane_update_pending": False},
+    )
+
+    def fake_is_stuck(_state, *, now_ts, worker_status):
+        assert now_ts > 0
+        seen["initial"] = worker_status
+        return False, ""
+
+    def fake_maintenance(_update_phase, *, worker_status=None):
+        seen["maintenance"] = worker_status
+        return {
+            "stuck": False,
+            "main_checkout_repair": {"repaired": False},
+        }
+
+    monkeypatch.setattr(supervisor, "is_stuck", fake_is_stuck)
+    monkeypatch.setattr(
+        supervisor,
+        "_begin_supervisor_maintenance_heartbeat",
+        lambda *_args, **_kwargs: (
+            lambda *_args, **_kwargs: None,
+            lambda *_args, **_kwargs: None,
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        fake_maintenance,
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert seen["initial"] == expected
+    assert seen["maintenance"] == expected
+    assert seen["initial"] is seen["maintenance"]
+
+
 @pytest.mark.parametrize(
     "case",
     [
