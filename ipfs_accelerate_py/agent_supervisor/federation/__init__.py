@@ -43,6 +43,7 @@ FEDERATION_OWNED_MODULES: Final[tuple[str, ...]] = (
     "supervisor_registry",
     "supervisor_runtime",
     "trigger",
+    "work_stealing",
     "world_snapshot",
 )
 
