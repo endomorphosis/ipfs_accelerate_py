@@ -86,6 +86,7 @@ from ..control.plan_execution_store import (
 )
 from ..runtime.resource_scheduler import evaluate_capacity_drift
 from ..task_sources.plan_revision_store import PlanRevisionStore
+from ..task_sources.duckdb_state import LEGACY_BOARD_UNSTALL_POLICY_ENV
 from ..proof.formal_verification_contracts import content_identity
 from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
 from .implementation_supervisor_runner import (
@@ -1400,6 +1401,7 @@ def _managed_daemon_child_environment(
         REPOSITORY_ROOT_ENV,
         STATE_STORE_LIVE_GENERATION_ENV,
         STATE_LIVE_SCHEMA_REVISION_ENV,
+        LEGACY_BOARD_UNSTALL_POLICY_ENV,
     ):
         value = str(os.environ.get(name, "") or "").strip()
         if value:

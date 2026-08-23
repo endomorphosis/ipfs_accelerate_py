@@ -91,6 +91,9 @@ TERMINAL_STATUSES: Final = frozenset(
 )
 STATE_TOKEN_ENV: Final = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
 STATE_OWNER_SOCKET_ENV: Final = "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"
+LEGACY_BOARD_UNSTALL_POLICY_ENV: Final = (
+    "IPFS_ACCELERATE_AGENT_LEGACY_BOARD_UNSTALL_POLICY"
+)
 SUPERVISOR_HEALTH_STALE_SECONDS: Final = 45.0
 UNIX_SOCKET_PATH_CEILING: Final = 100
 EXECUTOR_OWNER_SESSION_ID: Final = "casf-v1-executor"
@@ -1494,6 +1497,7 @@ def _executor_environment(
     environment["IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION"] = str(
         int(owner_identity.get("schema_revision") or 0)
     )
+    environment[LEGACY_BOARD_UNSTALL_POLICY_ENV] = "disabled"
     for name in (
         STATE_TOKEN_ENV,
         STATE_OWNER_SOCKET_ENV,
@@ -2057,6 +2061,10 @@ def state_owner(
         not admit_task_execution or selected_implementation != "/usr/bin/true"
     ):
         raise OperatorError("state-owner executor implementation command is not admitted")
+    # This internal command is a dedicated typed CASF owner even when invoked
+    # directly instead of through ``launch``.  Seal the compatibility helper
+    # policy in-process before any optional legacy inbox consumer can import it.
+    os.environ[LEGACY_BOARD_UNSTALL_POLICY_ENV] = "disabled"
 
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
         ServerLifecycle,
@@ -2091,6 +2099,7 @@ def state_owner(
         secret_handle=program.endpoint_secret_handle,
         allow_experimental=False,
         typed_command_socket_path=paths["owner_socket"],
+        allow_legacy_board_unstall=False,
     )
     if server.typed_command_socket_path() != paths["owner_socket"]:
         raise OperatorError("state owner did not retain the derived socket identity")
@@ -2550,6 +2559,7 @@ def _state_owner_environment() -> dict[str, str]:
         if name in permitted or name.startswith("DUCKDB_")
     }
     result.pop(STATE_TOKEN_ENV, None)
+    result[LEGACY_BOARD_UNSTALL_POLICY_ENV] = "disabled"
     result.setdefault("PATH", os.defpath)
     return result
 

@@ -1023,8 +1023,11 @@ class QuackStateServerConfig:
     isolation_receipt_path: Path | None = None
     typed_command_socket_path_override: Path | None = None
     repository_root: Path | None = None
+    allow_legacy_board_unstall: bool = True
 
     def __post_init__(self) -> None:
+        if type(self.allow_legacy_board_unstall) is not bool:
+            raise TypeError("allow_legacy_board_unstall must be a bool")
         raw_root = self.repository_root
         repository_root: Path | None = None
         if raw_root is not None and str(raw_root).strip():
@@ -3490,6 +3493,10 @@ class QuackStateServer:
     def _unstall_stale_board_gates(self, connection: Any) -> None:
         """Retry leftover in_progress gates before quack_serve occupies the writer."""
 
+        if not self.config.allow_legacy_board_unstall:
+            self._log("legacy board unstall disabled by task-authority policy")
+            return
+
         try:
             result = unstall_stale_in_progress_tasks(connection)
         except Exception as exc:
@@ -5265,6 +5272,9 @@ class QuackStateServer:
                     self.config.container_port or self._bound_port
                 ),
                 "store_id": self.config.store_id,
+                "legacy_board_unstall_enabled": (
+                    self.config.allow_legacy_board_unstall
+                ),
                 "secret_handle": identity.secret_handle if identity else self.secret_handle,
                 "identity": identity.to_dict() if identity else None,
                 "capability_status": (
@@ -5459,6 +5469,7 @@ def build_server(
     ] | None = None,
     event_source: EventSource | None = None,
     typed_command_socket_path: Path | str | None = None,
+    allow_legacy_board_unstall: bool = True,
 ) -> QuackStateServer:
     """Construct a configured :class:`QuackStateServer`."""
 
@@ -5485,6 +5496,7 @@ def build_server(
             if typed_command_socket_path is None
             else Path(typed_command_socket_path)
         ),
+        allow_legacy_board_unstall=allow_legacy_board_unstall,
     )
     server = QuackStateServer(
         config=config,

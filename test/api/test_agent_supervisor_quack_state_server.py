@@ -1913,7 +1913,16 @@ def test_real_default_transport_requires_authenticated_remote_readiness(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required for integration path")
-def test_start_unstalls_stale_in_progress_gate_before_listen(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("allow_legacy_board_unstall", "expected_status", "expected_revision"),
+    ((True, "retrying", 10), (False, "in_progress", 9)),
+)
+def test_start_applies_explicit_legacy_board_unstall_policy(
+    tmp_path: Path,
+    allow_legacy_board_unstall: bool,
+    expected_status: str,
+    expected_revision: int,
+) -> None:
     from datetime import datetime, timedelta, timezone
 
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
@@ -1970,17 +1979,24 @@ def test_start_unstalls_stale_in_progress_gate_before_listen(tmp_path: Path) -> 
         capability_probe=lambda **_k: _compatible_report(),
         process_birth_factory=lambda: _birth(pid=os.getpid()),
         owner_liveness_probe=lambda _b: OwnerLiveness.DEAD,
+        allow_legacy_board_unstall=allow_legacy_board_unstall,
     )
     server.start()
     try:
         raw = getattr(server._connection, "_connection", server._connection)
         row = raw.execute(
-            "SELECT status, revision FROM tasks WHERE task_alias = 'PCCE-021'"
+            "SELECT status, revision, updated_at FROM tasks "
+            "WHERE task_alias = 'PCCE-021'"
         ).fetchone()
         assert row is not None
-        status, revision = row[0], row[1]
-        assert status == "retrying"
-        assert int(revision) == 10
+        status, revision, updated_at = row[0], row[1], row[2]
+        assert status == expected_status
+        assert int(revision) == expected_revision
+        if not allow_legacy_board_unstall:
+            assert updated_at == stale
+        assert server.status()["legacy_board_unstall_enabled"] is (
+            allow_legacy_board_unstall
+        )
     finally:
         server.stop()
 

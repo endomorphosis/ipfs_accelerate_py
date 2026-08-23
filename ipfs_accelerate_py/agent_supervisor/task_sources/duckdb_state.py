@@ -1433,6 +1433,11 @@ def quack_owner_mutation_mac(value: Mapping[str, Any], token: str) -> str:
 _QUACK_MUTATION_DIR_ENV = "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"
 _RUNTIME_REGISTRY_PATH_ENV = "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"
 _STATE_AUTHORITY_MODE_ENV = "IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE"
+LEGACY_BOARD_UNSTALL_POLICY_ENV = (
+    "IPFS_ACCELERATE_AGENT_LEGACY_BOARD_UNSTALL_POLICY"
+)
+LEGACY_BOARD_UNSTALL_ENABLED = "enabled"
+LEGACY_BOARD_UNSTALL_DISABLED = "disabled"
 # Longer than implementation_max_timeout (14400s) so a live Grok run is not
 # stolen. Shorter than a multi-day freeze so a dead in_progress gate unblocks.
 STALE_IN_PROGRESS_UNSTALL_SECONDS = 16_200
@@ -1467,6 +1472,28 @@ _QUACK_ATTACH_CONTENTION_MARKERS = (
     "locked",
     "contention",
 )
+
+
+def legacy_board_unstall_enabled(
+    *, environment: Mapping[str, str] | None = None
+) -> bool:
+    """Return the explicit legacy board-unstall policy for this process.
+
+    Absence preserves the historical owner behavior for legacy launchers.
+    Typed launchers set the policy to ``disabled`` so neither a compatibility
+    request nor an owner-inbox payload can mutate task status outside the
+    typed compare-and-set authority.
+    """
+
+    source = os.environ if environment is None else environment
+    raw = str(source.get(LEGACY_BOARD_UNSTALL_POLICY_ENV, "") or "").strip().lower()
+    if not raw or raw == LEGACY_BOARD_UNSTALL_ENABLED:
+        return True
+    if raw == LEGACY_BOARD_UNSTALL_DISABLED:
+        return False
+    raise DuckDBConnectionPolicyError(
+        "legacy board unstall policy must be 'enabled' or 'disabled'"
+    )
 
 
 _QUACK_ATTACH_TOKEN_ENV = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
@@ -2950,6 +2977,8 @@ _OWNER_INBOX_DML_PREFIXES = _QUACK_OWNER_DML_PREFIXES + ("INSERT ",)
 def apply_owner_command_payload(
     connection: Any,
     payload: Mapping[str, Any],
+    *,
+    environment: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Apply one owner-inbox command on the exclusive writer connection.
 
@@ -2963,6 +2992,10 @@ def apply_owner_command_payload(
         raise ValueError("mutation request must be an object")
     op = str(payload.get("op") or "").strip()
     if op == BOARD_UNSTALL_OWNER_OP:
+        if not legacy_board_unstall_enabled(environment=environment):
+            raise DuckDBConnectionPolicyError(
+                "legacy board_unstall is disabled for typed task authority"
+            )
         stale_raw = payload.get("stale_seconds", STALE_IN_PROGRESS_UNSTALL_SECONDS)
         stale_seconds = int(stale_raw)
         result = unstall_stale_in_progress_tasks(
@@ -3001,6 +3034,7 @@ def request_owner_board_unstall(
     stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
     wait: bool = True,
     timeout_seconds: float = 15.0,
+    environment: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Ask the exclusive owner to retry leftover in_progress gates.
 
@@ -3009,6 +3043,12 @@ def request_owner_board_unstall(
     attach-deferral path so the process does not block on a dead owner.
     """
 
+    if not legacy_board_unstall_enabled(environment=environment):
+        return {
+            "ok": False,
+            "requested": False,
+            "error": "legacy_board_unstall_disabled",
+        }
     if int(stale_seconds) <= 0:
         raise ValueError("stale_seconds must be positive")
     target = quack_owner_mutation_dir()
@@ -3075,6 +3115,7 @@ def owner_should_recycle_for_board_unstall(
     mutation_dir: object = None,
     *,
     min_age_seconds: float = OWNER_BOARD_UNSTALL_BOUNCE_MIN_AGE_SECONDS,
+    environment: Mapping[str, str] | None = None,
 ) -> bool:
     """Return whether the exclusive owner should restart to apply board unstall.
 
@@ -3083,6 +3124,8 @@ def owner_should_recycle_for_board_unstall(
     than ``min_age_seconds`` means the live owner could not apply it.
     """
 
+    if not legacy_board_unstall_enabled(environment=environment):
+        return False
     if mutation_dir is not None:
         target = Path(str(mutation_dir))
     else:
