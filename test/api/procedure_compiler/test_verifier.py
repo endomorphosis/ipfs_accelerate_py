@@ -631,3 +631,46 @@ def test_forbidden_self_producer_names_are_rejected_at_construction() -> None:
     spec = valid_spec()
     with pytest.raises(ProcedureVerificationError, match="not independent"):
         evidence_for(spec, producer_id="self")
+    with pytest.raises(ProcedureVerificationError, match="not independent"):
+        evidence_for(
+            spec,
+            receipts=(receipt("proof-1", "proof", producer_id="model"),),
+        )
+
+
+def test_cid_only_evidence_without_receipts_is_incomplete() -> None:
+    spec = valid_spec()
+    result = ProcedureVerifier().verify(
+        candidate_for(spec),
+        evidence_for(spec, include_receipts=False),
+        policy_for(spec),
+        now_ms=100,
+    )
+    assert not result.accepted
+    assert result.outcome(VerificationLayer.VALIDATION).reason_code in {
+        VerificationReasonCode.VALIDATION_INCOMPLETE.value,
+        VerificationReasonCode.VALIDATION_WEAKENED.value,
+        VerificationReasonCode.MISSING_INDEPENDENT_EVIDENCE.value,
+    }
+
+
+def test_receipt_kind_mismatch_is_rejected() -> None:
+    spec = valid_spec()
+    mismatched = evidence_for(
+        spec,
+        receipts=(
+            receipt("proof-1", "test", contract_id="proof-runner@1"),
+            receipt("test-1", "test", contract_id="focused-tests@1"),
+            receipt("assurance-1", "adversarial"),
+            receipt("held-out-1", "held_out"),
+            receipt("shadow-1", "shadow"),
+        ),
+    )
+    result = ProcedureVerifier().verify(
+        candidate_for(spec), mismatched, policy_for(spec), now_ms=100
+    )
+    assert not result.accepted
+    assert result.outcome(VerificationLayer.VALIDATION).reason_code in {
+        VerificationReasonCode.VALIDATION_WEAKENED.value,
+        VerificationReasonCode.VALIDATION_INCOMPLETE.value,
+    }

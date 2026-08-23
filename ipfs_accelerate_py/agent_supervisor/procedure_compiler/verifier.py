@@ -370,6 +370,9 @@ class IndependentEvidence:
         object.__setattr__(self, "receipts", _optional_receipts(self.receipts, "receipts"))
         if self.producer_id.lower() in FORBIDDEN_SELF_PRODUCERS:
             raise ProcedureVerificationError("evidence producer is not independent")
+        for receipt in self.receipts:
+            if receipt.producer_id.lower() in FORBIDDEN_SELF_PRODUCERS:
+                raise ProcedureVerificationError("receipt producer is not independent")
 
     @property
     def evidence_cids(self) -> tuple[str, ...]:
@@ -772,7 +775,14 @@ class ProcedureVerifier:
                 "verification policy requires confirmation the procedure omitted",
             )
         allowed = set(envelope.requirement_ids)
+        allowed_operations = set(envelope.allowed_operations)
         for step in procedure.steps:
+            if step.operation not in allowed_operations:
+                return _fail(
+                    VerificationLayer.AUTHORITY,
+                    VerificationReasonCode.AUTHORITY_UNSAFE,
+                    "step operation exceeds the procedure envelope",
+                )
             if not set(step.required_authority_ids).issubset(allowed):
                 return _fail(
                     VerificationLayer.AUTHORITY,
@@ -795,12 +805,17 @@ class ProcedureVerifier:
         procedure = candidate.procedure
         family = evidence.task_family
         declared = {effect.effect_class for effect in procedure.declared_effects}
-        permitted = set(family.boundary.permitted_effect_classes) | set(family.effect_classes)
-        if not declared.issubset(permitted):
+        if not declared.issubset(set(family.boundary.permitted_effect_classes)):
             return _fail(
                 VerificationLayer.EFFECT,
                 VerificationReasonCode.EFFECT_UNSAFE,
                 "procedure effects exceed the task-family boundary",
+            )
+        if not declared.issubset(set(family.effect_classes)):
+            return _fail(
+                VerificationLayer.EFFECT,
+                VerificationReasonCode.EFFECT_UNSAFE,
+                "procedure effects exceed the task-family effect classes",
             )
         if policy.effect_policy_revision == "":
             return _fail(
@@ -886,7 +901,7 @@ class ProcedureVerifier:
                 VerificationReasonCode.SEMANTIC_UNSAFE,
                 "task family does not bind the procedure",
             )
-        if family.bindings.policy_revision != policy.bindings.policy_revision:
+        if family.bindings != procedure.bindings or family.bindings != policy.bindings:
             return _fail(
                 VerificationLayer.SEMANTIC,
                 VerificationReasonCode.STALE_BINDINGS,
@@ -1008,49 +1023,60 @@ class ProcedureVerifier:
                     "candidate used its own identity as validation evidence",
                     evidence_cids=(cid,),
                 )
-        receipt_cids = {item.receipt_cid for item in evidence.receipts}
-        if evidence.receipts:
-            bound = (
-                set(evidence.proof_receipt_cids)
-                | set(evidence.test_receipt_cids)
-                | set(evidence.adversarial_assurance_cids)
-                | {evidence.held_out_evaluation_cid, evidence.shadow_evaluation_cid}
+        kind_bound = {
+            "proof": set(evidence.proof_receipt_cids),
+            "test": set(evidence.test_receipt_cids),
+            "adversarial": set(evidence.adversarial_assurance_cids),
+            "held_out": {evidence.held_out_evaluation_cid},
+            "shadow": {evidence.shadow_evaluation_cid},
+        }
+        receipts_by_cid = {item.receipt_cid: item for item in evidence.receipts}
+        bound = set().union(*kind_bound.values()) if kind_bound else set()
+        if not bound.issubset(set(receipts_by_cid)):
+            return _fail(
+                VerificationLayer.VALIDATION,
+                VerificationReasonCode.VALIDATION_INCOMPLETE,
+                "validation receipts do not cover bound evidence identities",
             )
-            if not bound.issubset(receipt_cids):
+        for kind, cids in kind_bound.items():
+            for cid in cids:
+                receipt = receipts_by_cid[cid]
+                if receipt.kind != kind:
+                    return _fail(
+                        VerificationLayer.VALIDATION,
+                        VerificationReasonCode.VALIDATION_WEAKENED,
+                        "receipt kind does not match bound evidence",
+                        evidence_cids=(cid,),
+                    )
+        for receipt in evidence.receipts:
+            if _is_self_producer(receipt.producer_id, candidate):
                 return _fail(
                     VerificationLayer.VALIDATION,
-                    VerificationReasonCode.VALIDATION_INCOMPLETE,
-                    "validation receipts do not cover bound evidence identities",
+                    VerificationReasonCode.SELF_CERTIFICATION,
+                    "receipt producer is not independent",
+                    evidence_cids=(receipt.receipt_cid,),
                 )
-            for receipt in evidence.receipts:
-                if _is_self_producer(receipt.producer_id, candidate):
-                    return _fail(
-                        VerificationLayer.VALIDATION,
-                        VerificationReasonCode.SELF_CERTIFICATION,
-                        "receipt producer is not independent",
-                        evidence_cids=(receipt.receipt_cid,),
-                    )
-                if receipt.bindings != policy.bindings:
-                    return _fail(
-                        VerificationLayer.VALIDATION,
-                        VerificationReasonCode.STALE_BINDINGS,
-                        "evidence receipt bindings are stale",
-                        evidence_cids=(receipt.receipt_cid,),
-                    )
-                if receipt.expires_at_ms <= now_ms:
-                    return _fail(
-                        VerificationLayer.VALIDATION,
-                        VerificationReasonCode.STALE_BINDINGS,
-                        "evidence receipt is expired",
-                        evidence_cids=(receipt.receipt_cid,),
-                    )
+            if receipt.bindings != policy.bindings:
+                return _fail(
+                    VerificationLayer.VALIDATION,
+                    VerificationReasonCode.STALE_BINDINGS,
+                    "evidence receipt bindings are stale",
+                    evidence_cids=(receipt.receipt_cid,),
+                )
+            if receipt.expires_at_ms <= now_ms:
+                return _fail(
+                    VerificationLayer.VALIDATION,
+                    VerificationReasonCode.STALE_BINDINGS,
+                    "evidence receipt is expired",
+                    evidence_cids=(receipt.receipt_cid,),
+                )
         if policy.required_test_contracts:
             covered = {
                 receipt.contract_id
                 for receipt in evidence.receipts
                 if receipt.kind == "test" and receipt.contract_id
             }
-            if evidence.receipts and not set(policy.required_test_contracts).issubset(covered):
+            if not set(policy.required_test_contracts).issubset(covered):
                 return _fail(
                     VerificationLayer.VALIDATION,
                     VerificationReasonCode.VALIDATION_WEAKENED,
@@ -1062,7 +1088,7 @@ class ProcedureVerifier:
                 for receipt in evidence.receipts
                 if receipt.kind == "proof" and receipt.contract_id
             }
-            if evidence.receipts and not set(policy.required_proof_contracts).issubset(covered):
+            if not set(policy.required_proof_contracts).issubset(covered):
                 return _fail(
                     VerificationLayer.VALIDATION,
                     VerificationReasonCode.VALIDATION_WEAKENED,

@@ -42,6 +42,7 @@ from .verifier import (
     REQUIRED_VERIFICATION_LAYERS,
     IndependentEvidence,
     ProcedureVerification,
+    ProcedureVerifier,
     VerificationPolicy,
     VerificationStatus,
     _self_identities,
@@ -484,12 +485,18 @@ class ProcedureCertificateIssuer:
         if not isinstance(policy, VerificationPolicy):
             raise ProcedureCertificateError("policy must be a VerificationPolicy")
         issued_at = _nonnegative_int(now_ms, "now_ms")
+        if candidate.state is ArtifactState.REJECTED:
+            raise ProcedureCertificateError("only independently verified candidates receive certificates")
         if verification.status is not VerificationStatus.ACCEPTED or not verification.accepted:
+            raise ProcedureCertificateError("only independently verified candidates receive certificates")
+        if verification.artifact.state is not ArtifactState.VERIFIED:
             raise ProcedureCertificateError("only independently verified candidates receive certificates")
         if verification.candidate_cid != candidate.content_id:
             raise ProcedureCertificateError("verification does not bind this candidate")
         if verification.procedure_cid != candidate.procedure.content_id:
             raise ProcedureCertificateError("verification does not bind this procedure")
+        if verification.producer_id != evidence.producer_id:
+            raise ProcedureCertificateError("verification does not bind this evidence producer")
         if verification.policy_revision != policy.revision:
             raise ProcedureCertificateError("verification policy is not the current policy")
         if not all(item.accepted for item in verification.layers):
@@ -499,12 +506,15 @@ class ProcedureCertificateIssuer:
             raise ProcedureCertificateError("verification layers do not bind every required obligation")
         if _is_self_issuer(self._issuer_id, candidate, candidate.procedure.content_id):
             raise ProcedureCertificateError("a procedure cannot issue its own certificate")
-        if evidence.producer_id == self._issuer_id:
-            # The evidence producer may be a distinct campaign; the issuer must
-            # still be an independent signing authority, not the evidence bundle.
-            pass
         if _is_self_issuer(evidence.producer_id, candidate, candidate.procedure.content_id):
             raise ProcedureCertificateError("self-produced evidence cannot be certified")
+        independent = ProcedureVerifier().verify(
+            candidate, evidence, policy, now_ms=issued_at
+        )
+        if not independent.accepted:
+            raise ProcedureCertificateError(
+                "only independently verified candidates receive certificates"
+            )
         limitations = evidence.known_limitations if known_limitations is None else _strings(
             known_limitations, "known_limitations", limit=64
         )

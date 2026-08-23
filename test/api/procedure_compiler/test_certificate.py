@@ -17,7 +17,9 @@ from ipfs_accelerate_py.agent_supervisor.procedure_compiler.certificate import (
     ProcedureCertificateIssuer,
     ProcedureCertificateVerifier,
     encode_certificate_statement,
+    issue_procedure_certificate,
     unsigned_certificate_statement,
+    verify_procedure_certificate,
 )
 from ipfs_accelerate_py.agent_supervisor.procedure_compiler.contracts import (
     ArtifactState,
@@ -407,3 +409,30 @@ def test_issuer_construction_requires_trusted_in_scope_signer() -> None:
             keyring(),
             issuer_id=ISSUER_ID,
         )
+
+
+def test_module_helpers_issue_and_verify_without_granting_authority() -> None:
+    spec, candidate, evidence, policy, verification, _certificate, context = issue_valid()
+    certificate = issue_procedure_certificate(
+        candidate, verification, evidence, policy, issuer_for(), now_ms=100
+    )
+    admission = verify_procedure_certificate(
+        certificate, context, ProcedureCertificateVerifier(trust_policy(), keyring())
+    )
+    assert admission.accepted
+    assert admission.usable
+    assert admission.grants_authority is False
+    assert admission.grants_promotion is False
+    assert certificate.procedure_cid == spec.content_id
+    assert certificate.known_limitations == evidence.known_limitations
+    assert certificate.expires_at_ms == 100 + policy.review_horizon_ms
+
+
+def test_future_issued_certificate_fails_freshness() -> None:
+    _spec, _candidate, _evidence, _policy, _verification, certificate, context = issue_valid()
+    admission = ProcedureCertificateVerifier(trust_policy(), keyring()).verify(
+        certificate, replace(context, now_ms=0)
+    )
+    assert not admission.accepted
+    assert admission.reason_code is CertificateReasonCode.STALE_CERTIFICATE
+    assert admission.usable is False
