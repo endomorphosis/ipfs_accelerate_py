@@ -863,13 +863,79 @@ def test_duckdb_cursor_fetches_rows_before_reading_description() -> None:
     assert cursor._columns == ("a", "b")
 
 
-def test_invalid_connection_id_is_quack_session_death() -> None:
+def test_invalid_connection_id_is_not_quack_session_death() -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         _is_quack_session_dead,
+        quack_session_is_live,
     )
 
     class InvalidConnection(Exception):
         def __str__(self) -> str:
             return "Invalid Input Error: Invalid connection id"
 
-    assert _is_quack_session_dead(InvalidConnection()) is True
+    assert _is_quack_session_dead(InvalidConnection()) is False
+
+    class ProbeFailsWithInvalidConnection:
+        _closed = False
+
+        def execute(self, sql):
+            del sql
+            raise InvalidConnection()
+
+    assert quack_session_is_live(ProbeFailsWithInvalidConnection()) is True
+
+
+def test_quack_wrapper_skips_description_across_sequential_queries() -> None:
+    """Quack remote handles die if .description is touched between executes."""
+
+    class PoisonOnDescription:
+        def __init__(self) -> None:
+            self.description_reads = 0
+            self.executes = 0
+            self._rows = [(1,)]
+            self._description = (("n",),)
+            self.closed = False
+
+        def execute(self, sql, params=None):
+            del params
+            self.executes += 1
+            if self.description_reads:
+                raise RuntimeError("Invalid Input Error: Invalid connection id")
+            self._rows = [(self.executes,)]
+            return self
+
+        @property
+        def description(self):
+            self.description_reads += 1
+            return self._description
+
+        def fetchall(self):
+            rows = list(self._rows)
+            self._rows = []
+            return rows
+
+        def close(self) -> None:
+            self.closed = True
+
+        def rollback(self) -> None:
+            return None
+
+    raw = PoisonOnDescription()
+    connection = DuckDBConnection.wrap(raw)
+    connection._default_catalog = "control_plane"
+    connection._active_catalog = "control_plane"
+    connection._quack_uri = "quack:127.0.0.1:41417"
+    try:
+        first = connection.execute("SELECT 1").fetchone()
+        second = connection.execute("SELECT 2").fetchone()
+        third = connection.execute(
+            "SELECT dependency_task_cid FROM task_dependencies WHERE task_cid = ?",
+            ["task:1"],
+        ).fetchall()
+        assert first is not None and first[0] == 1
+        assert second is not None and second[0] == 2
+        assert len(third) == 1 and third[0][0] == 3
+        assert raw.description_reads == 0
+        assert raw.executes == 3
+    finally:
+        connection.close()

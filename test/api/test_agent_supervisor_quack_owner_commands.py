@@ -485,7 +485,10 @@ def test_quack_transport_sql_mutations_fail_closed() -> None:
     connection._default_catalog = "control_plane"  # noqa: SLF001
     with pytest.raises(
         DuckDBConnectionPolicyError,
-        match="read-only|cannot UPDATE/DELETE remote base tables",
+        match=(
+            "read-only|cannot UPDATE/DELETE remote base tables|"
+            "bounded inbox|not in the closed template catalog"
+        ),
     ):
         connection.execute(
             "UPDATE tasks SET status = ? WHERE task_cid = ?",

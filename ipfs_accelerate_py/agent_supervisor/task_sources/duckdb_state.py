@@ -408,43 +408,67 @@ def _result_description_columns(result: Any) -> tuple[str, ...]:
     return tuple(columns)
 
 
-def _materialize_duckdb_result(result: Any) -> tuple[tuple[str, ...], list[Any]]:
+def _infer_columns_from_rows(rows: Sequence[Any]) -> tuple[str, ...]:
+    if not rows:
+        return ()
+    first = rows[0]
+    if isinstance(first, Mapping):
+        return tuple(
+            str(key)
+            for key in first
+            if isinstance(key, str) and key and not key.isdigit()
+        )
+    if isinstance(first, Sequence) and not isinstance(first, (str, bytes, bytearray)):
+        return tuple(str(index) for index in range(len(first)))
+    return ()
+
+
+def _materialize_duckdb_result(
+    result: Any,
+    *,
+    read_description: bool = True,
+) -> tuple[tuple[str, ...], list[Any]]:
     """Fetch rows before reading description or columns.
 
-    Quack remote results consume the cursor when ``description`` is read
-    first.  The next ``execute`` then fails with ``Invalid connection id``.
+    Quack remote results consume the query handle when ``description`` is
+    read at all — even after ``fetchall``.  The next ``execute`` then fails
+    with ``Invalid connection id``.  ATTACH sessions therefore skip
+    description and infer names from the already-fetched rows.
     """
 
     fetchall = getattr(result, "fetchall", None)
     if not callable(fetchall):
-        return _result_description_columns(result), []
+        if read_description:
+            return _result_description_columns(result), []
+        return (), []
     try:
         rows = list(fetchall() or [])
     except Exception as exc:
         if _is_quack_invalid_connection(exc):
             raise
         rows = []
-    columns = _result_description_columns(result)
-    if not columns and rows:
-        first = rows[0]
-        if isinstance(first, Mapping):
-            columns = tuple(
-                str(key)
-                for key in first
-                if isinstance(key, str) and key and not key.isdigit()
-            )
-        elif isinstance(first, Sequence) and not isinstance(
-            first, (str, bytes, bytearray)
-        ):
-            columns = tuple(str(index) for index in range(len(first)))
+    columns: tuple[str, ...] = ()
+    if read_description:
+        columns = _result_description_columns(result)
+    if not columns:
+        columns = _infer_columns_from_rows(rows)
     return columns, rows
 
 
 class DuckDBCursor:
     """Materialize a result before another statement reuses the connection."""
 
-    def __init__(self, connection: Any, *, dml: bool = False) -> None:
-        columns, rows = _materialize_duckdb_result(connection)
+    def __init__(
+        self,
+        connection: Any,
+        *,
+        dml: bool = False,
+        read_description: bool = True,
+    ) -> None:
+        columns, rows = _materialize_duckdb_result(
+            connection,
+            read_description=read_description,
+        )
         self._columns = columns
         self._rows = rows
         self._offset = 0
@@ -909,6 +933,16 @@ class DuckDBConnection:
             self._evict_poisoned_pool_entry(evict_uri)
             raise
 
+    def _is_quack_attach_session(self) -> bool:
+        return bool(getattr(self, "_quack_uri", "") or getattr(self, "_default_catalog", None))
+
+    def _cursor(self, result: Any, *, dml: bool = False) -> DuckDBCursor:
+        return DuckDBCursor(
+            result,
+            dml=dml,
+            read_description=not self._is_quack_attach_session(),
+        )
+
     def _execute_locked(
         self,
         statement: str,
@@ -918,9 +952,9 @@ class DuckDBConnection:
         """Execute and materialize one result while owning the connection lock."""
 
         if normalized.startswith("PRAGMA BUSY_TIMEOUT"):
-            return DuckDBCursor(self._connection)
+            return self._cursor(self._connection)
         if normalized in {"PRAGMA FOREIGN_KEYS=ON", "PRAGMA JOURNAL_MODE=WAL"}:
-            return DuckDBCursor(self._connection)
+            return self._cursor(self._connection)
         catalog = getattr(self, "_default_catalog", None)
         if catalog and normalized.startswith("BEGIN"):
             if self._transaction_active or self._quack_pending_mutations:
@@ -1002,7 +1036,7 @@ class DuckDBConnection:
         elif normalized.startswith("USE "):
             self._active_catalog = catalog or getattr(self, "_active_catalog", None)
         dml = normalized.startswith(("INSERT ", "UPDATE ", "DELETE "))
-        return DuckDBCursor(executed, dml=dml)
+        return self._cursor(executed, dml=dml)
 
     def executemany(
         self,
@@ -1022,7 +1056,7 @@ class DuckDBConnection:
                     "quack transport does not admit executemany"
                 )
             self._connection.executemany(sql, parameters)
-            return DuckDBCursor(self._connection, dml=True)
+            return self._cursor(self._connection, dml=True)
 
     def executescript(self, sql: str) -> DuckDBCursor:
         transaction_kind, _canonical = _classify_transaction_sql(sql)
@@ -1038,7 +1072,7 @@ class DuckDBConnection:
                     "quack transport does not admit scripts"
                 )
             self._connection.execute(sql)
-            return DuckDBCursor(self._connection)
+            return self._cursor(self._connection)
 
     def commit(self) -> None:
         with self._execution_condition:
@@ -1902,16 +1936,16 @@ def _is_transient_quack_attach_error(detail: str) -> bool:
 def _is_quack_session_dead(exc: BaseException) -> bool:
     """Return whether a Quack SQL error means the ATTACH session is gone.
 
-    Query-level ``Authorization failed`` is not session death: dropping the
-    attached connection forces a new ATTACH, which is what wedges the
-    owner and turns later ticks into ``quack_attach_failed``.
+    Query-level ``Authorization failed`` and ``Invalid connection id`` are
+    not session death: dropping the attached connection forces a new
+    ATTACH, which interrupts the owner (``Query interrupted``) and turns
+    later ticks into ``quack_attach_failed``.
     """
 
     detail = str(exc)
     lowered = detail.lower()
     return (
         "Authentication failed" in detail
-        or _is_quack_invalid_connection(exc)
         or "connection refused" in lowered
         or "connection reset" in lowered
         or "connection closed" in lowered
@@ -1925,16 +1959,20 @@ def quack_session_is_live(connection: Any) -> bool:
 
     if connection is None or getattr(connection, "_closed", False):
         return False
-    catalog = str(getattr(connection, "_default_catalog", "") or _QUACK_CONTROL_CATALOG)
-    raw = getattr(connection, "_connection", connection)
-    execute = getattr(raw, "execute", None)
+    execute = getattr(connection, "execute", None)
     if not callable(execute):
         return False
     try:
-        probed = execute(f"SELECT count(*) FROM {catalog}.tasks")
-        _consume_duckdb_result(probed)
-    except Exception:
-        return False
+        probed = execute("SELECT 1")
+        fetchall = getattr(probed, "fetchall", None)
+        if callable(fetchall):
+            fetchall()
+        else:
+            _consume_duckdb_result(probed)
+    except Exception as exc:
+        # A consumed remote cursor is not a dead ATTACH.  Treating it as
+        # session death forces a new ATTACH that interrupts the owner.
+        return _is_quack_invalid_connection(exc)
     return True
 
 
@@ -3611,7 +3649,15 @@ def _open_quack_transport_connection_once(
         if cached is not None:
             try:
                 _probe_quack_connection(cached)
-            except Exception:
+            except Exception as exc:
+                if _is_quack_invalid_connection(exc):
+                    with _QUACK_ATTACH_LOCK:
+                        if (
+                            _QUACK_TRANSPORT_CACHE.get(text) is cached
+                            and not getattr(cached, "_closed", False)
+                        ):
+                            return cached
+                    continue
                 with _QUACK_ATTACH_LOCK:
                     if _QUACK_TRANSPORT_CACHE.get(text) is cached:
                         _QUACK_TRANSPORT_CACHE.pop(text, None)
