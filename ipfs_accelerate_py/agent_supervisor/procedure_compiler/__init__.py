@@ -71,10 +71,16 @@ from .world_model import (
     RepositoryWorldState,
     WorldStateDelta,
 )
+from .experiments import (
+    ExperimentDecision,
+    ExperimentPlanner,
+    ShadowExperimentRunner,
+)
 
-# Register the richer canonical world/transition owners after their modules
-# have finished importing the shared contract primitives.  This preserves one
-# decoder without making contracts.py depend cyclically on projection code.
+# Register the richer canonical world/transition/experiment owners after their
+# modules have finished importing the shared contract primitives.  This
+# preserves one decoder without making contracts.py depend cyclically on
+# projection or planner code.
 for _artifact_type in (
     RepositoryWorldState,
     AbstractRepositoryState,
@@ -83,6 +89,7 @@ for _artifact_type in (
     TransitionModel,
     TransitionPrediction,
     PredictionCalibration,
+    ExperimentDecision,
 ):
     _contracts.ARTIFACT_TYPES_BY_SCHEMA[_artifact_type.SCHEMA] = _artifact_type
 
@@ -105,6 +112,9 @@ __all__ = [
     "TransitionModel",
     "TransitionPrediction",
     "PredictionCalibration",
+    "ExperimentDecision",
+    "ExperimentPlanner",
+    "ShadowExperimentRunner",
     "TrajectoryContractError",
     "parse_execution_trajectory",
     "validate_execution_trajectory_contract",

@@ -358,6 +358,7 @@ def test_decision_relevant_bounded_experiment_runs_on_a_fixture() -> None:
 
     decoded = ExperimentDecision.from_dict(decision.to_dict())
     assert decoded == decision
+    assert parse_procedure_artifact(decision.to_dict()) == decision
     assert parse_procedure_artifact(planned.plan_artifact.to_dict()) == planned.plan_artifact
     assert planned.plan_artifact.state is ArtifactState.SHADOW
     assert planned.plan_artifact.facts["can_authorize"] is False
@@ -454,6 +455,19 @@ def test_disposable_worktree_runs_and_unauthorized_or_production_targets_are_ref
     )
     assert unauthorized.action is ExperimentAction.REFUSE
     assert unauthorized.reason_code is ExperimentReason.UNAUTHORIZED_WORKTREE
+
+    unknown_worktree = _plan(
+        _experiment(
+            isolation=_worktree_isolation(target_id="worktree-unknown"),
+            effects=(ExperimentEffectClass.OBSERVE_DISPOSABLE_WORKTREE,),
+            cost=_cost(worktree_count=1),
+            execution_bound=_bound(max_worktrees=1),
+            risk_class=RiskClass.REVERSIBLE_LOCAL,
+        ),
+        world=_world(),
+    )
+    assert unknown_worktree.action is ExperimentAction.REFUSE
+    assert unknown_worktree.reason_code is ExperimentReason.UNAUTHORIZED_WORKTREE
 
     mutate = _plan(
         _experiment(effects=(ExperimentEffectClass.MUTATE_PRODUCTION,)),
@@ -559,6 +573,22 @@ def test_integer_threshold_and_closed_membership_rules_stay_integer_and_bounded(
     )
     assert result.observation.outcome is ExperimentOutcome.HYPOTHESIS
     assert result.observation.selected_option_id == "hold-shadow"
+
+    overlapping = _experiment(
+        required_data_ids=("coverage_count",),
+        decision_rule=_rule(
+            rule_class=DecisionRuleClass.INTEGER_THRESHOLD,
+            observation_binding="coverage_count",
+            hypothesis_operand=2,
+            counterfactual_operand=5,
+        ),
+    )
+    overlapping_result = ShadowExperimentRunner().run_experiment(
+        _plan(overlapping),
+        overlapping,
+        observed_facts={"coverage_count": 5},
+    )
+    assert overlapping_result.observation.outcome is ExperimentOutcome.HYPOTHESIS
 
     membership = _experiment(
         required_data_ids=("family_id",),
