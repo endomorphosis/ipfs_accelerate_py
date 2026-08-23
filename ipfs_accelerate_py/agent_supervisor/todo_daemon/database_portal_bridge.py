@@ -3840,6 +3840,32 @@ class DatabasePortalExecutionBridge:
     ) -> tuple[str, int] | None:
         """Return exact Portal deferral data without parsing reason text."""
 
+        implementation = result.get("implementation_result")
+        if (
+            isinstance(implementation, Mapping)
+            and implementation.get("deferred") is True
+            and str(implementation.get("reason") or "")
+            == "external_protected_recovery_owner_active"
+        ):
+            # A verified-live paired supervisor is a closed pre-provider
+            # wait.  Do not collapse it into the outer unchanged
+            # ``external_protected_checkout_recovery_required`` shortcut.
+            raw_backoff = implementation.get("backoff_seconds")
+            if (
+                isinstance(raw_backoff, bool)
+                or not isinstance(raw_backoff, int)
+                or raw_backoff < 0
+                or raw_backoff > _MAX_DATABASE_PORTAL_BACKOFF_SECONDS
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal verified-live recovery deferral returned an "
+                    "invalid backoff_seconds value"
+                )
+            return (
+                "external_protected_recovery_owner_active",
+                int(raw_backoff),
+            )
+
         blocked_reason = str(result.get("reason") or "").strip()
         if (
             result.get("blocked") is True
@@ -3871,7 +3897,6 @@ class DatabasePortalExecutionBridge:
                     reason or "external_protected_checkout_recovery_required",
                     int(raw_backoff),
                 )
-        implementation = result.get("implementation_result")
         if not isinstance(implementation, Mapping):
             return None
         if (

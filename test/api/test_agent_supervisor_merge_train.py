@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -724,6 +725,104 @@ def test_database_portal_retry_continues_merge_into_current_projection(
         encoding="utf-8"
     )
     assert "- Status: completed" in consumer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    ("missing_binding", "projection_authority", "task_cid_mismatch"),
+)
+def test_database_portal_retry_continuation_fails_closed_on_binding_mismatch(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    producer_attempt = _database_projection_attempt(
+        attempt_id="attempt:producer",
+        claim_id="claim:producer",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    consumer_task_cid = (
+        "task:cid:other" if tamper == "task_cid_mismatch" else "task:cid:ref-040"
+    )
+    consumer_attempt = _database_projection_attempt(
+        attempt_id="attempt:consumer",
+        claim_id="claim:consumer",
+        task_cid=consumer_task_cid,
+        attempt_number=2,
+    )
+    producer, producer_paths, _producer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=producer_attempt,
+        record=_database_projection_record(revision=2),
+    )
+    consumer, consumer_paths, _consumer_binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=consumer_attempt,
+        record=_database_projection_record(
+            task_cid=consumer_task_cid,
+            revision=4,
+        ),
+    )
+    if tamper == "missing_binding":
+        consumer_paths.binding.unlink()
+    elif tamper == "projection_authority":
+        binding = json.loads(consumer_paths.binding.read_text(encoding="utf-8"))
+        binding.pop("binding_id")
+        binding["projection_authority"] = True
+        binding["binding_id"] = "sha256:" + hashlib.sha256(
+            json.dumps(
+                binding,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        consumer_paths.binding.write_text(
+            json.dumps(binding, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    _git(repo, "branch", "implementation/ref-040")
+    task = producer._load_tasks()[0]
+    commit = _git(repo, "rev-parse", "HEAD")
+    request, _queued = producer._enqueue_merge_candidate(
+        branch_name="implementation/ref-040",
+        implementation_commit=commit,
+        baseline_ref=commit,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+        validation_result={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "selection": {"scope": "pre_merge"},
+        },
+    )
+    target_before = _git(repo, "rev-parse", "main")
+
+    result = consumer._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["reason"] in {
+        "cross_board_manual_completion_authority_metadata_invalid",
+        "cross_board_manual_completion_authority_metadata_missing",
+        "merge_target_binding_mismatch",
+        "merge_candidate_primary_identity_mismatch",
+    }
+    assert _git(repo, "rev-parse", "main") == target_before
+    assert "- Status: ready" in producer_paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    assert "- Status: ready" in consumer_paths.task_projection.read_text(
         encoding="utf-8"
     )
 

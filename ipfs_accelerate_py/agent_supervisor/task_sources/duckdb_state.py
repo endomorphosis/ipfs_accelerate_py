@@ -3104,6 +3104,26 @@ def _attach_quack_once(uri: str, secret: str) -> Any:
     return connection
 
 
+def _attach_quack_serialized(uri: str, secret: str) -> Any:
+    """Serialize one ATTACH syscall across processes, then release the lock.
+
+    Sibling lanes share a listen backlog of a handful of TCP handshakes.
+    Holding ``attach.lock`` across retry sleep makes those lanes time out
+    on the lock and die. Authentication-failed contention still retries;
+    only the ATTACH itself is exclusive.
+    """
+
+    lock_path = quack_attach_lock_path(uri)
+    lock_timeout = max(DEFAULT_LOCK_TIMEOUT_SECONDS, 45.0)
+    try:
+        with exclusive_file_lock(lock_path, timeout_seconds=lock_timeout):
+            return _attach_quack_once(uri, secret)
+    except TimeoutError as exc:
+        raise DuckDBConnectionPolicyError(
+            f"timed out acquiring quack attach lock: {lock_path}"
+        ) from exc
+
+
 def _open_quack_transport_connection_once(
     uri: str,
     *,
@@ -3115,11 +3135,12 @@ def _open_quack_transport_connection_once(
     one-writer file policy does not apply: Quack ATTACH requires a process
     that can reach the loopback state-owner.
 
-    Attach is serialized and retried: the owner DuckDB connection is the
-    single writer, the serve backlog is small, and a new ATTACH per query
-    otherwise loses the handshake to contention (often reported as
-    ``Authentication failed``). Live attachments are reused in-process.
-    Closed catalog mutations bind the live server identity onto the wrapper.
+    Attach is serialized across processes and retried: the owner DuckDB
+    connection is the single writer, the serve backlog is small, and a new
+    ATTACH per query otherwise loses the handshake to contention (often
+    reported as ``Authentication failed``). Retry sleeps happen outside
+    ``attach.lock``. Live attachments are reused in-process. Closed
+    catalog mutations bind the live server identity onto the wrapper.
     """
 
     text = quack_transport_uri(uri)
@@ -3160,7 +3181,7 @@ def _open_quack_transport_connection_once(
                     uri=text
                 )
             try:
-                raw = _attach_quack_once(text, secret)
+                raw = _attach_quack_serialized(text, secret)
             except BaseException as exc:
                 last_error = exc
                 if (

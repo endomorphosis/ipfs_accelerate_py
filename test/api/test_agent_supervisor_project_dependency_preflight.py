@@ -636,6 +636,44 @@ def test_dependency_probe_output_is_bounded_while_child_is_running(
     assert error["reason"] == "dependency_probe_output_exceeded_bound"
 
 
+def test_dependency_probe_uses_inherited_sealed_fd_when_parent_is_non_dumpable() -> None:
+    script = """
+import json
+import os
+
+os.environ["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = "regression-fixture"
+
+from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+    harden_state_authority_process,
+)
+from ipfs_accelerate_py.agent_supervisor.validation.project_dependency_preflight import (
+    _run_dependency_probe,
+)
+
+assert harden_state_authority_process() is True
+result = _run_dependency_probe({"projects": []})
+print(json.dumps(result, sort_keys=True))
+raise SystemExit(0 if result.get("passed") else 1)
+"""
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        env=dict(os.environ),
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    result = json.loads(completed.stdout)
+    assert result["passed"] is True
+    assert result["reason"] == "project_dependencies_satisfied"
+    assert result["python_executable"]
+    assert result["validation_python_launcher"]["sealed"] is True
+
+
 def test_pytest_command_selects_declared_test_extra_deterministically(
     tmp_path,
 ) -> None:
