@@ -1270,7 +1270,12 @@ class InProcessQuackTransport:
         live_ok = False
         if rows is not None and len(rows) == 1:
             raw_row = rows[0]
-            cells = tuple(raw_row) if isinstance(raw_row, (list, tuple)) else (raw_row,)
+            if isinstance(raw_row, Mapping):
+                cells = tuple(raw_row[key] for key in raw_row)
+            elif isinstance(raw_row, (list, tuple)):
+                cells = tuple(raw_row)
+            else:
+                cells = (raw_row,)
             if cells == (1,) or (cells and cells[0] in (1, "1", True)):
                 live_ok = True
         if not live_ok:
