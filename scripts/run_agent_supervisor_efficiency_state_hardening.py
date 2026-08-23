@@ -2612,11 +2612,6 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
             if worker_observed_at_ns is not None
             else None
         )
-        if (
-            worker_observation_age_seconds is not None
-            and -1.0 <= worker_observation_age_seconds < 0.0
-        ):
-            worker_observation_age_seconds = 0.0
         worker_observation_generation = str(
             payload.get("worker_observation_generation") or ""
         )
@@ -2694,7 +2689,7 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
             and worker_root_identity_source == "supervised_child_identity"
             and bool(run_id)
             and worker_observed_at_ns is not None
-            and worker_observed_at_ns <= observed.st_mtime_ns + 1_000_000_000
+            and worker_observed_at_ns <= observed.st_mtime_ns
             and worker_observation_age_seconds is not None
             and 0.0 <= worker_observation_age_seconds <= 60.0
             and worker_observation_generation
@@ -3586,10 +3581,16 @@ def _await_initial_health(
             isinstance(current_authority, Mapping)
             and current_authority.get("available") is True
         ):
-            # Replica publication can still be mutating during owner warmup.
-            # Keep fail-closed after grace, but do not abort the first pair.
-            first = second
-            continue
+            _record_control_failure(
+                paths,
+                failure,
+                failure_event,
+                reason_code="authoritative_status_unavailable_two_samples",
+                error_type="ASEHHealthQueryFailure",
+            )
+            raise OperatorError(
+                "two consecutive authoritative status samples unavailable"
+            )
         if receipt.get("healthy") is True:
             return receipt, last_progress_at
         first = second

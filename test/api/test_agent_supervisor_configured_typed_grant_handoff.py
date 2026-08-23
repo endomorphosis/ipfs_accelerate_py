@@ -2004,8 +2004,8 @@ def test_aseh_lane_status_projects_worker_watchdog(
     future_obs = aseh_operator._lane_status_observations(
         board, now=time.time()
     )
-    assert future_obs[0]["watchdog_admissible"] is True
-    assert future_obs[0]["worker_observation_age_seconds"] == 0.0
+    assert future_obs[0]["watchdog_admissible"] is False
+    assert future_obs[0]["worker_observation_age_seconds"] < 0.0
     payload["worker_observed_at_ns"] = time.time_ns()
 
     payload.update(
@@ -2715,12 +2715,12 @@ def test_aseh_post_admission_grace_is_exclusive_to_typed_lane_loss() -> None:
     )[:2] == ("fail", "authoritative_scheduler_not_live")
 
 
-def test_aseh_startup_retries_unsafe_replica_until_stable(
+def test_aseh_startup_fails_after_two_unavailable_authority_samples(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = time.time()
-    board, fixture_paths, before = _aseh_health_fixture(
+    board, fixture_paths, current = _aseh_health_fixture(
         tmp_path,
         status="claimed",
         revision=2,
@@ -2729,16 +2729,6 @@ def test_aseh_startup_retries_unsafe_replica_until_stable(
         active=True,
         observed_at=now - 0.25,
         lane_mtime_ns=int((now - 0.25) * 1_000_000_000),
-    )
-    _board, _paths, current = _aseh_health_fixture(
-        tmp_path,
-        status="claimed",
-        revision=2,
-        event_cursor=11,
-        ready=False,
-        active=True,
-        observed_at=now,
-        lane_mtime_ns=int(now * 1_000_000_000),
     )
     paths = {
         **fixture_paths,
@@ -2757,7 +2747,8 @@ def test_aseh_startup_retries_unsafe_replica_until_stable(
         "task_statuses": {},
         "task_revisions": {},
     }
-    samples = [unavailable, json.loads(json.dumps(unavailable)), before, current]
+    samples = [unavailable, json.loads(json.dumps(unavailable))]
+    recorded_failure: dict[str, object] = {}
 
     def fake_sample(*_args: object, **_kwargs: object) -> dict[str, object]:
         assert samples, "startup admission sampled past the stable pair"
@@ -2765,18 +2756,34 @@ def test_aseh_startup_retries_unsafe_replica_until_stable(
 
     monkeypatch.setattr(aseh_operator, "_status_sample", fake_sample)
     monkeypatch.setattr(aseh_operator, "STATUS_SAMPLE_INTERVAL_SECONDS", 0)
-    receipt, _last_progress_at = aseh_operator._await_initial_health(
-        board,
-        paths,
-        server=SimpleNamespace(),
-        scheduler=SimpleNamespace(pid=4242, poll=lambda: None),
-        launched_at=now - 0.5,
-        failure={},
-        failure_event=threading.Event(),
-        shutdown_requested=threading.Event(),
-        received_signal={},
+    monkeypatch.setattr(
+        aseh_operator,
+        "_record_control_failure",
+        lambda _paths, _failure, _event, **fields: (
+            recorded_failure.update(fields)
+        ),
     )
-    assert receipt["healthy"] is True
+
+    with pytest.raises(
+        aseh_operator.OperatorError,
+        match="two consecutive authoritative status samples unavailable",
+    ):
+        aseh_operator._await_initial_health(
+            board,
+            paths,
+            server=SimpleNamespace(),
+            scheduler=SimpleNamespace(pid=4242, poll=lambda: None),
+            launched_at=now - 0.5,
+            failure={},
+            failure_event=threading.Event(),
+            shutdown_requested=threading.Event(),
+            received_signal={},
+        )
+
+    assert recorded_failure == {
+        "reason_code": "authoritative_status_unavailable_two_samples",
+        "error_type": "ASEHHealthQueryFailure",
+    }
     assert samples == []
 
 
