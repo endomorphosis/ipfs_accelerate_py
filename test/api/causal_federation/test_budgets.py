@@ -8,6 +8,11 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from ipfs_accelerate_py.agent_supervisor.federation.budgets import (
     AuthoritativeBudgetAuthority,
+    BudgetAuthorityError,
+    BudgetCasError,
+    BudgetKind,
+    HierarchicalBudgetLedger,
+    refuse_ducklake_budget_authority,
 )
 from ipfs_accelerate_py.agent_supervisor.federation.contracts import (
     BudgetDimensionName,
@@ -61,10 +66,7 @@ class DurableBudgetStoreFake:
         record = self.rows.get(idempotency_key)
         if record is None:
             return None
-        if (
-            record.binding.tenant_id != tenant_id
-            or record.owner_id != federation_id
-        ):
+        if record.binding.tenant_id != tenant_id or record.owner_id != federation_id:
             raise FederationAuthorityError("lookup scope differs")
         return record
 
@@ -168,3 +170,150 @@ def test_authoritative_budget_missing_capacity_and_cross_scope_release_fail_clos
     )
     with pytest.raises(FederationAuthorityError, match="missing dimensions"):
         missing.reserve(request, policy)
+
+
+def _ledger() -> HierarchicalBudgetLedger:
+    ledger = HierarchicalBudgetLedger()
+    ledger.open_root(
+        account_id="budget:federation",
+        owner_id="federation:test",
+        dimensions={
+            BudgetDimensionName.CPU_MILLIS: 1_000,
+            BudgetDimensionName.INPUT_TOKENS: 500,
+            BudgetDimensionName.VALIDATION_MILLIS: 200,
+        },
+    )
+    return ledger
+
+
+def test_children_cannot_exceed_parent_remainder() -> None:
+    ledger = _ledger()
+    first = ledger.allocate_child(
+        parent_account_id="budget:federation",
+        child_account_id="budget:supervisor-a",
+        child_owner_id="supervisor:a",
+        dimension=BudgetDimensionName.CPU_MILLIS,
+        amount=600,
+        expected_parent_revision=1,
+    )
+    assert first.resulting_revision == 2
+    assert ledger.account("budget:supervisor-a").kind is BudgetKind.SUPERVISOR
+    with pytest.raises(BudgetAuthorityError, match="exceeds parent remainder"):
+        ledger.allocate_child(
+            parent_account_id="budget:federation",
+            child_account_id="budget:supervisor-b",
+            child_owner_id="supervisor:b",
+            dimension=BudgetDimensionName.CPU_MILLIS,
+            amount=500,
+            expected_parent_revision=2,
+        )
+    ledger.allocate_child(
+        parent_account_id="budget:federation",
+        child_account_id="budget:supervisor-b",
+        child_owner_id="supervisor:b",
+        dimension=BudgetDimensionName.CPU_MILLIS,
+        amount=400,
+        expected_parent_revision=2,
+    )
+    assert ledger.conserved("budget:federation", BudgetDimensionName.CPU_MILLIS) is True
+
+
+def test_consume_return_and_sibling_transfer_conserve_parent_reservation() -> None:
+    ledger = _ledger()
+    ledger.allocate_child(
+        parent_account_id="budget:federation",
+        child_account_id="budget:supervisor-a",
+        child_owner_id="supervisor:a",
+        dimension=BudgetDimensionName.INPUT_TOKENS,
+        amount=300,
+        expected_parent_revision=1,
+    )
+    ledger.allocate_child(
+        parent_account_id="budget:federation",
+        child_account_id="budget:supervisor-b",
+        child_owner_id="supervisor:b",
+        dimension=BudgetDimensionName.INPUT_TOKENS,
+        amount=100,
+        expected_parent_revision=2,
+    )
+    consume = ledger.consume(
+        account_id="budget:supervisor-a",
+        dimension=BudgetDimensionName.INPUT_TOKENS,
+        amount=50,
+        expected_revision=1,
+    )
+    assert consume.resulting_revision == 2
+    ledger.return_unused(
+        child_account_id="budget:supervisor-a",
+        dimension=BudgetDimensionName.INPUT_TOKENS,
+        amount=100,
+        expected_child_revision=2,
+        expected_parent_revision=3,
+    )
+    assert ledger.conserved("budget:federation", BudgetDimensionName.INPUT_TOKENS) is True
+    ledger.transfer(
+        source_account_id="budget:supervisor-a",
+        target_account_id="budget:supervisor-b",
+        dimension=BudgetDimensionName.INPUT_TOKENS,
+        amount=50,
+        expected_source_revision=3,
+        expected_target_revision=1,
+    )
+    assert (
+        ledger.account("budget:supervisor-a").slice_for(BudgetDimensionName.INPUT_TOKENS).ceiling
+        == 150
+    )
+    assert (
+        ledger.account("budget:supervisor-b").slice_for(BudgetDimensionName.INPUT_TOKENS).ceiling
+        == 150
+    )
+    assert ledger.conserved("budget:federation", BudgetDimensionName.INPUT_TOKENS) is True
+
+
+def test_stale_revision_fails_closed() -> None:
+    ledger = _ledger()
+    with pytest.raises(BudgetCasError, match="epoch does not match"):
+        ledger.allocate_child(
+            parent_account_id="budget:federation",
+            child_account_id="budget:supervisor-a",
+            child_owner_id="supervisor:a",
+            dimension=BudgetDimensionName.CPU_MILLIS,
+            amount=10,
+            expected_parent_revision=99,
+        )
+
+
+def test_validation_reserve_cannot_fund_speculative_reasoning() -> None:
+    ledger = _ledger()
+    with pytest.raises(BudgetAuthorityError, match="validation reserves cannot fund"):
+        ledger.reallocate(
+            account_id="budget:federation",
+            source_dimension=BudgetDimensionName.VALIDATION_MILLIS,
+            target_dimension=BudgetDimensionName.INPUT_TOKENS,
+            amount=20,
+            expected_revision=1,
+        )
+    with pytest.raises(BudgetAuthorityError, match="validation reserves cannot fund"):
+        ledger.consume(
+            account_id="budget:federation",
+            dimension=BudgetDimensionName.VALIDATION_MILLIS,
+            amount=10,
+            expected_revision=1,
+            speculative=True,
+        )
+
+
+def test_ducklake_cannot_admit_budget_authority() -> None:
+    with pytest.raises(BudgetAuthorityError, match="DuckLake cannot admit"):
+        refuse_ducklake_budget_authority({"authoritative": True})
+    ledger = _ledger()
+    with pytest.raises(BudgetAuthorityError, match="DuckLake cannot admit"):
+        ledger.allocate_child(
+            parent_account_id="budget:federation",
+            child_account_id="budget:supervisor-a",
+            child_owner_id="supervisor:a",
+            dimension=BudgetDimensionName.CPU_MILLIS,
+            amount=10,
+            expected_parent_revision=1,
+            ducklake_receipt={"schedules": True},
+        )
