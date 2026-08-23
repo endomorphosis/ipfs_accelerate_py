@@ -12,12 +12,15 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, ClassVar
 
 from ..task_sources.control_plane_contracts import content_identity
 from ..task_sources.quack_state_client import QuackStateClient, StatementKind
 from .causal_graph import CausalGraphCommit, CausalGraphError
 from .contracts import (
+    _SECRET_KEY_RE,
+    _SECRET_VALUE_RE,
     FederationAuthorityError,
     FederationBinding,
     FederationContractError,
@@ -353,6 +356,231 @@ def project_event_range(
     )
 
 
+def _reject_redaction_leak(payload: Mapping[str, Any]) -> None:
+    if not isinstance(payload, Mapping):
+        raise FederationContractError("projection payload must be an object")
+
+    def walk(value: Any, *, key: str) -> None:
+        if isinstance(value, Mapping):
+            for nested_key, nested in value.items():
+                text = str(nested_key)
+                if _SECRET_KEY_RE.search(text):
+                    raise DuckLakeProjectionAuthorityError(
+                        "projection payload cannot carry secret keys"
+                    )
+                walk(nested, key=text)
+            return
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                walk(item, key=key)
+            return
+        if isinstance(value, str) and _SECRET_VALUE_RE.search(value):
+            raise DuckLakeProjectionAuthorityError("projection payload must be redacted")
+
+    walk(payload, key="")
+
+
+@dataclass(frozen=True)
+class ProjectionSecurityContext:
+    """Tenant, schema, and redacted payload bounds for a projection recovery."""
+
+    SCHEMA: ClassVar[str] = (
+        "ipfs_accelerate_py/agent-supervisor/causal-federation/ducklake-security-context@1"
+    )
+
+    tenant_id: str
+    schema_revision: int
+    expected_schema_revision: int
+    payload: Mapping[str, Any] = MappingProxyType({})
+
+    def __post_init__(self) -> None:
+        _identifier(self.tenant_id, "tenant_id")
+        _integer(self.schema_revision, "schema_revision", minimum=1)
+        _integer(self.expected_schema_revision, "expected_schema_revision", minimum=1)
+        if not isinstance(self.payload, Mapping):
+            raise FederationContractError("payload must be an object")
+        object.__setattr__(self, "payload", MappingProxyType(dict(self.payload)))
+        _reject_redaction_leak(self.payload)
+
+
+@dataclass(frozen=True)
+class ProjectionRecoveryReceipt:
+    """Observational resume of a sealed projection. Sealed partitions stay put."""
+
+    SCHEMA: ClassVar[str] = (
+        "ipfs_accelerate_py/agent-supervisor/causal-federation/ducklake-projection-recovery@1"
+    )
+
+    status: str
+    tenant_id: str
+    schema_revision: int
+    recovered_from_watermark: int
+    recovered_to_watermark: int
+    preserved_partition_ids: tuple[str, ...]
+    recovered_partition_ids: tuple[str, ...]
+    rewritten: bool = False
+    authoritative: bool = False
+
+    def __post_init__(self) -> None:
+        status = _identifier(self.status, "status")
+        if status not in PROJECTION_STATUSES:
+            raise FederationContractError("projection status is not closed")
+        object.__setattr__(self, "status", status)
+        _identifier(self.tenant_id, "tenant_id")
+        _integer(self.schema_revision, "schema_revision", minimum=1)
+        _integer(self.recovered_from_watermark, "recovered_from_watermark")
+        _integer(self.recovered_to_watermark, "recovered_to_watermark")
+        preserved = tuple(_identifier(item, "preserved_partition_ids") for item in self.preserved_partition_ids)
+        recovered = tuple(_identifier(item, "recovered_partition_ids") for item in self.recovered_partition_ids)
+        object.__setattr__(self, "preserved_partition_ids", preserved)
+        object.__setattr__(self, "recovered_partition_ids", recovered)
+        if type(self.rewritten) is not bool or type(self.authoritative) is not bool:
+            raise FederationContractError("rewritten and authoritative must be boolean")
+        if self.rewritten is not False:
+            raise DuckLakeProjectionError("sealed projection partitions cannot be rewritten")
+        if self.authoritative is not False:
+            raise DuckLakeProjectionAuthorityError(
+                "DuckLake cannot admit scheduling, lease, or completion authority"
+            )
+
+    @property
+    def cid(self) -> str:
+        return content_identity(
+            {
+                "status": self.status,
+                "tenant_id": self.tenant_id,
+                "schema_revision": self.schema_revision,
+                "recovered_from_watermark": self.recovered_from_watermark,
+                "recovered_to_watermark": self.recovered_to_watermark,
+                "preserved_partition_ids": list(self.preserved_partition_ids),
+                "recovered_partition_ids": list(self.recovered_partition_ids),
+                "rewritten": False,
+                "authoritative": False,
+            }
+        )
+
+
+def recover_interrupted_projection(
+    *,
+    remaining_range: SourceRange,
+    remaining_partitions: Sequence[ProjectionPartition],
+    binding: FederationBinding,
+    capability: DuckLakeCapability,
+    security: ProjectionSecurityContext,
+    expected_fence: int,
+    fencing_epoch: int = 1,
+    sealed_receipt: ProjectionReceipt | None = None,
+    previous_cursor: ProjectionCursor | None = None,
+) -> ProjectionRecoveryReceipt:
+    """Resume a projection after interruption without rewriting sealed partitions."""
+
+    if not isinstance(remaining_range, SourceRange):
+        raise FederationContractError("source range is required")
+    if not isinstance(binding, FederationBinding):
+        raise FederationContractError("binding must be a FederationBinding")
+    if not isinstance(capability, DuckLakeCapability):
+        raise FederationContractError("DuckLake capability is required")
+    if not isinstance(security, ProjectionSecurityContext):
+        raise FederationContractError("security context is required")
+    if security.tenant_id != binding.tenant_id:
+        raise DuckLakeProjectionAuthorityError("projection tenant is not isolated")
+    if retrieval_establishes_authority() is not False or projection_establishes_authority() is not False:
+        raise DuckLakeProjectionAuthorityError(
+            "DuckLake cannot admit scheduling, lease, or completion authority"
+        )
+    preserved = sealed_receipt.partition_ids if sealed_receipt is not None else ()
+    if capability.available is not True:
+        status = "lagging" if capability.lagging else "unavailable"
+        return ProjectionRecoveryReceipt(
+            status=status,
+            tenant_id=security.tenant_id,
+            schema_revision=security.schema_revision,
+            recovered_from_watermark=remaining_range.from_watermark,
+            recovered_to_watermark=remaining_range.from_watermark,
+            preserved_partition_ids=preserved,
+            recovered_partition_ids=(),
+            rewritten=False,
+            authoritative=False,
+        )
+    if security.schema_revision != security.expected_schema_revision:
+        return ProjectionRecoveryReceipt(
+            status="lagging",
+            tenant_id=security.tenant_id,
+            schema_revision=security.schema_revision,
+            recovered_from_watermark=remaining_range.from_watermark,
+            recovered_to_watermark=remaining_range.from_watermark,
+            preserved_partition_ids=preserved,
+            recovered_partition_ids=(),
+            rewritten=False,
+            authoritative=False,
+        )
+    if sealed_receipt is not None:
+        if remaining_range.from_watermark <= sealed_receipt.to_watermark:
+            raise DuckLakeProjectionError("sealed projection partitions cannot be rewritten")
+        if remaining_range.from_watermark != sealed_receipt.cursor_watermark + 1:
+            raise DuckLakeProjectionError("source range is not contiguous with the projection cursor")
+        if remaining_range.source_root != sealed_receipt.source_root:
+            raise DuckLakeProjectionError("projection cursor source root differs")
+        if remaining_range.tree_id != sealed_receipt.tree_id:
+            raise DuckLakeProjectionAuthorityError("projection tree is not bound to the federation")
+    resume_cursor = previous_cursor
+    if sealed_receipt is not None and previous_cursor is None:
+        resume_cursor = ProjectionCursor(
+            source_root=sealed_receipt.source_root,
+            watermark=sealed_receipt.cursor_watermark,
+            partition_ordinal=len(sealed_receipt.partition_ids),
+        )
+    projected = project_event_range(
+        remaining_range,
+        remaining_partitions,
+        binding=binding,
+        capability=capability,
+        expected_fence=expected_fence,
+        previous_cursor=resume_cursor,
+        fencing_epoch=fencing_epoch,
+    )
+    return ProjectionRecoveryReceipt(
+        status=projected.status,
+        tenant_id=security.tenant_id,
+        schema_revision=security.schema_revision,
+        recovered_from_watermark=projected.from_watermark,
+        recovered_to_watermark=projected.to_watermark,
+        preserved_partition_ids=preserved,
+        recovered_partition_ids=projected.partition_ids,
+        rewritten=False,
+        authoritative=False,
+    )
+
+
+class DuckLakeProjectionRecovery:
+    """Resume interrupted DuckLake projections with redaction and tenant isolation."""
+
+    def recover(
+        self,
+        *,
+        remaining_range: SourceRange,
+        remaining_partitions: Sequence[ProjectionPartition],
+        binding: FederationBinding,
+        capability: DuckLakeCapability,
+        security: ProjectionSecurityContext,
+        expected_fence: int,
+        fencing_epoch: int = 1,
+        sealed_receipt: ProjectionReceipt | None = None,
+        previous_cursor: ProjectionCursor | None = None,
+    ) -> ProjectionRecoveryReceipt:
+        return recover_interrupted_projection(
+            remaining_range=remaining_range,
+            remaining_partitions=remaining_partitions,
+            binding=binding,
+            capability=capability,
+            security=security,
+            expected_fence=expected_fence,
+            fencing_epoch=fencing_epoch,
+            sealed_receipt=sealed_receipt,
+            previous_cursor=previous_cursor,
+        )
+
+
 class DuckLakeProjectionWorker:
     """Compile idempotent, range-bound DuckLake history partitions."""
 
@@ -405,6 +633,38 @@ def _projection_templates() -> tuple[Any, ...]:
         ),
         _template(
             "casf_select_ducklake_projection_receipt",
+            """
+            SELECT federation_receipt_id, receipt_kind, event_watermark, content_ref
+            FROM federation_receipts
+            WHERE federation_receipt_id = ? AND tenant_id = ? AND federation_id = ?
+            LIMIT 1
+            """,
+            ("federation_receipt_id", "tenant_id", "federation_id"),
+            kind=StatementKind.QUERY,
+        ),
+        _template(
+            "casf_insert_ducklake_projection_recovery",
+            """
+            INSERT INTO federation_receipts (
+                federation_receipt_id, tenant_id, federation_id, receipt_kind,
+                federation_revision, control_plane_generation, event_watermark,
+                issuer_id, content_ref, recorded_at
+            ) VALUES (?, ?, ?, 'ducklake_projection_recovery', ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "federation_receipt_id",
+                "tenant_id",
+                "federation_id",
+                "federation_revision",
+                "control_plane_generation",
+                "event_watermark",
+                "issuer_id",
+                "content_ref",
+                "recorded_at",
+            ),
+        ),
+        _template(
+            "casf_select_ducklake_projection_recovery",
             """
             SELECT federation_receipt_id, receipt_kind, event_watermark, content_ref
             FROM federation_receipts
@@ -515,6 +775,64 @@ class DuckLakeProjectionStore(FixedPointStore):
             raise DuckLakeProjectionError("DuckLake projection receipt is absent")
         return dict(rows[0])
 
+    def record_recovery(
+        self,
+        receipt: ProjectionRecoveryReceipt,
+        *,
+        federation_id: str,
+        binding: FederationBinding,
+        expected_graph_revision: int,
+        idempotency_key: str,
+    ) -> CausalGraphCommit:
+        if not isinstance(receipt, ProjectionRecoveryReceipt):
+            raise FederationContractError("projection recovery receipt is required")
+        if receipt.authoritative is not False or receipt.rewritten is not False:
+            raise DuckLakeProjectionAuthorityError(
+                "DuckLake cannot admit scheduling, lease, or completion authority"
+            )
+        receipt_id = "federation-receipt:" + receipt.cid
+        return self._commit_fact(
+            operation="federation.ducklake.projection.recover",
+            fact_id=receipt_id,
+            federation_id=federation_id,
+            binding=binding,
+            expected_graph_revision=expected_graph_revision,
+            idempotency_key=idempotency_key,
+            changed_fact_refs=tuple(
+                dict.fromkeys((receipt_id, *receipt.preserved_partition_ids, *receipt.recovered_partition_ids))
+            ),
+            payload_ref=receipt.cid,
+            prepare_fact=lambda: None,
+            apply_fact=lambda revision, recorded_at: self._insert_recovery(
+                receipt,
+                receipt_id=receipt_id,
+                federation_id=federation_id,
+                tenant_id=binding.tenant_id,
+                generation=binding.control_plane_generation,
+                graph_revision=revision,
+                recorded_at=recorded_at,
+            ),
+        )
+
+    def load_recovery(
+        self,
+        *,
+        receipt_id: str,
+        tenant_id: str,
+        federation_id: str,
+    ) -> Mapping[str, Any]:
+        rows = self._client.execute(
+            "casf_select_ducklake_projection_recovery",
+            {
+                "federation_receipt_id": _identifier(receipt_id, "receipt_id"),
+                "tenant_id": _identifier(tenant_id, "tenant_id"),
+                "federation_id": _identifier(federation_id, "federation_id"),
+            },
+        )
+        if len(rows) != 1:
+            raise DuckLakeProjectionError("DuckLake projection recovery is absent")
+        return dict(rows[0])
+
     def _insert_projection(
         self,
         receipt: ProjectionReceipt,
@@ -541,11 +859,38 @@ class DuckLakeProjectionStore(FixedPointStore):
             },
         )
 
+    def _insert_recovery(
+        self,
+        receipt: ProjectionRecoveryReceipt,
+        *,
+        receipt_id: str,
+        federation_id: str,
+        tenant_id: str,
+        generation: int,
+        graph_revision: int,
+        recorded_at: str,
+    ) -> None:
+        self._client.execute(
+            "casf_insert_ducklake_projection_recovery",
+            {
+                "federation_receipt_id": receipt_id,
+                "tenant_id": tenant_id,
+                "federation_id": federation_id,
+                "federation_revision": graph_revision,
+                "control_plane_generation": generation,
+                "event_watermark": receipt.recovered_to_watermark,
+                "issuer_id": "ducklake-projection-recovery",
+                "content_ref": receipt.cid,
+                "recorded_at": recorded_at,
+            },
+        )
+
 
 __all__ = (
     "DuckLakeCapability",
     "DuckLakeProjectionAuthorityError",
     "DuckLakeProjectionError",
+    "DuckLakeProjectionRecovery",
     "DuckLakeProjectionStore",
     "DuckLakeProjectionWorker",
     "MAX_PARTITION_BYTES",
@@ -553,10 +898,13 @@ __all__ = (
     "ProjectionCursor",
     "ProjectionPartition",
     "ProjectionReceipt",
+    "ProjectionRecoveryReceipt",
+    "ProjectionSecurityContext",
     "SourceRange",
     "partition_checksum",
     "project_event_range",
     "projection_establishes_authority",
     "projection_establishes_completion",
+    "recover_interrupted_projection",
     "source_range_checksum",
 )
