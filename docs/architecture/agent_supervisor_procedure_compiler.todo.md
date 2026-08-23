@@ -1215,3 +1215,24 @@ This board is a sealed bootstrap and human export. After materialization, DuckDB
 - Resource class: cpu-large
 - Validation: test -f /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/state/discovery/2026-08-23-pcpc-032-reconciliation-9c5d9e58cb25.md
 - Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/state/discovery/2026-08-23-pcpc-032-reconciliation-9c5d9e58cb25.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## PCPC-033 Resolve 1 preflight-conflicting backlogged worktree merges
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: 2c350f05f7b380594ed25bd63307d9612d60c547
+- Dedupe key: reconciliation_guardrail:preflight_merge_conflict
+- Depends on:
+- Outputs: state/agent_supervisor_proof_carrying_procedure_compiler/state/discovery, docs/architecture/agent_supervisor_procedure_compiler.todo.md
+- Board namespace: agent-supervisor-proof-carrying-procedure-compiler-v1
+- Goal id: PCPC-G040
+- Bundle: agent-supervisor/procedure-compiler/release/qualification
+- Parallel lane: pcpc-lane-0
+- Resource class: cpu-large
+- Validation: test -f /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/state/discovery/2026-08-23-pcpc-033-reconciliation-2c350f05f7b3.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by preflight_merge_conflict. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.worktrees/proof-carrying-procedure-compiler-v1/state/agent_supervisor_proof_carrying_procedure_compiler/state/discovery/2026-08-23-pcpc-033-reconciliation-2c350f05f7b3.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
