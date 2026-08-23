@@ -3536,14 +3536,10 @@ def _await_initial_health(
             isinstance(current_authority, Mapping)
             and current_authority.get("available") is True
         ):
-            _record_control_failure(
-                paths, failure, failure_event,
-                reason_code="authoritative_status_unavailable_two_samples",
-                error_type="ASEHHealthQueryFailure",
-            )
-            raise OperatorError(
-                "authoritative health query unavailable for two samples"
-            )
+            # Replica publication can still be mutating during owner warmup.
+            # Keep fail-closed after grace, but do not abort the first pair.
+            first = second
+            continue
         if receipt.get("healthy") is True:
             return receipt, last_progress_at
         first = second

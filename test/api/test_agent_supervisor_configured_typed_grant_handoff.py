@@ -2537,6 +2537,71 @@ def test_aseh_health_rejects_outage_progress_and_bounds_recovery_edges(
     assert edges == 3
 
 
+def test_aseh_startup_retries_unsafe_replica_until_stable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = time.time()
+    board, fixture_paths, before = _aseh_health_fixture(
+        tmp_path,
+        status="claimed",
+        revision=2,
+        event_cursor=11,
+        ready=False,
+        active=True,
+        observed_at=now - 0.25,
+        lane_mtime_ns=int((now - 0.25) * 1_000_000_000),
+    )
+    _board, _paths, current = _aseh_health_fixture(
+        tmp_path,
+        status="claimed",
+        revision=2,
+        event_cursor=11,
+        ready=False,
+        active=True,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    paths = {
+        **fixture_paths,
+        "status_receipt": tmp_path / "live-status.json",
+    }
+    unavailable = json.loads(json.dumps(current))
+    unavailable["authority"] = {
+        "available": False,
+        "error": "published replica file identity is unsafe",
+        "error_type": "OperatorError",
+        "ready_count": 0,
+        "active_count": 0,
+        "blocked_count": 0,
+        "terminal_count": 0,
+        "event_cursor": 0,
+        "task_statuses": {},
+        "task_revisions": {},
+    }
+    samples = [unavailable, json.loads(json.dumps(unavailable)), before, current]
+
+    def fake_sample(*_args: object, **_kwargs: object) -> dict[str, object]:
+        assert samples, "startup admission sampled past the stable pair"
+        return samples.pop(0)
+
+    monkeypatch.setattr(aseh_operator, "_status_sample", fake_sample)
+    monkeypatch.setattr(aseh_operator, "STATUS_SAMPLE_INTERVAL_SECONDS", 0)
+    receipt, _last_progress_at = aseh_operator._await_initial_health(
+        board,
+        paths,
+        server=SimpleNamespace(),
+        scheduler=SimpleNamespace(pid=4242, poll=lambda: None),
+        launched_at=now - 0.5,
+        failure={},
+        failure_event=threading.Event(),
+        shutdown_requested=threading.Event(),
+        received_signal={},
+    )
+    assert receipt["healthy"] is True
+    assert samples == []
+
+
 def test_aseh_health_accepts_fast_claim_before_first_sample(
     tmp_path: Path,
 ) -> None:
