@@ -364,10 +364,10 @@ def _reached_multi_prover_router(exc: BaseException) -> bool:
         seen.add(id(current))
         trace = getattr(current, "__traceback__", None)
         while trace is not None:
-            filename = str(getattr(trace.tb_frame.f_code, "co_filename", ""))
-            if filename.replace("\\", "/").endswith(
-                "/agent_supervisor/proof/multi_prover_router.py"
-            ):
+            filename = str(getattr(trace.tb_frame.f_code, "co_filename", "")).replace(
+                "\\", "/"
+            )
+            if filename.endswith("agent_supervisor/proof/multi_prover_router.py"):
                 return True
             trace = trace.tb_next
         current = current.__cause__ or current.__context__
@@ -508,18 +508,19 @@ def probe_adaptive_planner_compatibility() -> PlannerCompatibility:
             current = current.__cause__ or current.__context__
         joined = " | ".join(chain)
         hammer = (
-            HAMMER_TRACE_SCHEMA_SIGNATURE in joined
-            or "HAMMER_TRACE_SCHEMA" in joined
-            or _reached_multi_prover_router(exc)
+            HAMMER_TRACE_SCHEMA_SIGNATURE in joined or "HAMMER_TRACE_SCHEMA" in joined
         )
         if hammer:
+            reached = (
+                MULTI_PROVER_ROUTER_MODULE if _reached_multi_prover_router(exc) else ""
+            )
             return PlannerCompatibility(
                 status=PlannerCompatibilityStatus.TYPED_UNAVAILABLE,
                 reason_code=ADAPTIVE_PLANNER_HAMMER_BLOCKER,
                 diagnostic=HAMMER_TRACE_SCHEMA_SIGNATURE,
                 planner_class_present=False,
                 blocker=ADAPTIVE_PLANNER_HAMMER_BLOCKER,
-                reached_module=MULTI_PROVER_ROUTER_MODULE,
+                reached_module=reached,
             )
         return PlannerCompatibility(
             status=PlannerCompatibilityStatus.TYPED_UNAVAILABLE,
@@ -1937,6 +1938,7 @@ __all__ = [
     "ADAPTIVE_PLANNER_MODULE",
     "COMPOSITION_VALIDATOR_REVISION",
     "HAMMER_TRACE_SCHEMA_SIGNATURE",
+    "MULTI_PROVER_ROUTER_MODULE",
     "OPERATOR_REVISION",
     "PLANNER_OPERATOR_ORDER",
     "PROCEDURE_OPERATOR_KINDS",
