@@ -1197,7 +1197,7 @@ This board is a sealed bootstrap and human export. After materialization, DuckDB
 
 ## PCPC-032 Resolve dirty main checkout blocking 1 worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
