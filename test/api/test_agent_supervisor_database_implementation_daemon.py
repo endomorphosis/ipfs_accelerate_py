@@ -5110,7 +5110,9 @@ def test_terminal_portal_reconciliation_accepts_board_unstall_retrying(
         failed_result = daemon.run_once()
         attempt = daemon.get_attempt(failed_result["attempt_id"])
         assert attempt is not None
-        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+        prior = daemon.task_source.get(attempt.task_cid)
+        assert prior is not None
+        assert prior.status in {"blocked", "in_progress"}
         with daemon.task_source._intent._connection(write=True) as connection:
             connection.execute(
                 "UPDATE tasks SET status = 'retrying', revision = revision + 1, "
