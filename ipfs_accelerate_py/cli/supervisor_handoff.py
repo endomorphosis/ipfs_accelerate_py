@@ -70,8 +70,8 @@ CLI_TO_OPERATION: Final[dict[str, str]] = {
     command: "export" if command == "export-result" else command
     for command in CLI_COMMANDS
 }
-_CONTROL_COMMANDS: Final[frozenset[str]] = frozenset(
-    {"steer", "pause", "resume", "cancel"}
+_AUTHORITY_COMMANDS: Final[frozenset[str]] = frozenset(
+    {"attach", "steer", "pause", "resume", "cancel"}
 )
 _REVIEW_COMMANDS: Final[frozenset[str]] = frozenset({"approve", "reject"})
 _ORIGIN_COMMANDS: Final[frozenset[str]] = frozenset({"handoff"})
@@ -457,7 +457,9 @@ def request_from_args(
             reason_code="malformed",
             exit_code=EXIT_USAGE,
         )
-    if command in _CONTROL_COMMANDS and not str(payload.get("authority_id") or "").strip():
+    if command in _AUTHORITY_COMMANDS and not str(
+        payload.get("authority_id") or ""
+    ).strip():
         raise SupervisorHandoffCLIError(
             "authority-id is required",
             reason_code="authority_mismatch",

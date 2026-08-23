@@ -105,7 +105,7 @@ def _bound_argv(command: str, started: dict[str, object], *extra: str) -> list[s
         "--session-id",
         SESSION,
     ]
-    if command in {"steer", "pause", "resume", "cancel"}:
+    if command in {"attach", "steer", "pause", "resume", "cancel"}:
         argv.extend(["--authority-id", str(started["authority_id"])])
     argv.extend(extra)
     return argv
@@ -128,7 +128,7 @@ def test_discovery_manifest_is_closed() -> None:
 @pytest.mark.parametrize("command", CLI_COMMANDS)
 def test_parse_argv_accepts_each_command(command: str) -> None:
     argv = [command, "--principal-id", OPERATOR, "--run-id", "run:example"]
-    if command in {"steer", "pause", "resume", "cancel"}:
+    if command in {"attach", "steer", "pause", "resume", "cancel"}:
         argv.extend(["--authority-id", "auth:example"])
     if command == "steer":
         argv.extend(["--instruction", "keep owned files only"])
@@ -332,6 +332,19 @@ def test_control_requires_matching_authority() -> None:
     )
     assert code == EXIT_AUTHORITY
     assert payload["reason_code"] == "authority_mismatch"
+
+    missing_code, missing_payload = _run(
+        [
+            "attach",
+            "--principal-id",
+            OPERATOR,
+            "--run-id",
+            str(started["run_id"]),
+        ],
+        api=api,
+    )
+    assert missing_code == EXIT_AUTHORITY
+    assert missing_payload["reason_code"] == "authority_mismatch"
 
 
 def test_unknown_run_is_not_found() -> None:
