@@ -2486,82 +2486,113 @@ class IntentRepository:
                 },
             )
 
-    def _task_relations(
-        self,
-        connection: Any,
-        task_cids: Sequence[str],
-    ) -> tuple[
-        dict[str, list[str]],
-        dict[str, list[dict[str, Any]]],
-        dict[str, list[dict[str, Any]]],
-        dict[str, list[dict[str, Any]]],
-    ]:
-        """Load child rows for many tasks in four statements, not N+1."""
+    def _relation(self, table: str) -> str:
+        """Qualify control-plane tables on Quack so a separate USE is unnecessary."""
 
-        deps: dict[str, list[str]] = {str(cid): [] for cid in task_cids}
-        outputs: dict[str, list[dict[str, Any]]] = {str(cid): [] for cid in task_cids}
-        acceptance: dict[str, list[dict[str, Any]]] = {str(cid): [] for cid in task_cids}
-        validations: dict[str, list[dict[str, Any]]] = {str(cid): [] for cid in task_cids}
-        if not task_cids:
-            return deps, outputs, acceptance, validations
-        placeholders = ", ".join("?" for _ in task_cids)
-        bound = [str(cid) for cid in task_cids]
-        for item in connection.execute(
-            "SELECT task_cid, dependency_task_cid FROM task_dependencies "
-            f"WHERE task_cid IN ({placeholders}) "
-            "ORDER BY task_cid, dependency_task_cid",
-            bound,
-        ).fetchall():
-            deps.setdefault(str(item[0]), []).append(str(item[1]))
-        for item in connection.execute(
-            "SELECT task_cid, ordinal, path, effect_json FROM task_outputs "
-            f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid, ordinal",
-            bound,
-        ).fetchall():
-            outputs.setdefault(str(item[0]), []).append(
-                {
-                    "ordinal": int(item[1]),
-                    "path": str(item[2]),
-                    "effect": _decode_json(item[3], noun="output effect"),
-                }
-            )
-        for item in connection.execute(
-            "SELECT task_cid, ordinal, criterion, evidence_policy_json "
-            "FROM task_acceptance "
-            f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid, ordinal",
-            bound,
-        ).fetchall():
-            acceptance.setdefault(str(item[0]), []).append(
-                {
-                    "ordinal": int(item[1]),
-                    "criterion": str(item[2]),
-                    "evidence_policy": _decode_json(item[3], noun="acceptance policy"),
-                }
-            )
-        for item in connection.execute(
-            "SELECT task_cid, ordinal, argv_json, policy_json "
-            "FROM task_validations "
-            f"WHERE task_cid IN ({placeholders}) ORDER BY task_cid, ordinal",
-            bound,
-        ).fetchall():
-            validations.setdefault(str(item[0]), []).append(
-                {
-                    "ordinal": int(item[1]),
-                    "argv": _decode_json(item[2], noun="validation argv"),
-                    "policy": _decode_json(item[3], noun="validation policy"),
-                }
-            )
-        return deps, outputs, acceptance, validations
+        name = str(table or "").strip()
+        if not name or not all(part.isidentifier() for part in name.split(".")):
+            raise IntentRepositoryIntegrityError("task relation name is invalid")
+        if self._quack_transport:
+            return f"control_plane.{name}"
+        return name
 
-    def _task_mapping(
-        self,
-        row: Sequence[Any],
-        *,
-        deps: Sequence[str],
-        outputs: Sequence[Mapping[str, Any]],
-        acceptance: Sequence[Mapping[str, Any]],
-        validations: Sequence[Mapping[str, Any]],
-    ) -> Mapping[str, Any]:
+    def _task_hydrate_sql(self, *, where_clause: str = "", order_clause: str = "") -> str:
+        tasks = self._relation("tasks")
+        deps = self._relation("task_dependencies")
+        outputs = self._relation("task_outputs")
+        acceptance = self._relation("task_acceptance")
+        validations = self._relation("task_validations")
+        where_sql = f" WHERE {where_clause}" if where_clause else ""
+        order_sql = f" {order_clause}" if order_clause else ""
+        return f"""
+                SELECT
+                    t.task_cid, t.task_alias, t.goal_cid, t.plan_cid, t.objective_id,
+                    t.ordinal, t.status, t.revision, t.priority, t.created_at,
+                    t.updated_at, t.identity_json, t.body_json,
+                    coalesce((
+                        SELECT json_group_array(d.dependency_task_cid)
+                        FROM {deps} d WHERE d.task_cid = t.task_cid
+                    ), '[]'),
+                    coalesce((
+                        SELECT json_group_array(json_object(
+                            'ordinal', o.ordinal,
+                            'path', o.path,
+                            'effect', o.effect_json
+                        ))
+                        FROM {outputs} o WHERE o.task_cid = t.task_cid
+                    ), '[]'),
+                    coalesce((
+                        SELECT json_group_array(json_object(
+                            'ordinal', a.ordinal,
+                            'criterion', a.criterion,
+                            'evidence_policy', a.evidence_policy_json
+                        ))
+                        FROM {acceptance} a WHERE a.task_cid = t.task_cid
+                    ), '[]'),
+                    coalesce((
+                        SELECT json_group_array(json_object(
+                            'ordinal', v.ordinal,
+                            'argv', v.argv_json,
+                            'policy', v.policy_json
+                        ))
+                        FROM {validations} v WHERE v.task_cid = t.task_cid
+                    ), '[]')
+                FROM {tasks} t
+                {where_sql}
+                {order_sql}
+                """
+
+    def _decode_relation_list(self, value: Any, *, noun: str) -> list[Any]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple)):
+            return list(value)
+        return list(_decode_json(value, noun=noun) or [])
+
+    def _task_mapping_from_hydrate(self, row: Sequence[Any]) -> Mapping[str, Any]:
+        deps = [str(item) for item in self._decode_relation_list(row[13], noun="dependencies")]
+        outputs = []
+        for item in self._decode_relation_list(row[14], noun="outputs"):
+            if not isinstance(item, Mapping):
+                continue
+            outputs.append(
+                {
+                    "ordinal": int(item.get("ordinal") or 0),
+                    "path": str(item.get("path") or ""),
+                    "effect": _decode_json(item.get("effect"), noun="output effect")
+                    if not isinstance(item.get("effect"), Mapping)
+                    else dict(item.get("effect") or {}),
+                }
+            )
+        acceptance = []
+        for item in self._decode_relation_list(row[15], noun="acceptance"):
+            if not isinstance(item, Mapping):
+                continue
+            policy = item.get("evidence_policy")
+            acceptance.append(
+                {
+                    "ordinal": int(item.get("ordinal") or 0),
+                    "criterion": str(item.get("criterion") or ""),
+                    "evidence_policy": policy
+                    if isinstance(policy, Mapping)
+                    else _decode_json(policy, noun="acceptance policy"),
+                }
+            )
+        validations = []
+        for item in self._decode_relation_list(row[16], noun="validations"):
+            if not isinstance(item, Mapping):
+                continue
+            argv = item.get("argv")
+            policy = item.get("policy")
+            validations.append(
+                {
+                    "ordinal": int(item.get("ordinal") or 0),
+                    "argv": argv if isinstance(argv, list) else _decode_json(argv, noun="validation argv"),
+                    "policy": policy
+                    if isinstance(policy, Mapping)
+                    else _decode_json(policy, noun="validation policy"),
+                }
+            )
         return MappingProxyType(
             {
                 "task_cid": str(row[0]),
@@ -2588,33 +2619,17 @@ class IntentRepository:
         key = _identifier(task_cid_or_alias, noun="task_cid")
         with self._connection(write=False) as connection:
             rows = connection.execute(
-                """
-                SELECT task_cid, task_alias, goal_cid, plan_cid, objective_id,
-                       ordinal, status, revision, priority, created_at,
-                       updated_at, identity_json, body_json
-                FROM tasks
-                WHERE task_cid = ? OR task_alias = ?
-                ORDER BY task_cid
-                LIMIT 2
-                """,
+                self._task_hydrate_sql(
+                    where_clause="t.task_cid = ? OR t.task_alias = ?",
+                    order_clause="ORDER BY t.task_cid LIMIT 2",
+                ),
                 [key, key],
             ).fetchall()
             if not rows:
                 return None
             if len(rows) > 1:
                 raise IntentRepositoryIntegrityError("task CID/alias lookup is ambiguous")
-            row = rows[0]
-            tcid = str(row[0])
-            deps, outputs, acceptance, validations = self._task_relations(
-                connection, (tcid,)
-            )
-        return self._task_mapping(
-            row,
-            deps=deps.get(tcid, ()),
-            outputs=outputs.get(tcid, ()),
-            acceptance=acceptance.get(tcid, ()),
-            validations=validations.get(tcid, ()),
-        )
+            return self._task_mapping_from_hydrate(rows[0])
 
     def list_tasks(
         self,
@@ -2638,43 +2653,20 @@ class IntentRepository:
             if statuses:
                 placeholders = ", ".join("?" for _ in statuses)
                 rows = connection.execute(
-                    f"""
-                    SELECT task_cid, task_alias, goal_cid, plan_cid, objective_id,
-                           ordinal, status, revision, priority, created_at,
-                           updated_at, identity_json, body_json
-                    FROM tasks
-                    WHERE status IN ({placeholders})
-                    ORDER BY ordinal, task_cid
-                    LIMIT ? OFFSET ?
-                    """,
+                    self._task_hydrate_sql(
+                        where_clause=f"t.status IN ({placeholders})",
+                        order_clause="ORDER BY t.ordinal, t.task_cid LIMIT ? OFFSET ?",
+                    ),
                     [*statuses, selected, off],
                 ).fetchall()
             else:
                 rows = connection.execute(
-                    """
-                    SELECT task_cid, task_alias, goal_cid, plan_cid, objective_id,
-                           ordinal, status, revision, priority, created_at,
-                           updated_at, identity_json, body_json
-                    FROM tasks
-                    ORDER BY ordinal, task_cid
-                    LIMIT ? OFFSET ?
-                    """,
+                    self._task_hydrate_sql(
+                        order_clause="ORDER BY t.ordinal, t.task_cid LIMIT ? OFFSET ?",
+                    ),
                     [selected, off],
                 ).fetchall()
-            cids = tuple(str(row[0]) for row in rows)
-            deps, outputs, acceptance, validations = self._task_relations(
-                connection, cids
-            )
-        return tuple(
-            self._task_mapping(
-                row,
-                deps=deps.get(str(row[0]), ()),
-                outputs=outputs.get(str(row[0]), ()),
-                acceptance=acceptance.get(str(row[0]), ()),
-                validations=validations.get(str(row[0]), ()),
-            )
-            for row in rows
-        )
+        return tuple(self._task_mapping_from_hydrate(row) for row in rows)
 
     # -- evidence / completion -----------------------------------------------
 
