@@ -2023,10 +2023,10 @@ def _wait_for_owner(
 def _require_unused_launch_generation(paths: Mapping[str, Path]) -> None:
     """Reject reuse of a supervisor identity whose lifecycle is terminal.
 
-    Tranche 1 deliberately has no crash/relaunch identity transfer.  A stopped
-    supervisor cannot be revived by replaying its deterministic registration
-    result, and CASF-029 owns fresh-identity recovery.  Fail before starting a
-    process rather than discovering the stale lifecycle inside the child.
+    A stopped supervisor cannot be revived by replaying its deterministic
+    registration result.  After a complete matching stop, CASF-029 admits a
+    later launch only by minting a fresh identity.  Fail before starting a
+    process rather than discovering a stale lifecycle inside the child.
     """
 
     if not paths["launch_receipt"].is_file():
@@ -2046,10 +2046,8 @@ def _require_unused_launch_generation(paths: Mapping[str, Path]) -> None:
         raise OperatorError("prior stop receipt has stale authority")
     if stop.get("complete") is not True or stop.get("launch_receipt_id") != launch_id:
         raise OperatorError("a prior launch has no complete matching stop receipt")
-    raise OperatorError(
-        "this control-plane generation already consumed its single-use "
-        "supervisor identity; fresh-identity recovery is unavailable until CASF-029"
-    )
+    # The consumed identity stays terminal.  Launch may continue and mint a
+    # fresh supervisor/process-birth/lease rather than reuse this generation.
 
 
 def _launch_owner(
@@ -2845,8 +2843,8 @@ def launch(
                 "credential_transport": "private_inherited_pipe",
                 "credential_in_argv_or_environment": False,
                 "task_execution_admitted": False,
-                "relaunch_supported": False,
-                "relaunch_blocker": "CASF-029",
+                "relaunch_supported": True,
+                "relaunch_blocker": "",
                 "event_wait_qualified": True,
                 "event_driven_qualified": False,
                 "multi_supervisor_qualified": False,

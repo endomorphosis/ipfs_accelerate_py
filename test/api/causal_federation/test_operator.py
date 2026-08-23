@@ -941,7 +941,7 @@ def test_health_distinguishes_bounded_startup_from_stuck() -> None:
     assert result["blocked_or_stuck"] is False
 
 
-def test_launch_generation_is_single_use_until_recovery_is_implemented(
+def test_launch_generation_admits_fresh_identity_after_complete_stop(
     tmp_path: Path,
 ) -> None:
     operator = _operator()
@@ -974,8 +974,7 @@ def test_launch_generation_is_single_use_until_recovery_is_implemented(
             "launch_receipt_id": launch["launch_receipt_id"],
         },
     )
-    with pytest.raises(operator.OperatorError, match="CASF-029"):
-        operator._require_unused_launch_generation(paths)
+    operator._require_unused_launch_generation(paths)
 
     tampered = json.loads(paths["stop_receipt"].read_text(encoding="utf-8"))
     tampered["complete"] = False
