@@ -32,6 +32,9 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     DatabaseCoordinationError,
 )
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     DATABASE_PROGRAM_JSON_ENV,
     DatabaseProgramConfig,
@@ -82,6 +85,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA,
     DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+    DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA,
+    POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+    POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA,
     DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA,
     DATABASE_TASK_ATTEMPT_INTERFACE,
     DatabaseImplementationAuthorityError,
@@ -4592,6 +4598,52 @@ def test_materialization_projects_completed_prerequisites_into_coordination(
         daemon.close()
 
 
+def test_fresh_coordination_sidecar_projects_canonical_completed_dependencies(
+    tmp_path: Path,
+) -> None:
+    population = _population(2)
+    tasks = population["tasks"]
+    assert isinstance(tasks, list)
+    tasks[0]["status"] = "completed"
+    tasks[1]["dependencies"] = ["task:cid:001"]
+
+    seed = _open_daemon(tmp_path, session="session:materializer")
+    try:
+        seed.materialize_population(population)
+    finally:
+        seed.close()
+
+    # Runtime lanes intentionally use fresh, disposable coordination stores.
+    # Their claimability must be reconstructed from the canonical ready
+    # frontier rather than depending on materializer-local completion rows.
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "fresh-coordination.duckdb",
+        execution_path=tmp_path / "fresh-execution.duckdb",
+        owner_session_id="session:fresh-sidecar",
+        authority_mode="embedded",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    try:
+        assert daemon.sync_ready_tasks_into_coordination() == ["task:cid:002"]
+        assert daemon.sync_ready_tasks_into_coordination() == ["task:cid:002"]
+        before_claim = daemon.coordinator.coordination_registry_projection()
+        assert before_claim["counts"]["logical_completions"] == 1
+
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert attempt.task_cid == "task:cid:002"
+        projection = daemon.coordinator.coordination_registry_projection()
+        completions = {
+            item["task_cid"]: item["status"]
+            for item in projection["logical_completions"]
+        }
+        assert completions == {"task:cid:001": "succeeded"}
+    finally:
+        daemon.close()
+
+
 def test_claim_next_preserves_canonical_ready_order_for_late_task(
     tmp_path: Path,
 ) -> None:
@@ -7705,5 +7757,405 @@ def test_preauthorize_accepts_binding_changed_resume_receipt_from_later_attempt(
         )
         assert authorized["authorized"] is True
         assert authorized["task_status"] == "blocked"
+    finally:
+        daemon.close()
+
+
+def test_exact_repair_evidence_rearms_only_matching_blocked_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-merge-repair-rearm",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": "post_merge_declared_outputs_missing",
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        coordination = daemon._reconcile_failed_attempt_coordination(failed)
+        terminal = daemon._persist_terminal_portal_failure(
+            failed,
+            reason="post_merge_declared_outputs_missing",
+            coordination_evidence=coordination,
+        )
+        assert terminal["status"] == "blocked"
+        blocked = daemon.task_source.get(failed.task_cid)
+        assert blocked is not None
+        assert blocked.status == "blocked"
+
+        candidate_commit = "a" * 40
+        repair_commit = "b" * 40
+        repair_receipt: dict[str, object] = {
+            "schema": POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+            "task_ids": [failed.task_alias],
+            "candidate_commit": candidate_commit,
+            "candidate_tree": "1" * 40,
+            "baseline_commit": "2" * 40,
+            "failed_integration_commit": "3" * 40,
+            "repair_parent_commit": "4" * 40,
+            "repair_commit": repair_commit,
+            "repair_tree": "5" * 40,
+            "entries": [
+                {
+                    "path": "output.py",
+                    "mode": "100644",
+                    "object_type": "blob",
+                    "object_id": "6" * 40,
+                }
+            ],
+            "validation": [
+                {
+                    "task_id": failed.task_alias,
+                    "passed": True,
+                    "returncode": 0,
+                    "validation_result_digests": [
+                        "sha256:" + "7" * 64
+                    ],
+                    "command_count": 1,
+                    "log_sha256": "8" * 64,
+                }
+            ],
+            "rollback_target": "4" * 40,
+        }
+        repair_receipt["receipt_id"] = content_identity(repair_receipt)
+        evidence: dict[str, object] = {
+            "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+            "request_id": "merge-request:vrif-010",
+            "task_cid": failed.task_cid,
+            "task_alias": failed.task_alias,
+            "candidate_commit": candidate_commit,
+            "repair_commit": repair_commit,
+            "repair_receipt_id": repair_receipt["receipt_id"],
+            "repair_receipt": repair_receipt,
+            "source_attempt_id": failed.attempt_id,
+            "source_claim_id": failed.claim_id,
+            "source_lease_id": failed.lease_id,
+            "source_fencing_token": failed.fencing_token,
+            "source_fence_epoch": failed.fence_epoch,
+            "source_binding_id": "sha256:" + "c" * 64,
+            "source_projection_immutable_digest": "sha256:" + "d" * 64,
+        }
+        evidence["evidence_id"] = daemon._database_portal_evidence_digest(
+            evidence
+        )
+        preauthorization = {
+            "schema": DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA,
+            **{
+                field: evidence[field]
+                for field in (
+                    "request_id",
+                    "task_cid",
+                    "task_alias",
+                    "candidate_commit",
+                    "source_attempt_id",
+                    "source_claim_id",
+                    "source_lease_id",
+                    "source_fencing_token",
+                    "source_fence_epoch",
+                    "source_binding_id",
+                    "source_projection_immutable_digest",
+                )
+            },
+        }
+        authorized = daemon.preauthorize_post_merge_declared_output_recovery(
+            preauthorization
+        )
+        assert authorized["authorized"] is True
+        assert authorized["task_status"] == "blocked"
+        authorization_id = authorized.pop("authorization_id")
+        assert authorization_id == daemon._database_portal_evidence_digest(
+            authorized
+        )
+
+        foreign = {**evidence, "repair_commit": "c" * 40}
+        foreign.pop("evidence_id")
+        foreign["evidence_id"] = daemon._database_portal_evidence_digest(
+            foreign
+        )
+        with pytest.raises(DatabaseImplementationAuthorityError):
+            daemon.recover_blocked_post_merge_declared_outputs(foreign)
+        assert daemon.task_source.get(failed.task_cid).status == "blocked"
+
+        foreign_task = {**evidence, "task_cid": "task:cid:foreign"}
+        foreign_task.pop("evidence_id")
+        foreign_task["evidence_id"] = (
+            daemon._database_portal_evidence_digest(foreign_task)
+        )
+        with pytest.raises(DatabaseImplementationAuthorityError):
+            daemon.recover_blocked_post_merge_declared_outputs(foreign_task)
+        assert daemon.task_source.get(failed.task_cid).status == "blocked"
+
+        stale_attempt = {**evidence, "source_attempt_id": "attempt:stale"}
+        stale_attempt.pop("evidence_id")
+        stale_attempt["evidence_id"] = (
+            daemon._database_portal_evidence_digest(stale_attempt)
+        )
+        with pytest.raises(DatabaseImplementationConflictError):
+            daemon.recover_blocked_post_merge_declared_outputs(stale_attempt)
+        stale_preauthorization = {
+            **preauthorization,
+            "source_attempt_id": "attempt:stale",
+        }
+        with pytest.raises(DatabaseImplementationConflictError):
+            daemon.preauthorize_post_merge_declared_output_recovery(
+                stale_preauthorization
+            )
+        assert daemon.task_source.get(failed.task_cid).status == "blocked"
+
+        recovery_started_ms = daemon._now_ms()
+
+        def lose_cas_response(*args: object, **kwargs: object) -> None:
+            del args, kwargs
+            raise RuntimeError("fixture crash between queue and control CAS")
+
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            lose_cas_response,
+        )
+        with pytest.raises(
+            RuntimeError,
+            match="fixture crash between queue and control CAS",
+        ):
+            daemon.recover_blocked_post_merge_declared_outputs(evidence)
+        queue_after_partial_write = daemon.task_source.get_queue_entry(
+            failed.task_cid
+        )
+        assert queue_after_partial_write is not None
+        queue_attempt_after_partial_write = queue_after_partial_write.attempt
+        assert daemon.task_source.get(failed.task_cid).status == "blocked"
+        daemon.close()
+        daemon = _open_daemon(
+            tmp_path,
+            session="session:post-merge-repair-rearm",
+        )
+
+        recovered = daemon.recover_blocked_post_merge_declared_outputs(
+            evidence
+        )
+        assert recovered["schema"] == DATABASE_POST_MERGE_RECOVERY_SCHEMA
+        assert recovered["recovered"] is True
+        assert recovered["changed"] is True
+        assert recovered["status"] == "retrying"
+        assert recovered["write_count"] == 1
+        assert recovered["queue_reused"] is True
+        assert recovered["task_cid"] == failed.task_cid
+        assert recovered["request_id"] == evidence["request_id"]
+        assert recovered["repair_commit"] == repair_commit
+        assert recovered["evidence_id"] == evidence["evidence_id"]
+
+        retrying = daemon.task_source.get(failed.task_cid)
+        assert retrying is not None
+        assert retrying.status == "retrying"
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="already rearmed",
+        ):
+            daemon.preauthorize_post_merge_declared_output_recovery(
+                preauthorization
+            )
+        control_receipt = retrying.body["completion_receipt"]
+        assert control_receipt["operation"] == (
+            "database_post_merge_declared_outputs_repair_recovery"
+        )
+        assert control_receipt["repair_evidence_id"] == evidence[
+            "evidence_id"
+        ]
+        assert control_receipt["repair_receipt_id"] == repair_receipt[
+            "receipt_id"
+        ]
+        queue_entry = daemon.task_source.get_queue_entry(failed.task_cid)
+        assert queue_entry is not None
+        assert queue_entry.attempt == queue_attempt_after_partial_write
+        assert (
+            recovery_started_ms
+            <= queue_entry.retry_not_before_ms
+            <= daemon._now_ms()
+        )
+        assert queue_entry.reason.startswith(
+            "database_post_merge_declared_outputs_repair:"
+        )
+
+        assert daemon.reconcile_terminal_portal_failures() == []
+
+        daemon.close()
+        daemon = _open_daemon(
+            tmp_path,
+            session="session:post-merge-repair-rearm",
+        )
+        repeated = daemon.recover_blocked_post_merge_declared_outputs(
+            evidence
+        )
+        assert repeated["recovered"] is True
+        assert repeated["changed"] is False
+        assert repeated["status"] == "retrying"
+        assert repeated["write_count"] == 0
+    finally:
+        daemon.close()
+
+
+def test_descendant_requalification_recovery_replays_one_queue_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-merge-requalification-rearm",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": "post_merge_declared_outputs_missing",
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        terminal = daemon._persist_terminal_portal_failure(
+            failed,
+            reason="post_merge_declared_outputs_missing",
+            coordination_evidence=(
+                daemon._reconcile_failed_attempt_coordination(failed)
+            ),
+        )
+        assert terminal["status"] == "blocked"
+
+        entry = {
+            "path": "output.py",
+            "mode": "100644",
+            "object_type": "blob",
+            "object_id": "6" * 40,
+        }
+        source_validation = {
+            "task_id": failed.task_alias,
+            "passed": True,
+            "returncode": 0,
+            "validation_result_digests": ["sha256:" + "7" * 64],
+            "command_count": 1,
+            "log_sha256": "8" * 64,
+        }
+        source_repair: dict[str, object] = {
+            "schema": POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+            "task_ids": [failed.task_alias],
+            "candidate_commit": "a" * 40,
+            "candidate_tree": "1" * 40,
+            "baseline_commit": "2" * 40,
+            "failed_integration_commit": "3" * 40,
+            "repair_parent_commit": "4" * 40,
+            "repair_commit": "b" * 40,
+            "repair_tree": "5" * 40,
+            "entries": [entry],
+            "validation": [source_validation],
+            "rollback_target": "4" * 40,
+        }
+        source_repair["receipt_id"] = content_identity(source_repair)
+        requalification_validation = {
+            **source_validation,
+            "validation_result_digests": ["sha256:" + "9" * 64],
+            "log_sha256": "a" * 64,
+        }
+        requalification: dict[str, object] = {
+            "schema": POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA,
+            "task_ids": [failed.task_alias],
+            "candidate_commit": "a" * 40,
+            "source_repair_receipt_id": source_repair["receipt_id"],
+            "source_repair_commit": "b" * 40,
+            "source_repair_receipt": source_repair,
+            "current_target_commit": "c" * 40,
+            "current_target_tree": "d" * 40,
+            "entries": [entry],
+            "validation": [requalification_validation],
+        }
+        requalification["receipt_id"] = content_identity(requalification)
+        evidence: dict[str, object] = {
+            "schema": DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA,
+            "request_id": "merge-request:requalified",
+            "task_cid": failed.task_cid,
+            "task_alias": failed.task_alias,
+            "candidate_commit": "a" * 40,
+            "qualified_target_commit": "c" * 40,
+            "requalification_receipt_id": requalification["receipt_id"],
+            "requalification_receipt": requalification,
+            "source_attempt_id": failed.attempt_id,
+            "source_claim_id": failed.claim_id,
+            "source_lease_id": failed.lease_id,
+            "source_fencing_token": failed.fencing_token,
+            "source_fence_epoch": failed.fence_epoch,
+            "source_binding_id": "sha256:" + "e" * 64,
+            "source_projection_immutable_digest": "sha256:" + "f" * 64,
+        }
+        evidence["evidence_id"] = daemon._database_portal_evidence_digest(
+            evidence
+        )
+
+        def lose_cas_response(*args: object, **kwargs: object) -> None:
+            del args, kwargs
+            raise RuntimeError("requalification CAS response lost")
+
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            lose_cas_response,
+        )
+        with pytest.raises(RuntimeError, match="CAS response lost"):
+            daemon.recover_blocked_post_merge_declared_outputs(evidence)
+        first_queue = daemon.task_source.get_queue_entry(failed.task_cid)
+        assert first_queue is not None
+
+        daemon.close()
+        daemon = _open_daemon(
+            tmp_path,
+            session="session:post-merge-requalification-rearm",
+        )
+        recovered = daemon.recover_blocked_post_merge_declared_outputs(
+            evidence
+        )
+        assert recovered["recovered"] is True
+        assert recovered["queue_reused"] is True
+        assert recovered["write_count"] == 1
+        assert recovered["qualification_kind"] == "requalification"
+        second_queue = daemon.task_source.get_queue_entry(failed.task_cid)
+        assert second_queue is not None
+        assert second_queue.attempt == first_queue.attempt
+        retrying = daemon.task_source.get(failed.task_cid)
+        assert retrying is not None and retrying.status == "retrying"
+        control = retrying.body["completion_receipt"]
+        assert control["operation"] == (
+            "database_post_merge_declared_outputs_requalification_recovery"
+        )
+        assert control["source_repair_receipt_id"] == source_repair[
+            "receipt_id"
+        ]
+        assert control["requalification_receipt_id"] == requalification[
+            "receipt_id"
+        ]
+
+        daemon.close()
+        daemon = _open_daemon(
+            tmp_path,
+            session="session:post-merge-requalification-rearm",
+        )
+        repeated = daemon.recover_blocked_post_merge_declared_outputs(
+            evidence
+        )
+        assert repeated["changed"] is False
+        assert repeated["write_count"] == 0
+        assert daemon.reconcile_terminal_portal_failures() == []
     finally:
         daemon.close()

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import subprocess
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,6 +15,14 @@ from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
 )
 from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
     ContextBudgetResolution,
+)
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    checkout_repository_id,
+)
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
+from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
@@ -41,6 +52,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     SEMANTIC_TRUTH_AUTHORITY_ENV,
     SEMANTIC_WRITER_POLICY_ENV,
     DatabaseImplementationAuthorityError,
+    DatabaseImplementationConflictError,
     DatabaseImplementationDaemon,
     DatabaseTaskAttempt,
     ImplementationDiagnosticReceipt,
@@ -51,8 +63,6 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
 )
-import hashlib
-import subprocess
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA, DatabasePortalValidationRetry
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import PortalTaskState, parse_task_text, task_declared_output_paths
 from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
@@ -3014,3 +3024,656 @@ def test_post_merge_recovery_cursor_writes_only_on_progress_or_wrap(
         (),
     )
     assert writes[-1] == {"completed_requests": ""}
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_bridge_routes_only_owned_missing_output_quarantine_and_replays_completion(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "recovery@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Recovery Test"],
+        cwd=repo,
+        check=True,
+    )
+    output = repo / "inventory" / "result.json"
+    output.parent.mkdir(parents=True)
+    output.write_text('{"sealed":true}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "inventory/result.json"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "sealed candidate"], cwd=repo, check=True)
+    candidate = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    candidate_tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    candidate_blob = subprocess.run(
+        ["git", "rev-parse", "HEAD:inventory/result.json"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    record = _record()
+    record.status = "blocked"
+    task_source = _TaskSource(record)
+    attempt_root = tmp_path / "lane-0-attempts"
+    seed_bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, _alias: None,
+        repository_root=repo.resolve(),
+        task_header_prefix="## LGSWF-",
+    )
+    paths, binding = seed_bridge._ensure_attempt_projection(_attempt(), record)
+    [projected_task] = parse_task_text(
+        paths.task_projection.read_text(encoding="utf-8"),
+        path=paths.task_projection,
+        task_header_prefix="## LGSWF-",
+    )
+
+    repository_id = checkout_repository_id(repo)
+    queue = MergeQueue(
+        tmp_path / "merge-queue",
+        target_repository_id=repository_id,
+        target_branch="main",
+        require_target_binding=True,
+    )
+
+    def request_metadata(
+        commit: str,
+        *,
+        owned_paths: object = paths,
+    ) -> dict[str, object]:
+        task_payload = asdict(projected_task)
+        task_payload["canonical_task_cid"] = "task:cid:004"
+        task_payload["canonical_task_key"] = str(
+            projected_task.canonical_task_key
+        )
+        task_metadata = dict(task_payload.get("metadata") or {})
+        task_metadata["database task cid"] = "task:cid:004"
+        task_metadata["canonical task cid"] = "task:cid:004"
+        task_metadata["canonical task key"] = str(
+            projected_task.canonical_task_key
+        )
+        task_metadata["database attempt id"] = str(binding["attempt_id"])
+        task_metadata["database claim id"] = str(binding["claim_id"])
+        task_metadata["projection authority"] = "false"
+        task_payload["metadata"] = task_metadata
+        task_payload["canonical_task_key"] = str(
+            binding.get("canonical_task_key") or projected_task.canonical_task_key
+        )
+        return {
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            "target_binding_schema": (
+                "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+            ),
+            "target_repository_id": repository_id,
+            "target_branch": "main",
+            "implementation_commit": commit,
+            "todo_path": str(owned_paths.task_projection),
+            "state_path": str(owned_paths.state),
+            "strategy_path": str(owned_paths.strategy),
+            "events_path": str(owned_paths.events),
+            "repo_root": str(repo.resolve()),
+            "task_header_prefix": "## LGSWF-",
+            "task": task_payload,
+            "completion_task_cids": {"LGSWF-004": "task:cid:004"},
+            "changed_submodule_paths": [],
+        }
+
+    def quarantine(
+        commit: str,
+        metadata: dict[str, object],
+        *,
+        reason: str,
+    ) -> object:
+        request = queue.enqueue(
+            branch_name=f"implementation/{commit[:8]}",
+            task_id="LGSWF-004",
+            canonical_task_id="task:cid:004",
+            canonical_task_key=str(
+                binding.get("canonical_task_key")
+                or projected_task.canonical_task_key
+            ),
+            commit_sha=commit,
+            metadata=metadata,
+        )
+        claimed = queue.claim_pending_request(
+            request.request_id,
+            consumer_id=f"fixture:{commit[:8]}",
+        )
+        assert claimed is not None
+        queue.quarantine(claimed, reason=reason)
+        stored = queue.get(request.request_id)
+        assert stored is not None
+        return stored
+
+    ordinary = quarantine(
+        "a" * 40,
+        request_metadata("a" * 40),
+        reason="merge_conflict",
+    )
+
+    foreign_root = tmp_path / "lane-1-attempts" / paths.root.name
+    foreign_root.mkdir(parents=True)
+    foreign_projection = foreign_root / paths.task_projection.name
+    foreign_binding = foreign_root / paths.binding.name
+    foreign_projection.write_bytes(paths.task_projection.read_bytes())
+    foreign_binding.write_bytes(paths.binding.read_bytes())
+    foreign_paths = SimpleNamespace(
+        task_projection=foreign_projection,
+        state=foreign_root / paths.state.name,
+        strategy=foreign_root / paths.strategy.name,
+        events=foreign_root / paths.events.name,
+    )
+    foreign = quarantine(
+        "b" * 40,
+        request_metadata("b" * 40, owned_paths=foreign_paths),
+        reason="post_merge_declared_outputs_missing",
+    )
+
+    unsealed_root = attempt_root / ("0" * 24)
+    unsealed_root.mkdir(parents=True)
+    unsealed_projection = unsealed_root / paths.task_projection.name
+    unsealed_projection.write_bytes(paths.task_projection.read_bytes())
+    unsealed_paths = SimpleNamespace(
+        task_projection=unsealed_projection,
+        state=unsealed_root / paths.state.name,
+        strategy=unsealed_root / paths.strategy.name,
+        events=unsealed_root / paths.events.name,
+    )
+    unsealed = quarantine(
+        "c" * 40,
+        request_metadata("c" * 40, owned_paths=unsealed_paths),
+        reason="post_merge_declared_outputs_missing",
+    )
+    selected = quarantine(
+        candidate,
+        request_metadata(candidate),
+        reason="post_merge_declared_outputs_missing",
+    )
+    revived = queue.revive_quarantined(
+        selected.request_id,
+        reason="fixture selected exact database recovery",
+        reset_failures=True,
+    )
+    assert revived is not None and revived.status == "pending"
+    abandoned = queue.claim_pending_request(
+        selected.request_id,
+        consumer_id="merge-train:999999:dead-fixture",
+    )
+    assert abandoned is not None and abandoned.status == "processing"
+    assert [
+        request.request_id for request in queue.processing_requests()
+    ] == [selected.request_id]
+
+    repair_receipt: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "post-merge-declared-output-repair@1"
+        ),
+        "task_ids": ["LGSWF-004"],
+        "candidate_commit": candidate,
+        "candidate_tree": candidate_tree,
+        "baseline_commit": candidate,
+        "failed_integration_commit": candidate,
+        "repair_parent_commit": candidate,
+        "repair_commit": candidate,
+        "repair_tree": candidate_tree,
+        "entries": [
+            {
+                "path": "inventory/result.json",
+                "mode": "100644",
+                "object_type": "blob",
+                "object_id": candidate_blob,
+            }
+        ],
+        "validation": [
+            {
+                "task_id": "LGSWF-004",
+                "passed": True,
+                "returncode": 0,
+                "validation_result_digests": [],
+                "command_count": 0,
+                "log_sha256": "e" * 64,
+            }
+        ],
+        "rollback_target": candidate,
+    }
+    repair_receipt["receipt_id"] = content_identity(repair_receipt)
+    portal_calls: list[str] = []
+    requalification_heads: list[str] = []
+
+    class RecoveryPortal:
+        def __init__(self) -> None:
+            self.merge_queue = queue
+            self.repo_root = repo.absolute()
+            self.resolved_merge_target_branch = "main"
+            self.formal_verification_policy = None
+            self.proof_gate = None
+            self.proof_cache_dir = tmp_path / "proof-cache"
+            self.decision_runtime = None
+            self.implementation_cancelled = None
+
+        @staticmethod
+        def _merge_train_callback(request: object) -> dict[str, object]:
+            assert request.request_id == selected.request_id
+            return {
+                "merged": True,
+                "reason": "post_merge_declared_outputs_repaired",
+                "post_merge_declared_output_repair": {
+                    "passed": True,
+                    "reason": "post_merge_declared_outputs_repaired",
+                    "receipt": repair_receipt,
+                },
+            }
+
+        @staticmethod
+        def _load_tasks() -> list[object]:
+            return [projected_task]
+
+        @staticmethod
+        def _run_checkout_mutation_transaction(
+            *, callback: object, **_kwargs: object
+        ) -> dict[str, object]:
+            return callback()
+
+        @staticmethod
+        def _run_validation_commands(
+            workspace: Path,
+            task: object,
+            log_path: Path,
+            *,
+            force_uncached: bool,
+        ) -> dict[str, object]:
+            assert task.task_id == "LGSWF-004"
+            assert force_uncached is True
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=workspace,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            requalification_heads.append(head)
+            assert (workspace / "inventory/result.json").read_text(
+                encoding="utf-8"
+            ) == '{"sealed":true}\n'
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_path.write_text("fresh current-tree validation passed\n")
+            return {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+                "results": [
+                    {
+                        "validation_result_digest": (
+                            "sha256:"
+                            + hashlib.sha256(head.encode("ascii")).hexdigest()
+                        )
+                    }
+                ],
+            }
+
+        @staticmethod
+        def _cleanup_main_merge_workspace(
+            workspace: Path,
+            *,
+            ephemeral: bool,
+        ) -> dict[str, object]:
+            assert ephemeral is True
+            removed = subprocess.run(
+                ["git", "worktree", "remove", "--force", str(workspace)],
+                cwd=repo,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            return {"cleaned": removed.returncode == 0}
+
+        @staticmethod
+        def close_event_runtime() -> None:
+            return None
+
+    def fresh_bridge() -> DatabasePortalExecutionBridge:
+        return DatabasePortalExecutionBridge(
+            task_source=task_source,
+            attempt_root=attempt_root,
+            portal_factory=lambda _paths, alias: (
+                portal_calls.append(alias) or RecoveryPortal()
+            ),
+            repository_root=repo.resolve(),
+            merge_queue=queue,
+            merge_target_branch="main",
+            task_header_prefix="## LGSWF-",
+        )
+
+    bridge = fresh_bridge()
+    recovered_evidence: list[dict[str, object]] = []
+    competing_train = MergeTrain(repo, queue, target_branch="main")
+    recovery_lease_observations: list[bool] = []
+
+    class DatabaseAuthority:
+        crash_after_queue_completion = True
+        latest_source_attempt_id = str(binding["attempt_id"])
+        preauthorization_sources: list[dict[str, object]] = []
+
+        @staticmethod
+        def _database_portal_evidence_digest(value: object) -> str:
+            encoded = json.dumps(
+                value,
+                separators=(",", ":"),
+                sort_keys=True,
+                default=str,
+            ).encode("utf-8")
+            return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+        def preauthorize_post_merge_declared_output_recovery(
+            self,
+            source: object,
+        ) -> dict[str, object]:
+            assert isinstance(source, dict)
+            source_dict = dict(source)
+            self.preauthorization_sources.append(source_dict)
+            if (
+                source_dict["source_attempt_id"]
+                != self.latest_source_attempt_id
+            ):
+                raise DatabaseImplementationConflictError(
+                    "fixture superseded source attempt"
+                )
+            result: dict[str, object] = {
+                **source_dict,
+                "authorized": True,
+                "task_status": "blocked",
+            }
+            result["authorization_id"] = (
+                self._database_portal_evidence_digest(result)
+            )
+            return result
+
+        def recover_blocked_post_merge_declared_outputs(
+            self,
+            evidence: object,
+        ) -> dict[str, object]:
+            competing_acquired, _ = competing_train.run_under_consumer_lease(
+                lambda: None
+            )
+            recovery_lease_observations.append(competing_acquired)
+            assert competing_acquired is False
+            recovered_evidence.append(dict(evidence))
+            if self.crash_after_queue_completion:
+                self.crash_after_queue_completion = False
+                raise RuntimeError("fixture crash after queue completion")
+            return {
+                "attempted": True,
+                "recovered": True,
+                "changed": True,
+                "status": "retrying",
+                "write_count": 2,
+            }
+
+    authority = DatabaseAuthority()
+    blocker = MergeTrain(repo, queue, target_branch="main")
+    with blocker._consumer_lease() as acquired:
+        assert acquired is True
+        assert bridge.recover_post_merge_declared_outputs(authority) is None
+        assert portal_calls == []
+    with pytest.raises(RuntimeError, match="fixture crash"):
+        bridge.recover_post_merge_declared_outputs(authority)
+    completed = queue.get(selected.request_id)
+    assert completed is not None and completed.status == "completed"
+
+    output.write_text('{"sealed":false}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "inventory/result.json"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "advance past repair"], cwd=repo, check=True)
+    assert bridge.recover_post_merge_declared_outputs(authority) is None
+    assert len(recovered_evidence) == 1
+    assert record.status == "blocked"
+
+    output.unlink()
+    subprocess.run(["git", "add", "inventory/result.json"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "remove repaired output"], cwd=repo, check=True)
+    missing_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    missing_bridge = fresh_bridge()
+    assert missing_bridge.recover_post_merge_declared_outputs(authority) is None
+    assert fresh_bridge().recover_post_merge_declared_outputs(authority) is None
+    assert requalification_heads == []
+
+    subprocess.run(
+        ["git", "restore", "--source", candidate, "--", "inventory/result.json"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(["git", "add", "inventory/result.json"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "restore exact repaired output"], cwd=repo, check=True)
+    descendant_head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert descendant_head not in {candidate, missing_head}
+    # Wrap the completed cursor after the missing-output page before adding a
+    # new full page of newer history.
+    assert fresh_bridge().recover_post_merge_declared_outputs(authority) is None
+
+    # Put the unresolved completion behind a full 256-row page of newer,
+    # schema-matching history.  Rows are inserted in one hermetic fixture
+    # transaction so the test measures bridge pagination, not queue writes.
+    request_clock = int(selected.request_id.split("-", 1)[0])
+    decoy_metadata = json.dumps(
+        completed.metadata,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    stale_decoy_index = 256
+    stale_completed_request_id = (
+        f"{request_clock + stale_decoy_index + 1}-"
+        f"{100000 + stale_decoy_index}-decoy"
+    )
+    decoy_rows = [
+        (
+            f"{request_clock + index + 1}-{100000 + index}-decoy",
+            f"implementation/decoy-{index}",
+            (
+                str(selected.task_id)
+                if index == stale_decoy_index
+                else f"DECOY-{index}"
+            ),
+            "P2",
+            "",
+            float(index + 2),
+            1,
+            decoy_metadata,
+            candidate,
+            (
+                str(selected.canonical_task_id)
+                if index == stale_decoy_index
+                else f"task:decoy:{index}"
+            ),
+            (
+                str(selected.canonical_task_key)
+                if index == stale_decoy_index
+                else f"task/v1/decoy-{index}"
+            ),
+            f"decoy:{index}",
+            "completed",
+            0.0,
+            "",
+            0,
+            "",
+            "",
+            2,
+            0.0,
+            float(index + 2),
+            float(index + 2),
+        )
+        for index in range(257)
+    ]
+    with queue._connect() as connection:
+        connection.executemany(
+            "INSERT INTO merge_requests VALUES ("
+            + ",".join("?" for _ in range(22))
+            + ")",
+            decoy_rows,
+        )
+        connection.commit()
+    queue_queries = {
+        name: 0
+        for name in (
+            "completed_requests",
+            "pending_requests",
+            "quarantined_requests",
+            "processing_requests",
+        )
+    }
+    for operation in tuple(queue_queries):
+        original = getattr(queue, operation)
+
+        def counted_snapshot(
+            *,
+            _operation: str = operation,
+            _original: object = original,
+            **kwargs: object,
+        ) -> object:
+            queue_queries[_operation] += 1
+            return _original(**kwargs)
+
+        setattr(queue, operation, counted_snapshot)
+
+    def assert_one_page_per_stage(before: dict[str, int]) -> None:
+        assert all(
+            queue_queries[operation] - before[operation] <= 1
+            for operation in queue_queries
+        )
+
+    before = dict(queue_queries)
+    portal_count_before_stale_page = len(portal_calls)
+    authority.latest_source_attempt_id = "attempt:superseding"
+    assert fresh_bridge().recover_post_merge_declared_outputs(authority) is None
+    assert_one_page_per_stage(before)
+    assert queue_queries["completed_requests"] - before["completed_requests"] == 1
+    assert requalification_heads == []
+    assert len(portal_calls) == portal_count_before_stale_page
+    assert any(
+        source["request_id"] == stale_completed_request_id
+        for source in authority.preauthorization_sources
+    )
+    authority.latest_source_attempt_id = str(binding["attempt_id"])
+
+    # The second fresh bridge resumes page two, validates once, publishes the
+    # immutable requalification receipt, then crashes before the database CAS.
+    authority.crash_after_queue_completion = True
+    before = dict(queue_queries)
+    with pytest.raises(RuntimeError, match="fixture crash"):
+        fresh_bridge().recover_post_merge_declared_outputs(authority)
+    assert_one_page_per_stage(before)
+    assert queue_queries["completed_requests"] - before["completed_requests"] == 1
+    first_requalification_evidence = dict(recovered_evidence[-1])
+    assert requalification_heads == [descendant_head]
+
+    # A reconstructed bridge replays byte-identical cached evidence.  It must
+    # not instantiate Portal or append another validation/log receipt.
+    before = dict(queue_queries)
+    replay_bridge = fresh_bridge()
+    result = replay_bridge.recover_post_merge_declared_outputs(authority)
+    assert_one_page_per_stage(before)
+    assert queue_queries["completed_requests"] - before["completed_requests"] == 1
+
+    assert result is not None
+    assert result["recovered"] is True
+    assert result["write_count"] == 2
+    assert portal_calls == ["LGSWF-004", "LGSWF-004"]
+    assert recovery_lease_observations == [False, False, False]
+    assert requalification_heads == [descendant_head]
+    assert subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == descendant_head
+    evidence = recovered_evidence[-1]
+    assert evidence["source_attempt_id"] == binding["attempt_id"]
+    assert evidence["source_claim_id"] == binding["claim_id"]
+    assert evidence["source_lease_id"] == binding["lease_id"]
+    assert evidence["source_fencing_token"] == binding["fencing_token"]
+    assert evidence["source_fence_epoch"] == binding["fence_epoch"]
+    assert evidence["source_binding_id"] == binding["binding_id"]
+    assert evidence["source_projection_immutable_digest"] == binding[
+        "projection_immutable_digest"
+    ]
+    assert evidence == first_requalification_evidence
+    assert evidence["schema"] == (
+        "ipfs_accelerate_py/agent-supervisor/"
+        "database-post-merge-declared-output-requalification-recovery@1"
+    )
+    assert evidence["qualified_target_commit"] == descendant_head
+    requalification = evidence["requalification_receipt"]
+    assert requalification["schema"] == (
+        "ipfs_accelerate_py.agent_supervisor."
+        "post-merge-declared-output-requalification@1"
+    )
+    assert set(requalification) == {
+        "schema",
+        "task_ids",
+        "candidate_commit",
+        "source_repair_receipt_id",
+        "source_repair_commit",
+        "source_repair_receipt",
+        "current_target_commit",
+        "current_target_tree",
+        "entries",
+        "validation",
+        "receipt_id",
+    }
+    assert requalification["source_repair_receipt_id"] == repair_receipt[
+        "receipt_id"
+    ]
+    assert requalification["source_repair_commit"] == candidate
+    assert requalification["source_repair_receipt"] == repair_receipt
+    assert requalification["current_target_commit"] == descendant_head
+    assert requalification["current_target_tree"] == subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert requalification["entries"] == repair_receipt["entries"]
+    assert evidence["requalification_receipt_id"] == requalification[
+        "receipt_id"
+    ]
+    assert queue.get(ordinary.request_id).status == "quarantined"
+    assert queue.get(foreign.request_id).status == "quarantined"
+    assert queue.get(unsealed.request_id).status == "quarantined"
+
+    record.status = "in_progress"
+    assert replay_bridge.recover_post_merge_declared_outputs(authority) is None
+    assert len(recovered_evidence) == 3
+
