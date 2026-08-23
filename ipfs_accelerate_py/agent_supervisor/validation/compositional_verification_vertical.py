@@ -1062,7 +1062,7 @@ def _probe_exact_rollback(
         "restored_fault_bytes": True,
         "restored_hash": restored_hash,
         "target_path": _TARGET_PATH,
-        "worktree_path": str(probe.worktree_path),
+        "worktree_path": "worktrees/rollback",
     }
     return {
         **payload,
@@ -1555,7 +1555,9 @@ def run_compositional_verification_vertical_slice(
         failed_obligation_id=failed_obligation_id,
         repair_receipt=repair_synthesis,
     )
-    worktree_ref = str(repair_worktree.worktree_path)
+    # Bind receipts to a stable logical worktree name so hermetic replay
+    # does not mint a new artifact CID from the ephemeral /tmp prefix.
+    worktree_ref = "worktrees/repair"
     sandbox = DoctorSandboxPolicy(
         sandbox_id=roots.sandbox_id,
         worktree_root_ref=worktree_ref,
@@ -1653,7 +1655,7 @@ def run_compositional_verification_vertical_slice(
     stages.complete(
         "deterministic_repair",
         candidate_id="candidate:constant:10",
-        isolated_worktree=str(repair_worktree.worktree_path),
+        isolated_worktree="worktrees/repair",
         rollback_receipt_cid=rollback["receipt_cid"],
         synthesis_content_id=repair_synthesis.content_id,
         transaction_content_id=transaction.content_id,
