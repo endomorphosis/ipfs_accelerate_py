@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -223,9 +224,20 @@ def test_database_daemon_defaults_to_quack_and_refuses_file_open(tmp_path) -> No
 
 
 class _FakeQuackRaw:
+    def __init__(self) -> None:
+        self.description = (("value",),)
+        self._rows = [(1,)]
+
     def execute(self, sql, params=None):
         del sql, params
-        return type("Result", (), {"fetchall": lambda self: [(1,)]})()
+        self.description = (("value",),)
+        self._rows = [(1,)]
+        return self
+
+    def fetchall(self):
+        rows = list(self._rows)
+        self._rows = []
+        return rows
 
     def close(self) -> None:
         return None
@@ -319,6 +331,217 @@ def test_quack_attach_reuses_cached_connection(monkeypatch) -> None:
         second = open_quack_transport_connection("quack:127.0.0.1:41347")
         assert first is second
         assert attaches["n"] == 1
+    finally:
+        reset_quack_transport_cache()
+
+
+def test_cached_quack_probe_waits_for_wrapper_transaction() -> None:
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    uri = "quack:127.0.0.1:41347"
+    reset_quack_transport_cache()
+    cached = DuckDBConnection.wrap(duckdb.connect(":memory:"))
+    cached._pooled = True
+    cached._quack_uri = uri
+    with ds._QUACK_ATTACH_LOCK:
+        ds._QUACK_TRANSPORT_CACHE[uri] = cached
+    returned: list[DuckDBConnection] = []
+    failures: list[BaseException] = []
+    probe_returned = threading.Event()
+    try:
+        cached.execute("BEGIN TRANSACTION")
+
+        def open_cached() -> None:
+            try:
+                returned.append(open_quack_transport_connection(uri))
+                probe_returned.set()
+            except BaseException as exc:
+                failures.append(exc)
+
+        peer = threading.Thread(target=open_cached)
+        peer.start()
+        assert not probe_returned.wait(timeout=0.1)
+        cached.rollback()
+        peer.join(timeout=3.0)
+
+        assert not peer.is_alive()
+        assert failures == []
+        assert returned == [cached]
+    finally:
+        reset_quack_transport_cache()
+
+
+def test_cached_probe_wait_does_not_hold_global_attach_lock(monkeypatch) -> None:
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    uri = "quack:127.0.0.1:41349"
+    reset_quack_transport_cache()
+    cached = DuckDBConnection.wrap(duckdb.connect(":memory:"))
+    cached._pooled = True
+    cached._quack_uri = uri
+    with ds._QUACK_ATTACH_LOCK:
+        ds._QUACK_TRANSPORT_CACHE[uri] = cached
+    owner_ready = threading.Event()
+    peer_probe_started = threading.Event()
+    owner_may_reopen = threading.Event()
+    owner_reopened = threading.Event()
+    release_transaction = threading.Event()
+    owner_ids: list[int] = []
+    failures: list[BaseException] = []
+    original_probe = ds._probe_quack_connection
+
+    def observed_probe(connection) -> None:
+        if owner_ids and threading.get_ident() != owner_ids[0]:
+            peer_probe_started.set()
+        original_probe(connection)
+
+    monkeypatch.setattr(ds, "_probe_quack_connection", observed_probe)
+
+    def transaction_owner() -> None:
+        try:
+            owner_ids.append(threading.get_ident())
+            cached.execute("BEGIN TRANSACTION")
+            owner_ready.set()
+            if not owner_may_reopen.wait(timeout=3.0):
+                raise AssertionError("owner reopen was not signalled")
+            assert open_quack_transport_connection(uri) is cached
+            owner_reopened.set()
+            if not release_transaction.wait(timeout=3.0):
+                raise AssertionError("transaction release was not signalled")
+            cached.rollback()
+        except BaseException as exc:
+            failures.append(exc)
+
+    def peer_open() -> None:
+        try:
+            assert open_quack_transport_connection(uri) is cached
+        except BaseException as exc:
+            failures.append(exc)
+
+    owner = threading.Thread(target=transaction_owner, daemon=True)
+    peer = threading.Thread(target=peer_open, daemon=True)
+    owner.start()
+    assert owner_ready.wait(timeout=3.0)
+    peer.start()
+    assert peer_probe_started.wait(timeout=3.0)
+    owner_may_reopen.set()
+    assert owner_reopened.wait(timeout=1.0)
+    release_transaction.set()
+    owner.join(timeout=3.0)
+    peer.join(timeout=3.0)
+
+    assert not owner.is_alive()
+    assert not peer.is_alive()
+    assert failures == []
+    reset_quack_transport_cache()
+
+
+def test_cache_reset_discards_cross_thread_transaction_owner() -> None:
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    uri = "quack:127.0.0.1:41350"
+    reset_quack_transport_cache()
+    cached = DuckDBConnection.wrap(duckdb.connect(":memory:"))
+    cached._pooled = True
+    cached._quack_uri = uri
+    with ds._QUACK_ATTACH_LOCK:
+        ds._QUACK_TRANSPORT_CACHE[uri] = cached
+    transaction_started = threading.Event()
+    owner_may_continue = threading.Event()
+    failures: list[BaseException] = []
+
+    def transaction_owner() -> None:
+        cached.execute("BEGIN TRANSACTION")
+        transaction_started.set()
+        if not owner_may_continue.wait(timeout=3.0):
+            failures.append(AssertionError("owner continuation was not signalled"))
+            return
+        try:
+            cached.execute("COMMIT")
+        except BaseException as exc:
+            failures.append(exc)
+
+    owner = threading.Thread(target=transaction_owner, daemon=True)
+    owner.start()
+    assert transaction_started.wait(timeout=3.0)
+    reset_quack_transport_cache()
+    owner_may_continue.set()
+    owner.join(timeout=3.0)
+
+    assert not owner.is_alive()
+    assert len(failures) == 1
+    assert isinstance(failures[0], DuckDBConnectionPolicyError)
+    assert cached.in_transaction is False
+    with ds._QUACK_ATTACH_LOCK:
+        assert uri not in ds._QUACK_TRANSPORT_CACHE
+
+
+class _FailingTerminalRaw:
+    def __init__(self) -> None:
+        self.description = ()
+        self.closed = False
+
+    def execute(self, sql, params=None):
+        del params
+        if " ".join(str(sql).upper().split()) == "COMMIT":
+            raise RuntimeError("commit outcome is unknown")
+        self.description = ()
+        return self
+
+    def fetchall(self):
+        return []
+
+    def rollback(self) -> None:
+        raise RuntimeError("rollback failed")
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@pytest.mark.parametrize("terminal", ["commit", "rollback"])
+def test_uncertain_terminal_evicts_pool_and_notifies_waiting_peer(
+    terminal: str,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    uri = "quack:127.0.0.1:41348"
+    reset_quack_transport_cache()
+    raw = _FailingTerminalRaw()
+    cached = DuckDBConnection.wrap(raw)
+    cached._pooled = True
+    cached._quack_uri = uri
+    with ds._QUACK_ATTACH_LOCK:
+        ds._QUACK_TRANSPORT_CACHE[uri] = cached
+    peer_failures: list[BaseException] = []
+    try:
+        cached.execute("BEGIN TRANSACTION")
+
+        def peer_query() -> None:
+            try:
+                cached.execute("SELECT 1")
+            except BaseException as exc:
+                peer_failures.append(exc)
+
+        peer = threading.Thread(target=peer_query)
+        peer.start()
+        if terminal == "commit":
+            with pytest.raises(RuntimeError, match="unknown"):
+                cached.execute("COMMIT")
+        else:
+            with pytest.raises(RuntimeError, match="rollback failed"):
+                cached.rollback()
+        peer.join(timeout=3.0)
+
+        assert not peer.is_alive()
+        assert len(peer_failures) == 1
+        assert isinstance(peer_failures[0], DuckDBConnectionPolicyError)
+        assert raw.closed is True
+        assert cached.in_transaction is False
+        with ds._QUACK_ATTACH_LOCK:
+            assert uri not in ds._QUACK_TRANSPORT_CACHE
     finally:
         reset_quack_transport_cache()
 

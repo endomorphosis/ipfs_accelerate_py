@@ -1356,7 +1356,7 @@ class TypedStateOwnerGateway:
             "grant_expiry_required": True,
             "kernel_peer_credentials_required": True,
             "typed_event_wait_bound": self._event_wait_handler is not None,
-            "typed_event_wait_maximum_seconds": MAX_REMOTE_EVENT_WAIT_SECONDS,
+            "typed_event_wait_maximum_seconds": int(MAX_REMOTE_EVENT_WAIT_SECONDS),
             "commit_observer_bound": self._commit_observer is not None,
             "last_observer_error_type": self._last_observer_error_type,
             "last_error_type": self._last_error_type,

@@ -1,19 +1,359 @@
 from __future__ import annotations
 
+import gc
 import hashlib
 import sqlite3
+import threading
 from pathlib import Path
 
+import pytest
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
+from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import MergeResolverRegistry
 from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DUCKDB_ONLY_ENV,
+    DuckDBConnection,
+    DuckDBConnectionPolicyError,
     initialize_duckdb_database,
     is_sqlite_database,
     open_duckdb_connection,
     resolve_duckdb_path,
 )
-from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
-from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import MergeResolverRegistry
+
+
+def test_connection_serializes_peer_reads_across_an_explicit_transaction(
+    tmp_path: Path,
+) -> None:
+    """A peer thread cannot reuse one native result or enter its transaction."""
+
+    transaction_started = threading.Event()
+    allow_commit = threading.Event()
+    peer_returned = threading.Event()
+    failures: list[BaseException] = []
+    observed_counts: list[int] = []
+
+    with open_duckdb_connection(tmp_path / "threaded.duckdb") as connection:
+        connection.execute("CREATE TABLE items (value INTEGER NOT NULL)")
+
+        def transaction_owner() -> None:
+            try:
+                connection.execute("BEGIN TRANSACTION")
+                connection.execute("INSERT INTO items VALUES (1)")
+                transaction_started.set()
+                if not allow_commit.wait(timeout=3.0):
+                    raise AssertionError("transaction release was not signalled")
+                connection.execute("COMMIT")
+            except BaseException as exc:
+                failures.append(exc)
+
+        def peer_reader() -> None:
+            try:
+                if not transaction_started.wait(timeout=3.0):
+                    raise AssertionError("transaction did not start")
+                row = connection.execute("SELECT COUNT(*) FROM items").fetchone()
+                if row is None:
+                    raise AssertionError("peer query returned no count")
+                observed_counts.append(int(row[0]))
+                peer_returned.set()
+            except BaseException as exc:
+                failures.append(exc)
+
+        owner = threading.Thread(target=transaction_owner)
+        peer = threading.Thread(target=peer_reader)
+        owner.start()
+        assert transaction_started.wait(timeout=3.0)
+        peer.start()
+        try:
+            assert not peer_returned.wait(timeout=0.1)
+        finally:
+            allow_commit.set()
+        owner.join(timeout=3.0)
+        peer.join(timeout=3.0)
+
+        assert not owner.is_alive()
+        assert not peer.is_alive()
+        assert failures == []
+        assert observed_counts == [1]
+
+
+def test_nested_begin_preserves_outer_transaction_and_peer_exclusion(
+    tmp_path: Path,
+) -> None:
+    peer_returned = threading.Event()
+    peer_failures: list[BaseException] = []
+    peer_counts: list[int] = []
+
+    with open_duckdb_connection(tmp_path / "nested.duckdb") as connection:
+        connection.execute("CREATE TABLE items (value INTEGER NOT NULL)")
+        connection.execute("BEGIN TRANSACTION")
+        connection.execute("INSERT INTO items VALUES (1)")
+
+        with pytest.raises(DuckDBConnectionPolicyError, match="already active"):
+            connection.execute("BEGIN TRANSACTION")
+        assert connection.in_transaction is True
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 1
+
+        observed_state: list[bool] = []
+        observer = threading.Thread(
+            target=lambda: observed_state.append(connection.in_transaction)
+        )
+        observer.start()
+        observer.join(timeout=1.0)
+        assert not observer.is_alive()
+        assert observed_state == [True]
+
+        def peer_reader() -> None:
+            try:
+                row = connection.execute("SELECT COUNT(*) FROM items").fetchone()
+                if row is None:
+                    raise AssertionError("peer query returned no count")
+                peer_counts.append(int(row[0]))
+                peer_returned.set()
+            except BaseException as exc:
+                peer_failures.append(exc)
+
+        peer = threading.Thread(target=peer_reader)
+        peer.start()
+        try:
+            assert not peer_returned.wait(timeout=0.1)
+        finally:
+            connection.rollback()
+        peer.join(timeout=3.0)
+
+        assert not peer.is_alive()
+        assert peer_failures == []
+        assert peer_counts == [0]
+
+
+def test_peer_transaction_termination_is_rejected_without_waiting(
+    tmp_path: Path,
+) -> None:
+    with open_duckdb_connection(tmp_path / "peer-terminal.duckdb") as connection:
+        connection.execute("CREATE TABLE items (value INTEGER NOT NULL)")
+        connection.execute("BEGIN TRANSACTION")
+        connection.execute("INSERT INTO items VALUES (1)")
+        failures: list[BaseException] = []
+        operations = (
+            lambda: connection.execute("COMMIT"),
+            lambda: connection.execute("ROLLBACK"),
+            connection.commit,
+            connection.rollback,
+        )
+
+        for operation in operations:
+            peer = threading.Thread(
+                target=lambda action=operation: _capture_failure(action, failures)
+            )
+            peer.start()
+            peer.join(timeout=1.0)
+            assert not peer.is_alive()
+
+        assert len(failures) == 4
+        assert all(
+            isinstance(exc, DuckDBConnectionPolicyError) for exc in failures
+        )
+        assert connection.in_transaction is True
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 1
+
+        observed_counts: list[int] = []
+        reader = threading.Thread(
+            target=lambda: observed_counts.append(
+                int(connection.execute("SELECT COUNT(*) FROM items").fetchone()[0])
+            )
+        )
+        reader.start()
+        assert reader.is_alive()
+        connection.rollback()
+        reader.join(timeout=3.0)
+
+        assert not reader.is_alive()
+        assert observed_counts == [0]
+
+
+def _capture_failure(action, failures: list[BaseException]) -> None:
+    try:
+        action()
+    except BaseException as exc:
+        failures.append(exc)
+
+
+def test_transaction_control_normalizes_boundaries_and_rejects_scripts(
+    tmp_path: Path,
+) -> None:
+    with open_duckdb_connection(tmp_path / "boundaries.duckdb") as connection:
+        connection.execute("CREATE TABLE items (value INTEGER NOT NULL)")
+        connection.execute("/* lead */ BEGIN IMMEDIATE TRANSACTION; -- tail")
+        connection.execute("INSERT INTO items VALUES (1)")
+        connection.execute("COMMIT TRANSACTION; /* tail */")
+
+        assert connection.in_transaction is False
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 1
+        connection.execute("/* outer /* inner */ still */ BEGIN;")
+        connection.execute("INSERT INTO items VALUES (2)")
+        connection.execute("-- é\rEND WORK;")
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 2
+        connection.execute("/* 💩 */ BEGIN TRANSACTION;")
+        connection.execute("INSERT INTO items VALUES (3)")
+        connection.execute("ABORT TRANSACTION;")
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 2
+        with pytest.raises(DuckDBConnectionPolicyError, match="standalone"):
+            connection.execute("BEGIN TRANSACTION; SELECT 1")
+        with pytest.raises(DuckDBConnectionPolicyError, match="standalone"):
+            connection.execute("BEGIN; -- x\r COMMIT;")
+        with pytest.raises(DuckDBConnectionPolicyError, match="transaction control"):
+            connection.executescript("BEGIN; INSERT INTO items VALUES (2); COMMIT;")
+        with pytest.raises(DuckDBConnectionPolicyError, match="transaction control"):
+            connection.executemany("BEGIN", [[]])
+        assert connection.execute("SELECT $$BEGIN; COMMIT$$").fetchone()[0] == (
+            "BEGIN; COMMIT"
+        )
+        assert connection.in_transaction is False
+
+
+def test_cross_thread_context_entry_is_rejected_without_poisoning_owner() -> None:
+    import duckdb
+
+    raw = duckdb.connect(":memory:")
+    connection = DuckDBConnection.wrap(raw, transaction_on_context=True)
+    connection.execute("CREATE TABLE items (value INTEGER NOT NULL)")
+    entered = threading.Event()
+    release = threading.Event()
+    failures: list[BaseException] = []
+
+    def context_owner() -> None:
+        try:
+            with connection:
+                connection.execute("INSERT INTO items VALUES (1)")
+                entered.set()
+                if not release.wait(timeout=3.0):
+                    raise AssertionError("context release was not signalled")
+        except BaseException as exc:
+            failures.append(exc)
+
+    owner = threading.Thread(target=context_owner)
+    owner.start()
+    assert entered.wait(timeout=3.0)
+    with pytest.raises(DuckDBConnectionPolicyError, match="another thread"):
+        connection.__enter__()
+    release.set()
+    owner.join(timeout=3.0)
+
+    assert not owner.is_alive()
+    assert failures == []
+    with connection:
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 1
+    connection.close()
+
+
+def test_context_owner_remains_reserved_during_native_close() -> None:
+    close_started = threading.Event()
+    allow_close = threading.Event()
+
+    class BlockingClose:
+        description = ()
+
+        def execute(self, _sql, _parameters=None):
+            return self
+
+        def fetchall(self):
+            return []
+
+        def rollback(self) -> None:
+            return None
+
+        def close(self) -> None:
+            close_started.set()
+            if not allow_close.wait(timeout=3.0):
+                raise AssertionError("native close release was not signalled")
+
+    class FakeLockContext:
+        def __exit__(self, _exc_type, _exc, _traceback) -> None:
+            return None
+
+    connection = DuckDBConnection.wrap(
+        BlockingClose(),
+        transaction_on_context=True,
+    )
+    connection._lock_context = FakeLockContext()
+    failures: list[BaseException] = []
+
+    def context_owner() -> None:
+        try:
+            with connection:
+                pass
+        except BaseException as exc:
+            failures.append(exc)
+
+    owner = threading.Thread(target=context_owner)
+    owner.start()
+    assert close_started.wait(timeout=3.0)
+    with pytest.raises(DuckDBConnectionPolicyError, match="unusable|another thread"):
+        connection.__enter__()
+    allow_close.set()
+    owner.join(timeout=3.0)
+
+    assert not owner.is_alive()
+    assert failures == []
+
+
+def test_same_raw_connection_cannot_receive_independent_wrapper_locks() -> None:
+    import duckdb
+
+    raw = duckdb.connect(":memory:")
+    connection = DuckDBConnection.wrap(raw)
+    try:
+        with pytest.raises(DuckDBConnectionPolicyError, match="already owned"):
+            DuckDBConnection.wrap(raw)
+    finally:
+        connection.close()
+
+
+def test_abandoned_wrapper_closes_raw_before_registry_release() -> None:
+    class ClosableRaw:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    raw = ClosableRaw()
+    connection = DuckDBConnection.wrap(raw)
+    key = connection._raw_wrapper_key
+    del connection
+    gc.collect()
+
+    assert raw.closed is True
+    assert key not in duckdb_state._RAW_WRAPPERS
+
+
+def test_close_finishes_native_cleanup_after_rollback_failure() -> None:
+    class FailingRollback:
+        description = ()
+
+        def __init__(self) -> None:
+            self.closed = False
+
+        def execute(self, _sql, _parameters=None):
+            return self
+
+        def fetchall(self):
+            return []
+
+        def rollback(self) -> None:
+            raise RuntimeError("rollback failed")
+
+        def close(self) -> None:
+            self.closed = True
+
+    raw = FailingRollback()
+    connection = DuckDBConnection.wrap(raw)
+    connection.execute("BEGIN TRANSACTION")
+    connection.close()
+
+    assert raw.closed is True
+    assert connection.in_transaction is False
+    with pytest.raises(DuckDBConnectionPolicyError, match="unusable"):
+        connection.execute("SELECT 1")
 
 
 def test_legacy_sqlite_tables_are_migrated_once_without_mutating_source(

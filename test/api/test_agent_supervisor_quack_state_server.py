@@ -1828,6 +1828,10 @@ def test_ops_module_import_is_cold() -> None:
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required for integration path")
 def test_real_duckdb_migration_then_fake_transport_ready(tmp_path: Path) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        open_duckdb_connection,
+    )
+
     db = tmp_path / "control.duckdb"
     state = tmp_path / "state"
     state.mkdir()
@@ -1857,6 +1861,12 @@ def test_real_duckdb_migration_then_fake_transport_ready(tmp_path: Path) -> None
     assert identity.database_uuid
     assert identity.schema_revision >= 1
     assert identity.schema_fingerprint.startswith("sha256:")
+    status = json.loads(server.status_path().read_text(encoding="utf-8"))
+    maximum_wait = status["typed_command_gateway"][
+        "typed_event_wait_maximum_seconds"
+    ]
+    assert type(maximum_wait) is int
+    assert maximum_wait == 60
     ready = server.ready()
     assert ready["ready"] is True
     export = server.export_identity()
