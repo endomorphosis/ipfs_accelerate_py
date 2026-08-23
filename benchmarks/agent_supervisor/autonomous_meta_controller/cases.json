@@ -1,0 +1,136 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.autonomy.benchmark-corpus@1",
+  "program_id": "agent-supervisor-autonomous-meta-controller-v1",
+  "seed": 20260820,
+  "frozen": true,
+  "cases": [
+    {
+      "case_id": "APMC-B001",
+      "source_family": "semantic_compression",
+      "question_type": "whether_cache_is_reusable",
+      "fixture": "current authoritative receipt exactly matches tree, policy, and evidence",
+      "expected_action": "READ_CACHED_RECEIPT",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B002",
+      "source_family": "low_risk_maintenance",
+      "question_type": "which_files_are_affected",
+      "fixture": "complete deterministic dependency cone is available",
+      "expected_action": "RUN_LOCAL_STATIC_ANALYSIS",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B003",
+      "source_family": "stale_cache_changed_tree",
+      "question_type": "whether_cache_is_reusable",
+      "fixture": "cached receipt binds the previous tree and selected test is authoritative",
+      "expected_action": "RUN_SELECTED_TEST",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B004",
+      "source_family": "provider_unavailable",
+      "question_type": "whether_capability_is_live",
+      "fixture": "remote providers unavailable and local capability probe is authoritative",
+      "expected_action": "RUN_LOCAL_STATIC_ANALYSIS",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B005",
+      "source_family": "repeated_retry",
+      "question_type": "whether_replan_is_required",
+      "fixture": "no named unresolved question exists",
+      "expected_action": "NO_OP",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B006",
+      "source_family": "conflicting_plan",
+      "question_type": "which_contract_changed",
+      "fixture": "candidate answer cannot change any admissible decision",
+      "expected_action": "NO_OP",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B007",
+      "source_family": "proof_sealer_verification",
+      "question_type": "which_proof_obligation_applies",
+      "fixture": "verification planner is deterministic authority for the obligation",
+      "expected_action": "RUN_LOCAL_STATIC_ANALYSIS",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B008",
+      "source_family": "budget_exhaustion",
+      "question_type": "whether_context_is_sufficient",
+      "fixture": "model candidate would consume the protected validation reserve",
+      "expected_action": "QUARANTINE_TASK",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B009",
+      "source_family": "adversarial_assurance",
+      "question_type": "which_files_are_affected",
+      "fixture": "repository-private evidence may not leave the local boundary",
+      "expected_action": "RUN_GRAPH_RETRIEVAL",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B010",
+      "source_family": "repeated_retry",
+      "question_type": "whether_failure_is_flaky",
+      "fixture": "identical failure repeated without new evidence",
+      "expected_action": "QUARANTINE_TASK",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B011",
+      "source_family": "context_omission",
+      "question_type": "whether_context_is_sufficient",
+      "fixture": "completeness witness names one missing content reference",
+      "expected_action": "EXPAND_CONTEXT_REFERENCE",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B012",
+      "source_family": "changed_tree",
+      "question_type": "whether_replan_is_required",
+      "fixture": "formal replanner identifies one affected dependency suffix",
+      "expected_action": "REPLAN_AFFECTED_SUFFIX",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B013",
+      "source_family": "human_escalation",
+      "question_type": "whether_human_choice_is_irreducible",
+      "fixture": "R5 choice is value-laden and requires operator authority",
+      "expected_action": "REQUEST_HUMAN_DECISION",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B014",
+      "source_family": "verification_fixture",
+      "question_type": "which_test_is_required",
+      "fixture": "typed API change has a current deterministic type-check selector",
+      "expected_action": "RUN_TYPE_CHECK",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B015",
+      "source_family": "proof_sealer_verification",
+      "question_type": "which_proof_obligation_applies",
+      "fixture": "incremental proof plan is current and admissible",
+      "expected_action": "RUN_SMT_OR_PROVER",
+      "model_call_forbidden": true
+    },
+    {
+      "case_id": "APMC-B016",
+      "source_family": "deterministic_repair",
+      "question_type": "whether_patch_is_semantically_nonempty",
+      "fixture": "allowlisted exact typed-error migration has bounded scope and predetermined validation",
+      "expected_action": "GENERATE_BOUNDED_REPAIR",
+      "model_call_forbidden": true
+    }
+  ]
+}

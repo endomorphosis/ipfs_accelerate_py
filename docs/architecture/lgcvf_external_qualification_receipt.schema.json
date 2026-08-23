@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lgcvf-external-qualification-receipt.schema.json",
+  "title": "LGCVF-121 external qualification receipt",
+  "description": "Closed schema for an independently issued live-evidence receipt. Filling this schema is not issuance. This file is not external_qualification_receipt.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "issuer",
+    "issued_at",
+    "expires_at",
+    "plan_cid",
+    "qualification_result_cid",
+    "benchmark_report_cid",
+    "source_revisions",
+    "cohorts",
+    "provider_disclosure_policy",
+    "multi_writer",
+    "passed",
+    "release_qualified",
+    "production_authorized",
+    "limitations",
+    "receipt_cid"
+  ],
+  "properties": {
+    "schema": {
+      "const": "lgcvf-external-qualification-receipt@1"
+    },
+    "issuer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity",
+        "independence_statement",
+        "not_model",
+        "not_supervisor",
+        "not_candidate_author"
+      ],
+      "properties": {
+        "identity": { "type": "string", "minLength": 8 },
+        "independence_statement": { "type": "string", "minLength": 8 },
+        "not_model": { "const": true },
+        "not_supervisor": { "const": true },
+        "not_candidate_author": { "const": true }
+      }
+    },
+    "issued_at": { "type": "string", "minLength": 8 },
+    "expires_at": { "type": "string", "minLength": 8 },
+    "plan_cid": { "type": "string", "pattern": "^baguqeera[a-z2-7]{52}$" },
+    "qualification_result_cid": {
+      "type": "string",
+      "pattern": "^baguqeera[a-z2-7]{52}$"
+    },
+    "benchmark_report_cid": {
+      "type": "string",
+      "pattern": "^baguqeera[a-z2-7]{52}$"
+    },
+    "source_revisions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ipfs_accelerate_py", "ipfs_datasets_py"],
+      "properties": {
+        "ipfs_accelerate_py": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["head", "tree"],
+          "properties": {
+            "head": { "type": "string", "minLength": 40 },
+            "tree": { "type": "string", "minLength": 40 }
+          }
+        },
+        "ipfs_datasets_py": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["head", "tree", "gitlink"],
+          "properties": {
+            "head": { "type": "string", "minLength": 40 },
+            "tree": { "type": "string", "minLength": 40 },
+            "gitlink": { "type": "string", "minLength": 40 }
+          }
+        }
+      }
+    },
+    "cohorts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "live_local_model_execution",
+        "live_remote_model_execution",
+        "production_authoritative_evidence"
+      ],
+      "properties": {
+        "live_local_model_execution": {
+          "enum": ["passed", "missed", "unavailable"]
+        },
+        "live_remote_model_execution": {
+          "enum": ["passed", "missed", "unavailable"]
+        },
+        "production_authoritative_evidence": {
+          "enum": ["passed", "missed", "unavailable"]
+        }
+      }
+    },
+    "provider_disclosure_policy": { "type": "string", "minLength": 8 },
+    "multi_writer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quack_qualified", "disposition", "notes"],
+      "properties": {
+        "quack_qualified": { "type": "boolean" },
+        "disposition": { "enum": ["passed", "missed", "unavailable"] },
+        "notes": { "type": "string", "minLength": 8 }
+      }
+    },
+    "passed": { "type": "boolean" },
+    "release_qualified": { "const": false },
+    "production_authorized": { "const": false },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 8 }
+    },
+    "receipt_cid": { "type": "string", "pattern": "^baguqeera[a-z2-7]{52}$" }
+  }
+}

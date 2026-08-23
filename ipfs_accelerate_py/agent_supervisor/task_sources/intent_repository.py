@@ -25,6 +25,7 @@ provider, or process action.
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 import time
@@ -48,12 +49,18 @@ from .control_plane_migrations import duckdb_available
 from .control_plane_schema import install_control_plane_schema
 from .duckdb_state import (
     DuckDBConnectionPolicyError,
+    DuckDBQuackMutationConflictError,
+    DuckDBQuackMutationTransitionError,
+    DuckDBQuackMutationUnknownOutcomeError,
+    STALE_IN_PROGRESS_UNSTALL_SECONDS,
     _is_quack_session_dead,
     exclusive_file_lock,
     is_quack_transport_target,
     open_duckdb_connection,
+    quack_owner_mutation_write_lock_path,
     quack_session_is_live,
     quack_transport_uri,
+    unstall_stale_in_progress_tasks as apply_stale_in_progress_unstall,
 )
 
 # ---------------------------------------------------------------------------
@@ -187,6 +194,14 @@ class IntentRepositoryError(RuntimeError):
 
 class IntentRepositoryConflictError(IntentRepositoryError):
     """CAS head, fence, or expected-revision conflict."""
+
+
+class IntentRepositoryTransitionError(IntentRepositoryError):
+    """Owner rejected a status transition outside the closed matrix."""
+
+
+class IntentRepositoryUnknownOutcomeError(IntentRepositoryError):
+    """A remote owner effect committed without fresh projection settlement."""
 
 
 class IntentRepositoryIntegrityError(IntentRepositoryError):
@@ -347,6 +362,27 @@ def _decode_json(value: Any, *, noun: str = "json") -> Any:
         return json.loads(text, object_pairs_hook=closed_object)
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise IntentRepositoryIntegrityError(f"{noun} is not valid unambiguous JSON") from exc
+
+
+def _receipt_with_preserved_reopen_count(
+    receipt: Mapping[str, Any],
+    previous_receipt: Any,
+) -> dict[str, Any]:
+    """Keep unknown-callback reopen count across later claim receipts."""
+
+    stored = dict(receipt)
+    if "unknown_callback_reopen_count" in stored:
+        return stored
+    previous_count = None
+    if isinstance(previous_receipt, Mapping):
+        previous_count = previous_receipt.get("unknown_callback_reopen_count")
+    if previous_count is None:
+        return stored
+    try:
+        stored["unknown_callback_reopen_count"] = max(0, int(previous_count))
+    except (TypeError, ValueError):
+        return dict(receipt)
+    return stored
 
 
 def _mapping(value: Any, *, noun: str = "mapping") -> dict[str, Any]:
@@ -768,6 +804,7 @@ class IntentRepository:
         )
         self._open = False
         self._closed = False
+        self._quack_connection: Any | None = None
         if self._quack_transport:
             # Schema is owned by the Quack state-owner / trusted materializer.
             install_schema = False
@@ -849,11 +886,6 @@ class IntentRepository:
     @contextmanager
     def _connection(self, *, write: bool = False) -> Iterator[Any]:
         self._require_open()
-        if write and self._quack_transport:
-            raise DuckDBConnectionPolicyError(
-                "IntentRepository mutations over Quack require the closed "
-                "DatabaseTaskSource typed owner-command path"
-            )
         if self._bound_connection is not None:
             # The exclusive state owner retains connection lifecycle authority.
             # Repository calls serialize on that connection and own only their
@@ -924,6 +956,99 @@ class IntentRepository:
                         except Exception:
                             pass
                         raise
+                finally:
+                    connection.close()
+            return
+        if write and self._quack_transport:
+            # Serialize before opening the remote connection.  The owner
+            # deliberately restarts its read-only endpoint after each admitted
+            # commit; a waiting writer must not retain a connection to the
+            # prior replica generation.
+            expected_store = str(
+                os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
+            ).strip()
+            write_lock = quack_owner_mutation_write_lock_path(expected_store)
+            if write_lock is None:
+                raise IntentRepositoryIntegrityError(
+                    "quack write transaction has no accepted-root lock path"
+                )
+            with exclusive_file_lock(
+                write_lock, timeout_seconds=self.lock_timeout_seconds
+            ):
+                connection = open_duckdb_connection(self._open_target)
+                try:
+                    binding = getattr(connection, "_quack_mutation_binding", None)
+                    if (
+                        not isinstance(binding, Mapping)
+                        or binding.get("store_id") != expected_store
+                    ):
+                        raise IntentRepositoryIntegrityError(
+                            "quack write lock is not bound to the live store"
+                        )
+                    connection.execute("BEGIN TRANSACTION")
+                    try:
+                        yield connection
+                        connection.execute("COMMIT")
+                    except DuckDBQuackMutationConflictError as exc:
+                        try:
+                            connection.execute("ROLLBACK")
+                        except Exception:
+                            pass
+                        raise IntentRepositoryConflictError(
+                            "remote task revision or event-head CAS conflicted"
+                        ) from exc
+                    except DuckDBQuackMutationTransitionError as exc:
+                        try:
+                            connection.execute("ROLLBACK")
+                        except Exception:
+                            pass
+                        raise IntentRepositoryTransitionError(
+                            "remote task status transition is not admitted"
+                        ) from exc
+                    except DuckDBQuackMutationUnknownOutcomeError as exc:
+                        try:
+                            connection.execute("ROLLBACK")
+                        except Exception:
+                            pass
+                        raise IntentRepositoryUnknownOutcomeError(
+                            "remote mutation outcome requires exact reconciliation"
+                        ) from exc
+                    except BaseException:
+                        try:
+                            connection.execute("ROLLBACK")
+                        except Exception:
+                            pass
+                        raise
+                finally:
+                    connection.close()
+            return
+        if self._quack_transport:
+            # Replica publication is fail-closed: the owner withdraws and
+            # restarts the endpoint synchronously after each admitted bundle.
+            # Hold the same bounded store lock for the complete open/query/
+            # close window so a trusted read can never straddle that refresh.
+            expected_store = str(
+                os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
+            ).strip()
+            read_lock = quack_owner_mutation_write_lock_path(expected_store)
+            if read_lock is None:
+                raise IntentRepositoryIntegrityError(
+                    "quack read transaction has no accepted-root lock path"
+                )
+            with exclusive_file_lock(
+                read_lock, timeout_seconds=self.lock_timeout_seconds
+            ):
+                connection = open_duckdb_connection(self._open_target)
+                try:
+                    binding = getattr(connection, "_quack_mutation_binding", None)
+                    if (
+                        not isinstance(binding, Mapping)
+                        or binding.get("store_id") != expected_store
+                    ):
+                        raise IntentRepositoryIntegrityError(
+                            "quack read lock is not bound to the live store"
+                        )
+                    yield connection
                 finally:
                     connection.close()
             return
@@ -1483,6 +1608,35 @@ class IntentRepository:
                     "revision": 0,
                 },
             )
+
+    def list_goal_edges(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_LIMIT,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Return a bounded, stable projection of the admitted goal graph."""
+
+        selected = _bounded_limit(limit)
+        with self._connection(write=False) as connection:
+            rows = connection.execute(
+                """
+                SELECT parent_goal_cid, child_goal_cid, edge_kind
+                FROM goal_edges
+                ORDER BY parent_goal_cid, child_goal_cid, edge_kind
+                LIMIT ?
+                """,
+                [selected],
+            ).fetchall()
+        return tuple(
+            MappingProxyType(
+                {
+                    "parent_goal_cid": str(row[0]),
+                    "child_goal_cid": str(row[1]),
+                    "edge_kind": str(row[2]),
+                }
+            )
+            for row in rows
+        )
 
     def reopen_goal(
         self,
@@ -2727,6 +2881,122 @@ class IntentRepository:
             )
         return tuple(current)
 
+    def qualification_authority_for_task(
+        self,
+        task_cid: str,
+    ) -> Mapping[str, Any]:
+        """Return bounded canonical rows underlying task qualification.
+
+        Evidence nodes are indexes, not self-authorizing proof.  This view
+        lets callers bind them to the task identity, validation run/result,
+        and completion-receipt authorities without issuing raw SQL.
+        """
+
+        tcid = _identifier(task_cid, noun="task_cid")
+        with self._connection(write=False) as connection:
+            task_row = connection.execute(
+                """
+                SELECT identity_json, extension_schema, extension_json
+                FROM tasks WHERE task_cid = ?
+                """,
+                [tcid],
+            ).fetchone()
+            if task_row is None:
+                raise KeyError(tcid)
+            run_rows = connection.execute(
+                """
+                SELECT run_id, task_cid, attempt_id, started_at, finished_at,
+                       status, command_digest, body_json
+                FROM validation_runs WHERE task_cid = ?
+                ORDER BY started_at, run_id
+                LIMIT ?
+                """,
+                [tcid, MAX_VALIDATIONS + 1],
+            ).fetchall()
+            result_rows = connection.execute(
+                """
+                SELECT result_id, run_id, task_cid, ordinal, outcome,
+                       evidence_digest, body_json
+                FROM validation_results WHERE task_cid = ?
+                ORDER BY run_id, ordinal, result_id
+                LIMIT ?
+                """,
+                [tcid, MAX_VALIDATIONS + 1],
+            ).fetchall()
+            completion_rows = connection.execute(
+                """
+                SELECT receipt_cid, task_cid, goal_cid, attempt_id, claim_cid,
+                       fencing_token, completed_at, validation_run_id,
+                       evidence_digest, body_json
+                FROM completion_receipts WHERE task_cid = ?
+                ORDER BY completed_at, receipt_cid
+                LIMIT ?
+                """,
+                [tcid, MAX_EVIDENCE + 1],
+            ).fetchall()
+        if len(run_rows) > MAX_VALIDATIONS or len(result_rows) > MAX_VALIDATIONS:
+            raise IntentRepositoryBoundsError(
+                "task qualification validation population exceeds bound"
+            )
+        if len(completion_rows) > MAX_EVIDENCE:
+            raise IntentRepositoryBoundsError(
+                "task qualification completion population exceeds bound"
+            )
+        return MappingProxyType(
+            {
+                "task_cid": tcid,
+                "identity": _decode_json(task_row[0], noun="task identity"),
+                "extension_schema": str(task_row[1] or ""),
+                "extension": _decode_json(task_row[2], noun="task extension"),
+                "validation_runs": tuple(
+                    MappingProxyType(
+                        {
+                            "run_id": str(row[0]),
+                            "task_cid": str(row[1]),
+                            "attempt_id": str(row[2] or ""),
+                            "started_at": str(row[3]),
+                            "finished_at": str(row[4] or ""),
+                            "status": str(row[5]),
+                            "command_digest": str(row[6]),
+                            "body": _decode_json(row[7], noun="validation run body"),
+                        }
+                    )
+                    for row in run_rows
+                ),
+                "validation_results": tuple(
+                    MappingProxyType(
+                        {
+                            "result_id": str(row[0]),
+                            "run_id": str(row[1]),
+                            "task_cid": str(row[2]),
+                            "ordinal": int(row[3]),
+                            "outcome": str(row[4]),
+                            "evidence_digest": str(row[5]),
+                            "body": _decode_json(row[6], noun="validation result body"),
+                        }
+                    )
+                    for row in result_rows
+                ),
+                "completion_receipts": tuple(
+                    MappingProxyType(
+                        {
+                            "receipt_cid": str(row[0]),
+                            "task_cid": str(row[1]),
+                            "goal_cid": str(row[2]),
+                            "attempt_id": str(row[3] or ""),
+                            "claim_cid": str(row[4] or ""),
+                            "fencing_token": int(row[5]),
+                            "completed_at": str(row[6]),
+                            "validation_run_id": str(row[7] or ""),
+                            "evidence_digest": str(row[8]),
+                            "body": _decode_json(row[9], noun="completion receipt body"),
+                        }
+                    )
+                    for row in completion_rows
+                ),
+            }
+        )
+
     def required_evidence_satisfied(
         self,
         task_cid: str,
@@ -2858,7 +3128,22 @@ class IntentRepository:
                 body_map = {}
             body_map = dict(body_map)
             if receipt_map:
-                body_map["completion_receipt"] = receipt_map
+                body_map["completion_receipt"] = _receipt_with_preserved_reopen_count(
+                    receipt_map,
+                    body_map.get("completion_receipt"),
+                )
+                if receipt_map.get("operation") in {
+                    "reopen_unimplemented_unknown_callback_quarantine",
+                    "requeue_unimplemented_stale_attempt",
+                }:
+                    raw_reopen_count = receipt_map.get("unknown_callback_reopen_count")
+                    if raw_reopen_count is not None:
+                        try:
+                            body_map["unknown_callback_reopen_count"] = max(
+                                0, int(raw_reopen_count)
+                            )
+                        except (TypeError, ValueError):
+                            pass
             connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
@@ -2970,71 +3255,13 @@ class IntentRepository:
         evidence_digests: Sequence[str] | None = None,
         now_ms: int | None = None,
     ) -> tuple[str, ...]:
-        clock = int(now_ms if now_ms is not None else self._clock_ms())
-        freshness_ms = self.evidence_freshness_seconds * 1000
-        acceptance_rows = connection.execute(
-            """
-            SELECT ordinal, criterion, evidence_policy_json
-            FROM task_acceptance WHERE task_cid = ? ORDER BY ordinal
-            """,
-            [task_cid],
-        ).fetchall()
-        evidence_rows = connection.execute(
-            """
-            SELECT evidence_kind, digest, created_at
-            FROM evidence_nodes WHERE task_cid = ?
-            """,
-            [task_cid],
-        ).fetchall()
-        current_digests: set[str] = set()
-        current_kinds: set[str] = set()
-        # DuckDBRow iterates column names (Mapping protocol); always index values.
-        for row in evidence_rows:
-            kind = str(row[0])
-            digest = str(row[1])
-            created_at = str(row[2] or "")
-            created_ms = _parse_iso_ms(created_at)
-            if freshness_ms > 0 and created_ms > 0 and clock - created_ms > freshness_ms:
-                continue
-            current_digests.add(digest)
-            current_kinds.add(kind)
-        # Caller-supplied digests are advisory cross-checks only; completion
-        # authority comes from current stored evidence nodes, never invented
-        # digests that are not already recorded against the task.
-        if evidence_digests:
-            provided = {_identifier(item, noun="evidence_digest") for item in evidence_digests}
-            if not provided.issubset(current_digests):
-                return tuple(f"digest:{digest}" for digest in sorted(provided - current_digests))
-        missing: list[str] = []
-        if not acceptance_rows:
-            if not current_digests:
-                missing.append("required:current_validation_evidence")
-            return tuple(missing)
-        for row in acceptance_rows:
-            ordinal = row[0]
-            criterion = row[1]
-            policy_json = row[2]
-            policy = _decode_json(policy_json, noun="acceptance policy")
-            if not isinstance(policy, dict):
-                policy = {}
-            required_digest = str(
-                policy.get("required_digest")
-                or policy.get("evidence_digest")
-                or policy.get("digest")
-                or ""
-            ).strip()
-            required_kind = str(policy.get("evidence_kind") or policy.get("kind") or "").strip()
-            if required_digest:
-                if required_digest not in current_digests:
-                    missing.append(f"digest:{required_digest}")
-                continue
-            if required_kind:
-                if required_kind not in current_kinds:
-                    missing.append(f"kind:{required_kind}")
-                continue
-            if not current_digests:
-                missing.append(f"criterion:{criterion or ordinal}")
-        return tuple(missing)
+        return missing_current_evidence_on(
+            connection,
+            task_cid,
+            evidence_digests=evidence_digests,
+            now_ms=int(now_ms if now_ms is not None else self._clock_ms()),
+            evidence_freshness_seconds=self.evidence_freshness_seconds,
+        )
 
     # -- queue / attempts / blocks -------------------------------------------
 
@@ -3413,6 +3640,19 @@ class IntentRepository:
                     "revision": revision,
                     "cleared_at": now,
                 },
+            )
+
+    def unstall_stale_in_progress_tasks(
+        self,
+        *,
+        now: datetime | None = None,
+        stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+    ) -> dict[str, Any]:
+        """Retry leftover in_progress gates so dependents can become ready."""
+
+        with self._connection(write=True) as connection:
+            return apply_stale_in_progress_unstall(
+                connection, now=now, stale_seconds=stale_seconds
             )
 
     # -- readiness / selection -----------------------------------------------
@@ -3933,7 +4173,10 @@ class IntentRepository:
             else:
                 body = {}
             if receipt:
-                body["completion_receipt"] = receipt
+                body["completion_receipt"] = _receipt_with_preserved_reopen_count(
+                    receipt,
+                    body.get("completion_receipt"),
+                )
             connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
@@ -5019,6 +5262,93 @@ def _parse_iso_ms(value: str) -> int:
         return 0
 
 
+def missing_current_evidence_on(
+    connection: Any,
+    task_cid: str,
+    *,
+    evidence_digests: Sequence[str] | None,
+    now_ms: int,
+    evidence_freshness_seconds: int = DEFAULT_EVIDENCE_FRESHNESS_SECONDS,
+) -> tuple[str, ...]:
+    """Evaluate the canonical task-completion evidence gate on one transaction.
+
+    This function is shared with the Quack state owner so an authenticated
+    remote bundle cannot rely on a client-side precheck or reinterpret the
+    task's current acceptance policy.
+    """
+
+    clock = int(now_ms)
+    freshness_ms = int(evidence_freshness_seconds) * 1000
+    acceptance_rows = connection.execute(
+        """
+        SELECT ordinal, criterion, evidence_policy_json
+        FROM task_acceptance WHERE task_cid = ? ORDER BY ordinal
+        """,
+        [task_cid],
+    ).fetchall()
+    evidence_rows = connection.execute(
+        """
+        SELECT evidence_kind, digest, created_at
+        FROM evidence_nodes WHERE task_cid = ?
+        """,
+        [task_cid],
+    ).fetchall()
+    current_digests: set[str] = set()
+    current_kinds: set[str] = set()
+    # DuckDBRow iterates column names (Mapping protocol); always index values.
+    for row in evidence_rows:
+        kind = str(row[0])
+        digest = str(row[1])
+        created_at = str(row[2] or "")
+        created_ms = _parse_iso_ms(created_at)
+        if freshness_ms > 0 and created_ms > 0 and clock - created_ms > freshness_ms:
+            continue
+        current_digests.add(digest)
+        current_kinds.add(kind)
+    # Caller-supplied digests are advisory cross-checks only; completion
+    # authority comes from current stored evidence nodes, never invented
+    # digests that are not already recorded against the task.
+    if evidence_digests:
+        provided = {
+            _identifier(item, noun="evidence_digest") for item in evidence_digests
+        }
+        if not provided.issubset(current_digests):
+            return tuple(
+                f"digest:{digest}" for digest in sorted(provided - current_digests)
+            )
+    missing: list[str] = []
+    if not acceptance_rows:
+        if not current_digests:
+            missing.append("required:current_validation_evidence")
+        return tuple(missing)
+    for row in acceptance_rows:
+        ordinal = row[0]
+        criterion = row[1]
+        policy = _decode_json(row[2], noun="acceptance policy")
+        if not isinstance(policy, dict):
+            policy = {}
+        required_digest = str(
+            policy.get("required_digest")
+            or policy.get("evidence_digest")
+            or policy.get("digest")
+            or ""
+        ).strip()
+        required_kind = str(
+            policy.get("evidence_kind") or policy.get("kind") or ""
+        ).strip()
+        if required_digest:
+            if required_digest not in current_digests:
+                missing.append(f"digest:{required_digest}")
+            continue
+        if required_kind:
+            if required_kind not in current_kinds:
+                missing.append(f"kind:{required_kind}")
+            continue
+        if not current_digests:
+            missing.append(f"criterion:{criterion or ordinal}")
+    return tuple(missing)
+
+
 # ---------------------------------------------------------------------------
 # Public constructors
 # ---------------------------------------------------------------------------
@@ -5065,6 +5395,8 @@ __all__ = (
     "IntentRepository",
     "IntentRepositoryError",
     "IntentRepositoryConflictError",
+    "IntentRepositoryTransitionError",
+    "IntentRepositoryUnknownOutcomeError",
     "IntentRepositoryIntegrityError",
     "IntentRepositoryBoundsError",
     "IntentRepositoryNotOpenError",

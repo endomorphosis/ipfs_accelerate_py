@@ -40,7 +40,10 @@ from ..task_sources.duckdb_state import (
 from ..task_sources.task_identity import canonical_bundle_identity
 
 MIN_LEASE_MS = 5_000
-MAX_LEASE_MS = 300_000
+# Long enough to cover a Grok implementation attempt.  A 5-minute cap let
+# other lanes steal a still-running provider after DatabaseImplementationDaemon
+# returned from a deferred portal pass and dropped its heartbeat thread.
+MAX_LEASE_MS = 14_400_000
 PROVIDER_VERSION = "3.2.0"
 MAX_PERSISTED_DEPENDENCY_REPAIRS = 256
 STRUCTURAL_DEPENDENCY_REPAIR_KINDS = frozenset(

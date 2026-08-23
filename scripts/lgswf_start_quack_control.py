@@ -137,49 +137,10 @@ def main() -> int:
     signal.signal(signal.SIGINT, _handle)
     signal.signal(signal.SIGTERM, _handle)
     control = server.stop_control_path()
-    mutation_dir = OWNER_STATE / "mutations"
-    mutation_dir.mkdir(parents=True, exist_ok=True)
     while server.lifecycle.value == "ready" and not stop["value"]:
         if control.is_file():
             break
-        for request in sorted(mutation_dir.glob("*.request.json")):
-            done = request.with_name(
-                request.name.replace(".request.json", ".done.json")
-            )
-            try:
-                payload = json.loads(request.read_text(encoding="utf-8"))
-                sql = str(payload.get("sql") or "")
-                parameters = payload.get("parameters")
-                owner_conn = getattr(server, "_connection", None)
-                if owner_conn is None:
-                    raise RuntimeError("owner connection is not available")
-                if parameters is None:
-                    result = owner_conn.execute(sql)
-                else:
-                    result = owner_conn.execute(sql, parameters)
-                rowcount = -1
-                try:
-                    description = getattr(result, "description", None)
-                    if description:
-                        result.fetchall()
-                    elif hasattr(result, "rowcount"):
-                        rowcount = int(result.rowcount)
-                except Exception:
-                    pass
-                done.write_text(
-                    json.dumps({"ok": True, "rowcount": rowcount}) + "\n",
-                    encoding="utf-8",
-                )
-            except Exception as exc:
-                done.write_text(
-                    json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
-                    + "\n",
-                    encoding="utf-8",
-                )
-            try:
-                request.unlink()
-            except OSError:
-                pass
+        server.process_mutation_inbox()
         time.sleep(0.05)
     result = server.stop()
     print(json.dumps(result, indent=2, sort_keys=True, default=str))

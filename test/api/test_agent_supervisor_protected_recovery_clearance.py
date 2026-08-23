@@ -207,6 +207,22 @@ def _reason(exc_info: pytest.ExceptionInfo[BaseException]) -> str:
     return error.reason
 
 
+def test_implementation_supervisor_entry_script_is_clearance_eligible(
+    tmp_path: Path,
+) -> None:
+    fixture = _journal_fixture(tmp_path)
+    metadata = json.loads(fixture.lock_path.read_text(encoding="utf-8"))
+    metadata["owner_script"] = "implementation_supervisor_entry.py"
+    fixture.lock_path.write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    fixture.lock_path.chmod(0o600)
+    review = clearance.inspect_protected_recovery(fixture.repo)
+    assert review["eligible"] is True, review
+    assert review["reason"] == "protected_generated_history_untrusted"
+
+
 def test_exact_apply_releases_lock_and_writes_three_non_authority_receipts(
     tmp_path: Path,
 ) -> None:

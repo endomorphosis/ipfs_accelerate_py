@@ -216,7 +216,7 @@ def test_database_daemon_builder_preserves_attempt_and_shard_bounds(
         daemon.close()
 
 
-def test_database_daemon_strict_shard_excludes_other_alias_homes(
+def test_database_daemon_strict_shard_defers_filter_until_after_lease(
     tmp_path: Path,
 ) -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -228,12 +228,22 @@ def test_database_daemon_strict_shard_excludes_other_alias_homes(
             task_cid=f"task:cid:{index}",
             task_alias=f"PCAR-{index:03d}",
             status="ready",
+            revision=1,
+            dependencies=(),
             body={},
         )
         for index in range(8)
     ]
     task_source = SimpleNamespace(
-        ready_tasks=lambda **_kwargs: SimpleNamespace(tasks=tasks)
+        snapshot=lambda: SimpleNamespace(
+            projection_cid="projection:strict-shard",
+            task_count=len(tasks),
+        ),
+        list_tasks=lambda **_kwargs: SimpleNamespace(
+            tasks=tasks,
+            next_cursor="",
+        ),
+        ready_tasks=lambda **_kwargs: SimpleNamespace(tasks=tasks),
     )
     daemon = DatabaseImplementationDaemon(
         database_path=tmp_path / "lane-control.duckdb",
@@ -247,18 +257,10 @@ def test_database_daemon_strict_shard_excludes_other_alias_homes(
     )
 
     excluded = daemon._automatic_claim_exclusions()
-    expected = {
-        task.task_cid
-        for task in tasks
-        if int(
-            hashlib.sha256(task.task_alias.encode("utf-8")).hexdigest()[:8],
-            16,
-        )
-        % 3
-        != 1
-    }
-
-    assert excluded == expected
+    # Recovered-main authority claims from the shared ready frontier first,
+    # then verifies alias-home shard ownership under the accepted lease.  A
+    # pre-claim exclusion snapshot would race task identity changes.
+    assert excluded == set()
 
 
 def test_database_claim_releases_shared_cas_loser_and_continues(
@@ -285,6 +287,15 @@ def test_database_claim_releases_shared_cas_loser_and_continues(
     ]
 
     class TaskSource:
+        def snapshot(self) -> SimpleNamespace:
+            return SimpleNamespace(
+                projection_cid="projection:cas-loser",
+                task_count=len(tasks),
+            )
+
+        def list_tasks(self, **_kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(tasks=tasks, next_cursor="")
+
         def ready_tasks(self, **_kwargs: object) -> SimpleNamespace:
             return SimpleNamespace(tasks=tasks)
 
@@ -301,9 +312,23 @@ def test_database_claim_releases_shared_cas_loser_and_continues(
         def register_task(self, **_kwargs: object) -> None:
             return None
 
+        def synchronize_authoritative_task(self, **_kwargs: object) -> None:
+            return None
+
         def coordination_registry_projection(self) -> dict[str, object]:
             return {
-                "tasks": [{"task_cid": task.task_cid} for task in tasks]
+                "tasks": [
+                    {
+                        "task_cid": task.task_cid,
+                        "task_id": task.task_alias,
+                        "body": {
+                            "authority": "task_source",
+                            "authoritative_revision": task.revision,
+                            "authoritative_status": task.status,
+                        },
+                    }
+                    for task in tasks
+                ]
             }
 
         def claim_ready_task(
@@ -408,6 +433,19 @@ def test_database_claim_rechecks_alias_home_after_local_lease(
     assert int(hashlib.sha256(b"PCAR-002").hexdigest()[:8], 16) % 3 == 0
 
     class TaskSource:
+        population_reads = 0
+
+        def snapshot(self) -> SimpleNamespace:
+            return SimpleNamespace(
+                projection_cid="projection:alias-race",
+                task_count=1,
+            )
+
+        def list_tasks(self, **_kwargs: object) -> SimpleNamespace:
+            self.population_reads += 1
+            task = initial if self.population_reads <= 3 else raced
+            return SimpleNamespace(tasks=[task], next_cursor="")
+
         def ready_tasks(self, **_kwargs: object) -> SimpleNamespace:
             return SimpleNamespace(tasks=[initial])
 
@@ -421,8 +459,23 @@ def test_database_claim_rechecks_alias_home_after_local_lease(
         def register_task(self, **_kwargs: object) -> None:
             return None
 
+        def synchronize_authoritative_task(self, **_kwargs: object) -> None:
+            return None
+
         def coordination_registry_projection(self) -> dict[str, object]:
-            return {"tasks": [{"task_cid": initial.task_cid}]}
+            return {
+                "tasks": [
+                    {
+                        "task_cid": initial.task_cid,
+                        "task_id": initial.task_alias,
+                        "body": {
+                            "authority": "task_source",
+                            "authoritative_revision": initial.revision,
+                            "authoritative_status": initial.status,
+                        },
+                    }
+                ]
+            }
 
         def claim_ready_task(self, **_kwargs: object) -> SimpleNamespace | None:
             if self.claimed:

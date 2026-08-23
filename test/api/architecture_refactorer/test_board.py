@@ -85,9 +85,13 @@ def test_generic_scheduler_accepts_quack_database_program() -> None:
     assert program.task_source_kind == "duckdb"
     assert program.endpoint_secret_handle == "handle:pcar-v1"
     assert program.quack_endpoint == "quack:127.0.0.1:41317"
-    assert program.store_generation == "pcar-v1"
+    assert program.store_generation == "1"
     assert program.schema_revision == "1"
     assert program.failover_policy == "fail_closed"
+
+    common_args = configured_board_common_args(configured, implement=True)
+    generation_index = common_args.index("--state-store-generation")
+    assert common_args[generation_index + 1] == "1"
 
 
 def test_provider_route_is_the_current_reviewed_quota_fallback() -> None:
@@ -170,6 +174,29 @@ def test_authority_roles_are_unequal_and_fail_closed() -> None:
     assert projection["acceptance_prerequisite"] is False
     assert projection["completion_prerequisite"] is False
     assert projection["may_grant_authority"] is False
+
+
+def test_markdown_board_is_a_repairable_immutable_projection() -> None:
+    config = json.loads(CONFIG.read_text(encoding="utf-8"))
+    repair = config["authoritative_board_projection_repair"]
+
+    assert repair == {
+        "mode": "sealed_bootstrap_projection",
+        "automatic_repair_before_launch": True,
+        "allowed_drift": "supervisor_generated_guardrail_suffix_only",
+        "bootstrap_receipt_path": (
+            "data/agent_supervisor/proof_carrying_architecture_refactorer/"
+            "evidence/bootstrap/bootstrap-materialization.json"
+        ),
+        "repair_receipt_path": (
+            "data/agent_supervisor/proof_carrying_architecture_refactorer/"
+            "evidence/control-plane/board-projection-repair.json"
+        ),
+        "canonical_authority": "DuckDB/DatabaseTaskSource@1 over Quack",
+        "canonical_block_mutation_permitted": False,
+        "markdown_task_mutation_permitted": False,
+        "suppressed_finding_disposition": "typed_runtime_telemetry",
+    }
 
 
 def test_validator_rejects_blocked_initial_task(tmp_path, monkeypatch) -> None:

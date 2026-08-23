@@ -1,0 +1,303 @@
+{
+  "excluded_sources": [
+    "planning_document_status",
+    "receipt_shaped_unadmitted_json",
+    "task_board_status",
+    "uncommitted_working_tree_overlays"
+  ],
+  "package": {
+    "name": "ipfs_accelerate_py",
+    "version": "0.0.45"
+  },
+  "package_bindings": [
+    {
+      "binding_id": "package:ipfs_accelerate_py@0.0.45",
+      "manifest_blob_id": "179882cc1254039920c5a1ab755f383dcb70842d",
+      "manifest_path": "pyproject.toml",
+      "name": "ipfs_accelerate_py",
+      "version": "0.0.45"
+    }
+  ],
+  "qualified_release_ancestors": {
+    "adversarial_assurance": "4b4f57143",
+    "incremental_proof_sealer": "5edc45694",
+    "incremental_verification_planner": "52e8fe17f",
+    "semantic_compression_governor": "485edc087"
+  },
+  "qualification_environment": {
+    "duckdb": "1.5.5",
+    "pytest": "9.1.1",
+    "python": "3.12.3",
+    "test_mode": "current_tree_requalification_with_sealed_baseline_and_current_source_blobs"
+  },
+  "repository": {
+    "branch_created": "codex/proof-carrying-procedure-compiler-v1",
+    "commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "origin_main_commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "remote": "endomorphosis/ipfs_accelerate_py",
+    "tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58"
+  },
+  "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-baseline@4",
+  "sibling_gitlinks": {
+    "ipfs_accelerate_py/mcplusplus": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+    "ipfs_datasets_py": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+    "ipfs_kit_py": "2564aea1ae35061f2165872aff91e8a40801ab7e"
+  },
+  "sibling_release_bindings": [
+    {
+      "binding_id": "gitlink:ipfs_accelerate_py/mcplusplus@5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+      "gitlink_commit": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+      "path": "ipfs_accelerate_py/mcplusplus"
+    },
+    {
+      "binding_id": "gitlink:ipfs_datasets_py@480a1666f144ad606fcb3cacb66e59775f28d0d1",
+      "gitlink_commit": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+      "path": "ipfs_datasets_py"
+    },
+    {
+      "binding_id": "gitlink:ipfs_kit_py@2564aea1ae35061f2165872aff91e8a40801ab7e",
+      "gitlink_commit": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+      "path": "ipfs_kit_py"
+    }
+  ],
+  "submodule_checkout_state": "deinitialized_in_clean_worktree",
+  "test_evidence": [
+    {
+      "collected": 136,
+      "failed": 0,
+      "scope": "six passing per-authority producers: semantic harness/governor, adversarial public API, incremental verification planner, context compiler, control service"
+    },
+    {
+      "collected": 77,
+      "failed": 0,
+      "scope": "incremental proof sealer leaf APIs with exact pinned siblings"
+    },
+    {
+      "collected": 0,
+      "errors": 1,
+      "failed": 0,
+      "scope": "adaptive planner focused collection",
+      "typed_errors": {
+        "adaptive_planner_import_undefined_hammer_trace_schema": 1
+      }
+    },
+    {
+      "collected": 26,
+      "failed": 1,
+      "scope": "value-of-information and delta-retry core plus daemon integration"
+    },
+    {
+      "collected": 256,
+      "failed": 30,
+      "scope": "provider route, worktree, lease, fencing, registry, and merge producers",
+      "typed_failures": {
+        "default_provider_route_stale": 21,
+        "legacy_merge_queue_semantics": 5,
+        "process_fencing_test_stub_contract_drift": 2,
+        "worktree_test_import_errors": 2
+      }
+    }
+  ],
+  "test_producers": [
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/semantic_state/test_harness.py"],
+      "evidence_class": "fresh_baseline_archive",
+      "expected": {"collected": 16, "errors": 0, "failed": 0, "passed": 16, "returncode": 0},
+      "producer_id": "TP-SEMANTIC-HARNESS",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "10b2becf9e00c60cba95abdba8a8c57fcae022e1", "path": "test/api/semantic_state/test_harness.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/semantic_governor/test_public_api.py"],
+      "evidence_class": "fresh_baseline_archive",
+      "expected": {"collected": 24, "errors": 0, "failed": 0, "passed": 24, "returncode": 0},
+      "producer_id": "TP-SEMANTIC-GOVERNOR",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "10949288b00372c4e23202776cb06ff55c99cf04", "path": "test/api/semantic_governor/test_public_api.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/adversarial_assurance/test_api.py"],
+      "evidence_class": "fresh_baseline_archive_with_exact_gitlinks",
+      "expected": {"collected": 28, "errors": 0, "failed": 0, "passed": 28, "returncode": 0},
+      "producer_id": "TP-ADVERSARIAL-ASSURANCE",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "f5a250b0024af467aa5bb3851408a1a29c4f69ab", "path": "test/api/adversarial_assurance/test_api.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_incremental_verification_planner.py"],
+      "evidence_class": "fresh_baseline_archive",
+      "expected": {"collected": 22, "errors": 0, "failed": 0, "passed": 22, "returncode": 0},
+      "producer_id": "TP-INCREMENTAL-VERIFICATION",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "d5ddfa4ead7f0ffe83394a4d5a92c7f74708d0ae", "path": "test/api/test_agent_supervisor_incremental_verification_planner.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/incremental_sealing/test_public_api.py", "test/api/incremental_sealing/test_atomic_sealer.py", "test/api/incremental_sealing/test_full_checkpoint.py", "test/api/incremental_sealing/test_delta_seal.py"],
+      "evidence_class": "fresh_baseline_archive_with_exact_gitlinks",
+      "expected": {"collected": 77, "errors": 0, "failed": 0, "passed": 77, "returncode": 0},
+      "producer_id": "TP-INCREMENTAL-PROOF-SEALER",
+      "simulated": false,
+      "source_bindings": [
+        {"blob_id": "7493cb51792155b7d2cc47ba20e6487104722205", "path": "test/api/incremental_sealing/test_public_api.py"},
+        {"blob_id": "e6fd7fe80fc49a690c0aabf0e4da87f7f4536914", "path": "test/api/incremental_sealing/test_atomic_sealer.py"},
+        {"blob_id": "9655dc72c1afa1977101cef3d9ebf91ab89edbfa", "path": "test/api/incremental_sealing/test_full_checkpoint.py"},
+        {"blob_id": "26eaf9496d68fd76a107c1410dbc7b441802197d", "path": "test/api/incremental_sealing/test_delta_seal.py"}
+      ]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_adaptive_planner.py"],
+      "evidence_class": "current_tree_requalification_expected_failure",
+      "expected": {"collected": 0, "errors": 1, "failed": 0, "passed": 0, "returncode": 2},
+      "expected_failure": {
+        "reason_code": "adaptive_planner_import_undefined_hammer_trace_schema",
+        "required_output_fragments": [
+          "NameError: name 'HAMMER_TRACE_SCHEMA' is not defined"
+        ],
+        "signature": "NameError: name 'HAMMER_TRACE_SCHEMA' is not defined"
+      },
+      "producer_id": "TP-ADAPTIVE-PLANNER-IMPORT",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "ce25791f270644b3b9068d15fcb0eb240a9b3aae", "path": "test/api/test_agent_supervisor_adaptive_planner.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_control_plane.py"],
+      "evidence_class": "fresh_baseline_archive",
+      "expected": {"collected": 30, "errors": 0, "failed": 0, "passed": 30, "returncode": 0},
+      "producer_id": "TP-CONTROL-SERVICE",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "d951a2c4d059d3e00888dd79c6ccf5302326201d", "path": "test/api/test_agent_supervisor_control_plane.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_context_compiler.py"],
+      "evidence_class": "fresh_baseline_archive",
+      "expected": {"collected": 16, "errors": 0, "failed": 0, "passed": 16, "returncode": 0},
+      "producer_id": "TP-CONTEXT-COMPILER",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "e154f6fa9a071c99fbdd1c8225f03e7217809366", "path": "test/api/test_agent_supervisor_context_compiler.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_evidence_value.py"],
+      "evidence_class": "fresh_baseline_archive",
+      "expected": {"collected": 7, "errors": 0, "failed": 0, "passed": 7, "returncode": 0},
+      "producer_id": "TP-VALUE-OF-INFORMATION",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "c4182ce090cb9593dcba5bccf12a40c10d1cddb4", "path": "test/api/test_agent_supervisor_evidence_value.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_context_delta.py"],
+      "evidence_class": "fresh_baseline_archive_expected_failure",
+      "expected": {"collected": 19, "errors": 0, "failed": 1, "passed": 18, "returncode": 1},
+      "expected_failure": {
+        "reason_code": "daemon_delta_validation_attempted_missing",
+        "required_output_fragments": [
+          "test_implementation_daemon_dispatches_delta_and_reuses_diagnostic",
+          "KeyError: 'attempted'"
+        ],
+        "signature": "KeyError: 'attempted'"
+      },
+      "producer_id": "TP-DELTA-RETRY",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "d655bae009c640c4f8a89eb2968db7d47a21cf8f", "path": "test/api/test_agent_supervisor_context_delta.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_verification_model_route.py"],
+      "evidence_class": "fresh_baseline_archive",
+      "expected": {"collected": 49, "errors": 0, "failed": 0, "passed": 49, "returncode": 0},
+      "producer_id": "TP-MODEL-ROUTE",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "f05d62061d1139cefb1f086554f664dea6d170ae", "path": "test/api/test_agent_supervisor_verification_model_route.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_provider_capacity_monitor.py"],
+      "evidence_class": "fresh_baseline_archive",
+      "expected": {"collected": 11, "errors": 0, "failed": 0, "passed": 11, "returncode": 0},
+      "producer_id": "TP-PROVIDER-CAPACITY",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "1a96d468f69d56824ef0203cb1c39df7d31993ad", "path": "test/api/test_agent_supervisor_provider_capacity_monitor.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_dual_provider_capacity.py"],
+      "evidence_class": "fresh_baseline_archive",
+      "expected": {"collected": 22, "errors": 0, "failed": 0, "passed": 22, "returncode": 0},
+      "producer_id": "TP-DUAL-PROVIDER-CAPACITY",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "e87d51bfaf2f172e5937aa200300348713fc9335", "path": "test/api/test_agent_supervisor_dual_provider_capacity.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_default_provider_route.py"],
+      "evidence_class": "fresh_baseline_archive_expected_failure",
+      "expected": {"collected": 23, "errors": 0, "failed": 21, "passed": 2, "returncode": 1},
+      "expected_failure": {
+        "reason_code": "default_provider_route_stale",
+        "required_output_fragments": [
+          "test_default_implementation_provider_prefers_grok",
+          "implementation provider dispatch refused on merge-target checkout"
+        ],
+        "signature": "21 committed baseline assertions fail"
+      },
+      "producer_id": "TP-DEFAULT-PROVIDER-ROUTE",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "3a4b558d7e439af97cd000b3f5715e1eeaef67f9", "path": "test/api/test_agent_supervisor_default_provider_route.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_worktree_lifecycle.py"],
+      "evidence_class": "current_tree_requalification_expected_failure",
+      "expected": {"collected": 51, "errors": 0, "failed": 2, "passed": 49, "returncode": 1},
+      "expected_failure": {
+        "reason_code": "worktree_test_missing_imports",
+        "required_output_fragments": [
+          "NameError: name 'CampaignLeaseCoordinator' is not defined",
+          "NameError: name 'LearningCheckpointAdapter' is not defined"
+        ],
+        "signature": "NameError: CampaignLeaseCoordinator or LearningCheckpointAdapter"
+      },
+      "producer_id": "TP-WORKTREE-LIFECYCLE",
+      "simulated": false,
+      "source_bindings": [
+        {
+          "blob_id": "4cf5c39ff1e9dfc97f533e1d036e1b9256d15e52",
+          "current_blob_id": "472daae1adaf2d41bdb09df087dbf410bef8420c",
+          "path": "test/api/test_agent_supervisor_worktree_lifecycle.py"
+        }
+      ]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_lease_coordination.py"],
+      "evidence_class": "fresh_baseline_archive",
+      "expected": {"collected": 26, "errors": 0, "failed": 0, "passed": 26, "returncode": 0},
+      "producer_id": "TP-LEASE-COORDINATION",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "063979cf13a544bd3357f167b0914bed0529e93b", "path": "test/api/test_agent_supervisor_lease_coordination.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_merge_train.py"],
+      "evidence_class": "fresh_baseline_archive",
+      "expected": {"collected": 17, "errors": 0, "failed": 0, "passed": 17, "returncode": 0},
+      "producer_id": "TP-MERGE-TRAIN",
+      "simulated": false,
+      "source_bindings": [{"blob_id": "352949393a38398fb76a034cb8e21058e8ecd58a", "path": "test/api/test_agent_supervisor_merge_train.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_process_tree_fencing.py", "test/api/test_agent_supervisor_database_worktree_registry.py", "test/api/test_agent_supervisor_merge_queue.py"],
+      "evidence_class": "fresh_baseline_archive_expected_failure",
+      "expected": {"collected": 57, "errors": 0, "failed": 7, "passed": 50, "returncode": 1},
+      "expected_failure": {
+        "reason_codes": ["process_fencing_test_stub_contract_drift", "legacy_merge_queue_semantics"],
+        "required_output_fragments": [
+          "test_agent_supervisor_process_tree_fencing.py",
+          "test_legacy_import_conflict_rolls_back_rows_and_completion_marker",
+          "DID NOT RAISE"
+        ],
+        "signature": "2 process-fencing and 5 legacy merge-queue assertions fail"
+      },
+      "producer_id": "TP-FENCE-REGISTRY-QUEUE",
+      "simulated": false,
+      "source_bindings": [
+        {"blob_id": "6084a5ff69a88fe8883058a34442c28a5cf6da86", "path": "test/api/test_agent_supervisor_process_tree_fencing.py"},
+        {"blob_id": "f93048b0f5dfada888584b1f1557d37637b05af3", "path": "test/api/test_agent_supervisor_database_worktree_registry.py"},
+        {"blob_id": "2993241d35fd5437c5f9dd5c8d0a20f2fac84f65", "path": "test/api/test_agent_supervisor_merge_queue.py"}
+      ]
+    }
+  ],
+  "timestamp_date_utc": "2026-08-20"
+}

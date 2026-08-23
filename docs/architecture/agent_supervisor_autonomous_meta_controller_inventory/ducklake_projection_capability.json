@@ -1,0 +1,44 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.autonomy.ducklake-projection-capability-observation@1",
+  "program_id": "agent-supervisor-autonomous-meta-controller-v1",
+  "observed_date_utc": "2026-08-20",
+  "source": {
+    "kind": "released_public_interface_at_pinned_gitlink",
+    "gitlink": "ipfs_datasets_py",
+    "commit": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+    "inspection_mode": "read_only",
+    "sibling_source_modified": false,
+    "gitlink_pin_modified": false
+  },
+  "capability": {
+    "duckdb_version": "1.5.5",
+    "ducklake_extension_observed_version": "d8a1881e",
+    "required_ducklake_build": "ducklake@1.5.5+core",
+    "required_quack_build": "quack@1.5.5+core",
+    "required_httpfs_build": "httpfs@1.5.5+core",
+    "ducklake_specification_version": "1.0",
+    "ducklake_catalog_version": "1.0",
+    "typed_projection_interface": "available_lazily",
+    "production_endpoint_permitted": false,
+    "production_mutation_permitted": false,
+    "catalog_created_for_apmc": false,
+    "network_install_attempted": false
+  },
+  "promotion_gate": {
+    "status": "held",
+    "held_by": [
+      "DQK-088",
+      "DQK-094",
+      "DQK-102"
+    ],
+    "self_authorization_permitted": false
+  },
+  "apmc_disposition": {
+    "operational_authority": false,
+    "history_projection_only": true,
+    "projection_enabled_at_launch": false,
+    "disabled_reason": "production DuckLake activation is not admitted by the released sibling authority",
+    "when_required_and_absent": "typed_unavailable",
+    "duckdb_quack_scheduling_may_continue": true
+  }
+}

@@ -170,6 +170,109 @@ def test_supervisor_propagates_explicit_merge_target_branch(tmp_path: Path):
     assert command[command.index("--merge-target-branch") + 1] == target_branch
 
 
+def test_rescue_dirty_worktree_commits_failed_test_files_in_submodule(
+    tmp_path: Path,
+) -> None:
+    import subprocess
+
+    child = tmp_path / "child"
+    parent = tmp_path / "parent"
+    child.mkdir()
+    parent.mkdir()
+
+    def git(cwd: Path, *args: str) -> None:
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=tester",
+                "-c",
+                "user.email=tester@example.invalid",
+                *args,
+            ],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    git(child, "init")
+    (child / "ok.py").write_text("ok = True\n", encoding="utf-8")
+    git(child, "add", "-A")
+    git(child, "commit", "-m", "child-base")
+    git(parent, "init")
+    (parent / "README").write_text("parent\n", encoding="utf-8")
+    git(parent, "add", "README")
+    git(parent, "commit", "-m", "parent-base")
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            str(child),
+            "external/ipfs_accelerate",
+        ],
+        cwd=parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    git(parent, "commit", "-m", "parent-with-submodule")
+    nested = parent / "external" / "ipfs_accelerate"
+    (nested / "lifecycle.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    parsed = parse_supervisor_args(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--worktree-submodule-path",
+            "external/ipfs_accelerate",
+        ]
+    )
+    config = supervisor_config_from_args(parsed, repo_root=parent)
+    supervisor = PortalImplementationSupervisor(config)
+    result = supervisor._rescue_dirty_worktree(
+        parent,
+        branch="implementation/pcce-021-attempt-1",
+        head=subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=parent,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip(),
+        target_ref="HEAD",
+        status_lines=[" M external/ipfs_accelerate"],
+        reason="failed_tests",
+    )
+    assert result.get("preserved") is True
+    submodule_results = result.get("submodule_results") or []
+    assert any(item.get("committed") for item in submodule_results)
+    listed = subprocess.run(
+        ["git", "ls-files", "--", "lifecycle.py"],
+        cwd=nested,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "lifecycle.py" in listed.stdout
+    assert result.get("reason") in {
+        "dirty_worktree_committed_to_rescue_branch",
+        "no_staged_rescue_delta",
+    }
+    if result.get("reason") == "no_staged_rescue_delta":
+        raise AssertionError(
+            "parent rescue did not stage the submodule gitlink after "
+            f"committing nested failed-test files: {result}"
+        )
+
+
 def test_supervisor_propagates_explicit_merge_queue_namespace(
     tmp_path: Path,
 ) -> None:
@@ -829,6 +932,113 @@ def test_build_portal_implementation_daemon_from_args_applies_defaults(tmp_path:
     assert context.state_path == tmp_path / "state" / "example_task_state.json"
     assert context.strategy_path == tmp_path / "state" / "example_strategy.json"
     assert context.events_path == tmp_path / "state" / "example_events.jsonl"
+
+
+def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
+        bind_database_portal_execution_from_args,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "runner-recovery@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Runner Recovery Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "add", "base.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, check=True)
+
+    callbacks: dict[str, object] = {}
+
+    class BindingDaemon:
+        task_source = object()
+
+        @staticmethod
+        def bind_execution_callbacks(**values: object) -> None:
+            callbacks.update(values)
+
+        @staticmethod
+        def bind_post_merge_recovery(callback: object) -> None:
+            callbacks["post_merge_recovery"] = callback
+
+        @staticmethod
+        def bind_merge_train_recovery(**values: object) -> None:
+            callbacks["merge_train_recovery"] = values
+
+        @staticmethod
+        def _database_portal_evidence_digest(_value: object) -> str:
+            return "sha256:" + ("0" * 64)
+
+        @staticmethod
+        def recover_blocked_post_merge_declared_outputs(
+            _evidence: object,
+        ) -> dict[str, object]:
+            pytest.fail("empty recovery queue invoked database recovery")
+
+    class CapturingPortal:
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+    parsed = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded_exclusive",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--todo-path",
+            str(tmp_path / "board.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "lane-0",
+            "--merge-queue-dir",
+            str(tmp_path / "merge-queue"),
+            "--merge-target-branch",
+            "main",
+            "--implement",
+            "--once",
+        ]
+    )
+
+    daemon = BindingDaemon()
+    bridge = bind_database_portal_execution_from_args(
+        daemon,
+        parsed,
+        repo_root=repo,
+        portal_daemon_class=CapturingPortal,
+    )
+
+    assert bridge is not None
+    assert bridge.merge_queue is not None
+    assert bridge.merge_queue.require_target_binding is True
+    assert bridge.merge_queue.target_branch == "main"
+    assert callable(callbacks["post_merge_recovery"])
+    assert callbacks["merge_train_recovery"]["merge_target_branch"] == "main"
+    assert callbacks["merge_train_recovery"]["repo_root"] == repo
+    portal = bridge.portal_factory(
+        argparse.Namespace(
+            task_projection=tmp_path / "attempt" / "task-projection.md",
+            state=tmp_path / "attempt" / "portal-task-state.json",
+            strategy=tmp_path / "attempt" / "portal-strategy.json",
+            events=tmp_path / "attempt" / "portal-events.jsonl",
+            implementation_logs=tmp_path / "attempt" / "implementation-logs",
+        ),
+        "VRIF-010",
+    )
+    assert portal.kwargs["merge_queue"] is bridge.merge_queue
+    assert portal.kwargs["merge_target_branch"] == "main"
 
 
 def test_run_portal_implementation_daemon_loop_runs_hooks_once(caplog):

@@ -157,7 +157,10 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
             state_prefix="vrif_lane_2",
             repo_root=repo,
             worktree_root=worktree_root,
-            database_program=SimpleNamespace(environment=lambda: {}),
+            database_program=SimpleNamespace(
+                environment=lambda **_kwargs: {},
+                endpoint_secret_handle="",
+            ),
         )
     )
     child = SimpleNamespace(

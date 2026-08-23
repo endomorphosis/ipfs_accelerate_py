@@ -60,9 +60,9 @@
       "required_pin": true
     },
     "ipfs_datasets_py": {
-      "checkout_head": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+      "checkout_head": "66a02063496fd200f2372b3083e376f1978c6be1",
       "checkout_matches_gitlink": true,
-      "gitlink": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+      "gitlink": "66a02063496fd200f2372b3083e376f1978c6be1",
       "initialized": true,
       "required_pin": true
     },

@@ -12,7 +12,6 @@ from typing import Any
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_lock_metadata,
-    checkout_mutation_lock_path,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
     ProcessBirthIdentity,
@@ -24,6 +23,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS,
     INFLIGHT_IMPLEMENTATION_DEFERRAL_BACKOFF_SECONDS,
+    PORTAL_RETRY_DEFERRAL_SCHEMA,
     PortalTask,
     PortalTaskState,
     TodoImplementationDaemon,
@@ -91,6 +91,192 @@ def _foreign_recovery() -> dict[str, Any]:
         "lock_owner_pid": os.getpid(),
         "lock_path": "/repository/.git/agent-checkout-mutation.lock",
     }
+
+
+def _assert_verified_live_deferral(implementation: dict[str, Any]) -> None:
+    assert implementation["returncode"] == 1
+    assert implementation["reason"] == (
+        "external_protected_recovery_owner_active"
+    )
+    assert implementation["deferred"] is True
+    assert implementation["attempt_consumed"] is False
+    assert implementation["provider_dispatched"] is False
+    assert implementation["backoff_seconds"] == (
+        EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS
+    )
+    assert implementation["deferral_schema"] == PORTAL_RETRY_DEFERRAL_SCHEMA
+    assert implementation["retryable"] is True
+    assert implementation["failure_kind"] == "lifecycle_setup"
+    assert implementation["provider_call_allowed"] is False
+
+
+def test_daemon_marks_only_live_compatible_foreign_owner_transient(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo = _daemon(tmp_path)
+    owner_script = Path(sys.argv[0]).name
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_is_running",
+        lambda pid: pid == os.getpid(),
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda pid: f"python {owner_script}" if pid == os.getpid() else "",
+    )
+    metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="AUTO-001",
+        owner_script=owner_script,
+    )
+    metadata.update(
+        {
+            "protected_recovery_required": True,
+            "protected_recovery_owner": "implementation_supervisor",
+        }
+    )
+    lock_path = daemon._repo_merge_lock_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(json.dumps(metadata, sort_keys=True), encoding="utf-8")
+    original = lock_path.read_bytes()
+
+    result = daemon._adopt_protected_checkout_recovery()
+
+    assert result["required"] is True
+    assert result["blocked"] is True
+    assert result["reason"] == (
+        "external_protected_checkout_recovery_required"
+    )
+    assert result["protected_recovery_owner"] == "implementation_supervisor"
+    assert result["foreign_owner_liveness"] == "verified_live"
+    assert result["deferred"] is True
+    assert result["attempt_consumed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["backoff_seconds"] == (
+        EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS
+    )
+    assert lock_path.read_bytes() == original
+    assert daemon._current_checkout_mutation_lease() is None
+
+    pass_result = daemon.run_once()
+    assert pass_result["blocked"] is True
+    _assert_verified_live_deferral(pass_result["implementation_result"])
+    assert lock_path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "foreign_case",
+    (
+        "inactive",
+        "foreign_repository",
+        "unprovable_repository",
+        "unknown_owner",
+        "malformed_owner",
+    ),
+)
+def test_daemon_keeps_unverified_foreign_owner_terminal(
+    tmp_path: Path,
+    foreign_case: str,
+) -> None:
+    daemon, repo = _daemon(tmp_path)
+    metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="AUTO-001",
+        owner_script=Path(sys.argv[0]).name,
+    )
+    metadata.update(
+        {
+            "protected_recovery_required": True,
+            "protected_recovery_owner": "implementation_supervisor",
+        }
+    )
+    if foreign_case == "inactive":
+        metadata["pid"] = 2_147_483_647
+    elif foreign_case == "foreign_repository":
+        metadata["repository_id"] = "repository:foreign"
+    elif foreign_case == "unprovable_repository":
+        metadata["repository_id"] = ""
+        metadata["worktree_root"] = ""
+        metadata["repo_root"] = ""
+    elif foreign_case == "unknown_owner":
+        metadata["protected_recovery_owner"] = "unknown_component"
+    else:
+        metadata["owner_script"] = ""
+    lock_path = daemon._repo_merge_lock_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.write_text(json.dumps(metadata, sort_keys=True), encoding="utf-8")
+
+    result = daemon._adopt_protected_checkout_recovery()
+
+    assert result["required"] is True
+    assert result["blocked"] is True
+    assert result["reason"] == (
+        "external_protected_checkout_recovery_required"
+    )
+    assert result["foreign_owner_liveness"] == "not_verified"
+    assert "deferred" not in result
+    assert "attempt_consumed" not in result
+    assert "provider_dispatched" not in result
+    assert lock_path.exists()
+
+
+def test_run_once_projects_verified_live_owner_as_typed_deferral(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _repo = _daemon(tmp_path)
+    monkeypatch.setattr(
+        daemon,
+        "_recover_protected_checkout_mutation",
+        _foreign_recovery,
+    )
+
+    result = daemon.run_once()
+
+    assert result["blocked"] is True
+    assert result["reason"] == (
+        "external_protected_checkout_recovery_required"
+    )
+    _assert_verified_live_deferral(result["implementation_result"])
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("foreign_owner_liveness", "not_verified"),
+        ("protected_recovery_owner", "unknown_component"),
+        ("backoff_seconds", 0),
+    ),
+)
+def test_run_once_does_not_project_unverified_foreign_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+) -> None:
+    daemon, _repo = _daemon(tmp_path)
+    recovery = _foreign_recovery()
+    recovery[field] = value
+    monkeypatch.setattr(
+        daemon,
+        "_recover_protected_checkout_mutation",
+        lambda: recovery,
+    )
+
+    result = daemon.run_once()
+
+    assert result["blocked"] is True
+    implementation = result["implementation_result"]
+    assert implementation is not None
+    assert implementation["reason"] != (
+        "external_protected_recovery_owner_active"
+    )
+    assert implementation["deferral_schema"] == PORTAL_RETRY_DEFERRAL_SCHEMA
+    assert implementation["deferred"] is True
 
 
 def _seed_inflight_state(
@@ -163,181 +349,6 @@ def _inflight_task() -> PortalTask:
     )
 
 
-def test_daemon_marks_only_live_compatible_foreign_owner_transient(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    daemon, repo = _daemon(tmp_path)
-    owner_script = Path(sys.argv[0]).name
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_is_running",
-        lambda pid: pid == os.getpid(),
-    )
-    monkeypatch.setattr(
-        implementation_daemon_module,
-        "process_command_line",
-        lambda pid: f"python {owner_script}" if pid == os.getpid() else "",
-    )
-    metadata = checkout_lock_metadata(
-        kind="merge",
-        repo_root=repo,
-        task_id="AUTO-001",
-        owner_script=owner_script,
-    )
-    metadata.update(
-        {
-            "protected_recovery_required": True,
-            "protected_recovery_owner": "implementation_supervisor",
-        }
-    )
-    lock_path = checkout_mutation_lock_path(repo)
-    lock_path.write_text(json.dumps(metadata, sort_keys=True), encoding="utf-8")
-    original = lock_path.read_bytes()
-
-    result = daemon._adopt_protected_checkout_recovery()
-
-    assert result["required"] is True
-    assert result["blocked"] is True
-    assert result["reason"] == (
-        "external_protected_checkout_recovery_required"
-    )
-    assert result["protected_recovery_owner"] == "implementation_supervisor"
-    assert result["foreign_owner_liveness"] == "verified_live"
-    assert result["deferred"] is True
-    assert result["attempt_consumed"] is False
-    assert result["provider_dispatched"] is False
-    assert result["backoff_seconds"] == (
-        EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS
-    )
-    assert lock_path.read_bytes() == original
-    assert daemon._current_checkout_mutation_lease() is None
-
-    pass_result = daemon.run_once()
-    assert pass_result["blocked"] is True
-    assert pass_result["implementation_result"] == {
-        "returncode": 1,
-        "reason": "external_protected_recovery_owner_active",
-        "deferred": True,
-        "attempt_consumed": False,
-        "provider_dispatched": False,
-        "backoff_seconds": EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS,
-    }
-    assert lock_path.read_bytes() == original
-
-
-@pytest.mark.parametrize(
-    "foreign_case",
-    (
-        "inactive",
-        "foreign_repository",
-        "unprovable_repository",
-        "unknown_owner",
-        "malformed_owner",
-    ),
-)
-def test_daemon_keeps_unverified_foreign_owner_terminal(
-    tmp_path: Path,
-    foreign_case: str,
-) -> None:
-    daemon, repo = _daemon(tmp_path)
-    metadata = checkout_lock_metadata(
-        kind="merge",
-        repo_root=repo,
-        task_id="AUTO-001",
-        owner_script=Path(sys.argv[0]).name,
-    )
-    metadata.update(
-        {
-            "protected_recovery_required": True,
-            "protected_recovery_owner": "implementation_supervisor",
-        }
-    )
-    if foreign_case == "inactive":
-        metadata["pid"] = 2_147_483_647
-    elif foreign_case == "foreign_repository":
-        metadata["repository_id"] = "repository:foreign"
-    elif foreign_case == "unprovable_repository":
-        metadata["repository_id"] = ""
-        metadata["worktree_root"] = ""
-        metadata["repo_root"] = ""
-    elif foreign_case == "unknown_owner":
-        metadata["protected_recovery_owner"] = "unknown_component"
-    else:
-        metadata["owner_script"] = ""
-    lock_path = checkout_mutation_lock_path(repo)
-    lock_path.write_text(json.dumps(metadata, sort_keys=True), encoding="utf-8")
-
-    result = daemon._adopt_protected_checkout_recovery()
-
-    assert result["required"] is True
-    assert result["blocked"] is True
-    assert result["reason"] == (
-        "external_protected_checkout_recovery_required"
-    )
-    assert result["foreign_owner_liveness"] == "not_verified"
-    assert "deferred" not in result
-    assert "attempt_consumed" not in result
-    assert "provider_dispatched" not in result
-    assert lock_path.exists()
-
-
-def test_run_once_projects_verified_live_owner_as_typed_deferral(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    daemon, _repo = _daemon(tmp_path)
-    monkeypatch.setattr(
-        daemon,
-        "_recover_protected_checkout_mutation",
-        _foreign_recovery,
-    )
-
-    result = daemon.run_once()
-
-    assert result["blocked"] is True
-    assert result["reason"] == (
-        "external_protected_checkout_recovery_required"
-    )
-    assert result["implementation_result"] == {
-        "returncode": 1,
-        "reason": "external_protected_recovery_owner_active",
-        "deferred": True,
-        "attempt_consumed": False,
-        "provider_dispatched": False,
-        "backoff_seconds": EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS,
-    }
-
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    (
-        ("foreign_owner_liveness", "not_verified"),
-        ("protected_recovery_owner", "unknown_component"),
-        ("backoff_seconds", 0),
-    ),
-)
-def test_run_once_does_not_project_unverified_foreign_owner(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    field: str,
-    value: object,
-) -> None:
-    daemon, _repo = _daemon(tmp_path)
-    recovery = _foreign_recovery()
-    recovery[field] = value
-    monkeypatch.setattr(
-        daemon,
-        "_recover_protected_checkout_mutation",
-        lambda: recovery,
-    )
-
-    result = daemon.run_once()
-
-    assert result["blocked"] is True
-    assert result["implementation_result"] is None
-
-
 @pytest.mark.parametrize(
     ("owner_state", "expected_disposition", "expected_reason"),
     (
@@ -393,8 +404,6 @@ def test_exact_inflight_owner_is_a_typed_pre_provider_deferral(
         )
         assert terminal is not None
         assert terminal.record_id == lifecycle.record_id
-        # Log age is diagnostic only.  Exact lifecycle/state/workspace binding,
-        # not an mtime grace period, authorizes the recovery deferral.
         os.utime(log_path, (1, 1))
 
     monkeypatch.setattr(daemon, "_list_process_commands", lambda: [])
@@ -412,8 +421,6 @@ def test_exact_inflight_owner_is_a_typed_pre_provider_deferral(
     inflight = daemon._find_live_inflight_implementation()
     assert inflight is not None
     assert inflight["_inflight_disposition"] == expected_disposition
-    # The active projection must remain intact so a reconciliation pass can
-    # adopt the exact unmerged candidate instead of dispatching a duplicate.
     assert PortalTaskState.load(daemon.state_path) == state
 
     monkeypatch.setattr(
@@ -452,7 +459,7 @@ def test_exact_inflight_owner_is_a_typed_pre_provider_deferral(
     "invalid_lifecycle",
     ("missing", "malformed", "foreign_schema", "foreign", "unknown"),
 )
-def test_unverifiable_inflight_lifecycle_remains_terminal(
+def test_unverifiable_inflight_lifecycle_keeps_generic_wait(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     invalid_lifecycle: str,
@@ -537,6 +544,7 @@ def test_unverifiable_inflight_lifecycle_remains_terminal(
     result = daemon._run_implementation(_inflight_task(), state)
 
     assert result["reason"] == "inflight_process"
-    assert "deferred" not in result
-    assert "attempt_consumed" not in result
-    assert "provider_dispatched" not in result
+    assert result["deferred"] is True
+    assert result["attempt_consumed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["backoff_seconds"] == 30

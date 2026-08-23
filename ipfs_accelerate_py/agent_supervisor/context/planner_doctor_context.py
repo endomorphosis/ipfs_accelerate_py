@@ -442,6 +442,14 @@ class ResidualAdmissionDecision(str, Enum):
     REJECTED = "rejected"
 
 
+class ProofCarryingCapsuleClass(str, Enum):
+    """Substitution class for proof-carrying Planner/Doctor context."""
+
+    EXACT = "exact"
+    CONSERVATIVE = "conservative"
+    OPAQUE = "opaque"
+
+
 @dataclass(frozen=True)
 class ResidualLlmBudget:
     """Hard budgets for residual-only model repair."""
@@ -593,6 +601,11 @@ class PlannerDoctorContextRequest:
     )
     deterministic_closure: bool | None = None
     block_reason: str = ""
+    affected_interface_ids: tuple[str, ...] = ()
+    expected_tree_id: str = ""
+    proof_carrying_artifact_cid: str = ""
+    capsule_class: ProofCarryingCapsuleClass = ProofCarryingCapsuleClass.CONSERVATIVE
+    critical_source_handles: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -625,6 +638,8 @@ class PlannerDoctorContextRequest:
             "satisfied_proof_handles",
             "expansion_cids",
             "retrieval_slice_node_ids",
+            "affected_interface_ids",
+            "critical_source_handles",
         ):
             object.__setattr__(self, name, _ids(getattr(self, name), name))
         object.__setattr__(
@@ -727,6 +742,29 @@ class PlannerDoctorContextRequest:
             self.deterministic_closure, bool
         ):
             raise PlannerDoctorContextError("deterministic_closure must be boolean")
+        object.__setattr__(
+            self,
+            "expected_tree_id",
+            _text(self.expected_tree_id, "expected_tree_id", required=False),
+        )
+        object.__setattr__(
+            self,
+            "proof_carrying_artifact_cid",
+            _text(
+                self.proof_carrying_artifact_cid,
+                "proof_carrying_artifact_cid",
+                required=False,
+            ),
+        )
+        capsule_class = self.capsule_class
+        if not isinstance(capsule_class, ProofCarryingCapsuleClass):
+            try:
+                capsule_class = ProofCarryingCapsuleClass(str(capsule_class))
+            except ValueError as exc:
+                raise PlannerDoctorContextError(
+                    "capsule_class must be exact, conservative, or opaque"
+                ) from exc
+        object.__setattr__(self, "capsule_class", capsule_class)
 
 
 @dataclass(frozen=True)
@@ -1234,6 +1272,36 @@ def build_planner_doctor_context_references(
             metadata={"core_field": "validation"},
         )
     )
+    if request.affected_interface_ids:
+        refs.append(
+            _ref(
+                reference_id="coverage:affected-interfaces",
+                kind="affected_interfaces",
+                tier=ContextTier.INVARIANT,
+                content={"affected_interface_ids": list(request.affected_interface_ids)},
+                repository_id=repo,
+                tree_id=tree,
+                summary="affected interfaces",
+                required=True,
+                priority=1,
+                metadata={"core_field": "affected_interfaces", "mandatory_coverage": True},
+            )
+        )
+    if request.proof_carrying_artifact_cid:
+        refs.append(
+            _ref(
+                reference_id="artifact:proof-carrying",
+                kind="proof_carrying_artifact",
+                tier=ContextTier.INVARIANT,
+                content={"artifact_cid": request.proof_carrying_artifact_cid},
+                repository_id=repo,
+                tree_id=tree,
+                summary="proof-carrying artifact handle",
+                required=True,
+                priority=1,
+                metadata={"digest_only": True, "no_body": True},
+            )
+        )
 
     # Repair residual identity (repairable / rejected proposal records only).
     if request.repairable_record_ids or request.rejected_proposal_record_ids:
@@ -1560,8 +1628,125 @@ def compile_planner_doctor_context(
             "llm_avoided": disposition
             is not ResidualRepairDisposition.RESIDUAL_LLM_REQUIRED,
             "block_reason": request.block_reason,
+            "capsule_class": request.capsule_class.value,
+            "proof_carrying_artifact_cid": request.proof_carrying_artifact_cid,
         },
     )
+
+
+def _reject_injection(text: str, *, where: str) -> None:
+    if _INSTRUCTION_RE.search(text or ""):
+        raise PlannerDoctorContextAuthorityError(
+            f"{where} contains instruction-injection content",
+            reason_code="injection",
+        )
+
+
+def compile_proof_carrying_context(
+    request: PlannerDoctorContextRequest,
+    *,
+    tokenizer: Any | None = None,
+    provider_context_window: int | None = None,
+) -> PlannerDoctorContextCapsule:
+    """Compile mandatory-coverage proof-carrying context (LGCVF-091).
+
+    Extends the existing Planner/Doctor capsule optimizer. Satisfied evidence
+    is compressed to handles. Secrets and injection cannot enter the capsule.
+    Stale roots and omitted mandatory coverage fail closed.
+    """
+
+    if not isinstance(request, PlannerDoctorContextRequest):
+        raise PlannerDoctorContextError(
+            "request must be a PlannerDoctorContextRequest"
+        )
+    if request.expected_tree_id and request.expected_tree_id != request.tree_id:
+        raise PlannerDoctorContextError(
+            "context tree_id is stale relative to expected_tree_id",
+            reason_code="stale_root",
+        )
+    missing: list[str] = []
+    if not request.affected_interface_ids:
+        missing.append("affected_interfaces")
+    if not request.open_obligation_ids:
+        missing.append("open_obligations")
+    if not request.assumption_ids:
+        missing.append("assumptions")
+    if not request.security_roots:
+        missing.append("policy")
+    if not request.allowed_effects:
+        missing.append("allowed_effects")
+    if not request.validation_commands:
+        missing.append("validation")
+    if missing:
+        raise PlannerDoctorContextError(
+            "mandatory coverage omitted: " + ",".join(missing),
+            reason_code="omission",
+        )
+
+    for index, snippet in enumerate(request.optional_source_snippets):
+        preview = str(snippet.get("text") or snippet.get("summary") or "")
+        _reject_injection(preview, where=f"optional_source_snippets[{index}]")
+        _reject_forbidden_keys(snippet, where=f"optional_source_snippets[{index}]")
+
+    snippets = request.optional_source_snippets
+    if request.capsule_class is ProofCarryingCapsuleClass.OPAQUE:
+        compressed: list[Mapping[str, Any]] = []
+        for snippet in snippets:
+            handle = str(snippet.get("handle") or snippet.get("path") or "")
+            compressed.append(
+                MappingProxyType(
+                    {
+                        "path": str(snippet.get("path") or ""),
+                        "handle": handle,
+                        "text": "",
+                    }
+                )
+            )
+        object.__setattr__(request, "optional_source_snippets", tuple(compressed))
+        present_handles = {
+            str(item.get("handle") or item.get("path") or "")
+            for item in request.optional_source_snippets
+        }
+        present_handles.update(request.satisfied_proof_handles)
+        missing_critical = [
+            handle
+            for handle in request.critical_source_handles
+            if handle not in present_handles
+        ]
+        if missing_critical:
+            raise PlannerDoctorContextError(
+                "opaque capsule dropped critical source handle "
+                + missing_critical[0],
+                reason_code="critical_source_dropped",
+            )
+
+    capsule = compile_planner_doctor_context(
+        request,
+        tokenizer=tokenizer,
+        provider_context_window=provider_context_window,
+    )
+    kinds = {ref.kind for ref in capsule.capsule.evidence}
+    if "affected_interfaces" not in kinds:
+        raise PlannerDoctorContextError(
+            "compiled capsule omitted affected interfaces",
+            reason_code="omission",
+        )
+    if request.satisfied_proof_handles:
+        handle_refs = [
+            ref
+            for ref in capsule.capsule.evidence
+            if ref.kind == "satisfied_proof_handle"
+        ]
+        if not handle_refs or any(
+            not (ref.metadata or {}).get("digest_only") for ref in handle_refs
+        ):
+            raise PlannerDoctorContextError(
+                "satisfied proof was not compressed to a handle",
+                reason_code="handle_required",
+            )
+    serialized = _canonical_json(dict(capsule.metadata))
+    _reject_injection(serialized, where="compiled_capsule")
+    return capsule
 
 
 # ---------------------------------------------------------------------------
@@ -2274,6 +2459,7 @@ __all__ = [
     "PlannerDoctorContextDelta",
     "PlannerDoctorContextError",
     "PlannerDoctorContextRequest",
+    "ProofCarryingCapsuleClass",
     "ResidualAdmissionDecision",
     "ResidualLlmBudget",
     "ResidualLlmRepairSession",
@@ -2288,6 +2474,7 @@ __all__ = [
     "compile_planner_doctor_context",
     "compile_planner_doctor_context_capsule",
     "compile_planner_doctor_context_delta",
+    "compile_proof_carrying_context",
     "decide_residual_disposition",
     "open_residual_repair_session",
     "request_from_critique_and_retrieval",

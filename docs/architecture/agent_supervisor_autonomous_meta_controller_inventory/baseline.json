@@ -1,0 +1,81 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.apmc.current_authority_inventory@1",
+  "program_id": "agent-supervisor-autonomous-meta-controller-v1",
+  "observed_date_utc": "2026-08-20",
+  "repository": {
+    "origin": "https://github.com/endomorphosis/ipfs_accelerate_py",
+    "branch": "codex/agent-supervisor-autonomous-meta-controller-v1",
+    "origin_main_commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "origin_main_tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58",
+    "working_tree_clean_at_observation": true
+  },
+  "runtime": {
+    "python": "3.12.3",
+    "duckdb": "1.5.5"
+  },
+  "dependency_state": {
+    "lockfile_present": false,
+    "declaration_files": {
+      "pyproject.toml": "sha256:97d579283d42b5a0877821f6c6cab2cd1985e11579ffc8854685bef8b05b6bf9",
+      "requirements.txt": "sha256:6f761f7b6275bd85d46f1253a7b177f9fa264351750ad6f836c5d6e4dbaefa44",
+      "setup.py": "sha256:108943142eb5b4b2211b9e70818a1ffe0dd565536423a0cbda618aca67c0c6e6"
+    }
+  },
+  "gitlinks": {
+    "docs/fastmcp": "1d932cc778a24cc0bf46fc4baad8306d4fed9c4b",
+    "docs/mcp-python-sdk": "0da9a074d09267a927d72faa58c26d828f0f8edb",
+    "ipfs_accelerate_py/mcplusplus": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+    "ipfs_datasets_py": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+    "ipfs_kit_py": "2564aea1ae35061f2165872aff91e8a40801ab7e",
+    "ipfs_model_manager_py": "f6151d2113f42e75ea7d83a1b2362fc97e55e44d",
+    "ipfs_transformers_py": "b397988ed9e3e656475c1cf4417b84efdb95daf3",
+    "test/doc-builder": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+    "test/huggingface_doc_builder": "6108e850ae1cf2f71bb0815a600bcd50c39abfa7",
+    "test/huggingface_transformers": "44752c8dd99f3fb0da23006dc4fde4a07d9c417f"
+  },
+  "gitlink_checkout_state": "all uninitialized at baseline observation; ipfs_datasets_py was later initialized read-only at the recorded pin for public-interface inspection, with no pin or sibling-source change",
+  "capabilities": {
+    "quack": {
+      "status": "compatible",
+      "passes_health_check": true,
+      "extension_version": "c154811",
+      "extension_fingerprint": "sha256:b77954ae50ecc06e10c6e20fc6fd421d73b5c31cf72bb60ae3f29b1f8a85f20b",
+      "required_functions_present": [
+        "quack_query",
+        "quack_serve"
+      ],
+      "network_install_attempted": false
+    },
+    "ducklake": {
+      "extension_version": "d8a1881e",
+      "installed": true,
+      "authority": false,
+      "typed_projection_api": "released_public_interface_available_lazily_at_pinned_gitlink",
+      "production_catalog_activation": "held",
+      "production_mutation_permitted": false,
+      "held_by": [
+        "DQK-088",
+        "DQK-094",
+        "DQK-102"
+      ],
+      "observation_receipt": "docs/architecture/agent_supervisor_autonomous_meta_controller_inventory/ducklake_projection_capability.json"
+    },
+    "httpfs": {
+      "extension_version": "827222f",
+      "installed": true
+    }
+  },
+  "baseline_test_commands": [
+    "python3 scripts/validate_agent_supervisor_autonomous_meta_controller_board.py",
+    "python3 -m pytest -q test/api/autonomy",
+    "python3 -m pytest -q test/api -k 'decision_runtime or context_compiler or adaptive_planner or plan_evaluator or task_quality'",
+    "python3 -m pytest -q test/api -k 'duckdb and (schema or quack or transaction)'",
+    "python3 -m pytest -q test/api/semantic_governor test/api/adversarial_assurance test/api/incremental_sealing"
+  ],
+  "authority_policy": {
+    "operational_state": "DuckDB transactional authority through an exclusive Quack state owner",
+    "history_analytics": "optional non-authoritative DuckLake projection; production catalog activation remains held",
+    "sibling_mutation_permitted": false,
+    "raw_model_sql_permitted": false
+  }
+}

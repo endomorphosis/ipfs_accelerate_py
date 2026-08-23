@@ -38,6 +38,7 @@ from .duckdb_state import (
     QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
     QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
     QuackOwnerCommandRemoteError,
+    STALE_IN_PROGRESS_UNSTALL_SECONDS,
     is_quack_transport_target,
     quack_transport_uri,
     submit_quack_owner_command,
@@ -53,6 +54,8 @@ from .intent_repository import (
     IntentRepositoryConflictError,
     IntentRepositoryError,
     IntentRepositoryIntegrityError,
+    IntentRepositoryTransitionError,
+    IntentRepositoryUnknownOutcomeError,
     PlanRevisionRepository,
     QueueEntry,
     open_intent_repository,
@@ -92,6 +95,16 @@ class TaskSourceIntegrityError(DatabaseTaskSourceError, IntentRepositoryIntegrit
 
 class TaskSourceConflictError(DatabaseTaskSourceError, IntentRepositoryConflictError):
     """CAS head or expected-revision conflict."""
+
+
+class TaskSourceTransitionError(DatabaseTaskSourceError, IntentRepositoryTransitionError):
+    """Owner rejected a status transition outside the closed matrix."""
+
+
+class TaskSourceUnknownOutcomeError(
+    DatabaseTaskSourceError, IntentRepositoryUnknownOutcomeError
+):
+    """A remote owner effect requires exact post-restart reconciliation."""
 
 
 class TaskSourceBoundsError(DatabaseTaskSourceError, IntentRepositoryBoundsError):
@@ -852,7 +865,19 @@ class DatabaseTaskSource:
         snap = self._intent.snapshot()
         terminal = True
         plan_root = self.plan_root_cid
-        for task in self._intent.list_tasks(limit=MAX_QUERY_LIMIT):
+        tasks = self._intent.list_tasks(limit=MAX_QUERY_LIMIT)
+        task_plan_cids = {
+            str(task.get("plan_cid") or "")
+            for task in tasks
+            if str(task.get("plan_cid") or "")
+        }
+        if not plan_root and len(task_plan_cids) == 1:
+            # A reopened adapter has no in-memory materialization root.  The
+            # task rows retain their admitted canonical plan binding, even
+            # when their refinement-goal heads do not own the root plan.
+            plan_root = next(iter(task_plan_cids))
+        infer_from_goal_heads = not task_plan_cids
+        for task in tasks:
             status = str(task.get("status") or "")
             if status not in {
                 "completed",
@@ -864,7 +889,7 @@ class DatabaseTaskSource:
                 "done",
             }:
                 terminal = False
-            if not plan_root:
+            if not plan_root and infer_from_goal_heads:
                 head = self.plans.head(str(task.get("goal_cid") or ""))
                 if head is not None:
                     plan_root = head.plan_cid
@@ -1388,6 +1413,22 @@ class DatabaseTaskSource:
     def get_goal(self, goal_cid: str) -> Mapping[str, Any] | None:
         return self._intent.get_goal(goal_cid)
 
+    def list_goal_edges(
+        self,
+        *,
+        limit: int = DEFAULT_QUERY_LIMIT,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Return the bounded canonical goal-edge projection."""
+
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or limit < 1
+            or limit > MAX_QUERY_LIMIT
+        ):
+            raise TaskSourceBoundsError(f"limit must be in [1, {MAX_QUERY_LIMIT}]")
+        return self._intent.list_goal_edges(limit=limit)
+
     def get_plan(self, plan_cid: str) -> Mapping[str, Any] | None:
         return self._intent.get_plan(plan_cid)
 
@@ -1436,6 +1477,10 @@ class DatabaseTaskSource:
             raise TaskSourceCompletionError(str(exc)) from exc
         except IntentRepositoryConflictError as exc:
             raise TaskSourceConflictError(str(exc)) from exc
+        except IntentRepositoryTransitionError as exc:
+            raise TaskSourceTransitionError(str(exc)) from exc
+        except IntentRepositoryUnknownOutcomeError as exc:
+            raise TaskSourceUnknownOutcomeError(str(exc)) from exc
         updated = self._intent.get_task(str(prior["task_cid"]))
         if updated is None:
             raise TaskSourceIntegrityError("task disappeared after CAS")
@@ -1456,6 +1501,18 @@ class DatabaseTaskSource:
         )
 
     cas_status = compare_and_set_status
+
+    def unstall_stale_in_progress_tasks(
+        self,
+        *,
+        now: Any = None,
+        stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
+    ) -> dict[str, Any]:
+        """Retry leftover in_progress gates through the intent authority."""
+
+        return self._intent.unstall_stale_in_progress_tasks(
+            now=now, stale_seconds=stale_seconds
+        )
 
     def rearm_blocked_task(
         self,
@@ -1619,14 +1676,35 @@ class DatabaseTaskSource:
             except QuackOwnerCommandRemoteError as exc:
                 _raise_typed_owner_error(exc)
             return _intent_receipt_from_dict(result)
-        return self._intent.record_validation_result(
-            task_cid=task_cid,
-            outcome=outcome,
-            evidence_digest=evidence_digest,
-            argv=argv,
-            attempt_id=attempt_id,
-            body=body,
-        )
+        try:
+            return self._intent.record_validation_result(
+                task_cid=task_cid,
+                outcome=outcome,
+                evidence_digest=evidence_digest,
+                argv=argv,
+                attempt_id=attempt_id,
+                body=body,
+            )
+        except IntentRepositoryUnknownOutcomeError as exc:
+            raise TaskSourceUnknownOutcomeError(str(exc)) from exc
+
+    def current_evidence_for_task(
+        self,
+        task_cid: str,
+        *,
+        now_ms: int | None = None,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Return bounded current evidence through the canonical repository."""
+
+        return self._intent.current_evidence_for_task(task_cid, now_ms=now_ms)
+
+    def qualification_authority_for_task(
+        self,
+        task_cid: str,
+    ) -> Mapping[str, Any]:
+        """Return bounded rows that authorize qualification evidence."""
+
+        return self._intent.qualification_authority_for_task(task_cid)
 
     def select_ready_tasks(self, *, limit: int = DEFAULT_QUERY_LIMIT) -> TaskPage:
         return self.ready_tasks(limit=limit)
@@ -1652,6 +1730,7 @@ __all__ = (
     "DatabaseTaskSourceError",
     "TaskSourceIntegrityError",
     "TaskSourceConflictError",
+    "TaskSourceUnknownOutcomeError",
     "TaskSourceBoundsError",
     "TaskSourceCompletionError",
     "TaskRecord",

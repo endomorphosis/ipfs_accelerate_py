@@ -847,7 +847,7 @@ def validate_program(
         "endpoint_secret_handle": "handle:pcar-v1",
         "quack_endpoint": "quack:127.0.0.1:41317",
         "store_id": "data/agent_supervisor/proof_carrying_architecture_refactorer/control.duckdb",
-        "store_generation": "pcar-v1",
+        "store_generation": "1",
         "schema_revision": "1",
         "failover_policy": "fail_closed",
         "explicit_legacy": False,
@@ -870,6 +870,33 @@ def validate_program(
         errors.append("operational control plane must fail closed")
     if control.get("markdown_is_authority") is not False:
         errors.append("Markdown must remain a bootstrap projection")
+
+    board_repair = config.get("authoritative_board_projection_repair")
+    if not isinstance(board_repair, dict):
+        errors.append("config authoritative_board_projection_repair is required")
+        board_repair = {}
+    expected_board_repair = {
+        "mode": "sealed_bootstrap_projection",
+        "automatic_repair_before_launch": True,
+        "allowed_drift": "supervisor_generated_guardrail_suffix_only",
+        "bootstrap_receipt_path": (
+            "data/agent_supervisor/proof_carrying_architecture_refactorer/"
+            "evidence/bootstrap/bootstrap-materialization.json"
+        ),
+        "repair_receipt_path": (
+            "data/agent_supervisor/proof_carrying_architecture_refactorer/"
+            "evidence/control-plane/board-projection-repair.json"
+        ),
+        "canonical_authority": "DuckDB/DatabaseTaskSource@1 over Quack",
+        "canonical_block_mutation_permitted": False,
+        "markdown_task_mutation_permitted": False,
+        "suppressed_finding_disposition": "typed_runtime_telemetry",
+    }
+    for field, expected in expected_board_repair.items():
+        if board_repair.get(field) != expected:
+            errors.append(
+                f"config authoritative_board_projection_repair.{field} mismatch"
+            )
 
     ducklake = config.get("ducklake_projection_program")
     if not isinstance(ducklake, dict):

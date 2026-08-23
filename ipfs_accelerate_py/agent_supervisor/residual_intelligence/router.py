@@ -479,10 +479,12 @@ def _human_disposition(walk: ResidualCascadeWalk) -> ExpertDisposition:
         return ExpertDisposition.ABSTAIN
     if "ood_conservative_abstain" in rejection_reasons:
         return ExpertDisposition.OUT_OF_DISTRIBUTION
+    # Remote stages record hardware_unavailable / provider_unhealthy whenever
+    # provider hardware is absent from the request.  That is the default
+    # human-fallback path and must remain ABSTAIN.  Capability-unavailable is
+    # reserved for an actual missing local capability.
     capability_codes = {
         "capability_unavailable",
-        "hardware_unavailable",
-        "provider_unhealthy",
         "local_execution_unavailable",
         "capability_inferred_from_importability",
     }
@@ -501,6 +503,8 @@ def _human_disposition(walk: ResidualCascadeWalk) -> ExpertDisposition:
         "private_to_unauthorized_provider",
         "inference_policy_denies_remote",
         "provider_unauthorized",
+        "provider_unhealthy",
+        "hardware_unavailable",
         "simulation_forbidden",
         "validation_unavailable",
         "family_out_of_bound",

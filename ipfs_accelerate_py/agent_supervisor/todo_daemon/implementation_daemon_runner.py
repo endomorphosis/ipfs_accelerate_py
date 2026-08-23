@@ -6,6 +6,7 @@ import argparse
 import logging
 import math
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -14,14 +15,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from ..objectives.scan_receipts import RefillScanResult
 from ..core.wrapper_utils import (
     AgentSupervisorNamespacePaths,
     with_default,
     with_repeated_default,
 )
+from ..objectives.scan_receipts import RefillScanResult
 from ..runtime.event_log import append_jsonl_event
-
 
 DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
 DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
@@ -56,7 +56,10 @@ def compact_daemon_pass_result(result: Mapping[str, Any]) -> dict[str, Any]:
         "requirement_id",
         "control_plane_error",
         "declared_output_rearm",
+        "merge_quarantine_settlement",
+        "post_merge_recovery",
         "write_count",
+        "backoff_seconds",
     )
     return {key: result[key] for key in keys if key in result}
 
@@ -87,12 +90,21 @@ def bounded_daemon_wait_timeout(
 
     timeout = max(0.0, float(default_timeout))
     retry_after = result.get("next_wake_after_seconds")
-    if isinstance(retry_after, bool) or not isinstance(retry_after, (int, float)):
-        return timeout
-    retry_after = float(retry_after)
-    if not math.isfinite(retry_after):
-        return timeout
-    return min(timeout, max(0.0, retry_after))
+    if (
+        not isinstance(retry_after, bool)
+        and isinstance(retry_after, (int, float))
+        and math.isfinite(float(retry_after))
+    ):
+        timeout = min(timeout, max(0.0, float(retry_after)))
+    backoff = result.get("backoff_seconds")
+    if (
+        not isinstance(backoff, bool)
+        and isinstance(backoff, (int, float))
+        and math.isfinite(float(backoff))
+        and float(backoff) > 0
+    ):
+        timeout = max(timeout, min(30.0, float(backoff)))
+    return timeout
 
 
 class DaemonHookTimeoutError(TimeoutError):
@@ -1115,6 +1127,27 @@ def implementation_state_paths(parsed: argparse.Namespace) -> dict[str, Path]:
     )
 
 
+def database_implementation_sidecar_paths(
+    parsed: argparse.Namespace,
+) -> dict[str, Path]:
+    """Return lane-private database execution and coordination sidecars.
+
+    The control database may be shared through Quack, but DuckDB sidecars may
+    only have one external writer.  Bind both filenames to the already
+    lane-scoped ``state_dir`` and ``state_prefix`` supplied by the supervisor.
+    """
+
+    state_dir = Path(parsed.state_dir).absolute()
+    state_prefix = str(parsed.state_prefix or "database").strip()
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", state_prefix) is None:
+        raise ValueError("state_prefix is unsafe for database sidecar paths")
+    return {
+        "execution_path": state_dir / f"{state_prefix}_database_execution.duckdb",
+        "coordination_path": state_dir
+        / f"{state_prefix}_database_coordination.duckdb",
+    }
+
+
 def configure_daemon_logging(
     parsed: argparse.Namespace,
     *,
@@ -1156,10 +1189,10 @@ def resolve_database_implementation_paths(
     mode = str(authority_mode or getattr(parsed, "authority_mode", "") or "")
     mode = mode.strip().lower().replace("-", "_")
     if mode == "quack":
-        # Quack owns the shared task-state boundary.  Each execution lane still
-        # needs a private embedded database for its local claim/attempt journal;
-        # deriving that sidecar from the shared store ID makes every lane open
-        # the same DuckDB file as a writer and prevents parallel startup.
+        # Quack owns the shared task-state boundary.  Lane-local
+        # execution/coordination sidecars must be derived from the expanded
+        # lane state directory, never from the shared remote store identity,
+        # or every lane would open the same DuckDB file as a writer.
         state_dir = Path(getattr(parsed, "state_dir", Path("state")))
         database_path: Path | None = state_dir / "quack-lane-control.duckdb"
     else:
@@ -1171,12 +1204,17 @@ def resolve_database_implementation_paths(
         candidate = Path(todo_path)
         if candidate.suffix.lower() in {".duckdb", ".ddb"}:
             database_path = candidate
+    sidecars = database_implementation_sidecar_paths(parsed)
     coordination_path = getattr(parsed, "coordination_path", None)
-    if coordination_path is not None:
-        coordination_path = Path(coordination_path)
+    coordination_path = (
+        Path(coordination_path)
+        if coordination_path is not None
+        else sidecars["coordination_path"]
+    )
     return {
         "database_path": database_path,
         "coordination_path": coordination_path,
+        "execution_path": sidecars["execution_path"],
     }
 
 
@@ -1282,6 +1320,9 @@ def bind_database_portal_execution_from_args(
             strategy_path=paths.strategy,
             events_path=paths.events,
             repo_root=repo_root,
+            board_namespace=str(
+                getattr(parsed, "board_namespace", "") or ""
+            ),
             task_header_prefix=parsed.task_prefix,
             implement=True,
             implementation_command=parsed.implementation_command or None,
@@ -1339,11 +1380,19 @@ def bind_database_portal_execution_from_args(
             ),
         )
 
+    configured_worktree_root = getattr(parsed, "worktree_root", None)
+    if configured_worktree_root is not None:
+        configured_worktree_root = Path(configured_worktree_root)
+        if not configured_worktree_root.is_absolute():
+            configured_worktree_root = repo_root / configured_worktree_root
+        configured_worktree_root = configured_worktree_root.absolute()
     bridge = DatabasePortalExecutionBridge(
         task_source=task_source,
         attempt_root=attempt_root,
         portal_factory=portal_factory,
         repository_root=repo_root,
+        worktree_root=configured_worktree_root,
+        implementation_protected_paths=implementation_protected_paths,
         merge_queue=recovery_queue,
         merge_target_branch=(
             configured_merge_target_branch if recovery_queue is not None else ""
@@ -1356,17 +1405,17 @@ def bind_database_portal_execution_from_args(
         provider_fn=bridge.run_provider,
         effect_fn=bridge.apply_effect,
         validation_fn=bridge.validate_effect,
+        protected_path_recovery_fn=bridge.recover_protected_path_retry,
+        external_protected_checkout_recovery_fn=(
+            bridge.recover_external_protected_checkout
+        ),
+        inflight_process_recovery_fn=bridge.recover_inflight_process,
+        validation_retry_seed_conflict_recovery_fn=(
+            bridge.recover_validation_retry_seed_conflict
+        ),
+        pooled_worktree_create_recovery_fn=bridge.recover_pooled_worktree_create,
     )
     if recovery_queue is not None:
-        recovery_binder = getattr(daemon, "bind_post_merge_recovery", None)
-        if not callable(recovery_binder):
-            raise RuntimeError(
-                "production database daemon does not expose post-merge "
-                "recovery binding"
-            )
-        recovery_binder(
-            lambda: bridge.recover_post_merge_declared_outputs(daemon)
-        )
         merge_train_binder = getattr(daemon, "bind_merge_train_recovery", None)
         if not callable(merge_train_binder):
             raise RuntimeError(
@@ -1378,6 +1427,13 @@ def bind_database_portal_execution_from_args(
             repo_root=repo_root,
             merge_target_branch=configured_merge_target_branch,
         )
+        recovery_binder = getattr(daemon, "bind_post_merge_recovery", None)
+        if callable(recovery_binder) and callable(
+            getattr(daemon, "recover_blocked_post_merge_declared_outputs", None)
+        ):
+            recovery_binder(
+                lambda: bridge.recover_post_merge_declared_outputs(daemon)
+            )
     return bridge
 
 
@@ -1439,6 +1495,7 @@ def build_portal_implementation_daemon_from_args(
         daemon: object = DatabaseImplementationDaemon(
             database_path=database_path,
             coordination_path=db_paths["coordination_path"],
+            execution_path=db_paths["execution_path"],
             owner_session_id=str(getattr(parsed, "owner_session_id", "") or ""),
             authority_mode=authority_mode or "quack",
             task_source_kind=task_source_kind or "duckdb",
@@ -1460,6 +1517,20 @@ def build_portal_implementation_daemon_from_args(
                 parsed, "strict_task_sharding", False
             ),
             require_real_execution=bool(getattr(parsed, "implement", False)),
+            execution_slice_task_ids=getattr(
+                parsed, "execution_slice_task_id", ()
+            ),
+            execution_slice_task_cids=getattr(
+                parsed, "execution_slice_task_cid", ()
+            ),
+            idle_lane_work_stealing=str(
+                getattr(parsed, "idle_lane_work_stealing", "") or ""
+            ),
+            repo_root=repo_root,
+            merge_target_ref=str(
+                getattr(parsed, "merge_target_branch", "") or "HEAD"
+            ),
+            task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
         )
         bind_database_portal_execution_from_args(
             daemon,
@@ -1563,6 +1634,11 @@ def build_database_implementation_daemon_from_args(
     provider_fn: Callable[..., Any] | None = None,
     effect_fn: Callable[..., Any] | None = None,
     validation_fn: Callable[..., Any] | None = None,
+    protected_path_recovery_fn: Callable[..., Any] | None = None,
+    external_protected_checkout_recovery_fn: Callable[..., Any] | None = None,
+    inflight_process_recovery_fn: Callable[..., Any] | None = None,
+    validation_retry_seed_conflict_recovery_fn: Callable[..., Any] | None = None,
+    pooled_worktree_create_recovery_fn: Callable[..., Any] | None = None,
 ) -> object:
     """Build a DatabaseImplementationDaemon@1 from CLI/env authority bindings."""
 
@@ -1591,6 +1667,7 @@ def build_database_implementation_daemon_from_args(
     return DatabaseImplementationDaemon(
         database_path=resolved_db,
         coordination_path=db_paths["coordination_path"],
+        execution_path=db_paths["execution_path"],
         owner_session_id=owner_session_id
         or str(getattr(parsed, "owner_session_id", "") or ""),
         authority_mode=authority_mode,
@@ -1599,16 +1676,38 @@ def build_database_implementation_daemon_from_args(
         provider_fn=provider_fn,
         effect_fn=effect_fn,
         validation_fn=validation_fn,
+        protected_path_recovery_fn=protected_path_recovery_fn,
+        external_protected_checkout_recovery_fn=(
+            external_protected_checkout_recovery_fn
+        ),
+        inflight_process_recovery_fn=inflight_process_recovery_fn,
+        validation_retry_seed_conflict_recovery_fn=(
+            validation_retry_seed_conflict_recovery_fn
+        ),
+        pooled_worktree_create_recovery_fn=pooled_worktree_create_recovery_fn,
         require_real_execution=bool(getattr(parsed, "implement", False)),
         state_path=None,
         strategy_path=None,
         events_path=None,
         pid_path=None,
         queue_path=None,
+        execution_slice_task_ids=getattr(parsed, "execution_slice_task_id", ()),
+        execution_slice_task_cids=getattr(
+            parsed, "execution_slice_task_cid", ()
+        ),
+        task_shard_count=int(getattr(parsed, "task_shard_count", 1)),
+        task_shard_index=int(getattr(parsed, "task_shard_index", 0)),
+        strict_task_sharding=bool(
+            getattr(parsed, "strict_task_sharding", False)
+        ),
+        idle_lane_work_stealing=str(
+            getattr(parsed, "idle_lane_work_stealing", "") or ""
+        ),
         max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
-        task_shard_count=getattr(parsed, "task_shard_count", 1),
-        task_shard_index=getattr(parsed, "task_shard_index", 0),
-        strict_task_sharding=getattr(parsed, "strict_task_sharding", False),
+        repo_root=getattr(parsed, "repo_root", None),
+        merge_target_ref=str(
+            getattr(parsed, "merge_target_branch", "") or "HEAD"
+        ),
     )
 
 

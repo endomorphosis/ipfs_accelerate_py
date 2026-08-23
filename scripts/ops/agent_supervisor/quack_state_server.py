@@ -92,6 +92,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory for status, stop control, and secret-handle token files",
     )
     parser.add_argument(
+        "--repository-root",
+        default=str(_repo_root()),
+        help=(
+            "Absolute repository root used once to seal relative database and "
+            "state paths"
+        ),
+    )
+    parser.add_argument(
         "--host",
         default="127.0.0.1",
         help="Bind host (loopback by default; non-loopback needs reviewed policy)",
@@ -101,6 +109,20 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="Bind port (0 allocates an ephemeral loopback port)",
+    )
+    parser.add_argument(
+        "--container-bind-host",
+        default="",
+        help=(
+            "Container-internal bind host; a distinct non-loopback bind requires "
+            "an admitted isolation receipt"
+        ),
+    )
+    parser.add_argument(
+        "--container-port",
+        type=int,
+        default=0,
+        help="Container-internal port (defaults to the advertised --port)",
     )
     parser.add_argument(
         "--store-id",
@@ -116,6 +138,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--secret-handle",
         default="",
         help="Opaque secret handle (never a raw token)",
+    )
+    parser.add_argument(
+        "--isolation-receipt-json",
+        default=None,
+        help=(
+            "Owner-only canonical isolation receipt under --state-dir; required "
+            "to serve Quack with extension-required external access"
+        ),
     )
     parser.add_argument(
         "--allow-experimental",
@@ -165,7 +195,26 @@ def _require_paths(args: argparse.Namespace) -> tuple[Path, Path]:
         raise SystemExit("--database is required")
     if not args.state_dir:
         raise SystemExit("--state-dir is required")
-    return Path(args.database), Path(args.state_dir)
+    root = Path(args.repository_root).expanduser()
+    if not root.is_absolute():
+        raise SystemExit("--repository-root must be absolute")
+    root = root.resolve()
+
+    def _sealed(value: str, *, name: str) -> Path:
+        candidate = Path(value).expanduser()
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        sealed = candidate.resolve()
+        try:
+            sealed.relative_to(root)
+        except ValueError as exc:
+            raise SystemExit(f"--{name} escapes --repository-root") from exc
+        return sealed
+
+    return (
+        _sealed(str(args.database), name="database"),
+        _sealed(str(args.state_dir), name="state-dir"),
+    )
 
 
 def _build_server(args: argparse.Namespace) -> Any:
@@ -179,13 +228,17 @@ def _build_server(args: argparse.Namespace) -> Any:
     return build_server(
         database_path=database,
         state_dir=state_dir,
+        repository_root=Path(args.repository_root),
         host=str(args.host),
         port=int(args.port),
+        container_bind_host=str(args.container_bind_host or ""),
+        container_port=int(args.container_port),
         repository_id=str(args.repository_id or ""),
         store_id=str(args.store_id or "control.duckdb"),
         allow_experimental=bool(args.allow_experimental),
         remote_bind_policy=policy,
         secret_handle=str(args.secret_handle or ""),
+        isolation_receipt_path=args.isolation_receipt_json,
     )
 
 
@@ -215,6 +268,10 @@ def _serve_until_stop(server: Any) -> dict[str, Any]:
         while server.lifecycle.value == "ready" and not stop_requested["value"]:
             if control_path.is_file():
                 break
+            # The exclusive owner is also the sole executor for authenticated,
+            # closed mutation bundles.  Keep each pass bounded so stop and
+            # readiness control remain responsive.
+            server.process_mutation_inbox(max_requests=32)
             time.sleep(0.25)
         return server.stop()
     finally:
