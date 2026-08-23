@@ -79492,6 +79492,11 @@ class DatabaseImplementationDaemon:
                     if isinstance(receipt, Mapping)
                     else ""
                 )
+                evidence_source = (
+                    str(receipt.get("evidence_source") or "")
+                    if isinstance(receipt, Mapping)
+                    else ""
+                )
                 if (
                     operation
                     == "database_portal_leftover_wait_deferral_budget_retry_recovery"
@@ -82210,7 +82215,13 @@ class DatabaseImplementationDaemon:
                         task,
                     )
                 elif (
-                    operation
+                    evidence_source
+                    not in {
+                        "portal_candidate_retry",
+                        "portal_provider_failed_reclassified",
+                        "portal_checkout_contention_reclassified",
+                    }
+                    and operation
                     == "database_portal_validation_retry_recovery"
                 ):
                     self._verified_validation_retry_recovery_state(
