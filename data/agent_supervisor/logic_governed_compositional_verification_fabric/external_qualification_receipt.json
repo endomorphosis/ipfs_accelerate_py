@@ -1,68 +1,47 @@
 {
-  "admitted_scope": "hermetic_local_pytest_and_local_cli_observation",
-  "benchmark_cid": "baguqeera3u6urm3mfxaqf2tvk2ivmu5vuyoyur2l4cwvr3a6rjfetnt3rrpq",
-  "benchmark_disposition": "partial",
-  "cohort": "live_local_observation_against_current_roots",
-  "comparisons": {
-    "docker_server_identity_matches": false,
-    "docker_sha256_matches": false,
-    "gpu_uuid_matches": true,
-    "nvidia_smi_sha256_matches": true
+  "benchmark_report_cid": "baguqeerayonwmoq5jsor5lychqotjn343jkcb4vjp3fk6olrf5muwhyxd3ra",
+  "cohorts": {
+    "live_local_model_execution": "unavailable",
+    "live_remote_model_execution": "unavailable",
+    "production_authoritative_evidence": "unavailable"
   },
-  "hermetic_qualification_cid": "baguqeerashmxcp5v2tqxptgplatswidcv4535ezzjjtntsc2dtzd3fbd4ota",
-  "hermetic_qualification_passed": true,
-  "independent_verifier": "operator:barberb",
-  "issued_at": "2026-08-23T21:17:31+00:00",
-  "issuer": "operator:barberb",
-  "issuer_role": "sole_rd_engineer",
+  "expires_at": "2027-08-23T00:00:00+00:00",
+  "issued_at": "2026-08-23T21:36:51+00:00",
+  "issuer": {
+    "identity": "barberb-operator",
+    "independence_statement": "Sole R&D engineer issuing current-root live observation, not a third-party audit.",
+    "not_candidate_author": true,
+    "not_model": true,
+    "not_supervisor": true
+  },
   "limitations": [
-    "operator-issued observation on this host, not a third-party audit",
-    "no network probe of remote providers was performed",
-    "hermetic 113 remains the admitted test qualification"
+    "hermetic 113 is the admitted test cohort",
+    "docker CLI hash drifted from the sealed pin",
+    "no remote provider cohort was exercised",
+    "this is operator observation, not a production TCB admit"
   ],
-  "live_docker_isolation_tcb_admitted": false,
-  "live_production_cluster_admitted": false,
-  "not_admitted": [
-    "sealed docker CLI hash drifted (29.2.1 vs pinned 29.1.3)",
-    "no remote/production provider cohort",
-    "Quack multi-writer is not qualified; embedded DuckDB remains the operational writer"
-  ],
-  "observed": {
-    "docker_path": "/usr/bin/docker",
-    "docker_server_identity": "29.2.1|linux|arm64",
-    "docker_sha256": "c6a8317bfcc35c90c36b1807897b1c0447bba769cca83d652dfbc1683c2a192d",
-    "embedded_duckdb_single_writer": true,
-    "gpu_driver": "580.142",
-    "gpu_uuid": "GPU-fd94473f-d6ba-bada-c1e2-5a1e9ad037e4",
-    "grok_cli": "/home/barberb/.local/bin/grok",
-    "grok_cli_realpath": "/home/barberb/.grok/downloads/grok-1.0.5-linux-aarch64",
-    "grok_cli_sha256": "sha256:1c1fe67d7c35497fb09f44a451f57acc3787add4c9aea2c56f5c7c75dc5ffcf1",
-    "machine": "aarch64",
-    "nvidia_smi_path": "/usr/bin/nvidia-smi",
-    "nvidia_smi_sha256": "934be0af12e24ad46e3deca64234be7493d8f3552461c9956d43fbedd6ff9c67",
-    "python": "3.12.3",
-    "quack_multi_writer_qualified": false
+  "multi_writer": {
+    "disposition": "unavailable",
+    "notes": "Embedded DuckDB remains the single writer; Quack is not qualified on this host.",
+    "quack_qualified": false
   },
+  "passed": false,
   "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
-  "production_authoritative": false,
   "production_authorized": false,
   "provider_disclosure_policy": "local_cli_paths_and_hashes_only",
-  "qualified": false,
-  "receipt_cid": "baguqeerapvxddlvhow27wk7bb7wtekc3l2y3wxtf4zut3dgc3h5w7ylkrasq",
+  "qualification_result_cid": "baguqeera7hxs6osc7or4lflqrsc36jk3r5qsyh3sdroomqtqvdkm3csqassa",
+  "receipt_cid": "baguqeerac4pga2vegbcgfnr6pbjjvff52sn6hfewkssmsuync5mmqetwpeuq",
   "release_qualified": false,
-  "schema": "lgcvf-external-qualification@1",
-  "sealed_tcb_pins": {
-    "docker_server_identity": "29.1.3|linux|arm64",
-    "docker_sha256": "414d9e16a30060770648522f8ecadef2f2b57b50b8c61d4b0ae9d3b8b64c2a02",
-    "gpu_identity": "GPU-fd94473f-d6ba-bada-c1e2-5a1e9ad037e4, 580.142",
-    "nvidia_smi_sha256": "934be0af12e24ad46e3deca64234be7493d8f3552461c9956d43fbedd6ff9c67"
-  },
-  "source_roots": {
-    "accelerator_head": "cc320f35cc1b524c7fd4f6e2f02b00b0aa0bba17",
-    "accelerator_tree": "b8402623583da4fd45f277731fe9a716999d91f5",
-    "branch": "agent/logic-governed-compositional-verification-fabric-v1",
-    "checkout": "/home/barberb/.local/state/ipfs_accelerate_py/lgcvf-recreate-run-v16",
-    "datasets_head": "78d30946430d032e1e25a13e81d58569a37f62c3",
-    "datasets_tree": "9e5be99615ed8ecb3765b6646c1fb7a8bc6d2daf"
+  "schema": "lgcvf-external-qualification-receipt@1",
+  "source_revisions": {
+    "ipfs_accelerate_py": {
+      "head": "b32c7968fbd8e78f6c25cb65490aaa337348dfd7",
+      "tree": "d13edb6095659e40340570691d070ce1ab03b93f"
+    },
+    "ipfs_datasets_py": {
+      "gitlink": "66a02063496fd200f2372b3083e376f1978c6be1",
+      "head": "66a02063496fd200f2372b3083e376f1978c6be1",
+      "tree": "11d9c74504512e45c3ccc78d55e0e2f25d2a9a92"
+    }
   }
 }

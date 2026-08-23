@@ -1,6 +1,6 @@
 {
   "candidate_suites_are_self_authority": false,
-  "checkout_fingerprint_cid": "baguqeeragrc5wegnexra37qijn7wrotkva2pzxk6snlax4azdazhyyolba4q",
+  "checkout_fingerprint_cid": "baguqeerauvlz3caortf7w4weutzl6lkwlksm7epb5majmpnbu3ide4s4zktq",
   "checkout_unchanged": true,
   "cohort": "hermetic_local_execution",
   "independent_fixed_manifest_executed": true,
@@ -18,12 +18,12 @@
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "result_cid": "baguqeeramnvghkxzfn7bbbj6xeoh2jq6xxxgklefpxqu24tus6lwbdpt373a",
+  "result_cid": "baguqeera7hxs6osc7or4lflqrsc36jk3r5qsyh3sdroomqtqvdkm3csqassa",
   "schema": "lgcvf-independent-hermetic-qualification@1",
   "suites": [
     {
       "collected": 9,
-      "duration_ms": 3119,
+      "duration_ms": 3367,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -42,7 +42,7 @@
           "cpu_seconds": 900,
           "file_size_bytes": 67108864,
           "open_files": 256,
-          "processes": 65536
+          "processes": 511830
         },
         "seccomp_denied_syscall_count": 44
       },
@@ -63,19 +63,19 @@
         "suite_id": "candidate_focused"
       },
       "nodeids_cid": "baguqeera3zvgtvi5l3llqyyo7wr2nzz5cx2zuovoduqrza77vyzgoxy57ksq",
-      "observation_cid": "baguqeerai726nstoktk3aszbhoyagyvg2awaj7kv4pkucm2ensjfe5hd37rq",
+      "observation_cid": "baguqeerajgmlhykt4vcyexnvr6wiuokyn4liljuwnsjew5m6d54ltuwirpia",
       "passed": true,
       "passed_count": 9,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "candidate_focused",
-      "transcript_sha256": "sha256:07f85e92ffac363fa1d223064dfcf6aeea36ea9d7529a5f7da9b751e79508afd",
+      "transcript_sha256": "sha256:aa51e6f12e5cb7c5c30697a7f40f7f55fb261453615e051b51f2f1f4b11c5cc8",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
       "collected": 10,
-      "duration_ms": 2678,
+      "duration_ms": 2687,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -94,7 +94,7 @@
           "cpu_seconds": 900,
           "file_size_bytes": 67108864,
           "open_files": 256,
-          "processes": 65536
+          "processes": 511830
         },
         "seccomp_denied_syscall_count": 44
       },
@@ -115,19 +115,19 @@
         "suite_id": "candidate_adversarial"
       },
       "nodeids_cid": "baguqeerawyxjp67p656suousq2s2yoqpnagcljminuhw6ooto6mz23zec7ma",
-      "observation_cid": "baguqeeraif4gtlqmapkhy7pk4rf7gkrbbf7qbjgfbel32pynnukcgkb5io7q",
+      "observation_cid": "baguqeera7nwy6wonpycsfhrsw7mt2xdvcsrhkywt5y2cnbpublhfgw5nihga",
       "passed": true,
       "passed_count": 10,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "candidate_adversarial",
-      "transcript_sha256": "sha256:c10af29455273ee403a35cab58aa0193fd2d47613d8f31e7f362820d668dc80f",
+      "transcript_sha256": "sha256:141953012e622d537a245f57d87dcf9986aa6510c58270c4bf026ebb58421f3e",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
       "collected": 143,
-      "duration_ms": 2632,
+      "duration_ms": 2692,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -146,7 +146,7 @@
           "cpu_seconds": 900,
           "file_size_bytes": 67108864,
           "open_files": 256,
-          "processes": 65536
+          "processes": 511830
         },
         "seccomp_denied_syscall_count": 40
       },
@@ -215,19 +215,19 @@
         "suite_id": "fixed_datasets_semantics"
       },
       "nodeids_cid": "baguqeeraynd5gnhnlb7gfytao7zvmjsaxqk3zt3bbpx5ma7e3mzgv6wdohya",
-      "observation_cid": "baguqeerahu4ssr6h6qjf5ysioylhbbnwqyymgieikslmyh3kgolbkot4aeia",
+      "observation_cid": "baguqeerajpcunb5mdao2kmqsnqncbyov4yht2uovswtmdchcja7uf6pdhata",
       "passed": true,
       "passed_count": 143,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "fixed_datasets_semantics",
-      "transcript_sha256": "sha256:e7ae96aba02f1b46d8e6944f0ba3438784913f6338ec5e6743d02302db5499d5",
+      "transcript_sha256": "sha256:e89974a33a9b0925a0a7d6e0f60601913ab37661c923d83de1e4c11344ba4262",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
       "collected": 199,
-      "duration_ms": 162633,
+      "duration_ms": 142350,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -246,13 +246,13 @@
           "cpu_seconds": 900,
           "file_size_bytes": 67108864,
           "open_files": 256,
-          "processes": 65536
+          "processes": 511830
         },
         "seccomp_denied_syscall_count": 40
       },
       "manifest": {
         "candidate_authored": false,
-        "manifest_cid": "baguqeerajirhkry3d6qzoq232hczigsvmwgox2uxf553owlm4fdj44dr6hea",
+        "manifest_cid": "baguqeeralpmbbajd6lhrlh5idh2dsvcd3oizqr532ftqh72il4cybbcshr5a",
         "owner_root": ".",
         "paths": [
           "test/api/test_agent_supervisor_compositional_verification_vertical.py",
@@ -282,8 +282,8 @@
           },
           {
             "path": "test/api/test_agent_supervisor_manual_completion_authority_runtime.py",
-            "sha256": "sha256:27c10878eec049bee91f70817a930ecd3757a243d720363b7133654152127d70",
-            "size_bytes": 111570
+            "sha256": "sha256:2af3064212b50e1a0684a988f14046810ae40869995e834102840e6227ee7ccd",
+            "size_bytes": 111862
           },
           {
             "path": "test/api/test_agent_supervisor_expected_output_submodule_preflight.py",
@@ -309,13 +309,13 @@
         "suite_id": "fixed_accelerator_authority"
       },
       "nodeids_cid": "baguqeerar533oighzztc5b5bazgduez2ksn66mzh2vu6c6a6gchquvkqlf2a",
-      "observation_cid": "baguqeerasg3vmlx3vad5f4fzioyqqmxb3qo3hgdr327j63wtise5fkilprfq",
+      "observation_cid": "baguqeerau2n5xvgwefyhby2um2c5lfbo73wzynrs4rtv2k355x3i74kweurq",
       "passed": true,
       "passed_count": 199,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "fixed_accelerator_authority",
-      "transcript_sha256": "sha256:901c3d907f4bd768980781026206147484eb5352a517c9422738727b038d2f9c",
+      "transcript_sha256": "sha256:9b63a56241ab33ebb3ccc062ca3536e40ec4636ab69e010df6053d2c45ff003b",
       "xfailed_count": 0,
       "xpassed_count": 0
     }

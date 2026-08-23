@@ -1,39 +1,35 @@
 {
-  "authority_kind": "manual_operator",
-  "benchmark_cid": "baguqeera3u6urm3mfxaqf2tvk2ivmu5vuyoyur2l4cwvr3a6rjfetnt3rrpq",
+  "depends_on_lgcvf_121": true,
+  "depends_on_lgcvf_122": true,
   "expires_at": "2027-08-23T00:00:00+00:00",
-  "explicitly_out_of_scope": [
-    "production deployment",
-    "release qualification",
-    "live multi-writer Quack",
-    "sealed docker-local-cuda authority TCB",
-    "remote provider production cohort"
-  ],
-  "external_qualification_receipt_cid": "baguqeerapvxddlvhow27wk7bb7wtekc3l2y3wxtf4zut3dgc3h5w7ylkrasq",
-  "hermetic_qualification_cid": "baguqeerashmxcp5v2tqxptgplatswidcv4535ezzjjtntsc2dtzd3fbd4ota",
-  "issued_at": "2026-08-23T21:17:31+00:00",
+  "external_qualification_receipt_cid": "baguqeerac4pga2vegbcgfnr6pbjjvff52sn6hfewkssmsuync5mmqetwpeuq",
+  "issued_at": "2026-08-23T21:36:51+00:00",
   "lgswf_006_reused": false,
-  "notes": "Issued because this program is single-engineer R&D. The operator accepts the current roots as the working research tree. This is not a production seal.",
-  "operator_id": "barberb",
-  "operator_role": "sole_rd_engineer",
-  "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
-  "production_authoritative": false,
-  "production_authorized": false,
-  "rd_working_root_authorized": true,
-  "receipt_cid": "baguqeeradxy7cyjgcyrpxn6druern5gugd6sslpmlaeuoepz7fzntaqko7iq",
-  "release_qualified": false,
-  "schema": "lgcvf-production-authorization@1",
-  "scope": [
-    "current LGCVF recreate forest as the R&D working tree",
-    "hermetic local qualification and partial benchmark",
-    "single-writer embedded DuckDB control plane on this host"
+  "limitations": [
+    "production remains unauthorized",
+    "release remains not qualified",
+    "live docker isolation TCB is not admitted",
+    "Quack multi-writer is not qualified"
   ],
-  "source_roots": {
-    "accelerator_head": "cc320f35cc1b524c7fd4f6e2f02b00b0aa0bba17",
-    "accelerator_tree": "b8402623583da4fd45f277731fe9a716999d91f5",
-    "branch": "agent/logic-governed-compositional-verification-fabric-v1",
-    "checkout": "/home/barberb/.local/state/ipfs_accelerate_py/lgcvf-recreate-run-v16",
-    "datasets_head": "78d30946430d032e1e25a13e81d58569a37f62c3",
-    "datasets_tree": "9e5be99615ed8ecb3765b6646c1fb7a8bc6d2daf"
+  "operator": {
+    "identity": "barberb-operator",
+    "role": "sole-rd-engineer"
+  },
+  "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
+  "production_authorized": false,
+  "receipt_cid": "baguqeeraxvlfmmof4nbhesvrn3nhzy4n2dibk75pdkhi5gv4umw23zz6akca",
+  "release_report_sha256": "sha256:ab1edfa3fc46fad6318b6ea66c428bd542d552a1a1d8e3a715f9232fdb0e9bb9",
+  "schema": "lgcvf-production-authorization-receipt@1",
+  "scope": "Authorize this merged checkout as the R&D working tree only.",
+  "source_revisions": {
+    "ipfs_accelerate_py": {
+      "head": "b32c7968fbd8e78f6c25cb65490aaa337348dfd7",
+      "tree": "d13edb6095659e40340570691d070ce1ab03b93f"
+    },
+    "ipfs_datasets_py": {
+      "gitlink": "66a02063496fd200f2372b3083e376f1978c6be1",
+      "head": "66a02063496fd200f2372b3083e376f1978c6be1",
+      "tree": "11d9c74504512e45c3ccc78d55e0e2f25d2a9a92"
+    }
   }
 }
