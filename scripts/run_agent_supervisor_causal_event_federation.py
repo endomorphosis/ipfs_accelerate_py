@@ -1842,7 +1842,13 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
                 expected_store_id=_control_plane_store_id(program),
                 expected_store_generation=str(program.store_generation),
             )
-            if _state_owner_outbox_health(server)["healthy"] is not True:
+            outbox_health = _state_owner_outbox_health(server)
+            # Transient Quack client errors during ATTACH/query must not tear
+            # down the exclusive owner.  Only a dead outbox thread is fatal.
+            if (
+                outbox_health.get("thread_alive") is not True
+                or outbox_health.get("available") is not True
+            ):
                 runtime_exit_code = 1
                 break
             runtime_exit_code = supervisor_process.poll()
@@ -1858,6 +1864,8 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
                 if executor_restarts >= max_executor_restarts and stopping.wait(
                     backoff
                 ):
+                    break
+                if executor_restarts > 0 and stopping.wait(min(2.0, backoff)):
                     break
                 executor_restarts += 1
                 try:

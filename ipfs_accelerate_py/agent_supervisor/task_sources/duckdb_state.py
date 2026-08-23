@@ -1019,10 +1019,12 @@ class DuckDBConnection:
             )
             return _empty_duckdb_cursor()
         if catalog and not normalized.startswith("USE "):
-            if getattr(self, "_active_catalog", None) != catalog:
-                used = self._connection.execute(f"USE {catalog}")
-                _consume_duckdb_result(used)
-                self._active_catalog = catalog
+            # Always USE the attached catalog. Skipping this after wrap() can
+            # run against the empty :memory: schema and look like "no ready
+            # tasks". A consumed remote handle retries below without ATTACH.
+            used = self._connection.execute(f"USE {catalog}")
+            _consume_duckdb_result(used)
+            self._active_catalog = catalog
         attempts = 2 if self._is_quack_attach_session() else 1
         executed: Any = None
         for attempt in range(attempts):
@@ -1041,6 +1043,15 @@ class DuckDBConnection:
                     # session is still live. Retry the same statement; a new
                     # ATTACH here interrupts the exclusive owner.
                     _consume_duckdb_result(self._connection)
+                    self._active_catalog = None
+                    time.sleep(0.02)
+                    if catalog:
+                        try:
+                            used = self._connection.execute(f"USE {catalog}")
+                            _consume_duckdb_result(used)
+                            self._active_catalog = catalog
+                        except Exception:
+                            pass
                     continue
                 raise
         if executed is None:

@@ -898,6 +898,8 @@ def test_quack_wrapper_skips_description_across_sequential_queries() -> None:
 
         def execute(self, sql, params=None):
             del params
+            if str(sql).strip().upper().startswith("USE "):
+                return self
             self.executes += 1
             if self.description_reads:
                 raise RuntimeError("Invalid Input Error: Invalid connection id")
@@ -949,7 +951,9 @@ def test_quack_wrapper_retries_invalid_connection_id_without_reattach() -> None:
             self.closed = False
 
         def execute(self, sql, params=None):
-            del sql, params
+            del params
+            if str(sql).strip().upper().startswith("USE "):
+                return self
             self.executes += 1
             if self.executes == 2:
                 raise RuntimeError("Invalid Input Error: Invalid connection id")
