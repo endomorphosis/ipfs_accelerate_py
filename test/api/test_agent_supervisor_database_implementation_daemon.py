@@ -203,6 +203,7 @@ def _open_daemon(
     repo_root: Path | None = None,
     merge_target_ref: str = "HEAD",
     task_prefix: str = "",
+    process_instance_id: str | None = None,
 ) -> DatabaseImplementationDaemon:
     database_path = control_path or (tmp_path / "control.duckdb")
     coordination_path = tmp_path / "coordination.duckdb"

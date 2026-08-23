@@ -77033,19 +77033,28 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationConflictError(
                 f"attempt {current.attempt_id} is not running"
             )
-        if phase_text in _ATTEMPT_PHASE_ORDER:
-            phase_rank = _phase_rank(phase_text)
-            current_rank = _phase_rank(current.committed_phase)
-            if phase_rank <= current_rank:
-                # Idempotent: already at or past this phase.
-                return current
+        if (
+            phase_text in _ATTEMPT_PHASE_ORDER
+            and _phase_rank(phase_text) < _phase_rank(current.committed_phase)
+        ):
+            # Idempotent: already past this phase.
+            return current
+        if (
+            phase_text in _ATTEMPT_PHASE_ORDER
+            and _phase_rank(phase_text)
+            > _phase_rank(current.committed_phase) + 1
+            and phase_text != ATTEMPT_PHASE_COMPLETE
+        ):
             expected = _ATTEMPT_PHASE_ORDER[
                 min(
-                    current_rank + 1,
+                    _phase_rank(current.committed_phase) + 1,
                     len(_ATTEMPT_PHASE_ORDER) - 1,
                 )
             ]
-            if phase_text != expected:
+            if phase_text != expected and not (
+                phase_text == ATTEMPT_PHASE_COMPLETE
+                and current.committed_phase == ATTEMPT_PHASE_VALIDATION
+            ):
                 raise DatabaseImplementationConflictError(
                     f"cannot commit phase {phase_text!r} from "
                     f"{current.committed_phase!r}; expected {expected!r}"
@@ -84087,7 +84096,11 @@ class DatabaseImplementationDaemon:
                         "quack execution repository is not the exact EAAEF proxy"
                     ) from exc
 
-        running_attempts = self.list_running_attempts()
+        running_attempts = (
+            self.list_running_attempts()
+            if self.authority_mode == "quack"
+            else []
+        )
         if self.authority_mode == "quack":
             assert execution_repository is not None
             list_expired = getattr(
@@ -84217,6 +84230,10 @@ class DatabaseImplementationDaemon:
                     "replayed": True,
                 }
             )
+        if self.authority_mode != "quack":
+            # Canonical embedded recovery observes running attempts only after
+            # stale blocked attempts have been settled above.
+            running_attempts = self.list_running_attempts()
         for attempt in running_attempts:
             recovery_snapshot = self._eaaef_running_recovery_snapshots.get(
                 attempt.attempt_id
@@ -85292,10 +85309,12 @@ class DatabaseImplementationDaemon:
                 ATTEMPT_PHASE_VALIDATION,
                 body=dict(validation_result),
             )
-            # The owner transaction adds the durable run/result identities.
-            # Completion must consume that canonical phase payload, not the
-            # pre-commit callback projection.
-            validation_result = dict(current.body)
+            if self.authority_mode == "quack":
+                # The borrowed owner transaction adds durable run/result
+                # identities to the canonical phase body.  Embedded storage
+                # keeps phase evidence in attempt_phases rather than the
+                # attempt row body, so it must retain the callback result.
+                validation_result = dict(current.body)
         else:
             validation_history = [
                 item
