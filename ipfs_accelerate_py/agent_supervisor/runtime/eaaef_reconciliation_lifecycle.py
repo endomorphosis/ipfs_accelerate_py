@@ -8,10 +8,12 @@ older generation.  Database effects are delegated to one exact typed owner
 adapter; Plan R2 is applied through :class:`ExternalAgentStateRepository`.
 
 The current accelerator tree does not yet provide the portfolio bootstrap
-method required by ``EAAEFTypedReconciliationOwner@1``.  The final CASF merge
-must implement that narrow adapter over its exclusive typed owner.  Until it
-does, the public commands fail closed after producing a useful preflight and a
-fresh authority request.  Stale EAAEF receipts are never rebound.
+effect required by ``EAAEFTypedReconciliationOwner@1``.  Its statically named
+facade reports the missing production bindings and refuses every effect.  The
+final CASF merge must replace that blocker facade with a narrow adapter over
+its exclusive typed owner.  Until it does, the public commands fail closed
+after producing a useful preflight and a fresh authority request.  Stale EAAEF
+receipts are never rebound.
 """
 
 from __future__ import annotations
@@ -60,6 +62,8 @@ EAAEF_PLAN_R2_ALIAS: Final = "EAAEF-PLAN-R2"
 EAAEF_TASK_COUNT: Final = 116
 EAAEF_BOOTSTRAP_TASK_COUNT: Final = 22
 EAAEF_PLAN_R2_TASK_COUNT: Final = 94
+EAAEF_GOAL_COUNT: Final = 20
+EAAEF_GOAL_EDGE_COUNT: Final = 18
 EAAEF_RECONCILIATION_OWNER_INTERFACE: Final = "EAAEFTypedReconciliationOwner@1"
 EAAEF_RECONCILIATION_LIFECYCLE_INTERFACE: Final = "EAAEFReconciliationLifecycle@1"
 EAAEF_RECONCILIATION_ROOT: Final = (
@@ -537,9 +541,13 @@ class CompiledEAAEFPopulation:
     source_tree: str
     source_forest_root: str
     plan_r1_cid: str
+    goals: tuple[Mapping[str, Any], ...]
+    goal_edges: tuple[Mapping[str, str], ...]
+    plan_r1: Mapping[str, Any]
     bootstrap_tasks: tuple[Mapping[str, Any], ...]
     plan_r2_tasks: tuple[Mapping[str, Any], ...]
     dependencies: tuple[Mapping[str, str], ...]
+    goal_population_cid: str
     bootstrap_population_cid: str
     plan_r2_population_cid: str
     population_cid: str
@@ -568,6 +576,10 @@ class CompiledEAAEFPopulation:
             "source_tree": self.source_tree,
             "source_forest_root": self.source_forest_root,
             "plan_r1_cid": self.plan_r1_cid,
+            "goal_population_cid": self.goal_population_cid,
+            "goal_count": len(self.goals),
+            "goal_edge_count": len(self.goal_edges),
+            "plan_count": 1,
             "bootstrap_task_count": len(self.bootstrap_tasks),
             "plan_r2_task_count": len(self.plan_r2_tasks),
             "task_count": self.task_count,
@@ -650,7 +662,7 @@ def compile_fresh_eaaef_population(
         raise EAAEFReconciliationIdentityError("EAAEF Plan-R2 population must contain 94 tasks")
 
     raw_goals = board.get("goals")
-    if not isinstance(raw_goals, list) or not raw_goals:
+    if not isinstance(raw_goals, list) or len(raw_goals) != EAAEF_GOAL_COUNT:
         raise EAAEFReconciliationIdentityError("EAAEF goal population is malformed")
     goal_specs: dict[str, Mapping[str, Any]] = {}
     for goal in raw_goals:
@@ -694,6 +706,93 @@ def compile_fresh_eaaef_population(
         )
         for alias, goal in goal_specs.items()
     }
+    goal_records: list[Mapping[str, Any]] = []
+    goal_edges: list[Mapping[str, str]] = []
+    for ordinal, (alias, goal) in enumerate(goal_specs.items(), start=1):
+        parent_alias = str(goal.get("parent_goal_id") or "")
+        if parent_alias and parent_alias not in goal_cids:
+            raise EAAEFReconciliationIdentityError(f"{alias} has an unknown parent goal")
+        raw_goal_dependencies = goal.get("dependencies")
+        if not isinstance(raw_goal_dependencies, list) or any(
+            not isinstance(item, str) or item not in goal_cids
+            for item in raw_goal_dependencies
+        ):
+            raise EAAEFReconciliationIdentityError(f"{alias} has malformed goal dependencies")
+        dependency_goal_cids = [goal_cids[item] for item in raw_goal_dependencies]
+        for dependency_alias, dependency_cid in zip(
+            raw_goal_dependencies,
+            dependency_goal_cids,
+            strict=True,
+        ):
+            goal_edges.append(
+                {
+                    "parent_goal_cid": dependency_cid,
+                    "child_goal_cid": goal_cids[alias],
+                    "edge_kind": "requires",
+                    "parent_goal_alias": dependency_alias,
+                    "child_goal_alias": alias,
+                }
+            )
+        goal_records.append(
+            {
+                "goal_cid": goal_cids[alias],
+                "goal_alias": alias,
+                "title": str(goal.get("title") or alias),
+                "objective_id": "objective:eaaef-root",
+                "parent_goal_cid": goal_cids.get(parent_alias, ""),
+                "ordinal": ordinal,
+                "status": "open",
+                "identity": {
+                    "schema": "EAAEFFreshGoalIdentity@1",
+                    "goal_cid": goal_cids[alias],
+                    "goal_alias": alias,
+                    "board_cid": board_cid,
+                    "source_forest_root": sealed["source_forest_root"],
+                },
+                "body": {
+                    "schema": "EAAEFFreshGoalBody@1",
+                    "goal_spec": json.loads(_canonical_bytes(goal)),
+                    "dependency_goal_cids": dependency_goal_cids,
+                    "board_cid": board_cid,
+                    "source_forest_root": sealed["source_forest_root"],
+                    "fresh_generation": True,
+                    "historical_status_imported": False,
+                },
+            }
+        )
+    root_goals = [item for item in goal_records if not item["parent_goal_cid"]]
+    if len(root_goals) != 1 or root_goals[0]["goal_alias"] != "EAAEF-G000":
+        raise EAAEFReconciliationIdentityError("EAAEF root goal identity differs")
+    if len(goal_edges) != EAAEF_GOAL_EDGE_COUNT:
+        raise EAAEFReconciliationIdentityError("EAAEF goal dependency population differs")
+    plan_r1 = {
+        "plan_cid": plan_r1_cid,
+        "plan_alias": EAAEF_PLAN_R1_ALIAS,
+        "goal_cid": root_goals[0]["goal_cid"],
+        "status": "active",
+        "revision": 1,
+        "semantic_root_cid": sealed["source_forest_root"],
+        "body": {
+            "schema": "EAAEFFreshPlanR1Body@1",
+            "board_cid": board_cid,
+            "source_head": sealed["source_head"],
+            "source_tree": sealed["source_tree"],
+            "source_forest_root": sealed["source_forest_root"],
+            "bootstrap_task_count": EAAEF_BOOTSTRAP_TASK_COUNT,
+            "held_task_count": EAAEF_PLAN_R2_TASK_COUNT,
+            "terminal_statuses_imported": 0,
+            "fresh_generation": True,
+        },
+    }
+    goal_population_cid = _cid(
+        {
+            "schema": "EAAEFFreshGoalPopulation@1",
+            "goals": goal_records,
+            "goal_edges": goal_edges,
+            "plan_r1": plan_r1,
+            "source_forest_root": sealed["source_forest_root"],
+        }
+    )
     task_cids = {
         alias: _cid(
             {
@@ -821,6 +920,7 @@ def compile_fresh_eaaef_population(
             "board_cid": board_cid,
             "bootstrap_population_cid": bootstrap_cid,
             "plan_r2_population_cid": plan_r2_cid,
+            "goal_population_cid": goal_population_cid,
             "source_forest_root": sealed["source_forest_root"],
             "task_count": EAAEF_TASK_COUNT,
         }
@@ -831,9 +931,13 @@ def compile_fresh_eaaef_population(
         source_tree=str(sealed["source_tree"]),
         source_forest_root=str(sealed["source_forest_root"]),
         plan_r1_cid=plan_r1_cid,
+        goals=tuple(goal_records),
+        goal_edges=tuple(goal_edges),
+        plan_r1=plan_r1,
         bootstrap_tasks=bootstrap_records,
         plan_r2_tasks=held_records,
         dependencies=tuple(dependencies),
+        goal_population_cid=goal_population_cid,
         bootstrap_population_cid=bootstrap_cid,
         plan_r2_population_cid=plan_r2_cid,
         population_cid=population_cid,
@@ -1358,8 +1462,13 @@ def build_typed_owner_materialization_request(
         "source_forest_root": population.source_forest_root,
         "board_cid": population.board_cid,
         "population_cid": population.population_cid,
+        "goal_population_cid": population.goal_population_cid,
         "bootstrap_population_cid": population.bootstrap_population_cid,
         "plan_r2_population_cid": population.plan_r2_population_cid,
+        "plan_r1_cid": population.plan_r1_cid,
+        "expected_goal_count": EAAEF_GOAL_COUNT,
+        "expected_goal_edge_count": EAAEF_GOAL_EDGE_COUNT,
+        "expected_plan_count": 1,
         "bootstrap_task_count": EAAEF_BOOTSTRAP_TASK_COUNT,
         "plan_r2_task_count": EAAEF_PLAN_R2_TASK_COUNT,
         "expected_task_count": EAAEF_TASK_COUNT,
@@ -1383,8 +1492,10 @@ def build_typed_owner_materialization_request(
             "source_forest_root",
             "board_cid",
             "population_cid",
+            "goal_population_cid",
             "bootstrap_population_cid",
             "plan_r2_population_cid",
+            "plan_r1_cid",
             "signed_plan_r2_population_cid",
             "plan_r2_authorization_cid",
             "plan_r2_operational_capability_cid",
@@ -1544,8 +1655,9 @@ def resolve_production_reconciliation_owner(
     """Resolve the one statically named final-CASF adapter.
 
     No module, class, database, or credential name is accepted from argv or a
-    task payload.  This import is intentionally absent on the EAAEF-only
-    branch; the final CASF integration must provide it and the exact opener.
+    task payload.  The EAAEF-only branch provides only a statically named
+    blocker facade; the final CASF integration must bind the exact qualified
+    effect adapter behind this opener.
     """
 
     module_name = (
@@ -1819,9 +1931,13 @@ def _build_offline_population_request(
         "source_forest_root": population.source_forest_root,
         "board_cid": population.board_cid,
         "population_cid": population.population_cid,
+        "goal_population_cid": population.goal_population_cid,
         "bootstrap_population_cid": population.bootstrap_population_cid,
         "held_plan_r2_population_cid": population.plan_r2_population_cid,
         "plan_r1_cid": population.plan_r1_cid,
+        "expected_goal_count": EAAEF_GOAL_COUNT,
+        "expected_goal_edge_count": EAAEF_GOAL_EDGE_COUNT,
+        "expected_plan_count": 1,
         "bootstrap_task_count": EAAEF_BOOTSTRAP_TASK_COUNT,
         "held_task_count": EAAEF_PLAN_R2_TASK_COUNT,
         "expected_task_count": EAAEF_TASK_COUNT,
@@ -1850,8 +1966,13 @@ def _validate_offline_population_receipt(
         "generation_id": request["generation_id"],
         "source_forest_root": population.source_forest_root,
         "population_cid": population.population_cid,
+        "goal_population_cid": population.goal_population_cid,
         "bootstrap_population_cid": population.bootstrap_population_cid,
         "held_plan_r2_population_cid": population.plan_r2_population_cid,
+        "plan_r1_cid": population.plan_r1_cid,
+        "goal_count": EAAEF_GOAL_COUNT,
+        "goal_edge_count": EAAEF_GOAL_EDGE_COUNT,
+        "plan_count": 1,
         "task_count": EAAEF_TASK_COUNT,
         "bootstrap_task_count": EAAEF_BOOTSTRAP_TASK_COUNT,
         "held_task_count": EAAEF_PLAN_R2_TASK_COUNT,
@@ -1911,11 +2032,16 @@ def _validate_owner_receipt(
         "generation_id": request["generation_id"],
         "source_forest_root": request["source_forest_root"],
         "population_cid": request["population_cid"],
+        "goal_population_cid": request["goal_population_cid"],
+        "plan_r1_cid": request["plan_r1_cid"],
         "signed_plan_r2_population_cid": request["signed_plan_r2_population_cid"],
         "offline_population_receipt_cid": request["offline_population_receipt_cid"],
         "bootstrap_task_count": EAAEF_BOOTSTRAP_TASK_COUNT,
         "plan_r2_task_count": EAAEF_PLAN_R2_TASK_COUNT,
         "task_count": EAAEF_TASK_COUNT,
+        "goal_count": EAAEF_GOAL_COUNT,
+        "goal_edge_count": EAAEF_GOAL_EDGE_COUNT,
+        "plan_count": 2,
         "plan_alias": EAAEF_PLAN_R2_ALIAS,
         "bootstrap_materialization_mode": "offline_before_exclusive_owner_start",
         "bootstrap_owner_absent_during_materialization": True,
@@ -2785,6 +2911,8 @@ __all__ = [
     "EAAEF_FRESH_AUTHORITY_SCHEMA",
     "EAAEF_FRESH_TRUST_SCHEMA",
     "EAAEF_FOREST_SCHEMA",
+    "EAAEF_GOAL_EDGE_COUNT",
+    "EAAEF_GOAL_COUNT",
     "EAAEF_PLAN_R2_TASK_COUNT",
     "EAAEF_RECONCILIATION_OWNER_INTERFACE",
     "EAAEF_TASK_COUNT",

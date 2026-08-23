@@ -195,9 +195,14 @@ class _FakeOwner:
             "generation_id": request["generation_id"],
             "source_forest_root": population.source_forest_root,
             "population_cid": population.population_cid,
+            "goal_population_cid": population.goal_population_cid,
             "bootstrap_population_cid": population.bootstrap_population_cid,
             "held_plan_r2_population_cid": population.plan_r2_population_cid,
+            "plan_r1_cid": population.plan_r1_cid,
             "task_count": lifecycle.EAAEF_TASK_COUNT,
+            "goal_count": lifecycle.EAAEF_GOAL_COUNT,
+            "goal_edge_count": lifecycle.EAAEF_GOAL_EDGE_COUNT,
+            "plan_count": 1,
             "bootstrap_task_count": lifecycle.EAAEF_BOOTSTRAP_TASK_COUNT,
             "held_task_count": lifecycle.EAAEF_PLAN_R2_TASK_COUNT,
             "task_status_counts": {
@@ -389,6 +394,9 @@ def test_prepare_materializes_offline_contracts_and_stops_before_authority(
     assert result["unsigned_authority_request"]["unsigned_plan_r2_statement"] is not None
     assert owner.offline_request is not None
     assert owner.offline_request["expected_task_count"] == 116
+    assert owner.offline_request["expected_goal_count"] == 20
+    assert owner.offline_request["expected_goal_edge_count"] == 18
+    assert owner.offline_request["expected_plan_count"] == 1
     assert owner.offline_request["bootstrap_task_count"] == 22
     assert owner.offline_request["held_task_count"] == 94
     assert owner.offline_request["owner_must_be_absent_during_population_write"] is True
