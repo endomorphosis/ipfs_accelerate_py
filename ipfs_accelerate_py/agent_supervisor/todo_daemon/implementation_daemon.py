@@ -77037,23 +77037,31 @@ class DatabaseImplementationDaemon:
                 and dependencies_satisfied
                 and restart_recovery_binding is not None
             )
-            synchronize(
-                task_cid=task_cid,
-                task_id=task.task_alias or task_cid,
-                dependency_task_cids=tuple(str(dep) for dep in task.dependencies),
-                authoritative_status=status,
-                authoritative_revision=int(task.revision),
-                authoritative_ready=task_cid in eligible_ready_cids,
-                authoritative_completed=status in _DATABASE_COMPLETED_TASK_STATUSES,
-                restart_recovery_ready=restart_recovery_ready,
-                restart_recovery_owner_session_id=(
-                    self.owner_session_id if restart_recovery_ready else ""
-                ),
-                restart_recovery_binding=(
-                    restart_recovery_binding if restart_recovery_ready else None
-                ),
-                now_ms=self._now_ms(),
-            )
+            try:
+                synchronize(
+                    task_cid=task_cid,
+                    task_id=task.task_alias or task_cid,
+                    dependency_task_cids=tuple(str(dep) for dep in task.dependencies),
+                    authoritative_status=status,
+                    authoritative_revision=int(task.revision),
+                    authoritative_ready=task_cid in eligible_ready_cids,
+                    authoritative_completed=status in _DATABASE_COMPLETED_TASK_STATUSES,
+                    restart_recovery_ready=restart_recovery_ready,
+                    restart_recovery_owner_session_id=(
+                        self.owner_session_id if restart_recovery_ready else ""
+                    ),
+                    restart_recovery_binding=(
+                        restart_recovery_binding if restart_recovery_ready else None
+                    ),
+                    now_ms=self._now_ms(),
+                )
+            except Exception as exc:
+                if type(exc).__name__ != "DatabaseCoordinationConflictError":
+                    raise
+                raise DatabaseImplementationCoordinationDriftError(
+                    "lane-local completion contradicts "
+                    f"authoritative status {status!r}: {exc}"
+                ) from exc
         ready_task_cids = [
             str(task.task_cid)
             for task in tasks
