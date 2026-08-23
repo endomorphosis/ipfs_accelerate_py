@@ -37,7 +37,6 @@ from ipfs_accelerate_py.agent_supervisor.federation.durable_event_router import 
     DurableEventRouter,
 )
 from ipfs_accelerate_py.agent_supervisor.federation.registry import (
-    FederationRepositoryError,
     FederationStateRepository,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.database_worktree_registry import (

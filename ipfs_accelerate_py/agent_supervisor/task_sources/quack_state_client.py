@@ -1679,11 +1679,19 @@ class QuackStateClient:
         if not columns:
             # Prefer mapping rows (DuckDBRow).  Tuple rows without a
             # projection used to be discarded as DML, which made live
-            # lookups look like "supervisor is absent" / empty queues.
+            # lookups look empty.  Keep positional keys so callers such as
+            # load_store_generation can still read the generation head.
             if isinstance(rows[0], Mapping):
                 return tuple(_row_mapping((), row) for row in rows)
-            raise QuackClientTransportError(
-                f"template {template.name} returned rows without columns"
+            return tuple(
+                {
+                    str(index): value
+                    for index, value in enumerate(row)
+                }
+                if isinstance(row, Sequence)
+                and not isinstance(row, (str, bytes, bytearray))
+                else {"value": row}
+                for row in rows
             )
         return tuple(_row_mapping(columns, row) for row in rows)
 
@@ -1716,10 +1724,7 @@ class QuackStateClient:
                 values.append(row[index])
                 continue
             raise StaleGenerationError(
-                "store generation row is missing field "
-                + name
-                + " keys="
-                + str(list(row) if isinstance(row, Mapping) else type(row).__name__)
+                "store generation row is missing field " + name
             )
         return StoreGeneration(
             store_id=self.store_id,

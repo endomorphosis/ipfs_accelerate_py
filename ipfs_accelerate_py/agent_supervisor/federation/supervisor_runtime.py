@@ -47,6 +47,31 @@ WAIT_RETRY_SECONDS = 0.25
 MAX_CONSECUTIVE_WAIT_FAILURES = 8
 
 
+def _maybe_heartbeat(
+    *,
+    credentials: SupervisorRuntimeCredentials,
+    runtime_repository: FederationStateRepository,
+    lifecycle_revision: int,
+    heartbeat_count: int,
+    last_heartbeat: float,
+) -> tuple[int, float, bool]:
+    if time.monotonic() - last_heartbeat < HEARTBEAT_SECONDS:
+        return heartbeat_count, last_heartbeat, False
+    heartbeat_count += 1
+    runtime_repository.attest_supervisor_runtime(
+        supervisor_id=credentials.supervisor_id,
+        tenant_id=credentials.tenant_id,
+        federation_id=credentials.federation_id,
+        expected_revision=lifecycle_revision,
+        expected_fencing_epoch=credentials.fencing_epoch,
+        idempotency_key=(
+            f"runtime-heartbeat:{credentials.process_birth_id}:"
+            f"{heartbeat_count}"
+        ),
+    )
+    return heartbeat_count, time.monotonic(), True
+
+
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp.{os.getpid()}.{time.time_ns()}")
@@ -539,20 +564,14 @@ def run_supervisor_runtime(descriptor: int) -> int:
                                 exposed.attempt.attempt_id
                             )
                     projection_changed = True
-                if time.monotonic() - last_heartbeat >= HEARTBEAT_SECONDS:
-                    heartbeat_count += 1
-                    runtime_repository.attest_supervisor_runtime(
-                        supervisor_id=credentials.supervisor_id,
-                        tenant_id=credentials.tenant_id,
-                        federation_id=credentials.federation_id,
-                        expected_revision=lifecycle_revision,
-                        expected_fencing_epoch=credentials.fencing_epoch,
-                        idempotency_key=(
-                            f"runtime-heartbeat:{credentials.process_birth_id}:"
-                            f"{heartbeat_count}"
-                        ),
-                    )
-                    last_heartbeat = time.monotonic()
+                heartbeat_count, last_heartbeat, heartbeated = _maybe_heartbeat(
+                    credentials=credentials,
+                    runtime_repository=runtime_repository,
+                    lifecycle_revision=lifecycle_revision,
+                    heartbeat_count=heartbeat_count,
+                    last_heartbeat=last_heartbeat,
+                )
+                if heartbeated:
                     projection_changed = True
                 if projection_changed:
                     _write_runtime_projection(
@@ -576,8 +595,13 @@ def run_supervisor_runtime(descriptor: int) -> int:
                 if str(exc) == "typed remote event wait is not qualified":
                     raise
                 consecutive_wait_failures += 1
-                if consecutive_wait_failures >= MAX_CONSECUTIVE_WAIT_FAILURES:
-                    raise
+                heartbeat_count, last_heartbeat, _heartbeated = _maybe_heartbeat(
+                    credentials=credentials,
+                    runtime_repository=runtime_repository,
+                    lifecycle_revision=lifecycle_revision,
+                    heartbeat_count=heartbeat_count,
+                    last_heartbeat=last_heartbeat,
+                )
                 _write_runtime_projection(
                     credentials,
                     lifecycle_state=FederationLifecycleState.IDLE.value,
@@ -596,7 +620,11 @@ def run_supervisor_runtime(descriptor: int) -> int:
                     error_class=type(exc).__name__,
                     error_observation=_failure_observation(exc),
                 )
-                time.sleep(WAIT_RETRY_SECONDS)
+                time.sleep(
+                    WAIT_RETRY_SECONDS
+                    if consecutive_wait_failures < MAX_CONSECUTIVE_WAIT_FAILURES
+                    else WAIT_RETRY_SECONDS * 4
+                )
                 continue
             except (
                 DurableEventRouterError,
@@ -606,8 +634,13 @@ def run_supervisor_runtime(descriptor: int) -> int:
                 TypedStateOwnerError,
             ) as exc:
                 consecutive_wait_failures += 1
-                if consecutive_wait_failures >= MAX_CONSECUTIVE_WAIT_FAILURES:
-                    raise
+                heartbeat_count, last_heartbeat, _heartbeated = _maybe_heartbeat(
+                    credentials=credentials,
+                    runtime_repository=runtime_repository,
+                    lifecycle_revision=lifecycle_revision,
+                    heartbeat_count=heartbeat_count,
+                    last_heartbeat=last_heartbeat,
+                )
                 _write_runtime_projection(
                     credentials,
                     lifecycle_state=FederationLifecycleState.IDLE.value,
@@ -626,7 +659,11 @@ def run_supervisor_runtime(descriptor: int) -> int:
                     error_class=type(exc).__name__,
                     error_observation=_failure_observation(exc),
                 )
-                time.sleep(WAIT_RETRY_SECONDS)
+                time.sleep(
+                    WAIT_RETRY_SECONDS
+                    if consecutive_wait_failures < MAX_CONSECUTIVE_WAIT_FAILURES
+                    else WAIT_RETRY_SECONDS * 4
+                )
                 continue
 
         stopped = runtime_repository.transition_supervisor(

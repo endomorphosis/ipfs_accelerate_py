@@ -902,11 +902,16 @@ def _result_columns(result: Any) -> tuple[str, ...]:
     description = getattr(result, "description", None) or ()
     columns: list[str] = []
     for item in description:
-        if isinstance(item, Sequence) and item and not isinstance(
-            item, (str, bytes, bytearray)
-        ):
-            columns.append(str(item[0]))
-        else:
+        try:
+            if (
+                isinstance(item, Sequence)
+                and not isinstance(item, (str, bytes, bytearray))
+                and len(item) > 0
+            ):
+                columns.append(str(item[0]))
+            else:
+                columns.append(str(item))
+        except Exception:
             columns.append(str(item))
     return tuple(columns)
 
@@ -3322,28 +3327,37 @@ class TypedStateOwnerGateway:
                     )
 
     def _execute(self, operation: OwnerOperation, parameters: list[Any]) -> dict[str, Any]:
-        result = self._connection.execute(
-            operation.sql,
-            parameters if parameters else None,
-        )
-        # Read description before fetchall.  Skip an empty ``_columns``
-        # default; do not touch ``.columns``, which can consume the cursor.
-        columns = list(_result_columns(result))
-        rows = _result_rows(result)
-        if not columns and rows:
-            first = rows[0]
-            if isinstance(first, Mapping):
-                columns = [
-                    str(key)
-                    for key in first
-                    if isinstance(key, str) and key and not key.isdigit()
-                ]
-        return {
-            "ok": True,
-            "columns": columns,
-            "rows": rows,
-            "rowcount": int(getattr(result, "rowcount", -1) or -1),
-        }
+        bound = parameters if parameters else None
+        last_error: BaseException | None = None
+        for _attempt in (1, 2):
+            try:
+                result = self._connection.execute(operation.sql, bound)
+                # Fetch rows before any column-metadata accessor.  On this
+                # DuckDB result wrapper, ``description`` / ``.columns`` can
+                # consume the cursor and make a one-row SELECT look empty.
+                rows = _result_rows(result)
+                columns: list[str] = []
+                if rows and isinstance(rows[0], Mapping):
+                    columns = [
+                        str(key)
+                        for key in rows[0]
+                        if isinstance(key, str) and key and not key.isdigit()
+                    ]
+                if not columns:
+                    try:
+                        columns = list(_result_columns(result))
+                    except Exception:
+                        columns = []
+                return {
+                    "ok": True,
+                    "columns": columns,
+                    "rows": rows,
+                    "rowcount": int(getattr(result, "rowcount", -1) or -1),
+                }
+            except (IndexError, KeyError) as exc:
+                last_error = exc
+        assert last_error is not None
+        raise last_error
 
     @staticmethod
     def _error_code(exc: BaseException) -> str:
