@@ -313,11 +313,18 @@ def _enum(value: Any, enum_type: type[_E], field_name: str) -> _E:
         )
     try:
         return enum_type(value)
-    except ValueError as exc:
-        raise ProcedureContractError(
-            f"{field_name} must be one of: "
-            + ", ".join(sorted(str(item.value) for item in enum_type))
-        ) from exc
+    except ValueError:
+        name = value.split(".")[-1]
+        try:
+            return enum_type[name]
+        except KeyError:
+            try:
+                return enum_type[name.upper()]
+            except KeyError as exc:
+                raise ProcedureContractError(
+                    f"{field_name} must be one of: "
+                    + ", ".join(sorted(str(item.value) for item in enum_type))
+                ) from exc
 
 
 def _text(value: Any, field_name: str, *, required: bool = True) -> str:
