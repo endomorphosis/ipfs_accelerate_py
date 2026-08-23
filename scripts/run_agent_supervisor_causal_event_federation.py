@@ -1403,17 +1403,28 @@ def _spawn_plan_executor(
             allowed_command_operations=("task.status.cas",),
             ttl_seconds=86_400.0,
         )
+        program = board.resolved_database_program()
+        attach_token = token
+        vault = getattr(server, "_vault", None)
+        resolve = getattr(vault, "resolve", None)
+        if callable(resolve):
+            try:
+                resolved = str(resolve(program.endpoint_secret_handle) or "").strip()
+            except Exception:
+                resolved = ""
+            if resolved:
+                attach_token = resolved
         bundle = {
             "schema": (
                 "ipfs_accelerate_py/agent-supervisor/"
                 "causal-federation-executor-credentials@1"
             ),
-            "endpoint": board.resolved_database_program().quack_endpoint,
+            "endpoint": program.quack_endpoint,
             "socket_path": str(paths["owner_socket"]),
-            "store_id": _control_plane_store_id(board.resolved_database_program()),
+            "store_id": _control_plane_store_id(program),
             "server_id": server_identity.server_id,
             "process_birth_id": birth_id,
-            "token": token,
+            "token": attach_token,
         }
         encoded = _canonical_bytes(bundle)
         if len(encoded) > 65_536:
@@ -3415,7 +3426,12 @@ def stop(config_path: Path) -> dict[str, Any]:
     endpoint = QUACK_ENDPOINT_RE.fullmatch(program.quack_endpoint)
     assert endpoint is not None
     token_destroyed = not _token_path(paths["owner"], program.endpoint_secret_handle).exists()
-    endpoint_released = _port_is_free(endpoint.group(1), int(endpoint.group(2)))
+    host, port = endpoint.group(1), int(endpoint.group(2))
+    endpoint_released = _port_is_free(host, port)
+    deadline = time.monotonic() + 5.0
+    while not endpoint_released and time.monotonic() < deadline:
+        time.sleep(0.2)
+        endpoint_released = _port_is_free(host, port)
     complete = bool(
         all(item == "dead" for item in final_liveness) and token_destroyed and endpoint_released
     )
