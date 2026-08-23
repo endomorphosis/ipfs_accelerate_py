@@ -3433,10 +3433,28 @@ def _read_live_status_receipt(
     return payload, age
 
 
+def _state_owner_process_birth_id(
+    process_birth: Mapping[str, Any],
+) -> str:
+    """Derive StateServerIdentity.process_birth_id from canonical fields."""
+
+    material = (
+        f"{process_birth['pid']}:{process_birth['start_time_ticks']}:"
+        f"{process_birth['boot_id']}:{process_birth['parent_pid']}"
+    )
+    return "birth:" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:32]
+
+
 def _owner_incarnation_binding(
     owner_status: Mapping[str, Any], paths: Mapping[str, Path]
 ) -> dict[str, Any]:
     """Return the exact live owner incarnation and published replica."""
+
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        OwnerLiveness,
+        ProcessBirthIdentity,
+        owner_liveness,
+    )
 
     identity = owner_status.get("identity")
     identity = identity if isinstance(identity, Mapping) else {}
@@ -3448,16 +3466,28 @@ def _owner_incarnation_binding(
         "extension_fingerprint",
     )
     selected = {field: identity.get(field) for field in fields}
+    try:
+        birth = ProcessBirthIdentity.from_dict(process_birth)
+    except (TypeError, ValueError) as exc:
+        raise OperatorError(
+            "live owner process-birth identity is invalid"
+        ) from exc
+    birth_payload = birth.to_dict()
+    derived_birth_id = _state_owner_process_birth_id(birth_payload)
     if (
         any(value in (None, "") for value in selected.values())
-        or not process_birth
-        or type(process_birth.get("pid")) is not int
-        or int(process_birth["pid"]) <= 0
+        or dict(process_birth) != birth_payload
+        or birth.pid <= 0
+        or birth.start_time_ticks <= 0
+        or selected["process_birth_id"] != derived_birth_id
+        or owner_liveness(birth) is not OwnerLiveness.ALIVE
     ):
-        raise OperatorError("live owner incarnation identity is incomplete")
+        raise OperatorError(
+            "live owner incarnation identity is incomplete or not alive"
+        )
     return {
         "identity": selected,
-        "process_birth": dict(process_birth),
+        "process_birth": birth_payload,
         "replica": _published_replica_binding(owner_status, paths),
     }
 

@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
     current_process_birth,
+    read_process_birth,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     configured_board_scheduler as configured_scheduler,
@@ -854,8 +855,11 @@ def test_live_broker_status_replays_only_an_exact_disposable_replica(
         owner_status = server.status()
         real_retire = aseh_operator._retire_live_replay_directory
 
-        def fail_retirement(_directory: Path) -> None:
-            raise aseh_operator.OperatorError("forced replay retirement failure")
+        def fail_retirement(directory: Path) -> None:
+            (directory / "unexpected-artifact").write_text(
+                "not admitted\n", encoding="utf-8"
+            )
+            real_retire(directory)
 
         monkeypatch.setattr(
             aseh_operator,
@@ -865,7 +869,7 @@ def test_live_broker_status_replays_only_an_exact_disposable_replica(
         for _attempt in range(2):
             with pytest.raises(
                 aseh_operator.OperatorError,
-                match="forced replay retirement failure",
+                match="unexpected artifacts: unexpected-artifact",
             ):
                 aseh_operator._broker_status_query(
                     board, paths, owner_status=owner_status
@@ -881,6 +885,7 @@ def test_live_broker_status_replays_only_an_exact_disposable_replica(
             real_retire,
         )
         for replay_directory in replay_directories:
+            (replay_directory / "unexpected-artifact").unlink()
             real_retire(replay_directory)
 
         report = aseh_operator._broker_status_query(
@@ -1271,6 +1276,7 @@ def _aseh_health_fixture(
     bootstrap_path = tmp_path / "bootstrap.json"
     aseh_operator._atomic_json(bootstrap_path, bootstrap)
 
+    process_birth = current_process_birth().to_dict()
     binding = {
         "server_id": "server:aseh-health",
         "store_id": "store:aseh-health",
@@ -1278,13 +1284,15 @@ def _aseh_health_fixture(
         "schema_revision": 3,
         "schema_fingerprint": "schema:aseh-health",
         "generation": 9,
-        "process_birth_id": "birth:aseh-health",
+        "process_birth_id": aseh_operator._state_owner_process_birth_id(
+            process_birth
+        ),
         "listen_uri": "quack:127.0.0.1:1",
         "extension_fingerprint": "extensions:aseh-health",
     }
     owner_identity = {
         **binding,
-        "process_birth": {"pid": os.getpid()},
+        "process_birth": process_birth,
         "status": "ready",
     }
     current_snapshot = {**bootstrap_snapshot, "event_cursor": event_cursor}
@@ -1528,6 +1536,100 @@ def test_aseh_external_status_binds_receipt_to_current_owner_incarnation(
     assert stale["receipt_error"]["reason"] == (
         "live_status_receipt_unavailable_or_invalid"
     )
+
+
+def test_aseh_external_status_rejects_abruptly_dead_bound_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        start_new_session=True,
+    )
+    try:
+        child_birth = read_process_birth(child.pid)
+        assert child_birth is not None
+        now = time.time()
+        board, paths, before = _aseh_health_fixture(
+            tmp_path,
+            observed_at=now - 0.25,
+            lane_mtime_ns=int((now - 0.25) * 1_000_000_000),
+        )
+        _board, _paths, current = _aseh_health_fixture(
+            tmp_path,
+            observed_at=now,
+            lane_mtime_ns=int(now * 1_000_000_000),
+        )
+        receipt = aseh_operator._health_receipt(
+            board,
+            paths,
+            samples=(before, current),
+            launched_at=now - 0.5,
+            last_progress_at=now,
+            failure={},
+        )
+        assert receipt["healthy"] is True
+        child_birth_payload = child_birth.to_dict()
+        child_birth_id = aseh_operator._state_owner_process_birth_id(
+            child_birth_payload
+        )
+        receipt = json.loads(json.dumps(receipt))
+        for sample in receipt["samples"]:
+            sample_identity = sample["owner_status"]["identity"]
+            sample_identity["process_birth"] = child_birth_payload
+            sample_identity["process_birth_id"] = child_birth_id
+            sample["authority"]["owner_binding"][
+                "process_birth_id"
+            ] = child_birth_id
+        unsigned_receipt = dict(receipt)
+        unsigned_receipt.pop("receipt_cid")
+        receipt["receipt_cid"] = aseh_operator._identity(unsigned_receipt)
+
+        child_status = json.loads(json.dumps(current["owner_status"]))
+        child_status["identity"]["process_birth"] = child_birth_payload
+        child_status["identity"]["process_birth_id"] = child_birth_id
+        owner_directory = tmp_path / "owner"
+        status_receipt = tmp_path / "live-status.json"
+        paths.update(
+            {
+                "owner": owner_directory,
+                "status_receipt": status_receipt,
+            }
+        )
+        reused_status = json.loads(json.dumps(child_status))
+        reused_birth = reused_status["identity"]["process_birth"]
+        reused_birth["start_time_ticks"] += 1
+        reused_status["identity"][
+            "process_birth_id"
+        ] = aseh_operator._state_owner_process_birth_id(reused_birth)
+        with pytest.raises(aseh_operator.OperatorError, match="not alive"):
+            aseh_operator._owner_incarnation_binding(reused_status, paths)
+
+        owner_status_path = owner_directory / "quack-state-server.status.json"
+        aseh_operator._atomic_json(owner_status_path, child_status)
+        aseh_operator._atomic_json(status_receipt, receipt)
+        monkeypatch.setattr(aseh_operator, "_load", lambda _path: (board, {}))
+        monkeypatch.setattr(aseh_operator, "_paths", lambda _board: paths)
+
+        exit_code, alive = aseh_operator.status(
+            tmp_path / "unused-config.json", require_ready=True
+        )
+        assert exit_code == 0
+        assert alive["healthy"] is True
+
+        child.kill()
+        assert child.wait(timeout=5) == -signal.SIGKILL
+        exit_code, dead = aseh_operator.status(
+            tmp_path / "unused-config.json", require_ready=True
+        )
+        assert exit_code == 1
+        assert dead["owner_ready"] is True
+        assert dead["healthy"] is False
+        assert dead["broker_authenticated_receipt"] is False
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=5)
 
 
 def test_aseh_health_heartbeat_only_cannot_mask_stuck_board(
