@@ -29,6 +29,7 @@ FEDERATION_OWNED_MODULES: Final[tuple[str, ...]] = (
     "events",
     "identity",
     "lifecycle",
+    "merge",
     "outbox",
     "outbox_worker",
     "parallel_frontier",
