@@ -64,7 +64,9 @@ task, supervisor, daemon, state store, or alternate mutation path.
   bootstrap validation observation declared in scheduler config; typed task
   mutations are acknowledged only after the Quack read replica publishes the
   exact new revision and receipt, and the configured four lanes are admitted
-  only with strict deterministic sharding
+  only with strict deterministic sharding; a restarted exclusive owner may
+  reclaim only the same-UID broker socket inode after a refused liveness
+  probe, while a live or uncertain listener remains fail-closed
 - Validation: `python3 -m pytest -q test/api/test_agent_supervisor_configured_typed_grant_handoff.py`
 - Risk: `R4_SECURITY_OR_PROTOCOL_SENSITIVE`
 - Authority: repair only the existing PID-bound, fail-closed typed handoff;
@@ -72,9 +74,11 @@ task, supervisor, daemon, state store, or alternate mutation path.
 - Terminal success: a real owner-to-configured-supervisor read/claim/transition
   path works without a legacy disk token or acknowledged stale read, while
   untrusted children, stale identities, unscoped operations, unsharded
-  parallel lanes, and direct DuckDB opens remain denied
+  parallel lanes, live-listener socket takeover, and direct DuckDB opens
+  remain denied
 - Terminal non-success: any broad grant, bypass, credential leak, stale-token
-  preference, descriptor loss, or failed focused test prevents materialization
+  preference, descriptor loss, live or uncertain socket reclamation, or failed
+  focused test prevents materialization
 
 The full machine-readable task contract is `bootstrap_handoff_repair` in the
 scheduler config. Raw test exit status is an observation until the canonical

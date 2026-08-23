@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
     provider_subprocess_environment,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+    QuackStateServerControlError,
     QuackStateServerMutationError,
     QuackStateServerReadyError,
     build_server,
@@ -35,6 +36,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import 
     probe_quack_capabilities,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME,
     TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV,
     TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV,
     TYPED_STATE_OWNER_SOCKET_ENV,
@@ -118,6 +120,74 @@ def _mutation_pump(
             max_requests=16,
         )
         server.service_mutation_inbox(max_requests=16)  # type: ignore[attr-defined]
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "memfd_create"),
+    reason="sealed Linux memfd handoff is required",
+)
+def test_grant_broker_reclaims_only_a_proved_stale_socket(
+    tmp_path: Path,
+) -> None:
+    capability = probe_quack_capabilities(allow_network_install=False)
+    if capability.status is not QuackCapabilityStatus.COMPATIBLE:
+        pytest.skip(f"reviewed preinstalled Quack unavailable: {capability.status.value}")
+
+    database = tmp_path / "control.duckdb"
+    owner_dir = tmp_path / "quack-owner"
+    broker_socket = owner_dir / TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_FILENAME
+    _materialize_one_task(database)
+    owner_dir.mkdir(parents=True, exist_ok=True)
+
+    stale_listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    stale_listener.bind(str(broker_socket))
+    stale_listener.close()
+    assert broker_socket.is_socket()
+
+    server = build_server(
+        database_path=database,
+        state_dir=owner_dir,
+        repository_root=tmp_path,
+        port=0,
+        store_id=str(database),
+        secret_handle="handle:aseh-stale-broker-test",
+    )
+    server.start()
+    try:
+        handoff = dict(server.start_supervisor_grant_broker())
+        assert Path(
+            handoff[TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV]
+        ).is_socket()
+        assert server.ready()["live"] is True
+    finally:
+        server.stop()
+        reset_quack_transport_cache()
+    assert not broker_socket.exists()
+
+    live_listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    live_listener.bind(str(broker_socket))
+    live_listener.listen(1)
+    second = build_server(
+        database_path=database,
+        state_dir=owner_dir,
+        repository_root=tmp_path,
+        port=0,
+        store_id=str(database),
+        secret_handle="handle:aseh-live-broker-test",
+    )
+    second.start()
+    try:
+        with pytest.raises(
+            QuackStateServerControlError,
+            match="already serves a live listener",
+        ):
+            second.start_supervisor_grant_broker()
+        assert broker_socket.is_socket()
+    finally:
+        second.stop()
+        live_listener.close()
+        broker_socket.unlink(missing_ok=True)
+        reset_quack_transport_cache()
 
 
 @pytest.mark.skipif(

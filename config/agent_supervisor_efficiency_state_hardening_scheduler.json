@@ -79,7 +79,7 @@
   "bootstrap_handoff_repair": {
     "task_id": "ASEH-BOOTSTRAP-001",
     "stable_identity": "agent-supervisor-efficiency-and-state-hardening-v1/ASEH-BOOTSTRAP-001@ASEH-PLAN-R1",
-    "scope": "PID-bound typed state-owner grants, synchronous authoritative-read publication after typed mutations, and strict deterministic lane sharding for the existing configured implementation-supervisor path",
+    "scope": "PID-bound typed state-owner grants, synchronous authoritative-read publication after typed mutations, strict deterministic lane sharding, and inode-checked dead broker-socket reclamation for the existing configured implementation-supervisor path",
     "owning_repository": "ipfs_accelerate_py",
     "dependencies": [],
     "exact_declared_outputs": [
@@ -102,8 +102,8 @@
     ],
     "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
     "authority_requirement": "repair only the existing configured IntentRepository/DatabaseTaskSource to typed Quack-owner handoff; no new supervisor, store, daemon family, or writable authority",
-    "terminal_success_criteria": "The configured implementation-supervisor path obtains a kernel-PID-bound live handoff, opens no second writable DuckDB authority, rejects stale or foreign identities, strips the descriptor from provider and validator children, persists no raw credential, acknowledges a typed mutation only after the Quack read replica exposes its exact revision and receipt, maps every parallel lane through strict deterministic task sharding, and passes the exact focused validator.",
-    "terminal_non_success_criteria": "Any second writable authority, direct multi-process DuckDB open, automatic file fallback, reusable or leaked credential, stale identity acceptance, child descriptor exposure, raw-token persistence, acknowledged stale read projection, unsharded multi-lane execution, or failed focused validator prevents materialization; owner-restart qualification remains bounded to ASEH-044.",
+    "terminal_success_criteria": "The configured implementation-supervisor path obtains a kernel-PID-bound live handoff, opens no second writable DuckDB authority, rejects stale or foreign identities, strips the descriptor from provider and validator children, persists no raw credential, acknowledges a typed mutation only after the Quack read replica exposes its exact revision and receipt, maps every parallel lane through strict deterministic task sharding, reclaims only an owner-UID stale broker socket whose exact inode refuses a liveness probe, refuses a live or uncertain listener, and passes the exact focused validator.",
+    "terminal_non_success_criteria": "Any second writable authority, direct multi-process DuckDB open, automatic file fallback, reusable or leaked credential, stale identity acceptance, child descriptor exposure, raw-token persistence, acknowledged stale read projection, unsharded multi-lane execution, live or uncertain broker-listener reclamation, or failed focused validator prevents materialization; broader owner-restart qualification remains bounded to ASEH-044.",
     "creates_new_supervisor": false,
     "creates_new_store": false,
     "required_before_materialization": true,

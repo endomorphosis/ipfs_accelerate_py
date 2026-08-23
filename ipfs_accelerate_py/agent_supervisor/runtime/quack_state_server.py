@@ -1915,7 +1915,7 @@ class TypedStateOwnerGrantBroker:
                 "typed grant broker state directory is unsafe"
             )
         try:
-            os.lstat(self.socket_path)
+            existing_socket = os.lstat(self.socket_path)
         except FileNotFoundError:
             pass
         except OSError as exc:
@@ -1923,9 +1923,58 @@ class TypedStateOwnerGrantBroker:
                 "cannot inspect typed grant broker socket"
             ) from exc
         else:
-            raise QuackStateServerControlError(
-                "typed grant broker socket already exists"
-            )
+            if (
+                not stat.S_ISSOCK(existing_socket.st_mode)
+                or existing_socket.st_uid != self._owner_uid
+            ):
+                raise QuackStateServerControlError(
+                    "typed grant broker socket path is unsafe"
+                )
+            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            probe.settimeout(0.25)
+            try:
+                probe.connect(str(self.socket_path))
+            except FileNotFoundError:
+                # A concurrent cleanup won the race; bind below.
+                pass
+            except ConnectionRefusedError:
+                # The exclusive Quack owner lease is already held by this
+                # process. Reclaim only the exact same owner-UID socket inode
+                # left behind by a dead broker; never unlink a replaced path.
+                try:
+                    current_socket = os.lstat(self.socket_path)
+                except FileNotFoundError:
+                    pass
+                except OSError as exc:
+                    raise QuackStateServerControlError(
+                        "cannot recheck stale typed grant broker socket"
+                    ) from exc
+                else:
+                    if (
+                        current_socket.st_dev != existing_socket.st_dev
+                        or current_socket.st_ino != existing_socket.st_ino
+                        or not stat.S_ISSOCK(current_socket.st_mode)
+                        or current_socket.st_uid != self._owner_uid
+                    ):
+                        raise QuackStateServerControlError(
+                            "typed grant broker socket changed during reclaim"
+                        )
+                    try:
+                        self.socket_path.unlink()
+                    except OSError as exc:
+                        raise QuackStateServerControlError(
+                            "cannot reclaim stale typed grant broker socket"
+                        ) from exc
+            except (TimeoutError, OSError) as exc:
+                raise QuackStateServerControlError(
+                    "typed grant broker socket liveness is unknown"
+                ) from exc
+            else:
+                raise QuackStateServerControlError(
+                    "typed grant broker socket already serves a live listener"
+                )
+            finally:
+                probe.close()
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             listener.bind(str(self.socket_path))
