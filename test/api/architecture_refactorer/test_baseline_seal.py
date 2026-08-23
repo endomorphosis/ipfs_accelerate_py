@@ -387,16 +387,22 @@ def test_current_prerequisite_matrix() -> None:
     assert _class_present("AdversarialAssuranceEngine") is False
     assert _class_present("AssuranceCampaignApi") is True
 
+    procedure_compiler = next(
+        item
+        for item in matrix["prerequisites"]
+        if item["name"] == "ProofCarryingProcedureCompiler"
+    )
+    assert procedure_compiler["status"] == "available"
+    assert procedure_compiler["class_name"] == "ProofCarryingProcedureCompiler"
+    assert procedure_compiler.get("blocker") is None
+    assert _class_present("ProofCarryingProcedureCompiler") is True
+
     missing = {
         item["name"]: item["blocker"]
         for item in matrix["prerequisites"]
         if item["status"] == "missing"
     }
-    assert missing == {
-        "ProofCarryingProcedureCompiler": (
-            "prerequisite.proof_carrying_procedure_compiler.current_tree_missing"
-        ),
-    }
+    assert missing == {}
 
 
 def test_qualified_test_ledger() -> None:
