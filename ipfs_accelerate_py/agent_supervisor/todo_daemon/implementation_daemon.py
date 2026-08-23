@@ -188,9 +188,6 @@ from ..task_sources.database_task_source import (
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
 )
 from ..task_sources.persistent_task_queue import PersistentTaskQueue
-from ..task_sources.database_task_source import (
-    TaskSourceConflictError as DatabaseTaskSourceConflictError,
-)
 from ..task_sources.task_identity import (
     TaskIdentity,
     canonical_content_cid,
@@ -273,6 +270,7 @@ from ..validation.validation_commands import (
 from ..validation.validation_runtime import (
     PROOF_REUSE_STATE_ROOT_ENV,
     PROVIDER_FILESYSTEM_BOUNDARY_SCHEMA,
+    VALIDATION_LANDLOCK_FAILURE_MARKER,
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
     VALIDATION_RUFF_UNAVAILABLE_MARKER,
     ValidationFilesystemBoundaryReceipt,
@@ -2873,7 +2871,7 @@ def _grok_cli_available() -> bool:
     if not _grok_binary():
         return False
     try:
-        from ...llm_router import _grok_cli_auth_available
+        from ...llm_router import _grok_cli_auth_available, get_llm_provider
 
         if not _grok_cli_auth_available():
             return False
@@ -2962,8 +2960,10 @@ def _grok_cli_command(
         workspace=workspace_path.resolve(),
         python_executable=sys.executable,
         grok_bin=grok,
-        codex_bin=str(
-            _host_cli_binary("codex") or shutil.which("codex") or ""
+        codex_bin=(
+            ("/opt/eaaef/bin/codex" if enable_codex_fallback else "")
+            if is_eaaef_route
+            else str(_host_cli_binary("codex") or shutil.which("codex") or "")
         ),
         max_turns=int(max_turns) if str(max_turns).isdigit() else 100_000,
         fallback_reasoning_effort=fallback_reasoning_effort,
@@ -73548,7 +73548,6 @@ class PortalImplementationDaemon:
 # non-authoritative projections only.
 
 from .database_execution_schema import (
-    DAEMON_EXECUTION_SQL as _DAEMON_EXECUTION_SQL,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_IMPLEMENTATION_DAEMON_SCHEMA,
 )
@@ -73556,6 +73555,10 @@ from .database_execution_schema import (
 DATABASE_TASK_ATTEMPT_INTERFACE = "DatabaseTaskAttempt@1"
 DATABASE_TASK_ATTEMPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-task-attempt@1"
+)
+DATABASE_PROCESS_INSTANCE_ID_MAX_BYTES = 512
+_DATABASE_PROCESS_INSTANCE_ID_PATTERN = re.compile(
+    r"[A-Za-z0-9][A-Za-z0-9_.:/@+\-]{0,511}\Z"
 )
 DATABASE_PORTAL_RETRYABLE_FAILURE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-retryable-failure@1"
@@ -76887,10 +76890,121 @@ class DatabaseImplementationDaemon:
             if isinstance(attempt, DatabaseTaskAttempt)
             else attempt
         )
-        current = self.get_attempt(attempt_id)
+        # The borrowed EAAEF transaction performs its own revision/fence CAS,
+        # so retaining the supplied cursor is both safe and necessary for the
+        # exact proxy type check below.  Embedded authority still reloads the
+        # durable row before making phase-safety decisions.
+        current = (
+            attempt
+            if self.authority_mode == "quack"
+            and isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(attempt_id)
+        )
         if current is None:
             raise KeyError(f"unknown attempt: {attempt!r}")
         phase_body = dict(body or {})
+        if self.authority_mode == "quack":
+            execution_repository = self._require_execution_repository()
+            eaaef_repository = False
+            eaaef_interface = getattr(
+                execution_repository, "EAAEF_INTERFACE", ""
+            )
+            if eaaef_interface:
+                from ..runtime.eaaef_bootstrap_gateway import (
+                    EAAEF_BOOTSTRAP_EXECUTION_REPOSITORY_PROXY_INTERFACE,
+                    EAAEFBootstrapRuntimeGatewayError,
+                    require_eaaef_bootstrap_execution_repository_proxy,
+                )
+
+                if (
+                    eaaef_interface
+                    != EAAEF_BOOTSTRAP_EXECUTION_REPOSITORY_PROXY_INTERFACE
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "quack execution repository claims an unsupported "
+                        "EAAEF interface"
+                    )
+                try:
+                    require_eaaef_bootstrap_execution_repository_proxy(
+                        execution_repository
+                    )
+                except EAAEFBootstrapRuntimeGatewayError as exc:
+                    raise DatabaseImplementationAuthorityError(
+                        "quack execution repository is not the exact EAAEF proxy"
+                    ) from exc
+                eaaef_repository = True
+
+            if current.status != "running":
+                raise DatabaseImplementationConflictError(
+                    f"attempt {current.attempt_id} is not running"
+                )
+            if phase_text in _ATTEMPT_PHASE_ORDER:
+                phase_rank = _phase_rank(phase_text)
+                current_rank = _phase_rank(current.committed_phase)
+                if phase_rank <= current_rank:
+                    return current
+                expected = _ATTEMPT_PHASE_ORDER[
+                    min(current_rank + 1, len(_ATTEMPT_PHASE_ORDER) - 1)
+                ]
+                if phase_text != expected:
+                    raise DatabaseImplementationConflictError(
+                        f"cannot commit phase {phase_text!r} from "
+                        f"{current.committed_phase!r}; expected {expected!r}"
+                    )
+
+            now = self._now_ms()
+            revision = int(current.revision) + 1
+            status = current.status
+            finished_at: int | None = current.finished_at_ms
+            if phase_text == ATTEMPT_PHASE_COMPLETE:
+                status = "succeeded"
+                finished_at = now
+            elif phase_text == ATTEMPT_PHASE_FAILED:
+                status = "failed"
+                finished_at = now
+            elif phase_text == ATTEMPT_PHASE_BLOCKED:
+                status = "blocked"
+                finished_at = now
+            if require_live_claim:
+                self._protect_attempt_write(
+                    current,
+                    allow_logically_completed=(
+                        phase_text == ATTEMPT_PHASE_COMPLETE
+                    ),
+                )
+            record = execution_repository.commit_phase(
+                attempt_id=current.attempt_id,
+                expected_revision=int(current.revision),
+                expected_status=current.status,
+                committed_phase=phase_text,
+                status=status,
+                finished_at_ms=finished_at,
+                revision=revision,
+                committed_at_ms=now,
+                fencing_token=int(current.fencing_token),
+                fence_epoch=int(current.fence_epoch),
+                body=phase_body,
+            )
+            if record is None:
+                raise DatabaseImplementationConflictError(
+                    f"attempt {current.attempt_id} revision changed before "
+                    f"phase {phase_text!r} committed"
+                )
+            updated = self._attempt_from_mapping(record)
+            atomic_retryable_failure = (
+                phase_text == ATTEMPT_PHASE_FAILED
+                and phase_body.get("portal_retryable_failure") is True
+                and eaaef_repository
+            )
+            if not atomic_retryable_failure:
+                self._record_event(
+                    "attempt_phase_committed",
+                    attempt_id=updated.attempt_id,
+                    task_cid=updated.task_cid,
+                    body={"phase": phase_text, "revision": revision, **phase_body},
+                )
+            return updated
+
         connection = self._require_connection()
         existing_phase = connection.execute(
             """
@@ -77492,7 +77606,11 @@ class DatabaseImplementationDaemon:
             return attempt, {"status": "already_committed"}, True
         callback = provider_fn or self._provider_fn
         callback_intent: dict[str, Any] | None = None
-        invocation_id = _database_daemon_new_id("provider")
+        invocation_id = (
+            str(reservation["record_id"])
+            if reservation is not None and reservation["typed"]
+            else _database_daemon_new_id("provider")
+        )
         if callback is not None:
             # A leftover supervisor recovery journal must not be recorded as
             # an unknown provider callback.  Defer before the durable intent
@@ -77510,6 +77628,17 @@ class DatabaseImplementationDaemon:
                 "attempt_id": attempt.attempt_id,
                 "task_cid": attempt.task_cid,
             }
+        elif self.authority_mode == "quack":
+            # The EAAEF dispatcher owns the inner pre-effect reservation and
+            # exact replay surface.  The embedded callback-intent journal is a
+            # local SQL protocol and must not be projected into that immutable
+            # borrowed-transaction reservation.
+            result = dict(
+                self._run_with_attempt_heartbeat(
+                    attempt,
+                    lambda: callback(attempt),
+                )
+            )
         else:
             callback_intent = self._provider_callback_unknown_evidence(
                 attempt,
@@ -77560,8 +77689,22 @@ class DatabaseImplementationDaemon:
                 "production database provider result is not accepted real-execution evidence"
             )
         self._protect_attempt_write(attempt)
-        connection = self._require_connection()
-        if callback_intent is None:
+        if self.authority_mode == "quack":
+            self._require_execution_repository().record_idempotent_result(
+                kind="provider",
+                record_id=invocation_id,
+                attempt_id=attempt.attempt_id,
+                task_cid=attempt.task_cid,
+                operation_key="",
+                idempotency_key=key,
+                owner_session_id=self.owner_session_id,
+                recorded_at_ms=self._now_ms(),
+                result=result,
+                fencing_token=int(attempt.fencing_token),
+                fence_epoch=int(attempt.fence_epoch),
+            )
+        elif callback_intent is None:
+            connection = self._require_connection()
             connection.execute(
                 """
                 INSERT INTO provider_invocations(
@@ -77580,6 +77723,7 @@ class DatabaseImplementationDaemon:
                 ],
             )
         else:
+            connection = self._require_connection()
             updated_intent = connection.execute(
                 """
                 UPDATE provider_invocations
@@ -83476,7 +83620,7 @@ class DatabaseImplementationDaemon:
     ) -> dict[str, Any] | None:
         """Admit or safely requeue a durable attempt under strict sharding."""
 
-        if not self.strict_task_sharding:
+        if not getattr(self, "strict_task_sharding", False):
             return None
         tasks, _ready_cids = self._stable_authoritative_task_projection()
         by_cid = {str(task.task_cid): task for task in tasks}
@@ -83900,7 +84044,11 @@ class DatabaseImplementationDaemon:
         new attempt number and fencing token.
         """
 
-        self._require_execution_authority("expired attempt reconciliation")
+        # Pre-CASF EAAEF recovery shells did not carry the later explicit
+        # permit field.  Fully initialized daemons always do, and continue to
+        # fail closed when it is false.
+        if hasattr(self, "require_real_execution") or self.authority_mode != "quack":
+            self._require_execution_authority("expired attempt reconciliation")
         expire_claim = getattr(self.coordinator, "expire_task_claim", None)
         if not callable(expire_claim):
             raise DatabaseImplementationAuthorityError(
@@ -83908,7 +84056,79 @@ class DatabaseImplementationDaemon:
             )
         outcomes: list[dict[str, Any]] = []
         now = self._now_ms()
-        for attempt in self._list_blocked_attempts():
+        execution_repository = None
+        eaaef_interface = ""
+        if self.authority_mode == "quack":
+            execution_repository = self._require_execution_repository()
+            eaaef_interface = getattr(
+                execution_repository, "EAAEF_INTERFACE", ""
+            )
+            if eaaef_interface:
+                from ..runtime.eaaef_bootstrap_gateway import (
+                    EAAEF_BOOTSTRAP_EXECUTION_REPOSITORY_PROXY_INTERFACE,
+                    EAAEFBootstrapRuntimeGatewayError,
+                    require_eaaef_bootstrap_execution_repository_proxy,
+                )
+
+                if (
+                    eaaef_interface
+                    != EAAEF_BOOTSTRAP_EXECUTION_REPOSITORY_PROXY_INTERFACE
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "quack execution repository claims an unsupported "
+                        "EAAEF interface"
+                    )
+                try:
+                    require_eaaef_bootstrap_execution_repository_proxy(
+                        execution_repository
+                    )
+                except EAAEFBootstrapRuntimeGatewayError as exc:
+                    raise DatabaseImplementationAuthorityError(
+                        "quack execution repository is not the exact EAAEF proxy"
+                    ) from exc
+
+        running_attempts = self.list_running_attempts()
+        if self.authority_mode == "quack":
+            assert execution_repository is not None
+            list_expired = getattr(
+                execution_repository,
+                "list_expired_running_attempts",
+                None,
+            )
+            if eaaef_interface and not callable(list_expired):
+                raise DatabaseImplementationAuthorityError(
+                    "exact EAAEF proxy lacks mandatory dead-lane recovery listing"
+                )
+            if callable(list_expired):
+                expired_records = list_expired(limit=100, now_ms=now)
+                if not isinstance(expired_records, list):
+                    raise DatabaseImplementationAuthorityError(
+                        "expired-lane recovery listing is not a bounded list"
+                    )
+                known_attempt_ids = {
+                    item.attempt_id for item in running_attempts
+                }
+                for record in expired_records:
+                    if not isinstance(record, Mapping):
+                        raise DatabaseImplementationAuthorityError(
+                            "expired-lane recovery attempt is not an object"
+                        )
+                    snapshot = record.get("eaaef_recovery_snapshot")
+                    if not isinstance(snapshot, Mapping):
+                        raise DatabaseImplementationAuthorityError(
+                            "expired-lane recovery attempt has no canonical snapshot"
+                        )
+                    recovered_attempt = self._attempt_from_mapping(record)
+                    self._eaaef_running_recovery_snapshots[
+                        recovered_attempt.attempt_id
+                    ] = dict(snapshot)
+                    if recovered_attempt.attempt_id not in known_attempt_ids:
+                        running_attempts.append(recovered_attempt)
+                        known_attempt_ids.add(recovered_attempt.attempt_id)
+
+        for attempt in (
+            [] if self.authority_mode == "quack" else self._list_blocked_attempts()
+        ):
             blocked_phases = [
                 item
                 for item in self.phase_history(attempt.attempt_id)
@@ -83997,39 +84217,84 @@ class DatabaseImplementationDaemon:
                     "replayed": True,
                 }
             )
-        for attempt in self.list_running_attempts():
-            claim = self.coordinator.get_task_claim(attempt.claim_id)
-            if claim is None:
-                logger.warning(
-                    "Dropping running attempt %s with no claim history",
-                    attempt.attempt_id,
+        for attempt in running_attempts:
+            recovery_snapshot = self._eaaef_running_recovery_snapshots.get(
+                attempt.attempt_id
+            )
+            snapshot_bound = bool(
+                recovery_snapshot is not None
+                and str(recovery_snapshot.get("schema") or "")
+                == (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "eaaef-running-recovery-snapshot@1"
                 )
-                try:
-                    self.commit_phase(
-                        attempt,
-                        ATTEMPT_PHASE_FAILED,
-                        body={"reason": "running_attempt_missing_claim_history"},
-                        require_live_claim=False,
+            )
+            claim = None
+            if snapshot_bound:
+                assert recovery_snapshot is not None
+                claim_raw = recovery_snapshot.get("claim")
+                if not isinstance(claim_raw, Mapping):
+                    raise DatabaseImplementationAuthorityError(
+                        "EAAEF running recovery snapshot has no claim"
                     )
-                except Exception as exc:
+                identity = dict(claim_raw)
+                completion_raw = recovery_snapshot.get("preparation")
+                if completion_raw is not None and not isinstance(
+                    completion_raw, Mapping
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "EAAEF running recovery preparation is malformed"
+                    )
+                completion = (
+                    None if completion_raw is None else dict(completion_raw)
+                )
+                claim_state = str(identity.get("state") or "")
+                claim_expires_at_ms = int(
+                    identity.get("expires_at_ms") or 0
+                )
+            else:
+                claim = self.coordinator.get_task_claim(attempt.claim_id)
+                if claim is None:
                     logger.warning(
-                        "Could not terminalize orphaned attempt %s: %s",
+                        "Dropping running attempt %s with no claim history",
                         attempt.attempt_id,
-                        exc,
+                    )
+                    try:
+                        self.commit_phase(
+                            attempt,
+                            ATTEMPT_PHASE_FAILED,
+                            body={
+                                "reason": "running_attempt_missing_claim_history"
+                            },
+                            require_live_claim=False,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Could not terminalize orphaned attempt %s: %s",
+                            attempt.attempt_id,
+                            exc,
+                        )
+                        continue
+                    outcomes.append(
+                        {
+                            "task_cid": attempt.task_cid,
+                            "claim_id": attempt.claim_id,
+                            "attempt_id": attempt.attempt_id,
+                            "status": "failed",
+                            "reason": "running_attempt_missing_claim_history",
+                            "retry_required": True,
+                        }
                     )
                     continue
-                outcomes.append(
-                    {
-                        "task_cid": attempt.task_cid,
-                        "claim_id": attempt.claim_id,
-                        "attempt_id": attempt.attempt_id,
-                        "status": "failed",
-                        "reason": "running_attempt_missing_claim_history",
-                        "retry_required": True,
-                    }
+                identity = claim.to_dict()
+                claim_state = str(
+                    getattr(getattr(claim, "state", ""), "value", claim.state)
+                    or ""
                 )
-                continue
-            identity = claim.to_dict()
+                claim_expires_at_ms = int(claim.expires_at_ms)
+                completion = self.coordinator.get_prepared_task_completion(
+                    attempt.task_cid
+                )
             expected_identity = {
                 "task_cid": attempt.task_cid,
                 "attempt_id": attempt.attempt_id,
@@ -84049,11 +84314,11 @@ class DatabaseImplementationDaemon:
                     "running attempt does not match coordination claim: "
                     + ", ".join(mismatched)
                 )
-            claim_state = str(
-                getattr(getattr(claim, "state", ""), "value", claim.state)
-                or ""
+            task = (
+                None
+                if snapshot_bound
+                else self.task_source.get(attempt.task_cid)
             )
-            task = self.task_source.get(attempt.task_cid)
             if task is not None and self._strict_resume_rejection_receipt_matches(
                 task,
                 attempt,
@@ -84089,9 +84354,13 @@ class DatabaseImplementationDaemon:
                     }
                 )
                 continue
-            provider_intent = self.provider_invocation_recorded(
-                attempt.attempt_id,
-                idempotency_key=f"provider:{attempt.attempt_id}",
+            provider_intent = (
+                None
+                if snapshot_bound
+                else self.provider_invocation_recorded(
+                    attempt.attempt_id,
+                    idempotency_key=f"provider:{attempt.attempt_id}",
+                )
             )
             if (
                 isinstance(provider_intent, Mapping)
@@ -84099,7 +84368,7 @@ class DatabaseImplementationDaemon:
                 == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA
                 and not (
                     claim_state == "accepted"
-                    and int(claim.expires_at_ms) > now
+                    and claim_expires_at_ms > now
                 )
             ):
                 task_status = str(
@@ -84172,9 +84441,6 @@ class DatabaseImplementationDaemon:
                     }
                 )
                 continue
-            completion = self.coordinator.get_prepared_task_completion(
-                attempt.task_cid
-            )
             if claim_state in {"released", "completed"}:
                 if completion is None or completion.get("status") != "succeeded":
                     raise DatabaseImplementationAuthorityError(
@@ -84258,13 +84524,14 @@ class DatabaseImplementationDaemon:
                 reconciliation=outcome,
                 current_attempt=attempt,
             )
-            outcome["control_requeue"] = dict(
-                self._requeue_control_task_after_reconciliation(
-                    attempt.task_cid,
-                    reason="coordination_lease_expired_before_completion",
-                    reconciliation=outcome,
+            if self.authority_mode != "quack":
+                outcome["control_requeue"] = dict(
+                    self._requeue_control_task_after_reconciliation(
+                        attempt.task_cid,
+                        reason="coordination_lease_expired_before_completion",
+                        reconciliation=outcome,
+                    )
                 )
-            )
             outcomes.append(outcome)
         return outcomes
 
@@ -84918,11 +85185,17 @@ class DatabaseImplementationDaemon:
             if isinstance(attempt, DatabaseTaskAttempt)
             else attempt
         )
-        # A caller may retain an object from before a durable provider/effect
-        # commit.  Always reload before strict phase-safety decisions so a
-        # stale object can never turn quarantine into a requeue and duplicate
-        # an external effect.
-        current = self.get_attempt(attempt_id)
+        # Embedded authority reloads before strict phase-safety decisions so
+        # a stale object cannot duplicate an external effect.  The EAAEF
+        # borrowed transaction instead CASes the supplied revision/fence and
+        # its provider/effect reservations own exact replay, so preserve that
+        # signed cursor in Quack mode.
+        current = (
+            attempt
+            if self.authority_mode == "quack"
+            and isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(attempt_id)
+        )
         if current is None:
             raise KeyError(f"unknown attempt: {attempt!r}")
         if current.status != "running":

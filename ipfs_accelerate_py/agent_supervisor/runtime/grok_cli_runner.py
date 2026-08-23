@@ -1393,6 +1393,7 @@ def _isolated_grok_home(
     child_env: dict[str, str],
     codex_fallback_command: Sequence[str],
     workspace: Path | None = None,
+    signed_source_authorization: bool = False,
 ) -> tuple[tempfile.TemporaryDirectory[str], dict[str, str], Path, tuple[Path, ...]]:
     """Create a private Grok home with a machine-resolved custom sandbox.
 
@@ -1483,20 +1484,29 @@ def _isolated_grok_home(
             except Exception:
                 source_auth = Path.home() / ".grok" / "auth.json"
         if source_auth.is_file():
-            # Copy, do not bind-mount, the operator credential.  A read-only
-            # bind of ~/.grok/auth.json cannot refresh OIDC tokens; a host-path
-            # bind is also hideable by later ~/.grok deny-masks.
-            nested_home = grok_home / ".grok"
-            nested_home.mkdir(mode=0o700)
-            _install_ephemeral_credential(source_auth, grok_home / "auth.json")
-            _install_ephemeral_credential(source_auth, nested_home / "auth.json")
-            for name in ("config.toml", "agent_id"):
-                extra = source_auth.parent / name
-                if extra.is_file():
-                    try:
-                        _install_ephemeral_credential(extra, nested_home / name)
-                    except ValueError:
-                        continue
+            if signed_source_authorization:
+                # The EAAEF @2 profile separately source-addresses the exact
+                # operator auth file and the provider-home tree containing
+                # this link.  Preserve that relationship for its read-only
+                # provider_auth projection.
+                (grok_home / "auth.json").symlink_to(
+                    source_auth.resolve(strict=True)
+                )
+            else:
+                # Legacy isolation uses a writable ephemeral copy so refreshes
+                # cannot mutate the operator credential or expose its path in
+                # Docker argv.
+                nested_home = grok_home / ".grok"
+                nested_home.mkdir(mode=0o700)
+                _install_ephemeral_credential(source_auth, grok_home / "auth.json")
+                _install_ephemeral_credential(source_auth, nested_home / "auth.json")
+                for name in ("config.toml", "agent_id"):
+                    extra = source_auth.parent / name
+                    if extra.is_file():
+                        try:
+                            _install_ephemeral_credential(extra, nested_home / name)
+                        except ValueError:
+                            continue
 
         isolated_env = dict(child_env)
         isolated_env["GROK_HOME"] = str(grok_home)
@@ -3727,9 +3737,16 @@ def _docker_grok_command(
     if provider_home_mount is not None:
         command.extend(["--env", f"GROK_HOME={provider_home_mount.target}"])
 
-    # Operator secrets stay in the ephemeral grok_home copy.  Do not bind-mount
-    # ~/.grok/auth.json: argv would name the operator path, and a later deny
-    # mask of ~/.grok would hide it.
+    source_auth: Path | None = None
+    if qualified_worker_launch_authority is not None:
+        source_home_raw = str(base_env.get("GROK_HOME") or "").strip()
+        source_home = (
+            Path(source_home_raw).expanduser()
+            if source_home_raw
+            else user_home_from_env(base_env) / ".grok"
+        )
+        source_auth = _existing_path(source_home / "auth.json")
+    git_control_path: Path | None = None
 
     # Legacy isolation consumes the already-qualified host provider binary.
     # The EAAEF route consumes only the in-image binary and the exact signed
@@ -3749,8 +3766,6 @@ def _docker_grok_command(
         command.extend(
             _docker_mount(grok_bin, destination=container_grok, read_only=True)
         )
-        if source_auth is not None:
-            command.extend(_docker_mount(source_auth, read_only=True))
     else:
         assert worktree_mount is not None
         assert prompt_mount is not None
@@ -3854,6 +3869,81 @@ def _docker_grok_command(
     return command
 
 
+def _reverify_qualified_grok_mount_boundary(
+    *,
+    launch_authority: Mapping[str, object],
+    execution_profile: WorkerContainerExecutionProfile | None,
+    create_command: Sequence[str],
+    workspace: Path,
+) -> WorkerContainerExecutionProfile:
+    """Reparse and reverify every signed Grok bind at an effect boundary."""
+
+    if execution_profile is None:
+        raise ValueError("qualified Grok execution profile is unavailable")
+    expected_mounts = execution_profile.mounts_for_provider("grok")
+    expected_by_target = {mount.target: mount for mount in expected_mounts}
+    observed: dict[str, tuple[Path, bool]] = {}
+    command = [str(item) for item in create_command]
+    for index, item in enumerate(command[:-1]):
+        if item != "--mount":
+            continue
+        fields = command[index + 1].split(",")
+        if (
+            len(fields) not in {3, 4}
+            or fields[0] != "type=bind"
+            or not fields[1].startswith("src=/")
+            or not fields[2].startswith("dst=/")
+            or (len(fields) == 4 and fields[3] != "readonly")
+        ):
+            raise ValueError("qualified Grok bind mount is invalid")
+        source = Path(fields[1].removeprefix("src="))
+        target = fields[2].removeprefix("dst=")
+        if target in observed:
+            raise ValueError("qualified Grok bind mount is duplicated")
+        observed[target] = (source, len(fields) == 4)
+    if set(observed) != set(expected_by_target) or any(
+        observed[target][1] is not mount.read_only
+        for target, mount in expected_by_target.items()
+    ):
+        raise ValueError("qualified Grok signed mount projection drifted")
+    worktree_mount = execution_profile.mount_for_kind("worktree")
+    prompt_mount = execution_profile.mount_for_kind("grok_prompt")
+    policy_mount = execution_profile.mount_for_kind("grok_policy")
+    provider_home_mount = execution_profile.mount_for_kind("grok_provider_home")
+    provider_auth_mount = execution_profile.mount_for_kind("provider_auth")
+    if any(
+        mount is None
+        for mount in (
+            worktree_mount,
+            prompt_mount,
+            policy_mount,
+            provider_home_mount,
+            provider_auth_mount,
+        )
+    ):
+        raise ValueError("qualified Grok signed mounts are incomplete")
+    assert worktree_mount is not None
+    assert prompt_mount is not None
+    assert policy_mount is not None
+    assert provider_home_mount is not None
+    assert provider_auth_mount is not None
+    if observed[worktree_mount.target][0] != workspace:
+        raise ValueError("qualified Grok worktree source path drifted")
+    signed_auth_source = (
+        observed[provider_home_mount.target][0] / "auth.json"
+    ).resolve(strict=True)
+    if observed[provider_auth_mount.target][0] != signed_auth_source:
+        raise ValueError("qualified Grok provider auth source path drifted")
+    return _require_eaaef_grok_container_execution_profile_launch(
+        launch_authority,
+        execution_profile,
+        workspace=workspace,
+        prompt_path=observed[prompt_mount.target][0],
+        policy_path=observed[policy_mount.target][0],
+        provider_home=observed[provider_home_mount.target][0],
+    )
+
+
 def _validated_created_grok_container_id(
     created: subprocess.CompletedProcess[bytes],
     *,
@@ -3879,44 +3969,6 @@ def _validated_created_grok_container_id(
     ):
         raise ValueError("Grok container identity is invalid")
     return created_fields[0]
-
-
-def _create_grok_container_and_build_start_command(
-    create_command: Sequence[str],
-    *,
-    workspace: Path,
-    docker_environment: dict[str, str],
-    docker_lease: _DockerContainerLease,
-) -> list[str]:
-    """Create inert Grok container, then bind its exact ID to attached start."""
-
-    try:
-        created = subprocess.run(
-            list(create_command),
-            cwd=workspace,
-            env=docker_environment,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=120.0,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise ValueError("Grok container creation timed out") from exc
-    container_id = _validated_created_grok_container_id(
-        created,
-        cidfile=docker_lease.cidfile,
-    )
-    return [
-        docker_lease.docker_bin,
-        f"--host={_DOCKER_LOCAL_HOST}",
-        "--config",
-        str(docker_lease.docker_config),
-        "start",
-        "--attach",
-        "--interactive",
-        container_id,
-    ]
 
 
 def _run_created_grok_container_with_typed_failure_capture(
@@ -4133,6 +4185,45 @@ def _create_grok_container_and_build_start_command(
         created,
         cidfile=cidfile,
     )
+    network_profile = _signed_worker_network_profile(
+        invocation_binding=invocation_binding,
+        provider="grok",
+        workspace=workspace,
+        expected_artifact_cid=authorization.artifact_cid,
+        expected_container_name=container_name,
+        expected_lease_root=lease_root,
+        expected_worker_principal_did=expected_worker_did,
+        expected_provider_principal_did=expected_provider_did,
+    )
+    _inspect_signed_worker_network(
+        docker_bin=docker_bin,
+        docker_config=docker_config,
+        profile=network_profile,
+        worker_container_id=container_id,
+        launch_authority=qualified_worker_launch_authority,
+        execution_profile=qualified_worker_execution_profile,
+    )
+    if qualified_worker_launch_authority is not None:
+        _inspect_qualified_worker_container(
+            docker_bin=docker_bin,
+            docker_config=docker_config,
+            container_id=container_id,
+            launch_authority=qualified_worker_launch_authority,
+            execution_profile=qualified_worker_execution_profile,
+        )
+        qualified_worker_execution_profile = (
+            _reverify_qualified_grok_mount_boundary(
+                launch_authority=qualified_worker_launch_authority,
+                execution_profile=qualified_worker_execution_profile,
+                create_command=create_command,
+                workspace=workspace,
+            )
+        )
+    docker_host = (
+        qualified_worker_execution_profile.engine_endpoint
+        if qualified_worker_execution_profile is not None
+        else _DOCKER_LOCAL_HOST
+    )
     start_command = [
         docker_bin,
         f"--host={docker_host}",
@@ -4172,11 +4263,25 @@ def _docker_codex_fallback_command(
         )
     docker = str(docker_bin)
     image = str(isolation_image).strip()
-    allowed_images = {AGENT_IMPLEMENTATION_CODEX_IMAGE_ID}
-    sealed = _sealed_provider_isolation_image_id()
-    if sealed:
-        allowed_images.add(sealed)
-    if not docker or image not in allowed_images:
+    qualified = qualified_worker_launch_authority is not None
+    qualified_labels: list[str] = []
+    if qualified:
+        assert qualified_worker_launch_authority is not None
+        expected_image, _profile_cid = _qualified_worker_bounds(
+            qualified_worker_launch_authority
+        )
+        qualified_labels = _qualified_worker_container_label_arguments(
+            qualified_worker_launch_authority,
+            qualified_worker_execution_profile,
+        )
+        image_is_admitted = image == expected_image
+    else:
+        allowed_images = {AGENT_IMPLEMENTATION_CODEX_IMAGE_ID}
+        sealed = _sealed_provider_isolation_image_id()
+        if sealed:
+            allowed_images.add(sealed)
+        image_is_admitted = image in allowed_images
+    if not docker or not image_is_admitted:
         raise ValueError(
             "Codex fallback requires the exact pinned task-toolchain image"
         )
@@ -4197,10 +4302,16 @@ def _docker_codex_fallback_command(
         source_auth=source_auth,
         workspace=workspace,
     )
-    isolated_auth = _retain_isolated_credential_home() / "auth.json"
-    _install_ephemeral_credential(source_auth, isolated_auth)
-    host_python = _host_codex_task_toolchain_python()
-    expected_environment = _codex_task_container_environment()
+    isolated_auth: Path | None = None
+    if not qualified:
+        isolated_auth = _retain_isolated_credential_home() / "auth.json"
+        _install_ephemeral_credential(source_auth, isolated_auth)
+    host_python = None if qualified else _host_codex_task_toolchain_python()
+    expected_environment = (
+        qualified_worker_execution_profile.container_environment()
+        if qualified and qualified_worker_execution_profile is not None
+        else _codex_task_container_environment()
+    )
     if child_env != expected_environment:
         raise ValueError("Codex fallback container environment is not sealed")
 
@@ -4368,9 +4479,17 @@ def _docker_codex_fallback_command(
         )
     command.extend(
         _docker_mount(
-            isolated_auth,
-            destination=_CODEX_CONTAINER_AUTH_PATH,
-            read_only=False,
+            source_auth if qualified else isolated_auth,
+            destination=(
+                Path(provider_auth_mount.target)
+                if provider_auth_mount is not None
+                else _CODEX_CONTAINER_AUTH_PATH
+            ),
+            read_only=(
+                provider_auth_mount.read_only
+                if provider_auth_mount is not None
+                else False
+            ),
         )
     )
     # The authority-validation image contains a large CUDA-oriented Config.Env.
@@ -8288,6 +8407,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 child_env=child_env,
                 codex_fallback_command=codex_fallback_command,
                 workspace=workspace,
+                signed_source_authorization=is_eaaef_route,
             )
             env[PROVIDER_COMMAND_ENV_WRAPPER_ENV] = (
                 command_environment.wrapper_path
