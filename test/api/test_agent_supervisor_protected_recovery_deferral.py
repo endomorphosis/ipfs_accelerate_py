@@ -13,12 +13,19 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_lock_metadata,
 )
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+    ProcessBirthIdentity,
+    current_process_birth,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon as implementation_daemon_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS,
+    INFLIGHT_IMPLEMENTATION_DEFERRAL_BACKOFF_SECONDS,
     PORTAL_RETRY_DEFERRAL_SCHEMA,
+    PortalTask,
+    PortalTaskState,
     TodoImplementationDaemon,
 )
 
@@ -270,3 +277,274 @@ def test_run_once_does_not_project_unverified_foreign_owner(
     )
     assert implementation["deferral_schema"] == PORTAL_RETRY_DEFERRAL_SCHEMA
     assert implementation["deferred"] is True
+
+
+def _seed_inflight_state(
+    daemon: TodoImplementationDaemon,
+    *,
+    worktree_path: Path,
+    log_path: Path,
+) -> tuple[PortalTaskState, dict[str, Any]]:
+    task_cid = "sha256:inflight-task"
+    branch = "implementation/auto-001-attempt-1"
+    state = PortalTaskState(
+        active_task_id="AUTO-001",
+        active_task_cid=task_cid,
+        active_attempt=1,
+        active_phase="validating",
+        active_log_path=str(log_path),
+        active_worktree_path=str(worktree_path),
+        active_branch=branch,
+        implementation_in_progress=True,
+        last_implementation_task_id="AUTO-001",
+        last_implementation_task_cid=task_cid,
+        last_implementation_worktree_path=str(worktree_path),
+        last_implementation_branch=branch,
+    )
+    state.save(daemon.state_path)
+    event = {
+        "type": "implementation_started",
+        "task_id": "AUTO-001",
+        "canonical_task_cid": task_cid,
+        "attempt": 1,
+        "command": ["codex", "exec"],
+        "log_path": str(log_path),
+        "worktree_path": str(worktree_path),
+        "branch": branch,
+    }
+    return state, event
+
+
+def _seed_lifecycle(
+    daemon: TodoImplementationDaemon,
+    *,
+    worktree_path: Path,
+    owner: ProcessBirthIdentity,
+) -> Any:
+    return daemon.worktree_lifecycle.begin_preparing(
+        task_id="AUTO-001",
+        canonical_task_cid="sha256:inflight-task",
+        attempt=1,
+        lane_id="test-lane",
+        workspace_path=worktree_path,
+        branch="implementation/auto-001-attempt-1",
+        merge_target="main",
+        state_dir=str(daemon.state_path.parent.resolve()),
+        owner=owner,
+    )
+
+
+def _inflight_task() -> PortalTask:
+    return PortalTask(
+        task_id="AUTO-001",
+        title="Recover candidate",
+        status="todo",
+        completion="automatic",
+        priority="P1",
+        track="runtime",
+        outputs=["feature.py"],
+        validation=["python -m py_compile feature.py"],
+        acceptance="Candidate validates.",
+        canonical_task_cid="sha256:inflight-task",
+    )
+
+
+@pytest.mark.parametrize(
+    ("owner_state", "expected_disposition", "expected_reason"),
+    (
+        (
+            "live",
+            "verified_live",
+            "inflight_implementation_owner_active",
+        ),
+        (
+            "controlled_restart",
+            "controlled_restart_recovery",
+            "inflight_implementation_controlled_restart_recovery",
+        ),
+    ),
+)
+def test_exact_inflight_owner_is_a_typed_pre_provider_deferral(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner_state: str,
+    expected_disposition: str,
+    expected_reason: str,
+) -> None:
+    daemon, repo = _daemon(tmp_path)
+    worktree_path = repo / "worktrees" / "auto-001-attempt-1"
+    worktree_path.mkdir(parents=True)
+    log_path = tmp_path / "state" / "auto-001-attempt-1.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text("validation started\n", encoding="utf-8")
+    state, event = _seed_inflight_state(
+        daemon,
+        worktree_path=worktree_path,
+        log_path=log_path,
+    )
+    lifecycle = _seed_lifecycle(
+        daemon,
+        worktree_path=worktree_path,
+        owner=(
+            current_process_birth(proc_root=daemon.worktree_lifecycle.proc_root)
+            if owner_state == "live"
+            else ProcessBirthIdentity(
+                pid=2_147_483_647,
+                start_time_ticks=1,
+                boot_id="dead-owner",
+            )
+        ),
+    )
+    if owner_state == "controlled_restart":
+        terminal = (
+            daemon.worktree_lifecycle.reclaim_dead_owner_for_controlled_restart(
+                worktree_path,
+                expected_state_dir=daemon.state_path.parent.resolve(),
+            )
+        )
+        assert terminal is not None
+        assert terminal.record_id == lifecycle.record_id
+        os.utime(log_path, (1, 1))
+
+    monkeypatch.setattr(daemon, "_list_process_commands", lambda: [])
+    monkeypatch.setattr(
+        daemon,
+        "_docker_isolation_active_for_worktree",
+        lambda _path: False,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_inflight_implementation_events",
+        lambda: [event],
+    )
+
+    inflight = daemon._find_live_inflight_implementation()
+    assert inflight is not None
+    assert inflight["_inflight_disposition"] == expected_disposition
+    assert PortalTaskState.load(daemon.state_path) == state
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "completion_gap_edit_scope",
+        lambda *_args, **_kwargs: ("feature.py",),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_active_provider_capacity_backoff_for_task",
+        lambda _task: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_require_primary_provider_readiness",
+        lambda _task: pytest.fail("inflight deferral reached provider setup"),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_run_implementation_in_ephemeral_worktree",
+        lambda **_kwargs: pytest.fail("inflight deferral dispatched provider"),
+    )
+
+    result = daemon._run_implementation(_inflight_task(), state)
+
+    assert result["reason"] == expected_reason
+    assert result["deferred"] is True
+    assert result["attempt_consumed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["backoff_seconds"] == (
+        INFLIGHT_IMPLEMENTATION_DEFERRAL_BACKOFF_SECONDS
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid_lifecycle",
+    ("missing", "malformed", "foreign_schema", "foreign", "unknown"),
+)
+def test_unverifiable_inflight_lifecycle_keeps_generic_wait(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_lifecycle: str,
+) -> None:
+    daemon, repo = _daemon(tmp_path)
+    worktree_path = repo / "worktrees" / "auto-001-attempt-1"
+    worktree_path.mkdir(parents=True)
+    log_path = tmp_path / "state" / "auto-001-attempt-1.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text("recent but not authority\n", encoding="utf-8")
+    state, event = _seed_inflight_state(
+        daemon,
+        worktree_path=worktree_path,
+        log_path=log_path,
+    )
+    lifecycle_path = daemon.worktree_lifecycle.workspace_path_for(
+        worktree_path
+    )
+    if invalid_lifecycle == "missing":
+        pass
+    elif invalid_lifecycle == "malformed":
+        lifecycle_path.parent.mkdir(parents=True, exist_ok=True)
+        lifecycle_path.write_text("{malformed", encoding="utf-8")
+    else:
+        lifecycle = _seed_lifecycle(
+            daemon,
+            worktree_path=worktree_path,
+            owner=(
+                current_process_birth(
+                    proc_root=daemon.worktree_lifecycle.proc_root
+                )
+                if invalid_lifecycle in {"foreign", "foreign_schema"}
+                else ProcessBirthIdentity(
+                    pid=2_147_483_647,
+                    start_time_ticks=1,
+                    boot_id="unverifiable-owner",
+                )
+            ),
+        )
+        if invalid_lifecycle == "foreign":
+            payload = lifecycle.to_dict()
+            payload["repo_root"] = str(tmp_path / "foreign-repository")
+            lifecycle_path.write_text(
+                json.dumps(payload, sort_keys=True),
+                encoding="utf-8",
+            )
+        elif invalid_lifecycle == "foreign_schema":
+            payload = lifecycle.to_dict()
+            payload["schema"] = "foreign/worktree-lifecycle@1"
+            lifecycle_path.write_text(
+                json.dumps(payload, sort_keys=True),
+                encoding="utf-8",
+            )
+        else:
+            daemon.worktree_lifecycle.proc_root = tmp_path / "missing-proc"
+
+    monkeypatch.setattr(daemon, "_list_process_commands", lambda: [])
+    monkeypatch.setattr(
+        daemon,
+        "_docker_isolation_active_for_worktree",
+        lambda _path: False,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_inflight_implementation_events",
+        lambda: [event],
+    )
+    inflight = daemon._find_live_inflight_implementation()
+    assert inflight is not None
+    assert inflight["_inflight_disposition"] == "unverifiable"
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "completion_gap_edit_scope",
+        lambda *_args, **_kwargs: ("feature.py",),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_active_provider_capacity_backoff_for_task",
+        lambda _task: {},
+    )
+    result = daemon._run_implementation(_inflight_task(), state)
+
+    assert result["reason"] == "inflight_process"
+    assert result["deferred"] is True
+    assert result["attempt_consumed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["backoff_seconds"] == 30

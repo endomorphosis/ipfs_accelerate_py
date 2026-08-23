@@ -607,6 +607,20 @@ IMPLEMENTATION_DOCKER_ISOLATION_LABELS = (
 # How long a recently written implement log keeps a missing process from
 # being recovered as dead (docker restarts briefly drop process visibility).
 INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS = 180.0
+# A restarted database lane must leave an exact live/recovering Portal attempt
+# enough time to finish or be reconciled before asking for another claim.  The
+# value is deliberately no larger than the existing missing-process grace and
+# remains a bounded pre-provider deferral at the database bridge.
+INFLIGHT_IMPLEMENTATION_DEFERRAL_BACKOFF_SECONDS = int(
+    INFLIGHT_LOG_ACTIVITY_GRACE_SECONDS
+)
+INFLIGHT_CONTROLLED_RECOVERY_TERMINAL_REASONS = frozenset(
+    {
+        "controlled_restart_dead_owner",
+        "controlled_shutdown_quiesced_owner",
+        "periodic_dead_same_lane_owner_reclaim",
+    }
+)
 GIT_SYNC_RECOVERY_NOTE_PATTERN = re.compile(
     r"\.git-sync-recovery-\d{8}-\d{6}(?:-\d+)?\.md"
 )
@@ -11828,6 +11842,7 @@ class PortalImplementationDaemon:
             "fence": record.fence,
             "owner_pid": record.owner.pid,
             "owner_state_dir": record.state_dir,
+            "terminal_reason": record.terminal_reason,
         }
         expected_repo = normalize_workspace_path(self.repo_root)
         expected_state_dir = normalize_workspace_path(
@@ -22798,18 +22813,50 @@ class PortalImplementationDaemon:
             return result
         inflight = self._find_live_inflight_implementation()
         if inflight is not None:
+            inflight_disposition = str(
+                inflight.get("_inflight_disposition") or ""
+            )
+            transient_reason = {
+                "verified_live": "inflight_implementation_owner_active",
+                "controlled_restart_recovery": (
+                    "inflight_implementation_controlled_restart_recovery"
+                ),
+            }.get(inflight_disposition)
             result = {
                 "skipped": True,
-                "deferred": True,
-                "reason": "inflight_process",
+                "reason": transient_reason or "inflight_process",
                 "task_id": str(inflight.get("task_id") or task.task_id),
                 "attempt": int(inflight.get("attempt") or 0),
                 "worktree_path": str(inflight.get("worktree_path") or ""),
-                "attempt_consumed": False,
-                "provider_dispatched": False,
-                "backoff_seconds": 30,
+                "inflight_evidence_reason": str(
+                    inflight.get("_inflight_evidence_reason") or ""
+                ),
             }
-            self._record_event("implementation_skipped", result)
+            if transient_reason is not None:
+                result.update(
+                    {
+                        "returncode": 1,
+                        "deferred": True,
+                        "attempt_consumed": False,
+                        "provider_dispatched": False,
+                        "backoff_seconds": (
+                            INFLIGHT_IMPLEMENTATION_DEFERRAL_BACKOFF_SECONDS
+                        ),
+                    }
+                )
+                self._record_event("implementation_retry_deferred", result)
+            else:
+                # Preserve MAIN's generic inflight skip as a bounded wait
+                # when ownership cannot be typed.
+                result.update(
+                    {
+                        "deferred": True,
+                        "attempt_consumed": False,
+                        "provider_dispatched": False,
+                        "backoff_seconds": 30,
+                    }
+                )
+                self._record_event("implementation_skipped", result)
             return result
 
         # PDR-033: require active plan revision + compiled execution plan, and
@@ -62247,8 +62294,16 @@ class PortalImplementationDaemon:
     def _find_live_inflight_implementation(self) -> dict[str, Any] | None:
         inflight_events = self._inflight_implementation_events()
         for event in reversed(inflight_events):
-            if self._implementation_process_active(event):
-                return event
+            disposition = self._implementation_inflight_disposition(event)
+            if disposition["disposition"] != "inactive":
+                # Keep the durable event immutable.  The private projection is
+                # consumed only inside this daemon and prevents callers from
+                # inferring retryability from the legacy reason text.
+                return {
+                    **event,
+                    "_inflight_disposition": disposition["disposition"],
+                    "_inflight_evidence_reason": disposition["reason"],
+                }
         return None
 
     def _inflight_implementation_events(self) -> list[dict[str, Any]]:
@@ -63184,7 +63239,199 @@ class PortalImplementationDaemon:
         self._merge_lifecycle_events_cache_key = None
         self._merge_lifecycle_events_cache_data = []
 
+    def _implementation_inflight_disposition(
+        self,
+        event: Mapping[str, Any],
+    ) -> dict[str, str]:
+        """Classify one unfinished event without treating log age as owner proof.
+
+        A lifecycle record is the canonical owner for an isolated worktree.
+        Exact live ownership and an exact controlled-restart/dead-owner recovery
+        window are safe pre-provider deferrals.  Malformed, cross-lane, or
+        liveness-unknown records remain fail-closed terminal observations.  A
+        recent log without lifecycle authority may preserve the fence, but it
+        never establishes liveness or typed retry authority by itself.
+        """
+
+        worktree_value = event.get("worktree_path")
+        worktree_path = (
+            str(worktree_value).strip()
+            if isinstance(worktree_value, str)
+            else ""
+        )
+        if not worktree_path:
+            if self._implementation_runner_process_active(event):
+                return {
+                    "disposition": "verified_live",
+                    "reason": "shared_checkout_runner_active",
+                }
+            return {
+                "disposition": "inactive",
+                "reason": "shared_checkout_runner_missing",
+            }
+
+        lifecycle_path = self.worktree_lifecycle.workspace_path_for(
+            worktree_path
+        )
+        if lifecycle_path.exists():
+            lifecycle_record = self.worktree_lifecycle.load_workspace(
+                worktree_path
+            )
+            raw_lifecycle_record = self._load_exact_json_object(
+                lifecycle_path
+            )
+            if (
+                lifecycle_record is None
+                or raw_lifecycle_record is None
+                or raw_lifecycle_record != lifecycle_record.to_dict()
+                or lifecycle_record.record_id
+                != lifecycle_record.compute_record_id()
+                or normalize_workspace_path(lifecycle_record.workspace_path)
+                != normalize_workspace_path(worktree_path)
+            ):
+                return {
+                    "disposition": "unverifiable",
+                    "reason": "inflight_lifecycle_record_unverifiable",
+                }
+            try:
+                active_state = PortalTaskState.load(self.state_path)
+                raw_attempt = event.get("attempt")
+                if isinstance(raw_attempt, bool):
+                    raise ValueError("boolean inflight attempt")
+                event_attempt = int(raw_attempt or 0)
+            except (OSError, TypeError, ValueError):
+                return {
+                    "disposition": "unverifiable",
+                    "reason": "inflight_state_unreadable",
+                }
+
+            event_task_id = str(event.get("task_id") or "")
+            event_task_cid = str(
+                event.get("canonical_task_cid")
+                or event.get("task_cid")
+                or ""
+            )
+            event_branch = str(event.get("branch") or "").removeprefix(
+                "refs/heads/"
+            )
+            active_branch = str(
+                active_state.active_branch or ""
+            ).removeprefix("refs/heads/")
+            event_log_path = str(event.get("log_path") or "")
+            identity_matches = bool(
+                active_state.implementation_in_progress
+                and event_task_id
+                and event_attempt > 0
+                and event_branch
+                and active_state.active_task_id == event_task_id
+                and int(active_state.active_attempt or 0) == event_attempt
+                and normalize_workspace_path(
+                    active_state.active_worktree_path
+                )
+                == normalize_workspace_path(worktree_path)
+                and active_branch == event_branch
+                and bool(active_state.active_task_cid)
+                and active_state.active_task_cid == event_task_cid
+                and (
+                    not active_state.active_log_path
+                    or active_state.active_log_path == event_log_path
+                )
+            )
+            if not identity_matches:
+                return {
+                    "disposition": "unverifiable",
+                    "reason": "inflight_lifecycle_identity_unverifiable",
+                }
+
+            lifecycle = self._reconcile_quiesced_worktree_lifecycle(
+                active_state,
+                terminalize=False,
+            )
+            lifecycle_reason = str(lifecycle.get("reason") or "")
+            if (
+                lifecycle.get("blocked") is True
+                and lifecycle_reason
+                == "worktree_lifecycle_owner_still_active"
+                and lifecycle.get("owner_liveness")
+                == OwnerLiveness.ALIVE.value
+            ):
+                return {
+                    "disposition": "verified_live",
+                    "reason": lifecycle_reason,
+                }
+            if lifecycle_reason == "worktree_lifecycle_dead_owner_reclaimable":
+                if Path(worktree_path).is_dir():
+                    return {
+                        "disposition": "controlled_restart_recovery",
+                        "reason": lifecycle_reason,
+                    }
+                return {
+                    "disposition": "inactive",
+                    "reason": lifecycle_reason,
+                }
+            if lifecycle_reason == "worktree_lifecycle_already_terminal":
+                terminal_reason = str(
+                    lifecycle.get("terminal_reason") or ""
+                )
+                if (
+                    terminal_reason
+                    in INFLIGHT_CONTROLLED_RECOVERY_TERMINAL_REASONS
+                    and Path(worktree_path).is_dir()
+                ):
+                    return {
+                        "disposition": "controlled_restart_recovery",
+                        "reason": terminal_reason,
+                    }
+                if (
+                    terminal_reason
+                    in INFLIGHT_CONTROLLED_RECOVERY_TERMINAL_REASONS
+                ):
+                    return {
+                        "disposition": "inactive",
+                        "reason": "controlled_restart_workspace_missing",
+                    }
+                return {
+                    "disposition": "unverifiable",
+                    "reason": "inflight_terminal_lifecycle_unverifiable",
+                }
+            # The reconciliation helper has already checked schema,
+            # repository, state-directory, task/attempt, and owner liveness.
+            # Any other result is deliberately terminal, including malformed,
+            # foreign, and UNKNOWN-owner records.
+            return {
+                "disposition": "unverifiable",
+                "reason": lifecycle_reason or "inflight_lifecycle_unverifiable",
+            }
+
+        if self._implementation_runner_process_active(event):
+            # Compatibility for pre-lifecycle attempts.  This is an observed
+            # runner bound to the exact worktree, not a log-age inference.
+            return {
+                "disposition": "verified_live",
+                "reason": "legacy_worktree_runner_active",
+            }
+        if self._implementation_log_recently_active(event):
+            return {
+                "disposition": "unverifiable",
+                "reason": "recent_log_without_lifecycle_authority",
+            }
+        return {
+            "disposition": "inactive",
+            "reason": "implementation_owner_missing",
+        }
+
     def _implementation_process_active(self, event: dict[str, Any]) -> bool:
+        """Preserve active-state fencing while exposing typed dispositions."""
+
+        return (
+            self._implementation_inflight_disposition(event)["disposition"]
+            != "inactive"
+        )
+
+    def _implementation_runner_process_active(
+        self,
+        event: Mapping[str, Any],
+    ) -> bool:
         worktree_path = str(event.get("worktree_path") or "")
         command = event.get("command") or []
         process_lines = self._list_process_commands()
@@ -63219,10 +63466,6 @@ class PortalImplementationDaemon:
             # Docker isolation containers may not list the full worktree path
             # in ``ps`` output; inspect labeled containers for the mount.
             if self._docker_isolation_active_for_worktree(worktree_path):
-                return True
-            # Brief docker restarts drop process visibility while the agent is
-            # still writing the attempt log. Treat recent log activity as live.
-            if self._implementation_log_recently_active(event):
                 return True
             return False
         # Shared-checkout implementations deliberately do not have a task
