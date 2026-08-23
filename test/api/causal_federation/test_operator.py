@@ -1224,6 +1224,20 @@ def test_plan_executor_command_stays_isolated_from_coordinator_status() -> None:
     assert argv[argv.index("--authority-mode") + 1] == "quack"
 
 
+def test_plan_executor_bootstrap_argv_excludes_raw_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setenv(operator.STATE_TOKEN_ENV, "raw-state-token-test")
+    argv = operator._plan_executor_bootstrap_command(CONFIG, 7)
+    joined = " ".join(argv)
+    assert "plan-executor" in argv
+    assert argv[-2:] == ["--credential-fd", "7"]
+    assert operator.STATE_TOKEN_ENV.lower() not in joined.lower()
+    assert "token=" not in joined.lower()
+    assert "raw-state-token-test" not in joined
+
+
 def test_plan_executor_environment_sets_repository_pythonpath(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

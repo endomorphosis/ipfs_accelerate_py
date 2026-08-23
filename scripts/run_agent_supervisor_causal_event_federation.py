@@ -1333,32 +1333,151 @@ def _plan_executor_environment() -> dict[str, str]:
     return environment
 
 
+def _plan_executor_bootstrap_command(config_path: Path, descriptor: int) -> list[str]:
+    if isinstance(descriptor, bool) or descriptor < 3:
+        raise OperatorError("plan executor credential descriptor is invalid")
+    argv = [
+        *_operator_command(config_path, "plan-executor"),
+        "--credential-fd",
+        str(descriptor),
+    ]
+    lowered = " ".join(argv).lower()
+    if "token=" in lowered or STATE_TOKEN_ENV.lower() in lowered:
+        raise OperatorError("plan executor argv would expose credential material")
+    return argv
+
+
 def _spawn_plan_executor(
     *,
+    server: Any,
     board: Any,
     config: Mapping[str, Any],
+    config_path: Path,
     paths: Mapping[str, Path],
 ) -> tuple[subprocess.Popen[Any], dict[str, Any]]:
     """Start one plan executor against the live owner without clobbering coordinator status."""
 
+    from ipfs_accelerate_py.agent_supervisor.merge.database_worktree_registry import (
+        process_birth_id,
+    )
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        ProcessBirthIdentity,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        build_control_plane_operation_catalog,
+    )
+
     paths["executor_state"].mkdir(parents=True, exist_ok=True)
-    log_handle = paths["executor_log"].open("ab")
-    os.chmod(paths["executor_log"], 0o600)
+    read_descriptor, write_descriptor = os.pipe()
+    os.set_inheritable(read_descriptor, True)
+    process: subprocess.Popen[Any] | None = None
+    log_handle: Any = None
     try:
+        log_handle = paths["executor_log"].open("ab")
+        os.chmod(paths["executor_log"], 0o600)
         process = subprocess.Popen(
-            _plan_executor_command(board, config, paths),
+            _plan_executor_bootstrap_command(config_path, read_descriptor),
             cwd=ROOT,
             stdin=subprocess.DEVNULL,
             stdout=log_handle,
             stderr=subprocess.STDOUT,
             env=_plan_executor_environment(),
+            pass_fds=(read_descriptor,),
             start_new_session=True,
         )
+        os.close(read_descriptor)
+        read_descriptor = -1
+        birth_payload = _process_birth(process.pid)
+        birth = ProcessBirthIdentity.from_dict(birth_payload)
+        birth_id = process_birth_id(birth)
+        server_identity = server.identity
+        if server_identity is None:
+            raise OperatorError("state owner lost its identity before executor admission")
+        token = server.issue_typed_client_grant(
+            client_id="casf-plan-executor:" + birth_id,
+            process_birth_id=birth_id,
+            peer_pid=process.pid,
+            allowed_operations=tuple(build_control_plane_operation_catalog()),
+            allowed_command_operations=("task.status.cas",),
+            ttl_seconds=86_400.0,
+        )
+        bundle = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "causal-federation-executor-credentials@1"
+            ),
+            "endpoint": board.resolved_database_program().quack_endpoint,
+            "socket_path": str(paths["owner_socket"]),
+            "store_id": _control_plane_store_id(board.resolved_database_program()),
+            "server_id": server_identity.server_id,
+            "process_birth_id": birth_id,
+            "token": token,
+        }
+        encoded = _canonical_bytes(bundle)
+        if len(encoded) > 65_536:
+            raise OperatorError("plan executor credential bundle exceeds its bound")
+        offset = 0
+        while offset < len(encoded):
+            offset += os.write(write_descriptor, encoded[offset:])
+        os.close(write_descriptor)
+        write_descriptor = -1
+        _atomic_text(paths["executor_pid"], f"{process.pid}\n")
+        return process, birth_payload
+    except BaseException:
+        if process is not None:
+            try:
+                _terminate_birth(_process_birth(process.pid), grace_seconds=5.0)
+            except Exception:
+                pass
+        raise
     finally:
-        log_handle.close()
-    birth = _process_birth(process.pid)
-    _atomic_text(paths["executor_pid"], f"{process.pid}\n")
-    return process, birth
+        if log_handle is not None:
+            try:
+                log_handle.close()
+            except OSError:
+                pass
+        for descriptor in (read_descriptor, write_descriptor):
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+
+
+def plan_executor(config_path: Path, credential_fd: int) -> int:
+    """Install a PID-bound grant, then exec the isolated implementation daemon."""
+
+    if isinstance(credential_fd, bool) or credential_fd < 3:
+        raise OperatorError("plan executor credential descriptor is invalid")
+    encoded = b""
+    while True:
+        chunk = os.read(credential_fd, 65_536)
+        if not chunk:
+            break
+        encoded += chunk
+        if len(encoded) > 65_536:
+            raise OperatorError("plan executor credential bundle exceeds its bound")
+    os.close(credential_fd)
+    try:
+        payload = json.loads(encoded.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise OperatorError("plan executor credential bundle is malformed") from exc
+    if not isinstance(payload, dict):
+        raise OperatorError("plan executor credential bundle is malformed")
+    token = str(payload.get("token") or "").strip()
+    socket_path = str(payload.get("socket_path") or "").strip()
+    if not token or not socket_path:
+        raise OperatorError("plan executor credential bundle is incomplete")
+    if TOKEN_RE.fullmatch(token) is None:
+        raise OperatorError("plan executor credential bundle is malformed")
+    board, config = _load_config(config_path)
+    paths = _runtime_paths(board)
+    environment = _plan_executor_environment()
+    environment[STATE_TOKEN_ENV] = token
+    environment[STATE_OWNER_SOCKET_ENV] = socket_path
+    argv = _plan_executor_command(board, config, paths)
+    os.execvpe(argv[0], argv, environment)
+    raise OperatorError("plan executor exec returned")
 
 
 def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int:
@@ -1513,8 +1632,10 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
     if admit_task_execution:
         try:
             executor_process, executor_birth = _spawn_plan_executor(
+                server=server,
                 board=board,
                 config=config,
+                config_path=config_path,
                 paths=paths,
             )
         except BaseException:
@@ -1577,8 +1698,10 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
                 executor_restarts += 1
                 try:
                     executor_process, executor_birth = _spawn_plan_executor(
+                        server=server,
                         board=board,
                         config=config,
+                        config_path=config_path,
                         paths=paths,
                     )
                 except Exception:
@@ -3333,6 +3456,8 @@ def _parser() -> argparse.ArgumentParser:
         "--admit-task-execution",
         action="store_true",
     )
+    executor_parser = commands.add_parser("plan-executor", help=argparse.SUPPRESS)
+    executor_parser.add_argument("--credential-fd", type=int, required=True)
     status_parser = commands.add_parser("status", help="emit typed progress/idle status")
     status_requirement = status_parser.add_mutually_exclusive_group()
     status_requirement.add_argument("--require-healthy", action="store_true")
@@ -3376,6 +3501,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
 
             return run_supervisor_runtime(arguments.credential_fd)
+        elif arguments.command == "plan-executor":
+            return plan_executor(config_path, arguments.credential_fd)
         elif arguments.command == "launch":
             result = launch(
                 config_path,
