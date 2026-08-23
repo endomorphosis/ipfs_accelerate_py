@@ -3136,15 +3136,14 @@ def _open_quack_transport_connection_once(
 
     text = quack_transport_uri(uri)
     if not text:
-        raise DuckDBConnectionPolicyError(f"invalid or non-loopback quack URI: {uri!r}")
+        raise DuckDBConnectionPolicyError(
+            f"invalid or non-loopback quack URI: {uri!r}"
+        )
     if "'" in text or ";" in text or "\x00" in text:
         raise DuckDBConnectionPolicyError("quack URI contains forbidden characters")
     try:
         import duckdb
     except ImportError as exc:
-        raise DuckDBConnectionPolicyError("DuckDB is required for Quack transport") from exc
-    secret = resolve_quack_attach_token(token)
-    if secret and not _QUACK_TOKEN_RE.fullmatch(secret):
         raise DuckDBConnectionPolicyError(
             "DuckDB is required for Quack transport"
         ) from exc
