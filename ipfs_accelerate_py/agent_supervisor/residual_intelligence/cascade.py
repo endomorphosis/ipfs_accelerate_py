@@ -781,6 +781,26 @@ class ResidualCascadeWalk:
             raise ResidualIntelligenceError("selected stage must be a recorded candidate")
         if CascadeStage.HUMAN_REVIEW not in {item.stage for item in candidates}:
             raise ResidualIntelligenceError("human fallback must remain reachable")
+        candidate_stages = tuple(item.stage for item in candidates)
+        rejection_stages = tuple(item.stage for item in rejections)
+        expected_candidates = tuple(
+            stage for stage in CASCADE_ORDER if stage in set(candidate_stages)
+        )
+        expected_rejections = tuple(
+            stage for stage in CASCADE_ORDER if stage in set(rejection_stages)
+        )
+        if candidate_stages != expected_candidates:
+            raise ResidualIntelligenceError(
+                "cascade candidates must follow the admitted production order"
+            )
+        if rejection_stages != expected_rejections:
+            raise ResidualIntelligenceError(
+                "cascade hard rejections must follow the admitted production order"
+            )
+        if self.selected_stage is not candidate_stages[0]:
+            raise ResidualIntelligenceError(
+                "selected stage must be the earliest surviving candidate"
+            )
 
     @property
     def walk_id(self) -> str:
@@ -1151,9 +1171,12 @@ __all__ = (
     "LEARNED_STAGES",
     "LOCAL_STAGES",
     "REASON_EXACT_CACHE",
+    "REASON_FAMILY",
     "REASON_HUMAN_FALLBACK",
+    "REASON_INFERENCE_POLICY",
     "REASON_PRIVACY",
     "REASON_PROVIDER_HEALTH",
+    "REASON_RISK",
     "REASON_SAFE_FALLBACK",
     "REASON_SIMULATION",
     "REASON_VALIDATION",
