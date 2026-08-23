@@ -1222,3 +1222,42 @@ def test_plan_executor_command_stays_isolated_from_coordinator_status() -> None:
     assert "--implement" in argv
     assert "--authority-mode" in argv
     assert argv[argv.index("--authority-mode") + 1] == "quack"
+
+
+def test_plan_executor_environment_sets_repository_pythonpath(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    monkeypatch.setenv(operator.STATE_TOKEN_ENV, "raw-state-token-test")
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+    environment = operator._plan_executor_environment()
+    assert environment["PYTHONPATH"].split(os.pathsep)[0] == str(operator.ROOT)
+    assert operator.STATE_TOKEN_ENV not in environment
+    assert "raw-state-token-test" not in json.dumps(environment)
+
+
+def test_launch_success_mode_accepts_admitted_progress() -> None:
+    operator = _operator()
+    progress = {
+        "classification": "progress_unqualified",
+        "healthy": False,
+        "blocked_or_stuck": True,
+        "coordinator_ready": False,
+        "plan_work_healthy": False,
+    }
+    assert (
+        operator._launch_success_mode(
+            progress,
+            allow_coordinator_only=True,
+            admit_task_execution=False,
+        )
+        == ""
+    )
+    assert (
+        operator._launch_success_mode(
+            progress,
+            allow_coordinator_only=True,
+            admit_task_execution=True,
+        )
+        == "task_execution_admitted"
+    )

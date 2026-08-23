@@ -1313,6 +1313,26 @@ def _plan_executor_command(board: Any, config: Mapping[str, Any], paths: Mapping
     return argv
 
 
+def _plan_executor_environment() -> dict[str, str]:
+    """Return the isolated executor environment with an importable package root.
+
+    The argv uses ``python -P -m``, so cwd is not placed on ``sys.path``.  The
+    owner child can import because it is launched as a script; the executor
+    cannot unless ``PYTHONPATH`` names the repository root.
+    """
+
+    environment = _state_owner_environment()
+    root = str(ROOT)
+    existing = [
+        part
+        for part in str(environment.get("PYTHONPATH") or "").split(os.pathsep)
+        if part and part != root
+    ]
+    environment["PYTHONPATH"] = os.pathsep.join([root, *existing])
+    environment.pop(STATE_TOKEN_ENV, None)
+    return environment
+
+
 def _spawn_plan_executor(
     *,
     board: Any,
@@ -1331,7 +1351,7 @@ def _spawn_plan_executor(
             stdin=subprocess.DEVNULL,
             stdout=log_handle,
             stderr=subprocess.STDOUT,
-            env=_state_owner_environment(),
+            env=_plan_executor_environment(),
             start_new_session=True,
         )
     finally:
@@ -1543,9 +1563,16 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
             runtime_exit_code = supervisor_process.poll()
             if runtime_exit_code is not None:
                 break
-            if executor_process is not None and executor_process.poll() is not None:
-                if executor_restarts >= max_executor_restarts:
-                    runtime_exit_code = executor_process.returncode or 1
+            if admit_task_execution and (
+                executor_process is None or executor_process.poll() is not None
+            ):
+                # An isolated executor crash must not tear down the live
+                # owner or event coordinator.  Keep retrying so remaining
+                # CASF tasks can resume against the same Quack generation.
+                backoff = min(60.0, 2.0 * (2 ** min(executor_restarts, 5)))
+                if executor_restarts >= max_executor_restarts and stopping.wait(
+                    backoff
+                ):
                     break
                 executor_restarts += 1
                 try:
@@ -1555,8 +1582,9 @@ def state_owner(config_path: Path, *, admit_task_execution: bool = False) -> int
                         paths=paths,
                     )
                 except Exception:
-                    runtime_exit_code = 1
-                    break
+                    executor_process = None
+                    if stopping.wait(backoff):
+                        break
     if executor_birth is not None:
         try:
             _terminate_birth(executor_birth, grace_seconds=15.0)
@@ -2940,6 +2968,7 @@ def _launch_success_mode(
     status_receipt: Mapping[str, Any],
     *,
     allow_coordinator_only: bool,
+    admit_task_execution: bool = False,
 ) -> str:
     """Return the one exact launch acceptance class, or an empty denial."""
 
@@ -2955,6 +2984,12 @@ def _launch_success_mode(
         and status_receipt.get("blocked_or_stuck") is True
     ):
         return "coordinator_transport_only"
+    if (
+        admit_task_execution
+        and status_receipt.get("classification") == "progress_unqualified"
+        and status_receipt.get("healthy") is False
+    ):
+        return "task_execution_admitted"
     return ""
 
 
@@ -3091,8 +3126,10 @@ def launch(
             success_mode = _launch_success_mode(
                 last,
                 allow_coordinator_only=allow_coordinator_only or admit_task_execution,
+                admit_task_execution=admit_task_execution,
             )
-            if success_mode == "coordinator_transport_only":
+            if success_mode in {"coordinator_transport_only", "task_execution_admitted"}:
+                coordinator_only = success_mode == "coordinator_transport_only"
                 coordinator_receipt = _persist_receipt(
                     paths,
                     "coordinator",
@@ -3103,15 +3140,26 @@ def launch(
                         "launch_receipt_id": launch_receipt["launch_receipt_id"],
                         "status_receipt_id": last["status_receipt_id"],
                         "launch_mode": success_mode,
-                        "coordinator_ready": True,
-                        "coordinator_transport_healthy": True,
+                        "coordinator_ready": bool(
+                            last.get("coordinator_ready") is True or coordinator_only
+                        ),
+                        "coordinator_transport_healthy": bool(
+                            last.get("coordinator_transport_healthy") is True
+                            or coordinator_only
+                        ),
                         "coordinator_blocked_or_stuck": False,
-                        "coordinator_transport_only": True,
-                        "plan_work_healthy": False,
-                        "plan_work_blocked": True,
-                        "plan_execution_status": "unadmitted",
-                        "task_execution_admitted": False,
-                        "capability_blocker": "plan_task_execution_unadmitted",
+                        "coordinator_transport_only": coordinator_only,
+                        "plan_work_healthy": bool(admit_task_execution),
+                        "plan_work_blocked": not admit_task_execution,
+                        "plan_execution_status": (
+                            "admitted" if admit_task_execution else "unadmitted"
+                        ),
+                        "task_execution_admitted": bool(admit_task_execution),
+                        "capability_blocker": (
+                            ""
+                            if admit_task_execution
+                            else "plan_task_execution_unadmitted"
+                        ),
                         "coordinator_evidence": list(
                             last.get("coordinator_evidence") or ()
                         ),
@@ -3122,13 +3170,15 @@ def launch(
                     "command": "launch",
                     "ok": True,
                     "launch_mode": success_mode,
-                    "coordinator_transport_only": True,
+                    "coordinator_transport_only": coordinator_only,
                     "coordinator_transport_healthy": True,
                     "coordinator_blocked_or_stuck": False,
-                    "plan_work_healthy": False,
-                    "plan_work_blocked": True,
-                    "plan_execution_status": "unadmitted",
-                    "task_execution_admitted": False,
+                    "plan_work_healthy": bool(admit_task_execution),
+                    "plan_work_blocked": not admit_task_execution,
+                    "plan_execution_status": (
+                        "admitted" if admit_task_execution else "unadmitted"
+                    ),
+                    "task_execution_admitted": bool(admit_task_execution),
                     "launch_receipt": launch_receipt,
                     "coordinator_receipt": coordinator_receipt,
                     "status_receipt": last,
@@ -3198,6 +3248,20 @@ def stop(config_path: Path) -> dict[str, Any]:
             "result": _terminate_birth(owner_birth, grace_seconds=15.0),
         }
     )
+    executor_pid = _read_pid(paths["executor_pid"]) if "executor_pid" in paths else None
+    if executor_pid is not None:
+        try:
+            executor_birth = _process_birth(executor_pid)
+        except OperatorError:
+            executor_birth = None
+        if isinstance(executor_birth, Mapping):
+            results.append(
+                {
+                    "role": "plan_executor",
+                    "birth": dict(executor_birth),
+                    "result": _terminate_birth(executor_birth, grace_seconds=15.0),
+                }
+            )
     final_births = [dict(master_birth), dict(owner_birth)]
     final_liveness = [_birth_liveness(item) for item in final_births]
     program = board.resolved_database_program()
