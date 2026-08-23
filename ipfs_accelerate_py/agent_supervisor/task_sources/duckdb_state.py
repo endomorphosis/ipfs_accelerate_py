@@ -9,9 +9,11 @@ left untouched as rollback evidence unless strict DuckDB-only mode is enabled.
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import re
 import sqlite3
+import stat
 import threading
 import time
 import uuid
@@ -590,11 +592,32 @@ class DuckDBConnection:
             return DuckDBCursor(self._connection)
         catalog = getattr(self, "_default_catalog", None)
         if catalog and _quack_owner_mutation_required(normalized):
-            return _execute_quack_owner_mutation(
-                statement,
-                parameters,
-                dml=True,
-            )
+            uri = str(getattr(self, "_quack_uri", "") or "")
+            # Drop the ATTACH session before owner-local DML. A live ATTACH
+            # holds quack_serve; waiting on the inbox while attached deadlocks
+            # or poisons later TOKEN auth.
+            self._release_quack_attach_session()
+            mutation_error: Exception | None = None
+            cursor: DuckDBCursor | None = None
+            try:
+                cursor = _execute_quack_owner_mutation(
+                    statement,
+                    parameters,
+                    dml=True,
+                )
+            except Exception as exc:
+                mutation_error = exc
+            if uri:
+                try:
+                    self._restore_quack_attach_session(uri)
+                except Exception:
+                    if mutation_error is not None:
+                        raise mutation_error
+                    raise
+            if mutation_error is not None:
+                raise mutation_error
+            assert cursor is not None
+            return cursor
         if catalog and not normalized.startswith("USE "):
             self._connection.execute(f"USE {catalog}")
             _consume_duckdb_result(self._connection)
@@ -637,10 +660,40 @@ class DuckDBConnection:
         self._closed = True
         try:
             self.rollback()
-            self._connection.close()
+            if self._connection is not None:
+                self._connection.close()
         finally:
             if self._lock_context is not None:
                 self._lock_context.__exit__(None, None, None)
+
+    def _release_quack_attach_session(self) -> None:
+        raw = self._connection
+        self._connection = None
+        if raw is None:
+            return
+        catalog = getattr(self, "_default_catalog", None)
+        if catalog:
+            try:
+                detached = raw.execute(f"DETACH {catalog}")
+                _consume_duckdb_result(detached)
+            except Exception:
+                pass
+        close = getattr(raw, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                pass
+
+    def _restore_quack_attach_session(self, uri: str) -> None:
+        fresh = open_quack_transport_connection(uri)
+        self._connection = fresh._connection
+        self._closed = False
+        self._default_catalog = _QUACK_CONTROL_CATALOG
+        self._quack_uri = uri
+        fresh._connection = None
+        fresh._closed = True
+        fresh._lock_context = None
 
     def __enter__(self) -> DuckDBConnection:
         if (
@@ -944,6 +997,80 @@ def _consume_duckdb_result(connection: Any) -> None:
         pass
 
 
+def _resolve_quack_attach_token() -> str:
+    """Load the loopback attach token without logging or exporting it.
+
+    Children inherit the opaque secret handle, not the raw token.  The
+    state-owner vault file is the in-process resolution path used by the
+    operator status probe; daemons must use the same file or ATTACH fails.
+    """
+
+    env_token = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or "").strip()
+    if env_token:
+        return env_token
+    handle = str(
+        os.environ.get("IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE", "") or ""
+    ).strip()
+    if not handle.startswith("handle:"):
+        program_json = str(
+            os.environ.get("IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", "") or ""
+        ).strip()
+        if program_json:
+            try:
+                payload = json.loads(program_json)
+            except json.JSONDecodeError:
+                payload = None
+            if isinstance(payload, Mapping):
+                handle = str(payload.get("endpoint_secret_handle") or "").strip()
+    if not handle.startswith("handle:"):
+        return ""
+    owner = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_OWNER_DIR", "") or "").strip()
+    if not owner:
+        store_id = str(os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or "").strip()
+        if not store_id:
+            program_json = str(
+                os.environ.get("IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", "") or ""
+            ).strip()
+            if program_json:
+                try:
+                    payload = json.loads(program_json)
+                except json.JSONDecodeError:
+                    payload = None
+                if isinstance(payload, Mapping):
+                    store_id = str(payload.get("store_id") or "").strip()
+        if store_id:
+            owner = str(Path(store_id).parent / "quack-owner")
+    if not owner:
+        return ""
+    token_name = f"{handle.replace(':', '_').replace('/', '_')}.quack-token"
+    owner_path = Path(owner)
+    search_dirs = [owner_path]
+    if not owner_path.is_absolute():
+        package_root = Path(__file__).resolve().parents[3]
+        # Do not walk arbitrary parents: a sibling checkout can contain a
+        # stale vault with the same handle name.
+        search_dirs.extend((Path.cwd() / owner_path, package_root / owner_path))
+    for directory in search_dirs:
+        path = directory / token_name
+        try:
+            metadata = path.lstat()
+        except OSError:
+            continue
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or path.is_symlink()
+            or metadata.st_mode & 0o077
+        ):
+            continue
+        try:
+            token = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if token:
+            return token
+    return ""
+
+
 def open_quack_transport_connection(
     uri: str,
     *,
@@ -973,9 +1100,7 @@ def open_quack_transport_connection(
     try:
         connection.execute("LOAD quack")
         attach = f"ATTACH '{text}' AS {_QUACK_CONTROL_CATALOG} (READ_WRITE"
-        secret = str(
-            token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or ""
-        ).strip()
+        secret = str(token or _resolve_quack_attach_token() or "").strip()
         if secret:
             if not _QUACK_TOKEN_RE.fullmatch(secret):
                 raise DuckDBConnectionPolicyError(
@@ -999,6 +1124,7 @@ def open_quack_transport_connection(
         raise
     wrapped = DuckDBConnection.wrap(connection)
     wrapped._default_catalog = _QUACK_CONTROL_CATALOG
+    wrapped._quack_uri = text
     return wrapped
 
 

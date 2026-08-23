@@ -1281,11 +1281,19 @@ def bind_database_portal_execution_from_args(
             ),
         )
 
+    configured_worktree_root = getattr(parsed, "worktree_root", None)
+    if configured_worktree_root is not None:
+        configured_worktree_root = Path(configured_worktree_root)
+        if not configured_worktree_root.is_absolute():
+            configured_worktree_root = repo_root / configured_worktree_root
+        configured_worktree_root = configured_worktree_root.absolute()
     bridge = DatabasePortalExecutionBridge(
         task_source=task_source,
         attempt_root=attempt_root,
         portal_factory=portal_factory,
         repository_root=repo_root,
+        worktree_root=configured_worktree_root,
+        implementation_protected_paths=implementation_protected_paths,
         worktree_submodule_paths=tuple(worktree_submodule_paths or ()),
         task_header_prefix=parsed.task_prefix,
         max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
@@ -1294,6 +1302,15 @@ def bind_database_portal_execution_from_args(
         provider_fn=bridge.run_provider,
         effect_fn=bridge.apply_effect,
         validation_fn=bridge.validate_effect,
+        protected_path_recovery_fn=bridge.recover_protected_path_retry,
+        external_protected_checkout_recovery_fn=(
+            bridge.recover_external_protected_checkout
+        ),
+        inflight_process_recovery_fn=bridge.recover_inflight_process,
+        validation_retry_seed_conflict_recovery_fn=(
+            bridge.recover_validation_retry_seed_conflict
+        ),
+        pooled_worktree_create_recovery_fn=bridge.recover_pooled_worktree_create,
     )
     return bridge
 
@@ -1484,6 +1501,11 @@ def build_database_implementation_daemon_from_args(
     provider_fn: Callable[..., Any] | None = None,
     effect_fn: Callable[..., Any] | None = None,
     validation_fn: Callable[..., Any] | None = None,
+    protected_path_recovery_fn: Callable[..., Any] | None = None,
+    external_protected_checkout_recovery_fn: Callable[..., Any] | None = None,
+    inflight_process_recovery_fn: Callable[..., Any] | None = None,
+    validation_retry_seed_conflict_recovery_fn: Callable[..., Any] | None = None,
+    pooled_worktree_create_recovery_fn: Callable[..., Any] | None = None,
 ) -> object:
     """Build a DatabaseImplementationDaemon@1 from CLI/env authority bindings."""
 
@@ -1520,6 +1542,15 @@ def build_database_implementation_daemon_from_args(
         provider_fn=provider_fn,
         effect_fn=effect_fn,
         validation_fn=validation_fn,
+        protected_path_recovery_fn=protected_path_recovery_fn,
+        external_protected_checkout_recovery_fn=(
+            external_protected_checkout_recovery_fn
+        ),
+        inflight_process_recovery_fn=inflight_process_recovery_fn,
+        validation_retry_seed_conflict_recovery_fn=(
+            validation_retry_seed_conflict_recovery_fn
+        ),
+        pooled_worktree_create_recovery_fn=pooled_worktree_create_recovery_fn,
         require_real_execution=bool(getattr(parsed, "implement", False)),
         state_path=None,
         strategy_path=None,

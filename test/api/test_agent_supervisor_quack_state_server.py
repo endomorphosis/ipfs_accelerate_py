@@ -297,6 +297,7 @@ def _real_database_server(
         repository_id="repository:sha256:mutation-test",
         store_id="apmc-mutation-test",
         secret_handle="handle:apmc-mutation-test",
+        typed_command_socket_path=tmp_path / "state-owner.sock",
         transport=FakeQuackTransport(),
         capability_probe=lambda **_kwargs: _compatible_report(),
         migrate=lambda path: install_control_plane_schema(
@@ -369,14 +370,16 @@ class _OwnerMutationTaskSource:
         revision = max((task.revision for task in tasks), default=1)
         return TaskPage(tasks=tasks, revision=revision)
 
-    def list_tasks(self, limit: int = 1000) -> TaskPage:
+    def list_tasks(self, cursor: str = "", limit: int = 1000) -> TaskPage:
         tasks = self._select()
-        bounded = tasks[: int(limit)]
+        offset = int(cursor or "0")
+        bounded = tasks[offset : offset + int(limit)]
+        end = offset + len(bounded)
         revision = max((task.revision for task in tasks), default=1)
         return TaskPage(
             tasks=bounded,
             revision=revision,
-            next_cursor="more" if len(tasks) > len(bounded) else "",
+            next_cursor=str(end) if end < len(tasks) else "",
         )
 
     def snapshot(self) -> TaskSourceSnapshot:
@@ -611,6 +614,19 @@ def test_started_server_never_leaks_token_to_surfaces(tmp_path: Path) -> None:
     # Status may include secret_handle but never raw token keys with values.
     assert status.get("secret_handle") == identity.secret_handle
     assert status.get("token") in (None, "secret_material")
+    server.stop()
+
+
+def test_owner_update_pauses_quack_serve(tmp_path: Path) -> None:
+    server = _server(tmp_path)
+    server.start()
+    connection = server._serve_connection  # noqa: SLF001
+    assert isinstance(connection, FakeConnection)
+    before = list(connection.statements)
+    server._connection.execute("UPDATE tasks SET status = status WHERE 1 = 1")  # noqa: SLF001
+    after = connection.statements[len(before) :]
+    assert any(item.upper().startswith("UPDATE ") for item in after)
+    server._connection.execute("SELECT 1")  # noqa: SLF001
     server.stop()
 
 
@@ -1373,6 +1389,7 @@ def test_two_database_daemons_claim_distinct_tasks_through_one_quack_owner(
             task_source_kind="database",
             quack_uri=identity.listen_uri,
             task_source=task_sources[lane],
+            require_real_execution=True,
         )
         for lane in range(2)
     )
@@ -1812,9 +1829,13 @@ def test_real_default_transport_requires_authenticated_remote_readiness(
     client = None
     try:
         assert identity.status == "ready"
-        token = (tmp_path / "owner/handle_test-real-quack-owner.quack-token").read_text(
-            encoding="utf-8"
+        # Startup deliberately removes the persisted bearer-token copy; only
+        # the live owner vault retains it for authenticated readiness probes.
+        token_path = (
+            tmp_path / "owner/handle_test-real-quack-owner.quack-token"
         )
+        assert not token_path.exists()
+        token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
         client = open_quack_transport_connection(identity.listen_uri, token=token)
         assert client.execute("SELECT count(*) FROM tasks").fetchone()[0] == 0
     finally:

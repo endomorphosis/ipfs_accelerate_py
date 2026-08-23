@@ -51,12 +51,23 @@ RETRIEVAL_SEED_SCHEMA = (
 RETRIEVAL_CANDIDATE_AUDIT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/retrieval-candidate-audit@1"
 )
+PREMISE_RANKING_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/proof-premise-ranking@1"
+)
+BOUNDED_EXPANSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/proof-bounded-branch-expansion@1"
+)
 RETRIEVAL_CLOSURE_REQUIREMENT_ID = (
     "agent-supervisor.requirement.retrieval-authoritative-closure@1"
 )
 
 APPROXIMATE_SOURCES = ("ast", "bm25", "graphrag", "vector")
 _MAX_TEXT_BYTES = 8_192
+DEFAULT_PREMISE_TOP_K = 8
+ABSOLUTE_MAX_PREMISE_TOP_K = 64
+DEFAULT_MAX_BRANCH_FACTOR = 8
+ABSOLUTE_MAX_BRANCH_FACTOR = 32
+RANKING_BASIS_POINTS = 10_000
 
 
 class ProofDirectedRetrievalError(ValueError):
@@ -2169,4 +2180,3 @@ def expand_bounded_branches(
         max_depth=depth_bound,
         truncated=truncated,
     )
-

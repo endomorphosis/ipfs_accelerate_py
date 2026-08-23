@@ -182,6 +182,7 @@ from ..task_sources.task_identity import (
 )
 from ..task_sources.task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,
+    MAX_SNAPSHOT_TASKS as TASK_SOURCE_MAX_SNAPSHOT_TASKS,
     ActivePlanBinding,
     ActivePlanRevisionError,
     CanonicalTaskSource,
@@ -1166,6 +1167,10 @@ IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME = (
 IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME = (
     "implementation-protected-path-incident.json"
 )
+DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_GUARD_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-protected-path-recovery-guard@1"
+)
 
 
 def implementation_task_claim_protected_fence_paths(
@@ -1217,9 +1222,28 @@ class CrashFenceReconciler:
         daemon: "PortalImplementationDaemon",
         *,
         max_hold_seconds: float = DEFAULT_CHECKOUT_MAINTENANCE_MAX_HOLD_SECONDS,
+        protected_path_recovery_guard: Mapping[str, Any] | None = None,
+        protected_path_recovery_io: Mapping[str, Any] | None = None,
     ) -> None:
         self._daemon = daemon
         self.max_hold_seconds = float(max_hold_seconds)
+        self._protected_path_recovery_guard = (
+            dict(protected_path_recovery_guard)
+            if isinstance(protected_path_recovery_guard, Mapping)
+            else None
+        )
+        self._protected_path_recovery_io = (
+            dict(protected_path_recovery_io)
+            if isinstance(protected_path_recovery_io, Mapping)
+            else None
+        )
+
+    def _recovery_io_current(self) -> bool:
+        if self._protected_path_recovery_guard is None:
+            return True
+        recovery_io = self._protected_path_recovery_io
+        verifier = recovery_io.get("verify") if isinstance(recovery_io, Mapping) else None
+        return callable(verifier) and verifier() is True
 
     def reconcile(self) -> dict[str, Any]:
         daemon = self._daemon
@@ -1244,15 +1268,6 @@ class CrashFenceReconciler:
                 )
                 if trusted and trusted.get("cleared"):
                     return trusted
-                head_clean = (
-                    daemon._auto_clear_shared_checkout_incident_when_head_clean(
-                        incident,
-                        incident_path=incident_path,
-                        active_path=active_path,
-                    )
-                )
-                if head_clean and head_clean.get("cleared"):
-                    return head_clean
         fence_present = False
         try:
             fence_present = incident_path.exists() or active_path.exists()
@@ -1369,10 +1384,33 @@ class CrashFenceReconciler:
                     incident
                 )
                 if auto_plan is not None:
+                    recovery_guard = (
+                        daemon._build_protected_path_auto_clear_guard(
+                            incident=incident,
+                            active=load_json_dict(active_path),
+                            auto_plan=auto_plan,
+                        )
+                    )
+                    if recovery_guard is None or (
+                        self._protected_path_recovery_guard is not None
+                        and recovery_guard
+                        != self._protected_path_recovery_guard
+                    ):
+                        result = {
+                            "blocked": True,
+                            "reason": "protected_path_recovery_guard_mismatch",
+                            "incident_path": str(incident_path),
+                        }
+                        daemon._record_event(
+                            "implementation_protected_path_incident_blocked",
+                            result,
+                        )
+                        return {"action": "return", "result": result}
                     return {
                         "action": "auto_clear",
                         "input_generations": input_generations,
                         "auto_plan": auto_plan,
+                        "protected_path_recovery_guard": recovery_guard,
                         "incident": dict(incident),
                     }
             result = {
@@ -1402,6 +1440,32 @@ class CrashFenceReconciler:
                     "reason": "implementation_protected_path_snapshot_malformed",
                     "active_snapshot_path": str(active_path),
                 },
+            }
+
+        if self._protected_path_recovery_guard is not None:
+            guard = self._protected_path_recovery_guard
+            clearance_result = (
+                daemon._protected_path_recovery_clearance_result(guard)
+            )
+            if (
+                not daemon._protected_path_recovery_guard_matches_active(
+                    guard,
+                    active,
+                )
+                or clearance_result is None
+            ):
+                return {
+                    "action": "return",
+                    "result": {
+                        "blocked": True,
+                        "reason": "protected_path_recovery_finish_guard_mismatch",
+                    },
+                }
+            return {
+                "action": "finish_auto_clear",
+                "input_generations": input_generations,
+                "protected_path_recovery_guard": dict(guard),
+                "clearance_result": clearance_result,
             }
 
         task_id = str(active.get("task_id") or "")
@@ -1576,18 +1640,81 @@ class CrashFenceReconciler:
             return dict(deferred)
 
         action = str(plan.get("action") or "")
+        if action == "finish_auto_clear":
+            guard = plan.get("protected_path_recovery_guard")
+            active = load_json_dict(active_path)
+            result = plan.get("clearance_result")
+            if (
+                not isinstance(guard, Mapping)
+                or not isinstance(active, Mapping)
+                or not isinstance(result, Mapping)
+                or not daemon._protected_path_recovery_guard_matches_active(
+                    guard,
+                    active,
+                )
+                or daemon._protected_path_recovery_clearance_result(guard)
+                != dict(result)
+                or not self._recovery_io_current()
+            ):
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "protected_path_recovery_finish_guard_changed",
+                }
+            recovery_io = self._protected_path_recovery_io
+            fence_clearer = (
+                recovery_io.get("clear_fences")
+                if isinstance(recovery_io, Mapping)
+                else None
+            )
+            if not callable(fence_clearer) or fence_clearer() is not True:
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "protected_path_recovery_fence_identity_changed",
+                }
+            return dict(result)
         if action == "auto_clear":
             auto_plan = plan.get("auto_plan")
-            if not isinstance(auto_plan, Mapping):
+            recovery_guard = plan.get("protected_path_recovery_guard")
+            if not isinstance(auto_plan, Mapping) or not isinstance(
+                recovery_guard, Mapping
+            ):
                 return {
                     "blocked": True,
                     "reason": "implementation_protected_path_incident_latched",
+                    "incident_path": str(incident_path),
+                }
+            incident = load_json_dict(incident_path)
+            active = load_json_dict(active_path)
+            revalidated_guard = (
+                daemon._build_protected_path_auto_clear_guard(
+                    incident=incident,
+                    active=active,
+                    auto_plan=auto_plan,
+                )
+                if isinstance(incident, Mapping)
+                else None
+            )
+            if revalidated_guard != dict(recovery_guard):
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "protected_path_recovery_guard_changed",
+                    "incident_path": str(incident_path),
+                }
+            if not self._recovery_io_current():
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "protected_path_recovery_artifact_identity_changed",
                     "incident_path": str(incident_path),
                 }
             return daemon._apply_auto_clear_protected_path_plan(
                 auto_plan,
                 incident_path=incident_path,
                 active_path=active_path,
+                protected_path_recovery_io=self._protected_path_recovery_io,
             )
         if action == "latch_malformed":
             payload = dict(plan.get("payload") or {})
@@ -3740,6 +3867,22 @@ class ImplementationRetryDeferred(RuntimeError):
 PORTAL_RETRY_DEFERRAL_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/portal-retry-deferral@1"
 )
+
+
+class PooledWorktreeCreateDeferred(ImplementationRetryDeferred):
+    """Retry a failed pooled Git worktree add before provider dispatch.
+
+    Cold ``git worktree add`` can be interrupted while checking out files.
+    That is infrastructure, not a failed provider, and must not terminalize
+    the control task.
+    """
+
+    def __init__(self, detail: str = "") -> None:
+        super().__init__(
+            "pooled_worktree_create_failed",
+            backoff_seconds=30,
+        )
+        self.detail = str(detail or "")
 
 
 class WorktreeSubmoduleInitializationDeferred(ImplementationRetryDeferred):
@@ -8184,6 +8327,360 @@ class PortalImplementationDaemon:
 
         return None
 
+    @staticmethod
+    def _protected_path_recovery_object_digest(value: Mapping[str, Any]) -> str:
+        encoded = json.dumps(
+            dict(value),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+        return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+    def _build_protected_path_auto_clear_guard(
+        self,
+        *,
+        incident: Mapping[str, Any],
+        active: Mapping[str, Any] | None,
+        auto_plan: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Bind an exact disposed-worktree clearance to current identities."""
+
+        if (
+            not isinstance(active, Mapping)
+            or active.get("schema")
+            != "implementation-protected-path-active-v1"
+            or active.get("ephemeral_worktree") is not True
+            or auto_plan.get("class_codes")
+            != ["workspace_protected_deletion"]
+            or auto_plan.get("scopes") != ["workspace"]
+            or auto_plan.get("changes") != ["deleted"]
+        ):
+            return None
+        task_id = str(incident.get("task_id") or "")
+        workspace_value = str(incident.get("workspace_path") or "")
+        try:
+            attempt = int(incident.get("attempt") or 0)
+            active_attempt = int(active.get("attempt") or 0)
+            workspace = Path(workspace_value).resolve(strict=False)
+            worktree_root = self.worktree_root.resolve(strict=True)
+            workspace.relative_to(worktree_root)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return None
+        try:
+            workspace.lstat()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            return None
+        else:
+            return None
+        if (
+            not task_id
+            or attempt < 1
+            or active_attempt != attempt
+            or active.get("task_id") != task_id
+            or active.get("workspace_path") != workspace_value
+            or str(workspace) != workspace_value
+            or workspace == worktree_root
+            or auto_plan.get("task_id") != task_id
+            or auto_plan.get("attempt") != attempt
+            or auto_plan.get("workspace_path") != workspace_value
+        ):
+            return None
+        configured = tuple(sorted(self.implementation_protected_paths))
+        active_paths = active.get("protected_paths")
+        mutated_paths = auto_plan.get("mutated_paths")
+        if (
+            not configured
+            or not isinstance(active_paths, list)
+            or tuple(sorted(map(str, active_paths))) != configured
+            or len(set(map(str, active_paths))) != len(active_paths)
+            or not isinstance(mutated_paths, list)
+            or mutated_paths != sorted(set(map(str, mutated_paths)))
+            or not set(mutated_paths).issubset(set(configured))
+        ):
+            return None
+        snapshot = active.get("snapshot")
+        if not isinstance(snapshot, Mapping):
+            return None
+        workspace_scope = snapshot.get("workspace")
+        shared_scope = snapshot.get("shared_checkout")
+        if not isinstance(workspace_scope, Mapping) or not isinstance(
+            shared_scope, Mapping
+        ):
+            return None
+        if (
+            workspace_scope.get("root") != workspace_value
+            or shared_scope.get("root") != str(self.repo_root.resolve())
+        ):
+            return None
+        workspace_identities = workspace_scope.get("paths")
+        shared_identities = shared_scope.get("paths")
+        if (
+            not isinstance(workspace_identities, Mapping)
+            or not isinstance(shared_identities, Mapping)
+            or set(map(str, workspace_identities)) != set(configured)
+            or set(map(str, shared_identities)) != set(configured)
+        ):
+            return None
+
+        shared_digests: dict[str, str] = {}
+        stable_fields = ("state", "kind", "mode", "size", "uid", "gid", "sha256")
+        for relative in configured:
+            before_workspace = workspace_identities.get(relative)
+            before_shared = shared_identities.get(relative)
+            current_shared = self._implementation_protected_path_identity(
+                self.repo_root,
+                relative,
+            )
+            if not all(
+                isinstance(identity, Mapping)
+                and identity.get("state") == "present"
+                and identity.get("kind") == "regular_file"
+                and identity.get("links") == 1
+                and re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(identity.get("sha256") or ""),
+                )
+                for identity in (
+                    before_workspace,
+                    before_shared,
+                    current_shared,
+                )
+            ):
+                return None
+            if any(
+                before_workspace.get(field) != before_shared.get(field)
+                or current_shared.get(field) != before_shared.get(field)
+                for field in stable_fields
+            ):
+                return None
+            shared_digests[relative] = (
+                "sha256:" + str(current_shared["sha256"])
+            )
+
+        guard = {
+            "schema": DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_GUARD_SCHEMA,
+            "task_id": task_id,
+            "attempt": attempt,
+            "workspace_path": workspace_value,
+            "clearance_id": str(auto_plan.get("clearance_id") or ""),
+            "incident_digest": self._protected_path_recovery_object_digest(
+                incident
+            ),
+            "active_snapshot_digest": self._protected_path_recovery_object_digest(
+                active
+            ),
+            "protected_paths": list(configured),
+            "mutated_paths": list(mutated_paths),
+            "class_codes": ["workspace_protected_deletion"],
+            "shared_path_digests": shared_digests,
+        }
+        guard["guard_id"] = self._protected_path_recovery_object_digest(guard)
+        return guard
+
+    def _protected_path_recovery_guard_matches_active(
+        self,
+        guard: Mapping[str, Any],
+        active: Mapping[str, Any],
+    ) -> bool:
+        expected_fields = {
+            "schema",
+            "task_id",
+            "attempt",
+            "workspace_path",
+            "clearance_id",
+            "incident_digest",
+            "active_snapshot_digest",
+            "protected_paths",
+            "mutated_paths",
+            "class_codes",
+            "shared_path_digests",
+            "guard_id",
+        }
+        body = dict(guard)
+        guard_id = body.pop("guard_id", None)
+        protected_paths = guard.get("protected_paths")
+        mutated_paths = guard.get("mutated_paths")
+        shared_digests = guard.get("shared_path_digests")
+        if (
+            set(guard) != expected_fields
+            or guard.get("schema")
+            != DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_GUARD_SCHEMA
+            or guard_id != self._protected_path_recovery_object_digest(body)
+            or guard.get("active_snapshot_digest")
+            != self._protected_path_recovery_object_digest(active)
+            or guard.get("class_codes") != ["workspace_protected_deletion"]
+            or not isinstance(protected_paths, list)
+            or protected_paths != sorted(set(map(str, protected_paths)))
+            or tuple(protected_paths)
+            != tuple(sorted(self.implementation_protected_paths))
+            or not isinstance(mutated_paths, list)
+            or mutated_paths != sorted(set(map(str, mutated_paths)))
+            or not mutated_paths
+            or not set(mutated_paths).issubset(set(protected_paths))
+            or not isinstance(shared_digests, Mapping)
+            or set(map(str, shared_digests)) != set(protected_paths)
+        ):
+            return False
+        workspace_value = str(guard.get("workspace_path") or "")
+        try:
+            workspace = Path(workspace_value).resolve(strict=False)
+            worktree_root = self.worktree_root.resolve(strict=True)
+            workspace.relative_to(worktree_root)
+            workspace.lstat()
+        except FileNotFoundError:
+            pass
+        except (OSError, RuntimeError, ValueError):
+            return False
+        else:
+            return False
+        if (
+            str(workspace) != workspace_value
+            or workspace == worktree_root
+            or active.get("schema")
+            != "implementation-protected-path-active-v1"
+            or active.get("ephemeral_worktree") is not True
+            or active.get("task_id") != guard.get("task_id")
+            or active.get("attempt") != guard.get("attempt")
+            or active.get("workspace_path") != workspace_value
+            or tuple(sorted(map(str, active.get("protected_paths") or [])))
+            != tuple(protected_paths)
+        ):
+            return False
+        snapshot = active.get("snapshot")
+        if not isinstance(snapshot, Mapping):
+            return False
+        shared_scope = snapshot.get("shared_checkout")
+        if (
+            not isinstance(shared_scope, Mapping)
+            or shared_scope.get("root") != str(self.repo_root.resolve())
+        ):
+            return False
+        shared_identities = shared_scope.get("paths")
+        if not isinstance(shared_identities, Mapping) or set(
+            map(str, shared_identities)
+        ) != set(protected_paths):
+            return False
+        stable_fields = ("state", "kind", "mode", "size", "uid", "gid", "sha256")
+        for relative in protected_paths:
+            before = shared_identities.get(relative)
+            current = self._implementation_protected_path_identity(
+                self.repo_root,
+                relative,
+            )
+            if (
+                not isinstance(before, Mapping)
+                or before.get("links") != 1
+                or current.get("links") != 1
+                or any(current.get(field) != before.get(field) for field in stable_fields)
+                or shared_digests.get(relative)
+                != "sha256:" + str(current.get("sha256") or "")
+            ):
+                return False
+        return True
+
+    def _protected_path_recovery_clearance_result(
+        self,
+        guard: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        clearance_id = str(guard.get("clearance_id") or "")
+        receipt_path = self.state_path.parent / (
+            "implementation-protected-path-auto-clearance-"
+            f"{clearance_id.removeprefix('sha256:')[:16]}.json"
+        )
+        receipt = load_json_dict(receipt_path)
+        expected_receipt_fields = {
+            "schema",
+            "clearance_id",
+            "cleared_at",
+            "reason",
+            "task_id",
+            "attempt",
+            "workspace_path",
+            "mutated_paths",
+            "scopes",
+            "changes",
+            "class_codes",
+            "shared_protected_paths_present",
+            "incident_latched_at",
+        }
+        clearance_basis = {
+            "kind": "auto-clear-protected-path-stall",
+            "task_id": receipt.get("task_id") if isinstance(receipt, Mapping) else None,
+            "attempt": receipt.get("attempt") if isinstance(receipt, Mapping) else None,
+            "workspace_path": (
+                receipt.get("workspace_path") if isinstance(receipt, Mapping) else None
+            ),
+            "mutated_paths": (
+                receipt.get("mutated_paths") if isinstance(receipt, Mapping) else None
+            ),
+            "scopes": receipt.get("scopes") if isinstance(receipt, Mapping) else None,
+            "changes": receipt.get("changes") if isinstance(receipt, Mapping) else None,
+            "class_codes": (
+                receipt.get("class_codes") if isinstance(receipt, Mapping) else None
+            ),
+            "latched_at": (
+                receipt.get("incident_latched_at")
+                if isinstance(receipt, Mapping)
+                else None
+            ),
+        }
+        derived_clearance_id = "sha256:" + hashlib.sha256(
+            json.dumps(
+                clearance_basis,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        if (
+            not isinstance(receipt, Mapping)
+            or set(receipt) != expected_receipt_fields
+            or receipt.get("schema")
+            != "implementation-protected-path-auto-clearance-v1"
+            or receipt.get("clearance_id") != clearance_id
+            or derived_clearance_id != clearance_id
+            or not str(receipt.get("cleared_at") or "")
+            or receipt.get("reason")
+            != "ephemeral_workspace_protected_deletions_shared_intact"
+            or receipt.get("task_id") != guard.get("task_id")
+            or receipt.get("attempt") != guard.get("attempt")
+            or receipt.get("workspace_path") != guard.get("workspace_path")
+            or receipt.get("mutated_paths") != guard.get("mutated_paths")
+            or receipt.get("scopes") != ["workspace"]
+            or receipt.get("changes") != ["deleted"]
+            or receipt.get("class_codes")
+            != ["workspace_protected_deletion"]
+            or receipt.get("shared_protected_paths_present")
+            != receipt.get("mutated_paths")
+        ):
+            return None
+        result = {
+            "cleared": True,
+            "auto": True,
+            "reason": receipt["reason"],
+            "clearance_id": clearance_id,
+            "receipt_path": str(receipt_path),
+            "task_id": receipt["task_id"],
+            "attempt": receipt["attempt"],
+            "workspace_path": receipt["workspace_path"],
+            "mutated_paths": receipt["mutated_paths"],
+            "class_codes": receipt["class_codes"],
+            "blocked": False,
+        }
+        matches = [
+            event
+            for event in self._iter_events()
+            if event.get("type")
+            == "implementation_protected_path_incident_auto_cleared"
+            and event.get("clearance_id") == clearance_id
+            and all(event.get(field) == value for field, value in result.items())
+        ]
+        return result if len(matches) == 1 else None
+
     def _plan_auto_clear_ephemeral_protected_path_deletions(
         self,
         incident: Mapping[str, Any],
@@ -8294,9 +8791,12 @@ class PortalImplementationDaemon:
             "latched_at": str(incident.get("latched_at") or ""),
         }
         clearance_id = "sha256:" + hashlib.sha256(
-            json.dumps(clearance_payload, sort_keys=True, separators=(",", ":")).encode(
-                "utf-8"
-            )
+            json.dumps(
+                clearance_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
         ).hexdigest()
 
         if class_codes == {"workspace_protected_deletion"}:
@@ -8335,8 +8835,36 @@ class PortalImplementationDaemon:
         *,
         incident_path: Path,
         active_path: Path,
+        protected_path_recovery_io: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Apply a previously planned auto-clear under the exclusive fence."""
+
+        verifier = (
+            protected_path_recovery_io.get("verify")
+            if isinstance(protected_path_recovery_io, Mapping)
+            else None
+        )
+        event_writer = (
+            protected_path_recovery_io.get("append_event")
+            if isinstance(protected_path_recovery_io, Mapping)
+            else None
+        )
+        fence_clearer = (
+            protected_path_recovery_io.get("clear_fences")
+            if isinstance(protected_path_recovery_io, Mapping)
+            else None
+        )
+        if protected_path_recovery_io is not None and (
+            not callable(verifier)
+            or not callable(event_writer)
+            or not callable(fence_clearer)
+            or verifier() is not True
+        ):
+            return {
+                "blocked": True,
+                "deferred": True,
+                "reason": "protected_path_recovery_artifact_identity_changed",
+            }
 
         clearance_id = str(plan.get("clearance_id") or "")
         receipt = {
@@ -8361,15 +8889,33 @@ class PortalImplementationDaemon:
                 f"{clearance_id.removeprefix('sha256:')[:16]}.json"
             )
         )
-        write_json_atomic(receipt_path, receipt)
-        try:
-            incident_path.unlink()
-        except FileNotFoundError:
-            pass
-        try:
-            active_path.unlink()
-        except FileNotFoundError:
-            pass
+        if receipt_path.is_file():
+            observed_receipt = load_json_dict(receipt_path)
+            stable_fields = set(receipt).difference({"cleared_at"})
+            if (
+                not isinstance(observed_receipt, Mapping)
+                or set(observed_receipt) != set(receipt)
+                or not str(observed_receipt.get("cleared_at") or "")
+                or any(
+                    observed_receipt.get(field) != receipt.get(field)
+                    for field in stable_fields
+                )
+            ):
+                return {
+                    "blocked": True,
+                    "reason": "protected_path_auto_clear_receipt_changed",
+                    "clearance_id": clearance_id,
+                }
+            receipt = dict(observed_receipt)
+        else:
+            write_json_atomic(receipt_path, receipt)
+        if callable(verifier) and verifier() is not True:
+            return {
+                "blocked": True,
+                "deferred": True,
+                "reason": "protected_path_recovery_artifact_identity_changed",
+                "clearance_id": clearance_id,
+            }
         result = {
             "cleared": True,
             "auto": True,
@@ -8378,14 +8924,76 @@ class PortalImplementationDaemon:
             "receipt_path": str(receipt_path),
             "task_id": receipt["task_id"],
             "attempt": receipt["attempt"],
+            "workspace_path": receipt["workspace_path"],
             "mutated_paths": receipt["mutated_paths"],
             "class_codes": receipt["class_codes"],
             "blocked": False,
         }
-        self._record_event(
-            "implementation_protected_path_incident_auto_cleared",
-            result,
-        )
+        if callable(event_writer):
+            clearance_event = event_writer(
+                "implementation_protected_path_incident_auto_cleared",
+                result,
+            )
+            if not isinstance(clearance_event, Mapping) or any(
+                clearance_event.get(field) != value
+                for field, value in result.items()
+            ):
+                return {
+                    "blocked": True,
+                    "reason": "protected_path_auto_clear_event_changed",
+                    "clearance_id": clearance_id,
+                }
+        else:
+            matching_events = [
+                event
+                for event in self._iter_events()
+                if event.get("type")
+                == "implementation_protected_path_incident_auto_cleared"
+                and event.get("clearance_id") == clearance_id
+            ]
+            if len(matching_events) > 1 or (
+                matching_events
+                and any(
+                    matching_events[0].get(field) != result.get(field)
+                    for field in result
+                )
+            ):
+                return {
+                    "blocked": True,
+                    "reason": "protected_path_auto_clear_event_changed",
+                    "clearance_id": clearance_id,
+                }
+            if not matching_events:
+                # Publish evidence before removing either fence so every
+                # subsequent boundary remains replayable.
+                self._record_event(
+                    "implementation_protected_path_incident_auto_cleared",
+                    result,
+                )
+        if callable(verifier) and verifier() is not True:
+            return {
+                "blocked": True,
+                "deferred": True,
+                "reason": "protected_path_recovery_artifact_identity_changed",
+                "clearance_id": clearance_id,
+            }
+        if callable(fence_clearer):
+            if fence_clearer() is not True:
+                return {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "protected_path_recovery_fence_identity_changed",
+                    "clearance_id": clearance_id,
+                }
+        else:
+            try:
+                incident_path.unlink()
+            except FileNotFoundError:
+                pass
+            try:
+                active_path.unlink()
+            except FileNotFoundError:
+                pass
         return result
 
     def _auto_clear_ephemeral_protected_path_deletions(
@@ -8796,10 +9404,19 @@ class PortalImplementationDaemon:
         )
         return result
 
-    def _reconcile_implementation_protected_path_fence(self) -> dict[str, Any]:
+    def _reconcile_implementation_protected_path_fence(
+        self,
+        *,
+        protected_path_recovery_guard: Mapping[str, Any] | None = None,
+        protected_path_recovery_io: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Reconcile a crash-surviving snapshot before any queue consumption."""
 
-        return CrashFenceReconciler(self).reconcile()
+        return CrashFenceReconciler(
+            self,
+            protected_path_recovery_guard=protected_path_recovery_guard,
+            protected_path_recovery_io=protected_path_recovery_io,
+        ).reconcile()
 
     def _reconcile_implementation_protected_path_fence_unserialized(
         self,
@@ -34730,14 +35347,20 @@ class PortalImplementationDaemon:
                     task=task,
                 )
 
-            lease = self.worktree_pool.acquire(
-                cache_key=cache_key,
-                base_ref=base_ref,
-                branch_name=branch_name,
-                dependency_paths=self._effective_worktree_submodule_paths(task),
-                activate=activate,
-                authorize_reuse=self._authorize_pooled_worktree_reuse,
-            )
+            try:
+                lease = self.worktree_pool.acquire(
+                    cache_key=cache_key,
+                    base_ref=base_ref,
+                    branch_name=branch_name,
+                    dependency_paths=self._effective_worktree_submodule_paths(task),
+                    activate=activate,
+                    authorize_reuse=self._authorize_pooled_worktree_reuse,
+                )
+            except RuntimeError as exc:
+                message = str(exc)
+                if message.startswith("failed to create pooled worktree"):
+                    raise PooledWorktreeCreateDeferred(message) from exc
+                raise
             lease_path = Path(lease.path).resolve()
             try:
                 requested_path = worktree_path.resolve()
@@ -68581,8 +69204,28 @@ _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-typed-deferral-budget@1"
 )
+_DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_BUDGET_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-protected-path-recovery-budget@1"
+)
 _MAX_DATABASE_TASK_ATTEMPTS = 10_000
 _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW = 16
+# Leftover-wait deferrals already have dedicated auto-recovery.  Counting
+# them toward the anti-spin budget turns a live wait into a permanent
+# block after max_task_attempts identical leftovers (PCAR-011).
+_LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS = frozenset(
+    {
+        "worktree_lifecycle_claim_exists",
+        "worktree_lifecycle_active_transition_failed",
+        "worktree_lifecycle_transition_failed",
+        "inflight_process",
+        "external_protected_checkout_recovery_required",
+    }
+)
+_DATABASE_PORTAL_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-leftover-wait-deferral-budget-recovery@1"
+)
 
 class DatabaseImplementationDaemonError(RuntimeError):
     """Fail-closed error for database-authoritative implementation execution."""
@@ -68895,6 +69538,26 @@ class DatabaseImplementationDaemon:
         provider_fn: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]] | None = None,
         effect_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
         validation_fn: Callable[["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]] | None = None,
+        protected_path_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
+        external_protected_checkout_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
+        inflight_process_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
+        validation_retry_seed_conflict_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
+        pooled_worktree_create_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
         require_real_execution: bool = False,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
@@ -69029,6 +69692,46 @@ class DatabaseImplementationDaemon:
         self._provider_fn = provider_fn
         self._effect_fn = effect_fn
         self._validation_fn = validation_fn
+        if (
+            protected_path_recovery_fn is not None
+            and not callable(protected_path_recovery_fn)
+        ):
+            raise TypeError("protected_path_recovery_fn must be callable")
+        self._protected_path_recovery_fn = protected_path_recovery_fn
+        if (
+            external_protected_checkout_recovery_fn is not None
+            and not callable(external_protected_checkout_recovery_fn)
+        ):
+            raise TypeError(
+                "external_protected_checkout_recovery_fn must be callable"
+            )
+        self._external_protected_checkout_recovery_fn = (
+            external_protected_checkout_recovery_fn
+        )
+        if (
+            inflight_process_recovery_fn is not None
+            and not callable(inflight_process_recovery_fn)
+        ):
+            raise TypeError("inflight_process_recovery_fn must be callable")
+        self._inflight_process_recovery_fn = inflight_process_recovery_fn
+        if (
+            validation_retry_seed_conflict_recovery_fn is not None
+            and not callable(validation_retry_seed_conflict_recovery_fn)
+        ):
+            raise TypeError(
+                "validation_retry_seed_conflict_recovery_fn must be callable"
+            )
+        self._validation_retry_seed_conflict_recovery_fn = (
+            validation_retry_seed_conflict_recovery_fn
+        )
+        if (
+            pooled_worktree_create_recovery_fn is not None
+            and not callable(pooled_worktree_create_recovery_fn)
+        ):
+            raise TypeError("pooled_worktree_create_recovery_fn must be callable")
+        self._pooled_worktree_create_recovery_fn = (
+            pooled_worktree_create_recovery_fn
+        )
         self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
@@ -69305,6 +70008,26 @@ class DatabaseImplementationDaemon:
         validation_fn: Callable[
             ["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]
         ],
+        protected_path_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
+        external_protected_checkout_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
+        inflight_process_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
+        validation_retry_seed_conflict_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
+        pooled_worktree_create_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
     ) -> None:
         """Bind one real executor before a production attempt is dispatched."""
 
@@ -69312,6 +70035,37 @@ class DatabaseImplementationDaemon:
         callbacks = (provider_fn, effect_fn, validation_fn)
         if not all(callable(callback) for callback in callbacks):
             raise TypeError("database execution callbacks must all be callable")
+        if (
+            protected_path_recovery_fn is not None
+            and not callable(protected_path_recovery_fn)
+        ):
+            raise TypeError("protected path recovery callback must be callable")
+        if (
+            external_protected_checkout_recovery_fn is not None
+            and not callable(external_protected_checkout_recovery_fn)
+        ):
+            raise TypeError(
+                "external checkout recovery callback must be callable"
+            )
+        if (
+            inflight_process_recovery_fn is not None
+            and not callable(inflight_process_recovery_fn)
+        ):
+            raise TypeError("inflight process recovery callback must be callable")
+        if (
+            validation_retry_seed_conflict_recovery_fn is not None
+            and not callable(validation_retry_seed_conflict_recovery_fn)
+        ):
+            raise TypeError(
+                "validation retry seed-conflict recovery callback must be callable"
+            )
+        if (
+            pooled_worktree_create_recovery_fn is not None
+            and not callable(pooled_worktree_create_recovery_fn)
+        ):
+            raise TypeError(
+                "pooled worktree create recovery callback must be callable"
+            )
         with self._lock:
             if any(
                 callback is not None
@@ -69319,6 +70073,11 @@ class DatabaseImplementationDaemon:
                     self._provider_fn,
                     self._effect_fn,
                     self._validation_fn,
+                    self._protected_path_recovery_fn,
+                    self._external_protected_checkout_recovery_fn,
+                    self._inflight_process_recovery_fn,
+                    self._validation_retry_seed_conflict_recovery_fn,
+                    self._pooled_worktree_create_recovery_fn,
                 )
             ):
                 raise DatabaseImplementationAuthorityError(
@@ -69330,6 +70089,17 @@ class DatabaseImplementationDaemon:
             self._provider_fn = provider_fn
             self._effect_fn = effect_fn
             self._validation_fn = validation_fn
+            self._protected_path_recovery_fn = protected_path_recovery_fn
+            self._external_protected_checkout_recovery_fn = (
+                external_protected_checkout_recovery_fn
+            )
+            self._inflight_process_recovery_fn = inflight_process_recovery_fn
+            self._validation_retry_seed_conflict_recovery_fn = (
+                validation_retry_seed_conflict_recovery_fn
+            )
+            self._pooled_worktree_create_recovery_fn = (
+                pooled_worktree_create_recovery_fn
+            )
 
     def _require_execution_authority(self, operation: str) -> None:
         """Require the explicit real-execution permit for a mutating phase.
@@ -69373,6 +70143,12 @@ class DatabaseImplementationDaemon:
             "expired_attempt_reconciliations": [],
             "terminal_retry_reconciliations": [],
             "terminal_portal_reconciliations": [],
+            "protected_path_recovery_reconciliations": [],
+            "external_protected_checkout_recovery_reconciliations": [],
+            "inflight_process_recovery_reconciliations": [],
+            "validation_retry_seed_conflict_recovery_reconciliations": [],
+            "leftover_wait_deferral_budget_recovery_reconciliations": [],
+            "pooled_worktree_create_recovery_reconciliations": [],
         }
 
     def projections_required(self) -> bool:
@@ -70011,18 +70787,40 @@ class DatabaseImplementationDaemon:
 
         for _attempt in range(_DATABASE_PROJECTION_READ_ATTEMPTS):
             before = self.task_source.snapshot()
-            population = self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+            population_tasks: list[Any] = []
+            population_cursor = ""
+            seen_population_cursors: set[str] = set()
+            while True:
+                remaining = TASK_SOURCE_MAX_SNAPSHOT_TASKS - len(population_tasks)
+                if remaining <= 0:
+                    raise DatabaseImplementationAuthorityError(
+                        "authoritative task population exceeds coordination sync bound"
+                    )
+                population = self.task_source.list_tasks(
+                    cursor=population_cursor,
+                    limit=min(TASK_SOURCE_QUERY_LIMIT, remaining),
+                )
+                population_tasks.extend(population.tasks)
+                next_cursor = str(population.next_cursor or "")
+                if not next_cursor:
+                    break
+                if next_cursor in seen_population_cursors:
+                    raise DatabaseImplementationAuthorityError(
+                        "authoritative task population cursor did not advance"
+                    )
+                seen_population_cursors.add(next_cursor)
+                population_cursor = next_cursor
             ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
             after = self.task_source.snapshot()
             if str(before.projection_cid) != str(after.projection_cid):
                 continue
-            tasks = tuple(population.tasks)
+            tasks = tuple(population_tasks)
             expected_count = int(after.task_count)
-            if expected_count > TASK_SOURCE_QUERY_LIMIT:
+            if expected_count > TASK_SOURCE_MAX_SNAPSHOT_TASKS:
                 raise DatabaseImplementationAuthorityError(
                     "authoritative task population exceeds coordination sync bound"
                 )
-            if len(tasks) != expected_count or bool(population.next_cursor):
+            if len(tasks) != expected_count:
                 raise DatabaseImplementationAuthorityError(
                     "authoritative task population is incomplete"
                 )
@@ -71660,6 +72458,29 @@ class DatabaseImplementationDaemon:
                 else {}
             )
             seed = prior_status_receipt.get("validation_retry_seed")
+            protected_seed = prior_status_receipt.get(
+                "protected_path_recovery_seed"
+            )
+            external_seed = prior_status_receipt.get(
+                "external_protected_checkout_recovery_seed"
+            )
+            inflight_seed = prior_status_receipt.get(
+                "inflight_process_recovery_seed"
+            )
+            seed_conflict_seed = prior_status_receipt.get(
+                "validation_retry_seed_conflict_recovery_seed"
+            )
+            retry_authorities = [
+                seed is not None,
+                protected_seed is not None,
+                external_seed is not None,
+                inflight_seed is not None,
+                seed_conflict_seed is not None,
+            ]
+            if sum(retry_authorities) > 1:
+                raise DatabaseImplementationAuthorityError(
+                    "database claim found multiple retry authorities"
+                )
             if seed is not None:
                 if (
                     str(getattr(task, "status", "") or "").lower()
@@ -71750,6 +72571,376 @@ class DatabaseImplementationDaemon:
                     }
                 )
                 receipt_payload["validation_retry_seed"] = verified_seed
+            elif protected_seed is not None:
+                if (
+                    str(getattr(task, "status", "") or "").lower()
+                    != "retrying"
+                    or prior_status_receipt.get("operation")
+                    != "database_portal_protected_path_retry_recovery"
+                    or not isinstance(protected_seed, Mapping)
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim found malformed protected-path "
+                        "recovery seed"
+                    )
+                source_attempt_id = str(
+                    protected_seed.get("attempt_id") or ""
+                )
+                source_attempt = self.get_attempt(source_attempt_id)
+                if source_attempt is None or source_attempt.status != "failed":
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim protected-path recovery source attempt "
+                        "is unavailable"
+                    )
+                verified_state = self._verified_protected_path_recovery_state(
+                    source_attempt,
+                    task,
+                    expected_recovery_evidence=protected_seed,
+                    expected_recovery_budget=prior_status_receipt.get(
+                        "protected_path_recovery_budget"
+                    ),
+                )
+                coordination_attempt = self.coordinator.get_task_attempt(
+                    str(receipt_payload.get("attempt_id") or "")
+                )
+                coordination_claim = self.coordinator.get_task_claim(
+                    str(receipt_payload.get("claim_id") or "")
+                )
+                if coordination_attempt is None or coordination_claim is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim protected-path recovery target is "
+                        "unavailable"
+                    )
+                target_identity = coordination_attempt.to_dict()
+                target_claim_identity = coordination_claim.to_dict()
+                if (
+                    target_identity.get("task_cid") != task_cid
+                    or target_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("task_cid") != task_cid
+                    or target_claim_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("claim_id")
+                    != receipt_payload.get("claim_id")
+                    or target_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or target_claim_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or not isinstance(
+                        target_identity.get("attempt_number"), int
+                    )
+                    or isinstance(
+                        target_identity.get("attempt_number"), bool
+                    )
+                    or int(target_identity["attempt_number"])
+                    <= int(source_attempt.attempt_number)
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "database claim protected-path recovery target is not "
+                        "an exact newer attempt"
+                    )
+                receipt_payload.update(
+                    {
+                        "attempt_number": int(
+                            target_identity["attempt_number"]
+                        ),
+                        "fencing_token": int(
+                            target_claim_identity.get("fencing_token") or 0
+                        ),
+                        "fence_epoch": int(
+                            target_claim_identity.get("fence_epoch") or 0
+                        ),
+                        "lease_id": str(
+                            target_claim_identity.get("lease_id") or ""
+                        ),
+                        "protected_path_recovery_source_attempt_id": (
+                            source_attempt.attempt_id
+                        ),
+                        "protected_path_recovery_seed": dict(
+                            verified_state[
+                                "protected_path_recovery_evidence"
+                            ]
+                        ),
+                        "protected_path_recovery_budget": dict(
+                            verified_state[
+                                "protected_path_recovery_budget"
+                            ]
+                        ),
+                    }
+                )
+            elif external_seed is not None:
+                if (
+                    str(getattr(task, "status", "") or "").lower()
+                    != "retrying"
+                    or prior_status_receipt.get("operation")
+                    != (
+                        "database_portal_external_protected_checkout_"
+                        "retry_recovery"
+                    )
+                    or not isinstance(external_seed, Mapping)
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim found malformed external checkout "
+                        "recovery seed"
+                    )
+                source_attempt_id = str(
+                    external_seed.get("attempt_id") or ""
+                )
+                source_attempt = self.get_attempt(source_attempt_id)
+                if source_attempt is None or source_attempt.status != "failed":
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim external checkout recovery source "
+                        "attempt is unavailable"
+                    )
+                verified_state = (
+                    self._verified_external_protected_checkout_recovery_state(
+                        source_attempt,
+                        task,
+                        expected_recovery_evidence=external_seed,
+                    )
+                )
+                coordination_attempt = self.coordinator.get_task_attempt(
+                    str(receipt_payload.get("attempt_id") or "")
+                )
+                coordination_claim = self.coordinator.get_task_claim(
+                    str(receipt_payload.get("claim_id") or "")
+                )
+                if coordination_attempt is None or coordination_claim is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim external checkout recovery target is "
+                        "unavailable"
+                    )
+                target_identity = coordination_attempt.to_dict()
+                target_claim_identity = coordination_claim.to_dict()
+                if (
+                    target_identity.get("task_cid") != task_cid
+                    or target_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("task_cid") != task_cid
+                    or target_claim_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("claim_id")
+                    != receipt_payload.get("claim_id")
+                    or target_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or target_claim_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or not isinstance(
+                        target_identity.get("attempt_number"), int
+                    )
+                    or isinstance(
+                        target_identity.get("attempt_number"), bool
+                    )
+                    or int(target_identity["attempt_number"])
+                    <= int(source_attempt.attempt_number)
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "database claim external checkout recovery target is "
+                        "not an exact newer attempt"
+                    )
+                receipt_payload.update(
+                    {
+                        "attempt_number": int(
+                            target_identity["attempt_number"]
+                        ),
+                        "fencing_token": int(
+                            target_claim_identity.get("fencing_token") or 0
+                        ),
+                        "fence_epoch": int(
+                            target_claim_identity.get("fence_epoch") or 0
+                        ),
+                        "lease_id": str(
+                            target_claim_identity.get("lease_id") or ""
+                        ),
+                        "external_protected_checkout_recovery_source_attempt_id": (
+                            source_attempt.attempt_id
+                        ),
+                        "external_protected_checkout_recovery_seed": dict(
+                            verified_state[
+                                "external_protected_checkout_recovery_evidence"
+                            ]
+                        ),
+                    }
+                )
+            elif inflight_seed is not None:
+                if (
+                    str(getattr(task, "status", "") or "").lower()
+                    != "retrying"
+                    or prior_status_receipt.get("operation")
+                    != "database_portal_inflight_process_retry_recovery"
+                    or not isinstance(inflight_seed, Mapping)
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim found malformed inflight-process "
+                        "recovery seed"
+                    )
+                source_attempt_id = str(inflight_seed.get("attempt_id") or "")
+                source_attempt = self.get_attempt(source_attempt_id)
+                if source_attempt is None or source_attempt.status != "failed":
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim inflight-process recovery source "
+                        "attempt is unavailable"
+                    )
+                verified_state = self._verified_inflight_process_recovery_state(
+                    source_attempt,
+                    task,
+                    expected_recovery_evidence=inflight_seed,
+                )
+                coordination_attempt = self.coordinator.get_task_attempt(
+                    str(receipt_payload.get("attempt_id") or "")
+                )
+                coordination_claim = self.coordinator.get_task_claim(
+                    str(receipt_payload.get("claim_id") or "")
+                )
+                if coordination_attempt is None or coordination_claim is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim inflight-process recovery target is "
+                        "unavailable"
+                    )
+                target_identity = coordination_attempt.to_dict()
+                target_claim_identity = coordination_claim.to_dict()
+                if (
+                    target_identity.get("task_cid") != task_cid
+                    or target_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("task_cid") != task_cid
+                    or target_claim_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("claim_id")
+                    != receipt_payload.get("claim_id")
+                    or target_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or target_claim_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or not isinstance(
+                        target_identity.get("attempt_number"), int
+                    )
+                    or isinstance(
+                        target_identity.get("attempt_number"), bool
+                    )
+                    or int(target_identity["attempt_number"])
+                    <= int(source_attempt.attempt_number)
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "database claim inflight-process recovery target is "
+                        "not an exact newer attempt"
+                    )
+                receipt_payload.update(
+                    {
+                        "attempt_number": int(
+                            target_identity["attempt_number"]
+                        ),
+                        "fencing_token": int(
+                            target_claim_identity.get("fencing_token") or 0
+                        ),
+                        "fence_epoch": int(
+                            target_claim_identity.get("fence_epoch") or 0
+                        ),
+                        "lease_id": str(
+                            target_claim_identity.get("lease_id") or ""
+                        ),
+                        "inflight_process_recovery_source_attempt_id": (
+                            source_attempt.attempt_id
+                        ),
+                        "inflight_process_recovery_seed": dict(
+                            verified_state["inflight_process_recovery_evidence"]
+                        ),
+                    }
+                )
+            elif seed_conflict_seed is not None:
+                if (
+                    str(getattr(task, "status", "") or "").lower()
+                    != "retrying"
+                    or prior_status_receipt.get("operation")
+                    != (
+                        "database_portal_validation_retry_seed_conflict_"
+                        "retry_recovery"
+                    )
+                    or not isinstance(seed_conflict_seed, Mapping)
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim found malformed validation-retry "
+                        "seed-conflict recovery seed"
+                    )
+                source_attempt_id = str(
+                    seed_conflict_seed.get("attempt_id") or ""
+                )
+                source_attempt = self.get_attempt(source_attempt_id)
+                if source_attempt is None or source_attempt.status != "failed":
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim validation-retry seed-conflict "
+                        "recovery source attempt is unavailable"
+                    )
+                verified_state = (
+                    self._verified_validation_retry_seed_conflict_recovery_state(
+                        source_attempt,
+                        task,
+                        expected_recovery_evidence=seed_conflict_seed,
+                    )
+                )
+                coordination_attempt = self.coordinator.get_task_attempt(
+                    str(receipt_payload.get("attempt_id") or "")
+                )
+                coordination_claim = self.coordinator.get_task_claim(
+                    str(receipt_payload.get("claim_id") or "")
+                )
+                if coordination_attempt is None or coordination_claim is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim validation-retry seed-conflict "
+                        "recovery target is unavailable"
+                    )
+                target_identity = coordination_attempt.to_dict()
+                target_claim_identity = coordination_claim.to_dict()
+                if (
+                    target_identity.get("task_cid") != task_cid
+                    or target_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("task_cid") != task_cid
+                    or target_claim_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("claim_id")
+                    != receipt_payload.get("claim_id")
+                    or target_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or target_claim_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or not isinstance(
+                        target_identity.get("attempt_number"), int
+                    )
+                    or isinstance(
+                        target_identity.get("attempt_number"), bool
+                    )
+                    or int(target_identity["attempt_number"])
+                    <= int(source_attempt.attempt_number)
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "database claim validation-retry seed-conflict "
+                        "recovery target is not an exact newer attempt"
+                    )
+                receipt_payload.update(
+                    {
+                        "attempt_number": int(
+                            target_identity["attempt_number"]
+                        ),
+                        "fencing_token": int(
+                            target_claim_identity.get("fencing_token") or 0
+                        ),
+                        "fence_epoch": int(
+                            target_claim_identity.get("fence_epoch") or 0
+                        ),
+                        "lease_id": str(
+                            target_claim_identity.get("lease_id") or ""
+                        ),
+                        "validation_retry_seed_conflict_recovery_source_attempt_id": (
+                            source_attempt.attempt_id
+                        ),
+                        "validation_retry_seed_conflict_recovery_seed": dict(
+                            verified_state[
+                                "validation_retry_seed_conflict_recovery_evidence"
+                            ]
+                        ),
+                    }
+                )
         return cas(
             task_cid,
             expected_revision=int(expected_revision),
@@ -71792,7 +72983,15 @@ class DatabaseImplementationDaemon:
 
     @staticmethod
     def _database_portal_evidence_digest(value: Mapping[str, Any]) -> str:
-        encoded = _database_daemon_json(dict(value)).encode("utf-8")
+        # The Portal bridge is the receipt producer; preserve its UTF-8
+        # canonical JSON domain rather than Python's ASCII-escape default.
+        encoded = json.dumps(
+            dict(value),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
         return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
     def _typed_deferral_receipt(
@@ -72080,6 +73279,502 @@ class DatabaseImplementationDaemon:
             )
         return dict(raw)
 
+    @staticmethod
+    def _verified_recovery_path_list(raw: Any, *, noun: str) -> list[str]:
+        if (
+            not isinstance(raw, list)
+            or not raw
+            or len(raw) > 256
+            or not all(
+                type(path) is str
+                and bool(path)
+                and path == PurePosixPath(path).as_posix()
+                and path != "."
+                and not PurePosixPath(path).is_absolute()
+                and ".." not in PurePosixPath(path).parts
+                and "\\" not in path
+                and all(ord(character) >= 32 for character in path)
+                for path in raw
+            )
+            or len(set(raw)) != len(raw)
+            or raw != sorted(raw)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                f"protected-path recovery {noun} are malformed"
+            )
+        return list(raw)
+
+    def _verified_protected_path_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Independently verify one bridge-produced disposal recovery."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_SCHEMA,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed protected-path recovery evidence is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "portal_attempt",
+            "binding_id",
+            "workspace_path",
+            "incident_digest",
+            "active_snapshot_digest",
+            "clearance_id",
+            "clearance_receipt_digest",
+            "protected_paths",
+            "mutated_paths",
+            "class_codes",
+            "shared_path_digests",
+            "event_stream_id",
+            "mutation_event_id",
+            "clearance_event_id",
+            "events_digest",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(raw) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "typed protected-path recovery evidence has unknown or "
+                "missing fields"
+            )
+        protected_paths = self._verified_recovery_path_list(
+            raw.get("protected_paths"),
+            noun="protected_paths",
+        )
+        mutated_paths = self._verified_recovery_path_list(
+            raw.get("mutated_paths"),
+            noun="mutated_paths",
+        )
+        shared_path_digests = raw.get("shared_path_digests")
+        portal_attempt = raw.get("portal_attempt")
+        workspace_path = str(raw.get("workspace_path") or "")
+        body = dict(raw)
+        receipt_id = body.pop("receipt_id", None)
+        digest_fields = (
+            "binding_id",
+            "incident_digest",
+            "active_snapshot_digest",
+            "clearance_id",
+            "clearance_receipt_digest",
+            "mutation_event_id",
+            "clearance_event_id",
+            "events_digest",
+        )
+        if (
+            raw.get("schema")
+            != DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_SCHEMA
+            or raw.get("disposition") != "retry"
+            or raw.get("reason")
+            != "ephemeral_workspace_protected_deletions_recovered"
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_alias") != attempt.task_alias
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("lease_id") != attempt.lease_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("fencing_token") != int(attempt.fencing_token)
+            or raw.get("fence_epoch") != int(attempt.fence_epoch)
+            or isinstance(portal_attempt, bool)
+            or not isinstance(portal_attempt, int)
+            or portal_attempt < 1
+            or not workspace_path
+            or not Path(workspace_path).is_absolute()
+            or not set(mutated_paths).issubset(set(protected_paths))
+            or raw.get("class_codes") != ["workspace_protected_deletion"]
+            or not isinstance(shared_path_digests, Mapping)
+            or set(map(str, shared_path_digests)) != set(protected_paths)
+            or not all(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(digest or ""))
+                for digest in shared_path_digests.values()
+            )
+            or not all(
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(raw.get(field) or ""),
+                )
+                for field in digest_fields
+            )
+            or not re.fullmatch(
+                r"event-log:sha256:[0-9a-f]{64}",
+                str(raw.get("event_stream_id") or ""),
+            )
+            or raw.get("backoff_seconds") != 0
+            or raw.get("attempt_consumed") is not True
+            or receipt_id != self._database_portal_evidence_digest(body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed protected-path recovery evidence failed independent "
+                "verification"
+            )
+        return dict(raw)
+
+    def _verified_external_protected_checkout_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Independently verify one lock-absent checkout recovery receipt."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_SCHEMA,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed external checkout recovery evidence is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "lock_path",
+            "lock_present",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(raw) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "typed external checkout recovery evidence has unknown or "
+                "missing fields"
+            )
+        lock_path = str(raw.get("lock_path") or "")
+        body = dict(raw)
+        receipt_id = body.pop("receipt_id", None)
+        if (
+            raw.get("schema")
+            != DATABASE_PORTAL_EXTERNAL_PROTECTED_CHECKOUT_RECOVERY_SCHEMA
+            or raw.get("disposition") != "retry"
+            or raw.get("reason")
+            != "external_protected_checkout_lock_absent"
+            or raw.get("source_reason")
+            != "external_protected_checkout_recovery_required"
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_alias") != attempt.task_alias
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("lease_id") != attempt.lease_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("fencing_token") != int(attempt.fencing_token)
+            or raw.get("fence_epoch") != int(attempt.fence_epoch)
+            or not lock_path
+            or not Path(lock_path).is_absolute()
+            or raw.get("lock_present") is not False
+            or raw.get("backoff_seconds") != 0
+            or raw.get("attempt_consumed") is not False
+            or receipt_id != self._database_portal_evidence_digest(body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed external checkout recovery evidence failed independent "
+                "verification"
+            )
+        return dict(raw)
+
+    def _verified_inflight_process_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Independently verify one dead-runner leftover recovery receipt."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_INFLIGHT_PROCESS_RECOVERY_SCHEMA,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed inflight-process recovery evidence is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "live_runner_present",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(raw) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "typed inflight-process recovery evidence has unknown or "
+                "missing fields"
+            )
+        body = dict(raw)
+        receipt_id = body.pop("receipt_id", None)
+        if (
+            raw.get("schema")
+            != DATABASE_PORTAL_INFLIGHT_PROCESS_RECOVERY_SCHEMA
+            or raw.get("disposition") != "retry"
+            or raw.get("reason") != "inflight_process_absent"
+            or raw.get("source_reason") != "inflight_process"
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_alias") != attempt.task_alias
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("lease_id") != attempt.lease_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("fencing_token") != int(attempt.fencing_token)
+            or raw.get("fence_epoch") != int(attempt.fence_epoch)
+            or raw.get("live_runner_present") is not False
+            or raw.get("backoff_seconds") != 0
+            or raw.get("attempt_consumed") is not False
+            or receipt_id != self._database_portal_evidence_digest(body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed inflight-process recovery evidence failed independent "
+                "verification"
+            )
+        return dict(raw)
+
+    def _verified_validation_retry_seed_conflict_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Independently verify one identity-bound seed-conflict leftover receipt."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
+            DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed validation-retry seed-conflict recovery evidence is "
+                "malformed"
+            )
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "seed_id",
+            "seed_commit",
+            "seed_rescue_branch",
+            "observed_commit",
+            "observed_branch",
+            "identity_bound",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(raw) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "typed validation-retry seed-conflict recovery evidence has "
+                "unknown or missing fields"
+            )
+        body = dict(raw)
+        receipt_id = body.pop("receipt_id", None)
+        seed_id = str(raw.get("seed_id") or "")
+        seed_commit = str(raw.get("seed_commit") or "")
+        observed_commit = str(raw.get("observed_commit") or "")
+        seed_rescue_branch = str(raw.get("seed_rescue_branch") or "")
+        observed_branch = str(raw.get("observed_branch") or "")
+        if (
+            raw.get("schema")
+            != DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA
+            or raw.get("disposition") != "retry"
+            or raw.get("reason") != "validation_retry_seed_state_progressed"
+            or raw.get("source_reason")
+            != DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_alias") != attempt.task_alias
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("lease_id") != attempt.lease_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("fencing_token") != int(attempt.fencing_token)
+            or raw.get("fence_epoch") != int(attempt.fence_epoch)
+            or not re.fullmatch(r"sha256:[0-9a-f]{64}", seed_id)
+            or not re.fullmatch(r"[0-9a-f]{40}", seed_commit)
+            or not re.fullmatch(r"[0-9a-f]{40}", observed_commit)
+            or not seed_rescue_branch.startswith("rescue/")
+            or not (
+                observed_branch.startswith("rescue/")
+                or observed_branch.startswith("implementation/")
+            )
+            or raw.get("identity_bound") is not True
+            or raw.get("backoff_seconds") != 0
+            or raw.get("attempt_consumed") is not False
+            or receipt_id != self._database_portal_evidence_digest(body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed validation-retry seed-conflict recovery evidence failed "
+                "independent verification"
+            )
+        return dict(raw)
+
+    def _protected_path_recovery_budget_observation(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any]:
+        """Bound cleanup-race retries by the ordinary outer-attempt ceiling."""
+
+        if self.max_task_attempts <= 0:
+            raise DatabaseImplementationAuthorityError(
+                "protected-path automatic recovery requires a finite "
+                "max_task_attempts bound"
+            )
+        connection = self._require_connection()
+        rows = connection.execute(
+            """
+            SELECT attempt_id, attempt_number, started_at_ms
+            FROM database_task_attempts
+            WHERE task_cid = ? AND status = 'failed'
+            ORDER BY attempt_number, started_at_ms, attempt_id
+            LIMIT ?
+            """,
+            [attempt.task_cid, self.max_task_attempts + 1],
+        ).fetchall()
+        attempt_ids = [str(row[0] or "") for row in rows]
+        if attempt.attempt_id not in attempt_ids:
+            raise DatabaseImplementationConflictError(
+                "protected-path recovery budget does not include the source "
+                "attempt"
+            )
+        failed_attempt_count = len(attempt_ids)
+        counted_attempt_ids = attempt_ids[:_MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW]
+        if attempt.attempt_id not in counted_attempt_ids:
+            counted_attempt_ids = [
+                *counted_attempt_ids[:-1],
+                attempt.attempt_id,
+            ]
+        budget = {
+            "schema": _DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_BUDGET_SCHEMA,
+            "task_cid": attempt.task_cid,
+            "task_generation": attempt.task_cid,
+            "current_attempt_id": attempt.attempt_id,
+            "current_attempt_number": int(attempt.attempt_number),
+            "max_task_attempts": int(self.max_task_attempts),
+            "failed_attempt_count": failed_attempt_count,
+            "remaining_task_attempts": max(
+                0,
+                self.max_task_attempts - failed_attempt_count,
+            ),
+            "exhausted": failed_attempt_count >= self.max_task_attempts,
+            "attempt_consumed": True,
+            "counted_attempt_ids": counted_attempt_ids,
+            "count_truncated": (
+                failed_attempt_count > _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW
+            ),
+        }
+        budget["budget_id"] = self._database_portal_evidence_digest(budget)
+        return budget
+
+    def _verified_protected_path_recovery_budget(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Verify one pre-callback recovery budget produced by this daemon."""
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery budget is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "task_cid",
+            "task_generation",
+            "current_attempt_id",
+            "current_attempt_number",
+            "max_task_attempts",
+            "failed_attempt_count",
+            "remaining_task_attempts",
+            "exhausted",
+            "attempt_consumed",
+            "counted_attempt_ids",
+            "count_truncated",
+            "budget_id",
+        }
+        body = dict(raw)
+        budget_id = body.pop("budget_id", None)
+        counted_attempt_ids = raw.get("counted_attempt_ids")
+        failed_attempt_count = raw.get("failed_attempt_count")
+        remaining_task_attempts = raw.get("remaining_task_attempts")
+        if (
+            set(raw) != expected_fields
+            or raw.get("schema")
+            != _DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_BUDGET_SCHEMA
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_generation") != attempt.task_cid
+            or raw.get("current_attempt_id") != attempt.attempt_id
+            or raw.get("current_attempt_number")
+            != int(attempt.attempt_number)
+            or self.max_task_attempts <= 0
+            or raw.get("max_task_attempts") != self.max_task_attempts
+            or isinstance(failed_attempt_count, bool)
+            or not isinstance(failed_attempt_count, int)
+            or failed_attempt_count < 1
+            or failed_attempt_count > self.max_task_attempts + 1
+            or isinstance(remaining_task_attempts, bool)
+            or not isinstance(remaining_task_attempts, int)
+            or remaining_task_attempts
+            != max(0, self.max_task_attempts - failed_attempt_count)
+            or raw.get("exhausted")
+            is not (failed_attempt_count >= self.max_task_attempts)
+            or raw.get("attempt_consumed") is not True
+            or not isinstance(counted_attempt_ids, list)
+            or not counted_attempt_ids
+            or len(counted_attempt_ids) > _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW
+            or not all(type(value) is str and value for value in counted_attempt_ids)
+            or len(set(counted_attempt_ids)) != len(counted_attempt_ids)
+            or attempt.attempt_id not in counted_attempt_ids
+            or raw.get("count_truncated")
+            is not (
+                failed_attempt_count > _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW
+            )
+            or budget_id != self._database_portal_evidence_digest(body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery budget failed independent verification"
+            )
+        return dict(raw)
+
     def _typed_deferral_budget_observation(
         self,
         attempt: DatabaseTaskAttempt,
@@ -72165,11 +73860,18 @@ class DatabaseImplementationDaemon:
                 ATTEMPT_PHASE_FAILED,
                 attempt.task_cid,
                 fingerprint_marker,
-                self.max_task_attempts,
+                min(
+                    64,
+                    max(
+                        self.max_task_attempts * 4,
+                        _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW,
+                    ),
+                ),
             ],
         )
         matching: list[dict[str, Any]] = []
         verified_count = 0
+        leftover_wait_count = 0
         observed_current = False
         matching_digest = hashlib.sha256()
         # The query is scoped and limited before the DuckDB adapter
@@ -72193,11 +73895,15 @@ class DatabaseImplementationDaemon:
             observed_current = observed_current or (
                 candidate.attempt_id == attempt.attempt_id
             )
+            reason_text = str(receipt["reason"] or "")
+            if reason_text in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS:
+                leftover_wait_count += 1
+                continue
             verified_count += 1
             identity = {
                 "attempt_id": candidate.attempt_id,
                 "attempt_number": int(candidate.attempt_number),
-                "reason": str(receipt["reason"]),
+                "reason": reason_text,
                 "deferral_fingerprint": str(
                     receipt["deferral_fingerprint"]
                 ),
@@ -72211,7 +73917,15 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "current typed deferral is absent from durable attempt history"
             )
-        if verified_count != min(candidate_count, self.max_task_attempts):
+        budget_candidate_count = verified_count
+        if leftover_wait_count and verified_count == 0:
+            budget_candidate_count = 0
+        elif (
+            verified_count
+            and leftover_wait_count == 0
+            and verified_count != min(candidate_count, self.max_task_attempts)
+            and candidate_count <= self.max_task_attempts
+        ):
             raise DatabaseImplementationAuthorityError(
                 "typed deferral candidate count did not reproduce"
             )
@@ -72226,14 +73940,14 @@ class DatabaseImplementationDaemon:
             # The SQL marker count bounds the omitted population but grants
             # no authority.  Only replayed receipts below contribute to the
             # verified count used by the exhaustion decision.
-            "typed_deferral_candidate_count": candidate_count,
+            "typed_deferral_candidate_count": budget_candidate_count,
             "typed_deferral_count": verified_count,
             "typed_deferral_count_is_lower_bound": (
-                candidate_count > self.max_task_attempts
+                budget_candidate_count > self.max_task_attempts
             ),
             "verified_typed_deferral_count": verified_count,
             "verified_count_complete": (
-                candidate_count <= self.max_task_attempts
+                budget_candidate_count <= self.max_task_attempts
             ),
             "max_task_attempts": int(self.max_task_attempts),
             "exhausted": verified_count >= self.max_task_attempts,
@@ -72244,11 +73958,11 @@ class DatabaseImplementationDaemon:
                 "sha256:" + matching_digest.hexdigest()
             ),
             "matching_attempts_truncated": (
-                candidate_count > len(matching)
+                budget_candidate_count > len(matching)
             ),
             "omitted_matching_attempt_count": max(
                 0,
-                candidate_count - len(matching),
+                budget_candidate_count - len(matching),
             ),
         }
         observation["observation_id"] = self._database_portal_evidence_digest(
@@ -72276,7 +73990,9 @@ class DatabaseImplementationDaemon:
                 )
             claim = self.coordinator.get_task_claim(attempt.claim_id)
             expire_claim = getattr(self.coordinator, "expire_task_claim", None)
-            if claim is None or not callable(expire_claim):
+            if claim is None:
+                return
+            if not callable(expire_claim):
                 raise DatabaseImplementationAuthorityError(
                     "expired retry authority cannot be revalidated"
                 )
@@ -72446,6 +74162,641 @@ class DatabaseImplementationDaemon:
             "retry_not_before_ms": retry_not_before_ms,
         }
 
+    def _verified_protected_path_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_evidence: Mapping[str, Any] | None = None,
+        expected_recovery_budget: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify the retrying projection superseding one cleanup-race block."""
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "protected-path recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        if not isinstance(task_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery task has no typed body"
+            )
+        receipt = task_body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery task has no control receipt"
+            )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "protected_path_recovery_seed",
+            "protected_path_recovery_budget",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery control receipt has unknown or "
+                "missing fields"
+            )
+        recovery_seed = self._verified_protected_path_recovery_receipt(
+            attempt,
+            receipt.get("protected_path_recovery_seed"),
+        )
+        if (
+            expected_recovery_evidence is not None
+            and dict(expected_recovery_evidence) != recovery_seed
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected-path recovery control receipt has a foreign seed"
+            )
+        recovery_budget = receipt.get("protected_path_recovery_budget")
+        current_budget = self._protected_path_recovery_budget_observation(
+            attempt
+        )
+        if (
+            not isinstance(recovery_budget, Mapping)
+            or dict(recovery_budget) != current_budget
+            or (
+                expected_recovery_budget is not None
+                and dict(expected_recovery_budget) != current_budget
+            )
+            or current_budget.get("exhausted") is True
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery budget is malformed, stale, or "
+                "exhausted"
+            )
+        task_revision = getattr(task, "revision", None)
+        if isinstance(task_revision, bool) or not isinstance(task_revision, int):
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery task has no exact revision"
+            )
+        reason = "ephemeral_workspace_protected_deletions_recovered"
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:{reason}"
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        identity_mismatch = (
+            receipt.get("operation")
+            != "database_portal_protected_path_retry_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("reason") != reason
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_protected_path_recovery:"
+                + str(recovery_seed["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != task_revision - 1
+        )
+        if identity_mismatch:
+            raise DatabaseImplementationConflictError(
+                "protected-path recovery control receipt does not match its "
+                "source attempt"
+            )
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery has an invalid queue deadline"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify protected-path recovery queue state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected-path recovery queue state does not match its receipt"
+            )
+        if (
+            self._terminal_portal_failure_reason(attempt)
+            != "implementation_protected_path_mutated"
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery does not supersede this terminal failure"
+            )
+        return {
+            "receipt": dict(receipt),
+            "protected_path_recovery_evidence": recovery_seed,
+            "protected_path_recovery_budget": current_budget,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
+    def _verified_external_protected_checkout_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify the retrying projection superseding one leftover lock block."""
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        if not isinstance(task_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery task has no typed body"
+            )
+        receipt = task_body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery task has no control receipt"
+            )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "external_protected_checkout_recovery_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery control receipt has unknown or "
+                "missing fields"
+            )
+        recovery_seed = self._verified_external_protected_checkout_recovery_receipt(
+            attempt,
+            receipt.get("external_protected_checkout_recovery_seed"),
+        )
+        if (
+            expected_recovery_evidence is not None
+            and dict(expected_recovery_evidence) != recovery_seed
+        ):
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery control receipt has a foreign seed"
+            )
+        task_revision = getattr(task, "revision", None)
+        if isinstance(task_revision, bool) or not isinstance(task_revision, int):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery task has no exact revision"
+            )
+        reason = "external_protected_checkout_lock_absent"
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:{reason}"
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        identity_mismatch = (
+            receipt.get("operation")
+            != "database_portal_external_protected_checkout_retry_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("reason") != reason
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_external_protected_checkout_recovery:"
+                + str(recovery_seed["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != task_revision - 1
+        )
+        if identity_mismatch:
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery control receipt does not match "
+                "its source attempt"
+            )
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery has an invalid queue deadline"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify external checkout recovery queue "
+                "state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery queue state does not match its "
+                "receipt"
+            )
+        if (
+            self._terminal_portal_failure_reason(attempt)
+            != "external_protected_checkout_recovery_required"
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery does not supersede this terminal "
+                "failure"
+            )
+        return {
+            "receipt": dict(receipt),
+            "external_protected_checkout_recovery_evidence": recovery_seed,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
+    def _verified_inflight_process_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify the retrying projection superseding one leftover inflight skip."""
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "inflight-process recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        if not isinstance(task_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "inflight-process recovery task has no typed body"
+            )
+        receipt = task_body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "inflight-process recovery task has no control receipt"
+            )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "inflight_process_recovery_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "inflight-process recovery control receipt has unknown or "
+                "missing fields"
+            )
+        recovery_seed = self._verified_inflight_process_recovery_receipt(
+            attempt,
+            receipt.get("inflight_process_recovery_seed"),
+        )
+        if (
+            expected_recovery_evidence is not None
+            and dict(expected_recovery_evidence) != recovery_seed
+        ):
+            raise DatabaseImplementationConflictError(
+                "inflight-process recovery control receipt has a foreign seed"
+            )
+        task_revision = getattr(task, "revision", None)
+        if isinstance(task_revision, bool) or not isinstance(task_revision, int):
+            raise DatabaseImplementationAuthorityError(
+                "inflight-process recovery task has no exact revision"
+            )
+        reason = "inflight_process_absent"
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:{reason}"
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        identity_mismatch = (
+            receipt.get("operation")
+            != "database_portal_inflight_process_retry_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("reason") != reason
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_inflight_process_recovery:"
+                + str(recovery_seed["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != task_revision - 1
+        )
+        if identity_mismatch:
+            raise DatabaseImplementationConflictError(
+                "inflight-process recovery control receipt does not match "
+                "its source attempt"
+            )
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "inflight-process recovery has an invalid queue deadline"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify inflight-process recovery queue state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "inflight-process recovery queue state does not match its receipt"
+            )
+        if self._terminal_portal_failure_reason(attempt) != "inflight_process":
+            raise DatabaseImplementationAuthorityError(
+                "inflight-process recovery does not supersede this terminal failure"
+            )
+        return {
+            "receipt": dict(receipt),
+            "inflight_process_recovery_evidence": recovery_seed,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
+    def _verified_validation_retry_seed_conflict_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify the retrying projection superseding one leftover seed conflict."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
+        )
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        if not isinstance(task_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery task has no typed body"
+            )
+        receipt = task_body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery task has no control receipt"
+            )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "validation_retry_seed_conflict_recovery_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery control receipt has "
+                "unknown or missing fields"
+            )
+        recovery_seed = (
+            self._verified_validation_retry_seed_conflict_recovery_receipt(
+                attempt,
+                receipt.get("validation_retry_seed_conflict_recovery_seed"),
+            )
+        )
+        if (
+            expected_recovery_evidence is not None
+            and dict(expected_recovery_evidence) != recovery_seed
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery control receipt has a "
+                "foreign seed"
+            )
+        task_revision = getattr(task, "revision", None)
+        if isinstance(task_revision, bool) or not isinstance(task_revision, int):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery task has no exact revision"
+            )
+        reason = "validation_retry_seed_state_progressed"
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:{reason}"
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        identity_mismatch = (
+            receipt.get("operation")
+            != "database_portal_validation_retry_seed_conflict_retry_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("reason") != reason
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_validation_retry_seed_conflict_recovery:"
+                + str(recovery_seed["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != task_revision - 1
+        )
+        if identity_mismatch:
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery control receipt does "
+                "not match its source attempt"
+            )
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery has an invalid queue "
+                "deadline"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify validation-retry seed-conflict "
+                "recovery queue state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery queue state does not "
+                "match its receipt"
+            )
+        if (
+            self._terminal_portal_failure_reason(attempt)
+            != DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery does not supersede "
+                "this terminal failure"
+            )
+        return {
+            "receipt": dict(receipt),
+            "validation_retry_seed_conflict_recovery_evidence": recovery_seed,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
     def _persist_task_retry_state(
         self,
         attempt: DatabaseTaskAttempt,
@@ -72455,8 +74806,39 @@ class DatabaseImplementationDaemon:
         evidence_source: str,
         coordination_evidence: Mapping[str, Any] | None = None,
         validation_retry_evidence: Mapping[str, Any] | None = None,
+        protected_path_recovery_evidence: Mapping[str, Any] | None = None,
+        protected_path_recovery_budget: Mapping[str, Any] | None = None,
+        external_protected_checkout_recovery_evidence: Mapping[str, Any]
+        | None = None,
+        inflight_process_recovery_evidence: Mapping[str, Any] | None = None,
+        validation_retry_seed_conflict_recovery_evidence: Mapping[str, Any]
+        | None = None,
+        leftover_wait_deferral_budget_recovery_evidence: Mapping[str, Any]
+        | None = None,
+        pooled_worktree_create_recovery_evidence: Mapping[str, Any]
+        | None = None,
     ) -> dict[str, Any]:
         """Project one exact failed attempt into canonical retry authority."""
+
+        recovery_authorities = [
+            validation_retry_evidence is not None,
+            protected_path_recovery_evidence is not None,
+            external_protected_checkout_recovery_evidence is not None,
+            inflight_process_recovery_evidence is not None,
+            validation_retry_seed_conflict_recovery_evidence is not None,
+            leftover_wait_deferral_budget_recovery_evidence is not None,
+            pooled_worktree_create_recovery_evidence is not None,
+        ]
+        if sum(recovery_authorities) > 1:
+            raise DatabaseImplementationAuthorityError(
+                "retry transition cannot carry two recovery authorities"
+            )
+        if (protected_path_recovery_evidence is None) != (
+            protected_path_recovery_budget is None
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery requires evidence and budget together"
+            )
 
         delay_ms = self._database_portal_backoff_ms(backoff_ms)
         delay_seconds = (delay_ms + 999) // 1000
@@ -72489,15 +74871,74 @@ class DatabaseImplementationDaemon:
                     task,
                     expected_retry_evidence=validation_retry_evidence,
                 )
+            if protected_path_recovery_evidence is not None:
+                self._verified_protected_path_recovery_state(
+                    attempt,
+                    task,
+                    expected_recovery_evidence=(
+                        protected_path_recovery_evidence
+                    ),
+                    expected_recovery_budget=protected_path_recovery_budget,
+                )
+            if external_protected_checkout_recovery_evidence is not None:
+                self._verified_external_protected_checkout_recovery_state(
+                    attempt,
+                    task,
+                    expected_recovery_evidence=(
+                        external_protected_checkout_recovery_evidence
+                    ),
+                )
+            if inflight_process_recovery_evidence is not None:
+                self._verified_inflight_process_recovery_state(
+                    attempt,
+                    task,
+                    expected_recovery_evidence=(
+                        inflight_process_recovery_evidence
+                    ),
+                )
+            if validation_retry_seed_conflict_recovery_evidence is not None:
+                self._verified_validation_retry_seed_conflict_recovery_state(
+                    attempt,
+                    task,
+                    expected_recovery_evidence=(
+                        validation_retry_seed_conflict_recovery_evidence
+                    ),
+                )
+            if leftover_wait_deferral_budget_recovery_evidence is not None:
+                self._verified_leftover_wait_deferral_budget_recovery_state(
+                    attempt,
+                    task,
+                    expected_recovery_evidence=(
+                        leftover_wait_deferral_budget_recovery_evidence
+                    ),
+                )
+            if pooled_worktree_create_recovery_evidence is not None:
+                self._verified_pooled_worktree_create_recovery_state(
+                    attempt,
+                    task,
+                    expected_recovery_evidence=(
+                        pooled_worktree_create_recovery_evidence
+                    ),
+                )
             existing_entry = get_queue_entry(attempt.task_cid)
             if (
-                validation_retry_evidence is not None
+                (
+                    validation_retry_evidence is not None
+                    or protected_path_recovery_evidence is not None
+                    or external_protected_checkout_recovery_evidence is not None
+                    or inflight_process_recovery_evidence is not None
+                    or validation_retry_seed_conflict_recovery_evidence
+                    is not None
+                    or leftover_wait_deferral_budget_recovery_evidence
+                    is not None
+                    or pooled_worktree_create_recovery_evidence is not None
+                )
                 and existing_entry is not None
                 and str(getattr(existing_entry, "reason", "") or "")
                 != queue_reason
             ):
                 raise DatabaseImplementationConflictError(
-                    "validation retry recovery found a foreign queue entry"
+                    "typed retry recovery found a foreign queue entry"
                 )
             if existing_entry is None:
                 self._protect_retry_transition_authority(
@@ -72532,7 +74973,15 @@ class DatabaseImplementationDaemon:
             }
         blocked_recovery = (
             task_status == "blocked"
-            and validation_retry_evidence is not None
+            and (
+                validation_retry_evidence is not None
+                or protected_path_recovery_evidence is not None
+                or external_protected_checkout_recovery_evidence is not None
+                or inflight_process_recovery_evidence is not None
+                or validation_retry_seed_conflict_recovery_evidence is not None
+                or leftover_wait_deferral_budget_recovery_evidence is not None
+                or pooled_worktree_create_recovery_evidence is not None
+            )
         )
         if task_status != "in_progress" and not blocked_recovery:
             raise DatabaseImplementationConflictError(
@@ -72544,6 +74993,15 @@ class DatabaseImplementationDaemon:
         # between the two stores therefore fails closed as an in-progress but
         # cooled task; restart reconciliation will finish the exact CAS.
         queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            protected_path_recovery_evidence is not None
+            and queue_entry is not None
+            and str(getattr(queue_entry, "reason", "") or "")
+            != queue_reason
+        ):
+            raise DatabaseImplementationConflictError(
+                "typed recovery found a foreign queue entry"
+            )
         queue_reused = (
             queue_entry is not None
             and str(getattr(queue_entry, "reason", "") or "") == queue_reason
@@ -72576,7 +75034,19 @@ class DatabaseImplementationDaemon:
             new_status="retrying",
             receipt={
                 "operation": (
-                    "database_portal_validation_retry_recovery"
+                    "database_portal_protected_path_retry_recovery"
+                    if protected_path_recovery_evidence is not None
+                    else "database_portal_external_protected_checkout_retry_recovery"
+                    if external_protected_checkout_recovery_evidence is not None
+                    else "database_portal_inflight_process_retry_recovery"
+                    if inflight_process_recovery_evidence is not None
+                    else "database_portal_validation_retry_seed_conflict_retry_recovery"
+                    if validation_retry_seed_conflict_recovery_evidence is not None
+                    else "database_portal_leftover_wait_deferral_budget_retry_recovery"
+                    if leftover_wait_deferral_budget_recovery_evidence is not None
+                    else "database_portal_pooled_worktree_create_retry_recovery"
+                    if pooled_worktree_create_recovery_evidence is not None
+                    else "database_portal_validation_retry_recovery"
                     if blocked_recovery
                     else "database_portal_validation_retry"
                     if validation_retry_evidence is not None
@@ -72610,12 +75080,108 @@ class DatabaseImplementationDaemon:
                     if validation_retry_evidence is not None
                     else {}
                 ),
+                **(
+                    {
+                        "protected_path_recovery_seed": dict(
+                            protected_path_recovery_evidence
+                        ),
+                        "protected_path_recovery_budget": dict(
+                            protected_path_recovery_budget or {}
+                        ),
+                    }
+                    if protected_path_recovery_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "external_protected_checkout_recovery_seed": dict(
+                            external_protected_checkout_recovery_evidence
+                        ),
+                    }
+                    if external_protected_checkout_recovery_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "inflight_process_recovery_seed": dict(
+                            inflight_process_recovery_evidence
+                        ),
+                    }
+                    if inflight_process_recovery_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "validation_retry_seed_conflict_recovery_seed": dict(
+                            validation_retry_seed_conflict_recovery_evidence
+                        ),
+                    }
+                    if validation_retry_seed_conflict_recovery_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "leftover_wait_deferral_budget_recovery_seed": dict(
+                            leftover_wait_deferral_budget_recovery_evidence
+                        ),
+                    }
+                    if leftover_wait_deferral_budget_recovery_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "pooled_worktree_create_recovery_seed": dict(
+                            pooled_worktree_create_recovery_evidence
+                        ),
+                    }
+                    if pooled_worktree_create_recovery_evidence is not None
+                    else {}
+                ),
                 "control_expected_status": task_status,
                 "control_expected_revision": int(task.revision),
             },
             evidence_digests=(
                 [str(validation_retry_evidence["events_digest"])]
                 if validation_retry_evidence is not None
+                else [
+                    str(protected_path_recovery_evidence["events_digest"]),
+                    str(
+                        protected_path_recovery_evidence[
+                            "clearance_receipt_digest"
+                        ]
+                    ),
+                ]
+                if protected_path_recovery_evidence is not None
+                else [
+                    str(
+                        external_protected_checkout_recovery_evidence[
+                            "receipt_id"
+                        ]
+                    )
+                ]
+                if external_protected_checkout_recovery_evidence is not None
+                else [str(inflight_process_recovery_evidence["receipt_id"])]
+                if inflight_process_recovery_evidence is not None
+                else [
+                    str(
+                        validation_retry_seed_conflict_recovery_evidence[
+                            "receipt_id"
+                        ]
+                    )
+                ]
+                if validation_retry_seed_conflict_recovery_evidence is not None
+                else [
+                    str(
+                        leftover_wait_deferral_budget_recovery_evidence[
+                            "receipt_id"
+                        ]
+                    )
+                ]
+                if leftover_wait_deferral_budget_recovery_evidence is not None
+                else [
+                    str(pooled_worktree_create_recovery_evidence["receipt_id"])
+                ]
+                if pooled_worktree_create_recovery_evidence is not None
                 else None
             ),
         )
@@ -72805,6 +75371,1618 @@ class DatabaseImplementationDaemon:
         result["coordination"] = coordination
         result["validation_retry_evidence"] = verified
         return result
+
+    def recover_blocked_portal_protected_path_retry(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        recovery_evidence: Mapping[str, Any],
+        recovery_budget: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Rearm one proved ephemeral-worktree disposal as a fresh attempt.
+
+        This never completes the source attempt and never reuses its provider,
+        effect, or validation state.  The bridge proves that the apparent
+        protected mutation was only wholesale workspace disposal; this layer
+        independently binds that receipt to the latest failed fence, consumes
+        the ordinary bounded attempt budget, and performs blocked-to-retrying
+        through the canonical queue and task CAS.
+        """
+
+        self._require_execution_authority("protected-path retry recovery")
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected-path recovery requires an exact failed attempt"
+            )
+        current = persisted
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(current.task_cid)
+        if latest is None or latest.attempt_id != current.attempt_id:
+            raise DatabaseImplementationConflictError(
+                "protected-path recovery rejected a superseded attempt"
+            )
+        history = self.phase_history(current.attempt_id)
+        failed = [
+            phase for phase in history if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        body = failed[-1].get("body") if failed else None
+        committed_effect_phases = {
+            ATTEMPT_PHASE_PROVIDER,
+            ATTEMPT_PHASE_EFFECT,
+            ATTEMPT_PHASE_VALIDATION,
+            ATTEMPT_PHASE_COMPLETE,
+        }.intersection(
+            str(phase.get("phase") or "") for phase in history
+        )
+        if (
+            not isinstance(body, Mapping)
+            or body.get("portal_terminal_failure") is not True
+            or body.get("portal_retryable_failure") is True
+            or body.get("reason") != "implementation_protected_path_mutated"
+            or committed_effect_phases
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery is limited to an uncommitted outer "
+                "provider failure with the exact protected-path reason"
+            )
+        verified = self._verified_protected_path_recovery_receipt(
+            current,
+            recovery_evidence,
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery task disappeared"
+            )
+        if self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery rejected a manual/review-only task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "protected-path recovery requires blocked or exact retrying "
+                f"control state, observed {status!r}"
+            )
+        budget = (
+            self._verified_protected_path_recovery_budget(
+                current,
+                recovery_budget,
+            )
+            if recovery_budget is not None
+            else self._protected_path_recovery_budget_observation(current)
+        )
+        if budget.get("exhausted") is True:
+            raise DatabaseImplementationAuthorityError(
+                "protected-path recovery exhausted max_task_attempts"
+            )
+        coordination = self._reconcile_failed_attempt_coordination(current)
+        result = self._persist_task_retry_state(
+            current,
+            reason="ephemeral_workspace_protected_deletions_recovered",
+            backoff_ms=0,
+            evidence_source=(
+                "typed_portal_protected_path_recovery:"
+                + str(verified["receipt_id"])
+            ),
+            coordination_evidence=coordination,
+            protected_path_recovery_evidence=verified,
+            protected_path_recovery_budget=budget,
+        )
+        result["coordination"] = coordination
+        result["protected_path_recovery_evidence"] = verified
+        result["protected_path_recovery_budget"] = budget
+        return result
+
+    def reconcile_blocked_protected_path_recoveries(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Automatically rearm only bridge-proved protected-path false alarms."""
+
+        self._require_execution_authority("protected-path recovery reconciliation")
+        callback = self._protected_path_recovery_fn
+        if not callable(callback):
+            return []
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            if (
+                self._terminal_portal_failure_reason(attempt)
+                != "implementation_protected_path_mutated"
+            ):
+                continue
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if status == "retrying":
+                self._verified_protected_path_recovery_state(attempt, task)
+                self._reconcile_failed_attempt_coordination(attempt)
+                continue
+            if status != "blocked":
+                continue
+            if self._automatic_claim_forbidden(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "manual_or_review_only_task",
+                    }
+                )
+                continue
+            try:
+                budget = self._protected_path_recovery_budget_observation(
+                    attempt
+                )
+            except Exception as exc:
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "protected_path_recovery_budget_unavailable",
+                        "error_type": type(exc).__name__,
+                    }
+                )
+                continue
+            if budget.get("exhausted") is True:
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "protected_path_recovery_budget_exhausted",
+                        "protected_path_recovery_budget": budget,
+                    }
+                )
+                continue
+            try:
+                evidence = callback(attempt)
+                outcome = self.recover_blocked_portal_protected_path_retry(
+                    attempt,
+                    recovery_evidence=evidence,
+                    recovery_budget=budget,
+                )
+            except Exception as exc:
+                # The bridge is an evidence producer, never completion
+                # authority.  Missing, malformed, stale, or genuinely unsafe
+                # evidence leaves the canonical task blocked while other work
+                # remains available to the supervisor.
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "protected_path_recovery_not_admitted",
+                        "error_type": type(exc).__name__,
+                    }
+                )
+                continue
+            outcomes.append(outcome)
+        return outcomes
+
+    def recover_blocked_portal_external_protected_checkout_retry(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        recovery_evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm one leftover supervisor-lock block after the lock is gone.
+
+        The historical failed phase stays immutable.  The bridge proves only
+        that the shared checkout mutation lock is absent; this layer binds
+        that receipt to the latest failed fence and performs blocked-to-
+        retrying through the canonical queue and task CAS.  It never
+        interprets another owner's signed recovery journal.
+        """
+
+        self._require_execution_authority("external checkout retry recovery")
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery requires an exact failed attempt"
+            )
+        current = persisted
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(current.task_cid)
+        if latest is None or latest.attempt_id != current.attempt_id:
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery rejected a superseded attempt"
+            )
+        history = self.phase_history(current.attempt_id)
+        failed = [
+            phase for phase in history if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        body = failed[-1].get("body") if failed else None
+        committed_effect_phases = {
+            ATTEMPT_PHASE_PROVIDER,
+            ATTEMPT_PHASE_EFFECT,
+            ATTEMPT_PHASE_VALIDATION,
+            ATTEMPT_PHASE_COMPLETE,
+        }.intersection(
+            str(phase.get("phase") or "") for phase in history
+        )
+        if (
+            not isinstance(body, Mapping)
+            or body.get("portal_terminal_failure") is not True
+            or body.get("portal_retryable_failure") is True
+            or body.get("reason")
+            != "external_protected_checkout_recovery_required"
+            or committed_effect_phases
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery is limited to an uncommitted outer "
+                "provider failure with the exact leftover-lock reason"
+            )
+        verified = self._verified_external_protected_checkout_recovery_receipt(
+            current,
+            recovery_evidence,
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery task disappeared"
+            )
+        if self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "external checkout recovery rejected a manual/review-only task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "external checkout recovery requires blocked or exact retrying "
+                f"control state, observed {status!r}"
+            )
+        coordination = self._reconcile_failed_attempt_coordination(current)
+        result = self._persist_task_retry_state(
+            current,
+            reason="external_protected_checkout_lock_absent",
+            backoff_ms=0,
+            evidence_source=(
+                "typed_portal_external_protected_checkout_recovery:"
+                + str(verified["receipt_id"])
+            ),
+            coordination_evidence=coordination,
+            external_protected_checkout_recovery_evidence=verified,
+        )
+        result["coordination"] = coordination
+        result["external_protected_checkout_recovery_evidence"] = verified
+        return result
+
+    def reconcile_blocked_external_protected_checkout_recoveries(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Automatically rearm leftover supervisor-lock blocks once cleared."""
+
+        self._require_execution_authority(
+            "external checkout recovery reconciliation"
+        )
+        callback = self._external_protected_checkout_recovery_fn
+        if not callable(callback):
+            return []
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            if (
+                self._terminal_portal_failure_reason(attempt)
+                != "external_protected_checkout_recovery_required"
+            ):
+                continue
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if status == "retrying":
+                self._verified_external_protected_checkout_recovery_state(
+                    attempt,
+                    task,
+                )
+                self._reconcile_failed_attempt_coordination(attempt)
+                continue
+            if status != "blocked":
+                continue
+            if self._automatic_claim_forbidden(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "manual_or_review_only_task",
+                    }
+                )
+                continue
+            try:
+                evidence = callback(attempt)
+                outcome = (
+                    self.recover_blocked_portal_external_protected_checkout_retry(
+                        attempt,
+                        recovery_evidence=evidence,
+                    )
+                )
+            except Exception as exc:
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "external_protected_checkout_recovery_not_admitted",
+                        "error_type": type(exc).__name__,
+                    }
+                )
+                continue
+            outcomes.append(outcome)
+        return outcomes
+
+    def recover_blocked_portal_inflight_process_retry(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        recovery_evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm one leftover inflight skip after the runner is gone."""
+
+        self._require_execution_authority("inflight-process retry recovery")
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "inflight-process recovery requires an exact failed attempt"
+            )
+        current = persisted
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(current.task_cid)
+        if latest is None or latest.attempt_id != current.attempt_id:
+            raise DatabaseImplementationConflictError(
+                "inflight-process recovery rejected a superseded attempt"
+            )
+        history = self.phase_history(current.attempt_id)
+        failed = [
+            phase for phase in history if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        body = failed[-1].get("body") if failed else None
+        if (
+            not isinstance(body, Mapping)
+            or body.get("portal_terminal_failure") is not True
+            or body.get("portal_retryable_failure") is True
+            or body.get("reason") != "inflight_process"
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "inflight-process recovery is limited to a terminal Portal "
+                "failure with the exact leftover-runner reason"
+            )
+        verified = self._verified_inflight_process_recovery_receipt(
+            current,
+            recovery_evidence,
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "inflight-process recovery task disappeared"
+            )
+        if self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "inflight-process recovery rejected a manual/review-only task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "inflight-process recovery requires blocked or exact retrying "
+                f"control state, observed {status!r}"
+            )
+        try:
+            coordination = self._reconcile_failed_attempt_coordination(current)
+        except (
+            DatabaseImplementationAuthorityError,
+            DatabaseImplementationConflictError,
+        ):
+            coordination = {
+                "claim_id": current.claim_id,
+                "attempt_id": current.attempt_id,
+                "attempt_number": int(current.attempt_number),
+                "lease_state": "expired",
+                "claim_state": "expired",
+                "claim_revision": 0,
+                "coordination_attempt_status": "failed",
+                "coordination_attempt_revision": int(current.revision),
+                "expires_at_ms": 0,
+                "observed_at_ms": self._now_ms(),
+                "expired_now": False,
+                "claim_absent": True,
+            }
+        result = self._persist_task_retry_state(
+            current,
+            reason="inflight_process_absent",
+            backoff_ms=0,
+            evidence_source=(
+                "typed_portal_inflight_process_recovery:"
+                + str(verified["receipt_id"])
+            ),
+            coordination_evidence=coordination,
+            inflight_process_recovery_evidence=verified,
+        )
+        result["coordination"] = coordination
+        result["inflight_process_recovery_evidence"] = verified
+        return result
+
+    def reconcile_blocked_inflight_process_recoveries(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Automatically rearm leftover inflight skips once the runner is gone."""
+
+        self._require_execution_authority("inflight-process recovery reconciliation")
+        callback = self._inflight_process_recovery_fn
+        if not callable(callback):
+            return []
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            if self._terminal_portal_failure_reason(attempt) != "inflight_process":
+                continue
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if status == "retrying":
+                self._verified_inflight_process_recovery_state(attempt, task)
+                self._reconcile_failed_attempt_coordination(attempt)
+                continue
+            if status != "blocked":
+                continue
+            if self._automatic_claim_forbidden(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "manual_or_review_only_task",
+                    }
+                )
+                continue
+            try:
+                evidence = callback(attempt)
+                outcome = self.recover_blocked_portal_inflight_process_retry(
+                    attempt,
+                    recovery_evidence=evidence,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "inflight-process recovery not admitted for %s: %s: %s",
+                    attempt.attempt_id,
+                    type(exc).__name__,
+                    str(exc)[:512],
+                )
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "inflight_process_recovery_not_admitted",
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:512],
+                    }
+                )
+                continue
+            outcomes.append(outcome)
+        return outcomes
+
+    def recover_blocked_portal_validation_retry_seed_conflict_retry(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        recovery_evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm one leftover seed-conflict block after identity-bound progress."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
+        )
+
+        self._require_execution_authority(
+            "validation-retry seed-conflict retry recovery"
+        )
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery requires an exact "
+                "failed attempt"
+            )
+        current = persisted
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(current.task_cid)
+        if latest is None or latest.attempt_id != current.attempt_id:
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery rejected a superseded "
+                "attempt"
+            )
+        history = self.phase_history(current.attempt_id)
+        failed = [
+            phase for phase in history if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        body = failed[-1].get("body") if failed else None
+        if (
+            not isinstance(body, Mapping)
+            or body.get("portal_terminal_failure") is not True
+            or body.get("portal_retryable_failure") is True
+            or body.get("reason")
+            != DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery is limited to a "
+                "terminal Portal failure with the exact leftover seed reason"
+            )
+        verified = self._verified_validation_retry_seed_conflict_recovery_receipt(
+            current,
+            recovery_evidence,
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery task disappeared"
+            )
+        if self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "validation-retry seed-conflict recovery rejected a "
+                "manual/review-only task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "validation-retry seed-conflict recovery requires blocked or "
+                f"exact retrying control state, observed {status!r}"
+            )
+        try:
+            coordination = self._reconcile_failed_attempt_coordination(current)
+        except (
+            DatabaseImplementationAuthorityError,
+            DatabaseImplementationConflictError,
+        ):
+            coordination = {
+                "claim_id": current.claim_id,
+                "attempt_id": current.attempt_id,
+                "attempt_number": int(current.attempt_number),
+                "lease_state": "expired",
+                "claim_state": "expired",
+                "claim_revision": 0,
+                "coordination_attempt_status": "failed",
+                "coordination_attempt_revision": int(current.revision),
+                "expires_at_ms": 0,
+                "observed_at_ms": self._now_ms(),
+                "expired_now": False,
+                "claim_absent": True,
+            }
+        result = self._persist_task_retry_state(
+            current,
+            reason="validation_retry_seed_state_progressed",
+            backoff_ms=0,
+            evidence_source=(
+                "typed_portal_validation_retry_seed_conflict_recovery:"
+                + str(verified["receipt_id"])
+            ),
+            coordination_evidence=coordination,
+            validation_retry_seed_conflict_recovery_evidence=verified,
+        )
+        result["coordination"] = coordination
+        result["validation_retry_seed_conflict_recovery_evidence"] = verified
+        return result
+
+    def reconcile_blocked_validation_retry_seed_conflict_recoveries(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Automatically rearm leftover seed-conflict blocks once proved safe."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
+        )
+
+        self._require_execution_authority(
+            "validation-retry seed-conflict recovery reconciliation"
+        )
+        callback = self._validation_retry_seed_conflict_recovery_fn
+        if not callable(callback):
+            return []
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            if (
+                self._terminal_portal_failure_reason(attempt)
+                != DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+            ):
+                continue
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if status == "retrying":
+                self._verified_validation_retry_seed_conflict_recovery_state(
+                    attempt,
+                    task,
+                )
+                self._reconcile_failed_attempt_coordination(attempt)
+                continue
+            if status != "blocked":
+                continue
+            if self._automatic_claim_forbidden(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "manual_or_review_only_task",
+                    }
+                )
+                continue
+            try:
+                evidence = callback(attempt)
+                outcome = (
+                    self.recover_blocked_portal_validation_retry_seed_conflict_retry(
+                        attempt,
+                        recovery_evidence=evidence,
+                    )
+                )
+            except Exception as exc:
+                logger.warning(
+                    "validation-retry seed-conflict recovery not admitted "
+                    "for %s: %s: %s",
+                    attempt.attempt_id,
+                    type(exc).__name__,
+                    str(exc)[:512],
+                )
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": (
+                            "validation_retry_seed_conflict_recovery_not_admitted"
+                        ),
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:512],
+                    }
+                )
+                continue
+            outcomes.append(outcome)
+        return outcomes
+
+    def _finalize_leftover_wait_deferral_budget_recovery_receipt(
+        self,
+        *,
+        attempt: DatabaseTaskAttempt,
+        exhausting_reasons: Sequence[str],
+    ) -> dict[str, Any]:
+        reasons = sorted({str(reason) for reason in exhausting_reasons})
+        receipt = {
+            "schema": (
+                _DATABASE_PORTAL_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA
+            ),
+            "disposition": "retry",
+            "reason": "leftover_wait_deferral_budget_cleared",
+            "source_reason": "typed_portal_deferral_budget_exhausted",
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(attempt.task_alias or ""),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(attempt.lease_id or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "exhausting_reasons": reasons,
+            "identity_bound": True,
+            "backoff_seconds": 0,
+            "attempt_consumed": False,
+        }
+        receipt["receipt_id"] = self._database_portal_evidence_digest(receipt)
+        return receipt
+
+    def _verified_leftover_wait_deferral_budget_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed leftover-wait deferral-budget recovery evidence is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "exhausting_reasons",
+            "identity_bound",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(raw) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "typed leftover-wait deferral-budget recovery evidence has "
+                "unknown or missing fields"
+            )
+        body = dict(raw)
+        receipt_id = body.pop("receipt_id", None)
+        reasons = raw.get("exhausting_reasons")
+        if (
+            raw.get("schema")
+            != _DATABASE_PORTAL_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA
+            or raw.get("disposition") != "retry"
+            or raw.get("reason") != "leftover_wait_deferral_budget_cleared"
+            or raw.get("source_reason")
+            != "typed_portal_deferral_budget_exhausted"
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_alias") != attempt.task_alias
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("lease_id") != attempt.lease_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("fencing_token") != int(attempt.fencing_token)
+            or raw.get("fence_epoch") != int(attempt.fence_epoch)
+            or not isinstance(reasons, list)
+            or not reasons
+            or any(
+                type(reason) is not str
+                or reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+                for reason in reasons
+            )
+            or reasons != sorted(set(reasons))
+            or raw.get("identity_bound") is not True
+            or raw.get("backoff_seconds") != 0
+            or raw.get("attempt_consumed") is not False
+            or receipt_id != self._database_portal_evidence_digest(body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed leftover-wait deferral-budget recovery evidence failed "
+                "independent verification"
+            )
+        return dict(raw)
+
+    def _verified_leftover_wait_deferral_budget_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        if not isinstance(task_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery task has no typed body"
+            )
+        receipt = task_body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery task has no control receipt"
+            )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "leftover_wait_deferral_budget_recovery_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery control receipt has "
+                "unknown or missing fields"
+            )
+        recovery_seed = self._verified_leftover_wait_deferral_budget_recovery_receipt(
+            attempt,
+            receipt.get("leftover_wait_deferral_budget_recovery_seed"),
+        )
+        if (
+            expected_recovery_evidence is not None
+            and dict(expected_recovery_evidence) != recovery_seed
+        ):
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery control receipt has a "
+                "foreign seed"
+            )
+        task_revision = getattr(task, "revision", None)
+        if isinstance(task_revision, bool) or not isinstance(task_revision, int):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery task has no exact revision"
+            )
+        reason = "leftover_wait_deferral_budget_cleared"
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:{reason}"
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        identity_mismatch = (
+            receipt.get("operation")
+            != "database_portal_leftover_wait_deferral_budget_retry_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("reason") != reason
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_leftover_wait_deferral_budget_recovery:"
+                + str(recovery_seed["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != task_revision - 1
+        )
+        if identity_mismatch:
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery control receipt does "
+                "not match its source attempt"
+            )
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery has an invalid queue "
+                "deadline"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify leftover-wait deferral-budget "
+                "recovery queue state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery queue state does not "
+                "match its receipt"
+            )
+        return {
+            "receipt": dict(receipt),
+            "leftover_wait_deferral_budget_recovery_evidence": recovery_seed,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
+    def recover_blocked_leftover_wait_deferral_budget_retry(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        recovery_evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm leftover-wait budget exhaustion so waits no longer terminalize."""
+
+        self._require_execution_authority(
+            "leftover-wait deferral-budget retry recovery"
+        )
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery requires an exact "
+                "failed attempt"
+            )
+        current = persisted
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(current.task_cid)
+        if latest is None or latest.attempt_id != current.attempt_id:
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery rejected a superseded "
+                "attempt"
+            )
+        verified = self._verified_leftover_wait_deferral_budget_recovery_receipt(
+            current,
+            recovery_evidence,
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery task disappeared"
+            )
+        if self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery rejected a "
+                "manual/review-only task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "leftover-wait deferral-budget recovery requires blocked or "
+                f"exact retrying control state, observed {status!r}"
+            )
+        task_body = getattr(task, "body", None)
+        blocked_receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        if status == "blocked" and (
+            not isinstance(blocked_receipt, Mapping)
+            or blocked_receipt.get("operation")
+            != "database_portal_typed_deferral_budget_exhausted"
+            or blocked_receipt.get("reason")
+            != "typed_portal_deferral_budget_exhausted"
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait deferral-budget recovery is limited to an "
+                "exact leftover-wait budget-exhausted block"
+            )
+        try:
+            coordination = self._reconcile_failed_attempt_coordination(current)
+        except (
+            DatabaseImplementationAuthorityError,
+            DatabaseImplementationConflictError,
+        ):
+            coordination = {
+                "claim_id": current.claim_id,
+                "attempt_id": current.attempt_id,
+                "attempt_number": int(current.attempt_number),
+                "lease_state": "expired",
+                "claim_state": "expired",
+                "claim_revision": 0,
+                "coordination_attempt_status": "failed",
+                "coordination_attempt_revision": int(current.revision),
+                "expires_at_ms": 0,
+                "observed_at_ms": self._now_ms(),
+                "expired_now": False,
+                "claim_absent": True,
+            }
+        result = self._persist_task_retry_state(
+            current,
+            reason="leftover_wait_deferral_budget_cleared",
+            backoff_ms=0,
+            evidence_source=(
+                "typed_portal_leftover_wait_deferral_budget_recovery:"
+                + str(verified["receipt_id"])
+            ),
+            coordination_evidence=coordination,
+            leftover_wait_deferral_budget_recovery_evidence=verified,
+        )
+        result["coordination"] = coordination
+        result["leftover_wait_deferral_budget_recovery_evidence"] = verified
+        return result
+
+    def reconcile_blocked_leftover_wait_deferral_budget_recoveries(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Rearm leftover-wait budget exhaustion so those waits stay waits."""
+
+        self._require_execution_authority(
+            "leftover-wait deferral-budget recovery reconciliation"
+        )
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if status == "retrying":
+                task_body = getattr(task, "body", None)
+                receipt = (
+                    task_body.get("completion_receipt")
+                    if isinstance(task_body, Mapping)
+                    else None
+                )
+                operation = (
+                    str(receipt.get("operation") or "")
+                    if isinstance(receipt, Mapping)
+                    else ""
+                )
+                if (
+                    operation
+                    == "database_portal_leftover_wait_deferral_budget_retry_recovery"
+                ):
+                    self._verified_leftover_wait_deferral_budget_recovery_state(
+                        attempt,
+                        task,
+                    )
+                    self._reconcile_failed_attempt_coordination(attempt)
+                continue
+            if status != "blocked":
+                continue
+            if self._automatic_claim_forbidden(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "manual_or_review_only_task",
+                    }
+                )
+                continue
+            task_body = getattr(task, "body", None)
+            blocked_receipt = (
+                task_body.get("completion_receipt")
+                if isinstance(task_body, Mapping)
+                else None
+            )
+            if (
+                not isinstance(blocked_receipt, Mapping)
+                or blocked_receipt.get("operation")
+                != "database_portal_typed_deferral_budget_exhausted"
+                or blocked_receipt.get("reason")
+                != "typed_portal_deferral_budget_exhausted"
+            ):
+                continue
+            budget = blocked_receipt.get("retry_budget")
+            matching = (
+                budget.get("matching_attempts")
+                if isinstance(budget, Mapping)
+                else None
+            )
+            if not isinstance(matching, list) or not matching:
+                continue
+            exhausting_reasons = [
+                str(item.get("reason") or "")
+                for item in matching
+                if isinstance(item, Mapping)
+            ]
+            if (
+                len(exhausting_reasons) != len(matching)
+                or not exhausting_reasons
+                or any(
+                    reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+                    for reason in exhausting_reasons
+                )
+            ):
+                continue
+            try:
+                evidence = self._finalize_leftover_wait_deferral_budget_recovery_receipt(
+                    attempt=attempt,
+                    exhausting_reasons=exhausting_reasons,
+                )
+                outcome = self.recover_blocked_leftover_wait_deferral_budget_retry(
+                    attempt,
+                    recovery_evidence=evidence,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "leftover-wait deferral-budget recovery not admitted "
+                    "for %s: %s: %s",
+                    attempt.attempt_id,
+                    type(exc).__name__,
+                    str(exc)[:512],
+                )
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": (
+                            "leftover_wait_deferral_budget_recovery_not_admitted"
+                        ),
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:512],
+                    }
+                )
+                continue
+            outcomes.append(outcome)
+        return outcomes
+
+    def _verified_pooled_worktree_create_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
+            DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA,
+            DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "typed pooled-worktree create recovery evidence is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "worktree_path",
+            "worktree_present",
+            "identity_bound",
+            "backoff_seconds",
+            "attempt_consumed",
+            "receipt_id",
+        }
+        if set(raw) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "typed pooled-worktree create recovery evidence has unknown or "
+                "missing fields"
+            )
+        body = dict(raw)
+        receipt_id = body.pop("receipt_id", None)
+        if (
+            raw.get("schema")
+            != DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA
+            or raw.get("disposition") != "retry"
+            or raw.get("reason")
+            != DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON
+            or raw.get("source_reason")
+            != DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_alias") != attempt.task_alias
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("lease_id") != attempt.lease_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("fencing_token") != int(attempt.fencing_token)
+            or raw.get("fence_epoch") != int(attempt.fence_epoch)
+            or raw.get("worktree_present") is not False
+            or raw.get("identity_bound") is not True
+            or raw.get("backoff_seconds") != 0
+            or raw.get("attempt_consumed") is not False
+            or receipt_id != self._database_portal_evidence_digest(body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed pooled-worktree create recovery evidence failed "
+                "independent verification"
+            )
+        return dict(raw)
+
+    def _verified_pooled_worktree_create_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
+        )
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        if not isinstance(task_body, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery task has no typed body"
+            )
+        receipt = task_body.get("completion_receipt")
+        if not isinstance(receipt, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery task has no control receipt"
+            )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "pooled_worktree_create_recovery_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery control receipt has unknown or "
+                "missing fields"
+            )
+        recovery_seed = self._verified_pooled_worktree_create_recovery_receipt(
+            attempt,
+            receipt.get("pooled_worktree_create_recovery_seed"),
+        )
+        if (
+            expected_recovery_evidence is not None
+            and dict(expected_recovery_evidence) != recovery_seed
+        ):
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery control receipt has a foreign seed"
+            )
+        task_revision = getattr(task, "revision", None)
+        if isinstance(task_revision, bool) or not isinstance(task_revision, int):
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery task has no exact revision"
+            )
+        reason = DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:{reason}"
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        identity_mismatch = (
+            receipt.get("operation")
+            != "database_portal_pooled_worktree_create_retry_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("reason") != reason
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_pooled_worktree_create_recovery:"
+                + str(recovery_seed["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != task_revision - 1
+        )
+        if identity_mismatch:
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery control receipt does not "
+                "match its source attempt"
+            )
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery has an invalid queue deadline"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify pooled-worktree create recovery "
+                "queue state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery queue state does not match "
+                "its receipt"
+            )
+        if self._terminal_portal_failure_reason(attempt) != "portal_provider_failed":
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery does not supersede this "
+                "terminal failure"
+            )
+        return {
+            "receipt": dict(receipt),
+            "pooled_worktree_create_recovery_evidence": recovery_seed,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
+    def recover_blocked_portal_pooled_worktree_create_retry(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        recovery_evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm a leftover pooled-worktree create interrupt."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
+        )
+
+        self._require_execution_authority("pooled-worktree create retry recovery")
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery requires an exact failed attempt"
+            )
+        current = persisted
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(current.task_cid)
+        if latest is None or latest.attempt_id != current.attempt_id:
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery rejected a superseded attempt"
+            )
+        history = self.phase_history(current.attempt_id)
+        failed = [
+            phase for phase in history if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        body = failed[-1].get("body") if failed else None
+        if (
+            not isinstance(body, Mapping)
+            or body.get("portal_terminal_failure") is not True
+            or body.get("portal_retryable_failure") is True
+            or body.get("reason") != "portal_provider_failed"
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery is limited to a terminal "
+                "Portal failure with the exact leftover worktree-setup reason"
+            )
+        verified = self._verified_pooled_worktree_create_recovery_receipt(
+            current,
+            recovery_evidence,
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery task disappeared"
+            )
+        if self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "pooled-worktree create recovery rejected a manual/review-only "
+                "task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "pooled-worktree create recovery requires blocked or exact "
+                f"retrying control state, observed {status!r}"
+            )
+        try:
+            coordination = self._reconcile_failed_attempt_coordination(current)
+        except (
+            DatabaseImplementationAuthorityError,
+            DatabaseImplementationConflictError,
+        ):
+            coordination = {
+                "claim_id": current.claim_id,
+                "attempt_id": current.attempt_id,
+                "attempt_number": int(current.attempt_number),
+                "lease_state": "expired",
+                "claim_state": "expired",
+                "claim_revision": 0,
+                "coordination_attempt_status": "failed",
+                "coordination_attempt_revision": int(current.revision),
+                "expires_at_ms": 0,
+                "observed_at_ms": self._now_ms(),
+                "expired_now": False,
+                "claim_absent": True,
+            }
+        result = self._persist_task_retry_state(
+            current,
+            reason=DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
+            backoff_ms=0,
+            evidence_source=(
+                "typed_portal_pooled_worktree_create_recovery:"
+                + str(verified["receipt_id"])
+            ),
+            coordination_evidence=coordination,
+            pooled_worktree_create_recovery_evidence=verified,
+        )
+        result["coordination"] = coordination
+        result["pooled_worktree_create_recovery_evidence"] = verified
+        return result
+
+    def reconcile_blocked_pooled_worktree_create_recoveries(
+        self,
+    ) -> list[dict[str, Any]]:
+        """Automatically rearm leftover pooled-worktree create interrupts."""
+
+        self._require_execution_authority(
+            "pooled-worktree create recovery reconciliation"
+        )
+        callback = self._pooled_worktree_create_recovery_fn
+        if not callable(callback):
+            return []
+        outcomes: list[dict[str, Any]] = []
+        for attempt in self._latest_failed_attempts():
+            if self._terminal_portal_failure_reason(attempt) != "portal_provider_failed":
+                continue
+            task = self.task_source.get(attempt.task_cid)
+            if task is None:
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no control task"
+                )
+            status = str(task.status or "").strip().lower()
+            if status == "retrying":
+                self._verified_pooled_worktree_create_recovery_state(attempt, task)
+                self._reconcile_failed_attempt_coordination(attempt)
+                continue
+            if status != "blocked":
+                continue
+            if self._automatic_claim_forbidden(task):
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "manual_or_review_only_task",
+                    }
+                )
+                continue
+            try:
+                evidence = callback(attempt)
+                outcome = self.recover_blocked_portal_pooled_worktree_create_retry(
+                    attempt,
+                    recovery_evidence=evidence,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "pooled-worktree create recovery not admitted for %s: %s: %s",
+                    attempt.attempt_id,
+                    type(exc).__name__,
+                    str(exc)[:512],
+                )
+                outcomes.append(
+                    {
+                        "task_cid": attempt.task_cid,
+                        "attempt_id": attempt.attempt_id,
+                        "status": "blocked",
+                        "changed": False,
+                        "reason": "pooled_worktree_create_recovery_not_admitted",
+                        "error_type": type(exc).__name__,
+                        "error": str(exc)[:512],
+                    }
+                )
+                continue
+            outcomes.append(outcome)
+        return outcomes
 
     def _persist_typed_deferral_budget_exhausted(
         self,
@@ -74539,11 +78717,29 @@ class DatabaseImplementationDaemon:
     ) -> dict[str, Any]:
         """Validate and, when due, expire the failed attempt's exact fence."""
 
+        if self.coordinator.get_prepared_task_completion(attempt.task_cid) is not None:
+            raise DatabaseImplementationAuthorityError(
+                "retry reconciliation cannot cross a prepared completion barrier"
+            )
         claim = self.coordinator.get_task_claim(attempt.claim_id)
         if claim is None:
-            raise DatabaseImplementationAuthorityError(
-                f"failed attempt {attempt.attempt_id} has no coordination claim"
-            )
+            # A leftover blocked task may outlive its claim fence.  Absence of
+            # that exact fence is proof the crash window closed, not a reason
+            # to keep the control task blocked.
+            return {
+                "claim_id": attempt.claim_id,
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "lease_state": "expired",
+                "claim_state": "expired",
+                "claim_revision": 0,
+                "coordination_attempt_status": "failed",
+                "coordination_attempt_revision": int(attempt.revision),
+                "expires_at_ms": 0,
+                "observed_at_ms": self._now_ms(),
+                "expired_now": False,
+                "claim_absent": True,
+            }
         claim_identity = claim.to_dict()
         expected_claim_identity = {
             "task_cid": attempt.task_cid,
@@ -74568,9 +78764,20 @@ class DatabaseImplementationDaemon:
             attempt.attempt_id
         )
         if coordination_attempt is None:
-            raise DatabaseImplementationAuthorityError(
-                f"failed attempt {attempt.attempt_id} has no coordination attempt"
-            )
+            return {
+                "claim_id": attempt.claim_id,
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "lease_state": "expired",
+                "claim_state": "expired",
+                "claim_revision": int(getattr(claim, "revision", 0) or 0),
+                "coordination_attempt_status": "failed",
+                "coordination_attempt_revision": int(attempt.revision),
+                "expires_at_ms": int(getattr(claim, "expires_at_ms", 0) or 0),
+                "observed_at_ms": self._now_ms(),
+                "expired_now": False,
+                "claim_absent": False,
+            }
         attempt_identity = coordination_attempt.to_dict()
         for key in (
             "task_cid",
@@ -74619,10 +78826,24 @@ class DatabaseImplementationDaemon:
                 "expired_now": False,
             }
         if claim_state not in {"accepted", "expired"}:
-            raise DatabaseImplementationAuthorityError(
-                "retryable failed attempt has incompatible coordination state "
-                f"{claim_state!r}"
-            )
+            return {
+                "claim_id": attempt.claim_id,
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "lease_state": str(claim_state or "expired"),
+                "claim_state": "expired",
+                "claim_revision": int(getattr(claim, "revision", 0) or 0),
+                "coordination_attempt_status": str(
+                    attempt_identity.get("status") or ""
+                ),
+                "coordination_attempt_revision": int(
+                    attempt_identity.get("revision") or 0
+                ),
+                "expires_at_ms": expires_at_ms,
+                "observed_at_ms": now,
+                "expired_now": False,
+                "claim_absent": False,
+            }
         expire_claim = getattr(self.coordinator, "expire_task_claim", None)
         if not callable(expire_claim):
             raise DatabaseImplementationAuthorityError(
@@ -74777,7 +78998,70 @@ class DatabaseImplementationDaemon:
                 # The immutable legacy attempt still says terminal failure.
                 # Suppress that old projection only when the exact typed
                 # blocked-to-retrying recovery and its latest fence reproduce.
-                self._verified_validation_retry_recovery_state(attempt, task)
+                task_body = getattr(task, "body", None)
+                receipt = (
+                    task_body.get("completion_receipt")
+                    if isinstance(task_body, Mapping)
+                    else None
+                )
+                operation = (
+                    str(receipt.get("operation") or "")
+                    if isinstance(receipt, Mapping)
+                    else ""
+                )
+                if (
+                    operation
+                    == "database_portal_protected_path_retry_recovery"
+                ):
+                    self._verified_protected_path_recovery_state(
+                        attempt,
+                        task,
+                    )
+                elif (
+                    operation
+                    == "database_portal_external_protected_checkout_retry_recovery"
+                ):
+                    self._verified_external_protected_checkout_recovery_state(
+                        attempt,
+                        task,
+                    )
+                elif (
+                    operation
+                    == "database_portal_inflight_process_retry_recovery"
+                ):
+                    self._verified_inflight_process_recovery_state(
+                        attempt,
+                        task,
+                    )
+                elif (
+                    operation
+                    == "database_portal_validation_retry_seed_conflict_retry_recovery"
+                ):
+                    self._verified_validation_retry_seed_conflict_recovery_state(
+                        attempt,
+                        task,
+                    )
+                elif (
+                    operation
+                    == "database_portal_leftover_wait_deferral_budget_retry_recovery"
+                ):
+                    self._verified_leftover_wait_deferral_budget_recovery_state(
+                        attempt,
+                        task,
+                    )
+                elif (
+                    operation
+                    == "database_portal_pooled_worktree_create_retry_recovery"
+                ):
+                    self._verified_pooled_worktree_create_recovery_state(
+                        attempt,
+                        task,
+                    )
+                else:
+                    self._verified_validation_retry_recovery_state(
+                        attempt,
+                        task,
+                    )
                 self._reconcile_failed_attempt_coordination(attempt)
                 continue
             if status != "in_progress":
@@ -75376,6 +79660,8 @@ class DatabaseImplementationDaemon:
             return self.resume_attempt(attempt)
         except Exception as exc:
             from .database_portal_bridge import (
+                DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON,
+                DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
                 DatabasePortalBridgeConsumedNoProgressError,
                 DatabasePortalBridgeDeferred,
                 DatabasePortalBridgeError,
@@ -75426,9 +79712,45 @@ class DatabaseImplementationDaemon:
                     "task_alias": attempt.task_alias,
                     "status": "failed",
                 }
+            portal_error_reason = self._database_portal_reason(str(exc))
+            recovery_owned_terminal_failure = bool(
+                isinstance(exc, DatabasePortalBridgeError)
+                and not isinstance(
+                    exc,
+                    (DatabasePortalBridgeDeferred, DatabasePortalValidationRetry),
+                )
+                and (
+                    (
+                        portal_error_reason
+                        == "implementation_protected_path_mutated"
+                    )
+                    or (
+                        portal_error_reason
+                        == "external_protected_checkout_recovery_required"
+                        and self._external_protected_checkout_recovery_fn
+                        is not None
+                    )
+                    or (
+                        portal_error_reason == "inflight_process"
+                        and self._inflight_process_recovery_fn is not None
+                    )
+                    or (
+                        portal_error_reason
+                        == DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON
+                        and self._validation_retry_seed_conflict_recovery_fn
+                        is not None
+                    )
+                    or (
+                        portal_error_reason
+                        == DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON
+                        and self._pooled_worktree_create_recovery_fn is not None
+                    )
+                )
+            )
             if (
                 isinstance(exc, DatabasePortalBridgeError)
                 and not isinstance(exc, DatabasePortalValidationRetry)
+                and not recovery_owned_terminal_failure
                 and (
                     not isinstance(exc, DatabasePortalBridgeDeferred)
                     or self._is_protected_checkout_setup_block(str(exc))
@@ -75458,7 +79780,7 @@ class DatabaseImplementationDaemon:
             if not isinstance(
                 exc,
                 (DatabasePortalBridgeDeferred, DatabasePortalValidationRetry),
-            ):
+            ) and not recovery_owned_terminal_failure:
                 # Generic Portal/provider failures carry no retry authority.
                 # The durable callback-start intent prevents a cold restart
                 # from invoking the same unknown outcome again.
@@ -75480,7 +79802,7 @@ class DatabaseImplementationDaemon:
                 if retryable
                 else 0
             )
-            reason = self._database_portal_reason(str(exc))
+            reason = portal_error_reason
             failed = None
             try:
                 # ``resume_attempt`` can durably advance one or more phases
@@ -75499,9 +79821,55 @@ class DatabaseImplementationDaemon:
                 if current is not None and current.status == "running":
                     claim = self._attempt_claim(current)
                     lease = self._protect_attempt_claim(current, claim)
+                    typed_deferral = (
+                        self._typed_deferral_receipt(
+                            current,
+                            reason=reason,
+                        )
+                        if deferred
+                        else None
+                    )
+                    typed_validation_retry = (
+                        self._verified_validation_retry_receipt(
+                            current,
+                            getattr(exc, "retry_receipt", None),
+                        )
+                        if validation_retry
+                        else None
+                    )
                     failure_body = {
-                        "reason": str(exc),
-                        "portal_retryable_failure": True,
+                        "reason": reason,
+                        "portal_retryable_failure": retryable,
+                        "portal_terminal_failure": not retryable,
+                        "deferred": deferred,
+                        "attempt_consumed": (
+                            getattr(exc, "attempt_consumed", False)
+                            if retryable
+                            else "unknown"
+                        ),
+                        "provider_dispatched": (
+                            getattr(exc, "provider_dispatched", False)
+                            if retryable
+                            else "unknown"
+                        ),
+                        "typed_deferral_slot_consumed": (
+                            True
+                            if deferred
+                            else False
+                            if validation_retry
+                            else "unknown"
+                        ),
+                        "backoff_seconds": backoff_seconds,
+                        **(
+                            {"typed_deferral": typed_deferral}
+                            if typed_deferral is not None
+                            else {}
+                        ),
+                        **(
+                            {"typed_validation_retry": typed_validation_retry}
+                            if typed_validation_retry is not None
+                            else {}
+                        ),
                     }
                     try:
                         failed = self.commit_phase(
@@ -75511,9 +79879,8 @@ class DatabaseImplementationDaemon:
                         )
                     except Exception as commit_exc:
                         # A response loss after the execution-store commit must
-                        # release only when the exact expected terminal body is
-                        # durable.  A status/phase-only match is not replay
-                        # authority because it may carry unrelated evidence.
+                        # proceed only when the exact terminal evidence is
+                        # durable.  Phase/status alone is not replay authority.
                         refreshed = self.get_attempt(attempt_id)
                         if not (
                             refreshed is not None
@@ -75531,72 +79898,6 @@ class DatabaseImplementationDaemon:
                                 "immutable failure evidence"
                             ) from commit_exc
                         failed = refreshed
-                    self.coordinator.release(
-                        lease,
-                        reason="portal_retryable_failure",
-                        expected_fencing_token=int(current.fencing_token),
-                        expected_fence_epoch=int(current.fence_epoch),
-                        now_ms=self._now_ms(),
-                    )
-
-                    typed_deferral = (
-                        self._typed_deferral_receipt(
-                            current,
-                            reason=reason,
-                        )
-                        if deferred
-                        else None
-                    )
-                    typed_validation_retry = (
-                        self._verified_validation_retry_receipt(
-                            current,
-                            getattr(exc, "retry_receipt", None),
-                        )
-                        if validation_retry
-                        else None
-                    )
-                    failed = self.commit_phase(
-                        current,
-                        ATTEMPT_PHASE_FAILED,
-                        body={
-                            "reason": reason,
-                            "portal_retryable_failure": retryable,
-                            "portal_terminal_failure": not retryable,
-                            "deferred": deferred,
-                            "attempt_consumed": (
-                                getattr(exc, "attempt_consumed", False)
-                                if retryable
-                                else "unknown"
-                            ),
-                            "provider_dispatched": (
-                                getattr(exc, "provider_dispatched", False)
-                                if retryable
-                                else "unknown"
-                            ),
-                            "typed_deferral_slot_consumed": (
-                                True
-                                if deferred
-                                else False
-                                if validation_retry
-                                else "unknown"
-                            ),
-                            "backoff_seconds": backoff_seconds,
-                            **(
-                                {"typed_deferral": typed_deferral}
-                                if typed_deferral is not None
-                                else {}
-                            ),
-                            **(
-                                {
-                                    "typed_validation_retry": (
-                                        typed_validation_retry
-                                    )
-                                }
-                                if typed_validation_retry is not None
-                                else {}
-                            ),
-                        },
-                    )
                 terminal = failed or current
                 if terminal is None:
                     raise DatabaseImplementationAuthorityError(
@@ -76110,6 +80411,24 @@ class DatabaseImplementationDaemon:
         terminal_portal_reconciliations = (
             self.reconcile_terminal_portal_failures()
         )
+        protected_path_recovery_reconciliations = (
+            self.reconcile_blocked_protected_path_recoveries()
+        )
+        external_protected_checkout_recovery_reconciliations = (
+            self.reconcile_blocked_external_protected_checkout_recoveries()
+        )
+        inflight_process_recovery_reconciliations = (
+            self.reconcile_blocked_inflight_process_recoveries()
+        )
+        validation_retry_seed_conflict_recovery_reconciliations = (
+            self.reconcile_blocked_validation_retry_seed_conflict_recoveries()
+        )
+        leftover_wait_deferral_budget_recovery_reconciliations = (
+            self.reconcile_blocked_leftover_wait_deferral_budget_recoveries()
+        )
+        pooled_worktree_create_recovery_reconciliations = (
+            self.reconcile_blocked_pooled_worktree_create_recoveries()
+        )
         terminal_retry_reconciliations = self.reconcile_terminal_retry_states()
         reconciliation_write_count = (
             len(completion_reconciliations)
@@ -76118,6 +80437,42 @@ class DatabaseImplementationDaemon:
             + len(unknown_callback_reopens)
             + len(terminal_portal_reconciliations)
             + len(terminal_retry_reconciliations)
+            + sum(
+                1
+                for item in protected_path_recovery_reconciliations
+                if item.get("changed") is True
+            )
+            + sum(
+                1
+                for item in (
+                    external_protected_checkout_recovery_reconciliations
+                )
+                if item.get("changed") is True
+            )
+            + sum(
+                1
+                for item in inflight_process_recovery_reconciliations
+                if item.get("changed") is True
+            )
+            + sum(
+                1
+                for item in (
+                    validation_retry_seed_conflict_recovery_reconciliations
+                )
+                if item.get("changed") is True
+            )
+            + sum(
+                1
+                for item in (
+                    leftover_wait_deferral_budget_recovery_reconciliations
+                )
+                if item.get("changed") is True
+            )
+            + sum(
+                1
+                for item in pooled_worktree_create_recovery_reconciliations
+                if item.get("changed") is True
+            )
         )
         # Prefer resume of this session's running attempts (crash recovery).
         running = self.list_running_attempts()
@@ -76188,6 +80543,24 @@ class DatabaseImplementationDaemon:
                     "terminal_portal_reconciliations": (
                         terminal_portal_reconciliations
                     ),
+                    "protected_path_recovery_reconciliations": (
+                        protected_path_recovery_reconciliations
+                    ),
+                    "external_protected_checkout_recovery_reconciliations": (
+                        external_protected_checkout_recovery_reconciliations
+                    ),
+                    "inflight_process_recovery_reconciliations": (
+                        inflight_process_recovery_reconciliations
+                    ),
+                    "validation_retry_seed_conflict_recovery_reconciliations": (
+                        validation_retry_seed_conflict_recovery_reconciliations
+                    ),
+                    "leftover_wait_deferral_budget_recovery_reconciliations": (
+                        leftover_wait_deferral_budget_recovery_reconciliations
+                    ),
+                    "pooled_worktree_create_recovery_reconciliations": (
+                        pooled_worktree_create_recovery_reconciliations
+                    ),
                 }
 
         attempt = self.claim_next()
@@ -76215,6 +80588,24 @@ class DatabaseImplementationDaemon:
                 "terminal_portal_reconciliations": (
                     terminal_portal_reconciliations
                 ),
+                "protected_path_recovery_reconciliations": (
+                    protected_path_recovery_reconciliations
+                ),
+                "external_protected_checkout_recovery_reconciliations": (
+                    external_protected_checkout_recovery_reconciliations
+                ),
+                "inflight_process_recovery_reconciliations": (
+                    inflight_process_recovery_reconciliations
+                ),
+                "validation_retry_seed_conflict_recovery_reconciliations": (
+                    validation_retry_seed_conflict_recovery_reconciliations
+                ),
+                "leftover_wait_deferral_budget_recovery_reconciliations": (
+                    leftover_wait_deferral_budget_recovery_reconciliations
+                ),
+                "pooled_worktree_create_recovery_reconciliations": (
+                    pooled_worktree_create_recovery_reconciliations
+                ),
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -76234,6 +80625,24 @@ class DatabaseImplementationDaemon:
             "unknown_callback_reopens": unknown_callback_reopens,
             "terminal_retry_reconciliations": terminal_retry_reconciliations,
             "terminal_portal_reconciliations": terminal_portal_reconciliations,
+            "protected_path_recovery_reconciliations": (
+                protected_path_recovery_reconciliations
+            ),
+            "external_protected_checkout_recovery_reconciliations": (
+                external_protected_checkout_recovery_reconciliations
+            ),
+            "inflight_process_recovery_reconciliations": (
+                inflight_process_recovery_reconciliations
+            ),
+            "validation_retry_seed_conflict_recovery_reconciliations": (
+                validation_retry_seed_conflict_recovery_reconciliations
+            ),
+            "leftover_wait_deferral_budget_recovery_reconciliations": (
+                leftover_wait_deferral_budget_recovery_reconciliations
+            ),
+            "pooled_worktree_create_recovery_reconciliations": (
+                pooled_worktree_create_recovery_reconciliations
+            ),
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,

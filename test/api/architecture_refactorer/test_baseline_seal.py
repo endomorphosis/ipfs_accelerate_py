@@ -52,7 +52,7 @@ STARTING_COMMIT = "bbf7f68799072c2b81f7d96eac91f2df3c4b3952"
 STARTING_TREE = "a698da9e4b54e2929adacb613bc61ba3e72eed58"
 MERGE_TARGET_BRANCH = "codex/proof-carrying-architecture-refactorer-v1"
 REQUIRED_GITLINKS = {
-    "ipfs_datasets_py": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
+    "ipfs_datasets_py": "66a02063496fd200f2372b3083e376f1978c6be1",
     "ipfs_kit_py": "2564aea1ae35061f2165872aff91e8a40801ab7e",
     "ipfs_accelerate_py/mcplusplus": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
 }
@@ -393,9 +393,6 @@ def test_current_prerequisite_matrix() -> None:
         if item["status"] == "missing"
     }
     assert missing == {
-        "AutonomousMetaController": (
-            "prerequisite.autonomous_meta_controller.current_tree_missing"
-        ),
         "ProofCarryingProcedureCompiler": (
             "prerequisite.proof_carrying_procedure_compiler.current_tree_missing"
         ),

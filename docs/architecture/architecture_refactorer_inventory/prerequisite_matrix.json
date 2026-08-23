@@ -74,11 +74,11 @@
     },
     {
       "name": "AutonomousMetaController",
-      "status": "missing",
-      "source": null,
-      "test": null,
-      "blocker": "prerequisite.autonomous_meta_controller.current_tree_missing",
-      "response": "Continue independent PCAR work and do not copy an unmerged branch implementation."
+      "source": "ipfs_accelerate_py/agent_supervisor/autonomy/runtime.py:791",
+      "source_blob": "2b58f901595bc6cc5237a9069d4b7e9200e74710",
+      "status": "available",
+      "test": "test/api/autonomy/test_runtime.py",
+      "test_blob": "d01b8c05422141aeedc94573469be365cfa86af7"
     },
     {
       "name": "ProofCarryingProcedureCompiler",
