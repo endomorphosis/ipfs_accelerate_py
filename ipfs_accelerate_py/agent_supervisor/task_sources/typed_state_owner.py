@@ -44,6 +44,9 @@ TYPED_STATE_OWNER_SOCKET_ENV: Final = "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"
 TYPED_STATE_OWNER_TOKEN_ENV: Final = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
 TYPED_STATE_OWNER_SOCKET_FILENAME: Final = "typed-state-owner.sock"
 TYPED_STATE_OWNER_TOKEN_FILENAME: Final = "typed-state-owner.token"
+TYPED_RETRY_COOLDOWN_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-retry-cooldown@1"
+)
 # Linux permits 107 pathname bytes in ``sockaddr_un.sun_path`` while other
 # supported Unix platforms can be slightly smaller.  Keep a little headroom
 # for the trailing NUL and fail over before ``bind(2)`` becomes platform
@@ -444,6 +447,306 @@ def _normalize_sql(sql: str) -> str:
     return " ".join(str(sql or "").strip().split())
 
 
+def _validated_retry_cooldown_parameters(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the complete semantic payload for one typed cooldown."""
+
+    parameters = dict(value)
+    required = {
+        "schema",
+        "operation",
+        "task_cid",
+        "expected_task_revision",
+        "expected_task_status",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "delay_ms",
+        "started_at_ms",
+        "retry_not_before_ms",
+        "selection_penalty",
+        "consecutive_failures",
+        "reason",
+        "resolution_cid",
+        "expected_queue_revision",
+        "expected_queue_attempt",
+        "extension_schema",
+        "extension_json",
+    }
+    if set(parameters) != required:
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown command differs from its closed schema"
+        )
+    if (
+        parameters.get("schema") != TYPED_RETRY_COOLDOWN_SCHEMA
+        or parameters.get("operation") != "task.retry.cooldown.record"
+        or parameters.get("extension_schema") != TYPED_RETRY_COOLDOWN_SCHEMA
+        or parameters.get("expected_task_status")
+        not in {"blocked", "in_progress", "retrying"}
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown command schema or control status is invalid"
+        )
+    text_bounds = {
+        "task_cid": 1_024,
+        "attempt_id": 1_024,
+        "claim_id": 1_024,
+        "lease_id": 1_024,
+        "owner_session_id": 1_024,
+        "reason": 2_048,
+        "resolution_cid": 1_024,
+    }
+    for name, maximum in text_bounds.items():
+        member = parameters.get(name)
+        if (
+            not isinstance(member, str)
+            or not member.strip()
+            or member != member.strip()
+            or len(member.encode("utf-8")) > maximum
+            or any(marker in member for marker in ("\x00", "\n", "\r"))
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                f"retry cooldown {name} is invalid"
+            )
+    positive = (
+        "expected_task_revision",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+    )
+    if any(
+        isinstance(parameters.get(name), bool)
+        or not isinstance(parameters.get(name), int)
+        or int(parameters[name]) < 1
+        for name in positive
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown positive revision/fence identity is invalid"
+        )
+    bounded_nonnegative = {
+        "delay_ms": 86_400_000,
+        "started_at_ms": 9_223_372_036_854_775_807,
+        "retry_not_before_ms": 9_223_372_036_854_775_807,
+        "selection_penalty": 1_000_000,
+        "consecutive_failures": 10_000,
+        "expected_queue_attempt": 10_000,
+    }
+    if any(
+        isinstance(parameters.get(name), bool)
+        or not isinstance(parameters.get(name), int)
+        or not 0 <= int(parameters[name]) <= maximum
+        for name, maximum in bounded_nonnegative.items()
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown bounded counter or deadline is invalid"
+        )
+    queue_revision = parameters.get("expected_queue_revision")
+    if (
+        isinstance(queue_revision, bool)
+        or not isinstance(queue_revision, int)
+        or queue_revision < -1
+        or (queue_revision == -1) != (parameters["expected_queue_attempt"] == 0)
+        or (
+            queue_revision >= 0
+            and (
+                queue_revision < 1
+                or parameters["expected_queue_attempt"] < 1
+                or parameters["expected_queue_attempt"]
+                >= parameters["attempt_number"]
+            )
+        )
+        or parameters["consecutive_failures"] != parameters["attempt_number"]
+        or parameters["retry_not_before_ms"] - parameters["started_at_ms"]
+        != parameters["delay_ms"]
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown absence/revision binding is invalid"
+        )
+    expected_extension = {
+        "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+        "task_cid": parameters["task_cid"],
+        "expected_task_revision": parameters["expected_task_revision"],
+        "attempt_id": parameters["attempt_id"],
+        "claim_id": parameters["claim_id"],
+        "lease_id": parameters["lease_id"],
+        "owner_session_id": parameters["owner_session_id"],
+        "attempt_number": parameters["attempt_number"],
+        "fencing_token": parameters["fencing_token"],
+        "fence_epoch": parameters["fence_epoch"],
+        "delay_ms": parameters["delay_ms"],
+        "started_at_ms": parameters["started_at_ms"],
+        "retry_not_before_ms": parameters["retry_not_before_ms"],
+        "selection_penalty": parameters["selection_penalty"],
+        "consecutive_failures": parameters["consecutive_failures"],
+        "reason": parameters["reason"],
+        "expected_queue_revision": parameters["expected_queue_revision"],
+        "expected_queue_attempt": parameters["expected_queue_attempt"],
+    }
+    try:
+        extension = json.loads(str(parameters["extension_json"]))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown extension is malformed"
+        ) from exc
+    expected_resolution = content_identity(
+        {
+            "typed_retry_cooldown": expected_extension,
+            "started_at_ms": parameters["started_at_ms"],
+        }
+    )
+    if extension != expected_extension or parameters["resolution_cid"] != (
+        expected_resolution
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown extension or resolution identity differs"
+        )
+    return parameters
+
+
+def _retry_cooldown_command_digest(parameters: Mapping[str, Any]) -> str:
+    """Return the identity a cooldown command must bind for replay safety."""
+
+    validated = _validated_retry_cooldown_parameters(parameters)
+    material = {
+        name: member
+        for name, member in validated.items()
+        if name not in {"extension_schema", "extension_json"}
+    }
+    return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+
+
+_RETRY_COOLDOWN_ROW_FIELDS: Final[tuple[str, ...]] = (
+    "task_cid",
+    "claim_cid",
+    "resolution_cid",
+    "claimant_did",
+    "logical_epoch",
+    "fencing_token",
+    "expires_at_ms",
+    "attempt",
+    "state",
+    "started_at_ms",
+    "release_reason",
+    "retry_not_before_ms",
+    "owner_session_id",
+    "fence_epoch",
+    "revision",
+    "extension_schema",
+    "extension_json",
+)
+
+
+def _validated_stored_retry_cooldown(
+    row: Any,
+    *,
+    task_cid: str,
+) -> dict[str, Any]:
+    """Validate every persisted lease field before admitting replacement."""
+
+    if isinstance(row, Mapping):
+        try:
+            values = {name: row[name] for name in _RETRY_COOLDOWN_ROW_FIELDS}
+        except (KeyError, TypeError) as exc:
+            raise TypedStateOwnerAuthorizationError(
+                "retry cooldown prior row is incomplete"
+            ) from exc
+    elif isinstance(row, Sequence) and not isinstance(
+        row, (str, bytes, bytearray)
+    ):
+        if len(row) != len(_RETRY_COOLDOWN_ROW_FIELDS):
+            raise TypedStateOwnerAuthorizationError(
+                "retry cooldown prior row is incomplete"
+            )
+        # ``strict=`` is unavailable on the Python 3.8 compatibility floor;
+        # the exact length check above provides the same closed-row guarantee.
+        values = dict(zip(_RETRY_COOLDOWN_ROW_FIELDS, row))  # noqa: B905
+    else:
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown prior row is malformed"
+        )
+    integer_fields = (
+        "logical_epoch",
+        "fencing_token",
+        "expires_at_ms",
+        "attempt",
+        "started_at_ms",
+        "retry_not_before_ms",
+        "fence_epoch",
+        "revision",
+    )
+    if any(
+        isinstance(values[name], bool)
+        or not isinstance(values[name], int)
+        or values[name] < 0
+        for name in integer_fields
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown prior row has an invalid integer field"
+        )
+    try:
+        extension = json.loads(str(values["extension_json"]))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown prior row extension is malformed"
+        ) from exc
+    if not isinstance(extension, Mapping):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown prior row extension is malformed"
+        )
+    extension_values = dict(extension)
+    _validated_retry_cooldown_parameters(
+        {
+            **extension_values,
+            "operation": "task.retry.cooldown.record",
+            "expected_task_status": "in_progress",
+            "resolution_cid": values["resolution_cid"],
+            "extension_schema": values["extension_schema"],
+            "extension_json": values["extension_json"],
+        }
+    )
+    revision = int(values["revision"])
+    attempt = int(values["attempt"])
+    expected_prior_revision = -1 if revision == 1 else revision - 1
+    expected_prior_attempt = int(extension_values["expected_queue_attempt"])
+    if (
+        values["task_cid"] != task_cid
+        or values["extension_schema"] != TYPED_RETRY_COOLDOWN_SCHEMA
+        or values["state"] != "released"
+        or values["expires_at_ms"] != 0
+        or attempt < 1
+        or revision < 1
+        or values["logical_epoch"] != values["fence_epoch"]
+        or values["claimant_did"] != values["owner_session_id"]
+        or extension_values["task_cid"] != task_cid
+        or extension_values["claim_id"] != values["claim_cid"]
+        or extension_values["owner_session_id"]
+        != values["owner_session_id"]
+        or extension_values["attempt_number"] != attempt
+        or extension_values["fencing_token"] != values["fencing_token"]
+        or extension_values["fence_epoch"] != values["fence_epoch"]
+        or extension_values["started_at_ms"] != values["started_at_ms"]
+        or extension_values["retry_not_before_ms"]
+        != values["retry_not_before_ms"]
+        or extension_values["reason"] != values["release_reason"]
+        or extension_values["expected_queue_revision"]
+        != expected_prior_revision
+        or (revision == 1 and expected_prior_attempt != 0)
+        or (
+            revision > 1
+            and not 1 <= expected_prior_attempt < attempt
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown prior row differs from its typed receipt"
+        )
+    return {**values, "extension": extension_values}
+
+
 _TRANSACTION_SQL: Final[Mapping[str, OwnerOperation]] = MappingProxyType(
     {
         "txn_load_generation": OwnerOperation(
@@ -662,6 +965,12 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
         "task.status.cas.receipt": frozenset(
             {"executor_cas_task_status_receipt"}
         ),
+        "task.retry.cooldown.record": frozenset(
+            {
+                "executor_insert_retry_cooldown",
+                "executor_update_retry_cooldown",
+            }
+        ),
         "task.validation.record.passed": frozenset(
             {
                 "executor_insert_validation_run",
@@ -683,6 +992,7 @@ _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
     - {
         "task.status.cas",
         "task.status.cas.receipt",
+        "task.retry.cooldown.record",
         "task.validation.record.passed",
         "task.validation.record.nonpassing",
     }
@@ -1936,6 +2246,16 @@ class TypedStateOwnerGateway:
             raise TypedStateOwnerAuthorizationError(
                 "command kind differs from the server operation policy"
             )
+        if operation == "task.retry.cooldown.record":
+            digest = _retry_cooldown_command_digest(command.parameters)
+            if (
+                command.command_id != f"cmd:retry-cooldown:{digest}"
+                or command.idempotency_key
+                != f"executor-retry-cooldown:{digest}"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown replay identity differs from its parameters"
+                )
         if operation in {"task.status.cas", "task.status.cas.receipt"}:
             requested_status = command.parameters.get("status")
             if (
@@ -2129,6 +2449,166 @@ class TypedStateOwnerGateway:
         """
 
         operation = str(command.parameters.get("operation") or "")
+        if operation == "task.retry.cooldown.record":
+            parameters = _validated_retry_cooldown_parameters(command.parameters)
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [parameters["task_cid"]],
+            ).fetchall()
+            if len(task_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown task authority is absent or ambiguous"
+                )
+            task_row = task_rows[0]
+            try:
+                task_body = json.loads(str(task_row[2] or "{}"))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown task receipt is malformed"
+                ) from exc
+            receipt = (
+                task_body.get("completion_receipt")
+                if isinstance(task_body, Mapping)
+                else None
+            )
+            receipt_values = dict(receipt) if isinstance(receipt, Mapping) else {}
+            exact_receipt = {
+                "claim_id": parameters["claim_id"],
+                "attempt_id": parameters["attempt_id"],
+                "attempt_number": parameters["attempt_number"],
+                "lease_id": parameters["lease_id"],
+                "owner_session_id": parameters["owner_session_id"],
+                "fencing_token": parameters["fencing_token"],
+                "fence_epoch": parameters["fence_epoch"],
+            }
+            receipt_operation = str(receipt_values.get("operation") or "")
+            if parameters["expected_task_status"] == "in_progress":
+                receipt_state_matches = bool(
+                    receipt_operation == "database_claim"
+                    and receipt_values.get("claimed_from_revision")
+                    == parameters["expected_task_revision"] - 1
+                )
+            elif parameters["expected_task_status"] == "retrying":
+                receipt_state_matches = bool(
+                    receipt_operation
+                    in {
+                        "database_portal_retry",
+                        "database_portal_validation_retry",
+                        "database_portal_validation_retry_recovery",
+                        "database_portal_protected_path_retry_recovery",
+                        "database_portal_external_protected_checkout_retry_recovery",
+                        "database_portal_inflight_process_retry_recovery",
+                        "database_portal_validation_retry_seed_conflict_retry_recovery",
+                        "database_portal_leftover_wait_deferral_budget_retry_recovery",
+                        "database_portal_pooled_worktree_create_retry_recovery",
+                        "database_post_merge_declared_outputs_repair_recovery",
+                        "database_post_merge_declared_outputs_requalification_recovery",
+                        "database_portal_inflight_deferral_unstall",
+                    }
+                    and receipt_values.get("control_expected_revision")
+                    == parameters["expected_task_revision"] - 1
+                    and receipt_values.get("queue_reason") == parameters["reason"]
+                    and receipt_values.get("backoff_ms") == parameters["delay_ms"]
+                    and receipt_values.get("retry_not_before_ms")
+                    == parameters["retry_not_before_ms"]
+                )
+            else:
+                receipt_state_matches = bool(
+                    receipt_operation
+                    in {
+                        "database_portal_terminal_failure",
+                        "database_portal_typed_deferral_budget_exhausted",
+                    }
+                    and receipt_values.get("retryable") is False
+                    and receipt_values.get("control_expected_status")
+                    in {"in_progress", "retrying"}
+                    and receipt_values.get("control_expected_revision")
+                    == parameters["expected_task_revision"] - 1
+                )
+            if (
+                str(task_row[0] or "").strip().lower()
+                != parameters["expected_task_status"]
+                or int(task_row[1]) != parameters["expected_task_revision"]
+                or not isinstance(receipt, Mapping)
+                or not receipt_state_matches
+                or any(
+                    receipt_values.get(name) != expected
+                    for name, expected in exact_receipt.items()
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown claim or task revision authority is stale"
+                )
+            queue_rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [parameters["task_cid"]],
+            ).fetchall()
+            if len(queue_rows) > 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown queue authority is ambiguous"
+            )
+            prior_queue: dict[str, Any] = {}
+            if queue_rows:
+                validated_prior = _validated_stored_retry_cooldown(
+                    queue_rows[0],
+                    task_cid=parameters["task_cid"],
+                )
+                prior_queue = {
+                    **validated_prior,
+                    "claim_id": validated_prior["claim_cid"],
+                    "attempt_number": validated_prior["attempt"],
+                }
+            expected_queue_revision = parameters["expected_queue_revision"]
+            expected_queue_attempt = parameters["expected_queue_attempt"]
+            if (
+                (expected_queue_revision == -1 and prior_queue)
+                or (expected_queue_revision >= 0 and not prior_queue)
+                or (
+                    prior_queue
+                    and (
+                        prior_queue["task_cid"] != parameters["task_cid"]
+                        or prior_queue["revision"] != expected_queue_revision
+                        or prior_queue["attempt_number"]
+                        != expected_queue_attempt
+                        or prior_queue["attempt_number"]
+                        >= parameters["attempt_number"]
+                        or prior_queue["extension_schema"]
+                        != TYPED_RETRY_COOLDOWN_SCHEMA
+                        or not isinstance(prior_queue["extension"], Mapping)
+                        or prior_queue["extension"].get("schema")
+                        != TYPED_RETRY_COOLDOWN_SCHEMA
+                        or prior_queue["extension"].get("task_cid")
+                        != parameters["task_cid"]
+                        or prior_queue["extension"].get("claim_id")
+                        != prior_queue["claim_id"]
+                        or prior_queue["extension"].get("attempt_number")
+                        != prior_queue["attempt_number"]
+                    )
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown expected queue absence/revision is stale"
+                )
+            return {
+                "operation": operation,
+                "task": {
+                    "task_cid": parameters["task_cid"],
+                    "status": str(task_row[0]),
+                    "revision": int(task_row[1]),
+                    "receipt": receipt_values,
+                },
+                "prior_queue": prior_queue,
+            }
         if operation not in {
             "supervisor.runtime.attest",
             "supervisor.transition",
@@ -2843,6 +3323,62 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "validation evidence mutation differs from the admitted command"
                 )
+        elif name in {
+            "executor_insert_retry_cooldown",
+            "executor_update_retry_cooldown",
+        }:
+            values = _validated_retry_cooldown_parameters(command.parameters)
+            expected_queue_revision = values["expected_queue_revision"]
+            common = {
+                "task_cid": values["task_cid"],
+                "claim_id": values["claim_id"],
+                "resolution_cid": values["resolution_cid"],
+                "claimant_did": values["owner_session_id"],
+                "logical_epoch": values["fence_epoch"],
+                "fencing_token": values["fencing_token"],
+                "expires_at_ms": 0,
+                "attempt_number": values["attempt_number"],
+                "state": "released",
+                "started_at_ms": values["started_at_ms"],
+                "reason": values["reason"],
+                "retry_not_before_ms": values["retry_not_before_ms"],
+                "owner_session_id": values["owner_session_id"],
+                "fence_epoch": values["fence_epoch"],
+                "new_queue_revision": (
+                    1
+                    if expected_queue_revision == -1
+                    else expected_queue_revision + 1
+                ),
+                "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+                "extension_json": values["extension_json"],
+            }
+            expected = (
+                {
+                    **common,
+                    "expected_queue_revision_for_insert": -1,
+                }
+                if name == "executor_insert_retry_cooldown"
+                else {
+                    **common,
+                    "expected_queue_revision": expected_queue_revision,
+                    "expected_queue_attempt": values["expected_queue_attempt"],
+                    "new_attempt_guard": values["attempt_number"],
+                    "expected_existing_extension_schema": (
+                        TYPED_RETRY_COOLDOWN_SCHEMA
+                    ),
+                }
+            )
+            if (
+                (name == "executor_insert_retry_cooldown")
+                != (expected_queue_revision == -1)
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown mutation kind differs from queue presence"
+                )
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown mutation differs from the admitted command"
+                )
         manifest.append((name, bound))
 
     def _validate_transaction_manifest(
@@ -2952,6 +3488,89 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "semantic mutation differs from owner-resolved authority"
                 )
+
+        if operation == "task.retry.cooldown.record":
+            values = _validated_retry_cooldown_parameters(command.parameters)
+            prior_queue = dict(authority.get("prior_queue") or {})
+            expected_mutation = (
+                "executor_update_retry_cooldown"
+                if prior_queue
+                else "executor_insert_retry_cooldown"
+            )
+            alternate = (
+                "executor_insert_retry_cooldown"
+                if prior_queue
+                else "executor_update_retry_cooldown"
+            )
+            mutation = one(expected_mutation)
+            if by_name.get(alternate):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown transaction contains both mutation roles"
+                )
+            task = dict(authority.get("task") or {})
+            if (
+                task.get("task_cid") != values["task_cid"]
+                or task.get("status") != values["expected_task_status"]
+                or task.get("revision") != values["expected_task_revision"]
+                or values["expected_queue_revision"]
+                != (prior_queue.get("revision") if prior_queue else -1)
+                or values["expected_queue_attempt"]
+                != (prior_queue.get("attempt_number") if prior_queue else 0)
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown semantic authority changed before commit"
+                )
+            # The per-operation manifest checks every bound parameter.  The
+            # semantic pass additionally proves that exactly that mutation is
+            # now the one authoritative queue row before commit.
+            if mutation.get("task_cid") != values["task_cid"]:
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown mutation task differs from authority"
+                )
+            rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            expected_revision = (
+                1 if not prior_queue else int(prior_queue["revision"]) + 1
+            )
+            if len(rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown post-state is absent or ambiguous"
+                )
+            row = rows[0]
+            expected_row = (
+                values["task_cid"],
+                values["claim_id"],
+                values["resolution_cid"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                values["fencing_token"],
+                0,
+                values["attempt_number"],
+                "released",
+                values["started_at_ms"],
+                values["reason"],
+                values["retry_not_before_ms"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                expected_revision,
+                TYPED_RETRY_COOLDOWN_SCHEMA,
+                values["extension_json"],
+            )
+            observed_row = tuple(row[index] for index in range(len(expected_row)))
+            if observed_row != expected_row:
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown post-state differs from its admitted receipt"
+                )
+            return
 
         scope = dict(authority.get("scope") or {})
         if operation == "supervisor.transition":
@@ -3579,7 +4198,9 @@ class TypedStateOwnerConnection:
 
     def commit(self) -> None:
         if not self._active:
-            return
+            raise TypedStateOwnerProtocolError(
+                "typed owner commit requires an active transaction"
+            )
         self._request("commit")
         self._active = False
         self._prepared_command = None
@@ -3722,6 +4343,7 @@ __all__ = [
     "TYPED_STATE_OWNER_SOCKET_FILENAME",
     "TYPED_STATE_OWNER_TOKEN_ENV",
     "TYPED_STATE_OWNER_TOKEN_FILENAME",
+    "TYPED_RETRY_COOLDOWN_SCHEMA",
     "compact_default_owner_socket_path",
     "TYPED_TASK_STATUS_VOCABULARY",
     "TypedOwnerResult",

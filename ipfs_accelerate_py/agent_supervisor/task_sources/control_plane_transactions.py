@@ -673,16 +673,24 @@ class StateTransaction:
         try:
             self._connection.commit()
         except Exception as exc:
-            # Adapters without a working commit() can still accept SQL COMMIT.
+            # A failed commit may already mean that an exclusive typed owner
+            # rejected and rolled back the transaction.  Issuing a second SQL
+            # COMMIT can be a no-op on the now-inactive adapter and must never
+            # turn that rejection into an apparent successful commit.
             try:
-                self._connection.execute("COMMIT")
-            except Exception as sql_exc:
-                self._active = False
-                self._rolled_back = True
-                raise TransientTransactionError(
-                    f"failed to commit transaction: {exc}; {sql_exc}",
-                    details={"error": str(exc), "sql_error": str(sql_exc)},
-                ) from sql_exc
+                self._connection.rollback()
+            except Exception:
+                pass
+            self._active = False
+            self._rolled_back = True
+            if isinstance(exc, TransactionError):
+                raise
+            raise TransactionError(
+                f"failed to commit transaction: {exc}",
+                kind=classify_exception(exc),
+                retryable=is_retryable_exception(exc),
+                details={"error": str(exc)},
+            ) from exc
         self._active = False
         self._committed = True
 

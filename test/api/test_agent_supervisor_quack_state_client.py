@@ -51,6 +51,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions
     StateTransaction,
     StaleGenerationError,
     TransactionConflictKind,
+    TransactionError,
     classify_exception,
     default_retry_policy,
     is_retryable_exception,
@@ -188,6 +189,35 @@ def test_interface_identity_and_template_registry() -> None:
     assert "select_task_by_cid" in client.list_templates()
     template = client.get_template("select_task_by_cid")
     assert template.parameter_names == ("task_cid",)
+
+
+def test_rejected_commit_cannot_be_masked_by_a_second_commit_fallback() -> None:
+    class _RejectedCommitConnection:
+        def __init__(self) -> None:
+            self.executed: list[str] = []
+            self.rollback_count = 0
+
+        def execute(self, sql: str, _parameters: Any = None) -> None:
+            self.executed.append(sql)
+
+        @staticmethod
+        def commit() -> None:
+            raise RuntimeError("typed state-owner authorization_denied")
+
+        def rollback(self) -> None:
+            self.rollback_count += 1
+
+    connection = _RejectedCommitConnection()
+    transaction = StateTransaction(connection, store_id="control.duckdb")
+    transaction.begin()
+
+    with pytest.raises(TransactionError, match="authorization_denied") as raised:
+        transaction.commit()
+
+    assert raised.value.retryable is False
+    assert connection.executed == ["BEGIN TRANSACTION"]
+    assert connection.rollback_count == 1
+    assert transaction.active is False
 
 
 def test_parameter_binding_and_raw_sql_rejection(tmp_path: Path) -> None:

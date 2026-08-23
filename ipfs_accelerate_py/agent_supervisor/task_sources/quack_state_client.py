@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import re
 import threading
 import time
@@ -73,6 +74,7 @@ from .control_plane_transactions import (
 )
 from .duckdb_state import open_duckdb_connection
 from .typed_state_owner import (
+    TYPED_RETRY_COOLDOWN_SCHEMA,
     TypedStateOwnerError,
     open_typed_state_owner_connection,
 )
@@ -475,6 +477,119 @@ def _default_templates() -> dict[str, StatementTemplate]:
             parameter_names=(),
             kind=StatementKind.QUERY,
             description="Bounded authoritative executor control-plane snapshot",
+        ),
+        "executor_retry_cooldown_by_task": StatementTemplate(
+            name="executor_retry_cooldown_by_task",
+            sql=(
+                "SELECT task_cid, claim_cid, resolution_cid, claimant_did, "
+                "logical_epoch, fencing_token, expires_at_ms, attempt, state, "
+                "started_at_ms, release_reason, retry_not_before_ms, "
+                "owner_session_id, fence_epoch, revision, extension_schema, "
+                "extension_json FROM leases WHERE task_cid = ? LIMIT 2"
+            ),
+            parameter_names=("task_cid",),
+            kind=StatementKind.QUERY,
+            description=(
+                "Read one complete retry cooldown row for an admitted executor"
+            ),
+        ),
+        "executor_retry_cooldown_page": StatementTemplate(
+            name="executor_retry_cooldown_page",
+            sql=(
+                "SELECT task_cid, claim_cid, resolution_cid, claimant_did, "
+                "logical_epoch, fencing_token, expires_at_ms, attempt, state, "
+                "started_at_ms, release_reason, retry_not_before_ms, "
+                "owner_session_id, fence_epoch, revision, extension_schema, "
+                "extension_json FROM leases ORDER BY task_cid LIMIT ? OFFSET ?"
+            ),
+            parameter_names=("limit", "offset"),
+            kind=StatementKind.QUERY,
+            description=(
+                "Read every bounded lease row so foreign cooldowns fail closed"
+            ),
+        ),
+        "executor_insert_retry_cooldown": StatementTemplate(
+            name="executor_insert_retry_cooldown",
+            sql=(
+                "INSERT INTO leases (task_cid, claim_cid, resolution_cid, "
+                "claimant_did, logical_epoch, fencing_token, expires_at_ms, "
+                "attempt, state, started_at_ms, release_reason, "
+                "retry_not_before_ms, owner_session_id, fence_epoch, revision, "
+                "extension_schema, extension_json) SELECT ?, ?, ?, ?, ?, ?, ?, "
+                "?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ? = -1 RETURNING task_cid, "
+                "claim_cid, resolution_cid, claimant_did, logical_epoch, "
+                "fencing_token, expires_at_ms, attempt, state, started_at_ms, "
+                "release_reason, retry_not_before_ms, owner_session_id, "
+                "fence_epoch, revision, extension_schema, extension_json"
+            ),
+            parameter_names=(
+                "task_cid",
+                "claim_id",
+                "resolution_cid",
+                "claimant_did",
+                "logical_epoch",
+                "fencing_token",
+                "expires_at_ms",
+                "attempt_number",
+                "state",
+                "started_at_ms",
+                "reason",
+                "retry_not_before_ms",
+                "owner_session_id",
+                "fence_epoch",
+                "new_queue_revision",
+                "extension_schema",
+                "extension_json",
+                "expected_queue_revision_for_insert",
+            ),
+            kind=StatementKind.MUTATION,
+            description=(
+                "Insert one claim-bound executor cooldown with expected absence"
+            ),
+        ),
+        "executor_update_retry_cooldown": StatementTemplate(
+            name="executor_update_retry_cooldown",
+            sql=(
+                "UPDATE leases SET claim_cid = ?, resolution_cid = ?, "
+                "claimant_did = ?, logical_epoch = ?, fencing_token = ?, "
+                "expires_at_ms = ?, attempt = ?, state = ?, started_at_ms = ?, "
+                "release_reason = ?, retry_not_before_ms = ?, owner_session_id "
+                "= ?, fence_epoch = ?, revision = ?, extension_schema = ?, "
+                "extension_json = ? WHERE task_cid = ? AND revision = ? AND "
+                "attempt = ? AND attempt < ? AND extension_schema = ? RETURNING "
+                "task_cid, claim_cid, resolution_cid, claimant_did, "
+                "logical_epoch, fencing_token, expires_at_ms, attempt, state, "
+                "started_at_ms, release_reason, retry_not_before_ms, "
+                "owner_session_id, fence_epoch, revision, extension_schema, "
+                "extension_json"
+            ),
+            parameter_names=(
+                "claim_id",
+                "resolution_cid",
+                "claimant_did",
+                "logical_epoch",
+                "fencing_token",
+                "expires_at_ms",
+                "attempt_number",
+                "state",
+                "started_at_ms",
+                "reason",
+                "retry_not_before_ms",
+                "owner_session_id",
+                "fence_epoch",
+                "new_queue_revision",
+                "extension_schema",
+                "extension_json",
+                "task_cid",
+                "expected_queue_revision",
+                "expected_queue_attempt",
+                "new_attempt_guard",
+                "expected_existing_extension_schema",
+            ),
+            kind=StatementKind.MUTATION,
+            description=(
+                "Replace one older typed cooldown by exact lease revision"
+            ),
         ),
         "insert_task": StatementTemplate(
             name="insert_task",
@@ -1787,6 +1902,346 @@ class QuackStateClient:
             }
 
         return self.submit_command(command, apply=apply_receipt)
+
+    def record_task_retry_cooldown(
+        self,
+        *,
+        task_cid: str,
+        expected_task_revision: int,
+        expected_task_status: str,
+        attempt_id: str,
+        claim_id: str,
+        lease_id: str,
+        owner_session_id: str,
+        attempt_number: int,
+        fencing_token: int,
+        fence_epoch: int,
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+        now_ms: int | None = None,
+    ) -> CASResult:
+        """Record one task-revision and claim-bound retry cooldown.
+
+        The queue row is written only by the exclusive typed owner.  Both an
+        expected absence and a replacement of an older typed row are explicit
+        CAS states; an untyped or newer row is never overwritten, while an
+        exact same-attempt replay reproduces the original command identity.
+        """
+
+        text_fields = {
+            "task_cid": task_cid,
+            "attempt_id": attempt_id,
+            "claim_id": claim_id,
+            "lease_id": lease_id,
+            "owner_session_id": owner_session_id,
+            "reason": reason,
+        }
+        normalized: dict[str, str] = {}
+        for name, value in text_fields.items():
+            selected = str(value or "").strip()
+            maximum = 2_048 if name == "reason" else 1_024
+            if (
+                not selected
+                or len(selected.encode("utf-8")) > maximum
+                or any(marker in selected for marker in ("\x00", "\n", "\r"))
+            ):
+                raise QuackClientError(f"retry cooldown {name} is invalid")
+            normalized[name] = selected
+        expected_status = str(expected_task_status or "").strip().lower()
+        if expected_status not in {"blocked", "in_progress", "retrying"}:
+            raise QuackClientError(
+                "retry cooldown requires an exact claimed control state"
+            )
+
+        positive_values = {
+            "expected_task_revision": expected_task_revision,
+            "attempt_number": attempt_number,
+            "fencing_token": fencing_token,
+            "fence_epoch": fence_epoch,
+        }
+        normalized_ints: dict[str, int] = {}
+        for name, value in positive_values.items():
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise QuackClientError(f"retry cooldown {name} is invalid")
+            normalized_ints[name] = int(value)
+        if (
+            isinstance(delay_ms, bool)
+            or not isinstance(delay_ms, int)
+            or not 0 <= delay_ms <= 86_400_000
+        ):
+            raise QuackClientError("retry cooldown delay_ms is outside its bound")
+        if (
+            isinstance(selection_penalty, bool)
+            or not isinstance(selection_penalty, int)
+            or not 0 <= selection_penalty <= 1_000_000
+        ):
+            raise QuackClientError(
+                "retry cooldown selection_penalty is outside its bound"
+            )
+        started_at_ms = int(time.time() * 1_000) if now_ms is None else now_ms
+        if (
+            isinstance(started_at_ms, bool)
+            or not isinstance(started_at_ms, int)
+            or started_at_ms < 0
+        ):
+            raise QuackClientError("retry cooldown now_ms is invalid")
+        retry_not_before_ms = int(started_at_ms) + int(delay_ms)
+
+        prior_rows = self.execute(
+            "executor_retry_cooldown_by_task",
+            {"task_cid": normalized["task_cid"]},
+        )
+        if len(prior_rows) > 1:
+            raise QuackClientError("retry cooldown queue identity is ambiguous")
+        prior = dict(prior_rows[0]) if prior_rows else {}
+        expected_queue_revision = -1
+        expected_queue_attempt = 0
+        if prior:
+            try:
+                prior_revision = int(prior["revision"])
+                prior_attempt = int(prior["attempt"])
+                prior_extension = json.loads(str(prior["extension_json"]))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise QuackClientError(
+                    "retry cooldown prior queue state is malformed"
+                ) from exc
+            if (
+                prior_revision < 1
+                or prior_attempt < 1
+                or str(prior.get("extension_schema") or "")
+                != TYPED_RETRY_COOLDOWN_SCHEMA
+                or not isinstance(prior_extension, Mapping)
+            ):
+                raise QuackClientError(
+                    "retry cooldown refuses a foreign queue row"
+                )
+            if prior_attempt == normalized_ints["attempt_number"]:
+                replay_identity = {
+                    "task_cid": normalized["task_cid"],
+                    "expected_task_revision": normalized_ints[
+                        "expected_task_revision"
+                    ],
+                    "attempt_id": normalized["attempt_id"],
+                    "claim_id": normalized["claim_id"],
+                    "lease_id": normalized["lease_id"],
+                    "owner_session_id": normalized["owner_session_id"],
+                    "attempt_number": normalized_ints["attempt_number"],
+                    "fencing_token": normalized_ints["fencing_token"],
+                    "fence_epoch": normalized_ints["fence_epoch"],
+                    "selection_penalty": int(selection_penalty),
+                    "consecutive_failures": normalized_ints["attempt_number"],
+                    "reason": normalized["reason"],
+                    "delay_ms": int(delay_ms),
+                }
+                if any(
+                    prior_extension.get(name) != expected
+                    for name, expected in replay_identity.items()
+                ):
+                    raise QuackClientError(
+                        "retry cooldown same-attempt replay identity differs"
+                    )
+                try:
+                    started_at_ms = int(prior_extension["started_at_ms"])
+                    retry_not_before_ms = int(
+                        prior_extension["retry_not_before_ms"]
+                    )
+                    expected_queue_revision = int(
+                        prior_extension["expected_queue_revision"]
+                    )
+                    expected_queue_attempt = int(
+                        prior_extension["expected_queue_attempt"]
+                    )
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise QuackClientError(
+                        "retry cooldown replay receipt is malformed"
+                    ) from exc
+            elif prior_attempt < normalized_ints["attempt_number"]:
+                expected_queue_revision = prior_revision
+                expected_queue_attempt = prior_attempt
+            else:
+                raise QuackClientError(
+                    "retry cooldown refuses a newer queue row"
+                )
+
+        extension = {
+            "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "task_cid": normalized["task_cid"],
+            "expected_task_revision": normalized_ints["expected_task_revision"],
+            "attempt_id": normalized["attempt_id"],
+            "claim_id": normalized["claim_id"],
+            "lease_id": normalized["lease_id"],
+            "owner_session_id": normalized["owner_session_id"],
+            "attempt_number": normalized_ints["attempt_number"],
+            "fencing_token": normalized_ints["fencing_token"],
+            "fence_epoch": normalized_ints["fence_epoch"],
+            "delay_ms": int(delay_ms),
+            "started_at_ms": int(started_at_ms),
+            "retry_not_before_ms": retry_not_before_ms,
+            "selection_penalty": int(selection_penalty),
+            "consecutive_failures": normalized_ints["attempt_number"],
+            "reason": normalized["reason"],
+            "expected_queue_revision": expected_queue_revision,
+            "expected_queue_attempt": expected_queue_attempt,
+        }
+        extension_json = canonical_json_bytes(extension).decode("utf-8")
+        resolution_cid = content_identity(
+            {
+                "typed_retry_cooldown": extension,
+                "started_at_ms": int(started_at_ms),
+            }
+        )
+        material = {
+            **extension,
+            "operation": "task.retry.cooldown.record",
+            "expected_task_status": expected_status,
+            "resolution_cid": resolution_cid,
+        }
+        command_digest = hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+        session = self._require_session()
+        live = self.load_generation()
+        command = StateCommand(
+            command_id=f"cmd:retry-cooldown:{command_digest}",
+            command_kind=CommandKind.APPEND,
+            store_id=self.store_id,
+            session_id=session.session_id,
+            expected_generation=live.generation,
+            expected_revision=live.revision,
+            fence_epoch=live.fence_epoch,
+            idempotency_key=f"executor-retry-cooldown:{command_digest}",
+            authority_class=StateAuthorityClass.AUTHORITATIVE,
+            parameters={
+                **material,
+                "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+                "extension_json": extension_json,
+            },
+        )
+
+        def apply_retry_cooldown(
+            txn: StateTransaction,
+            active: StateCommand,
+            generation: StoreGeneration,
+        ) -> Mapping[str, Any]:
+            values = dict(active.parameters)
+            observed_result = txn.execute_named_operation(
+                "executor_retry_cooldown_by_task",
+                (values["task_cid"],),
+            )
+            observed_rows = _fetch_all(observed_result)
+            if len(observed_rows) > 1:
+                raise OptimisticConflictError(
+                    "retry cooldown queue identity became ambiguous"
+                )
+            observed = (
+                _row_mapping(_result_columns(observed_result), observed_rows[0])
+                if observed_rows
+                else {}
+            )
+            expected_revision = int(values["expected_queue_revision"])
+            expected_attempt = int(values["expected_queue_attempt"])
+            if (
+                (expected_revision == -1 and observed)
+                or (expected_revision >= 0 and not observed)
+                or (
+                    observed
+                    and (
+                        int(observed.get("revision") or -1) != expected_revision
+                        or int(observed.get("attempt") or -1) != expected_attempt
+                        or str(observed.get("extension_schema") or "")
+                        != TYPED_RETRY_COOLDOWN_SCHEMA
+                    )
+                )
+            ):
+                raise OptimisticConflictError(
+                    "retry cooldown expected queue revision is stale"
+                )
+            new_queue_revision = 1 if expected_revision == -1 else expected_revision + 1
+            common_values = (
+                values["claim_id"],
+                values["resolution_cid"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                values["fencing_token"],
+                0,
+                values["attempt_number"],
+                "released",
+                values["started_at_ms"],
+                values["reason"],
+                values["retry_not_before_ms"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                new_queue_revision,
+                values["extension_schema"],
+                values["extension_json"],
+            )
+            if expected_revision == -1:
+                operation = "executor_insert_retry_cooldown"
+                mutation_parameters = (
+                    values["task_cid"],
+                    *common_values,
+                    expected_revision,
+                )
+            else:
+                operation = "executor_update_retry_cooldown"
+                mutation_parameters = (
+                    *common_values,
+                    values["task_cid"],
+                    expected_revision,
+                    expected_attempt,
+                    values["attempt_number"],
+                    TYPED_RETRY_COOLDOWN_SCHEMA,
+                )
+            result = txn.execute_named_operation(
+                operation,
+                mutation_parameters,
+            )
+            row = _fetch_one(result)
+            if row is None:
+                raise OptimisticConflictError(
+                    "retry cooldown absence/revision CAS failed"
+                )
+            written = _row_mapping(_result_columns(result), row)
+            expected_written = {
+                "task_cid": values["task_cid"],
+                "claim_cid": values["claim_id"],
+                "resolution_cid": values["resolution_cid"],
+                "claimant_did": values["owner_session_id"],
+                "logical_epoch": values["fence_epoch"],
+                "fencing_token": values["fencing_token"],
+                "expires_at_ms": 0,
+                "attempt": values["attempt_number"],
+                "state": "released",
+                "started_at_ms": values["started_at_ms"],
+                "release_reason": values["reason"],
+                "retry_not_before_ms": values["retry_not_before_ms"],
+                "owner_session_id": values["owner_session_id"],
+                "fence_epoch": values["fence_epoch"],
+                "revision": new_queue_revision,
+                "extension_schema": values["extension_schema"],
+                "extension_json": values["extension_json"],
+            }
+            if any(
+                written.get(name) != expected
+                for name, expected in expected_written.items()
+            ):
+                raise OptimisticConflictError(
+                    "retry cooldown mutation returned inconsistent state"
+                )
+            return {
+                "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+                "operation": "task.retry.cooldown.record",
+                "task_cid": str(values["task_cid"]),
+                "expected_task_revision": int(values["expected_task_revision"]),
+                "attempt_id": str(values["attempt_id"]),
+                "claim_id": str(values["claim_id"]),
+                "attempt_number": int(values["attempt_number"]),
+                "queue_revision": new_queue_revision,
+                "retry_not_before_ms": int(values["retry_not_before_ms"]),
+                "reason": str(values["reason"]),
+                "store_revision_before": generation.revision,
+            }
+
+        return self.submit_command(command, apply=apply_retry_cooldown)
 
     def record_task_validation(
         self,

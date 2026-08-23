@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import time
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
@@ -33,14 +34,17 @@ from .database_task_source import (
 from .database_task_source import (
     CASResult as DatabaseCASResult,
 )
-from .intent_repository import IntentReceipt
+from .intent_repository import IntentReceipt, QueueEntry
 from .quack_state_client import QuackStateClient
 from .task_execution_route_policy import (
     TaskExecutionRouteBinding,
     TaskExecutionRoutePolicy,
     task_execution_contract_cid,
 )
-from .typed_state_owner import TYPED_TASK_STATUS_VOCABULARY
+from .typed_state_owner import (
+    TYPED_RETRY_COOLDOWN_SCHEMA,
+    TYPED_TASK_STATUS_VOCABULARY,
+)
 
 TYPED_DATABASE_TASK_SOURCE_INTERFACE: Final = "TypedDatabaseTaskSource@1"
 TYPED_DATABASE_TASK_SOURCE_SCHEMA: Final = (
@@ -226,6 +230,7 @@ class TypedDatabaseTaskSource:
         | Mapping[str, Any]
         | None = None,
         owns_client: bool = True,
+        clock_ms: Any | None = None,
     ) -> None:
         if not isinstance(client, QuackStateClient) or not client.attached:
             raise TaskSourceIntegrityError(
@@ -235,9 +240,14 @@ class TypedDatabaseTaskSource:
             raise TaskSourceIntegrityError(
                 "typed database task source client ownership is invalid"
             )
+        if clock_ms is not None and not callable(clock_ms):
+            raise TaskSourceIntegrityError(
+                "typed database task source clock is invalid"
+            )
         self._client = client
         self._owns_client = owns_client
         self._closed = False
+        self._clock_ms = clock_ms or (lambda: int(time.time() * 1_000))
         self.path = Path("typed-state-owner")
         self.database_path = self.path
         self._execution_route_policy = (
@@ -310,6 +320,189 @@ class TypedDatabaseTaskSource:
                     )
                 return row, records, after.revision
         raise TaskSourceConflictError("typed control projection changed during bounded snapshot")
+
+    @staticmethod
+    def _validated_retry_cooldown_row(
+        raw: Mapping[str, Any],
+        *,
+        task_cid: str,
+    ) -> Mapping[str, Any]:
+        """Validate every persisted field in one typed cooldown row."""
+
+        task = str(task_cid or "").strip()
+        if not task:
+            raise TaskSourceIntegrityError("retry cooldown task identity is empty")
+        row = dict(raw)
+        required = {
+            "task_cid",
+            "claim_cid",
+            "resolution_cid",
+            "claimant_did",
+            "logical_epoch",
+            "fencing_token",
+            "expires_at_ms",
+            "attempt",
+            "state",
+            "started_at_ms",
+            "release_reason",
+            "retry_not_before_ms",
+            "owner_session_id",
+            "fence_epoch",
+            "revision",
+            "extension_schema",
+            "extension_json",
+        }
+        if set(row) != required or str(row.get("task_cid") or "") != task:
+            raise TaskSourceIntegrityError(
+                "retry cooldown owner row differs from its closed projection"
+            )
+        for name in (
+            "logical_epoch",
+            "fencing_token",
+            "expires_at_ms",
+            "attempt",
+            "started_at_ms",
+            "retry_not_before_ms",
+            "fence_epoch",
+            "revision",
+        ):
+            value = row.get(name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise TaskSourceIntegrityError(
+                    f"retry cooldown {name} is invalid"
+                )
+        for name in (
+            "claim_cid",
+            "resolution_cid",
+            "claimant_did",
+            "state",
+            "release_reason",
+            "owner_session_id",
+            "extension_schema",
+        ):
+            if not isinstance(row.get(name), str):
+                raise TaskSourceIntegrityError(
+                    f"retry cooldown {name} is invalid"
+                )
+        extension = _mapping_json(
+            row["extension_json"], noun="retry cooldown extension"
+        )
+        if (
+            row["extension_schema"] != TYPED_RETRY_COOLDOWN_SCHEMA
+            or extension.get("schema") != TYPED_RETRY_COOLDOWN_SCHEMA
+            or row["state"] != "released"
+            or row["expires_at_ms"] != 0
+            or row["attempt"] < 1
+            or row["fencing_token"] < 1
+            or row["fence_epoch"] < 1
+            or row["revision"] < 1
+            or row["claimant_did"] != row["owner_session_id"]
+            or row["logical_epoch"] != row["fence_epoch"]
+            or extension.get("task_cid") != task
+            or extension.get("claim_id") != row["claim_cid"]
+            or extension.get("owner_session_id") != row["owner_session_id"]
+            or extension.get("attempt_number") != row["attempt"]
+            or extension.get("fencing_token") != row["fencing_token"]
+            or extension.get("fence_epoch") != row["fence_epoch"]
+            or extension.get("started_at_ms") != row["started_at_ms"]
+            or extension.get("retry_not_before_ms")
+            != row["retry_not_before_ms"]
+            or extension.get("reason") != row["release_reason"]
+            or row["resolution_cid"]
+            != content_identity(
+                {
+                    "typed_retry_cooldown": extension,
+                    "started_at_ms": row["started_at_ms"],
+                }
+            )
+        ):
+            raise TaskSourceIntegrityError(
+                "retry cooldown row is foreign or differs from its receipt"
+            )
+        row["extension"] = extension
+        return MappingProxyType(row)
+
+    def _retry_cooldown_row(
+        self,
+        task_cid: str,
+    ) -> Mapping[str, Any] | None:
+        """Return one complete owner row, including its lease CAS revision."""
+
+        task = str(task_cid or "").strip()
+        if not task:
+            raise TaskSourceIntegrityError("retry cooldown task identity is empty")
+        rows = self._client.execute(
+            "executor_retry_cooldown_by_task",
+            {"task_cid": task},
+        )
+        if len(rows) > 1:
+            raise TaskSourceIntegrityError(
+                "retry cooldown queue identity is ambiguous"
+            )
+        if not rows:
+            return None
+        return self._validated_retry_cooldown_row(rows[0], task_cid=task)
+
+    def _stable_ready_material(
+        self,
+    ) -> tuple[
+        Mapping[str, Any],
+        tuple[tuple[TaskRecord, Mapping[str, Any]], ...],
+        int,
+        Mapping[str, int],
+    ]:
+        """Read tasks and typed cooldowns under one generation identity."""
+
+        for _attempt in range(4):
+            before = self._client.load_generation()
+            snapshot_row, records, revision = self._snapshot_material()
+            cooldowns: dict[str, int] = {}
+            offset = 0
+            while offset <= len(records):
+                rows = self._client.execute(
+                    "executor_retry_cooldown_page",
+                    {
+                        "limit": min(_TRANSPORT_PAGE_LIMIT, len(records) + 1),
+                        "offset": offset,
+                    },
+                )
+                if not rows:
+                    break
+                for raw in rows:
+                    row = dict(raw)
+                    task_cid = str(row.get("task_cid") or "")
+                    if not task_cid or task_cid in cooldowns:
+                        raise TaskSourceIntegrityError(
+                            "retry cooldown page is malformed or duplicated"
+                        )
+                    validated = self._validated_retry_cooldown_row(
+                        row,
+                        task_cid=task_cid,
+                    )
+                    cooldowns[task_cid] = int(
+                        validated["retry_not_before_ms"]
+                    )
+                offset += len(rows)
+                if len(rows) < min(_TRANSPORT_PAGE_LIMIT, len(records) + 1):
+                    break
+                if len(cooldowns) > len(records):
+                    raise TaskSourceBoundsError(
+                        "retry cooldown population exceeds task population"
+                    )
+            after = self._client.load_generation()
+            if (
+                before.content_id == after.content_id
+                and revision == after.revision
+            ):
+                task_cids = {record.task_cid for record, _identity in records}
+                if not set(cooldowns).issubset(task_cids):
+                    raise TaskSourceIntegrityError(
+                        "retry cooldown projection contains a foreign task"
+                    )
+                return snapshot_row, records, revision, MappingProxyType(cooldowns)
+        raise TaskSourceConflictError(
+            "typed task/cooldown projection changed during bounded snapshot"
+        )
 
     def _snapshot_from_material(
         self,
@@ -587,9 +780,16 @@ class TypedDatabaseTaskSource:
         blocked = {str(item).strip() for item in blocked_ids if str(item).strip()}
         if completed & blocked:
             raise ValueError("completed_ids and blocked_ids must be disjoint")
-        snapshot_row, stable_records, revision = self._snapshot_material()
+        snapshot_row, stable_records, revision, cooldowns = (
+            self._stable_ready_material()
+        )
         snapshot = self._snapshot_from_material(snapshot_row, stable_records, revision)
         records = [record for record, _identity in stable_records]
+        now_ms = getattr(
+            self, "_clock_ms", lambda: int(time.time() * 1_000)
+        )()
+        if isinstance(now_ms, bool) or not isinstance(now_ms, int) or now_ms < 0:
+            raise TaskSourceIntegrityError("typed task-source clock is invalid")
         by_identity = {
             identity: record
             for record in records
@@ -598,7 +798,11 @@ class TypedDatabaseTaskSource:
         ready: list[TaskRecord] = []
         for record in records:
             identities = {record.task_cid, record.task_alias}
-            if identities & (completed | blocked) or record.status not in _READY_STATUSES:
+            if (
+                identities & (completed | blocked)
+                or record.status not in _READY_STATUSES
+                or int(cooldowns.get(record.task_cid, 0)) > now_ms
+            ):
                 continue
             if all(
                 dependency in completed
@@ -725,10 +929,181 @@ class TypedDatabaseTaskSource:
             details=details,
         )
 
-    def get_queue_entry(self, _task_cid: str) -> None:
-        """No cooldown row exists until a typed retry operation creates one."""
+    def record_task_retry_cooldown(
+        self,
+        *,
+        task_cid: str,
+        expected_task_revision: int,
+        expected_task_status: str,
+        attempt_id: str,
+        claim_id: str,
+        lease_id: str,
+        owner_session_id: str,
+        attempt_number: int,
+        fencing_token: int,
+        fence_epoch: int,
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+        now_ms: int | None = None,
+    ) -> IntentReceipt:
+        """Persist and reproduce one owner-mediated typed retry cooldown."""
 
-        return None
+        selected_now = self._clock_ms() if now_ms is None else now_ms
+        if (
+            isinstance(selected_now, bool)
+            or not isinstance(selected_now, int)
+            or selected_now < 0
+        ):
+            raise TaskSourceIntegrityError("typed task-source clock is invalid")
+        result = self._client.record_task_retry_cooldown(
+            task_cid=task_cid,
+            expected_task_revision=expected_task_revision,
+            expected_task_status=expected_task_status,
+            attempt_id=attempt_id,
+            claim_id=claim_id,
+            lease_id=lease_id,
+            owner_session_id=owner_session_id,
+            attempt_number=attempt_number,
+            fencing_token=fencing_token,
+            fence_epoch=fence_epoch,
+            delay_ms=delay_ms,
+            reason=reason,
+            selection_penalty=selection_penalty,
+            now_ms=selected_now,
+        )
+        if not result.accepted:
+            raise TaskSourceConflictError(
+                str(
+                    result.result.get("error")
+                    or "typed retry cooldown write was not accepted"
+                )
+            )
+        details = dict(result.result)
+        row = self._retry_cooldown_row(str(task_cid))
+        extension = dict(row.get("extension") or {}) if row is not None else {}
+        checks = (
+            ("row.present", row is not None, True),
+            (
+                "row.extension_schema",
+                None if row is None else row.get("extension_schema"),
+                TYPED_RETRY_COOLDOWN_SCHEMA,
+            ),
+            ("row.claim_id", None if row is None else row.get("claim_cid"), str(claim_id)),
+            (
+                "row.owner_session_id",
+                None if row is None else row.get("owner_session_id"),
+                str(owner_session_id),
+            ),
+            ("row.attempt", None if row is None else row.get("attempt"), int(attempt_number)),
+            (
+                "row.fencing_token",
+                None if row is None else row.get("fencing_token"),
+                int(fencing_token),
+            ),
+            (
+                "row.fence_epoch",
+                None if row is None else row.get("fence_epoch"),
+                int(fence_epoch),
+            ),
+            (
+                "row.retry_not_before_ms",
+                None if row is None else row.get("retry_not_before_ms"),
+                details.get("retry_not_before_ms"),
+            ),
+            (
+                "row.revision",
+                None if row is None else row.get("revision"),
+                details.get("queue_revision"),
+            ),
+            ("extension.schema", extension.get("schema"), TYPED_RETRY_COOLDOWN_SCHEMA),
+            ("extension.task_cid", extension.get("task_cid"), str(task_cid)),
+            (
+                "extension.expected_task_revision",
+                extension.get("expected_task_revision"),
+                int(expected_task_revision),
+            ),
+            ("extension.attempt_id", extension.get("attempt_id"), str(attempt_id)),
+            ("extension.claim_id", extension.get("claim_id"), str(claim_id)),
+            ("extension.lease_id", extension.get("lease_id"), str(lease_id)),
+            (
+                "extension.attempt_number",
+                extension.get("attempt_number"),
+                int(attempt_number),
+            ),
+            ("extension.reason", extension.get("reason"), str(reason)),
+            ("details.schema", details.get("schema"), TYPED_RETRY_COOLDOWN_SCHEMA),
+            (
+                "details.operation",
+                details.get("operation"),
+                "task.retry.cooldown.record",
+            ),
+            ("details.task_cid", details.get("task_cid"), str(task_cid)),
+            (
+                "details.expected_task_revision",
+                details.get("expected_task_revision"),
+                int(expected_task_revision),
+            ),
+            ("details.attempt_id", details.get("attempt_id"), str(attempt_id)),
+            ("details.claim_id", details.get("claim_id"), str(claim_id)),
+            (
+                "details.attempt_number",
+                details.get("attempt_number"),
+                int(attempt_number),
+            ),
+            ("details.reason", details.get("reason"), str(reason)),
+        )
+        mismatches = tuple(
+            name
+            for name, observed, expected in checks
+            if observed != expected
+            or (
+                isinstance(expected, int)
+                and not isinstance(expected, bool)
+                and isinstance(observed, bool)
+            )
+        )
+        if mismatches:
+            raise TaskSourceIntegrityError(
+                "typed retry cooldown post-state differs from its receipt: "
+                + ", ".join(mismatches)
+            )
+        frozen = MappingProxyType(details)
+        return IntentReceipt(
+            event_id=str(result.result_digest or content_identity(details)),
+            event_type="TASK_RETRY_COOLDOWN_RECORDED",
+            global_sequence=0,
+            recorded_at="typed-state-owner",
+            subject_id=str(task_cid),
+            revision=int(row["revision"]),
+            changed=bool(result.changed),
+            details=frozen,
+        )
+
+    def get_queue_entry(self, task_cid: str) -> QueueEntry | None:
+        """Return canonical selection state through the closed owner query."""
+
+        row = self._retry_cooldown_row(task_cid)
+        if row is None:
+            return None
+        extension = dict(row.get("extension") or {})
+        for name in ("selection_penalty", "consecutive_failures"):
+            value = extension.get(name, 0)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise TaskSourceIntegrityError(
+                    f"retry cooldown {name} is invalid"
+                )
+        return QueueEntry(
+            task_cid=str(row["task_cid"]),
+            attempt=int(row["attempt"]),
+            retry_not_before_ms=int(row["retry_not_before_ms"]),
+            selection_penalty=int(extension.get("selection_penalty") or 0),
+            consecutive_failures=int(
+                extension.get("consecutive_failures") or 0
+            ),
+            state=str(row["state"]),
+            reason=str(row["release_reason"] or extension.get("reason") or ""),
+        )
 
 
 __all__ = [

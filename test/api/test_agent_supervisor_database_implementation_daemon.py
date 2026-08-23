@@ -3247,10 +3247,59 @@ def test_fenced_retry_cannot_bypass_dependency_reopen_after_local_claim(
             status="completed",
             evidence_digests=(evidence_digest,),
         )
+        fenced_receipts: list[dict[str, object]] = []
+        shared_cas = daemon._cas_task_status_database
+
+        def capture_fenced_receipt(
+            task_cid: str,
+            *,
+            expected_revision: int,
+            new_status: str,
+            receipt: object,
+            evidence_digests: object = None,
+        ) -> object:
+            assert isinstance(receipt, dict)
+            fenced_receipts.append(dict(receipt))
+            return shared_cas(
+                task_cid,
+                expected_revision=expected_revision,
+                new_status=new_status,
+                receipt=receipt,
+                evidence_digests=evidence_digests,
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            capture_fenced_receipt,
+        )
         converged_retry = daemon.claim_next(exclude_task_cids=(dependency_cid,))
         assert converged_retry is not None
         assert converged_retry.task_cid == dependent_cid
         assert converged_retry.attempt_number == 3
+        assert len(fenced_receipts) == 1
+        refreshed_receipt = fenced_receipts[0]
+        assert {
+            name: refreshed_receipt[name]
+            for name in (
+                "attempt_id",
+                "claim_id",
+                "attempt_number",
+                "lease_id",
+                "owner_session_id",
+                "fencing_token",
+                "fence_epoch",
+            )
+        } == {
+            "attempt_id": converged_retry.attempt_id,
+            "claim_id": converged_retry.claim_id,
+            "attempt_number": converged_retry.attempt_number,
+            "lease_id": converged_retry.lease_id,
+            "owner_session_id": converged_retry.owner_session_id,
+            "fencing_token": converged_retry.fencing_token,
+            "fence_epoch": converged_retry.fence_epoch,
+        }
+        assert refreshed_receipt["claimed_from_revision"] == 2
     finally:
         daemon.close()
 
@@ -6209,6 +6258,106 @@ def test_retry_reconciliation_reuses_attempt_bound_queue_after_cas_crash(
         assert task.revision == 3
     finally:
         daemon.close()
+
+
+def test_typed_blocked_recovery_persists_cooldown_before_control_cas() -> None:
+    writes: list[str] = []
+    captured: dict[str, object] = {}
+
+    class _TypedRecoverySource:
+        def __init__(self) -> None:
+            self.entry: SimpleNamespace | None = None
+            self.task = SimpleNamespace(
+                task_cid="task:typed-blocked-recovery",
+                status="blocked",
+                revision=3,
+                body={
+                    "completion_receipt": {
+                        "operation": "database_portal_terminal_failure"
+                    }
+                },
+            )
+
+        def get(self, _task_cid: str) -> SimpleNamespace:
+            return self.task
+
+        def get_queue_entry(self, _task_cid: str) -> SimpleNamespace | None:
+            return self.entry
+
+        def record_task_retry_cooldown(self, **kwargs: object) -> SimpleNamespace:
+            writes.append("cooldown")
+            captured.update(kwargs)
+            self.entry = SimpleNamespace(
+                retry_not_before_ms=1_000,
+                reason=kwargs["reason"],
+            )
+            return SimpleNamespace(to_dict=lambda: {"changed": True})
+
+    source = _TypedRecoverySource()
+    daemon = SimpleNamespace(
+        task_source=source,
+        _database_portal_backoff_ms=lambda value: int(value),
+        _now_ms=lambda: 1_000,
+        _protect_retry_transition_authority=(
+            lambda _attempt, _coordination: None
+        ),
+    )
+
+    def control_cas(
+        _task_cid: str,
+        *,
+        expected_revision: int,
+        new_status: str,
+        receipt: object,
+        evidence_digests: object = None,
+    ) -> SimpleNamespace:
+        writes.append("cas")
+        assert expected_revision == 3
+        assert new_status == "retrying"
+        assert isinstance(receipt, dict)
+        return SimpleNamespace(
+            revision=4,
+            to_dict=lambda: {"changed": True},
+        )
+
+    daemon._cas_task_status_database = control_cas
+    attempt = DatabaseTaskAttempt(
+        attempt_id="attempt:typed-blocked-recovery",
+        claim_id="claim:typed-blocked-recovery",
+        task_cid=source.task.task_cid,
+        task_alias="CASF-TYPED-BLOCKED-RECOVERY",
+        attempt_number=2,
+        owner_session_id="session:typed-blocked-recovery",
+        fencing_token=31,
+        fence_epoch=17,
+        lease_id="lease:typed-blocked-recovery",
+        committed_phase=ATTEMPT_PHASE_FAILED,
+        status="failed",
+        started_at_ms=100,
+        finished_at_ms=900,
+        revision=5,
+    )
+
+    result = DatabaseImplementationDaemon._persist_task_retry_state(
+        daemon,
+        attempt,
+        reason="portal\r\ncandidate\x00retry",
+        backoff_ms=0,
+        evidence_source="portal_provider_failed_reclassified",
+        allow_blocked_recovery=True,
+    )
+
+    assert writes == ["cooldown", "cas"]
+    assert captured["expected_task_status"] == "blocked"
+    assert captured["expected_task_revision"] == 3
+    assert captured["attempt_number"] == 2
+    assert captured["now_ms"] == 1_000
+    assert captured["reason"] == (
+        "database_portal_retry:attempt:typed-blocked-recovery:"
+        "portal candidate retry"
+    )
+    assert result["status"] == "retrying"
+    assert result["control_previous_status"] == "blocked"
 
 
 def test_retry_reconciliation_repairs_retrying_without_queue(
