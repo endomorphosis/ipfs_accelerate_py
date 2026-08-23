@@ -1266,6 +1266,9 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         assert projection["executor_process_bound"] is True
         assert projection["clean_error_state"] is True
         assert projection["task_state_path"].startswith(str(paths["executor_state"]))
+        assert operator._read_optional_json(paths["executor_readiness"])[
+            "broker_failed"
+        ] is False
         assert "token" not in " ".join(supervisor.args).lower()
         assert str(server.typed_command_socket_path()) not in supervisor.args
         assert managed_route_policy.policy_id not in " ".join(supervisor.args)

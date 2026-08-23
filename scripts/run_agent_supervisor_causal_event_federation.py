@@ -1983,7 +1983,7 @@ def _spawn_configured_executor(
                     if key in status_payload
                 },
                 "predicates": predicates,
-                "broker_failed": broker.failure is not None,
+                "broker_failed": bool(broker.failure),
             }
             if last_readiness["ready"] is True:
                 _atomic_json(paths["executor_readiness"], last_readiness)
