@@ -976,6 +976,81 @@ def test_launch_generation_admits_fresh_identity_after_complete_stop(
     )
     operator._require_unused_launch_generation(paths)
 
+
+def test_complete_stop_retires_consumed_control_plane(tmp_path: Path) -> None:
+    operator = _operator()
+    runtime = tmp_path / "runtime"
+    database = runtime / "control.duckdb"
+    evidence = runtime / "evidence" / "bootstrap-operator"
+    owner = runtime / "quack-owner"
+    state = runtime / "state"
+    evidence.mkdir(parents=True)
+    owner.mkdir()
+    state.mkdir()
+    database.write_text("duckdb", encoding="utf-8")
+    (runtime / ".control.duckdb.lock").write_text("", encoding="utf-8")
+    paths = {
+        "runtime": runtime,
+        "database": database,
+        "owner": owner,
+        "state": state,
+        "operator_evidence": evidence,
+        "launch_receipt": evidence / "launch-current.json",
+        "stop_receipt": evidence / "stop-current.json",
+    }
+    launch = operator._persist_receipt(
+        paths,
+        "launch",
+        {
+            "schema": operator.LAUNCH_SCHEMA,
+            "program_id": operator.PROGRAM_ID,
+            "marker": "retire",
+        },
+    )
+    operator._persist_receipt(
+        paths,
+        "stop",
+        {
+            "schema": operator.STOP_SCHEMA,
+            "program_id": operator.PROGRAM_ID,
+            "complete": True,
+            "launch_receipt_id": launch["launch_receipt_id"],
+        },
+    )
+    operator._require_unused_launch_generation(paths)
+    assert not database.exists()
+    archived = list((runtime / "quarantine").glob("consumed-*"))
+    assert len(archived) == 1
+    assert (archived[0] / "control-plane" / "control.duckdb").is_file()
+    assert (archived[0] / "evidence" / "bootstrap-operator").is_dir()
+
+
+def test_tampered_stop_receipt_still_fails_closed(tmp_path: Path) -> None:
+    operator = _operator()
+    paths = {
+        "operator_evidence": tmp_path / "evidence",
+        "launch_receipt": tmp_path / "launch.json",
+        "stop_receipt": tmp_path / "stop.json",
+    }
+    launch = operator._persist_receipt(
+        paths,
+        "launch",
+        {
+            "schema": operator.LAUNCH_SCHEMA,
+            "program_id": operator.PROGRAM_ID,
+            "marker": "tamper",
+        },
+    )
+    operator._persist_receipt(
+        paths,
+        "stop",
+        {
+            "schema": operator.STOP_SCHEMA,
+            "program_id": operator.PROGRAM_ID,
+            "complete": True,
+            "launch_receipt_id": launch["launch_receipt_id"],
+        },
+    )
     tampered = json.loads(paths["stop_receipt"].read_text(encoding="utf-8"))
     tampered["complete"] = False
     operator._atomic_json(paths["stop_receipt"], tampered)

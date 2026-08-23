@@ -2020,6 +2020,36 @@ def _wait_for_owner(
     raise OperatorError("timed out waiting for exact Quack owner readiness")
 
 
+def _retire_consumed_generation(paths: Mapping[str, Path], *, launch_id: str) -> None:
+    """Archive a fully stopped generation so the next launch can rematerialize.
+
+    The consumed supervisor identity stays terminal.  A later launch mints a
+    fresh identity against the current tree rather than reopening a stale
+    control plane.
+    """
+
+    runtime = paths.get("runtime")
+    database = paths.get("database")
+    if runtime is None or database is None:
+        return
+    compact = launch_id.replace("sha256:", "")[:16] or "unknown"
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    destination = runtime / "quarantine" / f"consumed-{compact}-{stamp}"
+    destination.mkdir(parents=True, exist_ok=True)
+    control = destination / "control-plane"
+    control.mkdir(exist_ok=True)
+    parent = database.parent
+    for extra in list(parent.glob(f"{database.name}*")) + list(parent.glob(f".{database.name}*")):
+        extra.rename(control / extra.name)
+    for key, label in (("owner", "quack-owner"), ("state", "state")):
+        source = paths.get(key)
+        if source is not None and source.exists():
+            source.rename(destination / label)
+    evidence = paths.get("operator_evidence")
+    if evidence is not None and evidence.parent.exists():
+        evidence.parent.rename(destination / "evidence")
+
+
 def _require_unused_launch_generation(paths: Mapping[str, Path]) -> None:
     """Reject reuse of a supervisor identity whose lifecycle is terminal.
 
@@ -2046,8 +2076,9 @@ def _require_unused_launch_generation(paths: Mapping[str, Path]) -> None:
         raise OperatorError("prior stop receipt has stale authority")
     if stop.get("complete") is not True or stop.get("launch_receipt_id") != launch_id:
         raise OperatorError("a prior launch has no complete matching stop receipt")
-    # The consumed identity stays terminal.  Launch may continue and mint a
-    # fresh supervisor/process-birth/lease rather than reuse this generation.
+    # The consumed identity stays terminal.  Retire the stale control plane so
+    # launch can rematerialize and mint a fresh supervisor/process-birth/lease.
+    _retire_consumed_generation(paths, launch_id=launch_id)
 
 
 def _launch_owner(
