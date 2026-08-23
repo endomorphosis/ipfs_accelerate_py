@@ -341,7 +341,7 @@ This board is a sealed bootstrap and human export. After materialization, DuckDB
 
 ## PCPC-009 Implement trajectory normalization
 
-- Status: todo
+- Status: completed
 - Completion: automatic
 - Is schedulable: true
 - Review only: false
