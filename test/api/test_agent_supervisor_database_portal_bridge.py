@@ -49,6 +49,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION,
+    EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS,
     SEMANTIC_TRUTH_AUTHORITY_ENV,
     SEMANTIC_WRITER_POLICY_ENV,
     DatabaseImplementationAuthorityError,
@@ -1612,6 +1613,76 @@ def test_bridge_defers_foreign_external_checkout_recovery_fence(
     assert caught.value.backoff_seconds == 30
     assert caught.value.attempt_consumed is False
     assert caught.value.provider_dispatched is False
+
+
+def test_bridge_defers_verified_live_supervisor_recovery_owner(
+    tmp_path: Path,
+) -> None:
+    class LiveForeignRecoveryPortal:
+        closed = False
+
+        def run_once(self) -> dict[str, object]:
+            return {
+                "blocked": True,
+                "reason": "external_protected_checkout_recovery_required",
+                "unchanged": True,
+                "write_count": 0,
+                "implementation_result": {
+                    "deferral_schema": DATABASE_PORTAL_RETRY_DEFERRAL_SCHEMA,
+                    "retryable": True,
+                    "failure_kind": "lifecycle_setup",
+                    "provider_call_allowed": False,
+                    "returncode": 1,
+                    "reason": "external_protected_recovery_owner_active",
+                    "deferred": True,
+                    "attempt_consumed": False,
+                    "provider_dispatched": False,
+                    "backoff_seconds": (
+                        EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS
+                    ),
+                },
+                "protected_checkout_recovery": {
+                    "required": True,
+                    "recovered": False,
+                    "adopted": False,
+                    "blocked": True,
+                    "reason": "external_protected_checkout_recovery_required",
+                    "protected_recovery_owner": "implementation_supervisor",
+                    "foreign_owner_liveness": "verified_live",
+                    "deferred": True,
+                    "attempt_consumed": False,
+                    "provider_dispatched": False,
+                    "backoff_seconds": (
+                        EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS
+                    ),
+                    "lock_owner_pid": 1234,
+                    "lock_path": str(
+                        tmp_path / ".git" / "agent-checkout-mutation.lock"
+                    ),
+                },
+            }
+
+        def close_event_runtime(self) -> None:
+            self.closed = True
+
+    portal = LiveForeignRecoveryPortal()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(_record()),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: portal,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert str(caught.value) == "external_protected_recovery_owner_active"
+    assert caught.value.backoff_seconds == (
+        EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS
+    )
+    assert caught.value.attempt_consumed is False
+    assert caught.value.provider_dispatched is False
+    assert portal.closed is True
 
 
 def test_bridge_recovers_external_checkout_only_when_lock_absent(
