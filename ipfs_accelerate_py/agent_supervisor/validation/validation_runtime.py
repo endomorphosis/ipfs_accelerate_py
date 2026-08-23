@@ -2544,18 +2544,40 @@ def validation_shell_command(command: str) -> list[str]:
         # Todo lines often quote the entire argv after an env assignment:
         # ``PYTHONPATH=src:. 'python3 -m pytest -q test/foo.py'``.  shlex
         # keeps that as one token, and Bash then treats the whole string as
-        # a missing executable.  Flatten those nested command tokens.
+        # a missing executable.  Flatten those nested command tokens, but
+        # leave ``python -c`` script bodies and pytest ``-k`` expressions
+        # intact: they contain spaces without being a second launcher.
         flattened: list[str] = []
+        previous = ""
         for token in leading:
+            flatten = False
             if any(character.isspace() for character in token):
                 try:
                     nested = shlex.split(token, posix=True)
                 except ValueError:
                     nested = [token]
-                if len(nested) > 1:
+                nested_index = 0
+                while nested_index < len(nested) and _SHELL_ASSIGNMENT.fullmatch(
+                    nested[nested_index]
+                ):
+                    nested_index += 1
+                nested_command = (
+                    Path(nested[nested_index]).name
+                    if nested_index < len(nested)
+                    else ""
+                )
+                if (
+                    len(nested) > 1
+                    and nested_command in {"python", "python3", "pytest"}
+                    and previous not in {"-c", "-ec", "-lc", "--command", "-k"}
+                    and not previous.startswith("--command=")
+                    and not previous.startswith("-k")
+                ):
+                    flatten = True
                     flattened.extend(nested)
-                    continue
-            flattened.append(token)
+            if not flatten:
+                flattened.append(token)
+            previous = token
         if flattened != leading:
             rebuilt: list[str] = []
             for token in flattened:

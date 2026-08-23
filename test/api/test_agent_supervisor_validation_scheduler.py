@@ -164,6 +164,19 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     assert shell_command[4].endswith(
         "readonly -f _ipfs_accelerate_validation_python python python3 pytest; test -f artifact"
     )
+    quoted_filter = validation_shell_command(
+        "python -m pytest -q test/api/procedure_compiler/test_task_family.py "
+        "-k 'boundary or negative or unsafe'"
+    )
+    filter_payload = quoted_filter[-1]
+    assert "-k 'boundary or negative or unsafe'" in filter_payload
+    assert " -k boundary or negative or unsafe" not in filter_payload
+    nested_python = validation_shell_command(
+        "PYTHONPATH=src:. 'python3 -m pytest -q test/foo.py'"
+    )
+    nested_payload = nested_python[-1]
+    assert "python3 -m pytest -q test/foo.py" in nested_payload
+    assert "'python3 -m pytest -q test/foo.py'" not in nested_payload
     for nested_shell in (
         "bash -lc 'python -c \"raise SystemExit(0)\"'",
         "true && bash -lc 'python -V'",
@@ -1571,6 +1584,81 @@ def test_fresh_sealed_runner_requires_exact_launcher_receipt(
     assert result["classification"] == "infrastructure_failure"
     assert result["authoritative"] is False
     assert result["stable"] is False
+
+
+def test_external_isolation_receipt_admits_passing_sealed_runner(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    @sealed_validation_python_runner
+    def isolated_runner(*, spec, **_kwargs):
+        result = _result(spec)
+        result["external_validation_isolation_receipt"] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "external-validation-isolation@1"
+            ),
+            "image_id": (
+                "sha256:ca52183d6e3f6d472b36092fc07a76fde0b7962da92b84dad"
+                "2dc1038d93009ad"
+            ),
+            "container_removed": True,
+            "receipt_id": (
+                "baguqeeraldrvzwtbpryckbinbq4avy2d4vhhirg5dngogbuo7w6lqjynobsq"
+            ),
+        }
+        return result
+
+    report = ValidationScheduler(runner=isolated_runner).run(
+        ["true"],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="same-commit",
+        dependency_state="same-dependencies",
+    )
+
+    result = report["results"][0]
+    assert result["returncode"] == 0
+    assert result.get("infrastructure_failure") is not True
+    assert result.get("error") != (
+        "validation_environment_python_launcher_receipt_mismatch"
+    )
+
+
+def test_incomplete_external_isolation_receipt_does_not_bypass_launcher_check(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    @sealed_validation_python_runner
+    def incomplete_isolation_runner(*, spec, **_kwargs):
+        result = _result(spec)
+        result["external_validation_isolation_receipt"] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "external-validation-isolation@1"
+            ),
+            "image_id": "sha256:incomplete",
+            "container_removed": False,
+            "receipt_id": "baguqeeraincomplete",
+        }
+        return result
+
+    report = ValidationScheduler(runner=incomplete_isolation_runner).run(
+        ["true"],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="same-commit",
+        dependency_state="same-dependencies",
+    )
+
+    result = report["results"][0]
+    assert result["returncode"] == 75
+    assert result["infrastructure_failure"] is True
+    assert result["error"] == "validation_environment_python_launcher_receipt_mismatch"
 
 
 def test_hermetic_runtime_always_resanitizes_supplied_environment(
