@@ -721,13 +721,17 @@ class DuckDBConnection:
 
         thread_id = threading.get_ident()
         while (
-            (
-                self._transaction_active
-                and self._transaction_lock_owner != thread_id
-            )
-            or (
-                self._context_finalizing
-                and self._context_owner != thread_id
+            not self._closed
+            and not self._poisoned
+            and (
+                (
+                    self._transaction_active
+                    and self._transaction_lock_owner != thread_id
+                )
+                or (
+                    self._context_finalizing
+                    and self._context_owner != thread_id
+                )
             )
         ):
             self._execution_condition.wait()
@@ -789,9 +793,6 @@ class DuckDBConnection:
             uri = self._poison_locked()
             self._closed = True
             self._closing_owner = 0
-            self._context_depth = 0
-            self._context_owner = 0
-            self._context_finalizing = False
             self._execution_condition.notify_all()
         self._evict_poisoned_pool_entry(uri)
 

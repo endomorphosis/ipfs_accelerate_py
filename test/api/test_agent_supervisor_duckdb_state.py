@@ -248,6 +248,8 @@ def test_cross_thread_context_entry_is_rejected_without_poisoning_owner() -> Non
 def test_context_owner_remains_reserved_during_native_close() -> None:
     close_started = threading.Event()
     allow_close = threading.Event()
+    peer_started = threading.Event()
+    peer_returned = threading.Event()
 
     class BlockingClose:
         description = ()
@@ -276,6 +278,7 @@ def test_context_owner_remains_reserved_during_native_close() -> None:
     )
     connection._lock_context = FakeLockContext()
     failures: list[BaseException] = []
+    peer_failures: list[BaseException] = []
 
     def context_owner() -> None:
         try:
@@ -289,11 +292,31 @@ def test_context_owner_remains_reserved_during_native_close() -> None:
     assert close_started.wait(timeout=3.0)
     with pytest.raises(DuckDBConnectionPolicyError, match="unusable|another thread"):
         connection.__enter__()
+
+    def peer_query() -> None:
+        peer_started.set()
+        try:
+            connection.execute("SELECT 1")
+        except BaseException as exc:
+            peer_failures.append(exc)
+        finally:
+            peer_returned.set()
+
+    peer = threading.Thread(target=peer_query)
+    peer.start()
+    assert peer_started.wait(timeout=3.0)
+    assert not peer_returned.wait(timeout=0.1)
+    connection._discard_pooled_connection()
+    assert peer_returned.wait(timeout=1.0)
     allow_close.set()
     owner.join(timeout=3.0)
+    peer.join(timeout=3.0)
 
     assert not owner.is_alive()
+    assert not peer.is_alive()
     assert failures == []
+    assert len(peer_failures) == 1
+    assert isinstance(peer_failures[0], DuckDBConnectionPolicyError)
 
 
 def test_same_raw_connection_cannot_receive_independent_wrapper_locks() -> None:
