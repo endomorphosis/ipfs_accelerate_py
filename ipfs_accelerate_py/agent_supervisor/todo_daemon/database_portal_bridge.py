@@ -215,6 +215,13 @@ DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
         "checkout_mutation_lock_exists",
     }
 )
+DATABASE_PORTAL_SKIP_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "inflight_process",
+        "provider_capacity_backoff",
+        "task_claim_lock_exists",
+    }
+)
 DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS: Final[int] = (
     FENCE_CONTENTION_BACKOFF_SECONDS
 )
@@ -3544,7 +3551,7 @@ class DatabasePortalExecutionBridge:
             return str(implementation.get("reason") or "portal_provider_failed")
         if implementation.get("skipped") is True:
             reason = str(implementation.get("reason") or "portal_execution_skipped")
-            if reason == _INFLIGHT_PROCESS_SKIP_REASON:
+            if reason in DATABASE_PORTAL_SKIP_CONTENTION_REASONS:
                 # A live implementer is a wait, not a task defect. Deferral
                 # owns this reason; do not CAS blocked.
                 return ""
@@ -3901,12 +3908,17 @@ class DatabasePortalExecutionBridge:
             return None
         if (
             implementation.get("skipped") is True
-            and str(implementation.get("reason") or "")
-            == _INFLIGHT_PROCESS_SKIP_REASON
+            and str(implementation.get("reason") or "").strip()
+            in DATABASE_PORTAL_SKIP_CONTENTION_REASONS
         ):
+            skip_reason = str(implementation.get("reason") or "").strip()
             raw_backoff = implementation.get(
                 "backoff_seconds",
-                INFLIGHT_PROCESS_BACKOFF_SECONDS,
+                (
+                    INFLIGHT_PROCESS_BACKOFF_SECONDS
+                    if skip_reason == _INFLIGHT_PROCESS_SKIP_REASON
+                    else DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS
+                ),
             )
             if (
                 isinstance(raw_backoff, bool)
@@ -3918,7 +3930,7 @@ class DatabasePortalExecutionBridge:
                     "Portal inflight deferral returned an invalid "
                     "backoff_seconds value"
                 )
-            return (_INFLIGHT_PROCESS_SKIP_REASON, int(raw_backoff))
+            return (skip_reason, int(raw_backoff))
         # ``attempt_consumed=false``/``provider_dispatched=false`` also
         # describe a successful deterministic zero-provider closure.  Only
         # the explicit closed deferral signal grants retry semantics.
@@ -7296,6 +7308,7 @@ __all__ = (
     "DATABASE_PORTAL_CANDIDATE_RETRY_REASONS",
     "DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS",
     "DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS",
+    "DATABASE_PORTAL_SKIP_CONTENTION_REASONS",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeConsumedNoProgressError",
     "DatabasePortalBridgeError",
