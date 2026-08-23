@@ -73673,73 +73673,80 @@ class DatabaseImplementationDaemon:
         """Read one bounded, generation-stable task and readiness projection."""
 
         for _attempt in range(_DATABASE_PROJECTION_READ_ATTEMPTS):
-            watermark_fn = getattr(self.task_source, "event_watermark", None)
-            before = (
-                int(watermark_fn())
-                if callable(watermark_fn)
-                else int(self.task_source.snapshot().event_cursor)
-            )
-            population_tasks: list[Any] = []
-            population_cursor = ""
-            seen_population_cursors: set[str] = set()
-            while True:
-                remaining = TASK_SOURCE_MAX_SNAPSHOT_TASKS - len(population_tasks)
-                if remaining <= 0:
+            try:
+                watermark_fn = getattr(self.task_source, "event_watermark", None)
+                before = (
+                    int(watermark_fn())
+                    if callable(watermark_fn)
+                    else int(self.task_source.snapshot().event_cursor)
+                )
+                population_tasks: list[Any] = []
+                population_cursor = ""
+                seen_population_cursors: set[str] = set()
+                while True:
+                    remaining = TASK_SOURCE_MAX_SNAPSHOT_TASKS - len(population_tasks)
+                    if remaining <= 0:
+                        raise DatabaseImplementationAuthorityError(
+                            "authoritative task population exceeds coordination sync bound"
+                        )
+                    population = self.task_source.list_tasks(
+                        cursor=population_cursor,
+                        limit=min(TASK_SOURCE_QUERY_LIMIT, remaining),
+                    )
+                    population_tasks.extend(population.tasks)
+                    next_cursor = str(population.next_cursor or "")
+                    if not next_cursor:
+                        break
+                    if next_cursor in seen_population_cursors:
+                        raise DatabaseImplementationAuthorityError(
+                            "authoritative task population cursor did not advance"
+                        )
+                    seen_population_cursors.add(next_cursor)
+                    population_cursor = next_cursor
+                ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+                after = (
+                    int(watermark_fn())
+                    if callable(watermark_fn)
+                    else int(self.task_source.snapshot().event_cursor)
+                )
+                if before != after:
+                    continue
+                tasks = tuple(population_tasks)
+                if len(tasks) > TASK_SOURCE_MAX_SNAPSHOT_TASKS:
                     raise DatabaseImplementationAuthorityError(
                         "authoritative task population exceeds coordination sync bound"
                     )
-                population = self.task_source.list_tasks(
-                    cursor=population_cursor,
-                    limit=min(TASK_SOURCE_QUERY_LIMIT, remaining),
-                )
-                population_tasks.extend(population.tasks)
-                next_cursor = str(population.next_cursor or "")
-                if not next_cursor:
-                    break
-                if next_cursor in seen_population_cursors:
+                by_cid: dict[str, Any] = {}
+                for task in tasks:
+                    task_cid = str(task.task_cid or "")
+                    status = str(task.status or "").strip().lower()
+                    if not task_cid or task_cid in by_cid:
+                        raise DatabaseImplementationAuthorityError(
+                            "authoritative task population has a missing or duplicate CID"
+                        )
+                    if status not in _DATABASE_CLOSED_TASK_STATUSES:
+                        raise DatabaseImplementationAuthorityError(
+                            f"authoritative task {task_cid} has unknown status {status!r}"
+                        )
+                    by_cid[task_cid] = task
+                ready_cids = frozenset(str(task.task_cid or "") for task in ready.tasks)
+                if "" in ready_cids or not ready_cids.issubset(by_cid):
                     raise DatabaseImplementationAuthorityError(
-                        "authoritative task population cursor did not advance"
+                        "authoritative ready set is not a subset of the task population"
                     )
-                seen_population_cursors.add(next_cursor)
-                population_cursor = next_cursor
-            ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
-            after = (
-                int(watermark_fn())
-                if callable(watermark_fn)
-                else int(self.task_source.snapshot().event_cursor)
-            )
-            if before != after:
-                continue
-            tasks = tuple(population_tasks)
-            if len(tasks) > TASK_SOURCE_MAX_SNAPSHOT_TASKS:
-                raise DatabaseImplementationAuthorityError(
-                    "authoritative task population exceeds coordination sync bound"
-                )
-            by_cid: dict[str, Any] = {}
-            for task in tasks:
-                task_cid = str(task.task_cid or "")
-                status = str(task.status or "").strip().lower()
-                if not task_cid or task_cid in by_cid:
-                    raise DatabaseImplementationAuthorityError(
-                        "authoritative task population has a missing or duplicate CID"
-                    )
-                if status not in _DATABASE_CLOSED_TASK_STATUSES:
-                    raise DatabaseImplementationAuthorityError(
-                        f"authoritative task {task_cid} has unknown status {status!r}"
-                    )
-                by_cid[task_cid] = task
-            ready_cids = frozenset(str(task.task_cid or "") for task in ready.tasks)
-            if "" in ready_cids or not ready_cids.issubset(by_cid):
-                raise DatabaseImplementationAuthorityError(
-                    "authoritative ready set is not a subset of the task population"
-                )
-            for task_cid in ready_cids:
-                status = str(by_cid[task_cid].status or "").strip().lower()
-                if status not in _DATABASE_READY_TASK_STATUSES:
-                    raise DatabaseImplementationAuthorityError(
-                        f"authoritative ready task {task_cid} has status {status!r}"
-                    )
-            return tasks, ready_cids
+                for task_cid in ready_cids:
+                    status = str(by_cid[task_cid].status or "").strip().lower()
+                    if status not in _DATABASE_READY_TASK_STATUSES:
+                        raise DatabaseImplementationAuthorityError(
+                            f"authoritative ready task {task_cid} has status {status!r}"
+                        )
+                return tasks, ready_cids
+            except Exception as exc:
+                detail = str(exc).lower()
+                if "invalid connection id" in detail or "query interrupted" in detail:
+                    time.sleep(0.2)
+                    continue
+                raise
         raise DatabaseImplementationConflictError(
             "authoritative task projection changed during bounded read"
         )
@@ -84064,6 +84071,16 @@ class DatabaseImplementationDaemon:
         except Exception as exc:
             if self._is_quack_attach_contention(exc):
                 return self._quack_attach_contention_deferral(exc)
+            detail = str(exc).lower()
+            if "invalid connection id" in detail or "query interrupted" in detail:
+                time.sleep(0.5)
+                return {
+                    "active_task_id": "",
+                    "selection_idle_reason": "quack_handle_deferred",
+                    "write_count": 0,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:500],
+                }
             from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
                 DatabaseCoordinationConflictError,
             )

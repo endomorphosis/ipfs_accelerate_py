@@ -1028,7 +1028,7 @@ class DuckDBConnection:
             used = self._connection.execute(f"USE {catalog}")
             _consume_duckdb_result(used)
             self._active_catalog = catalog
-        attempts = 6 if self._is_quack_attach_session() else 1
+        attempts = 10 if self._is_quack_attach_session() else 1
         executed: Any = None
         for attempt in range(attempts):
             try:
@@ -1047,7 +1047,7 @@ class DuckDBConnection:
                     # ATTACH here interrupts the exclusive owner.
                     _consume_duckdb_result(self._connection)
                     self._active_catalog = None
-                    time.sleep(0.02)
+                    time.sleep(0.1 * (attempt + 1))
                     if catalog:
                         try:
                             used = self._connection.execute(f"USE {catalog}")
