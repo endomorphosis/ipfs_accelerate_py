@@ -284,6 +284,7 @@ def test_full_plan_projection_binds_complete_task_specs_and_is_stable(
                 "operation": "typed_validation_retry",
                 "receipt_id": "sha256:" + ("42" * 32),
             },
+            "unknown_callback_reopen_count": 3,
         }
         assert task_projection_spec_cid(operational) != task_a["spec_cid"]
         assert task_authority_spec_cid(operational) == authority_spec

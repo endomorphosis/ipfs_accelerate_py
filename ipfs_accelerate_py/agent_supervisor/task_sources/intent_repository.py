@@ -565,9 +565,11 @@ def task_authority_spec_cid(record: Mapping[str, Any]) -> str:
 
     ``IntentRepository@1`` historically stores the latest status-transition
     receipt in ``body.completion_receipt`` so retry workers can recover an
-    exact seed.  That receipt is operational lifecycle evidence: replacing it
-    through an admitted status CAS must not look like a plan amendment.  Every
-    other body field remains authority-bearing.  The legacy
+    exact seed.  Unknown-callback recovery also persists its monotonic retry
+    counter in ``body.unknown_callback_reopen_count`` so later claim receipts
+    cannot erase it.  Both fields are operational lifecycle evidence: changing
+    them through an admitted status CAS must not look like a plan amendment.
+    Every other body field remains authority-bearing.  The legacy
     :func:`task_projection_spec_cid` is intentionally unchanged because its
     CIDs are already persisted in plan-revision receipts.
     """
@@ -577,6 +579,7 @@ def task_authority_spec_cid(record: Mapping[str, Any]) -> str:
     if isinstance(body, dict):
         body = dict(body)
         body.pop("completion_receipt", None)
+        body.pop("unknown_callback_reopen_count", None)
         normalized["body"] = body
     material = {
         "schema": TASK_AUTHORITY_SPEC_SCHEMA,

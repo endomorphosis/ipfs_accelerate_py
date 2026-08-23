@@ -46,6 +46,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     reset_quack_transport_cache,
     submit_quack_owner_command,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    task_authority_spec_cid,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
     QuackCapabilityStatus,
     probe_quack_capabilities,
@@ -87,6 +90,48 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
 from scripts import run_agent_supervisor_efficiency_state_hardening as aseh_operator
 
 _CWD_OWNER_DIR = Path("/proc/self/cwd/quack-owner")
+
+
+def test_aseh_task_authority_spec_excludes_typed_lifecycle_fields_only() -> None:
+    task = {
+        "task_cid": "task:aseh-authority-spec",
+        "task_alias": "ASEH-001",
+        "goal_cid": "goal:aseh-authority-spec",
+        "objective_id": "objective:aseh-authority-spec",
+        "ordinal": 1,
+        "priority": "P0",
+        "identity": {
+            "task_cid": "task:aseh-authority-spec",
+            "task_alias": "ASEH-001",
+            "repository_tree_id": "tree:aseh-authority-spec",
+        },
+        "body": {"acceptance_conditions": "sealed acceptance"},
+        "extension_schema": "",
+        "extension": {},
+        "dependencies": [],
+        "outputs": [],
+        "acceptance": [],
+        "validations": [],
+    }
+    sealed = task_authority_spec_cid(task)
+    lifecycle = {
+        **task,
+        "status": "in_progress",
+        "revision": 4,
+        "body": {
+            **task["body"],
+            "completion_receipt": {
+                "operation": "database_claim",
+                "claim_id": "claim:aseh-authority-spec",
+            },
+            "unknown_callback_reopen_count": 1,
+        },
+    }
+    assert task_authority_spec_cid(lifecycle) == sealed
+
+    forged = {**lifecycle, "body": dict(lifecycle["body"])}
+    forged["body"]["acceptance_conditions"] = "reduced acceptance"
+    assert task_authority_spec_cid(forged) != sealed
 
 
 def _cwd_owner_socket(name: str) -> Path:
@@ -416,6 +461,14 @@ def test_real_configured_supervisor_handoff_reads_and_mutates_via_owner(
             assert snapshot.task_count == 1
             ready = source.ready_tasks(limit=10).tasks
             assert [item.task_alias for item in ready] == ["ASEH-000"]
+            sealed_projection = source.plan_projection(
+                task_cids=[ready[0].task_cid]
+            )
+            sealed_authority = aseh_operator._task_authority_spec_cids(  # noqa: SLF001
+                sealed_projection
+            )
+            sealed_task = sealed_projection["tasks"][0]
+            sealed_projection_spec_cid = str(sealed_task["spec_cid"])
             changed = source.compare_and_set_status(
                 ready[0],
                 ready[0].revision,
@@ -433,24 +486,81 @@ def test_real_configured_supervisor_handoff_reads_and_mutates_via_owner(
             )
             assert changed.changed is True
             assert changed.task.status == "in_progress"
+            requeued = source.compare_and_set_status(
+                changed.task,
+                changed.revision,
+                "todo",
+                receipt={
+                    "operation": "requeue_unimplemented_stale_attempt",
+                    "attempt_id": "attempt:aseh-bootstrap-test",
+                    "unknown_callback_reopen_count": 1,
+                },
+            )
+            assert requeued.changed is True
+            assert requeued.task.status == "todo"
+            assert requeued.task.revision == 3
+            reclaimed = source.compare_and_set_status(
+                requeued.task,
+                requeued.revision,
+                "in_progress",
+                receipt={
+                    "operation": "database_claim",
+                    "claim_id": "claim:aseh-bootstrap-test:retry-1",
+                    "attempt_id": "attempt:aseh-bootstrap-test:retry-1",
+                    "owner_session_id": "owner:aseh-bootstrap-test",
+                    "lease_id": "lease:aseh-bootstrap-test:retry-1",
+                    "fencing_token": 2,
+                    "fence_epoch": 1,
+                    "claimed_from_revision": 3,
+                },
+            )
+            assert reclaimed.changed is True
+            assert reclaimed.task.status == "in_progress"
+            assert reclaimed.task.revision == 4
             # A successful owner acknowledgement is also a synchronous
             # Quack-publication barrier.  Strict sharding re-reads this exact
-            # binding immediately after claim and must not see the startup
-            # replica's stale ``todo`` projection.
+            # binding immediately after reclaim and must not see a stale
+            # ``todo`` projection.
             observed = source.get("ASEH-000")
             assert observed is not None
             assert observed.status == "in_progress"
-            assert observed.revision == changed.revision
+            assert observed.revision == reclaimed.revision
+            assert observed.body["unknown_callback_reopen_count"] == 1
             assert observed.body["completion_receipt"] == {
                 "operation": "database_claim",
-                "claim_id": "claim:aseh-bootstrap-test",
-                "attempt_id": "attempt:aseh-bootstrap-test",
+                "claim_id": "claim:aseh-bootstrap-test:retry-1",
+                "attempt_id": "attempt:aseh-bootstrap-test:retry-1",
                 "owner_session_id": "owner:aseh-bootstrap-test",
-                "lease_id": "lease:aseh-bootstrap-test",
-                "fencing_token": 1,
+                "lease_id": "lease:aseh-bootstrap-test:retry-1",
+                "fencing_token": 2,
                 "fence_epoch": 1,
-                "claimed_from_revision": 1,
+                "claimed_from_revision": 3,
+                "unknown_callback_reopen_count": 1,
             }
+            lifecycle_projection = source.plan_projection(
+                task_cids=[observed.task_cid]
+            )
+            lifecycle_task = lifecycle_projection["tasks"][0]
+            assert lifecycle_task["task_cid"] == sealed_task["task_cid"]
+            assert lifecycle_task["spec_cid"] != sealed_projection_spec_cid
+            assert (
+                aseh_operator._task_authority_spec_cids(  # noqa: SLF001
+                    lifecycle_projection
+                )
+                == sealed_authority
+            )
+
+            forged_task = {
+                **lifecycle_task,
+                "body": dict(lifecycle_task["body"]),
+            }
+            forged_task["body"]["acceptance_conditions"] = "reduced acceptance"
+            assert (
+                aseh_operator._task_authority_spec_cids(  # noqa: SLF001
+                    {"tasks": [forged_task]}
+                )
+                != sealed_authority
+            )
             # The canonical repository classifies a stale lower revision as
             # a bounds failure; the typed gateway must preserve that code.
             with pytest.raises(TaskSourceBoundsError):
@@ -466,7 +576,7 @@ def test_real_configured_supervisor_handoff_reads_and_mutates_via_owner(
             "SELECT COUNT(*) FROM idempotency_records "
             "WHERE command_kind = 'compare_and_set_status'"
         ).fetchone()
-        assert idempotency is not None and int(idempotency[0]) == 1
+        assert idempotency is not None and int(idempotency[0]) == 3
 
         descriptor = int(handoff[TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV])
         for safe_environment in (
