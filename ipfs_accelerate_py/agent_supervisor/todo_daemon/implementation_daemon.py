@@ -19585,32 +19585,40 @@ class PortalImplementationDaemon:
                 protected_checkout_recovery.get("reason")
                 or "protected_checkout_recovery_required"
             )
-            implementation_result = (
-                self._external_protected_recovery_deferral(
-                    protected_checkout_recovery
-                )
-            )
-            if implementation_result is None:
-                implementation_result = {
-                    "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
-                    "deferred": True,
-                    "retryable": True,
-                    "attempt_consumed": False,
-                    "failure_kind": "lifecycle_setup",
-                    "provider_dispatched": False,
-                    "provider_call_allowed": False,
-                    "reason": blocked_reason,
-                }
+            if (
+                self.manual_completion_authority_revalidation_only
+                or blocked_reason == "protected_checkout_recovery_forbidden"
+            ):
+                # Revalidation-only must not replay a retained lease, and a
+                # forbidden recovery is not a retryable Portal deferral.
+                implementation_result = None
             else:
-                # Keep the MAIN portal-retry classifier while preserving the
-                # closed verified-live reason and backoff.
-                implementation_result = {
-                    "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
-                    "retryable": True,
-                    "failure_kind": "lifecycle_setup",
-                    "provider_call_allowed": False,
-                    **implementation_result,
-                }
+                implementation_result = (
+                    self._external_protected_recovery_deferral(
+                        protected_checkout_recovery
+                    )
+                )
+                if implementation_result is None:
+                    implementation_result = {
+                        "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
+                        "deferred": True,
+                        "retryable": True,
+                        "attempt_consumed": False,
+                        "failure_kind": "lifecycle_setup",
+                        "provider_dispatched": False,
+                        "provider_call_allowed": False,
+                        "reason": blocked_reason,
+                    }
+                else:
+                    # Keep the MAIN portal-retry classifier while preserving
+                    # the closed verified-live reason and backoff.
+                    implementation_result = {
+                        "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
+                        "retryable": True,
+                        "failure_kind": "lifecycle_setup",
+                        "provider_call_allowed": False,
+                        **implementation_result,
+                    }
             result = {
                 "blocked": True,
                 "reason": blocked_reason,
@@ -22725,7 +22733,13 @@ class PortalImplementationDaemon:
         )
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
-        if self._board_task_is_completed(task.task_id):
+        authority_revalidation_only = (
+            self._manual_completion_authority_revalidation_only_task(task)
+        )
+        if (
+            self._board_task_is_completed(task.task_id)
+            and not authority_revalidation_only
+        ):
             result = {
                 "skipped": True,
                 "reason": "completed_task_leftover",
@@ -22736,9 +22750,6 @@ class PortalImplementationDaemon:
             }
             self._record_event("implementation_skipped", result)
             return result
-        authority_revalidation_only = (
-            self._manual_completion_authority_revalidation_only_task(task)
-        )
         if (
             self.manual_completion_authority_revalidation_only
             and not authority_revalidation_only
