@@ -2753,10 +2753,6 @@ def _status_sample(
         authority = _broker_status_query(
             board, paths, owner_status=owner_status_before
         )
-        # Bind the sample to the replica that was queried and replayed.
-        # A later lane refresh is a new generation, not a reason to discard
-        # an already authenticated snapshot.
-        owner_status = owner_status_before
     except Exception as exc:
         authority = {
             "available": False,
@@ -2770,7 +2766,28 @@ def _status_sample(
             "task_statuses": {},
             "task_revisions": {},
         }
-        owner_status = owner_status_before
+    owner_status_after = server.status()
+    if authority.get("available") is True:
+        try:
+            if _published_replica_binding(
+                owner_status_before, paths
+            ) != _published_replica_binding(owner_status_after, paths):
+                raise OperatorError(
+                    "owner replica publication changed during status query"
+                )
+        except Exception as exc:
+            authority = {
+                "available": False,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "ready_count": 0,
+                "active_count": 0,
+                "blocked_count": 0,
+                "terminal_count": 0,
+                "event_cursor": 0,
+                "task_statuses": {},
+                "task_revisions": {},
+            }
     scheduler_returncode = scheduler.poll()
     try:
         scheduler_process_group = os.getpgid(scheduler.pid)
@@ -2779,7 +2796,7 @@ def _status_sample(
     sample = {
         "observed_at": observed_at,
         "monotonic_ns": time.monotonic_ns(),
-        "owner_status": owner_status,
+        "owner_status": owner_status_after,
         "scheduler": {
             "pid": scheduler.pid,
             "process_group": scheduler_process_group,
@@ -3209,47 +3226,14 @@ def _health_receipt(
     task_statuses = task_statuses if isinstance(task_statuses, Mapping) else {}
     task_revisions = authority.get("task_revisions")
     task_revisions = task_revisions if isinstance(task_revisions, Mapping) else {}
-    sealed_revisions = bootstrap_integrity.get("task_revisions")
-    sealed_revisions = (
-        sealed_revisions if isinstance(sealed_revisions, Mapping) else {}
-    )
-
-    def admitted_authority_spec_cids(candidate: Mapping[str, Any]) -> bool:
-        specs = candidate.get("task_authority_spec_cids")
-        revisions = candidate.get("task_revisions")
-        if (
-            not isinstance(specs, Mapping)
-            or not isinstance(revisions, Mapping)
-            or set(specs) != set(sealed_task_authority_spec_cids)
-        ):
-            return False
-        for alias, sealed_spec in sealed_task_authority_spec_cids.items():
-            observed = specs.get(alias)
-            if not isinstance(observed, str) or not observed:
-                return False
-            sealed_revision = sealed_revisions.get(alias)
-            current_revision = revisions.get(alias)
-            if (
-                type(sealed_revision) is int
-                and type(current_revision) is int
-                and current_revision > sealed_revision
-            ):
-                if observed == sealed_spec:
-                    continue
-                if re.fullmatch(r"b[a-z2-7]{50,}", observed) is None:
-                    return False
-                continue
-            if observed != sealed_spec:
-                return False
-        return True
-
     def admitted_task_corpus(candidate: Mapping[str, Any]) -> bool:
         return bool(
             sealed_task_cids
             and candidate.get("task_cids") == sealed_task_cids
             and candidate.get("task_owner_bindings") == sealed_owner_bindings
             and candidate.get("task_dependencies") == sealed_task_dependencies
-            and admitted_authority_spec_cids(candidate)
+            and candidate.get("task_authority_spec_cids")
+            == sealed_task_authority_spec_cids
             and isinstance(candidate.get("task_statuses"), Mapping)
             and isinstance(candidate.get("task_revisions"), Mapping)
             and set(candidate["task_statuses"]) == set(sealed_task_cids)
@@ -3486,12 +3470,6 @@ def _await_initial_health(
             raise OperatorError("foreground health admission failed closed")
         prior_authority = first.get("authority")
         current_authority = second.get("authority")
-        if receipt.get("healthy") is True:
-            return receipt, last_progress_at
-        # Replica publication and broker attach can race the first samples.
-        # Keep sampling through startup grace instead of fail-closing live
-        # lanes on the first unauthenticated pair.
-        first = second
         if not (
             isinstance(prior_authority, Mapping)
             and prior_authority.get("available") is True
@@ -3499,7 +3477,17 @@ def _await_initial_health(
             isinstance(current_authority, Mapping)
             and current_authority.get("available") is True
         ):
-            continue
+            _record_control_failure(
+                paths, failure, failure_event,
+                reason_code="authoritative_status_unavailable_two_samples",
+                error_type="ASEHHealthQueryFailure",
+            )
+            raise OperatorError(
+                "authoritative health query unavailable for two samples"
+            )
+        if receipt.get("healthy") is True:
+            return receipt, last_progress_at
+        first = second
     _record_control_failure(
         paths, failure, failure_event,
         reason_code="foreground_health_admission_timeout",
@@ -3534,6 +3522,25 @@ def _post_admission_health_action(
     if receipt.get("healthy") is True:
         return "continue", "", 0
     if prior_available and current_available:
+        # Lane census can flicker while claims continue.  Bound that to the
+        # same recovery edges used for a single missing authority sample,
+        # but keep semantic or identity loss fail-closed.
+        lane_only_loss = bool(
+            receipt.get("task_corpus_admitted") is True
+            and receipt.get("semantic_corpus_admitted") is True
+            and receipt.get("owner_identity_admitted") is True
+            and receipt.get("source_identity_admitted") is True
+            and receipt.get("lane_heartbeat_fresh") is not True
+        )
+        if lane_only_loss:
+            next_edges = unhealthy_edges + 1
+            if next_edges > 2:
+                return (
+                    "fail",
+                    "authoritative_health_admission_lost",
+                    next_edges,
+                )
+            return "continue", "", next_edges
         return "fail", "authoritative_health_admission_lost", unhealthy_edges
     next_edges = unhealthy_edges + 1
     if next_edges > 2:
