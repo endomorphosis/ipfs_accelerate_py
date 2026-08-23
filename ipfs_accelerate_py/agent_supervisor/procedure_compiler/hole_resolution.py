@@ -6,9 +6,10 @@ bounded candidate, never a decision.  Deterministic and cache routes are
 attempted before any model class.  Identical failure or unchanged evidence
 suppresses another provider call.
 
-Later distillation (PCPC-022) injects exact-cache, rule, and local resolvers
-through the same provider-class ports; this module already enforces that
-order and the candidate-until-validated rule.
+Distilled exact-cache, rule, classifier, and local resolvers inject through
+the same provider-class ports.  Route order is exact cache -> declarative
+rule -> deterministic classifier -> small local model -> remote model.
+No injected route may skip validation or claim correctness.
 """
 
 from __future__ import annotations
@@ -77,6 +78,13 @@ PROVIDER_ROUTE_ORDER: Final[tuple[ProviderClass, ...]] = (
     ProviderClass.REMOTE_STRONG_MODEL,
     ProviderClass.HUMAN,
 )
+LOCAL_HOLE_ROUTE_ORDER: Final[tuple[ProviderClass, ...]] = (
+    ProviderClass.EXACT_CACHE,
+    ProviderClass.DECLARATIVE_RULE,
+    ProviderClass.DETERMINISTIC_CLASSIFIER,
+    ProviderClass.LOCAL_SMALL_MODEL,
+    ProviderClass.REMOTE_STANDARD_MODEL,
+)
 
 DETERMINISTIC_PROVIDER_CLASSES: Final[frozenset[ProviderClass]] = frozenset(
     {
@@ -144,8 +152,11 @@ _AUTHORITY_MARKERS: Final[frozenset[str]] = frozenset(
         "accept_proof",
         "authority_decision",
         "claim_completion",
+        "claim_correctness",
+        "claims_correctness",
         "complete_task",
         "confirmation",
+        "correctness_claim",
         "disable_validation",
         "grant_authority",
         "omit_proof",
@@ -154,6 +165,7 @@ _AUTHORITY_MARKERS: Final[frozenset[str]] = frozenset(
         "promote",
         "proof_acceptance",
         "release_promotion",
+        "self_validate",
         "skip_proof",
         "skip_validation",
         "task_completion",
@@ -276,6 +288,17 @@ def _reason_from_scan(code: str) -> HoleResolutionReason:
 def model_route_for_provider_class(provider_class: ProviderClass | str) -> ModelRoute:
     normalized = _enum(provider_class, ProviderClass, "provider_class")
     return PROVIDER_CLASS_TO_MODEL_ROUTE[normalized]
+
+
+def provider_port_claims_authority(port: object) -> bool:
+    """True when an injected provider tries to skip validation or claim correctness."""
+
+    return bool(
+        getattr(port, "can_skip_validation", False)
+        or getattr(port, "can_authorize", False)
+        or getattr(port, "claims_correctness", False)
+        or getattr(port, "can_claim_correctness", False)
+    )
 
 
 def default_hole_context_compiler(
@@ -1586,6 +1609,11 @@ class HoleResolver:
             return HoleProviderResult(
                 outcome=HoleProviderOutcome.MISSED, failure_code="provider-not-injected"
             )
+        if provider_port_claims_authority(port):
+            return HoleProviderResult(
+                outcome=HoleProviderOutcome.FAILED,
+                failure_code="authority-flow-rejected",
+            )
         try:
             result = port.propose(request, compiled)
         except Exception:
@@ -1964,6 +1992,7 @@ __all__ = [
     "HOLE_RESOLVER_REVISION",
     "HOLE_STAGE",
     "HOLE_VALIDATOR_REVISION",
+    "LOCAL_HOLE_ROUTE_ORDER",
     "MAX_HOLE_ATTEMPTS",
     "MAX_HOLE_CONTEXT_BYTES",
     "MAX_HOLE_TOKENS",
@@ -1992,4 +2021,5 @@ __all__ = [
     "default_hole_context_compiler",
     "evidence_fingerprint",
     "model_route_for_provider_class",
+    "provider_port_claims_authority",
 ]
