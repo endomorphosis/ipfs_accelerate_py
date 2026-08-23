@@ -445,6 +445,7 @@ STALE_QUARANTINED_MERGE_FAILURE_REASONS = frozenset(
 INVENTORY_TASK_IDS = frozenset({"IPS-001", "IPS-002", "IPS-003"})
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS = 30.0
+EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS = 30
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
 IMPLEMENTATION_DISPATCH_INTENT_LEASE_ROLE = "implementation_dispatch_intent"
@@ -19569,6 +19570,32 @@ class PortalImplementationDaemon:
                 protected_checkout_recovery.get("reason")
                 or "protected_checkout_recovery_required"
             )
+            implementation_result = (
+                self._external_protected_recovery_deferral(
+                    protected_checkout_recovery
+                )
+            )
+            if implementation_result is None:
+                implementation_result = {
+                    "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
+                    "deferred": True,
+                    "retryable": True,
+                    "attempt_consumed": False,
+                    "failure_kind": "lifecycle_setup",
+                    "provider_dispatched": False,
+                    "provider_call_allowed": False,
+                    "reason": blocked_reason,
+                }
+            else:
+                # Keep the MAIN portal-retry classifier while preserving the
+                # closed verified-live reason and backoff.
+                implementation_result = {
+                    "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
+                    "retryable": True,
+                    "failure_kind": "lifecycle_setup",
+                    "provider_call_allowed": False,
+                    **implementation_result,
+                }
             result = {
                 "blocked": True,
                 "reason": blocked_reason,
@@ -19581,16 +19608,7 @@ class PortalImplementationDaemon:
                 "unchanged": True,
                 "write_count": 0,
                 "projection_delta": {},
-                "implementation_result": {
-                    "deferral_schema": PORTAL_RETRY_DEFERRAL_SCHEMA,
-                    "deferred": True,
-                    "retryable": True,
-                    "attempt_consumed": False,
-                    "failure_kind": "lifecycle_setup",
-                    "provider_dispatched": False,
-                    "provider_call_allowed": False,
-                    "reason": blocked_reason,
-                },
+                "implementation_result": implementation_result,
                 "merge_reconciliation": [],
                 "wake_kinds": sorted(wake_kinds),
                 "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
@@ -60657,6 +60675,80 @@ class PortalImplementationDaemon:
             "completion_receipts": receipts,
         }
 
+    def _foreign_protected_recovery_owner_is_live(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        """Verify only a foreign lease owner's liveness and repository.
+
+        The foreign protected-recovery guard and intent deliberately remain
+        opaque.  This check proves only the generic lease boundary needed to
+        distinguish a short live-owner collision from an inactive, malformed,
+        or repository-ambiguous journal.
+        """
+
+        if str(metadata.get("kind") or "") != "merge":
+            return False
+        if checkout_lock_repository_matches(
+            metadata,
+            self.repo_root,
+        ) is not True:
+            return False
+        try:
+            owner_pid = int(metadata.get("pid") or 0)
+        except (TypeError, ValueError):
+            return False
+        if owner_pid <= 0 or not process_is_running(owner_pid):
+            return False
+        owner_script = str(metadata.get("owner_script") or "").strip()
+        command_line = process_command_line(owner_pid).strip()
+        if not owner_script or not command_line:
+            return False
+        if owner_script not in command_line:
+            owner_module_stem = Path(owner_script).stem
+            if not owner_module_stem or owner_module_stem not in command_line:
+                return False
+        return True
+
+    @staticmethod
+    def _external_protected_recovery_deferral(
+        recovery: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Project only the closed verified-live foreign-owner disposition."""
+
+        owner_pid = recovery.get("lock_owner_pid")
+        if (
+            recovery.get("required") is not True
+            or recovery.get("recovered") is not False
+            or recovery.get("adopted") is not False
+            or recovery.get("blocked") is not True
+            or recovery.get("reason")
+            != "external_protected_checkout_recovery_required"
+            or recovery.get("protected_recovery_owner")
+            != "implementation_supervisor"
+            or recovery.get("foreign_owner_liveness") != "verified_live"
+            or recovery.get("deferred") is not True
+            or recovery.get("attempt_consumed") is not False
+            or recovery.get("provider_dispatched") is not False
+            or recovery.get("backoff_seconds")
+            != EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS
+            or isinstance(owner_pid, bool)
+            or not isinstance(owner_pid, int)
+            or owner_pid <= 0
+            or not str(recovery.get("lock_path") or "")
+        ):
+            return None
+        return {
+            "returncode": 1,
+            "reason": "external_protected_recovery_owner_active",
+            "deferred": True,
+            "attempt_consumed": False,
+            "provider_dispatched": False,
+            "backoff_seconds": (
+                EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS
+            ),
+        }
+
     def _adopt_protected_checkout_recovery(
         self,
     ) -> dict[str, Any]:
@@ -60692,7 +60784,7 @@ class PortalImplementationDaemon:
             # and its managed daemon carry different guards because they
             # mutate different protected-output scopes. Never interpret
             # another owner's signed payload with this daemon's schema.
-            return {
+            result: dict[str, Any] = {
                 "required": True,
                 "adopted": False,
                 "blocked": True,
@@ -60700,6 +60792,32 @@ class PortalImplementationDaemon:
                 "protected_recovery_owner": recovery_owner,
                 "lock_path": str(existing.lock_path),
             }
+            if (
+                recovery_owner == "implementation_supervisor"
+                and self._foreign_protected_recovery_owner_is_live(metadata)
+            ):
+                # This is not recovery authority and does not inspect the
+                # supervisor's guard or intent schema.  It is only a bounded
+                # observation that the compatible foreign owner still has a
+                # live process and the lease names this physical repository.
+                # Database Portal callers may use this exact disposition as a
+                # pre-provider deferral; every inconclusive shape remains the
+                # terminal blocker above.
+                result.update(
+                    {
+                        "foreign_owner_liveness": "verified_live",
+                        "deferred": True,
+                        "attempt_consumed": False,
+                        "provider_dispatched": False,
+                        "backoff_seconds": (
+                            EXTERNAL_PROTECTED_RECOVERY_BACKOFF_SECONDS
+                        ),
+                        "lock_owner_pid": int(metadata["pid"]),
+                    }
+                )
+            else:
+                result["foreign_owner_liveness"] = "not_verified"
+            return result
         paths = self._recovery_lock_paths(metadata)
         guard = metadata.get("protected_release_guard")
         intent = metadata.get("protected_recovery_intent")
