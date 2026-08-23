@@ -72368,6 +72368,7 @@ class DatabaseImplementationDaemon:
         require_real_execution: bool = False,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
+        close_task_source: bool = False,
         coordinator: Any = None,
         install_schema: bool = True,
         repo_root: Path | str | None = None,
@@ -72603,7 +72604,7 @@ class DatabaseImplementationDaemon:
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
         self._connection: Any = None
-        self._owns_task_source = task_source is None
+        self._owns_task_source = task_source is None or bool(close_task_source)
         self._owns_coordinator = coordinator is None
         self._task_source = task_source
         self._coordinator = coordinator
@@ -85863,6 +85864,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Daemon session identity used for fenced claims.",
     )
     parser.add_argument(
+        "--state-owner-bootstrap-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--state-owner-bootstrap-store-id",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--expected-task-source-root",
         default="",
         help="Optional canonical plan root which the configured source must match.",
@@ -86298,36 +86310,98 @@ def main(argv: list[str] | None = None) -> None:
             if program is not None
             else str(getattr(args, "task_source_kind", "") or "duckdb")
         )
-        daemon: Any = DatabaseImplementationDaemon(
-            database_path=Path(database_path),
-            coordination_path=db_paths["coordination_path"],
-            execution_path=db_paths["execution_path"],
-            owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
-            authority_mode=authority_mode or "quack",
-            task_source_kind=task_source_kind or "duckdb",
-            quack_uri=str(getattr(args, "quack_endpoint", "") or ""),
-            # Database authority never receives the canonical Markdown board.
-            markdown_path=None,
-            # JSON projections optional under database authority.
-            state_path=None,
-            strategy_path=None,
-            events_path=None,
-            pid_path=None,
-            queue_path=None,
-            max_task_attempts=int(getattr(args, "max_task_attempts", 0) or 0),
-            task_shard_count=args.task_shard_count,
-            task_shard_index=args.task_shard_index,
-            strict_task_sharding=args.strict_task_sharding,
-            require_real_execution=bool(args.implement),
-            execution_slice_task_ids=args.execution_slice_task_id,
-            execution_slice_task_cids=args.execution_slice_task_cid,
-            idle_lane_work_stealing=args.idle_lane_work_stealing,
-            repo_root=REPO_ROOT,
-            merge_target_ref=str(
-                getattr(args, "merge_target_branch", "") or "HEAD"
-            ),
-            task_prefix=str(getattr(args, "task_prefix", "") or ""),
-        )
+        owner_session_id = str(getattr(args, "owner_session_id", "") or "")
+        bootstrap_fd = int(getattr(args, "state_owner_bootstrap_fd", -1))
+        typed_task_source: Any = None
+        if bootstrap_fd >= 3:
+            if not owner_session_id:
+                raise RuntimeError(
+                    "state-owner bootstrap requires an explicit database owner session"
+                )
+            from ..task_sources.state_owner_bootstrap import (
+                request_state_owner_bootstrap,
+            )
+
+            credentials = request_state_owner_bootstrap(
+                bootstrap_fd,
+                client_id=f"database-implementation-daemon:{owner_session_id}",
+                store_id=str(
+                    getattr(args, "state_owner_bootstrap_store_id", "") or ""
+                ),
+            )
+            expected_endpoint = str(
+                getattr(args, "quack_endpoint", "") or ""
+            ).strip()
+            if credentials.endpoint != expected_endpoint:
+                raise RuntimeError(
+                    "state-owner bootstrap endpoint differs from the database program"
+                )
+            from ..task_sources.quack_state_client import QuackStateClient
+            from ..task_sources.typed_database_task_source import (
+                TypedDatabaseTaskSource,
+            )
+            from ..task_sources.typed_state_owner import (
+                TYPED_STATE_OWNER_SOCKET_ENV,
+                TYPED_STATE_OWNER_TOKEN_ENV,
+            )
+
+            credentials.install_environment()
+            client = QuackStateClient(
+                owner_id=credentials.client_id,
+                store_id=credentials.store_id,
+                process_birth_id=credentials.process_birth_id,
+            )
+            try:
+                client.attach(
+                    credentials.endpoint,
+                    server_id=credentials.server_id,
+                )
+                typed_task_source = TypedDatabaseTaskSource(client)
+            except BaseException:
+                client.close()
+                raise
+            finally:
+                # The authenticated socket is already bound to this birth.
+                # Provider children never need either bootstrap value.
+                os.environ.pop(TYPED_STATE_OWNER_TOKEN_ENV, None)
+                os.environ.pop(TYPED_STATE_OWNER_SOCKET_ENV, None)
+        try:
+            daemon: Any = DatabaseImplementationDaemon(
+                database_path=Path(database_path),
+                coordination_path=db_paths["coordination_path"],
+                execution_path=db_paths["execution_path"],
+                owner_session_id=owner_session_id,
+                authority_mode=authority_mode or "quack",
+                task_source_kind=task_source_kind or "duckdb",
+                quack_uri=str(getattr(args, "quack_endpoint", "") or ""),
+                # Database authority never receives the canonical Markdown board.
+                markdown_path=None,
+                # JSON projections optional under database authority.
+                state_path=None,
+                strategy_path=None,
+                events_path=None,
+                pid_path=None,
+                queue_path=None,
+                max_task_attempts=int(getattr(args, "max_task_attempts", 0) or 0),
+                task_shard_count=args.task_shard_count,
+                task_shard_index=args.task_shard_index,
+                strict_task_sharding=args.strict_task_sharding,
+                require_real_execution=bool(args.implement),
+                execution_slice_task_ids=args.execution_slice_task_id,
+                execution_slice_task_cids=args.execution_slice_task_cid,
+                idle_lane_work_stealing=args.idle_lane_work_stealing,
+                repo_root=REPO_ROOT,
+                merge_target_ref=str(
+                    getattr(args, "merge_target_branch", "") or "HEAD"
+                ),
+                task_prefix=str(getattr(args, "task_prefix", "") or ""),
+                task_source=typed_task_source,
+                close_task_source=typed_task_source is not None,
+            )
+        except BaseException:
+            if typed_task_source is not None:
+                typed_task_source.close()
+            raise
         bind_database_portal_execution_from_args(
             daemon,
             args,

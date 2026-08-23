@@ -991,6 +991,33 @@ class StateTransaction:
             )
         return new_revision
 
+    def execute_named_operation(
+        self,
+        operation: str,
+        parameters: Sequence[Any] | None = None,
+    ) -> Any:
+        """Execute one server-catalog operation inside the active transaction.
+
+        This surface is deliberately narrower than ``execute``: only a
+        connection that exposes the typed owner's immutable named-operation
+        catalog can service it.  Callers cannot contribute SQL or identifiers.
+        """
+
+        if not self.active:
+            raise TransactionError(
+                "named operation requires an active transaction",
+                kind=TransactionConflictKind.UNKNOWN,
+                retryable=False,
+            )
+        execute = getattr(self._connection, "execute_operation", None)
+        if not callable(execute):
+            raise TransactionError(
+                "connection has no typed named-operation surface",
+                kind=TransactionConflictKind.IDENTITY_MISMATCH,
+                retryable=False,
+            )
+        return execute(str(operation or ""), parameters)
+
     def execute_command(
         self,
         command: StateCommand,

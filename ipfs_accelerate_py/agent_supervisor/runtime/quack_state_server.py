@@ -2457,17 +2457,7 @@ class QuackStateServer:
     ) -> str:
         """Mint a bounded grant from owner code, never from a client request."""
 
-        with self._lock:
-            if self._lifecycle is not ServerLifecycle.READY:
-                raise QuackStateServerNotRunningError(
-                    "client grant issuance requires a ready state owner"
-                )
-            gateway = self._command_gateway
-        if gateway is None:
-            raise QuackStateServerControlError(
-                "typed command gateway is unavailable"
-            )
-        token, _grant = gateway.issue_grant(
+        token, _grant = self.issue_typed_client_grant_record(
             client_id=client_id,
             process_birth_id=process_birth_id,
             allowed_operations=allowed_operations,
@@ -2479,6 +2469,43 @@ class QuackStateServer:
             ttl_seconds=ttl_seconds,
         )
         return token
+
+    def issue_typed_client_grant_record(
+        self,
+        *,
+        client_id: str,
+        process_birth_id: str = "",
+        allowed_operations: Sequence[str] = (),
+        allowed_command_operations: Sequence[str] = (),
+        tenant_id: str = "",
+        federation_id: str = "",
+        entity_scopes: Mapping[str, str] | None = None,
+        peer_pid: int | None = None,
+        ttl_seconds: float = 3_600.0,
+    ) -> tuple[str, OwnerClientGrant]:
+        """Mint a token and return its revocable server-side grant record."""
+
+        with self._lock:
+            if self._lifecycle is not ServerLifecycle.READY:
+                raise QuackStateServerNotRunningError(
+                    "client grant issuance requires a ready state owner"
+                )
+            gateway = self._command_gateway
+        if gateway is None:
+            raise QuackStateServerControlError(
+                "typed command gateway is unavailable"
+            )
+        return gateway.issue_grant(
+            client_id=client_id,
+            process_birth_id=process_birth_id,
+            allowed_operations=allowed_operations,
+            allowed_command_operations=allowed_command_operations,
+            tenant_id=tenant_id,
+            federation_id=federation_id,
+            entity_scopes=entity_scopes,
+            peer_pid=peer_pid,
+            ttl_seconds=ttl_seconds,
+        )
 
     def bind_typed_status_scope(self) -> None:
         """Bind the persisted status bootstrap to the admitted live slice."""
