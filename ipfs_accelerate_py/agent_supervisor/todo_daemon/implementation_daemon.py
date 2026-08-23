@@ -74464,6 +74464,7 @@ class DatabaseImplementationDaemon:
         self.merge_target_ref = str(merge_target_ref or "HEAD").strip() or "HEAD"
         self.merge_queue = merge_queue
         self._quack_attach_blocked_until = 0.0
+        self._idle_recovery_prefix: dict[str, Any] | None = None
         # Renew long-running provider/effect/validation calls well before the
         # task lease expires.  Tests may shorten this private interval without
         # weakening the production lease duration.
@@ -79373,11 +79374,17 @@ class DatabaseImplementationDaemon:
     def _quack_attach_contention_deferral(
         self,
         exc: BaseException,
+        *,
+        output_rearm: Mapping[str, Any] | None = None,
+        merge_quarantine_settlement: Mapping[str, Any] | None = None,
+        post_merge_recovery: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Keep the process alive when Quack ATTACH is contended.
 
         Auth-callback errors are reported as Authentication failed. Crashing
         here burns supervisor restart budget and drops a rescue-branch retry.
+        Attach-free rearm/settlement/recovery that already ran this tick stay
+        visible so a later ATTACH storm does not hide durable unstall work.
         """
 
         expired: list[dict[str, Any]] = []
@@ -79387,8 +79394,18 @@ class DatabaseImplementationDaemon:
             expired = []
         board_unstall = self._request_owner_board_unstall()
         self._arm_quack_attach_cooldown()
-        return {
-            "unchanged": not expired and not board_unstall.get("requested"),
+        prefix_writes = (
+            int((output_rearm or {}).get("write_count") or 0)
+            + int((merge_quarantine_settlement or {}).get("write_count") or 0)
+            + int((post_merge_recovery or {}).get("write_count") or 0)
+        )
+        result: dict[str, Any] = {
+            "unchanged": (
+                prefix_writes == 0
+                and not expired
+                and not board_unstall.get("requested")
+            ),
+            "write_count": prefix_writes,
             "deferred": True,
             "skipped": True,
             "reason": "quack_attach_contended",
@@ -79410,6 +79427,15 @@ class DatabaseImplementationDaemon:
             "expired_attempt_reconciliations": expired,
             "board_unstall_request": board_unstall,
         }
+        if output_rearm is not None:
+            result["declared_output_rearm"] = dict(output_rearm)
+        if merge_quarantine_settlement is not None:
+            result["merge_quarantine_settlement"] = dict(
+                merge_quarantine_settlement
+            )
+        if post_merge_recovery is not None:
+            result["post_merge_recovery"] = dict(post_merge_recovery)
+        return result
 
     @staticmethod
     def _database_portal_evidence_digest(value: Mapping[str, Any]) -> str:
@@ -87055,7 +87081,11 @@ class DatabaseImplementationDaemon:
                 self.metadata = metadata if isinstance(metadata, Mapping) else {}
 
         snapshots: list[Any] = []
-        queue = getattr(self, "merge_queue", None)
+        # Production binds the recovery queue via bind_merge_train_recovery
+        # (_merge_queue). Constructor merge_queue is optional and often unset.
+        queue = getattr(self, "_merge_queue", None) or getattr(
+            self, "merge_queue", None
+        )
         completed_dir = getattr(queue, "completed_dir", None)
         if isinstance(completed_dir, Path) and completed_dir.is_dir():
             files = sorted(
@@ -87164,12 +87194,23 @@ class DatabaseImplementationDaemon:
     def run_once(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
 
+        self._idle_recovery_prefix = None
         try:
             return self._run_once_impl()
         except Exception as exc:
             if self._is_quack_attach_contention(exc):
-                return self._quack_attach_contention_deferral(exc)
+                prefix = self._idle_recovery_prefix or {}
+                return self._quack_attach_contention_deferral(
+                    exc,
+                    output_rearm=prefix.get("output_rearm"),
+                    merge_quarantine_settlement=prefix.get(
+                        "merge_quarantine_settlement"
+                    ),
+                    post_merge_recovery=prefix.get("post_merge_recovery"),
+                )
             raise
+        finally:
+            self._idle_recovery_prefix = None
 
     def _run_once_impl(self) -> dict[str, Any]:
         """One database-authoritative pass: resume inflight or claim new work."""
@@ -87181,6 +87222,11 @@ class DatabaseImplementationDaemon:
             self._settle_invalid_metadata_portal_quarantines()
         )
         post_merge_recovery_reconciliation = self._run_post_merge_recovery()
+        self._idle_recovery_prefix = {
+            "output_rearm": output_rearm,
+            "merge_quarantine_settlement": merge_quarantine_settlement,
+            "post_merge_recovery": post_merge_recovery_reconciliation,
+        }
         completion_reconciliations = self._run_reconciliation_step(
             self.reconcile_prepared_task_completions
         )
