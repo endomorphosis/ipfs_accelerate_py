@@ -10444,11 +10444,23 @@ def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
         )
     )
     loop._last_worker_status = {
+        "worker_metrics_available": True,
+        "worker_metrics_unavailable_reason": "",
+        "worker_census_method": "linux-procfs-descendant-census@1",
+        "worker_root_pid": 99,
+        "worker_root_start_time_ticks": 123,
+        "worker_root_boot_id": "boot-id",
+        "worker_root_identity_source": "supervised_child_identity",
         "phase": "implementing",
+        "phase_available": True,
+        "required": True,
         "phase_age_seconds": 45.0,
         "active_worker_pids": [1234, 5678],
         "active_worker_count": 2,
+        "descendant_pids": [1234, 5678, 7777, 8888],
         "descendant_count": 4,
+        "stall_evidence_available": True,
+        "stall_evidence_unavailable_reason": "",
         "stalled_without_active_worker": False,
     }
 
@@ -10460,13 +10472,21 @@ def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
     assert status["worker_phase"] == "implementing"
     assert status["worker_phase_age_seconds"] == 45.0
     assert status["worker_descendant_count"] == 4
+    assert status["worker_descendant_pids"] == [1234, 5678, 7777, 8888]
     assert status["stalled_without_active_worker"] is False
+    assert status["worker_metrics_available"] is True
+    assert status["worker_root_pid"] == 99
 
     loop._write_status("stopped")
     stopped = json.loads((state_dir / "supervisor_status.json").read_text(encoding="utf-8"))
-    assert stopped["active_worker_count"] == 0
-    assert stopped["active_worker_pids"] == []
-    assert stopped["worker_descendant_count"] == 0
+    assert stopped["worker_metrics_available"] is False
+    assert stopped["worker_metrics_unavailable_reason"] == "no_live_child"
+    assert stopped["active_worker_count"] is None
+    assert stopped["active_worker_pids"] is None
+    assert stopped["worker_descendant_count"] is None
+    assert stopped["worker_descendant_pids"] is None
+    assert stopped["stalled_without_active_worker"] is None
+    assert stopped["last_worker_observation"]["active_worker_count"] == 2
 
 
 def test_supervisor_loop_accepts_fresh_child_log_when_semantic_heartbeat_is_stale(

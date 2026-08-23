@@ -2525,11 +2525,105 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
             rows.append(row)
             continue
         age = max(0.0, now - observed.st_mtime)
+        worker_metrics_available = payload.get("worker_metrics_available")
+        worker_metrics_available = (
+            worker_metrics_available
+            if type(worker_metrics_available) is bool
+            else None
+        )
         active_worker_count = payload.get("active_worker_count")
         active_worker_count = (
             active_worker_count
             if type(active_worker_count) is int and active_worker_count >= 0
             else None
+        )
+        active_worker_pids = payload.get("active_worker_pids")
+        active_worker_pids = (
+            list(active_worker_pids)
+            if (
+                isinstance(active_worker_pids, list)
+                and all(
+                    type(item) is int and item > 1
+                    for item in active_worker_pids
+                )
+                and len(active_worker_pids) == len(set(active_worker_pids))
+            )
+            else None
+        )
+        worker_descendant_count = payload.get("worker_descendant_count")
+        worker_descendant_count = (
+            worker_descendant_count
+            if (
+                type(worker_descendant_count) is int
+                and worker_descendant_count >= 0
+            )
+            else None
+        )
+        worker_descendant_pids = payload.get("worker_descendant_pids")
+        worker_descendant_pids = (
+            list(worker_descendant_pids)
+            if (
+                isinstance(worker_descendant_pids, list)
+                and all(
+                    type(item) is int and item > 1
+                    for item in worker_descendant_pids
+                )
+                and len(worker_descendant_pids)
+                == len(set(worker_descendant_pids))
+            )
+            else None
+        )
+        worker_root_pid = payload.get("worker_root_pid")
+        worker_root_pid = (
+            worker_root_pid
+            if type(worker_root_pid) is int and worker_root_pid > 1
+            else None
+        )
+        worker_root_start_time_ticks = payload.get(
+            "worker_root_start_time_ticks"
+        )
+        worker_root_start_time_ticks = (
+            worker_root_start_time_ticks
+            if (
+                type(worker_root_start_time_ticks) is int
+                and worker_root_start_time_ticks > 0
+            )
+            else None
+        )
+        worker_root_boot_id = str(payload.get("worker_root_boot_id") or "")
+        worker_root_identity_source = str(
+            payload.get("worker_root_identity_source") or ""
+        )
+        daemon_pid = payload.get("daemon_pid")
+        daemon_pid = (
+            daemon_pid
+            if type(daemon_pid) is int and daemon_pid > 1
+            else None
+        )
+        worker_phase_guarded = payload.get("worker_phase_guarded")
+        worker_phase_guarded = (
+            worker_phase_guarded
+            if type(worker_phase_guarded) is bool
+            else None
+        )
+        worker_phase_available = payload.get("worker_phase_available")
+        worker_phase_available = (
+            worker_phase_available
+            if type(worker_phase_available) is bool
+            else None
+        )
+        worker_phase = payload.get("worker_phase")
+        worker_phase = worker_phase if isinstance(worker_phase, str) else None
+        worker_stall_evidence_available = payload.get(
+            "worker_stall_evidence_available"
+        )
+        worker_stall_evidence_available = (
+            worker_stall_evidence_available
+            if type(worker_stall_evidence_available) is bool
+            else None
+        )
+        worker_stall_unavailable_reason = str(
+            payload.get("worker_stall_evidence_unavailable_reason") or ""
         )
         stalled_without_active_worker = payload.get(
             "stalled_without_active_worker"
@@ -2549,9 +2643,39 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
             )
             else None
         )
+        census_admissible = bool(
+            worker_metrics_available is True
+            and payload.get("worker_census_method")
+            == "linux-procfs-descendant-census@1"
+            and daemon_pid is not None
+            and worker_root_pid == daemon_pid
+            and worker_root_start_time_ticks is not None
+            and bool(worker_root_boot_id)
+            and worker_root_identity_source == "supervised_child_identity"
+            and active_worker_count is not None
+            and active_worker_pids is not None
+            and active_worker_count == len(active_worker_pids)
+            and worker_descendant_count is not None
+            and worker_descendant_pids is not None
+            and worker_descendant_count == len(worker_descendant_pids)
+            and set(active_worker_pids).issubset(worker_descendant_pids)
+        )
+        stall_admissible = bool(
+            (
+                worker_stall_evidence_available is True
+                and stalled_without_active_worker is not None
+            )
+            or (
+                worker_stall_evidence_available is False
+                and worker_phase_guarded is False
+                and worker_phase_available is False
+                and worker_phase == ""
+                and stalled_without_active_worker is None
+                and worker_stall_unavailable_reason == "phase_not_guarded"
+            )
+        )
         watchdog_admissible = bool(
-            active_worker_count is not None
-            and stalled_without_active_worker is not None
+            census_admissible and stall_admissible
         )
         row.update(
             {
@@ -2559,10 +2683,36 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
                 "mtime_ns": observed.st_mtime_ns,
                 "age_seconds": age,
                 "fresh": age <= 60.0,
-                "phase": payload.get("phase") or payload.get("status") or "",
+                "phase": worker_phase,
+                "worker_metrics_available": worker_metrics_available,
+                "worker_metrics_unavailable_reason": str(
+                    payload.get("worker_metrics_unavailable_reason") or ""
+                ),
+                "worker_census_method": str(
+                    payload.get("worker_census_method") or ""
+                ),
+                "worker_root_pid": worker_root_pid,
+                "worker_root_start_time_ticks": (
+                    worker_root_start_time_ticks
+                ),
+                "worker_root_boot_id": worker_root_boot_id,
+                "worker_root_identity_source": worker_root_identity_source,
                 "active_worker_count": active_worker_count,
+                "active_worker_pids": active_worker_pids,
+                "worker_descendant_count": worker_descendant_count,
+                "worker_descendant_pids": worker_descendant_pids,
+                "worker_phase_guarded": worker_phase_guarded,
+                "worker_phase_available": worker_phase_available,
                 "worker_phase_age_seconds": worker_phase_age,
+                "worker_stall_evidence_available": (
+                    worker_stall_evidence_available
+                ),
+                "worker_stall_evidence_unavailable_reason": (
+                    worker_stall_unavailable_reason
+                ),
                 "stalled_without_active_worker": stalled_without_active_worker,
+                "worker_census_admissible": census_admissible,
+                "worker_stall_admissible": stall_admissible,
                 "watchdog_admissible": watchdog_admissible,
                 "admissible": bool(
                     payload.get("schema")
@@ -2603,10 +2753,15 @@ def _status_sample(
         authority = _broker_status_query(
             board, paths, owner_status=owner_status_before
         )
+        # Bind the sample to the replica that was queried and replayed.
+        # A later lane refresh is a new generation, not a reason to discard
+        # an already authenticated snapshot.
+        owner_status = owner_status_before
     except Exception as exc:
         authority = {
             "available": False,
             "error_type": type(exc).__name__,
+            "error": str(exc),
             "ready_count": 0,
             "active_count": 0,
             "blocked_count": 0,
@@ -2615,27 +2770,7 @@ def _status_sample(
             "task_statuses": {},
             "task_revisions": {},
         }
-    owner_status_after = server.status()
-    if authority.get("available") is True:
-        try:
-            if _published_replica_binding(
-                owner_status_before, paths
-            ) != _published_replica_binding(owner_status_after, paths):
-                raise OperatorError(
-                    "owner replica publication changed during status query"
-                )
-        except Exception as exc:
-            authority = {
-                "available": False,
-                "error_type": type(exc).__name__,
-                "ready_count": 0,
-                "active_count": 0,
-                "blocked_count": 0,
-                "terminal_count": 0,
-                "event_cursor": 0,
-                "task_statuses": {},
-                "task_revisions": {},
-            }
+        owner_status = owner_status_before
     scheduler_returncode = scheduler.poll()
     try:
         scheduler_process_group = os.getpgid(scheduler.pid)
@@ -2644,7 +2779,7 @@ def _status_sample(
     sample = {
         "observed_at": observed_at,
         "monotonic_ns": time.monotonic_ns(),
-        "owner_status": owner_status_after,
+        "owner_status": owner_status,
         "scheduler": {
             "pid": scheduler.pid,
             "process_group": scheduler_process_group,
@@ -3200,6 +3335,12 @@ def _health_receipt(
         and (ready_count or active_count or delayed_frontier_admitted or terminal)
         and (admission_progress or not require_authoritative_progress)
     )
+    lane_active_worker_count = (
+        sum(int(item["active_worker_count"]) for item in lanes)
+        if lanes
+        and all(type(item.get("active_worker_count")) is int for item in lanes)
+        else None
+    )
     receipt = {
         "schema": LIVE_STATUS_SCHEMA,
         "program_id": PROGRAM,
@@ -3217,9 +3358,7 @@ def _health_receipt(
         "startup_grace_active": startup_active,
         "lane_heartbeat_fresh": lane_fresh,
         "lane_stalled_without_active_worker": lane_stalled,
-        "lane_active_worker_count": sum(
-            int(item.get("active_worker_count") or 0) for item in lanes
-        ),
+        "lane_active_worker_count": lane_active_worker_count,
         "owner_ready": owner_ready,
         "owner_identity_admitted": owner_identity_admitted,
         "task_authority_pair": task_authority_pair,
@@ -3314,6 +3453,12 @@ def _await_initial_health(
             raise OperatorError("foreground health admission failed closed")
         prior_authority = first.get("authority")
         current_authority = second.get("authority")
+        if receipt.get("healthy") is True:
+            return receipt, last_progress_at
+        # Replica publication and broker attach can race the first samples.
+        # Keep sampling through startup grace instead of fail-closing live
+        # lanes on the first unauthenticated pair.
+        first = second
         if not (
             isinstance(prior_authority, Mapping)
             and prior_authority.get("available") is True
@@ -3321,17 +3466,7 @@ def _await_initial_health(
             isinstance(current_authority, Mapping)
             and current_authority.get("available") is True
         ):
-            _record_control_failure(
-                paths, failure, failure_event,
-                reason_code="authoritative_status_unavailable_two_samples",
-                error_type="ASEHHealthQueryFailure",
-            )
-            raise OperatorError(
-                "authoritative health query unavailable for two samples"
-            )
-        if receipt.get("healthy") is True:
-            return receipt, last_progress_at
-        first = second
+            continue
     _record_control_failure(
         paths, failure, failure_event,
         reason_code="foreground_health_admission_timeout",

@@ -260,6 +260,122 @@ def descendant_processes(root_pid: Any) -> list[JsonDict]:
     return found
 
 
+def _strict_procfs_process_identity(
+    path: Path,
+) -> tuple[int, int, str] | None:
+    """Return ``(parent_pid, start_ticks, state)`` without hiding I/O errors."""
+
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except UnicodeError as exc:
+        raise OSError(f"procfs stat record is not valid UTF-8: {path}") from exc
+    try:
+        close = raw.rindex(")")
+    except ValueError as exc:
+        raise OSError(f"malformed procfs stat record: {path}") from exc
+    fields = raw[close + 1 :].strip().split()
+    if len(fields) < 20:
+        raise OSError(f"malformed procfs stat record: {path}")
+    try:
+        state = fields[0]
+        parent_pid = int(fields[1])
+        start_ticks = int(fields[19])
+    except (TypeError, ValueError, IndexError) as exc:
+        raise OSError(f"malformed procfs process identity: {path}") from exc
+    if parent_pid < 0 or start_ticks < 0 or not state:
+        raise OSError(f"invalid procfs process identity: {path}")
+    return parent_pid, start_ticks, state
+
+
+def procfs_descendant_processes(
+    root_pid: Any,
+    *,
+    proc_root: Path = Path("/proc"),
+) -> list[JsonDict]:
+    """Return an exact procfs descendant census or raise when unavailable.
+
+    Unlike the compatibility ``descendant_processes`` helper, this function
+    never turns a failed process-table command into an observed empty census.
+    Each returned process is bound to the start ticks observed in the same
+    procfs snapshot and rechecked before its argv is admitted.
+    """
+
+    if isinstance(root_pid, bool):
+        raise OSError("invalid descendant-census root pid")
+    try:
+        root = int(root_pid)
+    except (TypeError, ValueError) as exc:
+        raise OSError("invalid descendant-census root pid") from exc
+    if root <= 1:
+        raise OSError("invalid descendant-census root pid")
+
+    try:
+        entries = tuple(proc_root.iterdir())
+    except OSError:
+        raise
+    identities: dict[int, tuple[int, int, str]] = {}
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        identity = _strict_procfs_process_identity(entry / "stat")
+        if identity is None or identity[1] <= 0 or identity[2] == "Z":
+            continue
+        identities[int(entry.name)] = identity
+    if root not in identities:
+        raise OSError("descendant-census root disappeared from procfs snapshot")
+
+    children: dict[int, list[int]] = {}
+    for pid, (parent_pid, _start_ticks, _state) in identities.items():
+        children.setdefault(parent_pid, []).append(pid)
+    frontier = sorted(children.get(root, ()))
+    descendants: list[int] = []
+    seen: set[int] = set()
+    while frontier:
+        pid = frontier.pop(0)
+        if pid in seen:
+            continue
+        seen.add(pid)
+        descendants.append(pid)
+        frontier.extend(sorted(children.get(pid, ())))
+
+    found: list[JsonDict] = []
+    for pid in descendants:
+        snapshot_parent, snapshot_start, _snapshot_state = identities[pid]
+        current = _strict_procfs_process_identity(proc_root / str(pid) / "stat")
+        if current is None:
+            # The snapshot observed this process, but it completed before its
+            # command could be sampled. It is no longer an active descendant.
+            continue
+        if current[1] != snapshot_start:
+            raise OSError("descendant pid identity changed during census")
+        try:
+            raw_argv = (proc_root / str(pid) / "cmdline").read_bytes()
+        except FileNotFoundError:
+            continue
+        if not raw_argv or not raw_argv.endswith(b"\0"):
+            raise OSError("descendant argv unavailable during census")
+        try:
+            argv = tuple(
+                item.decode("utf-8") for item in raw_argv.split(b"\0")[:-1]
+            )
+        except UnicodeError as exc:
+            raise OSError("descendant argv is not valid UTF-8") from exc
+        if not argv or any(not item or "\0" in item for item in argv):
+            raise OSError("descendant argv is malformed")
+        found.append(
+            {
+                "pid": pid,
+                "parent_pid": snapshot_parent,
+                "cmdline": shlex.join(argv),
+                "argv": argv,
+                "start_ticks": snapshot_start,
+            }
+        )
+    return found
+
+
 def _process_command_argv(pid: Any) -> tuple[str, ...] | None:
     """Read one exact Linux argv without accepting lossy process-table text."""
 
@@ -659,8 +775,10 @@ def active_codex_exec_workers(
     if daemon_pid <= 1:
         return workers
     for item in descendant_processes(daemon_pid):
-        if _is_agent_worker_command(str(item.get("cmdline") or "")) or (
-            _sealed_agent_worker_process(
+        cmdline = str(item.get("cmdline") or "")
+        if not _is_internal_docker_cleanup_watchdog(cmdline) and (
+            _is_agent_worker_command(cmdline)
+            or _sealed_agent_worker_process(
                 item,
                 current_status,
                 daemon_pid=daemon_pid,
@@ -670,12 +788,24 @@ def active_codex_exec_workers(
     return workers
 
 
+def _is_internal_docker_cleanup_watchdog(cmdline: str) -> bool:
+    """Identify the cleanup helper that must never extend a worker lease."""
+
+    try:
+        tokens = shlex.split(cmdline)
+    except ValueError:
+        tokens = cmdline.split()
+    return "--internal-docker-cleanup-watchdog" in {
+        token.lower() for token in tokens
+    }
+
+
 def _is_agent_worker_command(cmdline: str) -> bool:
     try:
         tokens = shlex.split(cmdline)
     except ValueError:
         tokens = cmdline.split()
-    if not tokens:
+    if not tokens or _is_internal_docker_cleanup_watchdog(cmdline):
         return False
 
     executable = os.path.basename(tokens[0]).lower()
@@ -731,6 +861,7 @@ def worktree_phase_worker_status(
     *,
     phases: frozenset[str] = DEFAULT_WORKTREE_PHASES,
     now: Optional[datetime] = None,
+    descendants: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> JsonDict:
     """Report whether a worktree-edit phase appears stuck without a worker."""
 
@@ -758,40 +889,72 @@ def worktree_phase_worker_status(
             ),
         }
     )
-    if phase not in phases:
-        return {
-            "required": False,
-            "phase": phase,
-            "tracking_generation": tracking_generation,
-        }
+    phase_guarded = phase in phases
     now_at = _aware_utc(now) or now_utc()
-    age = None if started is None else max(0.0, (now_at - started).total_seconds())
+    age = (
+        None
+        if not phase_guarded or started is None
+        else max(0.0, (now_at - started).total_seconds())
+    )
     root_pid = daemon_pid or current.get("heartbeat_pid") or current.get("pid")
     try:
         daemon_pid_value = int(root_pid)
     except (TypeError, ValueError):
         daemon_pid_value = 0
-    descendants = descendant_processes(root_pid)
+    observed_descendants = (
+        descendant_processes(root_pid)
+        if descendants is None
+        else [dict(item) for item in descendants]
+    )
     workers = [
         item
-        for item in descendants
-        if _is_agent_worker_command(str(item.get("cmdline") or ""))
-        or _sealed_agent_worker_process(
-            item,
-            current,
-            daemon_pid=daemon_pid_value,
+        for item in observed_descendants
+        if not _is_internal_docker_cleanup_watchdog(
+            str(item.get("cmdline") or "")
+        )
+        and (
+            _is_agent_worker_command(str(item.get("cmdline") or ""))
+            or _sealed_agent_worker_process(
+                item,
+                current,
+                daemon_pid=daemon_pid_value,
+            )
         )
     ]
-    stalled = bool(age is not None and threshold_seconds > 0 and age >= threshold_seconds and not workers)
+    stall_evidence_available = bool(
+        phase_guarded and (age is not None or threshold_seconds <= 0)
+    )
+    stalled = (
+        bool(
+            age is not None
+            and threshold_seconds > 0
+            and age >= threshold_seconds
+            and not workers
+        )
+        if stall_evidence_available
+        else None
+    )
     return {
-        "required": True,
+        "required": phase_guarded,
         "phase": phase,
+        "phase_available": bool(phase),
         "tracking_generation": tracking_generation,
         "phase_age_seconds": None if age is None else round(age, 3),
         "threshold_seconds": float(threshold_seconds),
         "active_worker_pids": [item.get("pid") for item in workers],
         "active_worker_count": len(workers),
-        "descendant_count": len(descendants),
+        "descendant_pids": [item.get("pid") for item in observed_descendants],
+        "descendant_count": len(observed_descendants),
+        "stall_evidence_available": stall_evidence_available,
+        "stall_evidence_unavailable_reason": (
+            ""
+            if stall_evidence_available
+            else (
+                "phase_started_at_unavailable"
+                if phase_guarded
+                else "phase_not_guarded"
+            )
+        ),
         "stalled_without_active_worker": stalled,
     }
 

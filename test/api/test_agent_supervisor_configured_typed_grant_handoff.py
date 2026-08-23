@@ -65,6 +65,21 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     request_database_task_command_credential,
     request_quack_attach_credential,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    supervisor as todo_supervisor,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    supervisor_loop as supervisor_loop_module,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import ManagedDaemonSpec
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
+    SupervisorLoop,
+    SupervisorLoopConfig,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+    SUPERVISED_CHILD_IDENTITY_PATH_ENV,
+    SUPERVISED_CHILD_OWNER_SCOPE_ENV,
+)
 from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     build_validation_environment,
 )
@@ -1202,6 +1217,7 @@ def _aseh_health_fixture(
     event_cursor: int = 10,
     ready: bool = True,
     active: bool = False,
+    worker_count: int = 0,
     observed_at: float,
     lane_mtime_ns: int,
     lane_stalled: bool = False,
@@ -1432,9 +1448,25 @@ def _aseh_health_fixture(
                 "admissible": True,
                 "watchdog_admissible": True,
                 "mtime_ns": lane_mtime_ns,
-                "active_worker_count": int(active),
-                "worker_phase_age_seconds": 0.5,
-                "stalled_without_active_worker": lane_stalled,
+                "worker_metrics_available": True,
+                "worker_census_method": "linux-procfs-descendant-census@1",
+                "worker_root_pid": 4321,
+                "worker_root_start_time_ticks": 987654,
+                "worker_root_boot_id": "boot-id",
+                "worker_root_identity_source": "supervised_child_identity",
+                "active_worker_count": worker_count,
+                "active_worker_pids": list(range(5000, 5000 + worker_count)),
+                "worker_descendant_count": worker_count,
+                "worker_descendant_pids": list(
+                    range(5000, 5000 + worker_count)
+                ),
+                "worker_phase_guarded": lane_stalled,
+                "worker_phase_available": lane_stalled,
+                "worker_phase_age_seconds": 0.5 if lane_stalled else None,
+                "worker_stall_evidence_available": lane_stalled,
+                "stalled_without_active_worker": (
+                    True if lane_stalled else None
+                ),
             }
         ],
     }
@@ -1457,7 +1489,7 @@ def _aseh_health_fixture(
     }, sample
 
 
-def test_aseh_status_sample_rejects_owner_replica_publication_race(
+def test_aseh_status_sample_binds_query_to_the_replica_generation_it_authenticated(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1488,8 +1520,10 @@ def test_aseh_status_sample_rejects_owner_replica_publication_race(
         board, paths, server, scheduler
     )
 
-    assert observed["authority"]["available"] is False
-    assert observed["authority"]["error_type"] == "OperatorError"
+    assert observed["authority"]["available"] is True
+    assert observed["owner_status"]["read_replica"]["refresh_sequence"] == (
+        before["read_replica"]["refresh_sequence"]
+    )
 
 
 def test_aseh_external_status_binds_receipt_to_current_owner_incarnation(
@@ -1866,24 +1900,36 @@ def test_aseh_lane_status_projects_worker_watchdog(
     state_root = tmp_path / "state"
     status_path = state_root / "lane-0" / "aseh_lane_0_supervisor_status.json"
     status_path.parent.mkdir(parents=True)
-    status_path.write_text(
-        json.dumps(
-            {
-                "schema": (
-                    "ipfs_accelerate_py.agent_supervisor."
-                    "todo_implementation_supervisor.supervisor"
-                ),
-                "repo_root": str(tmp_path),
-                "task_prefix": "## ASEH-",
-                "state_prefix": "aseh_lane_0",
-                "status": "running",
-                "active_worker_count": 0,
-                "worker_phase_age_seconds": 42.5,
-                "stalled_without_active_worker": True,
-            }
+    payload = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "todo_implementation_supervisor.supervisor"
         ),
-        encoding="utf-8",
-    )
+        "repo_root": str(tmp_path),
+        "task_prefix": "## ASEH-",
+        "state_prefix": "aseh_lane_0",
+        "status": "running",
+        "daemon_pid": 4321,
+        "worker_metrics_available": True,
+        "worker_metrics_unavailable_reason": "",
+        "worker_census_method": "linux-procfs-descendant-census@1",
+        "worker_root_pid": 4321,
+        "worker_root_start_time_ticks": 987654,
+        "worker_root_boot_id": "boot-id",
+        "worker_root_identity_source": "supervised_child_identity",
+        "active_worker_count": 0,
+        "active_worker_pids": [],
+        "worker_descendant_count": 0,
+        "worker_descendant_pids": [],
+        "worker_phase": "",
+        "worker_phase_available": False,
+        "worker_phase_guarded": False,
+        "worker_phase_age_seconds": None,
+        "worker_stall_evidence_available": False,
+        "worker_stall_evidence_unavailable_reason": "phase_not_guarded",
+        "stalled_without_active_worker": None,
+    }
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
     board = SimpleNamespace(
         max_lanes=1,
         task_prefix="ASEH",
@@ -1899,8 +1945,287 @@ def test_aseh_lane_status_projects_worker_watchdog(
 
     assert observations[0]["watchdog_admissible"] is True
     assert observations[0]["active_worker_count"] == 0
-    assert observations[0]["worker_phase_age_seconds"] == 42.5
-    assert observations[0]["stalled_without_active_worker"] is True
+    assert observations[0]["worker_phase_age_seconds"] is None
+    assert observations[0]["stalled_without_active_worker"] is None
+
+    payload.update(
+        {
+            "worker_phase": "implementng",
+            "worker_phase_available": True,
+        }
+    )
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    unknown_phase = aseh_operator._lane_status_observations(
+        board,
+        now=time.time(),
+    )
+    assert unknown_phase[0]["watchdog_admissible"] is False
+
+    payload.update(
+        {
+            "worker_phase": "",
+            "worker_phase_available": False,
+            "worker_metrics_available": False,
+            "worker_metrics_unavailable_reason": "procfs_unavailable",
+            "active_worker_count": None,
+            "active_worker_pids": None,
+            "worker_descendant_count": None,
+            "worker_descendant_pids": None,
+        }
+    )
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    unavailable = aseh_operator._lane_status_observations(
+        board,
+        now=time.time(),
+    )
+    assert unavailable[0]["watchdog_admissible"] is False
+    assert unavailable[0]["active_worker_count"] is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("worker_root_boot_id", ""),
+        ("worker_root_identity_source", "captured_before_census"),
+        ("worker_root_pid", 4322),
+    ],
+)
+def test_aseh_lane_status_rejects_unsealed_worker_root_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+) -> None:
+    monkeypatch.setattr(aseh_operator, "ROOT", tmp_path)
+    state_root = tmp_path / "state"
+    status_path = state_root / "lane-0" / "aseh_lane_0_supervisor_status.json"
+    status_path.parent.mkdir(parents=True)
+    payload = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "todo_implementation_supervisor.supervisor"
+        ),
+        "repo_root": str(tmp_path),
+        "task_prefix": "## ASEH-",
+        "state_prefix": "aseh_lane_0",
+        "status": "running",
+        "daemon_pid": 4321,
+        "worker_metrics_available": True,
+        "worker_census_method": "linux-procfs-descendant-census@1",
+        "worker_root_pid": 4321,
+        "worker_root_start_time_ticks": 987654,
+        "worker_root_boot_id": "boot-id",
+        "worker_root_identity_source": "supervised_child_identity",
+        "active_worker_count": 0,
+        "active_worker_pids": [],
+        "worker_descendant_count": 0,
+        "worker_descendant_pids": [],
+        "worker_phase": "",
+        "worker_phase_available": False,
+        "worker_phase_guarded": False,
+        "worker_stall_evidence_available": False,
+        "worker_stall_evidence_unavailable_reason": "phase_not_guarded",
+        "stalled_without_active_worker": None,
+        field: value,
+    }
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    board = SimpleNamespace(
+        max_lanes=1,
+        task_prefix="ASEH",
+        task_header_prefix="## ASEH-",
+        repo_root=tmp_path,
+        runtime_paths={"state": "state"},
+        path=lambda item: tmp_path / Path(item),
+    )
+
+    observations = aseh_operator._lane_status_observations(
+        board,
+        now=time.time(),
+    )
+
+    assert observations[0]["watchdog_admissible"] is False
+
+
+def test_supervisor_loop_publishes_worker_census_before_startup_grace(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    state_dir = repo / "state"
+    state_dir.mkdir(parents=True)
+    identity_path = state_dir / "child.identity.json"
+    command = (
+        sys.executable,
+        "-c",
+        "import time; time.sleep(0.2)",
+    )
+    spec = ManagedDaemonSpec(
+        name="aseh-census-test",
+        schema="test.aseh-census",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=command,
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+    watchdog_calls: list[bool] = []
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=command,
+            log_prefix="child",
+            heartbeat_seconds=0.01,
+            poll_seconds=0.01,
+            watchdog_startup_grace_seconds=3600,
+            max_restarts=1,
+            child_env={
+                SUPERVISED_CHILD_IDENTITY_PATH_ENV: str(identity_path),
+                SUPERVISED_CHILD_OWNER_SCOPE_ENV: json.dumps(
+                    {"test": "aseh-pre-grace-census"},
+                    sort_keys=True,
+                ),
+            },
+        ),
+        watchdog_hook=lambda *_args: watchdog_calls.append(True),
+    )
+    snapshots: list[dict[str, object]] = []
+    original_write = loop._safe_write_status
+
+    def record_status(*args, **kwargs) -> None:
+        original_write(*args, **kwargs)
+        snapshots.append(
+            json.loads(
+                (state_dir / "supervisor_status.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        )
+
+    loop._safe_write_status = record_status  # type: ignore[method-assign]
+
+    result = loop.run()
+
+    live = [
+        item
+        for item in snapshots
+        if item.get("status") in {"starting", "running"}
+    ]
+    assert result.status == "child_exited"
+    assert watchdog_calls == []
+    assert {item["status"] for item in live} == {"starting", "running"}
+    available_live = [
+        item for item in live if item["worker_metrics_available"] is True
+    ]
+    assert {item["status"] for item in available_live} == {
+        "starting",
+        "running",
+    }
+    assert all(
+        item["active_worker_count"] is None
+        for item in live
+        if item["worker_metrics_available"] is False
+    )
+    assert all(
+        item["worker_census_method"]
+        == "linux-procfs-descendant-census@1"
+        for item in available_live
+    )
+    assert all(
+        item["worker_root_identity_source"] == "supervised_child_identity"
+        for item in available_live
+    )
+    assert all(
+        type(item["worker_root_start_time_ticks"]) is int
+        for item in available_live
+    )
+    assert all(bool(item["worker_root_boot_id"]) for item in available_live)
+    assert all(
+        type(item["active_worker_count"]) is int for item in available_live
+    )
+    assert all(
+        isinstance(item["active_worker_pids"], list)
+        for item in available_live
+    )
+    assert all(item["worker_phase"] == "" for item in available_live)
+    assert all(
+        item["worker_phase_guarded"] is False for item in available_live
+    )
+    assert all(
+        item["stalled_without_active_worker"] is None
+        for item in available_live
+    )
+
+
+def test_supervisor_loop_publishes_unavailable_census_without_false_zero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    state_dir = repo / "state"
+    state_dir.mkdir(parents=True)
+    spec = ManagedDaemonSpec(
+        name="aseh-census-test",
+        schema="test.aseh-census",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+        )
+    )
+    birth = current_process_birth()
+    child = SimpleNamespace(
+        pid=os.getpid(),
+        identity_process_birth=birth,
+    )
+
+    def unavailable_census(_pid: int) -> list[dict[str, object]]:
+        raise OSError("procfs unavailable")
+
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "procfs_descendant_processes",
+        unavailable_census,
+    )
+
+    loop._observe_worker_status(child, {})
+    loop._write_status("running", child=child)
+    status = json.loads(
+        (state_dir / "supervisor_status.json").read_text(encoding="utf-8")
+    )
+
+    assert status["worker_metrics_available"] is False
+    assert status["worker_metrics_unavailable_reason"] == "worker_census_unavailable"
+    assert status["active_worker_count"] is None
+    assert status["active_worker_pids"] is None
+    assert status["worker_descendant_count"] is None
+    assert status["worker_descendant_pids"] is None
+    assert status["stalled_without_active_worker"] is None
+
+
+def test_cleanup_watchdog_cannot_extend_implementation_worker_lease() -> None:
+    command = (
+        "/usr/bin/python3 -m "
+        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner "
+        "--internal-docker-cleanup-watchdog --container-id provider-1"
+    )
+
+    assert todo_supervisor._is_agent_worker_command(command) is False
 
 
 def test_aseh_health_zero_frontier_dependency_deadlock_is_blocked_and_stuck(

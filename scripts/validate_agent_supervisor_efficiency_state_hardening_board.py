@@ -197,11 +197,13 @@ BOOTSTRAP_OUTPUTS = {
     "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
     "scripts/run_agent_supervisor_efficiency_state_hardening.py",
     "scripts/validate_agent_supervisor_efficiency_state_hardening_board.py",
     "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    "test/api/test_agent_supervisor_todo_daemon_port.py",
 }
 REQUIRED_PROTECTED_PATHS = {
     ".gitignore",
@@ -223,9 +225,11 @@ REQUIRED_PROTECTED_PATHS = {
     "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
     "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
     "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    "test/api/test_agent_supervisor_todo_daemon_port.py",
 }
 TASK_RE = re.compile(r"^## (ASEH-\d{3}) (.+)$", re.MULTILINE)
 GOAL_RE = re.compile(r"^## (ASEH-G\d{3}) (.+)$", re.MULTILINE)

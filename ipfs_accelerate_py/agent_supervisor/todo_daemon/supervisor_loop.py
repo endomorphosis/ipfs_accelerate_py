@@ -10,9 +10,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Sequence
 
+from ..merge.worktree_lifecycle import ProcessBirthIdentity, read_process_birth
 from .core import ManagedDaemonSpec, pid_alive, read_json
 from .specs import env_float, env_int, env_value
-from .supervisor import SupervisorStatusContext, heartbeat_snapshot, worktree_phase_worker_status
+from .supervisor import (
+    SupervisorStatusContext,
+    heartbeat_snapshot,
+    procfs_descendant_processes,
+    worktree_phase_worker_status,
+)
 from .supervisor_runtime import (
     RestartPolicy,
     SupervisedChild,
@@ -196,38 +202,127 @@ class SupervisorLoop:
             "last_recycle_reason": self.last_recycle_reason,
             **dict(self.config.status_extra_fields),
         }
-        if self._last_worker_status:
-            worker_pids = (
-                list(self._last_worker_status.get("active_worker_pids") or [])
-                if child is not None
-                else []
-            )
-            payload_extra.update(
-                {
-                    "active_worker_count": len(worker_pids),
-                    "active_worker_pids": worker_pids,
-                    "worker_phase": str(self._last_worker_status.get("phase") or ""),
-                    "worker_phase_age_seconds": self._last_worker_status.get(
-                        "phase_age_seconds"
-                    ),
-                    "worker_absence_age_seconds": self._last_worker_status.get(
-                        "worker_absence_age_seconds"
-                    )
-                    if child is not None
-                    else None,
-                    "worker_descendant_count": (
-                        int(self._last_worker_status.get("descendant_count") or 0)
-                        if child is not None
-                        else 0
-                    ),
-                    "stalled_without_active_worker": bool(
-                        child is not None
-                        and self._last_worker_status.get(
-                            "stalled_without_active_worker"
+        worker_status = dict(self._last_worker_status)
+        metrics_available = bool(
+            child is not None
+            and worker_status.get("worker_metrics_available") is True
+        )
+        worker_pids = worker_status.get("active_worker_pids")
+        worker_pids = (
+            list(worker_pids)
+            if metrics_available and isinstance(worker_pids, list)
+            else None
+        )
+        worker_count = worker_status.get("active_worker_count")
+        worker_count = (
+            worker_count
+            if metrics_available
+            and type(worker_count) is int
+            and worker_count >= 0
+            else None
+        )
+        descendant_count = worker_status.get("descendant_count")
+        descendant_count = (
+            descendant_count
+            if metrics_available
+            and type(descendant_count) is int
+            and descendant_count >= 0
+            else None
+        )
+        descendant_pids = worker_status.get("descendant_pids")
+        descendant_pids = (
+            list(descendant_pids)
+            if metrics_available and isinstance(descendant_pids, list)
+            else None
+        )
+        stall_evidence_available = bool(
+            metrics_available
+            and worker_status.get("stall_evidence_available") is True
+        )
+        stalled = worker_status.get("stalled_without_active_worker")
+        stalled = (
+            stalled
+            if stall_evidence_available and type(stalled) is bool
+            else None
+        )
+        payload_extra.update(
+            {
+                "worker_metrics_available": metrics_available,
+                "worker_metrics_unavailable_reason": (
+                    ""
+                    if metrics_available
+                    else (
+                        "no_live_child"
+                        if child is None
+                        else str(
+                            worker_status.get("worker_metrics_unavailable_reason")
+                            or "worker_measurement_not_observed"
                         )
-                    ),
-                }
-            )
+                    )
+                ),
+                "worker_census_method": (
+                    str(worker_status.get("worker_census_method") or "")
+                    if metrics_available
+                    else ""
+                ),
+                "worker_root_pid": (
+                    worker_status.get("worker_root_pid")
+                    if metrics_available
+                    else None
+                ),
+                "worker_root_start_time_ticks": (
+                    worker_status.get("worker_root_start_time_ticks")
+                    if metrics_available
+                    else None
+                ),
+                "worker_root_boot_id": (
+                    str(worker_status.get("worker_root_boot_id") or "")
+                    if metrics_available
+                    else ""
+                ),
+                "worker_root_identity_source": (
+                    str(worker_status.get("worker_root_identity_source") or "")
+                    if metrics_available
+                    else ""
+                ),
+                "active_worker_count": worker_count,
+                "active_worker_pids": worker_pids,
+                "worker_phase": str(worker_status.get("phase") or ""),
+                "worker_phase_available": bool(
+                    worker_status.get("phase_available") is True
+                ),
+                "worker_phase_guarded": bool(worker_status.get("required") is True),
+                "worker_phase_age_seconds": worker_status.get(
+                    "phase_age_seconds"
+                ),
+                "worker_absence_age_seconds": (
+                    worker_status.get("worker_absence_age_seconds")
+                    if metrics_available
+                    else None
+                ),
+                "worker_descendant_count": descendant_count,
+                "worker_descendant_pids": descendant_pids,
+                "worker_stall_evidence_available": stall_evidence_available,
+                "worker_stall_evidence_unavailable_reason": (
+                    ""
+                    if stall_evidence_available
+                    else (
+                        "worker_metrics_unavailable"
+                        if not metrics_available
+                        else str(
+                            worker_status.get(
+                                "stall_evidence_unavailable_reason"
+                            )
+                            or "worker_stall_measurement_not_observed"
+                        )
+                    )
+                ),
+                "stalled_without_active_worker": stalled,
+                "last_worker_observation": (
+                    worker_status if child is None and worker_status else None
+                ),
+            }
+        )
         if extra:
             payload_extra.update(dict(extra))
         self.status.write(
@@ -310,7 +405,186 @@ class SupervisorLoop:
             "daemon_pid_alive": pid_alive(child.pid),
         }
 
-    def default_watchdog(self, child: SupervisedChild, current_status: Mapping[str, Any]) -> SupervisorLoopDecision:
+    @staticmethod
+    def _process_birth_matches(
+        observed: ProcessBirthIdentity,
+        expected: ProcessBirthIdentity,
+    ) -> bool:
+        """Compare the PID-reuse-resistant portion of two process identities."""
+
+        return bool(
+            observed.pid == expected.pid
+            and observed.start_time_ticks == expected.start_time_ticks
+            and bool(observed.boot_id)
+            and observed.boot_id == expected.boot_id
+        )
+
+    def _worker_stall_threshold(
+        self,
+        current_status: Mapping[str, Any],
+    ) -> float:
+        try:
+            return float(
+                current_status.get("worktree_no_child_stall_seconds")
+                or self.config.status_static_fields.get(
+                    "worktree_no_child_stall_seconds"
+                )
+                or 0
+            )
+        except Exception:
+            return 0.0
+
+    def _unavailable_worker_status(
+        self,
+        child: SupervisedChild,
+        current_status: Mapping[str, Any],
+        *,
+        reason: str,
+        error_type: str = "",
+    ) -> dict[str, Any]:
+        phase = str(
+            current_status.get("active_phase")
+            or current_status.get("phase")
+            or ""
+        )
+        return {
+            "worker_metrics_available": False,
+            "worker_metrics_unavailable_reason": reason,
+            "worker_metrics_error_type": error_type,
+            "worker_census_method": "",
+            "worker_root_pid": int(child.pid),
+            "worker_root_start_time_ticks": None,
+            "worker_root_boot_id": "",
+            "worker_root_identity_source": "",
+            "required": None,
+            "phase": phase,
+            "phase_available": bool(phase),
+            "phase_age_seconds": None,
+            "active_worker_pids": None,
+            "active_worker_count": None,
+            "descendant_pids": None,
+            "descendant_count": None,
+            "stall_evidence_available": False,
+            "stall_evidence_unavailable_reason": "worker_metrics_unavailable",
+            "stalled_without_active_worker": None,
+            "worker_absence_age_seconds": None,
+        }
+
+    def _observe_worker_status(
+        self,
+        child: SupervisedChild,
+        current_status: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Measure workers below the exact managed child process identity."""
+
+        try:
+            before = read_process_birth(int(child.pid))
+        except OSError as exc:
+            observed = self._unavailable_worker_status(
+                child,
+                current_status,
+                reason="worker_root_identity_unavailable",
+                error_type=type(exc).__name__,
+            )
+            self._last_worker_status = observed
+            return observed
+        if before is None:
+            observed = self._unavailable_worker_status(
+                child,
+                current_status,
+                reason="worker_root_not_live",
+            )
+            self._last_worker_status = observed
+            return observed
+        if not before.boot_id:
+            observed = self._unavailable_worker_status(
+                child,
+                current_status,
+                reason="worker_root_boot_identity_unavailable",
+            )
+            self._last_worker_status = observed
+            return observed
+
+        expected = getattr(child, "identity_process_birth", None)
+        if expected is not None and not self._process_birth_matches(
+            before,
+            expected,
+        ):
+            observed = self._unavailable_worker_status(
+                child,
+                current_status,
+                reason="worker_root_identity_mismatch",
+            )
+            self._last_worker_status = observed
+            return observed
+
+        threshold = self._worker_stall_threshold(current_status)
+        try:
+            descendants = procfs_descendant_processes(child.pid)
+            measured = worktree_phase_worker_status(
+                current_status,
+                child.pid,
+                threshold,
+                descendants=descendants,
+            )
+            after = read_process_birth(int(child.pid))
+        except OSError as exc:
+            observed = self._unavailable_worker_status(
+                child,
+                current_status,
+                reason="worker_census_unavailable",
+                error_type=type(exc).__name__,
+            )
+            self._last_worker_status = observed
+            return observed
+        if after is None:
+            observed = self._unavailable_worker_status(
+                child,
+                current_status,
+                reason="worker_root_disappeared_during_census",
+            )
+            self._last_worker_status = observed
+            return observed
+        if not self._process_birth_matches(before, after):
+            observed = self._unavailable_worker_status(
+                child,
+                current_status,
+                reason="worker_root_identity_changed_during_census",
+            )
+            self._last_worker_status = observed
+            return observed
+
+        observed = dict(measured)
+        observed.update(
+            {
+                "worker_metrics_available": True,
+                "worker_metrics_unavailable_reason": "",
+                "worker_metrics_error_type": "",
+                "worker_census_method": "linux-procfs-descendant-census@1",
+                "worker_root_pid": before.pid,
+                "worker_root_start_time_ticks": before.start_time_ticks,
+                "worker_root_boot_id": before.boot_id,
+                "worker_root_identity_source": (
+                    "supervised_child_identity"
+                    if expected is not None
+                    else "captured_before_census"
+                ),
+            }
+        )
+        observed = self._worker_status_with_disappearance_grace(
+            observed,
+            threshold_seconds=threshold,
+        )
+        self._last_worker_status = dict(observed)
+        return observed
+
+    def default_watchdog(
+        self,
+        child: SupervisedChild,
+        current_status: Mapping[str, Any],
+        *,
+        worker_status: Optional[Mapping[str, Any]] = None,
+    ) -> SupervisorLoopDecision:
         heartbeat = heartbeat_snapshot(
             current_status,
             stale_after_seconds=self.config.watchdog_stale_after_seconds,
@@ -378,23 +652,16 @@ class SupervisorLoop:
                     "stale_heartbeat",
                     detail=heartbeat_detail,
                 )
-        try:
-            threshold = float(
-                current_status.get("worktree_no_child_stall_seconds")
-                or self.config.status_static_fields.get("worktree_no_child_stall_seconds")
-                or 0
-            )
-        except Exception:
-            threshold = 0.0
-        worker_status = self._worker_status_with_disappearance_grace(
-            worktree_phase_worker_status(current_status, child.pid, threshold),
-            threshold_seconds=threshold,
+        observed_workers = (
+            self._observe_worker_status(child, current_status)
+            if worker_status is None
+            else dict(worker_status)
         )
-        self._last_worker_status = dict(worker_status)
-        if worker_status.get("stalled_without_active_worker"):
+        self._last_worker_status = dict(observed_workers)
+        if observed_workers.get("stalled_without_active_worker") is True:
             return SupervisorLoopDecision.recycle(
                 "worktree_phase_without_active_child",
-                detail=worker_status,
+                detail=observed_workers,
             )
         return SupervisorLoopDecision.keep_running()
 
@@ -425,6 +692,15 @@ class SupervisorLoop:
         """Measure a workerless stall from disappearance when one was observed."""
 
         status = dict(worker_status)
+        if status.get("worker_metrics_available") is False:
+            # An unreadable procfs/root identity is not an observation of zero
+            # workers.  Reset the disappearance clock and preserve the typed
+            # unavailable result for the next status receipt.
+            self._worker_tracking_generation = ""
+            self._last_worker_seen_monotonic = None
+            status["worker_absence_age_seconds"] = None
+            status["stalled_without_active_worker"] = None
+            return status
         if not status.get("required"):
             self._worker_tracking_generation = ""
             self._last_worker_seen_monotonic = None
@@ -457,9 +733,23 @@ class SupervisorLoop:
         )
         return status
 
-    def watchdog_decision(self, child: SupervisedChild) -> SupervisorLoopDecision:
-        current_status = read_json(self.config.spec.resolve(self.config.spec.status_path))
-        decision = self.default_watchdog(child, current_status)
+    def watchdog_decision(
+        self,
+        child: SupervisedChild,
+        current_status: Optional[Mapping[str, Any]] = None,
+        *,
+        worker_status: Optional[Mapping[str, Any]] = None,
+    ) -> SupervisorLoopDecision:
+        observed_status = (
+            dict(current_status)
+            if current_status is not None
+            else read_json(self.config.spec.resolve(self.config.spec.status_path))
+        )
+        decision = self.default_watchdog(
+            child,
+            observed_status,
+            worker_status=worker_status,
+        )
         if decision.action != "continue":
             if (
                 decision.reason == "stale_heartbeat"
@@ -468,13 +758,13 @@ class SupervisorLoop:
                 exception = self.stale_heartbeat_hook(
                     self,
                     child,
-                    current_status,
+                    observed_status,
                 )
                 if exception is not None:
                     return exception
             return decision
         if self.watchdog_hook is not None:
-            return self.watchdog_hook(self, child, current_status)
+            return self.watchdog_hook(self, child, observed_status)
         return decision
 
     def run(self) -> SupervisorLoopResult:
@@ -529,6 +819,10 @@ class SupervisorLoop:
             self._worker_tracking_generation = ""
             self._last_worker_seen_monotonic = None
             self._last_worker_status = {}
+            self._observe_worker_status(
+                child,
+                read_json(self.config.spec.resolve(self.config.spec.status_path)),
+            )
             self._safe_write_status("starting", child=child, run_id=run_id, log_path=log_path)
             recycled = False
             stop_requested = False
@@ -538,9 +832,20 @@ class SupervisorLoop:
                 if exit_code is not None:
                     self.last_exit_code = exit_code
                     break
+                current_status = read_json(
+                    self.config.spec.resolve(self.config.spec.status_path)
+                )
+                worker_status = self._observe_worker_status(
+                    child,
+                    current_status,
+                )
                 self._safe_write_status("running", child=child, run_id=run_id, log_path=log_path)
                 if self.monotonic() - child_started_at >= self.config.watchdog_startup_grace_seconds:
-                    decision = self.watchdog_decision(child)
+                    decision = self.watchdog_decision(
+                        child,
+                        current_status,
+                        worker_status=worker_status,
+                    )
                     if decision.action == "stop":
                         final_status = decision.status or "stopped"
                         self.last_recycle_reason = decision.reason
