@@ -1043,32 +1043,6 @@ _QUACK_ATTACH_CONTENTION_MARKERS = (
 )
 
 
-_QUACK_ATTACH_TOKEN_ENV = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
-_QUACK_SECRET_HANDLE_ENV = "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE"
-
-def resolve_quack_attach_token(
-    token: str = "",
-    *,
-    environment: Mapping[str, str] | None = None,
-) -> str:
-    """Return the admitted attach token without logging it.
-
-    Resolution order: explicit argument, ``IPFS_ACCELERATE_AGENT_QUACK_TOKEN``,
-    then the environment variable named by an ``env://`` secret handle.
-    """
-
-    source = os.environ if environment is None else environment
-    secret = str(token or source.get(_QUACK_ATTACH_TOKEN_ENV, "") or "").strip()
-    if secret:
-        return secret
-    handle = str(source.get(_QUACK_SECRET_HANDLE_ENV, "") or "").strip()
-    if handle.startswith("env://"):
-        target = handle[len("env://") :].strip()
-        if target:
-            secret = str(source.get(target, "") or "").strip()
-    return secret
-
-
 def _quack_token_fingerprint(token: str) -> str:
     secret = str(token or "").strip()
     if not secret:
@@ -1519,8 +1493,9 @@ def submit_quack_owner_command(
 ) -> Mapping[str, Any]:
     """Submit one typed command and return its typed result mapping.
 
-    This filesystem rendezvous exists only because the currently admitted
-    Quack build cannot update attached base tables.  It is not a SQL tunnel.
+    A configured owner broker is authoritative and mints a same-peer typed
+    command grant. The filesystem rendezvous remains only for launchers with
+    no broker binding; broker denial never falls back to ambient credentials.
     """
 
     import uuid
@@ -1533,6 +1508,93 @@ def submit_quack_owner_command(
         or not 0 < float(timeout_seconds) <= 60
     ):
         raise DuckDBConnectionPolicyError("quack owner command timeout must be in (0, 60] seconds")
+    request_id = uuid.uuid4().hex
+    broker_socket = str(
+        os.environ.get(
+            "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET", ""
+        )
+        or ""
+    ).strip()
+    broker_descriptor = str(
+        os.environ.get(
+            "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD", ""
+        )
+        or ""
+    ).strip()
+    if broker_socket or broker_descriptor:
+        if not broker_socket or not broker_descriptor:
+            raise DuckDBConnectionPolicyError(
+                "Quack command credential broker binding is incomplete"
+            )
+        store_id = str(
+            os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
+        ).strip()
+        if not store_id:
+            raise DuckDBConnectionPolicyError(
+                "Quack command credential broker lacks an exact store binding"
+            )
+        from .typed_state_owner import (
+            TypedStateOwnerConnection,
+            TypedStateOwnerDatabaseTaskOutcomeUnknownError,
+            TypedStateOwnerError,
+            TypedStateOwnerRemoteError,
+            kernel_process_birth_id,
+            request_database_task_command_credential,
+            typed_owner_socket_path,
+        )
+
+        client_id = f"database-task-source:{os.getpid()}"
+        process_birth_id = kernel_process_birth_id()
+        connection = None
+        try:
+            grant = request_database_task_command_credential(
+                store_id=store_id,
+                client_id=client_id,
+                process_birth_id=process_birth_id,
+                timeout_seconds=min(float(timeout_seconds), 30.0),
+            )
+            connection = TypedStateOwnerConnection(
+                socket_path=typed_owner_socket_path(store_id),
+                token=grant,
+                client_id=client_id,
+                process_birth_id=process_birth_id,
+                store_id=store_id,
+                timeout_seconds=float(timeout_seconds),
+            )
+            try:
+                result = connection.execute_database_task_command(
+                    command_name,
+                    command_payload,
+                    command_request_id=request_id,
+                )
+            finally:
+                connection.close()
+        except TypedStateOwnerRemoteError as exc:
+            raise QuackOwnerCommandRemoteError(
+                exc.error_code,
+                "typed owner command rejected",
+                request_id=request_id,
+            ) from exc
+        except TypedStateOwnerDatabaseTaskOutcomeUnknownError as exc:
+            raise QuackOwnerCommandRemoteError(
+                "unknown_external_outcome",
+                "typed owner command outcome requires reconciliation",
+                request_id=request_id,
+            ) from exc
+        except (OSError, TypedStateOwnerError) as exc:
+            raise DuckDBConnectionPolicyError(
+                "typed owner command transport failed closed"
+            ) from exc
+        if not isinstance(result, Mapping):
+            raise QuackOwnerCommandRemoteError(
+                "unknown_external_outcome",
+                "typed owner command returned no admissible result",
+                request_id=request_id,
+            )
+        # Success is acknowledged only after the owner republishes its read
+        # replica. Retire any attachment to the withdrawn prior snapshot.
+        reset_quack_transport_cache()
+        return dict(result)
     target = quack_owner_command_dir()
     if target is None:
         raise DuckDBConnectionPolicyError(
@@ -1543,7 +1605,6 @@ def submit_quack_owner_command(
         )
     target.mkdir(parents=True, exist_ok=True)
     os.chmod(target, 0o700)
-    request_id = uuid.uuid4().hex
     request_path = target / f"{request_id}.request.json"
     done_path = target / f"{request_id}.done.json"
     token = resolve_quack_attach_token()

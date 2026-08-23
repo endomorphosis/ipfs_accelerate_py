@@ -407,7 +407,10 @@ def _raise_typed_owner_error(exc: QuackOwnerCommandRemoteError) -> None:
         raise TaskSourceIntegrityError(exc.message) from exc
     if exc.code == "not_found":
         raise KeyError(exc.message) from exc
-    if exc.code == "read_replica_refresh_unknown_outcome":
+    if exc.code in {
+        "read_replica_refresh_unknown_outcome",
+        "unknown_external_outcome",
+    }:
         raise TaskSourceUnknownOutcomeError(exc.message) from exc
     raise DatabaseTaskSourceError(exc.message) from exc
 

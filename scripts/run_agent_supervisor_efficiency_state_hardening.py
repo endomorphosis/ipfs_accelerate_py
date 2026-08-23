@@ -44,6 +44,15 @@ POPULATION_SCHEMA: Final = (
 BOOTSTRAP_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/aseh-bootstrap@1"
 )
+BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
+    {
+        "schema", "source_head", "repository_tree_id", "plan_root_cid",
+        "source_forest", "source_identities", "database_task_source_receipt",
+        "snapshot", "integrity", "initial_ready_task_ids",
+        "bootstrap_validation", "recovered_after_interrupted_materialization",
+        "authority", "ducklake_projection", "bootstrap_receipt_id",
+    }
+)
 DUCKLAKE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/aseh-ducklake-projection@1"
 )
@@ -68,6 +77,39 @@ STATUS_RECEIPT_MAX_BYTES: Final = 1_048_576
 
 class OperatorError(RuntimeError):
     """Fail-closed ASEH program error."""
+
+
+class OperatorStopRequested(OperatorError):
+    """The operator received an orderly process-stop signal."""
+
+    def __init__(self, signum: int) -> None:
+        self.signum = int(signum)
+        super().__init__(f"operator stop requested by signal {self.signum}")
+
+
+@contextmanager
+def _stop_signal_handlers(
+    requested: threading.Event, received: dict[str, int]
+) -> Any:
+    """Install reversible SIGINT/SIGTERM handlers for orderly shutdown."""
+
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    prior: dict[int, Any] = {}
+
+    def request_stop(signum: int, _frame: Any) -> None:
+        received.setdefault("signum", int(signum))
+        requested.set()
+
+    try:
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            prior[signum] = signal.getsignal(signum)
+            signal.signal(signum, request_stop)
+        yield
+    finally:
+        for signum, handler in prior.items():
+            signal.signal(signum, handler)
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -98,6 +140,75 @@ def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
+
+
+def _secure_runtime_json(path: Path, *, max_bytes: int) -> dict[str, Any]:
+    """Read one same-UID, single-link runtime object without following links."""
+
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if not nofollow:
+        raise OperatorError("runtime authority reads require O_NOFOLLOW")
+    descriptor = os.open(
+        path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | nofollow
+    )
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_uid != os.geteuid()
+            or opened.st_nlink != 1
+            or stat.S_IMODE(opened.st_mode) != 0o600
+            or opened.st_size <= 0
+            or opened.st_size > max_bytes
+        ):
+            raise OperatorError("runtime authority file identity is unsafe")
+        chunks: list[bytes] = []
+        remaining = int(opened.st_size)
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 65_536))
+            if not chunk:
+                raise OperatorError("runtime authority file was truncated")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    path_after = os.lstat(path)
+
+    def identity(value: os.stat_result) -> tuple[int, ...]:
+        return (
+            value.st_dev, value.st_ino, value.st_mode, value.st_uid,
+            value.st_nlink, value.st_size, value.st_mtime_ns,
+        )
+
+    if (
+        identity(opened) != identity(after)
+        or identity(opened) != identity(path_after)
+        or stat.S_ISLNK(path_after.st_mode)
+    ):
+        raise OperatorError("runtime authority file changed during read")
+    try:
+        payload = json.loads(b"".join(chunks).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise OperatorError("runtime authority file is not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise OperatorError("runtime authority JSON must be an object")
+    return payload
+
+
+def _bootstrap_receipt_id(payload: Mapping[str, Any]) -> str:
+    """Validate the closed bootstrap receipt and return its content identity."""
+
+    if (
+        payload.get("schema") != BOOTSTRAP_SCHEMA
+        or set(payload) != BOOTSTRAP_RECEIPT_FIELDS
+    ):
+        raise OperatorError("bootstrap receipt schema or fields are invalid")
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("bootstrap_receipt_id", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError("bootstrap receipt CID is invalid")
+    return receipt_id
 
 
 def _run(
@@ -750,6 +861,186 @@ def _offline_database_guard(paths: Mapping[str, Path]) -> Any:
             handle.close()
 
 
+def _immutable_goal_record(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Project the immutable semantic identity of one admitted goal."""
+
+    return {
+        "goal_cid": str(value.get("goal_cid") or ""),
+        "goal_alias": str(value.get("goal_alias") or ""),
+        "objective_id": str(value.get("objective_id") or ""),
+        "parent_goal_cid": str(value.get("parent_goal_cid") or ""),
+        "ordinal": int(value.get("ordinal") or 0),
+        "title": str(value.get("title") or ""),
+        "body": dict(value.get("body") or {}),
+    }
+
+
+def _goal_edge_sort_key(value: Mapping[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(value.get("parent_goal_cid") or ""),
+        str(value.get("child_goal_cid") or ""),
+        str(value.get("edge_kind") or ""),
+    )
+
+
+def _immutable_plan_record(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Project the immutable semantic identity of the admitted plan root."""
+
+    return {
+        "plan_cid": str(value.get("plan_cid") or ""),
+        "goal_cid": str(value.get("goal_cid") or ""),
+        "plan_alias": str(value.get("plan_alias") or ""),
+        "body": dict(value.get("body") or {}),
+    }
+
+
+def _expected_task_authority_spec_cids(
+    population: Mapping[str, Any],
+) -> dict[str, str]:
+    """Derive complete immutable task authority from the sealed source.
+
+    This intentionally mirrors the public ``DatabaseTaskSource.materialize``
+    contract rather than trusting the database projection that it validates.
+    The resulting identity covers body, scope/outputs, acceptance, validation,
+    dependencies, and owner/tree identity while excluding lifecycle receipts.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        task_authority_spec_cid,
+    )
+
+    repository_tree_id = str(population["repository_tree_id"])
+    result: dict[str, str] = {}
+    excluded_body_fields = {
+        "task_cid", "task_id", "task_alias", "cid", "goal_cid",
+        "goal_id", "depends_on", "dependencies", "effects", "outputs",
+        "acceptance_criteria", "acceptance", "validation_commands",
+        "validations", "status", "priority", "ordinal", "plan_cid",
+        "objective_id",
+    }
+    for index, item in enumerate(population["tasks"]):
+        task_cid = str(item["task_cid"])
+        task_alias = str(item["task_alias"])
+        outputs = []
+        for ordinal, raw in enumerate(item.get("outputs") or ()):
+            output = dict(raw)
+            outputs.append(
+                {
+                    "ordinal": ordinal,
+                    "path": str(
+                        output.get("path")
+                        or output.get("effect_id")
+                        or f"output:{ordinal}"
+                    ),
+                    "effect": output,
+                }
+            )
+        acceptance = []
+        for ordinal, raw in enumerate(item.get("acceptance") or ()):
+            if isinstance(raw, str):
+                criterion = raw.strip()
+                policy: dict[str, Any] = {"criterion": criterion}
+            else:
+                policy = dict(raw)
+                criterion = str(
+                    policy.get("criterion")
+                    or policy.get("statement")
+                    or policy.get("criterion_key")
+                    or f"criterion:{ordinal}"
+                ).strip()
+            acceptance.append(
+                {
+                    "ordinal": ordinal,
+                    "criterion": criterion,
+                    "evidence_policy": policy,
+                }
+            )
+        validations = []
+        for ordinal, raw in enumerate(item.get("validations") or ()):
+            if isinstance(raw, str):
+                argv = [raw]
+                policy = {}
+            elif isinstance(raw, Mapping):
+                validation = dict(raw)
+                raw_argv = validation.get("argv") or validation.get(
+                    "validation_commands"
+                )
+                if isinstance(raw_argv, str):
+                    argv = [raw_argv]
+                elif isinstance(raw_argv, Sequence):
+                    argv = [str(part) for part in raw_argv]
+                else:
+                    argv = [
+                        str(
+                            validation.get("command")
+                            or f"validation:{ordinal}"
+                        )
+                    ]
+                policy = {
+                    key: value
+                    for key, value in validation.items()
+                    if key not in {"argv", "validation_commands", "command"}
+                }
+            else:
+                argv = [str(part) for part in raw]
+                policy = {}
+            validations.append(
+                {"ordinal": ordinal, "argv": argv, "policy": policy}
+            )
+        projected = {
+            "task_cid": task_cid,
+            "task_alias": task_alias,
+            "goal_cid": str(item["goal_cid"]),
+            "objective_id": str(item.get("objective_id") or ""),
+            "ordinal": int(item.get("ordinal") or index + 1),
+            "priority": str(item.get("priority") or "P2"),
+            "identity": {
+                "task_cid": task_cid,
+                "task_alias": task_alias,
+                "repository_tree_id": repository_tree_id,
+            },
+            "body": {
+                key: value
+                for key, value in item.items()
+                if key not in excluded_body_fields
+            },
+            "extension_schema": "",
+            "extension": {},
+            "dependencies": [
+                {"dependency_task_cid": str(value), "kind": "depends_on"}
+                for value in (item.get("depends_on") or item.get("dependencies") or ())
+            ],
+            "outputs": outputs,
+            "acceptance": acceptance,
+            "validations": validations,
+        }
+        result[task_alias] = task_authority_spec_cid(projected)
+    return dict(sorted(result.items()))
+
+
+def _task_authority_spec_cids(
+    projection: Mapping[str, Any],
+) -> dict[str, str]:
+    """Compute complete authority identities from one read-only projection."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        task_authority_spec_cid,
+    )
+
+    tasks = projection.get("tasks")
+    if not isinstance(tasks, list):
+        raise OperatorError("materialized plan projection has no task population")
+    result: dict[str, str] = {}
+    for raw in tasks:
+        if not isinstance(raw, Mapping):
+            raise OperatorError("materialized plan projection task is malformed")
+        alias = str(raw.get("task_alias") or "")
+        if not alias or alias in result:
+            raise OperatorError("materialized task authority aliases are invalid")
+        result[alias] = task_authority_spec_cid(raw)
+    return dict(sorted(result.items()))
+
+
 def _verify_materialized_source(
     source: Any,
     *,
@@ -779,6 +1070,10 @@ def _verify_materialized_source(
                 f"materialized task identity differs: {item.task_alias}"
             )
         expected = expected_tasks[expected_aliases.index(item.task_alias)]
+        if tuple(item.dependencies) != tuple(expected.get("dependencies") or ()):
+            raise OperatorError(
+                f"materialized dependency edges differ: {item.task_alias}"
+            )
         for key in (
             "owning_repository",
             "base_revision",
@@ -790,6 +1085,15 @@ def _verify_materialized_source(
                 raise OperatorError(
                     f"materialized owner binding differs: {item.task_alias}:{key}"
                 )
+    plan_projection = source.plan_projection(
+        task_cids=[str(item["task_cid"]) for item in expected_tasks]
+    )
+    task_authority_spec_cids = _task_authority_spec_cids(plan_projection)
+    expected_authority_spec_cids = _expected_task_authority_spec_cids(population)
+    if task_authority_spec_cids != expected_authority_spec_cids:
+        raise OperatorError(
+            "materialized task authority differs from the sealed board"
+        )
     ready = [item.task_alias for item in source.ready_tasks(limit=100).tasks]
     expected_ready = list(config["initial_projection"]["ready_task_ids"])
     if ready != expected_ready:
@@ -802,15 +1106,110 @@ def _verify_materialized_source(
         "task_count": int(projection["task_count"]),
         "goal_count": int(projection["goal_count"]),
         "dependency_count": int(projection["task_dependency_count"]),
+        "objective_count": len(
+            {
+                str(item.get("objective_id") or "")
+                for item in population["objectives"]
+                if str(item.get("objective_id") or "")
+            }
+        ),
+        "plan_count": len(population["plans"]),
     }
     for key, expected in expected_counts.items():
         if int(snapshot.get(key, -1)) != expected:
             raise OperatorError(f"materialized {key} differs from the board")
+
+    goal_records: dict[str, dict[str, Any]] = {}
+    for expected in population["objectives"]:
+        goal_alias = str(expected["goal_alias"])
+        observed = source.get_goal(str(expected["goal_cid"]))
+        if not isinstance(observed, Mapping):
+            raise OperatorError(f"materialized goal is missing: {goal_alias}")
+        observed_record = _immutable_goal_record(observed)
+        expected_record = _immutable_goal_record(
+            {
+                "goal_cid": expected["goal_cid"],
+                "goal_alias": goal_alias,
+                "objective_id": expected.get("objective_id") or "",
+                "parent_goal_cid": expected.get("parent_goal_cid") or "",
+                "ordinal": expected["ordinal"],
+                "title": expected["title"],
+                "body": {
+                    key: value
+                    for key, value in expected.items()
+                    if key
+                    not in {
+                        "goal_cid", "goal_id", "goal_alias", "title",
+                        "status", "ordinal", "objective_id",
+                    }
+                },
+            }
+        )
+        if observed_record != expected_record:
+            raise OperatorError(f"materialized goal differs: {goal_alias}")
+        goal_records[goal_alias] = observed_record
+
+    observed_edges = sorted(
+        (dict(item) for item in source.list_goal_edges(limit=100)),
+        key=_goal_edge_sort_key,
+    )
+    expected_edges = sorted(
+        (dict(item) for item in population["goal_edges"]),
+        key=_goal_edge_sort_key,
+    )
+    if observed_edges != expected_edges:
+        raise OperatorError("materialized goal edges differ from the board")
+
+    expected_plans = list(population["plans"])
+    if len(expected_plans) != 1:
+        raise OperatorError("sealed ASEH population must have exactly one plan")
+    expected_plan = expected_plans[0]
+    observed_plan = source.get_plan(str(expected_plan["plan_cid"]))
+    if not isinstance(observed_plan, Mapping):
+        raise OperatorError("materialized plan root is missing")
+    plan_record = _immutable_plan_record(observed_plan)
+    if plan_record != _immutable_plan_record(
+        {
+            "plan_cid": expected_plan["plan_cid"],
+            "goal_cid": expected_plan["goal_cid"],
+            "plan_alias": expected_plan["plan_alias"],
+            "body": dict(expected_plan),
+        }
+    ):
+        raise OperatorError("materialized plan root differs from the board")
     integrity = {
         "schema": "ipfs_accelerate_py/agent-supervisor/aseh-integrity@1",
         "projection_matches_events": True,
         "projection_cid": snapshot["projection_cid"],
         "event_cursor": snapshot["event_cursor"],
+        "task_statuses": {
+            item.task_alias: str(item.status or "").lower()
+            for item in page.tasks
+        },
+        "task_revisions": {
+            item.task_alias: int(item.revision) for item in page.tasks
+        },
+        "task_cids": {
+            item.task_alias: item.task_cid for item in page.tasks
+        },
+        "task_owner_bindings": {
+            item.task_alias: {
+                key: item.body.get(key)
+                for key in (
+                    "owning_repository", "base_revision",
+                    "base_repository_tree_id", "source_forest_cid",
+                    "owner_source_identity",
+                )
+            }
+            for item in page.tasks
+        },
+        "task_dependencies": {
+            item.task_alias: list(item.dependencies) for item in page.tasks
+        },
+        "task_authority_spec_cids": task_authority_spec_cids,
+        "goal_records": dict(sorted(goal_records.items())),
+        "goal_edges": observed_edges,
+        "plan_record": plan_record,
         **expected_counts,
     }
     integrity["integrity_receipt_id"] = _identity(integrity)
@@ -888,6 +1287,10 @@ def materialize(config_path: Path) -> dict[str, Any]:
     bootstrap = paths["bootstrap_receipt"]
     stage = database.with_name(f".{database.name}.bootstrap-stage")
     with _offline_database_guard(paths):
+        if _population(board, config) != population:
+            raise OperatorError(
+                "sealed source population changed after bootstrap validation"
+            )
         if bootstrap.exists() and not database.is_file():
             raise OperatorError("bootstrap receipt exists without its database")
         if database.exists() and not database.is_file():
@@ -903,19 +1306,30 @@ def materialize(config_path: Path) -> dict[str, Any]:
                     source, population=population, config=config,
                 )
             if bootstrap.is_file():
-                prior = json.loads(bootstrap.read_text(encoding="utf-8"))
-                unsigned = dict(prior)
-                prior_id = unsigned.pop("bootstrap_receipt_id", "")
-                if prior_id != _identity(unsigned):
-                    raise OperatorError("existing bootstrap receipt CID is invalid")
+                prior = _secure_runtime_json(
+                    bootstrap, max_bytes=STATUS_RECEIPT_MAX_BYTES
+                )
+                _bootstrap_receipt_id(prior)
                 if any(
                     prior.get(key) != population.get(key)
                     for key in (
                         "source_head", "repository_tree_id", "plan_root_cid",
                     )
-                ) or prior.get("source_forest") != population["source_forest"]:
+                ) or (
+                    prior.get("source_forest") != population["source_forest"]
+                    or prior.get("source_identities")
+                    != population["source_identities"]
+                ):
                     raise OperatorError(
                         "existing authority differs from the sealed source forest"
+                    )
+                if (
+                    prior.get("snapshot") != snapshot
+                    or prior.get("integrity") != integrity
+                    or prior.get("initial_ready_task_ids") != ready
+                ):
+                    raise OperatorError(
+                        "existing bootstrap receipt differs from its database projection"
                     )
                 return {
                     "schema": OPERATOR_SCHEMA, "command": "materialize",
@@ -950,6 +1364,10 @@ def materialize(config_path: Path) -> dict[str, Any]:
                 )
             with stage.open("rb") as handle:
                 os.fsync(handle.fileno())
+            if _population(board, config) != population:
+                raise OperatorError(
+                    "sealed source population changed before database publication"
+                )
             os.replace(stage, database)
             directory = os.open(
                 database.parent,
@@ -973,6 +1391,65 @@ def materialize(config_path: Path) -> dict[str, Any]:
         "ok": True, "idempotent_replay": False,
         "bootstrap_receipt": receipt, "snapshot": snapshot,
     }
+
+
+def _admit_materialized_launch(
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+) -> dict[str, Any]:
+    """Rebind the offline task store to the exact current sealed source."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    population = _population(board, config)
+    bootstrap = _secure_runtime_json(
+        paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
+    )
+    receipt_id = _bootstrap_receipt_id(bootstrap)
+    expected_fields = {
+        "source_head": population["source_head"],
+        "repository_tree_id": population["repository_tree_id"],
+        "plan_root_cid": population["plan_root_cid"],
+        "source_forest": population["source_forest"],
+        "source_identities": population["source_identities"],
+    }
+    if any(bootstrap.get(name) != value for name, value in expected_fields.items()):
+        raise OperatorError(
+            "bootstrap receipt differs from the exact current source forest"
+        )
+    with _offline_database_guard(paths):
+        with DatabaseTaskSource(
+            paths["database"],
+            owner_id="aseh-launch-admission:read-only",
+            install_schema=False,
+            repository_tree_id=population["repository_tree_id"],
+            plan_root_cid=population["plan_root_cid"],
+        ) as source:
+            snapshot, ready, integrity = _verify_materialized_source(
+                source, population=population, config=config
+            )
+    if (
+        bootstrap.get("snapshot") != snapshot
+        or bootstrap.get("integrity") != integrity
+        or bootstrap.get("initial_ready_task_ids") != ready
+    ):
+        raise OperatorError(
+            "bootstrap receipt differs from the exact materialized projection"
+        )
+    admission = {
+        "source_head": population["source_head"],
+        "repository_tree_id": population["repository_tree_id"],
+        "source_forest_cid": population["source_forest"]["forest_cid"],
+        "plan_root_cid": population["plan_root_cid"],
+        "bootstrap_receipt_id": receipt_id,
+        "projection_cid": snapshot["projection_cid"],
+        "event_cursor": snapshot["event_cursor"],
+    }
+    admission["admission_cid"] = _identity(admission)
+    return admission
 
 
 def _build_server(board: Any, paths: Mapping[str, Path]) -> Any:
@@ -1035,40 +1512,6 @@ def _record_control_failure(
     failure_event.set()
 
 
-def _owner_inbox_loop(
-    server: Any,
-    paths: Mapping[str, Path],
-    stop: threading.Event,
-    failure: dict[str, Any],
-    failure_event: threading.Event,
-    expected_store_generation: str,
-) -> None:
-    while not stop.wait(0.1):
-        if server.lifecycle.value != "ready":
-            _record_control_failure(
-                paths, failure, failure_event,
-                reason_code="owner_left_ready_state",
-                error_type="QuackStateServerNotReady",
-            )
-            return
-        try:
-            server.service_database_task_command_inbox(
-                expected_store_generation=expected_store_generation,
-                max_requests=32,
-            )
-            # The content-CID bundle protocol has a disjoint request identity.
-            # Keep that compatibility service without invoking the legacy
-            # generic SQL-envelope scanner.
-            server.service_mutation_inbox(max_requests=32)
-        except Exception as exc:
-            _record_control_failure(
-                paths, failure, failure_event,
-                reason_code="owner_mutation_inbox_failed",
-                error_type=type(exc).__name__,
-            )
-            return
-
-
 def _terminate_scheduler(process: subprocess.Popen[Any]) -> None:
     if process.poll() is not None:
         return
@@ -1094,6 +1537,12 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
         harden_state_authority_process,
         state_authority_pass_fds,
     )
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        STATE_LIVE_SCHEMA_REVISION_ENV,
+        STATE_SCHEMA_REVISION_ENV,
+        STATE_STORE_GENERATION_ENV,
+        STATE_STORE_LIVE_GENERATION_ENV,
+    )
 
     board, _config = _load(config_path)
     paths = _paths(board)
@@ -1105,136 +1554,153 @@ def run_supervisor(config_path: Path, *, implement: bool, duration: float) -> in
             "configured-board preflight failed: "
             + json.dumps(preflight.get("errors") or [])
         )
+    launch_admission = _admit_materialized_launch(board, _config, paths)
     server = _build_server(board, paths)
     stop = threading.Event()
     failure_event = threading.Event()
     failure: dict[str, Any] = {}
-    inbox_thread: threading.Thread | None = None
     monitor_thread: threading.Thread | None = None
     scheduler: subprocess.Popen[Any] | None = None
     prior_environment: dict[str, str | None] = {}
-    try:
-        identity = server.start()
-        launched_at = time.time()
-        program_environment = dict(
-            board.resolved_database_program().environment(repository_root=ROOT)
-        )
-        expected_mutations = str((paths["owner"] / "mutations").resolve())
-        if program_environment.get(
-            "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"
-        ) != expected_mutations:
-            raise OperatorError("scheduler and owner mutation inboxes differ")
-        program_environment["IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"] = str(
-            server.typed_command_socket_path()
-        )
-        broker_environment = dict(server.start_supervisor_grant_broker())
-        launch_environment = {**program_environment, **broker_environment}
-        raw_token_name = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
-        prior_environment[raw_token_name] = os.environ.get(raw_token_name)
-        os.environ.pop(raw_token_name, None)
-        for name, value in launch_environment.items():
-            prior_environment[name] = os.environ.get(name)
-            os.environ[name] = value
-        harden_state_authority_process()
-        inbox_thread = threading.Thread(
-            target=_owner_inbox_loop,
-            args=(
-                server,
-                paths,
-                stop,
-                failure,
-                failure_event,
-                str(identity.generation),
-            ),
-            name="aseh-owner-mutation-inbox",
-            daemon=True,
-        )
-        inbox_thread.start()
-        argv = [
-            sys.executable,
-            str(ROOT / "scripts/ops/agent_supervisor/configured_board_scheduler.py"),
-            "--repo-root", str(ROOT), "--config", str(board.config_path),
-            "launch", "--foreground", "--duration-seconds", str(duration),
-        ]
-        if implement:
-            argv.append("--implement")
-        scheduler = subprocess.Popen(
-            argv,
-            cwd=ROOT,
-            env=dict(os.environ),
-            start_new_session=True,
-            pass_fds=state_authority_pass_fds(os.environ),
-        )
-        initial_health, last_progress_at = _await_initial_health(
-            board, paths, server, scheduler, launched_at=launched_at,
-            failure=failure, failure_event=failure_event,
-        )
-        monitor_thread = threading.Thread(
-            target=_status_monitor_loop,
-            kwargs={
-                "board": board,
-                "paths": paths,
-                "server": server,
-                "scheduler": scheduler,
-                "launched_at": launched_at,
-                "previous": initial_health["samples"][-1],
-                "last_progress_at": last_progress_at,
-                "stop": stop,
-                "failure": failure,
-                "failure_event": failure_event,
-            },
-            name="aseh-live-health-monitor",
-            daemon=True,
-        )
-        monitor_thread.start()
-        launch_record = {
-            "schema": "ipfs_accelerate_py/agent-supervisor/aseh-owner-launch@1",
-            "identity": identity.to_dict(),
-            "typed_grant_broker": {
-                "available": True,
-                "socket_path": broker_environment[
-                    "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET"
-                ],
-                "secret_published": False,
-            },
-            "initial_health_receipt_cid": initial_health["receipt_cid"],
-            "implement": implement,
-        }
-        launch_record["receipt_cid"] = _identity(launch_record)
-        _atomic_json(
-            paths["evidence"] / "control-plane" / "owner-launch.json",
-            launch_record,
-        )
-        while scheduler.poll() is None:
-            if failure_event.wait(0.25):
-                _terminate_scheduler(scheduler)
-                raise OperatorError(
-                    f"foreground control plane failed: {failure.get('reason_code')}"
-                )
-        return int(scheduler.returncode or 0)
-    finally:
-        stop.set()
-        if scheduler is not None:
-            _terminate_scheduler(scheduler)
-        if monitor_thread is not None:
-            monitor_thread.join(timeout=2.0)
-        if inbox_thread is not None:
-            inbox_thread.join(timeout=2.0)
+    shutdown_requested = threading.Event()
+    received_signal: dict[str, int] = {}
+    with _stop_signal_handlers(shutdown_requested, received_signal):
         try:
-            try:
-                from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
-                    reset_quack_transport_cache,
+            identity = server.start()
+            launched_at = time.time()
+            configured_program = board.resolved_database_program()
+            if (
+                str(identity.store_id) != configured_program.store_id
+                or int(identity.generation) < 1
+                or int(identity.schema_revision) < 0
+                or int(identity.process_birth.pid) != os.getpid()
+            ):
+                raise OperatorError(
+                    "live owner identity differs from the configured store"
                 )
-
-                reset_quack_transport_cache()
-            finally:
-                server.stop()
+            program_environment = dict(
+                configured_program.environment(repository_root=ROOT)
+            )
+            live_generation = str(identity.generation)
+            live_schema_revision = str(identity.schema_revision)
+            program_environment[STATE_STORE_GENERATION_ENV] = live_generation
+            program_environment[STATE_SCHEMA_REVISION_ENV] = live_schema_revision
+            program_environment[STATE_STORE_LIVE_GENERATION_ENV] = live_generation
+            program_environment[STATE_LIVE_SCHEMA_REVISION_ENV] = live_schema_revision
+            program_payload = json.loads(
+                program_environment["IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON"]
+            )
+            program_payload["store_generation"] = live_generation
+            program_payload["schema_revision"] = live_schema_revision
+            program_environment[
+                "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON"
+            ] = json.dumps(program_payload, separators=(",", ":"), sort_keys=True)
+            expected_mutations = str((paths["owner"] / "mutations").resolve())
+            if program_environment.get(
+                "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"
+            ) != expected_mutations:
+                raise OperatorError("scheduler and owner mutation inboxes differ")
+            program_environment["IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"] = str(
+                server.typed_command_socket_path()
+            )
+            broker_environment = dict(server.start_supervisor_grant_broker())
+            launch_environment = {**program_environment, **broker_environment}
+            raw_token_name = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+            prior_environment[raw_token_name] = os.environ.get(raw_token_name)
+            os.environ.pop(raw_token_name, None)
+            for name, value in launch_environment.items():
+                prior_environment[name] = os.environ.get(name)
+                os.environ[name] = value
+            harden_state_authority_process()
+            argv = [
+                sys.executable,
+                str(ROOT / "scripts/ops/agent_supervisor/configured_board_scheduler.py"),
+                "--repo-root", str(ROOT), "--config", str(board.config_path),
+                "launch", "--foreground", "--duration-seconds", str(duration),
+            ]
+            if implement:
+                argv.append("--implement")
+            scheduler = subprocess.Popen(
+                argv, cwd=ROOT, env=dict(os.environ), start_new_session=True,
+                pass_fds=state_authority_pass_fds(os.environ),
+            )
+            initial_health, last_progress_at = _await_initial_health(
+                board, paths, server, scheduler, launched_at=launched_at,
+                failure=failure, failure_event=failure_event,
+                shutdown_requested=shutdown_requested,
+                received_signal=received_signal,
+            )
+            monitor_thread = threading.Thread(
+                target=_status_monitor_loop,
+                kwargs={
+                    "board": board, "paths": paths, "server": server,
+                    "scheduler": scheduler, "launched_at": launched_at,
+                    "previous": initial_health["samples"][-1],
+                    "last_progress_at": last_progress_at, "stop": stop,
+                    "failure": failure, "failure_event": failure_event,
+                },
+                name="aseh-live-health-monitor", daemon=True,
+            )
+            monitor_thread.start()
+            launch_record = {
+                "schema": "ipfs_accelerate_py/agent-supervisor/aseh-owner-launch@1",
+                "identity": identity.to_dict(),
+                "typed_grant_broker": {
+                    "available": True,
+                    "socket_path": broker_environment[
+                        "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET"
+                    ],
+                    "secret_published": False,
+                },
+                "materialized_launch_admission": launch_admission,
+                "initial_health_receipt_cid": initial_health["receipt_cid"],
+                "live_owner_program": {
+                    "store_id": identity.store_id,
+                    "store_generation": live_generation,
+                    "schema_revision": live_schema_revision,
+                    "process_birth_id": identity.process_birth_id,
+                },
+                "implement": implement,
+            }
+            launch_record["receipt_cid"] = _identity(launch_record)
+            _atomic_json(
+                paths["evidence"] / "control-plane" / "owner-launch.json",
+                launch_record,
+            )
+            while scheduler.poll() is None:
+                if shutdown_requested.is_set():
+                    raise OperatorStopRequested(
+                        int(received_signal.get("signum") or signal.SIGTERM)
+                    )
+                if failure_event.wait(0.25):
+                    _terminate_scheduler(scheduler)
+                    raise OperatorError(
+                        f"foreground control plane failed: {failure.get('reason_code')}"
+                    )
+            return int(scheduler.returncode or 0)
+        except OperatorStopRequested as exc:
+            return 128 + int(exc.signum)
         finally:
-            for name, prior in prior_environment.items():
-                if prior is None:
-                    os.environ.pop(name, None)
-                else:
-                    os.environ[name] = prior
+            stop.set()
+            if scheduler is not None:
+                _terminate_scheduler(scheduler)
+            if monitor_thread is not None:
+                monitor_thread.join(timeout=2.0)
+            try:
+                try:
+                    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+                        reset_quack_transport_cache,
+                    )
+
+                    reset_quack_transport_cache()
+                finally:
+                    server.stop()
+            finally:
+                for name, prior in prior_environment.items():
+                    if prior is None:
+                        os.environ.pop(name, None)
+                    else:
+                        os.environ[name] = prior
 
 
 def _broker_status_query(board: Any, paths: Mapping[str, Path]) -> dict[str, Any]:
@@ -1261,7 +1727,15 @@ def _broker_status_query(board: Any, paths: Mapping[str, Path]) -> dict[str, Any
     ):
         raise OperatorError("live status lacks an exclusive sealed-broker binding")
     os.fstat(int(broker_fd))
-    bootstrap = json.loads(paths["bootstrap_receipt"].read_text(encoding="utf-8"))
+    bootstrap = _secure_runtime_json(
+        paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
+    )
+    _bootstrap_receipt_id(bootstrap)
+    bootstrap_integrity = bootstrap.get("integrity")
+    bootstrap_integrity = (
+        bootstrap_integrity if isinstance(bootstrap_integrity, Mapping) else {}
+    )
+    query_started_at_ms = int(time.time() * 1_000)
     with DatabaseTaskSource(
         program.quack_endpoint,
         owner_id=f"aseh-status:{os.getpid()}:{time.time_ns()}",
@@ -1276,21 +1750,113 @@ def _broker_status_query(board: Any, paths: Mapping[str, Path]) -> dict[str, Any
         if page.next_cursor:
             raise OperatorError("live task portfolio exceeds the sealed bound")
         ready = [item.task_alias for item in source.ready_tasks(limit=100).tasks]
+        page_statuses = {
+            item.task_alias: str(item.status or "").lower()
+            for item in page.tasks
+        }
+        queue_entries: dict[str, dict[str, Any]] = {}
+        # Queue cooldown state matters only at a zero-ready, zero-active
+        # frontier. Avoid forty point queries on every ordinary health sample.
+        if not ready and not any(
+            status in ACTIVE_STATUSES for status in page_statuses.values()
+        ):
+            for item in page.tasks:
+                if page_statuses[item.task_alias] not in READY_STATUSES:
+                    continue
+                entry = source.get_queue_entry(item.task_cid)
+                if (
+                    entry is not None
+                    and int(entry.retry_not_before_ms) > query_started_at_ms
+                ):
+                    queue_entries[item.task_alias] = entry.to_dict()
+        sealed_goal_records = bootstrap_integrity.get("goal_records")
+        sealed_goal_records = (
+            sealed_goal_records if isinstance(sealed_goal_records, Mapping) else {}
+        )
+        goal_records: dict[str, dict[str, Any]] = {}
+        for goal_alias, sealed_record in sealed_goal_records.items():
+            sealed_record = (
+                sealed_record if isinstance(sealed_record, Mapping) else {}
+            )
+            goal = source.get_goal(str(sealed_record.get("goal_cid") or ""))
+            if not isinstance(goal, Mapping):
+                raise OperatorError(f"live goal is missing: {goal_alias}")
+            goal_records[str(goal_alias)] = _immutable_goal_record(goal)
+        goal_edges = sorted(
+            (dict(item) for item in source.list_goal_edges(limit=100)),
+            key=_goal_edge_sort_key,
+        )
+        plan = source.get_plan(str(bootstrap.get("plan_root_cid") or ""))
+        if not isinstance(plan, Mapping):
+            raise OperatorError("live plan root is missing")
+        plan_record = _immutable_plan_record(plan)
+        plan_projection = source.plan_projection(
+            task_cids=[item.task_cid for item in page.tasks]
+        )
+        task_authority_spec_cids = _task_authority_spec_cids(plan_projection)
+        with source.intent._connection(write=False) as connection:  # noqa: SLF001
+            raw_binding = getattr(connection, "_quack_mutation_binding", None)
+            if not isinstance(raw_binding, Mapping):
+                raise OperatorError("Quack status query lacks a live owner binding")
+            owner_binding = {
+                field: raw_binding.get(field)
+                for field in (
+                    "server_id", "store_id", "database_uuid", "schema_revision",
+                    "schema_fingerprint", "generation", "process_birth_id",
+                    "listen_uri", "extension_fingerprint",
+                )
+            }
+        if any(value in (None, "") for value in owner_binding.values()):
+            raise OperatorError("Quack status query owner binding is incomplete")
     statuses: Counter[str] = Counter()
     aliases: dict[str, str] = {}
     revisions: dict[str, int] = {}
+    task_cids: dict[str, str] = {}
+    owner_bindings: dict[str, dict[str, Any]] = {}
+    task_dependencies: dict[str, list[str]] = {}
     for task in page.tasks:
         status_name = str(task.status or "").lower()
         aliases[task.task_alias] = status_name
         revisions[task.task_alias] = int(task.revision)
+        task_cids[task.task_alias] = task.task_cid
+        owner_bindings[task.task_alias] = {
+            key: task.body.get(key)
+            for key in (
+                "owning_repository", "base_revision",
+                "base_repository_tree_id", "source_forest_cid",
+                "owner_source_identity",
+            )
+        }
+        task_dependencies[task.task_alias] = list(task.dependencies)
         statuses[status_name] += 1
+    delayed_ready_task_ids = sorted(
+        task_alias
+        for task_alias, entry in queue_entries.items()
+        if (
+            aliases.get(task_alias) in READY_STATUSES
+            and isinstance(entry, Mapping)
+            and type(entry.get("retry_not_before_ms")) is int
+            and int(entry["retry_not_before_ms"]) > query_started_at_ms
+        )
+    )
     return {
         "available": True,
         "transport": "quack",
         "credential_path": "sealed_memfd_broker",
+        "owner_binding": owner_binding,
         "snapshot": snapshot,
         "task_statuses": dict(sorted(aliases.items())),
         "task_revisions": dict(sorted(revisions.items())),
+        "task_cids": dict(sorted(task_cids.items())),
+        "task_owner_bindings": dict(sorted(owner_bindings.items())),
+        "task_dependencies": dict(sorted(task_dependencies.items())),
+        "task_authority_spec_cids": task_authority_spec_cids,
+        "queue_entries": dict(sorted(queue_entries.items())),
+        "query_started_at_ms": query_started_at_ms,
+        "delayed_ready_task_ids": delayed_ready_task_ids,
+        "goal_records": dict(sorted(goal_records.items())),
+        "goal_edges": goal_edges,
+        "plan_record": plan_record,
         "status_counts": dict(sorted(statuses.items())),
         "ready_task_ids": ready,
         "ready_count": len(ready),
@@ -1298,6 +1864,8 @@ def _broker_status_query(board: Any, paths: Mapping[str, Path]) -> dict[str, Any
         "blocked_count": int(statuses.get("blocked", 0)),
         "completed_count": sum(statuses.get(item, 0) for item in COMPLETED_STATUSES),
         "terminal_count": sum(statuses.get(item, 0) for item in TERMINAL_STATUSES),
+        "objective_count": int(snapshot.get("objective_count", -1)),
+        "plan_count": int(snapshot.get("plan_count", -1)),
         "event_cursor": int(snapshot.get("event_cursor") or 0),
     }
 
@@ -1326,6 +1894,34 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
             rows.append(row)
             continue
         age = max(0.0, now - observed.st_mtime)
+        active_worker_count = payload.get("active_worker_count")
+        active_worker_count = (
+            active_worker_count
+            if type(active_worker_count) is int and active_worker_count >= 0
+            else None
+        )
+        stalled_without_active_worker = payload.get(
+            "stalled_without_active_worker"
+        )
+        stalled_without_active_worker = (
+            stalled_without_active_worker
+            if type(stalled_without_active_worker) is bool
+            else None
+        )
+        worker_phase_age = payload.get("worker_phase_age_seconds")
+        worker_phase_age = (
+            float(worker_phase_age)
+            if (
+                not isinstance(worker_phase_age, bool)
+                and isinstance(worker_phase_age, (int, float))
+                and float(worker_phase_age) >= 0.0
+            )
+            else None
+        )
+        watchdog_admissible = bool(
+            active_worker_count is not None
+            and stalled_without_active_worker is not None
+        )
         row.update(
             {
                 "present": True,
@@ -1333,6 +1929,10 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
                 "age_seconds": age,
                 "fresh": age <= 60.0,
                 "phase": payload.get("phase") or payload.get("status") or "",
+                "active_worker_count": active_worker_count,
+                "worker_phase_age_seconds": worker_phase_age,
+                "stalled_without_active_worker": stalled_without_active_worker,
+                "watchdog_admissible": watchdog_admissible,
                 "admissible": bool(
                     payload.get("schema")
                     == (
@@ -1403,22 +2003,126 @@ def _status_sample(
     return sample
 
 
-def _progress_between(before: Mapping[str, Any], after: Mapping[str, Any]) -> list[str]:
+def _authoritative_progress_between(
+    before: Mapping[str, Any], after: Mapping[str, Any]
+) -> list[str]:
+    """Return task-authority movement, never controller heartbeat movement."""
+
+    pair = _task_authority_pair_invariants(before, after)
+    if pair["admitted"] is not True or pair["revision_advanced"] is not True:
+        return []
     evidence: list[str] = []
-    prior_authority = before.get("authority")
-    current_authority = after.get("authority")
-    prior_authority = prior_authority if isinstance(prior_authority, Mapping) else {}
-    current_authority = (
-        current_authority if isinstance(current_authority, Mapping) else {}
-    )
-    if int(current_authority.get("event_cursor") or 0) > int(
-        prior_authority.get("event_cursor") or 0
-    ):
+    # The event stream can contain evidence or accounting records that do not
+    # move the task authority.  Admit its cursor only as corroboration for an
+    # observed task status/revision delta, never as progress by itself.
+    if pair["event_cursor_advanced"] is True:
         evidence.append("authoritative_event_advanced")
-    if current_authority.get("task_statuses") != prior_authority.get("task_statuses"):
+    if pair["status_changed"] is True:
         evidence.append("task_status_changed")
-    if current_authority.get("task_revisions") != prior_authority.get("task_revisions"):
+    if pair["revision_advanced"] is True:
         evidence.append("task_revision_changed")
+    return evidence
+
+
+def _task_authority_pair_invariants(
+    before: Mapping[str, Any], after: Mapping[str, Any]
+) -> dict[str, bool]:
+    """Validate two authenticated observations of one exact task population."""
+
+    def authority(sample: Mapping[str, Any]) -> Mapping[str, Any] | None:
+        value = sample.get("authority")
+        if not isinstance(value, Mapping):
+            return None
+        if (
+            value.get("available") is not True
+            or value.get("transport") != "quack"
+            or value.get("credential_path") != "sealed_memfd_broker"
+        ):
+            return None
+        return value
+
+    prior = authority(before)
+    current = authority(after)
+    empty = {
+        "admitted": False,
+        "event_cursor_monotonic": False,
+        "event_cursor_advanced": False,
+        "revision_monotonic": False,
+        "revision_advanced": False,
+        "status_revision_consistent": False,
+        "status_changed": False,
+    }
+    if prior is None or current is None:
+        return empty
+    prior_statuses = prior.get("task_statuses")
+    current_statuses = current.get("task_statuses")
+    prior_revisions = prior.get("task_revisions")
+    current_revisions = current.get("task_revisions")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (
+            prior_statuses, current_statuses,
+            prior_revisions, current_revisions,
+        )
+    ):
+        return empty
+    task_ids = set(prior_statuses)
+    if (
+        not task_ids
+        or set(current_statuses) != task_ids
+        or set(prior_revisions) != task_ids
+        or set(current_revisions) != task_ids
+        or any(
+            type(prior_revisions[task_id]) is not int
+            or type(current_revisions[task_id]) is not int
+            for task_id in task_ids
+        )
+    ):
+        return empty
+    event_before = prior.get("event_cursor")
+    event_after = current.get("event_cursor")
+    if type(event_before) is not int or type(event_after) is not int:
+        return empty
+    revision_monotonic = all(
+        int(current_revisions[task_id]) >= int(prior_revisions[task_id])
+        for task_id in task_ids
+    )
+    advanced_tasks = {
+        task_id
+        for task_id in task_ids
+        if int(current_revisions[task_id]) > int(prior_revisions[task_id])
+    }
+    changed_status_tasks = {
+        task_id
+        for task_id in task_ids
+        if current_statuses[task_id] != prior_statuses[task_id]
+    }
+    event_cursor_monotonic = event_after >= event_before
+    event_cursor_advanced = event_after > event_before
+    status_revision_consistent = changed_status_tasks.issubset(advanced_tasks)
+    admitted = bool(
+        revision_monotonic
+        and status_revision_consistent
+        and event_cursor_monotonic
+        and (not advanced_tasks or event_cursor_advanced)
+    )
+    return {
+        "admitted": admitted,
+        "event_cursor_monotonic": event_cursor_monotonic,
+        "event_cursor_advanced": event_cursor_advanced,
+        "revision_monotonic": revision_monotonic,
+        "revision_advanced": bool(advanced_tasks),
+        "status_revision_consistent": status_revision_consistent,
+        "status_changed": bool(changed_status_tasks),
+    }
+
+
+def _lane_liveness_between(
+    before: Mapping[str, Any], after: Mapping[str, Any]
+) -> list[str]:
+    """Return non-authoritative controller liveness observations."""
+
+    evidence: list[str] = []
     prior_lanes = {
         int(item.get("lane", -1)): int(item.get("mtime_ns") or 0)
         for item in before.get("lanes", [])
@@ -1434,6 +2138,79 @@ def _progress_between(before: Mapping[str, Any], after: Mapping[str, Any]) -> li
     return evidence
 
 
+def _owner_identity_admitted(sample: Mapping[str, Any]) -> bool:
+    """Require Quack and local owner status to name one exact incarnation."""
+
+    authority = sample.get("authority")
+    authority = authority if isinstance(authority, Mapping) else {}
+    binding = authority.get("owner_binding")
+    binding = binding if isinstance(binding, Mapping) else {}
+    owner_status = sample.get("owner_status")
+    owner_status = owner_status if isinstance(owner_status, Mapping) else {}
+    identity = owner_status.get("identity")
+    identity = identity if isinstance(identity, Mapping) else {}
+    process_birth = identity.get("process_birth")
+    process_birth = process_birth if isinstance(process_birth, Mapping) else {}
+    process_pid = process_birth.get("pid")
+    fields = (
+        "server_id", "store_id", "database_uuid", "schema_revision",
+        "schema_fingerprint", "generation", "process_birth_id", "listen_uri",
+        "extension_fingerprint",
+    )
+    return bool(
+        owner_status.get("lifecycle") == "ready"
+        and authority.get("available") is True
+        and all(identity.get(field) not in (None, "") for field in fields)
+        and all(binding.get(field) == identity.get(field) for field in fields)
+        and type(process_pid) is int
+        and process_pid == os.getpid()
+    )
+
+
+def _bootstrap_authoritative_witness(
+    paths: Mapping[str, Path], authority: Mapping[str, Any]
+) -> list[str]:
+    """Recognize a fast claim/status change observed before sample one."""
+
+    bootstrap = _secure_runtime_json(
+        paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
+    )
+    _bootstrap_receipt_id(bootstrap)
+    bootstrap_snapshot = bootstrap.get("snapshot")
+    bootstrap_snapshot = (
+        bootstrap_snapshot if isinstance(bootstrap_snapshot, Mapping) else {}
+    )
+    if int(authority.get("event_cursor") or 0) <= int(
+        bootstrap_snapshot.get("event_cursor") or 0
+    ):
+        return []
+    evidence = ["authoritative_event_since_bootstrap"]
+    integrity = bootstrap.get("integrity")
+    integrity = integrity if isinstance(integrity, Mapping) else {}
+    baseline_statuses = integrity.get("task_statuses")
+    baseline_statuses = (
+        baseline_statuses if isinstance(baseline_statuses, Mapping) else {}
+    )
+    baseline_revisions = integrity.get("task_revisions")
+    baseline_revisions = (
+        baseline_revisions if isinstance(baseline_revisions, Mapping) else {}
+    )
+    statuses = authority.get("task_statuses")
+    statuses = statuses if isinstance(statuses, Mapping) else {}
+    if baseline_statuses and statuses != baseline_statuses:
+        evidence.append("authoritative_status_since_bootstrap")
+    revisions = authority.get("task_revisions")
+    revisions = revisions if isinstance(revisions, Mapping) else {}
+    if baseline_revisions and any(
+        type(value) is int
+        and type(baseline_revisions.get(task_id)) is int
+        and value > int(baseline_revisions[task_id])
+        for task_id, value in revisions.items()
+    ):
+        evidence.append("authoritative_revision_since_bootstrap")
+    return evidence if len(evidence) > 1 else []
+
+
 def _health_receipt(
     board: Any,
     paths: Mapping[str, Path],
@@ -1442,6 +2219,7 @@ def _health_receipt(
     launched_at: float,
     last_progress_at: float,
     failure: dict[str, Any],
+    require_authoritative_progress: bool = False,
 ) -> dict[str, Any]:
     if len(samples) != 2:
         raise OperatorError("health receipt requires exactly two samples")
@@ -1468,7 +2246,8 @@ def _health_receipt(
     authority = authority if isinstance(authority, Mapping) else {}
     owner_status = current.get("owner_status")
     owner_status = owner_status if isinstance(owner_status, Mapping) else {}
-    progress = _progress_between(before, current)
+    progress = _authoritative_progress_between(before, current)
+    liveness = _lane_liveness_between(before, current)
     now = float(current["observed_at"])
     stale_seconds = float(board.payload.get("stale_seconds") or 1800.0)
     startup_grace = float(
@@ -1480,9 +2259,13 @@ def _health_receipt(
         and all(
             item.get("fresh") is True
             and item.get("admissible") is True
+            and item.get("watchdog_admissible") is True
             and int(item.get("mtime_ns") or 0) >= int(launched_at * 1_000_000_000)
             for item in lanes
         )
+    )
+    lane_stalled = any(
+        item.get("stalled_without_active_worker") is True for item in lanes
     )
     owner_ready = owner_status.get("lifecycle") == "ready"
     broker = owner_status.get("configured_supervisor_credential_broker")
@@ -1497,38 +2280,225 @@ def _health_receipt(
         and sample.get("credential_path") == "sealed_memfd_broker"
         for sample in (prior_authority, authority)
     )
+    owner_identity_admitted = all(
+        _owner_identity_admitted(sample) for sample in (before, current)
+    )
+    prior_owner_binding = prior_authority.get("owner_binding")
+    current_owner_binding = authority.get("owner_binding")
+    owner_identity_admitted = bool(
+        owner_identity_admitted
+        and isinstance(prior_owner_binding, Mapping)
+        and current_owner_binding == prior_owner_binding
+    )
+    task_authority_pair = _task_authority_pair_invariants(before, current)
     expected_tasks = int(board.payload["initial_projection"]["task_count"])
     snapshot = authority.get("snapshot")
     snapshot = snapshot if isinstance(snapshot, Mapping) else {}
     task_count = int(snapshot.get("task_count", -1))
+    expected_goals = int(board.payload["initial_projection"]["goal_count"])
+    expected_dependencies = int(
+        board.payload["initial_projection"]["task_dependency_count"]
+    )
+    goal_count = int(snapshot.get("goal_count", -1))
+    dependency_count = int(snapshot.get("dependency_count", -1))
+    bootstrap = _secure_runtime_json(
+        paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
+    )
+    _bootstrap_receipt_id(bootstrap)
+    bootstrap_snapshot = bootstrap.get("snapshot")
+    bootstrap_snapshot = (
+        bootstrap_snapshot if isinstance(bootstrap_snapshot, Mapping) else {}
+    )
+    immutable_snapshot_fields = (
+        "source_schema", "schema_version", "plan_root_cid",
+        "repository_tree_id", "formal_plan_id", "source_identity",
+    )
+    source_identity_admitted = bool(
+        all(
+            bootstrap_snapshot.get(field) not in (None, "")
+            and snapshot.get(field) == bootstrap_snapshot.get(field)
+            for field in immutable_snapshot_fields
+        )
+    )
+    bootstrap_integrity = bootstrap.get("integrity")
+    bootstrap_integrity = (
+        bootstrap_integrity if isinstance(bootstrap_integrity, Mapping) else {}
+    )
+    expected_objectives = int(bootstrap_integrity.get("objective_count", -1))
+    expected_plans = int(bootstrap_integrity.get("plan_count", -1))
+    objective_count = int(snapshot.get("objective_count", -1))
+    plan_count = int(snapshot.get("plan_count", -1))
+    sealed_task_cids = bootstrap_integrity.get("task_cids")
+    sealed_task_cids = (
+        sealed_task_cids if isinstance(sealed_task_cids, Mapping) else {}
+    )
+    sealed_owner_bindings = bootstrap_integrity.get("task_owner_bindings")
+    sealed_owner_bindings = (
+        sealed_owner_bindings
+        if isinstance(sealed_owner_bindings, Mapping)
+        else {}
+    )
+    sealed_task_dependencies = bootstrap_integrity.get("task_dependencies")
+    sealed_task_dependencies = (
+        sealed_task_dependencies
+        if isinstance(sealed_task_dependencies, Mapping)
+        else {}
+    )
+    sealed_task_authority_spec_cids = bootstrap_integrity.get(
+        "task_authority_spec_cids"
+    )
+    sealed_task_authority_spec_cids = (
+        sealed_task_authority_spec_cids
+        if isinstance(sealed_task_authority_spec_cids, Mapping)
+        else {}
+    )
+    sealed_goal_records = bootstrap_integrity.get("goal_records")
+    sealed_goal_records = (
+        sealed_goal_records if isinstance(sealed_goal_records, Mapping) else {}
+    )
+    sealed_goal_edges = bootstrap_integrity.get("goal_edges")
+    sealed_goal_edges = (
+        sealed_goal_edges if isinstance(sealed_goal_edges, list) else []
+    )
+    sealed_plan_record = bootstrap_integrity.get("plan_record")
+    sealed_plan_record = (
+        sealed_plan_record if isinstance(sealed_plan_record, Mapping) else {}
+    )
+    task_cids = authority.get("task_cids")
+    task_cids = task_cids if isinstance(task_cids, Mapping) else {}
+    task_owner_bindings = authority.get("task_owner_bindings")
+    task_owner_bindings = (
+        task_owner_bindings if isinstance(task_owner_bindings, Mapping) else {}
+    )
+    task_dependencies = authority.get("task_dependencies")
+    task_dependencies = (
+        task_dependencies if isinstance(task_dependencies, Mapping) else {}
+    )
+    task_authority_spec_cids = authority.get("task_authority_spec_cids")
+    task_authority_spec_cids = (
+        task_authority_spec_cids
+        if isinstance(task_authority_spec_cids, Mapping)
+        else {}
+    )
+    goal_records = authority.get("goal_records")
+    goal_records = goal_records if isinstance(goal_records, Mapping) else {}
+    goal_edges = authority.get("goal_edges")
+    goal_edges = goal_edges if isinstance(goal_edges, list) else []
+    plan_record = authority.get("plan_record")
+    plan_record = plan_record if isinstance(plan_record, Mapping) else {}
+    task_statuses = authority.get("task_statuses")
+    task_statuses = task_statuses if isinstance(task_statuses, Mapping) else {}
+    task_revisions = authority.get("task_revisions")
+    task_revisions = task_revisions if isinstance(task_revisions, Mapping) else {}
+    task_corpus_admitted = bool(
+        sealed_task_cids
+        and task_cids == sealed_task_cids
+        and task_owner_bindings == sealed_owner_bindings
+        and task_dependencies == sealed_task_dependencies
+        and task_authority_spec_cids == sealed_task_authority_spec_cids
+        and set(task_statuses) == set(sealed_task_cids)
+        and set(task_revisions) == set(sealed_task_cids)
+    )
+    semantic_corpus_admitted = bool(
+        sealed_goal_records
+        and goal_records == sealed_goal_records
+        and goal_edges == sealed_goal_edges
+        and plan_record == sealed_plan_record
+    )
     blocked_count = int(authority.get("blocked_count") or 0)
     terminal_count = int(authority.get("terminal_count") or 0)
     ready_count = int(authority.get("ready_count") or 0)
     active_count = int(authority.get("active_count") or 0)
+    delayed_ready_task_ids = authority.get("delayed_ready_task_ids")
+    delayed_ready_task_ids = (
+        delayed_ready_task_ids
+        if isinstance(delayed_ready_task_ids, list)
+        else []
+    )
+    delayed_frontier_admitted = bool(
+        delayed_ready_task_ids
+        and len(delayed_ready_task_ids) == len(set(delayed_ready_task_ids))
+        and set(delayed_ready_task_ids).issubset(sealed_task_cids)
+        and isinstance(authority.get("queue_entries"), Mapping)
+        and set(authority["queue_entries"]) == set(delayed_ready_task_ids)
+        and type(authority.get("query_started_at_ms")) is int
+        and all(
+            task_statuses.get(task_id) in READY_STATUSES
+            and isinstance(authority["queue_entries"].get(task_id), Mapping)
+            and authority["queue_entries"][task_id].get("task_cid")
+            == sealed_task_cids.get(task_id)
+            and type(
+                authority["queue_entries"][task_id].get(
+                    "retry_not_before_ms"
+                )
+            ) is int
+            and int(
+                authority["queue_entries"][task_id]["retry_not_before_ms"]
+            )
+            > int(authority["query_started_at_ms"])
+            for task_id in delayed_ready_task_ids
+        )
+    )
     terminal = terminal_count == expected_tasks
     startup_active = now - launched_at <= startup_grace
-    evidence_fresh = bool(progress or lane_fresh or startup_active or terminal)
-    stuck = bool(
-        owner_ready
-        and authority.get("available") is True
+    dependency_deadlock = bool(
+        task_count == expected_tasks
         and not terminal
-        and (ready_count or active_count)
-        and not evidence_fresh
-        and now - last_progress_at >= stale_seconds
+        and ready_count == 0
+        and active_count == 0
+        and not delayed_frontier_admitted
     )
-    blocked = bool(blocked_count or failure)
+    stuck = bool(
+        lane_stalled
+        or dependency_deadlock
+        or (
+            owner_ready
+            and authority.get("available") is True
+            and not terminal
+            and not delayed_frontier_admitted
+            and not startup_active
+            and now - last_progress_at >= stale_seconds
+        )
+    )
+    blocked = bool(blocked_count or dependency_deadlock or failure)
+    bootstrap_progress = _bootstrap_authoritative_witness(paths, authority)
+    admission_progress = bool(progress or bootstrap_progress or terminal)
+    ready_task_ids = authority.get("ready_task_ids")
+    ready_task_ids = ready_task_ids if isinstance(ready_task_ids, list) else []
+    initial_ready = bootstrap.get("initial_ready_task_ids")
+    initial_ready = initial_ready if isinstance(initial_ready, list) else []
+    frontier_admitted = bool(
+        ready_count == len(ready_task_ids)
+        and len(ready_task_ids) == len(set(ready_task_ids))
+        and set(ready_task_ids).issubset(sealed_task_cids)
+        and (
+            admission_progress
+            or ready_task_ids == initial_ready
+            or delayed_frontier_admitted
+        )
+    )
     healthy = bool(
         owner_ready
         and scheduler_alive
         and broker_ready
         and broker_samples_authenticated
+        and owner_identity_admitted
+        and task_authority_pair["admitted"] is True
+        and source_identity_admitted
+        and task_corpus_admitted
+        and semantic_corpus_admitted
+        and frontier_admitted
         and task_count == expected_tasks
+        and goal_count == expected_goals
+        and dependency_count == expected_dependencies
+        and objective_count == expected_objectives == 1
+        and plan_count == expected_plans == 1
         and lane_fresh
         and not blocked
         and not stuck
-        and (ready_count or active_count or terminal)
+        and (ready_count or active_count or delayed_frontier_admitted or terminal)
+        and (admission_progress or not require_authoritative_progress)
     )
-    bootstrap = json.loads(paths["bootstrap_receipt"].read_text(encoding="utf-8"))
     receipt = {
         "schema": LIVE_STATUS_SCHEMA,
         "program_id": PROGRAM,
@@ -1538,15 +2508,40 @@ def _health_receipt(
         "bootstrap_receipt_id": bootstrap.get("bootstrap_receipt_id"),
         "broker_authenticated": broker_samples_authenticated,
         "samples": [dict(before), dict(current)],
-        "progress_evidence": progress,
+        "progress_evidence": [*bootstrap_progress, *progress],
+        "liveness_evidence": liveness,
+        "authoritative_progress_required": require_authoritative_progress,
+        "authoritative_progress_admitted": admission_progress,
         "last_progress_at": last_progress_at,
         "startup_grace_active": startup_active,
         "lane_heartbeat_fresh": lane_fresh,
+        "lane_stalled_without_active_worker": lane_stalled,
+        "lane_active_worker_count": sum(
+            int(item.get("active_worker_count") or 0) for item in lanes
+        ),
         "owner_ready": owner_ready,
+        "owner_identity_admitted": owner_identity_admitted,
+        "task_authority_pair": task_authority_pair,
+        "source_identity_admitted": source_identity_admitted,
+        "task_corpus_admitted": task_corpus_admitted,
+        "semantic_corpus_admitted": semantic_corpus_admitted,
+        "frontier_admitted": frontier_admitted,
+        "delayed_frontier_admitted": delayed_frontier_admitted,
+        "delayed_ready_task_ids": list(delayed_ready_task_ids),
+        "task_cids": dict(sorted(task_cids.items())),
+        "task_owner_bindings": dict(sorted(task_owner_bindings.items())),
+        "task_dependencies": dict(sorted(task_dependencies.items())),
+        "task_authority_spec_cids": dict(
+            sorted(task_authority_spec_cids.items())
+        ),
+        "goal_records": dict(sorted(goal_records.items())),
+        "goal_edges": list(goal_edges),
+        "plan_record": dict(plan_record),
         "scheduler_alive": scheduler_alive,
         "healthy": healthy,
         "blocked": blocked,
         "stuck": stuck,
+        "dependency_deadlock": dependency_deadlock,
         "terminal": terminal,
         "failure": dict(failure),
         "observed_at": now,
@@ -1564,6 +2559,8 @@ def _await_initial_health(
     launched_at: float,
     failure: Mapping[str, Any],
     failure_event: threading.Event,
+    shutdown_requested: threading.Event,
+    received_signal: Mapping[str, int],
 ) -> tuple[dict[str, Any], float]:
     first = _status_sample(board, paths, server, scheduler)
     last_progress_at = launched_at
@@ -1576,6 +2573,10 @@ def _await_initial_health(
     )
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        if shutdown_requested.is_set():
+            raise OperatorStopRequested(
+                int(received_signal.get("signum") or signal.SIGTERM)
+            )
         if scheduler.poll() is not None:
             _record_control_failure(
                 paths, failure, failure_event,
@@ -1585,12 +2586,17 @@ def _await_initial_health(
             raise OperatorError("scheduler exited before health admission")
         if failure_event.wait(STATUS_SAMPLE_INTERVAL_SECONDS):
             raise OperatorError("control failure occurred before health admission")
+        if shutdown_requested.is_set():
+            raise OperatorStopRequested(
+                int(received_signal.get("signum") or signal.SIGTERM)
+            )
         second = _status_sample(board, paths, server, scheduler)
-        if _progress_between(first, second):
+        if _authoritative_progress_between(first, second):
             last_progress_at = float(second["observed_at"])
         receipt = _health_receipt(
             board, paths, samples=(first, second), launched_at=launched_at,
             last_progress_at=last_progress_at, failure=failure,
+            require_authoritative_progress=True,
         )
         _atomic_json(paths["status_receipt"], receipt)
         if receipt.get("blocked") is True or receipt.get("stuck") is True:
@@ -1630,6 +2636,33 @@ def _await_initial_health(
     raise OperatorError("two-sample foreground health admission timed out")
 
 
+def _post_admission_health_action(
+    receipt: Mapping[str, Any],
+    *,
+    prior_available: bool,
+    current_available: bool,
+    unhealthy_edges: int,
+) -> tuple[str, str, int]:
+    """Return a bounded fail/stop/continue decision for an admitted launch."""
+
+    if receipt.get("blocked") is True:
+        return "fail", "authoritative_board_blocked", unhealthy_edges
+    if receipt.get("stuck") is True:
+        return "fail", "authoritative_board_stuck", unhealthy_edges
+    if not prior_available and not current_available:
+        return "fail", "broker_status_unavailable_two_samples", unhealthy_edges
+    if receipt.get("terminal") is True:
+        return "stop", "", 0
+    if receipt.get("healthy") is True:
+        return "continue", "", 0
+    if prior_available and current_available:
+        return "fail", "authoritative_health_admission_lost", unhealthy_edges
+    next_edges = unhealthy_edges + 1
+    if next_edges > 2:
+        return "fail", "broker_health_recovery_grace_exhausted", next_edges
+    return "continue", "", next_edges
+
+
 def _status_monitor_loop(
     board: Any,
     paths: Mapping[str, Path],
@@ -1648,10 +2681,11 @@ def _status_monitor_loop(
         max(1.0, float(board.payload.get("check_interval_seconds") or 10.0)),
     )
     prior = dict(previous)
+    unhealthy_edges = 0
     while not stop.wait(interval):
         try:
             current = _status_sample(board, paths, server, scheduler)
-            if _progress_between(prior, current):
+            if _authoritative_progress_between(prior, current):
                 last_progress_at = float(current["observed_at"])
             receipt = _health_receipt(
                 board, paths, samples=(prior, current), launched_at=launched_at,
@@ -1668,22 +2702,25 @@ def _status_monitor_loop(
                 isinstance(current_authority, Mapping)
                 and current_authority.get("available") is True
             )
-            if receipt.get("blocked") is True or receipt.get("stuck") is True:
-                _record_control_failure(
-                    paths, failure, failure_event,
-                    reason_code=(
-                        "authoritative_board_blocked"
-                        if receipt.get("blocked") is True
-                        else "authoritative_board_stuck"
-                    ),
-                    error_type="ASEHHealthGateFailure",
+            action, reason_code, unhealthy_edges = (
+                _post_admission_health_action(
+                    receipt,
+                    prior_available=prior_available,
+                    current_available=current_available,
+                    unhealthy_edges=unhealthy_edges,
                 )
+            )
+            if action == "stop":
                 return
-            if not prior_available and not current_available:
+            if action == "fail":
                 _record_control_failure(
                     paths, failure, failure_event,
-                    reason_code="broker_status_unavailable_two_samples",
-                    error_type="ASEHHealthQueryFailure",
+                    reason_code=reason_code,
+                    error_type=(
+                        "ASEHHealthQueryFailure"
+                        if reason_code.startswith("broker_")
+                        else "ASEHHealthGateFailure"
+                    ),
                 )
                 return
             prior = current
@@ -1700,17 +2737,7 @@ def _read_live_status_receipt(
     board: Any, paths: Mapping[str, Path]
 ) -> tuple[dict[str, Any], float]:
     path = paths["status_receipt"]
-    observed = path.stat()
-    if (
-        not stat.S_ISREG(observed.st_mode)
-        or stat.S_ISLNK(observed.st_mode)
-        or observed.st_uid != os.geteuid()
-        or observed.st_nlink != 1
-        or stat.S_IMODE(observed.st_mode) != 0o600
-        or observed.st_size > STATUS_RECEIPT_MAX_BYTES
-    ):
-        raise OperatorError("live status receipt file identity is unsafe")
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = _secure_runtime_json(path, max_bytes=STATUS_RECEIPT_MAX_BYTES)
     if payload.get("schema") != LIVE_STATUS_SCHEMA or payload.get("program_id") != PROGRAM:
         raise OperatorError("live status receipt identity differs")
     unsigned = dict(payload)
@@ -1719,7 +2746,10 @@ def _read_live_status_receipt(
         raise OperatorError("live status receipt CID is invalid")
     if not isinstance(payload.get("samples"), list) or len(payload["samples"]) != 2:
         raise OperatorError("live status receipt is not a two-sample observation")
-    bootstrap = json.loads(paths["bootstrap_receipt"].read_text(encoding="utf-8"))
+    bootstrap = _secure_runtime_json(
+        paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
+    )
+    _bootstrap_receipt_id(bootstrap)
     for field in (
         "source_head", "repository_tree_id", "plan_root_cid", "bootstrap_receipt_id",
     ):

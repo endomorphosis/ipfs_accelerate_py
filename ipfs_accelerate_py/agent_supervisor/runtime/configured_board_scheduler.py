@@ -31,7 +31,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -113,6 +113,8 @@ from .multi_supervisor_runner import (
     STATE_GRANT_BROKER_SECRET_FD_ENV,
     STATE_GRANT_BROKER_SOCKET_ENV,
     STATE_OWNER_SOCKET_ENV,
+    STATE_SCHEMA_REVISION_ENV,
+    STATE_STORE_GENERATION_ENV,
     STATE_STORE_LIVE_GENERATION_ENV,
     TRUSTED_DUCKDB_HOME_ENV,
     TRUSTED_PYTHON_USER_BASE_ENV,
@@ -4434,6 +4436,131 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
     }
 
 
+def _database_program_with_admitted_live_owner(
+    board: ConfiguredBoard,
+) -> DatabaseProgramConfig:
+    """Prefer an exact live owner generation only with its full binding."""
+
+    program = board.resolved_database_program()
+    live_generation = str(
+        os.environ.get(STATE_STORE_LIVE_GENERATION_ENV, "") or ""
+    ).strip()
+    live_schema = str(
+        os.environ.get(STATE_LIVE_SCHEMA_REVISION_ENV, "") or ""
+    ).strip()
+    if not live_generation and not live_schema:
+        return program
+    if (
+        board.database_program is None
+        or program.authority_mode != "quack"
+        or not live_generation
+        or not live_schema
+        or re.fullmatch(r"[1-9][0-9]{0,19}", live_generation) is None
+        or re.fullmatch(r"[0-9]{1,20}", live_schema) is None
+        or int(live_generation) > 2**63 - 1
+        or int(live_schema) > 2**63 - 1
+    ):
+        raise ConfiguredBoardError(
+            "live database generation/schema binding is incomplete or invalid"
+        )
+    static_generation = str(
+        os.environ.get(STATE_STORE_GENERATION_ENV, "") or ""
+    ).strip()
+    static_schema = str(
+        os.environ.get(STATE_SCHEMA_REVISION_ENV, "") or ""
+    ).strip()
+    try:
+        inherited_program = json.loads(
+            str(
+                os.environ.get(
+                    "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON", ""
+                )
+                or ""
+            )
+        )
+    except json.JSONDecodeError as exc:
+        raise ConfiguredBoardError(
+            "live database identity lacks the operator program binding"
+        ) from exc
+    if (
+        static_generation != live_generation
+        or static_schema != live_schema
+        or not isinstance(inherited_program, Mapping)
+        or str(inherited_program.get("store_id") or "") != program.store_id
+        or str(inherited_program.get("store_generation") or "")
+        != live_generation
+        or str(inherited_program.get("schema_revision") or "") != live_schema
+    ):
+        raise ConfiguredBoardError(
+            "live database identity differs from the operator program binding"
+        )
+    registry = board.path(program.runtime_registry_path)
+    broker_socket = str(
+        os.environ.get(STATE_GRANT_BROKER_SOCKET_ENV, "") or ""
+    ).strip()
+    owner_socket = str(os.environ.get(STATE_OWNER_SOCKET_ENV, "") or "").strip()
+    broker_fd = str(
+        os.environ.get(STATE_GRANT_BROKER_SECRET_FD_ENV, "") or ""
+    ).strip()
+    if (
+        Path(broker_socket).resolve(strict=False)
+        != (registry / "typed-state-owner-grants.sock").resolve(strict=False)
+        or Path(owner_socket).resolve(strict=False)
+        != (registry / "typed-state-owner.sock").resolve(strict=False)
+        or not broker_fd.isdecimal()
+        or int(broker_fd) < 3
+    ):
+        raise ConfiguredBoardError(
+            "live database identity lacks the exact inherited owner capability"
+        )
+    try:
+        os.fstat(int(broker_fd))
+        status, evidence = _read_stable_regular_json(
+            registry / "quack-state-server.status.json"
+        )
+    except (OSError, ValueError, _StableArtifactReadError) as exc:
+        raise ConfiguredBoardError(
+            "live database owner identity cannot be observed"
+        ) from exc
+    status = status if isinstance(status, Mapping) else {}
+    identity = status.get("identity")
+    identity = identity if isinstance(identity, Mapping) else {}
+    process_birth = identity.get("process_birth")
+    process_birth = process_birth if isinstance(process_birth, Mapping) else {}
+    if (
+        evidence.get("state") != "present"
+        or status.get("lifecycle") != "ready"
+        or str(identity.get("store_id") or "") != program.store_id
+        or str(identity.get("generation") or "") != live_generation
+        or str(identity.get("schema_revision") or "") != live_schema
+        or type(process_birth.get("pid")) is not int
+        or int(process_birth["pid"]) < 1
+        or not str(identity.get("process_birth_id") or "")
+    ):
+        raise ConfiguredBoardError(
+            "live database environment differs from the exact owner status"
+        )
+    from ..merge.worktree_lifecycle import (
+        OwnerLiveness,
+        ProcessBirthIdentity,
+        owner_liveness,
+    )
+
+    try:
+        birth = ProcessBirthIdentity.from_dict(process_birth)
+    except (TypeError, ValueError) as exc:
+        raise ConfiguredBoardError(
+            "live database owner process identity is malformed"
+        ) from exc
+    if owner_liveness(birth) is not OwnerLiveness.ALIVE:
+        raise ConfiguredBoardError("live database owner process is not alive")
+    return replace(
+        program,
+        store_generation=live_generation,
+        schema_revision=live_schema,
+    )
+
+
 def configured_board_common_args(
     board: ConfiguredBoard,
     *,
@@ -4443,7 +4570,7 @@ def configured_board_common_args(
 
     payload = board.payload
     objective_refill_controls = _objective_refill_controls(payload)
-    program_for_paths = board.resolved_database_program()
+    program_for_paths = _database_program_with_admitted_live_owner(board)
     worktree_root = (
         str(board.path(program_for_paths.worktree_root))
         if program_for_paths.worktree_root
@@ -4502,7 +4629,7 @@ def configured_board_common_args(
     # flags and already launches the daemon with its closed legacy-Markdown
     # default.  Passing those daemon-only flags through the supervisor creates
     # an immediate argparse/restart loop before any task can run.
-    program = board.resolved_database_program()
+    program = _database_program_with_admitted_live_owner(board)
     program_args = program.cli_args() if board.database_program is not None else []
     skip_next = False
     for item in program_args:
@@ -4585,7 +4712,7 @@ def configured_board_launch_plan(
     state_relative = Path(board.runtime_paths["state"])
     log_dir = board.path(board.runtime_paths["logs"])
     entry = board.path(IMPLEMENTATION_ENTRY_PATH.as_posix())
-    program = board.resolved_database_program()
+    program = _database_program_with_admitted_live_owner(board)
     plan_bound = _plan_bound_profile(board)
     plan_bound_children: tuple[PlanBoundSupervisorChild, ...] = ()
     implementation_tracks: tuple[ImplementationSupervisorTrackConfig, ...] = ()
@@ -4626,7 +4753,9 @@ def configured_board_launch_plan(
                 script_path=entry,
                 state_dir=state_dir,
                 state_prefix=_slug(board.task_prefix),
-                database_program=board.database_program,
+                database_program=(
+                    program if board.database_program is not None else None
+                ),
             ),
         )
     runner = build_configured_multi_supervisor_cli_runner(
@@ -4661,7 +4790,7 @@ def configured_board_launch_plan(
             implement=implement,
         ),
         detach=(detach and not plan_bound),
-        database_program=board.database_program,
+        database_program=(program if board.database_program is not None else None),
     )
     runner_args = runner.args()
     if plan_bound:

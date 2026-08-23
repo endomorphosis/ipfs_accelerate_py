@@ -80,6 +80,10 @@ from ..task_sources.control_plane_schema import (
     CONTROL_PLANE_SCHEMA_REVISION,
     install_control_plane_schema,
 )
+from ..task_sources.database_task_source import (
+    execute_quack_owner_command,
+    quack_owner_command_error_code,
+)
 from ..task_sources.duckdb_state import (
     DEFAULT_MEMORY_LIMIT,
     DUCKDB_CONNECTION_POLICY_SETTINGS,
@@ -96,6 +100,8 @@ from ..task_sources.duckdb_state import (
     QUACK_MUTATION_VALIDATION_RECORD,
     QUACK_MUTATION_VALIDATION_RESULT_INSERT,
     QUACK_MUTATION_VALIDATION_RUN_INSERT,
+    QUACK_OWNER_COMMAND_MAX_BYTES,
+    QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
     QUACK_OWNER_MUTATION_MAX_CLOCK_SKEW_MS,
     QUACK_OWNER_MUTATION_MAX_PARAMETER_BYTES,
     QUACK_OWNER_MUTATION_MAX_REQUEST_BYTES,
@@ -104,21 +110,15 @@ from ..task_sources.duckdb_state import (
     QUACK_OWNER_MUTATION_REQUEST_SCHEMA,
     QUACK_OWNER_MUTATION_REQUEST_TTL_MS,
     QUACK_OWNER_MUTATION_RESULT_SCHEMA,
-    QUACK_OWNER_COMMAND_MAX_BYTES,
-    QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
     DuckDBConnection,
     open_duckdb_connection,
     open_quack_state_owner_connection,
+    quack_owner_command_response,
     quack_owner_mutation_content_id,
     quack_owner_mutation_inbox_path,
     quack_owner_mutation_mac,
-    quack_owner_command_response,
     unstall_stale_in_progress_tasks,
     validate_quack_owner_command_request,
-)
-from ..task_sources.database_task_source import (
-    execute_quack_owner_command,
-    quack_owner_command_error_code,
 )
 from ..task_sources.intent_repository import (
     COMPLETION_EVIDENCE_SCHEMA,
@@ -145,7 +145,12 @@ from ..task_sources.quack_owner_mutation import (
     write_envelope_atomic_at,
 )
 from ..task_sources.typed_state_owner import (
+    DATABASE_TASK_COMMAND_GRANT_TTL_SECONDS,
+    DATABASE_TASK_COMMANDS,
     MAX_GRANT_BROKER_FRAME_BYTES,
+    TYPED_STATE_OWNER_CREDENTIAL_DATABASE_TASK_COMMAND,
+    TYPED_STATE_OWNER_CREDENTIAL_READ_TRANSPORT,
+    TYPED_STATE_OWNER_GRANT_BROKER_CREDENTIAL_KINDS,
     TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA,
     TYPED_STATE_OWNER_GRANT_BROKER_SECRET_FD_ENV,
     TYPED_STATE_OWNER_GRANT_BROKER_SOCKET_ENV,
@@ -155,6 +160,7 @@ from ..task_sources.typed_state_owner import (
     TYPED_STATE_OWNER_TOKEN_FILENAME,
     OwnerClientGrant,
     TypedStateOwnerAuthorizationError,
+    TypedStateOwnerDatabaseTaskCommandError,
     TypedStateOwnerGateway,
     _kernel_peer_identity,
     kernel_process_birth_id,
@@ -1861,13 +1867,14 @@ class ServerLifecycle(str, Enum):  # noqa: UP042 - Python 3.8 compatibility.
 
 
 class TypedStateOwnerGrantBroker:
-    """Deliver the live Quack credential across a private owner facet.
+    """Deliver one of two closed credentials across a private owner facet.
 
     This is an in-process facet of the existing Quack state owner, not a new
-    state authority or daemon.  It accepts no SQL, path, role, operation, or
-    scope from callers.  The sealed bootstrap descriptor and ``SO_PEERCRED``
-    bind delivery to an admitted trusted process; the credential is never
-    written to disk or published in process metadata.
+    state authority or daemon. It accepts no SQL, path, role, operation, or
+    caller-selected scope; only the closed read/task credential discriminator.
+    The sealed bootstrap descriptor and ``SO_PEERCRED`` bind delivery to an
+    admitted trusted process; credentials are never written to disk or
+    published in process metadata.
     """
 
     def __init__(
@@ -1876,7 +1883,7 @@ class TypedStateOwnerGrantBroker:
         socket_path: Path,
         bootstrap_secret: str,
         store_id: str,
-        resolve_credential: Callable[[str, str, int], str],
+        resolve_credential: Callable[[str, str, str, int], str],
     ) -> None:
         self.socket_path = Path(socket_path)
         self._secret = str(bootstrap_secret)
@@ -1892,6 +1899,63 @@ class TypedStateOwnerGrantBroker:
         self._channels: set[socket.socket] = set()
         self._client_capacity = threading.BoundedSemaphore(16)
         self._owner_uid = os.geteuid()
+        self._bound_socket_identity: tuple[int, int] | None = None
+
+    def _unlink_matching_socket(self, expected: os.stat_result) -> None:
+        """Unlink only the same observed same-UID socket inode."""
+
+        try:
+            current = os.lstat(self.socket_path)
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            raise QuackStateServerControlError(
+                "cannot reinspect typed grant broker socket"
+            ) from exc
+        if (
+            not stat.S_ISSOCK(current.st_mode)
+            or stat.S_ISLNK(current.st_mode)
+            or current.st_uid != self._owner_uid
+            or (current.st_dev, current.st_ino)
+            != (expected.st_dev, expected.st_ino)
+        ):
+            raise QuackStateServerControlError(
+                "typed grant broker socket changed during recovery"
+            )
+        self.socket_path.unlink()
+
+    def _recover_stale_socket(self, observed: os.stat_result) -> None:
+        """Recover a dead same-UID listener only after a failed connect probe."""
+
+        if (
+            not stat.S_ISSOCK(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != self._owner_uid
+        ):
+            raise QuackStateServerControlError(
+                "typed grant broker socket is not a same-UID socket"
+            )
+        probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        probe.settimeout(0.25)
+        try:
+            probe.connect(str(self.socket_path))
+        except ConnectionRefusedError:
+            # A socket node with no listening endpoint is the only positive
+            # stale observation admitted for recovery.
+            self._unlink_matching_socket(observed)
+        except FileNotFoundError:
+            # Another same-UID recovery already retired it.
+            return
+        except OSError as exc:
+            raise QuackStateServerControlError(
+                "typed grant broker socket liveness is indeterminate"
+            ) from exc
+        else:
+            raise QuackStateServerControlError(
+                "typed grant broker socket already has a live listener"
+            )
+        finally:
+            probe.close()
 
     def start(self) -> None:
         if self._thread is not None:
@@ -1915,7 +1979,7 @@ class TypedStateOwnerGrantBroker:
                 "typed grant broker state directory is unsafe"
             )
         try:
-            existing_socket = os.lstat(self.socket_path)
+            socket_metadata = os.lstat(self.socket_path)
         except FileNotFoundError:
             pass
         except OSError as exc:
@@ -1923,67 +1987,35 @@ class TypedStateOwnerGrantBroker:
                 "cannot inspect typed grant broker socket"
             ) from exc
         else:
-            if (
-                not stat.S_ISSOCK(existing_socket.st_mode)
-                or existing_socket.st_uid != self._owner_uid
-            ):
-                raise QuackStateServerControlError(
-                    "typed grant broker socket path is unsafe"
-                )
-            probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            probe.settimeout(0.25)
-            try:
-                probe.connect(str(self.socket_path))
-            except FileNotFoundError:
-                # A concurrent cleanup won the race; bind below.
-                pass
-            except ConnectionRefusedError:
-                # The exclusive Quack owner lease is already held by this
-                # process. Reclaim only the exact same owner-UID socket inode
-                # left behind by a dead broker; never unlink a replaced path.
-                try:
-                    current_socket = os.lstat(self.socket_path)
-                except FileNotFoundError:
-                    pass
-                except OSError as exc:
-                    raise QuackStateServerControlError(
-                        "cannot recheck stale typed grant broker socket"
-                    ) from exc
-                else:
-                    if (
-                        current_socket.st_dev != existing_socket.st_dev
-                        or current_socket.st_ino != existing_socket.st_ino
-                        or not stat.S_ISSOCK(current_socket.st_mode)
-                        or current_socket.st_uid != self._owner_uid
-                    ):
-                        raise QuackStateServerControlError(
-                            "typed grant broker socket changed during reclaim"
-                        )
-                    try:
-                        self.socket_path.unlink()
-                    except OSError as exc:
-                        raise QuackStateServerControlError(
-                            "cannot reclaim stale typed grant broker socket"
-                        ) from exc
-            except (TimeoutError, OSError) as exc:
-                raise QuackStateServerControlError(
-                    "typed grant broker socket liveness is unknown"
-                ) from exc
-            else:
-                raise QuackStateServerControlError(
-                    "typed grant broker socket already serves a live listener"
-                )
-            finally:
-                probe.close()
+            self._recover_stale_socket(socket_metadata)
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        bound = False
+        bound_metadata: os.stat_result | None = None
         try:
             listener.bind(str(self.socket_path))
+            bound = True
+            bound_metadata = os.lstat(self.socket_path)
+            if (
+                not stat.S_ISSOCK(bound_metadata.st_mode)
+                or bound_metadata.st_uid != self._owner_uid
+            ):
+                raise QuackStateServerControlError(
+                    "typed grant broker created an unsafe socket"
+                )
+            self._bound_socket_identity = (
+                bound_metadata.st_dev,
+                bound_metadata.st_ino,
+            )
             os.chmod(self.socket_path, 0o600)
             listener.listen(16)
             listener.settimeout(0.25)
         except BaseException:
             listener.close()
-            self.socket_path.unlink(missing_ok=True)
+            if bound and bound_metadata is not None:
+                try:
+                    self._unlink_matching_socket(bound_metadata)
+                finally:
+                    self._bound_socket_identity = None
             raise
         self._listener = listener
         self._thread = threading.Thread(
@@ -2017,7 +2049,17 @@ class TypedStateOwnerGrantBroker:
                 pass
         for client in clients:
             client.join(timeout=1.0)
-        self.socket_path.unlink(missing_ok=True)
+        try:
+            current = os.lstat(self.socket_path)
+        except FileNotFoundError:
+            current = None
+        if (
+            current is not None
+            and self._bound_socket_identity
+            == (current.st_dev, current.st_ino)
+        ):
+            self._unlink_matching_socket(current)
+        self._bound_socket_identity = None
         self._secret = ""
 
     def _latch_failure(self, exc: BaseException) -> None:
@@ -2131,11 +2173,12 @@ class TypedStateOwnerGrantBroker:
     def _serve_one(self, channel: socket.socket) -> None:
         response = {
             "schema": TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA,
+            "credential_kind": "",
             "ok": False,
             "token": "",
             "error_code": "grant_denied",
         }
-        authorized_identity: tuple[str, str, int] | None = None
+        authorized_identity: tuple[str, str, str, int] | None = None
         try:
             channel.settimeout(0.5)
             if getattr(socket, "SO_PEERCRED", None) is None:
@@ -2149,6 +2192,7 @@ class TypedStateOwnerGrantBroker:
             request = self._read_frame(channel)
             if set(request) != {
                 "schema",
+                "credential_kind",
                 "bootstrap_secret",
                 "client_id",
                 "process_birth_id",
@@ -2159,9 +2203,13 @@ class TypedStateOwnerGrantBroker:
                 )
             client_id = str(request.get("client_id") or "").strip()
             process_birth_id = str(request.get("process_birth_id") or "").strip()
+            credential_kind = str(request.get("credential_kind") or "").strip()
+            response["credential_kind"] = credential_kind
             supplied_secret = str(request.get("bootstrap_secret") or "")
             if (
                 request.get("schema") != TYPED_STATE_OWNER_GRANT_BROKER_SCHEMA
+                or credential_kind
+                not in TYPED_STATE_OWNER_GRANT_BROKER_CREDENTIAL_KINDS
                 or request.get("store_id") != self._store_id
                 or peer_uid != self._owner_uid
                 or peer_pid < 1
@@ -2176,7 +2224,12 @@ class TypedStateOwnerGrantBroker:
                 raise QuackStateServerControlError(
                     "typed grant broker request is unauthorized"
                 )
-            authorized_identity = (client_id, process_birth_id, peer_pid)
+            authorized_identity = (
+                credential_kind,
+                client_id,
+                process_birth_id,
+                peer_pid,
+            )
         except (
             OSError,
             ValueError,
@@ -2421,6 +2474,87 @@ class QuackStateServer:
             subscription_id=subscription_id,
         )
         self.clear_event_wait_cancellation(consumer_id)
+
+    def _gateway_execute_database_task_command(
+        self,
+        command: str,
+        payload: Mapping[str, Any],
+        request_id: str,
+        grant: OwnerClientGrant,
+    ) -> Mapping[str, Any]:
+        """Run one typed task command on the exclusive owner connection."""
+
+        if command not in grant.allowed_database_task_commands:
+            raise TypedStateOwnerAuthorizationError(
+                "database-task command is outside the owner grant"
+            )
+        # The gateway already holds its exclusive connection lock. Bound the
+        # opposite lifecycle-lock ordering so shutdown wins without waiting on
+        # a client thread indefinitely; no mutation starts after STOPPING.
+        if not self._lock.acquire(timeout=0.25):
+            raise QuackStateServerNotRunningError(
+                "state owner is entering a lifecycle transition"
+            )
+        try:
+            if (
+                self._lifecycle is not ServerLifecycle.READY
+                or self._connection is None
+                or self._identity is None
+            ):
+                raise QuackStateServerNotRunningError(
+                    "database-task command requires a ready state owner"
+                )
+            identity = self._identity
+            repository = IntentRepository(
+                self.config.database_path,
+                bound_connection=self._connection,
+                owner_id="quack-state-owner",
+                session_id=f"quack-owner-{identity.generation}",
+                install_schema=False,
+            )
+            try:
+                try:
+                    result = execute_quack_owner_command(
+                        repository,
+                        command,
+                        payload,
+                        request_id=request_id,
+                        store_id=identity.store_id,
+                        store_generation=str(identity.generation),
+                    )
+                except Exception as exc:
+                    raise TypedStateOwnerDatabaseTaskCommandError(
+                        quack_owner_command_error_code(exc)
+                    ) from exc
+            finally:
+                repository.close()
+            try:
+                self._refresh_read_replica()
+                self._write_status()
+            except BaseException as refresh_exc:
+                # The effect may already be durable. Withdraw readiness so a
+                # caller cannot mistake a stale replica for current truth.
+                try:
+                    self._stop_transport_connection(observe_closed=True)
+                except Exception:
+                    pass
+                if self._read_replica_observation:
+                    self._read_replica_observation["live"] = False
+                self._lifecycle = ServerLifecycle.FAILED
+                self._log(
+                    "typed owner command replica publication failed: "
+                    + type(refresh_exc).__name__
+                )
+                try:
+                    self._write_status()
+                except Exception:
+                    pass
+                raise TypedStateOwnerDatabaseTaskCommandError(
+                    "read_replica_refresh_unknown_outcome"
+                ) from refresh_exc
+            return MappingProxyType(dict(result))
+        finally:
+            self._lock.release()
 
     def bind_federation_repository(
         self,
@@ -2833,6 +2967,7 @@ class QuackStateServer:
         process_birth_id: str = "",
         allowed_operations: Sequence[str] = (),
         allowed_command_operations: Sequence[str] = (),
+        allowed_database_task_commands: Sequence[str] = (),
         tenant_id: str = "",
         federation_id: str = "",
         entity_scopes: Mapping[str, str] | None = None,
@@ -2856,6 +2991,7 @@ class QuackStateServer:
             process_birth_id=process_birth_id,
             allowed_operations=allowed_operations,
             allowed_command_operations=allowed_command_operations,
+            allowed_database_task_commands=allowed_database_task_commands,
             tenant_id=tenant_id,
             federation_id=federation_id,
             entity_scopes=entity_scopes,
@@ -2867,11 +3003,10 @@ class QuackStateServer:
     def start_supervisor_grant_broker(self) -> Mapping[str, str]:
         """Start the closed credential handoff for configured supervisors.
 
-        The broker is a facet of this exact owner process.  It delivers the
-        current in-memory Quack transport credential only to callers holding
-        the sealed inherited bootstrap descriptor and matching kernel peer
-        identity.  Callers cannot select operations, authority, paths, or
-        scopes; task mutations still pass through the existing owner inbox.
+        The broker is a facet of this exact owner process. It delivers either
+        the strictly read-only Quack transport credential or a short-lived
+        same-peer grant for the server-selected six-command task vocabulary.
+        Callers cannot select operations, authority, paths, or scopes.
         """
 
         with self._lock:
@@ -2885,7 +3020,8 @@ class QuackStateServer:
                 )
             identity = self._identity
             vault = self._vault
-        if identity is None or vault is None:
+            gateway = self._command_gateway
+        if identity is None or vault is None or gateway is None:
             raise QuackStateServerControlError(
                 "Quack credential authority is unavailable"
             )
@@ -2920,12 +3056,32 @@ class QuackStateServer:
             ) from None
 
         def resolve_credential(
+            credential_kind: str,
             client_id: str,
             process_birth_id: str,
             peer_pid: int,
         ) -> str:
-            del client_id, process_birth_id, peer_pid
-            return vault.resolve(identity.secret_handle)
+            if credential_kind == TYPED_STATE_OWNER_CREDENTIAL_READ_TRANSPORT:
+                return vault.resolve(identity.secret_handle)
+            if (
+                credential_kind
+                == TYPED_STATE_OWNER_CREDENTIAL_DATABASE_TASK_COMMAND
+            ):
+                token, _grant = gateway.issue_grant(
+                    client_id=client_id,
+                    process_birth_id=process_birth_id,
+                    allowed_operations=(),
+                    allowed_command_operations=(),
+                    allowed_database_task_commands=tuple(
+                        sorted(DATABASE_TASK_COMMANDS)
+                    ),
+                    peer_pid=peer_pid,
+                    ttl_seconds=DATABASE_TASK_COMMAND_GRANT_TTL_SECONDS,
+                )
+                return token
+            raise QuackStateServerControlError(
+                "typed grant broker credential kind is not admitted"
+            )
 
         broker = TypedStateOwnerGrantBroker(
             socket_path=(
@@ -5543,6 +5699,9 @@ class QuackStateServer:
                     identity=identity.to_dict(),
                 )
                 status_bootstrap_token = gateway.configure_status_bootstrap()
+                gateway.bind_database_task_command_handler(
+                    self._gateway_execute_database_task_command
+                )
                 gateway.start()
                 self._command_gateway = gateway
                 if self._event_wait is not None:
@@ -5660,6 +5819,7 @@ class QuackStateServer:
             if (
                 self._command_gateway is None
                 or gateway_health.get("available") is not True
+                or gateway_health.get("database_task_command_bound") is not True
                 or gateway_health.get("last_observer_error_type")
             ):
                 raise QuackStateServerReadyError(
@@ -5984,7 +6144,9 @@ class QuackStateServer:
                         else ""
                     ),
                     "credential_published": False,
-                    "task_mutation_path": "database_task_source_owner_command_inbox",
+                    "task_mutation_path": (
+                        "typed_state_owner_database_task_command"
+                    ),
                     "last_error_type": (
                         str(
                             self._grant_broker.capability().get(
