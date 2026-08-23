@@ -15,6 +15,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     QuackTransportContentionError,
     is_quack_transport_target,
     open_quack_transport_connection,
+    persist_quack_attach_token_vault,
+    quack_token_vault_path,
     quack_transport_uri,
     reset_quack_transport_cache,
     resolve_quack_attach_token,
@@ -244,6 +246,34 @@ def test_resolve_quack_attach_token_prefers_vault_over_stale_env(
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "staleEnv_token_value")
     assert resolve_quack_attach_token() == "vaultTok_value1234567890"
     assert resolve_quack_attach_token("explicit_token_ok") == "explicit_token_ok"
+
+
+def test_resolve_quack_attach_token_persists_missing_vault(
+    tmp_path, monkeypatch
+) -> None:
+    store = tmp_path / "control.duckdb"
+    store.write_bytes(b"")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(store))
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE", raising=False)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "liveTok_value1234567890")
+    assert resolve_quack_attach_token() == "liveTok_value1234567890"
+    vault = quack_token_vault_path()
+    assert vault is not None
+    assert vault.is_file()
+    assert vault.stat().st_mode & 0o777 == 0o600
+    assert vault.read_text(encoding="utf-8").strip() == "liveTok_value1234567890"
+
+
+def test_persist_quack_attach_token_vault_does_not_overwrite(
+    tmp_path, monkeypatch
+) -> None:
+    vault = tmp_path / "env___IPFS_ACCELERATE_AGENT_QUACK_TOKEN.quack-token"
+    vault.write_text("vaultTok_value1234567890\n", encoding="utf-8")
+    vault.chmod(0o600)
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE", str(vault))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "staleEnv_token_value")
+    assert persist_quack_attach_token_vault() == vault
+    assert vault.read_text(encoding="utf-8").strip() == "vaultTok_value1234567890"
 
 
 def test_quack_attach_retries_authentication_failed_contention(monkeypatch) -> None:
