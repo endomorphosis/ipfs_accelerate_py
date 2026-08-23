@@ -73674,12 +73674,6 @@ class DatabaseImplementationDaemon:
 
         for _attempt in range(_DATABASE_PROJECTION_READ_ATTEMPTS):
             try:
-                watermark_fn = getattr(self.task_source, "event_watermark", None)
-                before = (
-                    int(watermark_fn())
-                    if callable(watermark_fn)
-                    else int(self.task_source.snapshot().event_cursor)
-                )
                 population_tasks: list[Any] = []
                 population_cursor = ""
                 seen_population_cursors: set[str] = set()
@@ -73704,13 +73698,6 @@ class DatabaseImplementationDaemon:
                     seen_population_cursors.add(next_cursor)
                     population_cursor = next_cursor
                 ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
-                after = (
-                    int(watermark_fn())
-                    if callable(watermark_fn)
-                    else int(self.task_source.snapshot().event_cursor)
-                )
-                if before != after:
-                    continue
                 tasks = tuple(population_tasks)
                 if len(tasks) > TASK_SOURCE_MAX_SNAPSHOT_TASKS:
                     raise DatabaseImplementationAuthorityError(
@@ -84089,6 +84076,15 @@ class DatabaseImplementationDaemon:
                 return {
                     "active_task_id": "",
                     "selection_idle_reason": "coordination_conflict_deferred",
+                    "write_count": 0,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc)[:500],
+                }
+            if "authoritative task projection changed" in str(exc):
+                time.sleep(0.2)
+                return {
+                    "active_task_id": "",
+                    "selection_idle_reason": "projection_read_deferred",
                     "write_count": 0,
                     "error_type": type(exc).__name__,
                     "error": str(exc)[:500],
