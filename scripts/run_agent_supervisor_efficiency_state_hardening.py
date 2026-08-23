@@ -34,6 +34,9 @@ if str(ROOT) not in sys.path:
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (  # noqa: E402
     content_identity,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (  # noqa: E402
+    KNOWN_NON_WORKTREE_PHASES,
+)
 
 DEFAULT_CONFIG: Final = Path(
     "config/agent_supervisor_efficiency_state_hardening_scheduler.json"
@@ -2594,6 +2597,22 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
         worker_root_identity_source = str(
             payload.get("worker_root_identity_source") or ""
         )
+        run_id = str(payload.get("run_id") or "")
+        worker_observed_at_ns = payload.get("worker_observed_at_ns")
+        worker_observed_at_ns = (
+            worker_observed_at_ns
+            if type(worker_observed_at_ns) is int
+            and worker_observed_at_ns > 0
+            else None
+        )
+        worker_observation_age_seconds = (
+            now - (worker_observed_at_ns / 1_000_000_000)
+            if worker_observed_at_ns is not None
+            else None
+        )
+        worker_observation_generation = str(
+            payload.get("worker_observation_generation") or ""
+        )
         daemon_pid = payload.get("daemon_pid")
         daemon_pid = (
             daemon_pid
@@ -2614,6 +2633,20 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
         )
         worker_phase = payload.get("worker_phase")
         worker_phase = worker_phase if isinstance(worker_phase, str) else None
+        worker_phase_known = payload.get("worker_phase_known")
+        worker_phase_known = (
+            worker_phase_known
+            if type(worker_phase_known) is bool
+            else None
+        )
+        worker_phase_known_non_worktree = payload.get(
+            "worker_phase_known_non_worktree"
+        )
+        worker_phase_known_non_worktree = (
+            worker_phase_known_non_worktree
+            if type(worker_phase_known_non_worktree) is bool
+            else None
+        )
         worker_stall_evidence_available = payload.get(
             "worker_stall_evidence_available"
         )
@@ -2652,6 +2685,16 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
             and worker_root_start_time_ticks is not None
             and bool(worker_root_boot_id)
             and worker_root_identity_source == "supervised_child_identity"
+            and bool(run_id)
+            and worker_observed_at_ns is not None
+            and worker_observed_at_ns <= observed.st_mtime_ns
+            and worker_observation_age_seconds is not None
+            and 0.0 <= worker_observation_age_seconds <= 60.0
+            and worker_observation_generation
+            == (
+                f"{run_id}:{worker_root_pid}:"
+                f"{worker_root_start_time_ticks}:{worker_root_boot_id}"
+            )
             and active_worker_count is not None
             and active_worker_pids is not None
             and active_worker_count == len(active_worker_pids)
@@ -2659,17 +2702,22 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
             and worker_descendant_pids is not None
             and worker_descendant_count == len(worker_descendant_pids)
             and set(active_worker_pids).issubset(worker_descendant_pids)
+            and worker_phase_known is True
         )
         stall_admissible = bool(
             (
                 worker_stall_evidence_available is True
                 and stalled_without_active_worker is not None
+                and worker_phase_guarded is True
+                and worker_phase_known_non_worktree is False
             )
             or (
                 worker_stall_evidence_available is False
                 and worker_phase_guarded is False
-                and worker_phase_available is False
-                and worker_phase == ""
+                and worker_phase in {"", *KNOWN_NON_WORKTREE_PHASES}
+                and worker_phase_available is bool(worker_phase)
+                and worker_phase_known_non_worktree
+                is (worker_phase in KNOWN_NON_WORKTREE_PHASES)
                 and stalled_without_active_worker is None
                 and worker_stall_unavailable_reason == "phase_not_guarded"
             )
@@ -2697,12 +2745,23 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
                 ),
                 "worker_root_boot_id": worker_root_boot_id,
                 "worker_root_identity_source": worker_root_identity_source,
+                "worker_observed_at_ns": worker_observed_at_ns,
+                "worker_observation_age_seconds": (
+                    worker_observation_age_seconds
+                ),
+                "worker_observation_generation": (
+                    worker_observation_generation
+                ),
                 "active_worker_count": active_worker_count,
                 "active_worker_pids": active_worker_pids,
                 "worker_descendant_count": worker_descendant_count,
                 "worker_descendant_pids": worker_descendant_pids,
                 "worker_phase_guarded": worker_phase_guarded,
                 "worker_phase_available": worker_phase_available,
+                "worker_phase_known": worker_phase_known,
+                "worker_phase_known_non_worktree": (
+                    worker_phase_known_non_worktree
+                ),
                 "worker_phase_age_seconds": worker_phase_age,
                 "worker_stall_evidence_available": (
                     worker_stall_evidence_available

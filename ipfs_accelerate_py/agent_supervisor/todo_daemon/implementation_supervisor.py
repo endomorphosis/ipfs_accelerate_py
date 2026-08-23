@@ -6968,28 +6968,87 @@ class PortalImplementationSupervisor:
         cleanup: Mapping[str, Any],
         interrupted_reconciliation: Mapping[str, Any],
     ) -> None:
-        """Replace the last running heartbeat with a terminal signal status."""
+        """Publish an observed signal-stop state without inventing a census."""
 
         status_path = self._supervisor_status_path()
         payload = load_json_dict(status_path) or {}
+        worker_keys = {
+            key
+            for key in payload
+            if (
+                key.startswith("worker_")
+                or key.startswith("active_worker_")
+                or key == "stalled_without_active_worker"
+            )
+        }
+        prior_worker_observation = {
+            key: payload[key] for key in sorted(worker_keys)
+        }
+        if not prior_worker_observation and isinstance(
+            payload.get("last_worker_observation"),
+            Mapping,
+        ):
+            prior_worker_observation = dict(
+                payload["last_worker_observation"]
+            )
+        quiesced = bool(
+            cleanup.get("quiesced") is True
+            and cleanup.get("remaining_pid") is None
+        )
+        unresolved_pid = cleanup.get("remaining_pid")
+        if type(unresolved_pid) is not int or unresolved_pid <= 1:
+            unresolved_pid = cleanup.get("pid")
+        if type(unresolved_pid) is not int or unresolved_pid <= 1:
+            unresolved_pid = payload.get("daemon_pid")
+        if type(unresolved_pid) is not int or unresolved_pid <= 1:
+            unresolved_pid = None
         payload.update(
             {
                 "schema": (
                     "ipfs_accelerate_py.agent_supervisor."
                     "todo_implementation_supervisor.supervisor"
                 ),
-                "status": "stopped",
+                "status": "stopping",
                 "updated_at": utc_now(),
                 "supervisor_pid": os.getpid(),
-                "supervisor_pid_alive": False,
-                "daemon_pid": None,
-                "daemon_pid_alive": False,
-                "active_worker_count": 0,
-                "active_worker_pids": [],
-                "worker_descendant_count": 0,
-                "stalled_without_active_worker": False,
+                "supervisor_pid_alive": True,
+                "supervisor_exit_pending": True,
+                "daemon_pid": None if quiesced else unresolved_pid,
+                "daemon_pid_alive": False if quiesced else None,
+                "worker_metrics_available": False,
+                "worker_metrics_unavailable_reason": (
+                    "shutdown_worker_census_not_observed"
+                    if quiesced
+                    else "shutdown_cleanup_unproven"
+                ),
+                "worker_census_method": "",
+                "worker_root_pid": None,
+                "worker_root_start_time_ticks": None,
+                "worker_root_boot_id": "",
+                "worker_root_identity_source": "",
+                "worker_observed_at_ns": None,
+                "worker_observation_generation": "",
+                "active_worker_count": None,
+                "active_worker_pids": None,
+                "worker_descendant_count": None,
+                "worker_descendant_pids": None,
+                "worker_phase": "",
+                "worker_phase_available": False,
+                "worker_phase_known": None,
+                "worker_phase_known_non_worktree": None,
+                "worker_phase_guarded": None,
+                "worker_phase_age_seconds": None,
+                "worker_absence_age_seconds": None,
+                "worker_stall_evidence_available": False,
+                "worker_stall_evidence_unavailable_reason": (
+                    "worker_metrics_unavailable"
+                ),
+                "stalled_without_active_worker": None,
+                "last_worker_observation": (
+                    prior_worker_observation or None
+                ),
                 "stop_signal": int(stop_signal),
-                "last_exit_code": 128 + int(stop_signal),
+                "requested_exit_code": 128 + int(stop_signal),
                 "last_recycle_reason": "supervisor_signal_shutdown",
                 "managed_daemon_cleanup": dict(cleanup),
                 "interrupted_implementation_reconciliation": dict(
@@ -6997,6 +7056,7 @@ class PortalImplementationSupervisor:
                 ),
             }
         )
+        payload.pop("last_exit_code", None)
         write_json_atomic(status_path, payload)
 
     def _supervisor_maintenance_timeout_seconds(self) -> float:

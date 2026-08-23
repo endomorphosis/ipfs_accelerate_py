@@ -125,6 +125,19 @@ DEFAULT_WORKTREE_PHASES = frozenset(
     }
 )
 
+# These phases are emitted by the canonical implementation daemon while the
+# daemon itself, rather than a provider/model worker, owns the bounded work.
+# Keep this allowlist exact: an unknown or misspelled phase must not inherit
+# the no-worker exception.
+KNOWN_NON_WORKTREE_PHASES = frozenset(
+    {
+        "merge_queue",
+        "merge_reconciliation",
+        "validating",
+        "validating_reconciled_candidate",
+    }
+)
+
 
 def _aware_utc(value: Optional[datetime]) -> Optional[datetime]:
     if value is None:
@@ -901,6 +914,8 @@ def worktree_phase_worker_status(
         }
     )
     phase_guarded = phase in phases
+    phase_known_non_worktree = phase in KNOWN_NON_WORKTREE_PHASES
+    phase_known = not phase or phase_guarded or phase_known_non_worktree
     now_at = _aware_utc(now) or now_utc()
     age = (
         None
@@ -949,6 +964,8 @@ def worktree_phase_worker_status(
         "required": phase_guarded,
         "phase": phase,
         "phase_available": bool(phase),
+        "phase_known": phase_known,
+        "phase_known_non_worktree": phase_known_non_worktree,
         "tracking_generation": tracking_generation,
         "phase_age_seconds": None if age is None else round(age, 3),
         "threshold_seconds": float(threshold_seconds),
@@ -963,7 +980,11 @@ def worktree_phase_worker_status(
             else (
                 "phase_started_at_unavailable"
                 if phase_guarded
-                else "phase_not_guarded"
+                else (
+                    "phase_not_guarded"
+                    if not phase or phase_known_non_worktree
+                    else "phase_unknown"
+                )
             )
         ),
         "stalled_without_active_worker": stalled,

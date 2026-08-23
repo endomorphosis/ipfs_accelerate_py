@@ -10451,8 +10451,12 @@ def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
         "worker_root_start_time_ticks": 123,
         "worker_root_boot_id": "boot-id",
         "worker_root_identity_source": "supervised_child_identity",
+        "worker_observed_at_ns": time.time_ns(),
+        "worker_observation_generation": "run-1:99:123:boot-id",
         "phase": "implementing",
         "phase_available": True,
+        "phase_known": True,
+        "phase_known_non_worktree": False,
         "required": True,
         "phase_age_seconds": 45.0,
         "active_worker_pids": [1234, 5678],
@@ -10463,6 +10467,7 @@ def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
         "stall_evidence_unavailable_reason": "",
         "stalled_without_active_worker": False,
     }
+    loop.last_run_id = "run-1"
 
     loop._write_status("running", child=SimpleNamespace(pid=99))
 
@@ -10485,8 +10490,18 @@ def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
     assert stopped["active_worker_pids"] is None
     assert stopped["worker_descendant_count"] is None
     assert stopped["worker_descendant_pids"] is None
+    assert stopped["worker_observed_at_ns"] is None
+    assert stopped["worker_observation_generation"] == ""
+    assert stopped["worker_phase"] == ""
+    assert stopped["worker_phase_available"] is False
+    assert stopped["worker_phase_guarded"] is None
+    assert stopped["worker_phase_age_seconds"] is None
     assert stopped["stalled_without_active_worker"] is None
     assert stopped["last_worker_observation"]["active_worker_count"] == 2
+    assert (
+        stopped["last_worker_observation"]["worker_observation_generation"]
+        == "run-1:99:123:boot-id"
+    )
 
 
 def test_supervisor_loop_accepts_fresh_child_log_when_semantic_heartbeat_is_stale(
@@ -10903,16 +10918,22 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
     }
     assert len(transitions) == 4
     stopped = json.loads(supervisor_status_path.read_text(encoding="utf-8"))
-    assert stopped["status"] == "stopped"
+    assert stopped["status"] == "stopping"
     assert stopped["supervisor_pid"] == os.getpid()
-    assert stopped["supervisor_pid_alive"] is False
+    assert stopped["supervisor_pid_alive"] is True
+    assert stopped["supervisor_exit_pending"] is True
     assert stopped["daemon_pid"] is None
     assert stopped["daemon_pid_alive"] is False
-    assert stopped["active_worker_count"] == 0
-    assert stopped["active_worker_pids"] == []
-    assert stopped["worker_descendant_count"] == 0
+    assert stopped["active_worker_count"] is None
+    assert stopped["active_worker_pids"] is None
+    assert stopped["worker_descendant_count"] is None
+    assert stopped["worker_descendant_pids"] is None
+    assert stopped["stalled_without_active_worker"] is None
+    assert stopped["worker_metrics_available"] is False
+    assert stopped["last_worker_observation"]["active_worker_count"] == 1
     assert stopped["stop_signal"] == signal.SIGTERM
-    assert stopped["last_exit_code"] == 128 + signal.SIGTERM
+    assert stopped["requested_exit_code"] == 128 + signal.SIGTERM
+    assert "last_exit_code" not in stopped
     assert stopped["last_recycle_reason"] == "supervisor_signal_shutdown"
     assert stopped["managed_daemon_cleanup"]["terminated"] is True
     assert (

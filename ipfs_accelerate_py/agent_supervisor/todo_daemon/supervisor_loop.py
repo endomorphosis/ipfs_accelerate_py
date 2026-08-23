@@ -203,8 +203,9 @@ class SupervisorLoop:
             **dict(self.config.status_extra_fields),
         }
         worker_status = dict(self._last_worker_status)
+        live_observation = child is not None
         metrics_available = bool(
-            child is not None
+            live_observation
             and worker_status.get("worker_metrics_available") is True
         )
         worker_pids = worker_status.get("active_worker_pids")
@@ -287,17 +288,51 @@ class SupervisorLoop:
                 ),
                 "active_worker_count": worker_count,
                 "active_worker_pids": worker_pids,
-                "worker_phase": str(worker_status.get("phase") or ""),
-                "worker_phase_available": bool(
-                    worker_status.get("phase_available") is True
+                "worker_observed_at_ns": (
+                    worker_status.get("worker_observed_at_ns")
+                    if live_observation
+                    else None
                 ),
-                "worker_phase_guarded": bool(worker_status.get("required") is True),
-                "worker_phase_age_seconds": worker_status.get(
-                    "phase_age_seconds"
+                "worker_observation_generation": (
+                    str(
+                        worker_status.get("worker_observation_generation")
+                        or ""
+                    )
+                    if live_observation
+                    else ""
+                ),
+                "worker_phase": (
+                    str(worker_status.get("phase") or "")
+                    if live_observation
+                    else ""
+                ),
+                "worker_phase_available": bool(
+                    live_observation
+                    and worker_status.get("phase_available") is True
+                ),
+                "worker_phase_known": (
+                    worker_status.get("phase_known") is True
+                    if live_observation
+                    else None
+                ),
+                "worker_phase_known_non_worktree": (
+                    worker_status.get("phase_known_non_worktree") is True
+                    if live_observation
+                    else None
+                ),
+                "worker_phase_guarded": (
+                    bool(worker_status.get("required") is True)
+                    if live_observation
+                    else None
+                ),
+                "worker_phase_age_seconds": (
+                    worker_status.get("phase_age_seconds")
+                    if live_observation
+                    else None
                 ),
                 "worker_absence_age_seconds": (
                     worker_status.get("worker_absence_age_seconds")
-                    if metrics_available
+                    if metrics_available and live_observation
                     else None
                 ),
                 "worker_descendant_count": descendant_count,
@@ -470,6 +505,26 @@ class SupervisorLoop:
             "worker_absence_age_seconds": None,
         }
 
+    def _record_worker_observation(
+        self,
+        child: SupervisedChild,
+        observed: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Bind one census result to its exact run and observation time."""
+
+        recorded = dict(observed)
+        recorded["worker_observed_at_ns"] = time.time_ns()
+        if recorded.get("worker_metrics_available") is True:
+            recorded["worker_observation_generation"] = (
+                f"{self.last_run_id}:{int(child.pid)}:"
+                f"{int(recorded['worker_root_start_time_ticks'])}:"
+                f"{recorded['worker_root_boot_id']}"
+            )
+        else:
+            recorded["worker_observation_generation"] = ""
+        self._last_worker_status = recorded
+        return recorded
+
     def _observe_worker_status(
         self,
         child: SupervisedChild,
@@ -486,24 +541,21 @@ class SupervisorLoop:
                 reason="worker_root_identity_unavailable",
                 error_type=type(exc).__name__,
             )
-            self._last_worker_status = observed
-            return observed
+            return self._record_worker_observation(child, observed)
         if before is None:
             observed = self._unavailable_worker_status(
                 child,
                 current_status,
                 reason="worker_root_not_live",
             )
-            self._last_worker_status = observed
-            return observed
+            return self._record_worker_observation(child, observed)
         if not before.boot_id:
             observed = self._unavailable_worker_status(
                 child,
                 current_status,
                 reason="worker_root_boot_identity_unavailable",
             )
-            self._last_worker_status = observed
-            return observed
+            return self._record_worker_observation(child, observed)
 
         expected = getattr(child, "identity_process_birth", None)
         if expected is not None and not self._process_birth_matches(
@@ -515,8 +567,7 @@ class SupervisorLoop:
                 current_status,
                 reason="worker_root_identity_mismatch",
             )
-            self._last_worker_status = observed
-            return observed
+            return self._record_worker_observation(child, observed)
 
         threshold = self._worker_stall_threshold(current_status)
         try:
@@ -535,24 +586,21 @@ class SupervisorLoop:
                 reason="worker_census_unavailable",
                 error_type=type(exc).__name__,
             )
-            self._last_worker_status = observed
-            return observed
+            return self._record_worker_observation(child, observed)
         if after is None:
             observed = self._unavailable_worker_status(
                 child,
                 current_status,
                 reason="worker_root_disappeared_during_census",
             )
-            self._last_worker_status = observed
-            return observed
+            return self._record_worker_observation(child, observed)
         if not self._process_birth_matches(before, after):
             observed = self._unavailable_worker_status(
                 child,
                 current_status,
                 reason="worker_root_identity_changed_during_census",
             )
-            self._last_worker_status = observed
-            return observed
+            return self._record_worker_observation(child, observed)
 
         observed = dict(measured)
         observed.update(
@@ -575,8 +623,7 @@ class SupervisorLoop:
             observed,
             threshold_seconds=threshold,
         )
-        self._last_worker_status = dict(observed)
-        return observed
+        return self._record_worker_observation(child, observed)
 
     def default_watchdog(
         self,
@@ -769,6 +816,7 @@ class SupervisorLoop:
 
     def run(self) -> SupervisorLoopResult:
         final_status = "stopped"
+        unresolved_child: Optional[SupervisedChild] = None
         while True:
             run_id = supervisor_run_id()
             child_spec = self._child_spec(run_id)
@@ -859,6 +907,7 @@ class SupervisorLoop:
                             self.last_recycle_reason = (
                                 "supervised_child_termination_unproven"
                             )
+                            unresolved_child = child
                             stop_requested = True
                             break
                         self.last_exit_code = wait_for_child_exit(child)
@@ -883,6 +932,7 @@ class SupervisorLoop:
                             self.last_recycle_reason = (
                                 "supervised_child_termination_unproven"
                             )
+                            unresolved_child = child
                             stop_requested = True
                             break
                         self.last_exit_code = wait_for_child_exit(child)
@@ -908,12 +958,27 @@ class SupervisorLoop:
             )
             self.sleep(self.config.restart_policy.delay_for_status(self.last_recycle_reason, run_duration=run_duration))
 
+        final_extra: dict[str, Any] = {}
+        if unresolved_child is not None:
+            self._observe_worker_status(
+                unresolved_child,
+                read_json(
+                    self.config.spec.resolve(self.config.spec.status_path)
+                ),
+            )
+            final_extra = {
+                "managed_child_termination_proven": False,
+                "managed_child_termination_reason": (
+                    "supervised_child_termination_unproven"
+                ),
+            }
         self._safe_write_status(
             final_status,
-            child=None,
+            child=unresolved_child,
             run_id=self.last_run_id,
             log_path=self.last_log_path,
             last_exit_code=self.last_exit_code,
+            extra=final_extra,
         )
         return SupervisorLoopResult(
             status=final_status,

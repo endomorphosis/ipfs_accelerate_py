@@ -1489,7 +1489,7 @@ def _aseh_health_fixture(
     }, sample
 
 
-def test_aseh_status_sample_binds_query_to_the_replica_generation_it_authenticated(
+def test_aseh_status_sample_rejects_replica_generation_change_during_query(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1520,9 +1520,10 @@ def test_aseh_status_sample_binds_query_to_the_replica_generation_it_authenticat
         board, paths, server, scheduler
     )
 
-    assert observed["authority"]["available"] is True
+    assert observed["authority"]["available"] is False
+    assert observed["authority"]["error_type"] == "OperatorError"
     assert observed["owner_status"]["read_replica"]["refresh_sequence"] == (
-        before["read_replica"]["refresh_sequence"]
+        after["read_replica"]["refresh_sequence"]
     )
 
 
@@ -1827,7 +1828,7 @@ def test_aseh_health_requires_two_sample_semantic_authority_and_exact_terminal(
 
     terminal_current["authority"]["task_authority_spec_cids"][  # type: ignore[index]
         "ASEH-000"
-    ] = "sha256:amended"
+    ] = "b" + ("a" * 60)
     rejected_terminal = aseh_operator._health_receipt(
         board,
         paths,
@@ -1909,6 +1910,7 @@ def test_aseh_lane_status_projects_worker_watchdog(
         "task_prefix": "## ASEH-",
         "state_prefix": "aseh_lane_0",
         "status": "running",
+        "run_id": "run-1",
         "daemon_pid": 4321,
         "worker_metrics_available": True,
         "worker_metrics_unavailable_reason": "",
@@ -1917,12 +1919,18 @@ def test_aseh_lane_status_projects_worker_watchdog(
         "worker_root_start_time_ticks": 987654,
         "worker_root_boot_id": "boot-id",
         "worker_root_identity_source": "supervised_child_identity",
+        "worker_observed_at_ns": time.time_ns(),
+        "worker_observation_generation": (
+            "run-1:4321:987654:boot-id"
+        ),
         "active_worker_count": 0,
         "active_worker_pids": [],
         "worker_descendant_count": 0,
         "worker_descendant_pids": [],
         "worker_phase": "",
         "worker_phase_available": False,
+        "worker_phase_known": True,
+        "worker_phase_known_non_worktree": False,
         "worker_phase_guarded": False,
         "worker_phase_age_seconds": None,
         "worker_stall_evidence_available": False,
@@ -1950,8 +1958,26 @@ def test_aseh_lane_status_projects_worker_watchdog(
 
     payload.update(
         {
+            "worker_phase": "validating_reconciled_candidate",
+            "worker_phase_available": True,
+            "worker_phase_known": True,
+            "worker_phase_known_non_worktree": True,
+        }
+    )
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    known_non_worktree = aseh_operator._lane_status_observations(
+        board,
+        now=time.time(),
+    )
+    assert known_non_worktree[0]["watchdog_admissible"] is True
+
+    payload.update(
+        {
             "worker_phase": "implementng",
             "worker_phase_available": True,
+            "worker_phase_known": False,
+            "worker_phase_known_non_worktree": False,
+            "worker_stall_evidence_unavailable_reason": "phase_unknown",
         }
     )
     status_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -1963,8 +1989,44 @@ def test_aseh_lane_status_projects_worker_watchdog(
 
     payload.update(
         {
+            "worker_phase": "validating",
+            "worker_phase_available": True,
+            "worker_phase_known": True,
+            "worker_phase_known_non_worktree": True,
+            "worker_stall_evidence_unavailable_reason": "phase_not_guarded",
+        }
+    )
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    validating = aseh_operator._lane_status_observations(
+        board,
+        now=time.time(),
+    )
+    assert validating[0]["watchdog_admissible"] is True
+    assert validating[0]["worker_phase_known_non_worktree"] is True
+
+    payload.update(
+        {
+            "worker_phase": "implementng",
+            "worker_phase_available": True,
+            "worker_phase_known": True,
+            "worker_phase_known_non_worktree": True,
+        }
+    )
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    forged_phase = aseh_operator._lane_status_observations(
+        board,
+        now=time.time(),
+    )
+    assert forged_phase[0]["watchdog_admissible"] is False
+
+    payload.update(
+        {
             "worker_phase": "",
             "worker_phase_available": False,
+            "worker_phase_known": None,
+            "worker_phase_known_non_worktree": None,
+            "worker_phase_guarded": None,
+            "worker_stall_evidence_unavailable_reason": "worker_metrics_unavailable",
             "worker_metrics_available": False,
             "worker_metrics_unavailable_reason": "procfs_unavailable",
             "active_worker_count": None,
@@ -1988,6 +2050,8 @@ def test_aseh_lane_status_projects_worker_watchdog(
         ("worker_root_boot_id", ""),
         ("worker_root_identity_source", "captured_before_census"),
         ("worker_root_pid", 4322),
+        ("worker_observed_at_ns", 1),
+        ("worker_observation_generation", "run-1:4321:1:boot-id"),
     ],
 )
 def test_aseh_lane_status_rejects_unsealed_worker_root_identity(
@@ -2009,6 +2073,7 @@ def test_aseh_lane_status_rejects_unsealed_worker_root_identity(
         "task_prefix": "## ASEH-",
         "state_prefix": "aseh_lane_0",
         "status": "running",
+        "run_id": "run-1",
         "daemon_pid": 4321,
         "worker_metrics_available": True,
         "worker_census_method": "linux-procfs-descendant-census@1",
@@ -2016,12 +2081,18 @@ def test_aseh_lane_status_rejects_unsealed_worker_root_identity(
         "worker_root_start_time_ticks": 987654,
         "worker_root_boot_id": "boot-id",
         "worker_root_identity_source": "supervised_child_identity",
+        "worker_observed_at_ns": time.time_ns(),
+        "worker_observation_generation": (
+            "run-1:4321:987654:boot-id"
+        ),
         "active_worker_count": 0,
         "active_worker_pids": [],
         "worker_descendant_count": 0,
         "worker_descendant_pids": [],
         "worker_phase": "",
         "worker_phase_available": False,
+        "worker_phase_known": True,
+        "worker_phase_known_non_worktree": False,
         "worker_phase_guarded": False,
         "worker_stall_evidence_available": False,
         "worker_stall_evidence_unavailable_reason": "phase_not_guarded",
@@ -2044,6 +2115,28 @@ def test_aseh_lane_status_rejects_unsealed_worker_root_identity(
     )
 
     assert observations[0]["watchdog_admissible"] is False
+
+
+def test_known_non_worktree_phases_are_not_worker_stalls() -> None:
+    validating = todo_supervisor.worktree_phase_worker_status(
+        {"active_phase": "validating"},
+        daemon_pid=1234,
+        threshold_seconds=60,
+    )
+    assert validating["required"] is False
+    assert validating["phase_known"] is True
+    assert validating["phase_known_non_worktree"] is True
+    assert validating["stall_evidence_unavailable_reason"] == "phase_not_guarded"
+    assert validating["stalled_without_active_worker"] is None
+
+    unknown = todo_supervisor.worktree_phase_worker_status(
+        {"active_phase": "implementng"},
+        daemon_pid=1234,
+        threshold_seconds=60,
+    )
+    assert unknown["phase_known"] is False
+    assert unknown["phase_known_non_worktree"] is False
+    assert unknown["stall_evidence_unavailable_reason"] == "phase_unknown"
 
 
 def test_supervisor_loop_publishes_worker_census_before_startup_grace(
@@ -2154,8 +2247,27 @@ def test_supervisor_loop_publishes_worker_census_before_startup_grace(
     assert all(
         item["worker_phase_guarded"] is False for item in available_live
     )
+    assert all(item["worker_phase_known"] is True for item in available_live)
+    assert all(
+        item["worker_phase_known_non_worktree"] is False
+        for item in available_live
+    )
     assert all(
         item["stalled_without_active_worker"] is None
+        for item in available_live
+    )
+    assert all(
+        type(item["worker_observed_at_ns"]) is int
+        and item["worker_observed_at_ns"] > 0
+        for item in available_live
+    )
+    assert all(
+        item["worker_observation_generation"]
+        == (
+            f"{item['run_id']}:{item['worker_root_pid']}:"
+            f"{item['worker_root_start_time_ticks']}:"
+            f"{item['worker_root_boot_id']}"
+        )
         for item in available_live
     )
 
