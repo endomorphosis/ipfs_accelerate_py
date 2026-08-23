@@ -4039,6 +4039,53 @@ def _stream_provider_pipe_without_reserved_records(
         destination.flush()
 
 
+def _docker_start_attach_target(command: Sequence[str]) -> tuple[str, str] | None:
+    """Return ``(docker_config, container_id)`` for a ``docker start --attach``."""
+
+    tokens = [str(item) for item in command]
+    if len(tokens) < 6:
+        return None
+    if os.path.basename(tokens[0]) not in {"docker", "docker.exe"}:
+        return None
+    if "start" not in tokens or "--attach" not in tokens:
+        return None
+    try:
+        config = tokens[tokens.index("--config") + 1]
+    except (ValueError, IndexError):
+        return None
+    container_id = tokens[-1]
+    if re.fullmatch(r"[0-9a-f]{64}", container_id) is None:
+        return None
+    return config, container_id
+
+
+def _docker_attach_target_missing(config: str, container_id: str) -> bool:
+    """Return whether the attached container can no longer be inspected."""
+
+    try:
+        inspected = subprocess.run(
+            [
+                "/usr/bin/docker",
+                f"--host={_DOCKER_LOCAL_HOST}",
+                "--config",
+                config,
+                "inspect",
+                "-f",
+                "{{.State.Running}}",
+                container_id,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if inspected.returncode != 0:
+        return True
+    return inspected.stdout.decode("utf-8", errors="replace").strip().lower() == "false"
+
+
 def _run_grok_with_typed_failure_capture(
     command: Sequence[str],
     *,
@@ -4070,7 +4117,34 @@ def _run_grok_with_typed_failure_capture(
     )
     stdout_thread.start()
     stderr_thread.start()
-    returncode = int(process.wait())
+    attach = _docker_start_attach_target(command)
+    stop = threading.Event()
+
+    def reap_vanished_attach() -> None:
+        if attach is None:
+            return
+        config, container_id = attach
+        gone_ticks = 0
+        while not stop.wait(2.0):
+            if process.poll() is not None:
+                return
+            if not _docker_attach_target_missing(config, container_id):
+                gone_ticks = 0
+                continue
+            gone_ticks += 1
+            # docker start --attach can hang after the container is already
+            # gone, which previously stalled PCCE-021 until inflight timeout.
+            if gone_ticks >= 3:
+                process.terminate()
+                return
+
+    reaper = threading.Thread(target=reap_vanished_attach, daemon=True)
+    reaper.start()
+    try:
+        returncode = int(process.wait())
+    finally:
+        stop.set()
+        reaper.join(timeout=2.0)
     stdout_thread.join()
     stderr_thread.join()
     return returncode
