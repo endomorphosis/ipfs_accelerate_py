@@ -83986,15 +83986,28 @@ class DatabaseImplementationDaemon:
                     "declared_outputs_missing_or_untracked",
                 }:
                     continue
-                invariant = (
-                    self._declared_output_tracking_invariant(
-                        [task],
-                        repository_ref=head,
+                outputs = tuple(getattr(task, "outputs", ()) or ())
+                tracked = bool(outputs) and bool(head)
+                for item in outputs:
+                    path = ""
+                    if isinstance(item, Mapping):
+                        path = str(item.get("path") or "")
+                    else:
+                        path = str(getattr(item, "path", "") or "")
+                    if not path:
+                        tracked = False
+                        break
+                    probe = subprocess.run(
+                        ["git", "cat-file", "-e", f"{head}:{path}"],
+                        cwd=self.repo_root,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=False,
                     )
-                    if head
-                    else {"passed": False}
-                )
-                if invariant.get("passed") is not True:
+                    if probe.returncode != 0:
+                        tracked = False
+                        break
+                if not tracked:
                     continue
                 compact = {
                     "schema": schema,
