@@ -32171,6 +32171,15 @@ class PortalImplementationDaemon:
                     base_prompt="",
                     allow_provider_rescue=False,
                 )
+            # Auto-rescue may retain a live ProposalValidationResult for its
+            # in-process candidate-binding pass.  Reconciliation has finished
+            # consuming that authority here; persist only the existing compact
+            # proposal gate, as the ordinary implementation paths do.
+            validation_result = (
+                self._detach_in_process_proposal_validation(
+                    validation_result
+                )
+            )
             protected_path_violation = (
                 self._implementation_protected_path_violation(
                     task=task,
@@ -32407,6 +32416,13 @@ class PortalImplementationDaemon:
                             ),
                         }
                         returncode = 1
+                # Exception paths can still carry a live ProposalValidationResult
+                # via `**validation_result`. Drop it before JSON event persist.
+                validation_result = (
+                    self._detach_in_process_proposal_validation(
+                        validation_result
+                    )
+                )
                 if state_owned:
                     current_state = PortalTaskState.load(self.state_path)
                     if (
