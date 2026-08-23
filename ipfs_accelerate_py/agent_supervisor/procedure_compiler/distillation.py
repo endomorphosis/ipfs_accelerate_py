@@ -926,6 +926,10 @@ class DistillationCorpus(CanonicalContract):
     def can_promote(self) -> bool:
         return False
 
+    @property
+    def can_skip_validation(self) -> bool:
+        return False
+
     def _payload(self) -> dict[str, Any]:
         return {
             "contract_version": PROCEDURE_CONTRACT_VERSION,
@@ -1060,6 +1064,14 @@ class DistillationEvaluation(CanonicalContract):
 
     @property
     def can_grant_authority(self) -> bool:
+        return False
+
+    @property
+    def can_promote(self) -> bool:
+        return False
+
+    @property
+    def can_skip_validation(self) -> bool:
         return False
 
     def _payload(self) -> dict[str, Any]:
