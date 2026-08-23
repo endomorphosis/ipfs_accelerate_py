@@ -111,6 +111,7 @@ SUPERVISOR_RUNTIME_CHILD_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset(
         "casf_seed_stream_head",
         "casf_advance_stream_head",
         "casf_insert_domain_event",
+        "casf_insert_event_parent",
         "casf_insert_changed_fact",
         "casf_insert_outbox",
     }
@@ -885,11 +886,34 @@ def _receive_frame(channel: socket.socket) -> dict[str, Any]:
 
 
 def _result_columns(result: Any) -> tuple[str, ...]:
+    # An empty ``_columns`` attribute is not authoritative: some DuckDB
+    # result wrappers expose that name as an unused default while still
+    # populating ``description``.  Treating the empty tuple as the projection
+    # made named reads look like missing rows.  Do not read ``.columns`` here;
+    # on DuckDB query results that accessor can consume the cursor before
+    # fetchall.
     direct = getattr(result, "_columns", None)
-    if isinstance(direct, Sequence) and not isinstance(direct, (str, bytes)):
+    if (
+        isinstance(direct, Sequence)
+        and direct
+        and not isinstance(direct, (str, bytes, bytearray))
+    ):
         return tuple(str(item) for item in direct)
     description = getattr(result, "description", None) or ()
-    return tuple(str(item[0] if isinstance(item, Sequence) else item) for item in description)
+    columns: list[str] = []
+    for item in description:
+        try:
+            if (
+                isinstance(item, Sequence)
+                and not isinstance(item, (str, bytes, bytearray))
+                and len(item) > 0
+            ):
+                columns.append(str(item[0]))
+            else:
+                columns.append(str(item))
+        except Exception:
+            columns.append(str(item))
+    return tuple(columns)
 
 
 def _result_rows(result: Any) -> list[list[Any]]:
@@ -3303,16 +3327,37 @@ class TypedStateOwnerGateway:
                     )
 
     def _execute(self, operation: OwnerOperation, parameters: list[Any]) -> dict[str, Any]:
-        result = self._connection.execute(
-            operation.sql,
-            parameters if parameters else None,
-        )
-        return {
-            "ok": True,
-            "columns": list(_result_columns(result)),
-            "rows": _result_rows(result),
-            "rowcount": int(getattr(result, "rowcount", -1) or -1),
-        }
+        bound = parameters if parameters else None
+        last_error: BaseException | None = None
+        for _attempt in (1, 2):
+            try:
+                result = self._connection.execute(operation.sql, bound)
+                # Fetch rows before any column-metadata accessor.  On this
+                # DuckDB result wrapper, ``description`` / ``.columns`` can
+                # consume the cursor and make a one-row SELECT look empty.
+                rows = _result_rows(result)
+                columns: list[str] = []
+                if rows and isinstance(rows[0], Mapping):
+                    columns = [
+                        str(key)
+                        for key in rows[0]
+                        if isinstance(key, str) and key and not key.isdigit()
+                    ]
+                if not columns:
+                    try:
+                        columns = list(_result_columns(result))
+                    except Exception:
+                        columns = []
+                return {
+                    "ok": True,
+                    "columns": columns,
+                    "rows": rows,
+                    "rowcount": int(getattr(result, "rowcount", -1) or -1),
+                }
+            except (IndexError, KeyError) as exc:
+                last_error = exc
+        assert last_error is not None
+        raise last_error
 
     @staticmethod
     def _error_code(exc: BaseException) -> str:

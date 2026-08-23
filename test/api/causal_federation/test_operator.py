@@ -484,6 +484,11 @@ def test_cli_keeps_plan_health_and_coordinator_transport_requirements_distinct()
         ["launch", "--allow-coordinator-only"]
     )
     assert launch.allow_coordinator_only is True
+    admitted = operator._parser().parse_args(
+        ["launch", "--admit-task-execution"]
+    )
+    assert admitted.admit_task_execution is True
+    assert admitted.allow_coordinator_only is False
     status = operator._parser().parse_args(
         ["status", "--require-coordinator-ready"]
     )
@@ -1199,3 +1204,21 @@ def test_stale_owner_identity_is_rejected_before_any_stop() -> None:
             {"lifecycle": "ready", "identity": identity.to_dict()},
             expected_pid=os.getpid(),
         )
+
+
+def test_plan_executor_command_stays_isolated_from_coordinator_status() -> None:
+    operator = _operator()
+    board, config = operator._load_config(CONFIG)
+    paths = operator._runtime_paths(board)
+    argv = operator._plan_executor_command(board, config, paths)
+    joined = " ".join(argv)
+    assert "--state-prefix casf_exec" in joined or "casf_exec" in argv
+    assert str(paths["executor_state"]) in argv
+    assert str(paths["state"]) not in argv or argv[argv.index("--state-dir") + 1] == str(
+        paths["executor_state"]
+    )
+    assert operator.STATE_TOKEN_ENV.lower() not in joined.lower()
+    assert "token=" not in joined.lower()
+    assert "--implement" in argv
+    assert "--authority-mode" in argv
+    assert argv[argv.index("--authority-mode") + 1] == "quack"
