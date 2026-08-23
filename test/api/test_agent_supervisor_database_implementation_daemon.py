@@ -788,6 +788,7 @@ def test_apmc_bootstrap_completions_unlock_exact_frontier_across_lane_sidecars(
         owner_session_id="apmc-seed",
         authority_mode="embedded",
         task_source_kind="duckdb",
+        require_real_execution=True,
     )
     try:
         seed.materialize_population(_apmc_bootstrap_frontier_population())
@@ -810,6 +811,7 @@ def test_apmc_bootstrap_completions_unlock_exact_frontier_across_lane_sidecars(
             owner_session_id=f"apmc-lane-{lane}",
             authority_mode="embedded",
             task_source_kind="duckdb",
+            require_real_execution=True,
         )
         try:
             ready = set(daemon.sync_ready_tasks_into_coordination())
@@ -834,6 +836,7 @@ def test_apmc_bootstrap_completions_unlock_exact_frontier_across_lane_sidecars(
             owner_session_id=f"apmc-lane-{lane}",
             authority_mode="embedded",
             task_source_kind="duckdb",
+            require_real_execution=True,
         )
         try:
             assert set(daemon.sync_ready_tasks_into_coordination()) == ready
