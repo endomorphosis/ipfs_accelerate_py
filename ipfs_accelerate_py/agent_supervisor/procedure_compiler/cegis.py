@@ -19,6 +19,12 @@ token, validation, proof, and wall bounds.  Counterexamples are immutable
 and evaluation pairs are deduplicated by candidate identity plus
 counterexample-set identity.  Bound exhaustion is a typed incomplete result.
 Surviving candidates remain unpromoted.
+
+``AssuranceCounterexampleAdapter`` reuses ``AssuranceCampaignApi@1`` for
+bounded adversarial campaigns.  Every assurance failure becomes a persistent
+typed counterexample that narrows or rejects the candidate.
+``EscapedMutantGate`` records the immutable later-promotion requirement that
+critical escaped mutants stay at zero; CEGIS itself never promotes.
 """
 
 from __future__ import annotations
@@ -47,6 +53,7 @@ from .contracts import (
     ProcedureLocal,
     ProcedureObservation,
     ProcedureSpec,
+    ProviderClass,
     StepOperation,
     ValueType,
     _enum,
@@ -64,6 +71,10 @@ from .contracts import (
 from .contracts import (
     ProcedureSynthesisPlan as ProcedureSynthesisPlanArtifact,
 )
+from .invariant_mining import (
+    ASSURANCE_CAMPAIGN_API_INTERFACE_PIN,
+    AssuranceApiStatus,
+)
 from .procedure_ir import ProcedureIRValidationError, validate_procedure_spec
 
 
@@ -78,6 +89,11 @@ MAX_MODEL_TOKENS: Final[int] = 10_000_000
 MAX_MODEL_CALLS: Final[int] = 1_024
 MAX_VALIDATION_WORK: Final[int] = MAX_ITEMS
 MAX_PROOF_WORK: Final[int] = MAX_ITEMS
+ASSURANCE_COUNTEREXAMPLE_ADAPTER_REVISION: Final[str] = "assurance-counterexample-adapter@1"
+EXECUTE_MUTATION_CAMPAIGN_COMMAND: Final[str] = "execute_mutation_campaign"
+CLASSIFY_MUTATION_OUTCOME_COMMAND: Final[str] = "classify_mutation_outcome"
+ZERO_CRITICAL_ESCAPED_MUTANTS: Final[str] = "zero-critical-escaped-mutants"
+ASSURANCE_CAMPAIGN_SCHEMA: Final[str] = "procedure-compiler/assurance-campaign@1"
 
 _VALIDATION_INSERTIONS: Final[tuple[tuple[StepOperation, str, EffectClass, str], ...]] = (
     (
@@ -151,6 +167,71 @@ class CounterexampleKind(str, Enum):
     ADVERSARIAL = "adversarial"
     STRUCTURAL = "structural"
     SPECIFICATION = "specification"
+
+
+class AssuranceAttackClass(str, Enum):
+    """Closed adversarial-assurance vocabulary consumed by CEGIS."""
+
+    CRITICAL_SEEDED_MUTANT = "critical-seeded-mutant"
+    PROMPT_INJECTION = "prompt-injection"
+    VALIDATION_WEAKENING = "validation-weakening"
+    SCOPE_ESCAPE = "scope-escape"
+    SELF_PROMOTION = "self-promotion"
+    FORGED_EVIDENCE = "forged-evidence"
+    UNSAFE_FAMILY_MERGE = "unsafe-family-merge"
+
+
+REQUIRED_ASSURANCE_ATTACK_CLASSES: Final[tuple[AssuranceAttackClass, ...]] = (
+    AssuranceAttackClass.CRITICAL_SEEDED_MUTANT,
+    AssuranceAttackClass.PROMPT_INJECTION,
+    AssuranceAttackClass.VALIDATION_WEAKENING,
+    AssuranceAttackClass.SCOPE_ESCAPE,
+    AssuranceAttackClass.SELF_PROMOTION,
+    AssuranceAttackClass.FORGED_EVIDENCE,
+    AssuranceAttackClass.UNSAFE_FAMILY_MERGE,
+)
+
+_WRITE_OPERATIONS: Final[frozenset[StepOperation]] = frozenset(
+    {
+        StepOperation.APPLY_APPROVED_PATCH_TEMPLATE,
+        StepOperation.CREATE_ISOLATED_WORKTREE,
+        StepOperation.PREPARE_MERGE,
+        StepOperation.MERGE_IN_ISOLATED_TRAIN,
+    }
+)
+_MERGE_OPERATIONS: Final[frozenset[StepOperation]] = frozenset(
+    {
+        StepOperation.PREPARE_MERGE,
+        StepOperation.MERGE_IN_ISOLATED_TRAIN,
+    }
+)
+_REMOTE_PROVIDERS: Final[frozenset[ProviderClass]] = frozenset(
+    {
+        ProviderClass.LOCAL_SMALL_MODEL,
+        ProviderClass.REMOTE_STANDARD_MODEL,
+        ProviderClass.REMOTE_STRONG_MODEL,
+    }
+)
+_PROMPT_INJECTION_MARKERS: Final[tuple[str, ...]] = (
+    "ignore-previous-instructions",
+    "override-policy",
+    "prompt-injection",
+)
+_SELF_PROMOTION_MARKERS: Final[tuple[str, ...]] = (
+    "self-promote",
+    "self-certificate",
+    "self-authorization",
+)
+_FORGED_EVIDENCE_MARKERS: Final[tuple[str, ...]] = (
+    "forged",
+    "simulated-as-live",
+    "mock-receipt",
+)
+_VALIDATION_WEAKENING_MARKERS: Final[tuple[str, ...]] = (
+    "skip-tests",
+    "omit-proof",
+    "weaken-validation",
+)
 
 
 class SkipReason(str, Enum):
@@ -340,6 +421,232 @@ class NarrowingConstraints:
             required_validation_step_ids=payload.get("required_validation_step_ids", ()),
             required_invariant_ids=payload.get("required_invariant_ids", ()),
         )
+
+
+def narrowing_for_attack(attack_class: AssuranceAttackClass) -> NarrowingConstraints:
+    """Closed narrowing produced when an assurance attack class hits."""
+
+    kind = _enum(attack_class, AssuranceAttackClass, "attack_class")
+    if kind is AssuranceAttackClass.CRITICAL_SEEDED_MUTANT:
+        return NarrowingConstraints(
+            required_operations=(StepOperation.RUN_ADVERSARIAL_ASSURANCE,)
+        )
+    if kind is AssuranceAttackClass.VALIDATION_WEAKENING:
+        return NarrowingConstraints(required_operations=(StepOperation.RUN_SELECTED_TESTS,))
+    if kind is AssuranceAttackClass.SCOPE_ESCAPE:
+        return NarrowingConstraints(required_operations=(StepOperation.CHECK_SCOPE,))
+    return NarrowingConstraints()
+
+
+def _marker_tuple(value: Any, fallback: Sequence[str]) -> tuple[str, ...]:
+    if value in (None, (), ""):
+        return tuple(fallback)
+    if isinstance(value, str):
+        return (value,)
+    if not isinstance(value, Sequence) or isinstance(value, (bytes, bytearray, memoryview)):
+        return tuple(fallback)
+    return tuple(str(item) for item in value if isinstance(item, str) and item)
+
+
+def _procedure_payload_fields(procedure: ProcedureSpec) -> tuple[str, ...]:
+    """Attack-bearing strings. Procedure names are labels, not payload."""
+
+    parts = (
+        procedure.task_family_id,
+        *procedure.provenance_cids,
+        *procedure.scope_paths,
+        *procedure.declared_reads,
+        *(item.producer_contract for item in procedure.observations),
+        *(item.evidence_type for item in procedure.observations),
+        *(item.operation_contract for item in procedure.steps),
+        *(item.step_id for item in procedure.steps),
+        *(item.hole_id for item in procedure.holes),
+        *(item.input_schema_ref for item in procedure.holes),
+        *(item.output_schema_ref for item in procedure.holes),
+    )
+    return tuple(part for part in parts if part)
+
+
+def _contains_any_marker(fields: Sequence[str], markers: Sequence[str]) -> bool:
+    if not fields or not markers:
+        return False
+    lowered_markers = tuple(marker.lower() for marker in markers if marker)
+    if not lowered_markers:
+        return False
+    for field in fields:
+        text = field.lower()
+        if any(marker in text for marker in lowered_markers):
+            return True
+    return False
+
+
+@dataclass(frozen=True)
+class AssuranceSeed:
+    """One bounded hermetic assurance attack against a procedure candidate."""
+
+    seed_id: str
+    attack_class: AssuranceAttackClass
+    obligation: str = ""
+    critical: bool = True
+    expected_killed: bool = True
+    witness: Mapping[str, Any] = field(default_factory=dict)
+    constraints: NarrowingConstraints = field(default_factory=NarrowingConstraints)
+    evidence_cids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "seed_id", _identifier(self.seed_id, "seed_id"))
+        object.__setattr__(
+            self, "attack_class", _enum(self.attack_class, AssuranceAttackClass, "attack_class")
+        )
+        obligation = self.obligation or self.attack_class.value
+        object.__setattr__(self, "obligation", _identifier(obligation, "obligation"))
+        object.__setattr__(self, "critical", _bool(self.critical, "critical"))
+        object.__setattr__(
+            self, "expected_killed", _bool(self.expected_killed, "expected_killed")
+        )
+        witness = _freeze(self.witness, "witness")
+        if not isinstance(witness, Mapping):
+            raise CegisError("witness must be a mapping")
+        object.__setattr__(self, "witness", witness)
+        constraints = self.constraints
+        if not isinstance(constraints, NarrowingConstraints):
+            constraints = NarrowingConstraints.from_facts(constraints)
+        if constraints == NarrowingConstraints():
+            constraints = narrowing_for_attack(self.attack_class)
+        object.__setattr__(self, "constraints", constraints)
+        object.__setattr__(
+            self,
+            "evidence_cids",
+            _strings(self.evidence_cids, "evidence_cids", identifiers=True),
+        )
+
+
+def default_assurance_seeds() -> tuple[AssuranceSeed, ...]:
+    """Closed required attack classes as persistent typed counterexample seeds."""
+
+    witnesses: dict[AssuranceAttackClass, dict[str, Any]] = {
+        AssuranceAttackClass.CRITICAL_SEEDED_MUTANT: {
+            "mutant_id": "mutant.critical.seeded",
+            "severity": "critical",
+        },
+        AssuranceAttackClass.PROMPT_INJECTION: {
+            "injection_markers": _PROMPT_INJECTION_MARKERS,
+        },
+        AssuranceAttackClass.VALIDATION_WEAKENING: {
+            "weakening_markers": _VALIDATION_WEAKENING_MARKERS,
+        },
+        AssuranceAttackClass.SCOPE_ESCAPE: {
+            "require_scope_check": True,
+            "escape_markers": ("scope-escape", "path-escape"),
+        },
+        AssuranceAttackClass.SELF_PROMOTION: {
+            "promotion_markers": _SELF_PROMOTION_MARKERS,
+        },
+        AssuranceAttackClass.FORGED_EVIDENCE: {
+            "forged_markers": _FORGED_EVIDENCE_MARKERS,
+        },
+        AssuranceAttackClass.UNSAFE_FAMILY_MERGE: {
+            "foreign_family_id": "UNSAFE_CROSS_FAMILY",
+        },
+    }
+    return tuple(
+        AssuranceSeed(
+            seed_id=f"seed.{item.value}",
+            attack_class=item,
+            obligation=item.value,
+            critical=True,
+            expected_killed=True,
+            witness=witnesses[item],
+            evidence_cids=(f"evidence.{item.value}",),
+        )
+        for item in REQUIRED_ASSURANCE_ATTACK_CLASSES
+    )
+
+
+def inspect_assurance_seed(procedure: ProcedureSpec, seed: AssuranceSeed) -> bool:
+    """True when the seeded attack still succeeds against the candidate."""
+
+    if not isinstance(procedure, ProcedureSpec):
+        raise CegisError("procedure must be a declarative ProcedureSpec")
+    if not isinstance(seed, AssuranceSeed):
+        raise CegisError("seed must be AssuranceSeed")
+    operations = _spec_operations(procedure)
+    payload = _procedure_payload_fields(procedure)
+    witness = seed.witness
+    if seed.constraints != NarrowingConstraints() and seed.constraints.rejects(procedure):
+        return True
+    if seed.attack_class is AssuranceAttackClass.CRITICAL_SEEDED_MUTANT:
+        return StepOperation.RUN_ADVERSARIAL_ASSURANCE not in operations
+    if seed.attack_class is AssuranceAttackClass.PROMPT_INJECTION:
+        markers = _marker_tuple(witness.get("injection_markers"), _PROMPT_INJECTION_MARKERS)
+        if _contains_any_marker(payload, markers):
+            return True
+        if procedure.holes and StepOperation.CHECK_POLICY not in operations:
+            return True
+        if any(
+            provider in _REMOTE_PROVIDERS
+            for hole in procedure.holes
+            for provider in hole.allowed_provider_classes
+        ) and StepOperation.CHECK_POLICY not in operations:
+            return True
+        return (
+            StepOperation.REQUEST_TYPED_MODEL_HOLE in operations
+            and StepOperation.CHECK_POLICY not in operations
+        )
+    if seed.attack_class is AssuranceAttackClass.VALIDATION_WEAKENING:
+        markers = _marker_tuple(
+            witness.get("weakening_markers"), _VALIDATION_WEAKENING_MARKERS
+        )
+        if _contains_any_marker(payload, markers):
+            return True
+        if StepOperation.RUN_SELECTED_TESTS not in operations:
+            return True
+        return not procedure.validation.required_test_contracts and (
+            StepOperation.RUN_FULL_TEST_FALLBACK not in operations
+        )
+    if seed.attack_class is AssuranceAttackClass.SCOPE_ESCAPE:
+        if any(".." in path or path.startswith("/") for path in procedure.scope_paths):
+            return True
+        if any(".." in path or path.startswith("/") for path in procedure.declared_reads):
+            return True
+        permitted = witness.get("permitted_scope_paths")
+        if isinstance(permitted, Sequence) and not isinstance(
+            permitted, (str, bytes, bytearray, memoryview)
+        ):
+            allowed = tuple(str(item) for item in permitted if isinstance(item, str))
+            if allowed and any(path not in allowed for path in procedure.scope_paths):
+                return True
+        require_check = witness.get("require_scope_check") is True
+        writes = bool(operations.intersection(_WRITE_OPERATIONS))
+        if (require_check or writes) and StepOperation.CHECK_SCOPE not in operations:
+            return True
+        return False
+    if seed.attack_class is AssuranceAttackClass.SELF_PROMOTION:
+        if procedure.state in {ArtifactState.VERIFIED, ArtifactState.PROMOTED}:
+            return True
+        markers = _marker_tuple(witness.get("promotion_markers"), _SELF_PROMOTION_MARKERS)
+        if _contains_any_marker(payload, markers):
+            return True
+        if operations.intersection(_MERGE_OPERATIONS) and (
+            StepOperation.CHECK_AUTHORITY not in operations
+        ):
+            return True
+        return False
+    if seed.attack_class is AssuranceAttackClass.FORGED_EVIDENCE:
+        markers = _marker_tuple(witness.get("forged_markers"), _FORGED_EVIDENCE_MARKERS)
+        if _contains_any_marker(payload, markers):
+            return True
+        return (
+            StepOperation.EMIT_RECEIPT in operations
+            and StepOperation.CHECK_POSTCONDITION not in operations
+        )
+    if seed.attack_class is AssuranceAttackClass.UNSAFE_FAMILY_MERGE:
+        foreign = witness.get("foreign_family_id")
+        if isinstance(foreign, str) and foreign:
+            if foreign in procedure.provenance_cids or foreign in procedure.name:
+                return True
+        return False
+    return False
 
 
 @dataclass(frozen=True)
@@ -706,6 +1013,8 @@ class ValidationFinding:
     evidence_cids: tuple[str, ...] = ()
     validation_cost: int = 0
     proof_cost: int = 0
+    attack_class: AssuranceAttackClass | None = None
+    additional_findings: tuple[ValidationFinding, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "kind", _enum(self.kind, CounterexampleKind, "kind"))
@@ -733,6 +1042,26 @@ class ValidationFinding:
             "proof_cost",
             _nonnegative_int(self.proof_cost, "proof_cost", maximum=MAX_PROOF_WORK),
         )
+        if self.attack_class is not None:
+            object.__setattr__(
+                self,
+                "attack_class",
+                _enum(self.attack_class, AssuranceAttackClass, "attack_class"),
+            )
+        extras = self.additional_findings
+        if extras in (None, ()):
+            object.__setattr__(self, "additional_findings", ())
+            return
+        if not isinstance(extras, Sequence) or isinstance(
+            extras, (str, bytes, bytearray, memoryview)
+        ):
+            raise CegisError("additional_findings must be a sequence")
+        if len(extras) > MAX_ITEMS:
+            raise CegisError("additional_findings exceeds its item bound")
+        for item in extras:
+            if not isinstance(item, ValidationFinding):
+                raise CegisError("additional_findings must contain ValidationFinding records")
+        object.__setattr__(self, "additional_findings", tuple(extras))
 
 
 CandidateValidator = Callable[["SynthesisCandidate", CounterexampleSet], ValidationFinding | None]
@@ -809,6 +1138,606 @@ class SynthesisCandidate:
             counterexample_set_cid=counterexample_set_cid,
             state=state,
         )
+
+
+def _flatten_findings(finding: ValidationFinding | None) -> tuple[ValidationFinding, ...]:
+    if finding is None:
+        return ()
+    ordered: list[ValidationFinding] = []
+    pending: list[ValidationFinding] = [finding]
+    seen: set[int] = set()
+    while pending:
+        item = pending.pop(0)
+        marker = id(item)
+        if marker in seen:
+            continue
+        seen.add(marker)
+        extras = item.additional_findings
+        if extras:
+            ordered.append(replace(item, additional_findings=()))
+            pending = list(extras) + pending
+        else:
+            ordered.append(item)
+    return tuple(ordered)
+
+
+def _finding_from_seed(
+    seed: AssuranceSeed,
+    *,
+    evidence_cids: Sequence[str] = (),
+) -> ValidationFinding:
+    witness = dict(seed.witness)
+    witness["seed_id"] = seed.seed_id
+    witness["attack_class"] = seed.attack_class.value
+    witness["critical"] = seed.critical
+    receipts = tuple(dict.fromkeys((*seed.evidence_cids, *evidence_cids)))
+    return ValidationFinding(
+        kind=CounterexampleKind.ADVERSARIAL,
+        obligation=seed.obligation,
+        witness=witness,
+        constraints=seed.constraints,
+        evidence_cids=receipts,
+        attack_class=seed.attack_class,
+    )
+
+
+@dataclass(frozen=True)
+class EscapedMutantGate:
+    """Immutable later-promotion requirement: zero critical escaped mutants.
+
+    CEGIS never promotes.  A later verifier must still prove this floor; the
+    requirement cannot be waived, claimed complete, or treated as satisfied by
+    synthesis survival alone.
+    """
+
+    candidate_id: str
+    counterexample_set_cid: str
+    critical_seed_ids: tuple[str, ...]
+    escaped_critical_mutant_ids: tuple[str, ...]
+    killed_critical_mutant_ids: tuple[str, ...] = ()
+    campaign_confirmed: bool = False
+    requirement_id: str = ZERO_CRITICAL_ESCAPED_MUTANTS
+    waivable: bool = False
+    promotion_permitted: bool = False
+    completeness_claimed: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "candidate_id", _identifier(self.candidate_id, "candidate_id"))
+        object.__setattr__(
+            self,
+            "counterexample_set_cid",
+            _identifier(self.counterexample_set_cid, "counterexample_set_cid"),
+        )
+        object.__setattr__(
+            self,
+            "critical_seed_ids",
+            _strings(self.critical_seed_ids, "critical_seed_ids", identifiers=True),
+        )
+        object.__setattr__(
+            self,
+            "escaped_critical_mutant_ids",
+            _strings(
+                self.escaped_critical_mutant_ids,
+                "escaped_critical_mutant_ids",
+                identifiers=True,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "killed_critical_mutant_ids",
+            _strings(
+                self.killed_critical_mutant_ids,
+                "killed_critical_mutant_ids",
+                identifiers=True,
+            ),
+        )
+        object.__setattr__(
+            self, "campaign_confirmed", _bool(self.campaign_confirmed, "campaign_confirmed")
+        )
+        object.__setattr__(
+            self,
+            "requirement_id",
+            _identifier(self.requirement_id, "requirement_id"),
+        )
+        if self.requirement_id != ZERO_CRITICAL_ESCAPED_MUTANTS:
+            raise CegisError("escaped-mutant gate requirement is immutable")
+        object.__setattr__(self, "waivable", _bool(self.waivable, "waivable"))
+        if self.waivable:
+            raise CegisError("escaped-mutant gate cannot be waived")
+        object.__setattr__(
+            self,
+            "promotion_permitted",
+            _bool(self.promotion_permitted, "promotion_permitted"),
+        )
+        if self.promotion_permitted:
+            raise CegisError("CEGIS cannot permit promotion")
+        object.__setattr__(
+            self,
+            "completeness_claimed",
+            _bool(self.completeness_claimed, "completeness_claimed"),
+        )
+        if self.completeness_claimed:
+            raise CegisError("escaped-mutant gate cannot claim completeness")
+
+    @property
+    def blocked(self) -> bool:
+        return bool(self.escaped_critical_mutant_ids)
+
+    @property
+    def later_promotion_blocked(self) -> bool:
+        return True
+
+    def to_facts(self) -> dict[str, Any]:
+        return {
+            "candidate_id": self.candidate_id,
+            "counterexample_set_cid": self.counterexample_set_cid,
+            "critical_seed_ids": self.critical_seed_ids,
+            "escaped_critical_mutant_ids": self.escaped_critical_mutant_ids,
+            "killed_critical_mutant_ids": self.killed_critical_mutant_ids,
+            "campaign_confirmed": self.campaign_confirmed,
+            "requirement_id": self.requirement_id,
+            "waivable": False,
+            "promotion_permitted": False,
+            "completeness_claimed": False,
+            "blocked": self.blocked,
+        }
+
+    @classmethod
+    def from_report(
+        cls,
+        *,
+        candidate_id: str,
+        counterexample_set_cid: str,
+        critical_seed_ids: Sequence[str],
+        escaped_critical_mutant_ids: Sequence[str],
+        killed_critical_mutant_ids: Sequence[str] = (),
+        campaign_confirmed: bool = False,
+    ) -> EscapedMutantGate:
+        return cls(
+            candidate_id=candidate_id,
+            counterexample_set_cid=counterexample_set_cid,
+            critical_seed_ids=tuple(critical_seed_ids),
+            escaped_critical_mutant_ids=tuple(escaped_critical_mutant_ids),
+            killed_critical_mutant_ids=tuple(killed_critical_mutant_ids),
+            campaign_confirmed=campaign_confirmed,
+        )
+
+
+@dataclass(frozen=True)
+class AssuranceCampaignReport:
+    """Bounded campaign observation against one candidate/set pair."""
+
+    candidate_id: str
+    counterexample_set_cid: str
+    status: AssuranceApiStatus
+    interface_id: str
+    reason_code: str
+    findings: tuple[ValidationFinding, ...]
+    escaped_critical_mutant_ids: tuple[str, ...]
+    killed_critical_mutant_ids: tuple[str, ...]
+    receipt_cids: tuple[str, ...]
+    plan_cid: str
+    gate: EscapedMutantGate
+    campaign_confirmed: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "candidate_id", _identifier(self.candidate_id, "candidate_id"))
+        object.__setattr__(
+            self,
+            "counterexample_set_cid",
+            _identifier(self.counterexample_set_cid, "counterexample_set_cid"),
+        )
+        object.__setattr__(self, "status", _enum(self.status, AssuranceApiStatus, "status"))
+        object.__setattr__(self, "interface_id", _identifier(self.interface_id, "interface_id"))
+        object.__setattr__(self, "reason_code", _identifier(self.reason_code, "reason_code"))
+        if not isinstance(self.findings, Sequence) or isinstance(
+            self.findings, (str, bytes, bytearray, memoryview)
+        ):
+            raise CegisError("findings must be a sequence")
+        if len(self.findings) > MAX_ITEMS:
+            raise CegisError("findings exceed their item bound")
+        for item in self.findings:
+            if not isinstance(item, ValidationFinding):
+                raise CegisError("findings must contain ValidationFinding records")
+        object.__setattr__(self, "findings", tuple(self.findings))
+        object.__setattr__(
+            self,
+            "escaped_critical_mutant_ids",
+            _strings(
+                self.escaped_critical_mutant_ids,
+                "escaped_critical_mutant_ids",
+                identifiers=True,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "killed_critical_mutant_ids",
+            _strings(
+                self.killed_critical_mutant_ids,
+                "killed_critical_mutant_ids",
+                identifiers=True,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "receipt_cids",
+            _strings(self.receipt_cids, "receipt_cids", identifiers=True),
+        )
+        object.__setattr__(
+            self, "plan_cid", _identifier(self.plan_cid, "plan_cid", required=False)
+        )
+        if not isinstance(self.gate, EscapedMutantGate):
+            raise CegisError("gate must be EscapedMutantGate")
+        object.__setattr__(
+            self, "campaign_confirmed", _bool(self.campaign_confirmed, "campaign_confirmed")
+        )
+
+
+def _load_campaign_api() -> Any | None:
+    try:
+        from ipfs_accelerate_py.agent_supervisor.adversarial_assurance.api import (
+            create_assurance_campaign_api,
+        )
+    except Exception:
+        return None
+    try:
+        return create_assurance_campaign_api()
+    except Exception:
+        return None
+
+
+def _identifier_safe(value: str) -> bool:
+    try:
+        _identifier(value, "identifier")
+    except Exception:
+        return False
+    return True
+
+
+def _assurance_plan_cid(payload: Mapping[str, Any]) -> str:
+    return content_identity({"schema": ASSURANCE_CAMPAIGN_SCHEMA, **dict(payload)})
+
+
+def _report_bucket(status: Any) -> str:
+    text = str(status or "").lower()
+    if any(token in text for token in ("kill", "killed")):
+        return "killed"
+    if any(token in text for token in ("surviv", "escaped", "equivalent")):
+        return "survivor"
+    if any(token in text for token in ("invalid", "uncompilable")):
+        return "invalid"
+    return "inconclusive"
+
+
+def _mapping_from_result(raw: Any) -> Mapping[str, Any]:
+    if hasattr(raw, "to_dict") and callable(raw.to_dict):
+        converted = raw.to_dict()
+        if isinstance(converted, Mapping):
+            return converted
+    if isinstance(raw, Mapping):
+        return raw
+    payload: dict[str, Any] = {}
+    for key in (
+        "result_cid",
+        "plan_cid",
+        "finding_cids",
+        "candidate_reports",
+        "survivor_count",
+        "killed_count",
+        "precise_nonclaims",
+        "terminal_status",
+    ):
+        if hasattr(raw, key):
+            payload[key] = getattr(raw, key)
+    return payload
+
+
+class AssuranceCounterexampleAdapter:
+    """Narrow adapter over existing ``AssuranceCampaignApi@1``.
+
+    This is not an assurance engine.  It probes and invokes the canonical
+    campaign API, inspects the closed attack seeds locally, and converts every
+    failure into a persistent typed CEGIS counterexample.  Missing or
+    incompatible leaves never become simulated success and never waive the
+    escaped-mutant promotion floor.
+    """
+
+    def __init__(
+        self,
+        campaign_api: Any | None = None,
+        *,
+        seeds: Sequence[AssuranceSeed] = (),
+        adapter_revision: str = ASSURANCE_COUNTEREXAMPLE_ADAPTER_REVISION,
+        emitted_at_ms: int = 0,
+    ) -> None:
+        self.adapter_revision = _identifier(adapter_revision, "adapter_revision")
+        self.emitted_at_ms = _nonnegative_int(emitted_at_ms, "emitted_at_ms")
+        self._injected = campaign_api is not None
+        self._campaign_api = campaign_api
+        if seeds in (None, ()):
+            sealed = default_assurance_seeds()
+        else:
+            if not isinstance(seeds, Sequence) or isinstance(
+                seeds, (str, bytes, bytearray, memoryview)
+            ):
+                raise CegisError("seeds must be a sequence")
+            if len(seeds) > MAX_ITEMS:
+                raise CegisError("assurance seeds exceed their item bound")
+            sealed_list: list[AssuranceSeed] = []
+            for item in seeds:
+                if not isinstance(item, AssuranceSeed):
+                    raise CegisError("seeds must contain AssuranceSeed records")
+                sealed_list.append(item)
+            sealed = tuple(sealed_list)
+        self.seeds = sealed
+        self.last_report: AssuranceCampaignReport | None = None
+
+    @property
+    def interface_id(self) -> str:
+        api = self._campaign_api
+        pinned = getattr(api, "interface_id", None) if api is not None else None
+        if isinstance(pinned, str) and pinned:
+            return pinned
+        return ASSURANCE_CAMPAIGN_API_INTERFACE_PIN
+
+    def campaign_api(self) -> Any | None:
+        if self._campaign_api is not None or self._injected:
+            return self._campaign_api
+        self._campaign_api = _load_campaign_api()
+        return self._campaign_api
+
+    def probe(self, command: str = EXECUTE_MUTATION_CAMPAIGN_COMMAND) -> Mapping[str, Any]:
+        command = _identifier(command, "command")
+        api = self.campaign_api()
+        if api is None:
+            return {
+                "command": command,
+                "available": False,
+                "status": AssuranceApiStatus.TYPED_UNAVAILABLE.value,
+                "reason_code": "assurance_api_unavailable",
+                "interface_id": self.interface_id,
+            }
+        probe_fn = getattr(api, "probe_api", None)
+        if callable(probe_fn):
+            try:
+                payload = probe_fn(command)
+            except Exception:
+                return {
+                    "command": command,
+                    "available": False,
+                    "status": AssuranceApiStatus.INCOMPATIBLE.value,
+                    "reason_code": "assurance_api_probe_failed",
+                    "interface_id": self.interface_id,
+                }
+            if isinstance(payload, Mapping):
+                available = bool(payload.get("available"))
+                status_text = str(payload.get("status") or "")
+                if available and status_text in {"", AssuranceApiStatus.AVAILABLE.value}:
+                    return {
+                        "command": command,
+                        "available": True,
+                        "status": AssuranceApiStatus.AVAILABLE.value,
+                        "reason_code": "assurance_api_available",
+                        "interface_id": self.interface_id,
+                    }
+                reason = str(payload.get("reason_code") or "assurance_api_unavailable")
+                if not _identifier_safe(reason):
+                    reason = "assurance_api_unavailable"
+                return {
+                    "command": command,
+                    "available": False,
+                    "status": (
+                        AssuranceApiStatus.INCOMPATIBLE.value
+                        if available
+                        else str(payload.get("status") or AssuranceApiStatus.TYPED_UNAVAILABLE.value)
+                    ),
+                    "reason_code": reason,
+                    "interface_id": self.interface_id,
+                }
+        if callable(getattr(api, command, None)):
+            return {
+                "command": command,
+                "available": True,
+                "status": AssuranceApiStatus.AVAILABLE.value,
+                "reason_code": "assurance_api_available",
+                "interface_id": self.interface_id,
+            }
+        return {
+            "command": command,
+            "available": False,
+            "status": AssuranceApiStatus.TYPED_UNAVAILABLE.value,
+            "reason_code": "assurance_api_missing_command",
+            "interface_id": self.interface_id,
+        }
+
+    def evaluate(
+        self,
+        candidate: SynthesisCandidate,
+        counterexamples: CounterexampleSet,
+    ) -> AssuranceCampaignReport:
+        if not isinstance(candidate, SynthesisCandidate):
+            raise CegisError("candidate must be SynthesisCandidate")
+        if not isinstance(counterexamples, CounterexampleSet):
+            raise CegisError("counterexamples must be CounterexampleSet")
+        set_cid = counterexamples.content_id
+        bindings = candidate.procedure.bindings
+        seeds = self.seeds
+        local_escaped: list[AssuranceSeed] = []
+        local_killed: list[AssuranceSeed] = []
+        for seed in seeds:
+            if inspect_assurance_seed(candidate.procedure, seed):
+                if seed.expected_killed:
+                    local_escaped.append(seed)
+                continue
+            local_killed.append(seed)
+
+        plan_payload = {
+            "adapter_revision": self.adapter_revision,
+            "interface_id": self.interface_id,
+            "tree_id": bindings.tree_id,
+            "repository_commit": bindings.repository_commit,
+            "candidate_id": candidate.candidate_id,
+            "counterexample_set_cid": set_cid,
+            "seed_ids": [item.seed_id for item in seeds],
+            "attack_classes": [item.attack_class.value for item in seeds],
+            "completeness_claimed": False,
+            "promotion_permitted": False,
+        }
+        plan_cid = _assurance_plan_cid(plan_payload)
+        probe = self.probe(EXECUTE_MUTATION_CAMPAIGN_COMMAND)
+        available = bool(probe.get("available"))
+        status_text = str(probe.get("status") or AssuranceApiStatus.TYPED_UNAVAILABLE.value)
+        try:
+            status = _enum(status_text, AssuranceApiStatus, "status")
+        except Exception:
+            status = (
+                AssuranceApiStatus.AVAILABLE
+                if available
+                else AssuranceApiStatus.TYPED_UNAVAILABLE
+            )
+        reason = str(probe.get("reason_code") or "assurance_api_unavailable")
+        if not _identifier_safe(reason):
+            reason = "assurance_api_unavailable"
+
+        receipt_cids: list[str] = []
+        api_escaped_ids: set[str] = set()
+        campaign_confirmed = False
+        if available:
+            api = self.campaign_api()
+            execute = getattr(api, EXECUTE_MUTATION_CAMPAIGN_COMMAND, None)
+            if not callable(execute):
+                status = AssuranceApiStatus.TYPED_UNAVAILABLE
+                reason = "assurance_api_missing_command"
+            else:
+                reports = [
+                    {
+                        "candidate_cid": candidate.candidate_id,
+                        "mutant_identity_cid": seed.seed_id,
+                        "attack_class": seed.attack_class.value,
+                        "critical": seed.critical,
+                        "terminal_status": (
+                            "survived_full_verification"
+                            if seed in local_escaped
+                            else "killed_by_policy"
+                        ),
+                        "report_cid": f"report.{seed.seed_id}",
+                    }
+                    for seed in seeds
+                ]
+                try:
+                    raw = execute(
+                        plan_payload,
+                        {
+                            "policy_cid": bindings.policy_revision,
+                            "verification_policy_cid": bindings.policy_revision,
+                            "tree_id": bindings.tree_id,
+                        },
+                        precomputed_reports=reports,
+                        notes="pcpc-cegis-assurance",
+                    )
+                except Exception:
+                    status = AssuranceApiStatus.INCOMPATIBLE
+                    reason = "assurance_api_invocation_failed"
+                else:
+                    payload = _mapping_from_result(raw)
+                    campaign_confirmed = True
+                    status = AssuranceApiStatus.AVAILABLE
+                    reason = "assurance_api_available"
+                    for key in ("result_cid", "plan_cid"):
+                        value = payload.get(key)
+                        if isinstance(value, str) and value and _identifier_safe(value):
+                            receipt_cids.append(value)
+                    for item in payload.get("finding_cids") or ():
+                        if isinstance(item, str) and item and _identifier_safe(item):
+                            receipt_cids.append(item)
+                    api_reports = payload.get("candidate_reports") or ()
+                    if not isinstance(api_reports, Sequence) or isinstance(
+                        api_reports, (str, bytes)
+                    ):
+                        api_reports = ()
+                    for item in api_reports:
+                        if not isinstance(item, Mapping):
+                            continue
+                        report_cid = item.get("report_cid") or item.get("result_cid")
+                        if isinstance(report_cid, str) and _identifier_safe(report_cid):
+                            receipt_cids.append(report_cid)
+                        mutant_id = str(
+                            item.get("mutant_identity_cid") or item.get("seed_id") or ""
+                        )
+                        bucket = _report_bucket(
+                            item.get("terminal_status") or item.get("outcome_status")
+                        )
+                        if bucket == "survivor" and mutant_id and _identifier_safe(mutant_id):
+                            api_escaped_ids.add(mutant_id)
+
+        escaped_ids: list[str] = []
+        killed_ids: list[str] = []
+        findings: list[ValidationFinding] = []
+        by_id = {item.seed_id: item for item in seeds}
+        for seed in local_escaped:
+            if seed.seed_id not in escaped_ids:
+                escaped_ids.append(seed.seed_id)
+            findings.append(_finding_from_seed(seed, evidence_cids=receipt_cids))
+        for mutant_id in sorted(api_escaped_ids):
+            if mutant_id in escaped_ids:
+                continue
+            seed = by_id.get(mutant_id)
+            if seed is None or not seed.expected_killed:
+                continue
+            escaped_ids.append(mutant_id)
+            findings.append(_finding_from_seed(seed, evidence_cids=receipt_cids))
+        for seed in local_killed:
+            if seed.seed_id not in escaped_ids:
+                killed_ids.append(seed.seed_id)
+
+        critical_ids = tuple(item.seed_id for item in seeds if item.critical)
+        escaped_critical = tuple(
+            item.seed_id
+            for item in seeds
+            if item.critical and item.seed_id in set(escaped_ids)
+        )
+        killed_critical = tuple(
+            item.seed_id
+            for item in seeds
+            if item.critical and item.seed_id in set(killed_ids)
+        )
+        gate = EscapedMutantGate.from_report(
+            candidate_id=candidate.candidate_id,
+            counterexample_set_cid=set_cid,
+            critical_seed_ids=critical_ids,
+            escaped_critical_mutant_ids=escaped_critical,
+            killed_critical_mutant_ids=killed_critical,
+            campaign_confirmed=campaign_confirmed,
+        )
+        report = AssuranceCampaignReport(
+            candidate_id=candidate.candidate_id,
+            counterexample_set_cid=set_cid,
+            status=status,
+            interface_id=self.interface_id,
+            reason_code=reason,
+            findings=tuple(findings),
+            escaped_critical_mutant_ids=escaped_critical,
+            killed_critical_mutant_ids=killed_critical,
+            receipt_cids=tuple(dict.fromkeys(receipt_cids)),
+            plan_cid=plan_cid,
+            gate=gate,
+            campaign_confirmed=campaign_confirmed,
+        )
+        self.last_report = report
+        return report
+
+    def __call__(
+        self,
+        candidate: SynthesisCandidate,
+        counterexamples: CounterexampleSet,
+    ) -> ValidationFinding | None:
+        report = self.evaluate(candidate, counterexamples)
+        if not report.findings:
+            return None
+        head, *tail = report.findings
+        if not tail:
+            return head
+        return replace(head, additional_findings=tuple(tail))
 
 
 @dataclass(frozen=True)
@@ -947,6 +1876,8 @@ class SynthesisRequest:
     initial_counterexamples: tuple[SynthesisCounterexample, ...] = ()
     validator: CandidateValidator | None = None
     source_episode_cids: tuple[str, ...] = ()
+    assurance_seeds: tuple[AssuranceSeed, ...] = ()
+    assurance_adapter: AssuranceCounterexampleAdapter | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan, ProcedureSynthesisPlan):
@@ -1000,6 +1931,17 @@ class SynthesisRequest:
             "source_episode_cids",
             _strings(self.source_episode_cids, "source_episode_cids", identifiers=True),
         )
+        if self.assurance_seeds not in (None, ()):
+            object.__setattr__(
+                self,
+                "assurance_seeds",
+                _typed_sequence(self.assurance_seeds, AssuranceSeed, "assurance_seeds"),
+            )
+        else:
+            object.__setattr__(self, "assurance_seeds", ())
+        adapter = self.assurance_adapter
+        if adapter is not None and not isinstance(adapter, AssuranceCounterexampleAdapter):
+            raise CegisError("assurance_adapter must be AssuranceCounterexampleAdapter or None")
         self._assert_bindings()
 
     def _assert_bindings(self) -> None:
@@ -1072,6 +2014,9 @@ class SynthesisResult:
     generation_order: tuple[SynthesisSourceKind, ...]
     considered_source_kinds: tuple[SynthesisSourceKind, ...]
     completeness_claimed: bool = False
+    escaped_mutant_gate: EscapedMutantGate | None = None
+    promotion_requirements: tuple[str, ...] = ()
+    assurance_receipt_cids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "bindings", _bindings(self.bindings))
@@ -1105,6 +2050,28 @@ class SynthesisResult:
             raise CegisError("candidate artifacts cannot assert verification or promotion")
         if self.plan_artifact.state in {ArtifactState.VERIFIED, ArtifactState.PROMOTED}:
             raise CegisError("synthesis plans cannot assert verification or promotion")
+        gate = self.escaped_mutant_gate
+        if gate is not None and not isinstance(gate, EscapedMutantGate):
+            raise CegisError("escaped_mutant_gate must be EscapedMutantGate or None")
+        object.__setattr__(
+            self,
+            "promotion_requirements",
+            _strings(self.promotion_requirements, "promotion_requirements", identifiers=True),
+        )
+        object.__setattr__(
+            self,
+            "assurance_receipt_cids",
+            _strings(self.assurance_receipt_cids, "assurance_receipt_cids", identifiers=True),
+        )
+        if gate is not None:
+            if gate.waivable or gate.promotion_permitted:
+                raise CegisError("escaped-mutant gate cannot permit or waive promotion")
+            if ZERO_CRITICAL_ESCAPED_MUTANTS not in self.promotion_requirements:
+                object.__setattr__(
+                    self,
+                    "promotion_requirements",
+                    self.promotion_requirements + (ZERO_CRITICAL_ESCAPED_MUTANTS,),
+                )
 
     @property
     def incomplete(self) -> bool:
@@ -1334,6 +2301,32 @@ def enumerate_procedure_variants(
         except (CegisError, ProcedureContractError):
             continue
         _accept(variant)
+    stacked = seed
+    stacked_changed = False
+    for operation, contract, effect_class, effect_id in _VALIDATION_INSERTIONS:
+        if len(variants) >= MAX_GENERATED_VARIANTS:
+            break
+        if operation in _spec_operations(stacked):
+            continue
+        if operation is StepOperation.RUN_PROOF and plan.max_proof == 0:
+            continue
+        if len(stacked.steps) + 1 > plan.max_steps:
+            continue
+        try:
+            stacked = insert_closed_validation_step(
+                stacked,
+                operation,
+                contract,
+                effect_id=effect_id,
+                effect_class=effect_class,
+                step_id=operation.value.lower().replace("_", "-"),
+            )
+        except (CegisError, ProcedureContractError):
+            break
+        stacked_changed = True
+        _accept(stacked)
+    if stacked_changed:
+        _accept(stacked)
     return tuple(variants)
 
 
@@ -1431,14 +2424,20 @@ class ProcedureCegis:
         *,
         clock_ms: Callable[[], int] | None = None,
         validator: CandidateValidator | None = None,
+        assurance_adapter: AssuranceCounterexampleAdapter | None = None,
         emitted_at_ms: int = 0,
     ) -> None:
         if clock_ms is not None and not callable(clock_ms):
             raise CegisError("clock_ms must be callable or None")
         if validator is not None and not callable(validator):
             raise CegisError("validator must be callable or None")
+        if assurance_adapter is not None and not isinstance(
+            assurance_adapter, AssuranceCounterexampleAdapter
+        ):
+            raise CegisError("assurance_adapter must be AssuranceCounterexampleAdapter or None")
         self._clock_ms = clock_ms or (lambda: 0)
         self._validator = validator
+        self._assurance_adapter = assurance_adapter
         self._emitted_at_ms = _nonnegative_int(emitted_at_ms, "emitted_at_ms")
 
     def generate_candidates(self, request: SynthesisRequest) -> tuple[SynthesisCandidate, ...]:
@@ -1464,6 +2463,12 @@ class ProcedureCegis:
         considered: list[SynthesisSourceKind] = []
         last_resource_reason: SynthesisStopReason | None = None
         validator = request.validator or self._validator
+        assurance = self._resolve_assurance_adapter(request)
+        last_gate: EscapedMutantGate | None = None
+        assurance_receipts: list[str] = []
+        promotion_requirements: list[str] = []
+        if assurance is not None:
+            promotion_requirements.append(ZERO_CRITICAL_ESCAPED_MUTANTS)
 
         def _elapsed() -> int:
             now = self._clock_ms()
@@ -1479,6 +2484,16 @@ class ProcedureCegis:
                 item.to_artifact(plan.bindings, emitted_at_ms=emitted_at)
                 for item in counterexamples.members
             )
+            ordered_artifacts = tuple(artifacts)
+            if surviving:
+                surviving_ids = {item.candidate_id for item in surviving}
+                leading = [
+                    item for item in artifacts if item.procedure.content_id in surviving_ids
+                ]
+                trailing = [
+                    item for item in artifacts if item.procedure.content_id not in surviving_ids
+                ]
+                ordered_artifacts = tuple(leading + trailing)
             return SynthesisResult(
                 bindings=plan.bindings,
                 plan=plan,
@@ -1490,11 +2505,14 @@ class ProcedureCegis:
                 skipped_pairs=tuple(skipped),
                 counterexamples=counterexamples.members,
                 counterexample_set_cid=counterexamples.content_id,
-                candidate_artifacts=tuple(artifacts),
+                candidate_artifacts=ordered_artifacts,
                 counterexample_artifacts=ce_artifacts,
                 usage=usage.freeze(),
                 generation_order=plan.generation_order,
                 considered_source_kinds=tuple(considered),
+                escaped_mutant_gate=last_gate,
+                promotion_requirements=tuple(dict.fromkeys(promotion_requirements)),
+                assurance_receipt_cids=tuple(dict.fromkeys(assurance_receipts)),
             )
 
         pending = list(self._iter_candidates(request))
@@ -1573,8 +2591,10 @@ class ProcedureCegis:
                     )
                 )
                 continue
-            if counterexamples.constraints.rejects(candidate.procedure) and any(
-                replay_hits(candidate.procedure, item) for item in counterexamples.members
+            if (
+                assurance is None
+                and counterexamples.constraints.rejects(candidate.procedure)
+                and any(replay_hits(candidate.procedure, item) for item in counterexamples.members)
             ):
                 if any(item.pair_key == pair for item in counterexamples.members):
                     seen_pairs.add(pair)
@@ -1620,8 +2640,17 @@ class ProcedureCegis:
             usage.unique_pairs_evaluated += 1
             usage.validation_work += 1
             usage.proof_work += proof_needed
-            finding = self._evaluate(candidate, counterexamples, validator)
-            if finding is None:
+            findings, gate, receipts = self._evaluate(
+                candidate, counterexamples, validator, assurance
+            )
+            if gate is not None:
+                last_gate = gate
+                if ZERO_CRITICAL_ESCAPED_MUTANTS not in promotion_requirements:
+                    promotion_requirements.append(ZERO_CRITICAL_ESCAPED_MUTANTS)
+            for receipt in receipts:
+                if receipt not in assurance_receipts:
+                    assurance_receipts.append(receipt)
+            if not findings:
                 artifacts.append(
                     candidate.to_procedure_candidate(
                         synthesis_plan_cid=plan_artifact.content_id,
@@ -1634,24 +2663,25 @@ class ProcedureCegis:
                     SynthesisStopReason.CONVERGED,
                     surviving=(candidate,),
                 )
-            extra_validation = finding.validation_cost
-            extra_proof = finding.proof_cost
+            extra_validation = sum(item.validation_cost for item in findings)
+            extra_proof = sum(item.proof_cost for item in findings)
             if usage.validation_work + extra_validation > plan.max_validation:
                 last_resource_reason = SynthesisStopReason.VALIDATION_BUDGET_EXHAUSTED
             if usage.proof_work + extra_proof > plan.max_proof:
                 last_resource_reason = SynthesisStopReason.PROOF_BUDGET_EXHAUSTED
             usage.validation_work += extra_validation
             usage.proof_work += extra_proof
-            counterexample = SynthesisCounterexample(
-                kind=finding.kind,
-                obligation=finding.obligation,
-                candidate_id=candidate.candidate_id,
-                counterexample_set_cid=set_cid,
-                witness=finding.witness,
-                constraints=finding.constraints,
-                evidence_cids=finding.evidence_cids,
-            )
-            counterexamples = counterexamples.add(counterexample)
+            for finding in findings:
+                counterexample = SynthesisCounterexample(
+                    kind=finding.kind,
+                    obligation=finding.obligation,
+                    candidate_id=candidate.candidate_id,
+                    counterexample_set_cid=set_cid,
+                    witness=finding.witness,
+                    constraints=finding.constraints,
+                    evidence_cids=finding.evidence_cids,
+                )
+                counterexamples = counterexamples.add(counterexample)
             rejected.append(candidate)
             artifacts.append(
                 candidate.to_procedure_candidate(
@@ -1672,33 +2702,93 @@ class ProcedureCegis:
             return _finish(SynthesisStatus.INCOMPLETE, last_resource_reason)
         return _finish(SynthesisStatus.INCOMPLETE, SynthesisStopReason.NO_ADMISSIBLE_CANDIDATE)
 
+    def _resolve_assurance_adapter(
+        self, request: SynthesisRequest
+    ) -> AssuranceCounterexampleAdapter | None:
+        campaign_api = None
+        if request.assurance_adapter is not None:
+            if not request.assurance_seeds:
+                return request.assurance_adapter
+            campaign_api = request.assurance_adapter.campaign_api()
+        elif self._assurance_adapter is not None:
+            if not request.assurance_seeds:
+                return self._assurance_adapter
+            campaign_api = self._assurance_adapter.campaign_api()
+        elif not request.assurance_seeds:
+            return None
+        return AssuranceCounterexampleAdapter(
+            campaign_api,
+            seeds=request.assurance_seeds,
+            emitted_at_ms=self._emitted_at_ms,
+        )
+
     def _evaluate(
         self,
         candidate: SynthesisCandidate,
         counterexamples: CounterexampleSet,
         validator: CandidateValidator | None,
-    ) -> ValidationFinding | None:
+        assurance: AssuranceCounterexampleAdapter | None = None,
+    ) -> tuple[tuple[ValidationFinding, ...], EscapedMutantGate | None, tuple[str, ...]]:
         try:
             validate_procedure_spec(candidate.procedure)
         except ProcedureIRValidationError as exc:
-            return _structural_finding(candidate.procedure, exc)
+            return ((_structural_finding(candidate.procedure, exc),), None, ())
+        findings: list[ValidationFinding] = []
         for item in counterexamples.members:
             if replay_hits(candidate.procedure, item):
-                return ValidationFinding(
-                    kind=CounterexampleKind.REPLAY,
-                    obligation=item.obligation,
-                    witness=item.witness,
-                    constraints=item.constraints,
-                    evidence_cids=item.evidence_cids,
+                findings.append(
+                    ValidationFinding(
+                        kind=CounterexampleKind.REPLAY,
+                        obligation=item.obligation,
+                        witness=item.witness,
+                        constraints=item.constraints,
+                        evidence_cids=item.evidence_cids,
+                    )
                 )
-        if validator is None:
-            return None
-        finding = validator(candidate, counterexamples)
-        if finding is None:
-            return None
-        if not isinstance(finding, ValidationFinding):
-            raise CegisError("validator must return ValidationFinding or None")
-        return finding
+                break
+        assurance_is_validator = isinstance(validator, AssuranceCounterexampleAdapter)
+        if validator is not None and not findings:
+            finding = validator(candidate, counterexamples)
+            if finding is not None:
+                if not isinstance(finding, ValidationFinding):
+                    raise CegisError("validator must return ValidationFinding or None")
+                findings.extend(_flatten_findings(finding))
+        gate: EscapedMutantGate | None = None
+        receipts: tuple[str, ...] = ()
+        if assurance is not None and not assurance_is_validator:
+            report = assurance.evaluate(candidate, counterexamples)
+            gate = report.gate
+            receipts = report.receipt_cids
+            if report.findings:
+                findings.extend(report.findings)
+            elif not report.escaped_critical_mutant_ids:
+                # A clean independent campaign is authoritative for its seeds.
+                # Constraint replay from earlier candidates must not override it.
+                seed_obligations = {seed.obligation for seed in assurance.seeds}
+                findings = [
+                    item
+                    for item in findings
+                    if not (
+                        item.kind is CounterexampleKind.REPLAY
+                        and item.obligation in seed_obligations
+                    )
+                ]
+        elif assurance_is_validator:
+            report = validator.last_report  # type: ignore[union-attr]
+            if report is not None:
+                gate = report.gate
+                receipts = report.receipt_cids
+                if not report.findings and not report.escaped_critical_mutant_ids:
+                    seed_obligations = {seed.obligation for seed in validator.seeds}  # type: ignore[union-attr]
+                    findings = [
+                        item
+                        for item in findings
+                        if not (
+                            item.kind is CounterexampleKind.REPLAY
+                            and item.obligation in seed_obligations
+                        )
+                    ]
+        return (tuple(findings), gate, receipts)
 
     def _iter_candidates(self, request: SynthesisRequest) -> Iterator[SynthesisCandidate]:
         plan = request.plan
@@ -1793,22 +2883,37 @@ def synthesize_procedure(
     *,
     clock_ms: Callable[[], int] | None = None,
     validator: CandidateValidator | None = None,
+    assurance_adapter: AssuranceCounterexampleAdapter | None = None,
     emitted_at_ms: int = 0,
 ) -> SynthesisResult:
     """Run bounded CEGIS procedure synthesis."""
 
     return ProcedureCegis(
-        clock_ms=clock_ms, validator=validator, emitted_at_ms=emitted_at_ms
+        clock_ms=clock_ms,
+        validator=validator,
+        assurance_adapter=assurance_adapter,
+        emitted_at_ms=emitted_at_ms,
     ).synthesize(request)
 
 
 __all__ = [
+    "ASSURANCE_CAMPAIGN_API_INTERFACE_PIN",
+    "ASSURANCE_COUNTEREXAMPLE_ADAPTER_REVISION",
     "CEGIS_REVISION",
+    "CLASSIFY_MUTATION_OUTCOME_COMMAND",
+    "EXECUTE_MUTATION_CAMPAIGN_COMMAND",
     "GENERATION_PRIORITY",
+    "REQUIRED_ASSURANCE_ATTACK_CLASSES",
+    "ZERO_CRITICAL_ESCAPED_MUTANTS",
+    "AssuranceAttackClass",
+    "AssuranceCampaignReport",
+    "AssuranceCounterexampleAdapter",
+    "AssuranceSeed",
     "CandidateValidator",
     "CegisError",
     "CounterexampleKind",
     "CounterexampleSet",
+    "EscapedMutantGate",
     "ModelSketch",
     "NarrowingConstraints",
     "ProcedureCegis",
@@ -1826,9 +2931,12 @@ __all__ = [
     "ValidationFinding",
     "VerifiedProcedureSeed",
     "builtin_template_from_scaffold",
+    "default_assurance_seeds",
     "enumerate_procedure_variants",
     "insert_closed_validation_step",
+    "inspect_assurance_seed",
     "lower_pattern_to_spec",
+    "narrowing_for_attack",
     "replay_hits",
     "structural_overflow",
     "synthesize_procedure",
