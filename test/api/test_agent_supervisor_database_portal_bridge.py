@@ -2974,3 +2974,43 @@ def test_configured_runner_binds_post_merge_recovery_when_queue_is_target_bound(
         assert checkout_repository_id(repo) == daemon._merge_queue.target_repository_id
     finally:
         daemon.close()
+
+
+def test_post_merge_recovery_cursor_writes_only_on_progress_or_wrap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    writes: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        bridge,
+        "_save_post_merge_recovery_cursors",
+        lambda cursors: writes.append(dict(cursors)),
+    )
+    cursors = {"completed_requests": ""}
+
+    bridge._advance_post_merge_recovery_cursor(
+        cursors,
+        "completed_requests",
+        (),
+    )
+    assert writes == []
+
+    page = (SimpleNamespace(request_id="request:1"),)
+    bridge._advance_post_merge_recovery_cursor(
+        cursors,
+        "completed_requests",
+        page,
+    )
+    bridge._advance_post_merge_recovery_cursor(
+        cursors,
+        "completed_requests",
+        page,
+    )
+    assert writes == [{"completed_requests": "request:1"}]
+
+    bridge._advance_post_merge_recovery_cursor(
+        cursors,
+        "completed_requests",
+        (),
+    )
+    assert writes[-1] == {"completed_requests": ""}
