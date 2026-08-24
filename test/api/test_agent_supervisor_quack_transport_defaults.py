@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     is_quack_transport_target,
     open_quack_transport_connection,
     persist_quack_attach_token_vault,
+    quack_transport_error_is_unavailable,
     quack_token_vault_path,
     quack_transport_uri,
     reset_quack_transport_cache,
@@ -36,6 +37,92 @@ def test_loopback_quack_uri_is_accepted() -> None:
     assert is_quack_transport_target("quack://127.0.0.1:9") is True
     assert is_quack_transport_target("control.duckdb") is False
     assert is_quack_transport_target("quack:8.8.8.8:45123") is False
+
+
+def test_quack_transport_unavailable_matches_exact_duckdb_loopback_endpoint() -> None:
+    import duckdb
+
+    error = duckdb.IOException(
+        'IO Error: Failed to send message: Could not connect to server '
+        '"127.0.0.1:45123"'
+    )
+
+    assert quack_transport_error_is_unavailable(
+        error,
+        uri="quack:127.0.0.1:45123",
+    ) is True
+
+
+def test_quack_transport_unavailable_follows_a_bounded_exception_cause() -> None:
+    import duckdb
+
+    inner = duckdb.IOException(
+        'IO Error: Failed to send message: Could not connect to server '
+        '"127.0.0.1:45123"'
+    )
+    try:
+        raise RuntimeError("Quack read failed") from inner
+    except RuntimeError as error:
+        assert quack_transport_error_is_unavailable(
+            error,
+            uri="quack://127.0.0.1:45123",
+        ) is True
+
+
+def test_quack_transport_unavailable_rejects_non_duckdb_errors() -> None:
+    error = RuntimeError(
+        'Failed to send message: Could not connect to server '
+        '"127.0.0.1:45123"'
+    )
+
+    assert quack_transport_error_is_unavailable(
+        error,
+        uri="quack:127.0.0.1:45123",
+    ) is False
+
+
+def test_quack_transport_unavailable_rejects_a_different_endpoint() -> None:
+    import duckdb
+
+    error = duckdb.IOException(
+        'IO Error: Failed to send message: Could not connect to server '
+        '"127.0.0.1:45124"'
+    )
+
+    assert quack_transport_error_is_unavailable(
+        error,
+        uri="quack:127.0.0.1:45123",
+    ) is False
+
+
+@pytest.mark.parametrize(
+    "marker",
+    (
+        "Authentication failed",
+        "401 Unauthorized",
+        "Permission denied",
+        "Policy rejected",
+        "Schema mismatch",
+        "Catalog mismatch",
+        "Parser error",
+        "Constraint failed",
+        "Database is corrupt",
+    ),
+)
+def test_quack_transport_unavailable_rejects_non_transport_failures(
+    marker: str,
+) -> None:
+    import duckdb
+
+    error = duckdb.IOException(
+        'IO Error: Failed to send message: Could not connect to server '
+        f'"127.0.0.1:45123"; {marker}'
+    )
+
+    assert quack_transport_error_is_unavailable(
+        error,
+        uri="quack:127.0.0.1:45123",
+    ) is False
 
 
 def test_absolutized_quack_path_is_still_transport() -> None:
@@ -287,7 +374,7 @@ def test_quack_attach_retries_authentication_failed_contention(monkeypatch) -> N
         attempts["n"] += 1
         if attempts["n"] < 3:
             raise RuntimeError("Invalid Input Error: Authentication failed")
-        return _FakeQuackRaw()
+        return _FakeQuackRaw(), {}
 
     monkeypatch.setattr(ds, "_attach_quack_once", fake_attach)
     monkeypatch.setattr(ds.time, "sleep", lambda _seconds: None)
@@ -309,7 +396,7 @@ def test_quack_attach_reuses_cached_connection(monkeypatch) -> None:
     def fake_attach(uri: str, secret: str):
         del uri, secret
         attaches["n"] += 1
-        return _FakeQuackRaw()
+        return _FakeQuackRaw(), {}
 
     monkeypatch.setattr(ds, "_attach_quack_once", fake_attach)
     monkeypatch.setattr(ds, "resolve_quack_attach_token", lambda token="": "tok")

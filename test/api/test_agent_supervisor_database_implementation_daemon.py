@@ -78,6 +78,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     ATTEMPT_PHASE_PROVIDER,
     ATTEMPT_PHASE_VALIDATION,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
+    DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
     DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA,
     DATABASE_TASK_ATTEMPT_INTERFACE,
     DatabaseImplementationAuthorityError,
@@ -5265,6 +5266,171 @@ def test_quack_attach_contention_requests_owner_board_unstall(
         daemon.close()
 
 
+def test_quack_transport_unavailable_defers_whole_pass_without_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import duckdb
+    from ipfs_accelerate_py.agent_supervisor.task_sources import (
+        duckdb_state as duckdb_state_module,
+    )
+
+    uri = "quack:127.0.0.1:45123"
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-transport-unavailable",
+        max_task_attempts=3,
+    )
+    resets: list[object] = []
+    claims: list[str] = []
+    try:
+        daemon._quack_uri = uri
+        daemon.authority_mode = "quack"
+
+        def unavailable() -> object:
+            raise duckdb.IOException(
+                "IO Error: Failed to send message: Could not connect to "
+                'server "127.0.0.1:45123"'
+            )
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "snapshot",
+            unavailable,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "claim_next",
+            lambda: claims.append("claim") or None,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_request_owner_board_unstall",
+            lambda: pytest.fail("transport availability requested board mutation"),
+        )
+        monkeypatch.setattr(
+            duckdb_state_module,
+            "reset_quack_transport_cache",
+            lambda endpoint="": resets.append(endpoint),
+        )
+
+        result = daemon.run_once()
+
+        assert result["reason"] == "quack_transport_unavailable"
+        assert result["unchanged"] is True
+        assert result["write_count"] == 0
+        assert result["attempt_consumed"] is False
+        assert result["provider_dispatched"] is False
+        assert result["pre_mutation_transport_probe"] is True
+        assert result["durable_state_uncertain"] is False
+        assert result["quack_transport_cache_reset"] is True
+        assert claims == []
+        assert resets == [uri]
+    finally:
+        daemon.close()
+
+
+def test_quack_transport_unavailable_after_preflight_marks_effects_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import duckdb
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-transport-midpass-unknown",
+        max_task_attempts=3,
+    )
+    try:
+        daemon._quack_uri = "quack:127.0.0.1:45123"
+        daemon.authority_mode = "quack"
+
+        def unavailable_after_effect_boundary() -> dict[str, object]:
+            raise duckdb.IOException(
+                "IO Error: Failed to send message: Could not connect to "
+                'server "127.0.0.1:45123"'
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_run_once_impl",
+            unavailable_after_effect_boundary,
+        )
+        result = daemon.run_once()
+
+        assert result["reason"] == "quack_transport_unavailable"
+        assert result["pre_mutation_transport_probe"] is False
+        assert result["durable_state_uncertain"] is True
+        assert result["reconciliation_required"] is True
+        assert result["write_count"] is None
+        assert result["write_count_available"] is False
+        assert "attempt_consumed" not in result
+        assert "provider_dispatched" not in result
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("error", "uri"),
+    (
+        (
+            RuntimeError(
+                "Failed to send message: Could not connect to server "
+                '"127.0.0.1:45123"'
+            ),
+            "quack:127.0.0.1:45123",
+        ),
+        (
+            __import__("duckdb").IOException(
+                "IO Error: Failed to send message: Could not connect to "
+                'server "127.0.0.1:45124"'
+            ),
+            "quack:127.0.0.1:45123",
+        ),
+    ),
+)
+def test_quack_transport_deferral_rejects_untyped_or_foreign_endpoint_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error: BaseException,
+    uri: str,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-transport-negative",
+        max_task_attempts=3,
+    )
+    try:
+        daemon._quack_uri = uri
+        daemon.authority_mode = "quack"
+
+        def boom() -> dict[str, object]:
+            raise error
+
+        monkeypatch.setattr(daemon, "_run_once_impl", boom)
+        with pytest.raises(type(error), match="Could not connect"):
+            daemon.run_once()
+    finally:
+        daemon.close()
+
+
+def test_database_portal_reason_does_not_remint_application_failures_as_quack() -> None:
+    classify = DatabaseImplementationDaemon._database_portal_reason
+
+    assert classify("Authentication failed") == "Authentication failed"
+    assert (
+        classify(
+            "Failed to send message: Could not connect to server "
+            '"127.0.0.1:45123"'
+        )
+        != "quack_attach_contended"
+    )
+    assert (
+        classify("quack control-plane attach contended: connection refused")
+        == "quack_attach_contended"
+    )
+
+
 def test_run_once_unstalls_stale_in_progress_gate_and_claims(
     tmp_path: Path,
 ) -> None:
@@ -5374,6 +5540,61 @@ def test_quack_attach_contention_still_expires_running_attempts(
         assert seen["expired"] is True
         assert result.get("expired_attempt_reconciliations") == expired
         assert result.get("selection_idle_reason") == "no_ready_tasks"
+    finally:
+        daemon.close()
+
+
+def test_post_merge_recovery_settles_before_claiming_next_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-merge-settlement",
+        max_task_attempts=3,
+    )
+    recoveries = iter(
+        (
+            {
+                "schema": (
+                    DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA
+                ),
+                "attempted": True,
+                "recovered": True,
+                "changed": True,
+                "write_count": 1,
+            },
+            {
+                "schema": (
+                    DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA
+                ),
+                "attempted": True,
+                "recovered": True,
+                "changed": False,
+                "write_count": 0,
+            },
+        )
+    )
+    claims: list[str] = []
+    try:
+        daemon.bind_post_merge_recovery(lambda: next(recoveries))
+        monkeypatch.setattr(daemon, "list_running_attempts", lambda: [])
+        monkeypatch.setattr(
+            daemon,
+            "claim_next",
+            lambda: claims.append("claim") or None,
+        )
+
+        settlement = daemon.run_once()
+        assert settlement["selection_idle_reason"] == (
+            "post_merge_recovery_settlement"
+        )
+        assert settlement["write_count"] >= 1
+        assert claims == []
+
+        next_pass = daemon.run_once()
+        assert next_pass["selection_idle_reason"] == "no_ready_tasks"
+        assert claims == ["claim"]
     finally:
         daemon.close()
 

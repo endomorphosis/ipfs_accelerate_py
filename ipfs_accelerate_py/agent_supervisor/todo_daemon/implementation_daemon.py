@@ -50155,6 +50155,8 @@ class PortalImplementationDaemon:
                 if current:
                     entries.append(current)
                 current = {"worktree": line.split(" ", 1)[1]}
+            elif line.startswith("HEAD "):
+                current["HEAD"] = line.split(" ", 1)[1].strip()
             elif line.startswith("branch "):
                 branch = line.split(" ", 1)[1]
                 current["branch"] = branch.removeprefix("refs/heads/")
@@ -55129,10 +55131,19 @@ class PortalImplementationDaemon:
                 self._active_worktree_lifecycle = None
 
         if record.is_terminal:
+            deleted = self.worktree_lifecycle.compare_and_delete(
+                record.workspace_path,
+                expected_fence=record.fence,
+                lease_id=record.lease_id,
+            )
             _clear_captured_active()
             return {
-                "finalized": True,
-                "reason": "already_terminal",
+                "finalized": deleted,
+                "reason": (
+                    "already_terminal_deleted"
+                    if deleted
+                    else "lifecycle_compare_delete_race"
+                ),
                 "fence": record.fence,
             }
         try:
@@ -55183,13 +55194,37 @@ class PortalImplementationDaemon:
         if max_cleanups <= 0:
             return {"attempted": False, "reason": "merged_worktree_cleanup_disabled"}
 
-        prune = subprocess.run(
-            ["git", "worktree", "prune"],
-            cwd=self.repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
+        lease, lock_reason, existing_lock, waited = (
+            self._acquire_checkout_mutation_lease(
+                task_id="__merged_worktree_cleanup__",
+                operation="cleanup_already_merged_worktrees",
+                timeout_seconds=0.0,
+            )
         )
+        if lease is None:
+            return {
+                "attempted": True,
+                "removed_count": 0,
+                "skipped_count": 0,
+                "reason": f"checkout_mutation_{lock_reason}",
+                "lock_path": str(self._repo_merge_lock_path()),
+                "lock_owner_pid": int((existing_lock or {}).get("pid") or 0),
+                "waited_seconds": waited,
+            }
+        try:
+            return self._cleanup_already_merged_worktrees_locked(
+                max_cleanups=max_cleanups,
+            )
+        finally:
+            self._release_checkout_mutation_lease(lease)
+
+    def _cleanup_already_merged_worktrees_locked(
+        self,
+        *,
+        max_cleanups: int,
+    ) -> dict[str, Any]:
+        """Clean exact qualified targets while holding the shared Git lease."""
+
         try:
             root_resolved = self.worktree_root.resolve()
         except OSError:
@@ -55224,16 +55259,40 @@ class PortalImplementationDaemon:
                 continue
 
             branch_name = str(entry.get("branch") or "").removeprefix("refs/heads/")
-            detail = {"worktree_path": str(worktree_path), "branch": branch_name}
+            registered_head = str(entry.get("HEAD") or "").strip()
+            detail = {
+                "worktree_path": str(worktree_path),
+                "branch": branch_name,
+                "registered_head": registered_head,
+            }
             if active_resolved is not None and worktree_resolved == active_resolved:
                 skipped.append({**detail, "reason": "active_state_worktree"})
                 continue
             if any(str(worktree_resolved) in line for line in process_lines):
                 skipped.append({**detail, "reason": "active_process"})
                 continue
-            # Fenced ownership check must run before ancestry-based cleanup so a
-            # preparing/active claim whose tip still matches the merge target is
-            # never deleted by a peer lane (ASI-171).
+            if not self._managed_cleanup_branch(branch_name):
+                skipped.append({**detail, "reason": "unmanaged_branch"})
+                continue
+            if not self._git_ref_exists(branch_name):
+                skipped.append({**detail, "reason": "branch_missing"})
+                continue
+            branch_head = self._run_git(
+                ["rev-parse", "--verify", f"{branch_name}^{{commit}}"],
+                cwd=self.repo_root,
+            ).stdout.strip()
+            if (
+                not registered_head
+                or branch_head != registered_head
+                or not self._git_ref_is_ancestor(registered_head, target_branch)
+                or not self._git_ref_is_ancestor(branch_name, target_branch)
+            ):
+                skipped.append(
+                    {**detail, "branch_head": branch_head, "reason": "branch_head_not_exactly_merged"}
+                )
+                continue
+            # Every immutable Git identity is safe; now acquire the exact
+            # lifecycle fence before any status check or mutation.
             lifecycle_auth = self._authorize_worktree_cleanup(
                 worktree_path,
                 branch_name,
@@ -55242,28 +55301,44 @@ class PortalImplementationDaemon:
                 skipped.append(
                     {
                         **detail,
-                        "reason": f"lifecycle_{lifecycle_auth.get('reason') or 'fenced'}",
+                        "reason": (
+                            "lifecycle_"
+                            f"{lifecycle_auth.get('reason') or 'fenced'}"
+                        ),
                         "lifecycle": lifecycle_auth,
                     }
                 )
                 continue
-            if not self._managed_cleanup_branch(branch_name):
-                skipped.append({**detail, "reason": "unmanaged_branch"})
-                continue
-            if not self._git_ref_exists(branch_name):
-                skipped.append({**detail, "reason": "branch_missing"})
-                continue
-            if not self._git_ref_is_ancestor(branch_name, target_branch):
-                skipped.append({**detail, "reason": "branch_not_merged"})
-                continue
 
-            status = subprocess.run(
-                ["git", "status", "--porcelain", "--untracked-files=all"],
-                cwd=worktree_path,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
+            if not worktree_path.exists():
+                cleanup_result = self._cleanup_merged_worktree(
+                    worktree_path,
+                    branch_name,
+                )
+                removed.append({**detail, "cleanup_result": cleanup_result})
+                continue
+            try:
+                status = subprocess.run(
+                    ["git", "status", "--porcelain", "--untracked-files=all"],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            except FileNotFoundError:
+                # A peer may remove the directory between the existence check
+                # and process launch.  Re-enter the same fenced, branch-bound
+                # cleanup path instead of crashing the provider lane.
+                if not worktree_path.exists():
+                    cleanup_result = self._cleanup_merged_worktree(
+                        worktree_path,
+                        branch_name,
+                    )
+                    removed.append(
+                        {**detail, "cleanup_result": cleanup_result}
+                    )
+                    continue
+                raise
             if status.returncode != 0:
                 skipped.append(
                     {
@@ -55292,9 +55367,8 @@ class PortalImplementationDaemon:
             "worktree_root": str(self.worktree_root),
             "target_branch": target_branch,
             "max_cleanups": max_cleanups,
-            "prune_returncode": prune.returncode,
-            "prune_stdout": prune.stdout[-4000:],
-            "prune_stderr": prune.stderr[-4000:],
+            "prune_attempted": False,
+            "prune_returncode": None,
             "removed_count": sum(1 for item in removed if item["cleanup_result"].get("cleaned", False)),
             "skipped_count": len(skipped),
             "removed": removed,
@@ -55342,6 +55416,52 @@ class PortalImplementationDaemon:
             }
             self._record_event("cleanup_finished", result)
             return result
+        authorized_record = lifecycle_auth.get("record")
+        if isinstance(authorized_record, Mapping):
+            try:
+                captured = WorkspaceLifecycleRecord.from_dict(
+                    authorized_record
+                )
+            except (TypeError, ValueError, WorktreeLifecycleError) as exc:
+                result = {
+                    "cleaned": False,
+                    "branch": branch_name,
+                    "worktree_path": str(worktree_path or ""),
+                    "started_at": started_at,
+                    "finished_at": utc_now(),
+                    "removed_worktree": False,
+                    "deleted_branch": False,
+                    "submodule_cleanup": [],
+                    "reason": "lifecycle_authority_record_invalid",
+                    "error_type": type(exc).__name__,
+                }
+                self._record_event("cleanup_finished", result)
+                return result
+            if (
+                worktree_path is None
+                or normalize_workspace_path(captured.workspace_path)
+                != normalize_workspace_path(worktree_path)
+                or (
+                    branch_name
+                    and captured.branch
+                    and captured.branch.removeprefix("refs/heads/")
+                    != branch_name.removeprefix("refs/heads/")
+                )
+            ):
+                result = {
+                    "cleaned": False,
+                    "branch": branch_name,
+                    "worktree_path": str(worktree_path or ""),
+                    "started_at": started_at,
+                    "finished_at": utc_now(),
+                    "removed_worktree": False,
+                    "deleted_branch": False,
+                    "submodule_cleanup": [],
+                    "reason": "lifecycle_authority_record_mismatch",
+                }
+                self._record_event("cleanup_finished", result)
+                return result
+            lifecycle_record = captured
         lease: WorktreeLease | None = None
         lease_key: Path | None = None
         if worktree_path is not None:
@@ -55432,16 +55552,38 @@ class PortalImplementationDaemon:
         removed_worktree = False
         deleted_branch = False
         submodule_cleanup: list[dict[str, Any]] = []
+        stale_registration_cleanup: dict[str, Any] = {}
         errors: list[str] = []
         try:
-            if worktree_path is not None:
+            if worktree_path is not None and worktree_path.exists():
                 submodule_cleanup = self._cleanup_worktree_submodules(worktree_path, branch_name)
             if worktree_path is not None and (
                 worktree_path.exists() or self._worktree_path_registered_in_repo(self.repo_root, worktree_path)
             ):
-                self._run_git(["worktree", "remove", "--force", str(worktree_path)], cwd=self.repo_root)
+                path_was_absent = not worktree_path.exists()
+                command = ["worktree", "remove", "--force"]
+                if path_was_absent:
+                    # A crashed pool initialization can leave a locked Git
+                    # registration after its directory vanished.  Lifecycle,
+                    # managed-branch, and merge ancestry were already proven;
+                    # the second force is Git's explicit locked-worktree gate.
+                    command.append("--force")
+                command.append(str(worktree_path))
+                self._run_git(command, cwd=self.repo_root)
                 removed_worktree = True
-            if self._git_ref_exists(branch_name):
+                if path_was_absent:
+                    still_registered = self._worktree_path_registered_in_repo(
+                        self.repo_root,
+                        worktree_path,
+                    )
+                    stale_registration_cleanup = {
+                        "attempted": True,
+                        "removed": not still_registered,
+                        "registered_after": still_registered,
+                    }
+                    if still_registered:
+                        errors.append("stale worktree registration persisted")
+            if not errors and self._git_ref_exists(branch_name):
                 self._run_git(["branch", "-D", branch_name], cwd=self.repo_root)
                 deleted_branch = True
         except RuntimeError as exc:
@@ -55458,6 +55600,7 @@ class PortalImplementationDaemon:
                 "removed_worktree": removed_worktree,
                 "deleted_branch": deleted_branch,
                 "submodule_cleanup": submodule_cleanup,
+                "stale_registration_cleanup": stale_registration_cleanup,
                 "error": "\n".join(errors),
             }
             self._record_event("cleanup_finished", result)
@@ -55472,6 +55615,7 @@ class PortalImplementationDaemon:
             "removed_worktree": removed_worktree,
             "deleted_branch": deleted_branch,
             "submodule_cleanup": submodule_cleanup,
+            "stale_registration_cleanup": stale_registration_cleanup,
             "lifecycle_finalize": (
                 self._finalize_exact_worktree_lifecycle(
                     lifecycle_record,
@@ -73227,8 +73371,12 @@ class DatabaseImplementationDaemon:
             }
         result = dict(raw)
         raw_write_count = result.get("write_count", 0)
+        accepted_schemas = {
+            DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+            DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
+        }
         envelope_invalid = (
-            result.get("schema") != DATABASE_POST_MERGE_RECOVERY_SCHEMA
+            result.get("schema") not in accepted_schemas
             or result.get("attempted") is not True
             or not isinstance(result.get("recovered"), bool)
             or (
@@ -78172,9 +78320,9 @@ class DatabaseImplementationDaemon:
         reason = str(value or "portal_execution_deferred").strip()
         lowered = reason.lower()
         if (
-            "authentication failed" in lowered
-            or "quack control-plane attach contended" in lowered
-            or "could not connect to server" in lowered
+            lowered == "quack_attach_contended"
+            or lowered == "quack control-plane attach contended"
+            or lowered.startswith("quack control-plane attach contended:")
         ):
             return "quack_attach_contended"
         return (reason or "portal_execution_deferred")[:1024]
@@ -78183,12 +78331,16 @@ class DatabaseImplementationDaemon:
     def _is_quack_attach_contention(exc: BaseException) -> bool:
         from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
             QuackTransportContentionError,
-            quack_attach_error_is_contention,
         )
 
-        return isinstance(exc, QuackTransportContentionError) or (
-            quack_attach_error_is_contention(exc)
+        return isinstance(exc, QuackTransportContentionError)
+
+    def _is_quack_transport_unavailable(self, exc: BaseException) -> bool:
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            quack_transport_error_is_unavailable,
         )
+
+        return quack_transport_error_is_unavailable(exc, uri=self._quack_uri)
 
     def _run_reconciliation_step(
         self,
@@ -78199,6 +78351,8 @@ class DatabaseImplementationDaemon:
         try:
             return callback()
         except Exception as exc:
+            if self._is_quack_transport_unavailable(exc):
+                raise
             if self._is_quack_attach_contention(exc):
                 return []
             raise
@@ -78343,6 +78497,79 @@ class DatabaseImplementationDaemon:
             "expired_attempt_reconciliations": expired,
             "board_unstall_request": board_unstall,
         }
+
+    def _quack_transport_unavailable_deferral(
+        self,
+        exc: BaseException,
+        *,
+        pre_mutation: bool,
+    ) -> dict[str, Any]:
+        """Defer a pass when its exact loopback Quack endpoint is unavailable."""
+
+        from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+            reset_quack_transport_cache,
+        )
+
+        reset_quack_transport_cache(self._quack_uri)
+        self._arm_quack_attach_cooldown()
+        result: dict[str, Any] = {
+            "deferred": True,
+            "skipped": True,
+            "reason": "quack_transport_unavailable",
+            "backoff_seconds": _QUACK_ATTACH_CONTENTION_BACKOFF_SECONDS,
+            "portal_retryable_failure": True,
+            "portal_terminal_failure": False,
+            "error_class": type(exc).__name__,
+            "authority_mode": self.authority_mode,
+            "task_source_kind": self.task_source_kind,
+            "quack_transport_cache_reset": True,
+            "pre_mutation_transport_probe": pre_mutation,
+        }
+        if pre_mutation:
+            result.update(
+                {
+                    "unchanged": True,
+                    "write_count": 0,
+                    "attempt_consumed": False,
+                    "provider_dispatched": False,
+                    "durable_state_uncertain": False,
+                }
+            )
+        else:
+            # A transport loss after the read-only probe may follow a CAS,
+            # claim, provider call, or external effect.  Missing observations
+            # are unavailable, never zero/false; the next pass must reconcile.
+            result.update(
+                {
+                    "unchanged": False,
+                    "write_count": None,
+                    "write_count_available": False,
+                    "attempt_consumed_available": False,
+                    "provider_dispatched_available": False,
+                    "durable_state_uncertain": True,
+                    "reconciliation_required": True,
+                }
+            )
+        return result
+
+    def _quack_transport_preflight(self) -> dict[str, Any] | None:
+        """Probe the bound read transport before any pass mutation can start."""
+
+        if self.authority_mode != "quack" or not self._quack_uri:
+            return None
+        snapshot = getattr(self.task_source, "snapshot", None)
+        if not callable(snapshot):
+            return None
+        try:
+            snapshot()
+        except Exception as exc:
+            if self._is_quack_transport_unavailable(exc):
+                return self._quack_transport_unavailable_deferral(
+                    exc,
+                    pre_mutation=True,
+                )
+            raise
+        return None
 
     @staticmethod
     def _database_portal_evidence_digest(value: Mapping[str, Any]) -> str:
@@ -86124,7 +86351,9 @@ class DatabaseImplementationDaemon:
             try:
                 outcome = rearm_fn(task_id, receipt=compact)
             except Exception as exc:
-                if self._is_quack_attach_contention(exc):
+                if self._is_quack_transport_unavailable(
+                    exc
+                ) or self._is_quack_attach_contention(exc):
                     raise
                 results.append(
                     {
@@ -86162,6 +86391,11 @@ class DatabaseImplementationDaemon:
         try:
             return self._run_once_impl()
         except Exception as exc:
+            if self._is_quack_transport_unavailable(exc):
+                return self._quack_transport_unavailable_deferral(
+                    exc,
+                    pre_mutation=False,
+                )
             if self._is_quack_attach_contention(exc):
                 return self._quack_attach_contention_deferral(exc)
             raise
@@ -86171,11 +86405,20 @@ class DatabaseImplementationDaemon:
 
         if not self.require_real_execution:
             return self._execution_disabled_observation()
+        transport_deferral = self._quack_transport_preflight()
+        if transport_deferral is not None:
+            return transport_deferral
         output_rearm = self._rearm_blocked_tasks_with_outputs_on_head()
         merge_quarantine_settlement = (
             self._settle_invalid_metadata_portal_quarantines()
         )
         post_merge_recovery_reconciliation = self._run_post_merge_recovery()
+        post_merge_recovery_claim_barrier = bool(
+            post_merge_recovery_reconciliation.get("durable_state_uncertain")
+            is True
+            or post_merge_recovery_reconciliation.get("changed") is True
+            or int(post_merge_recovery_reconciliation.get("write_count") or 0)
+        )
         completion_reconciliations = self._run_reconciliation_step(
             self.reconcile_prepared_task_completions
         )
@@ -86361,15 +86604,21 @@ class DatabaseImplementationDaemon:
                     "post_merge_recovery": post_merge_recovery_reconciliation,
                 }
 
-        attempt = self.claim_next()
-        if attempt is None and int(output_rearm.get("write_count") or 0):
+        attempt = None
+        if not post_merge_recovery_claim_barrier:
             attempt = self.claim_next()
+            if attempt is None and int(output_rearm.get("write_count") or 0):
+                attempt = self.claim_next()
         if attempt is None:
             return {
                 "unchanged": reconciliation_write_count == 0,
                 "write_count": reconciliation_write_count,
                 "active_task_id": "",
-                "selection_idle_reason": "no_ready_tasks",
+                "selection_idle_reason": (
+                    "post_merge_recovery_settlement"
+                    if post_merge_recovery_claim_barrier
+                    else "no_ready_tasks"
+                ),
                 "implementation_result": None,
                 "authority_mode": self.authority_mode,
                 "task_source_kind": self.task_source_kind,

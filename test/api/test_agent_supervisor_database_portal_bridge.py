@@ -41,6 +41,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DATASETS_AUTHORITATIVE_STATE_SCHEMA_REVISION,
+    DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
     SEMANTIC_TRUTH_AUTHORITY_ENV,
     SEMANTIC_WRITER_POLICY_ENV,
     DatabaseImplementationAuthorityError,
@@ -2912,6 +2913,35 @@ def test_post_merge_rearm_endpoints_fail_closed_on_invalid_payloads(
         assert result["attempted"] is True
         assert result["recovered"] is False
         assert result["reason"] == "no_recoverable_post_merge_request"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_post_merge_wrapper_accepts_false_completion_reintegration_schema(
+    tmp_path: Path,
+) -> None:
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:false-completion-wrapper",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    expected = {
+        "schema": DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
+        "attempted": True,
+        "recovered": True,
+        "changed": True,
+        "write_count": 1,
+        "request_id": "request:false-completion",
+    }
+    try:
+        daemon.bind_post_merge_recovery(lambda: dict(expected))
+
+        assert daemon._run_post_merge_recovery() == expected
     finally:
         daemon.close()
 

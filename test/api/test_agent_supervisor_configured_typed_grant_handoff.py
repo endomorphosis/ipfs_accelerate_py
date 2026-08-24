@@ -3329,6 +3329,54 @@ def test_aseh_canonical_merge_suffix_admits_only_exact_two_parent_output(
     assert proof["integrations"][0]["candidate_commit"] == candidate
     assert proof["integrations"][0]["changed_paths"] == ["output.txt"]
 
+    monkeypatch.setattr(
+        aseh_operator, "REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT", base
+    )
+    monkeypatch.setattr(
+        aseh_operator, "REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD", integrated
+    )
+    monkeypatch.setattr(
+        aseh_operator, "REPAIR_FOLLOWUP_TRANSITION_CANDIDATE", candidate
+    )
+    monkeypatch.setattr(
+        aseh_operator, "REPAIR_FOLLOWUP_TRANSITION_TASK_ALIAS", "ASEH-000"
+    )
+    integrity["task_statuses"]["ASEH-000"] = "blocked"
+    nonterminal = aseh_operator._admit_canonical_merge_suffix(
+        board,
+        base_head=base,
+        target_head=integrated,
+        bootstrap=bootstrap,
+        integrity=integrity,
+        task_outputs={"ASEH-000": ("output.txt",)},
+        completed_requests=(request,),
+        admission_mode="followup_repair_base",
+    )
+    assert nonterminal["schema"].endswith(
+        "/aseh-nonterminal-integration-base@1"
+    )
+    assert nonterminal["task_completion_admitted"] is False
+    assert nonterminal["completion_authoritative"] is False
+    assert nonterminal["integrations"][0]["observed_task_status"] == "blocked"
+
+    for restart_status in ("ready", "claimed", "in_progress", "running"):
+        integrity["task_statuses"]["ASEH-000"] = restart_status
+        restart_witness = aseh_operator._admit_canonical_merge_suffix(
+            board,
+            base_head=base,
+            target_head=integrated,
+            bootstrap=bootstrap,
+            integrity=integrity,
+            task_outputs={"ASEH-000": ("output.txt",)},
+            completed_requests=(request,),
+            admission_mode="followup_repair_base",
+        )
+        assert restart_witness["task_completion_admitted"] is False
+        assert restart_witness["integrations"][0][
+            "observed_task_status"
+        ] == restart_status
+    integrity["task_statuses"]["ASEH-000"] = "completed"
+
     metadata["baseline_ref"] = "HEAD"
     with pytest.raises(aseh_operator.OperatorError, match="exact commit"):
         aseh_operator._admit_canonical_merge_suffix(
@@ -3434,6 +3482,88 @@ def test_aseh_repair_transition_receipt_is_closed_and_non_mutating() -> None:
     receipt["database_mutated"] = True
     with pytest.raises(aseh_operator.OperatorError, match="schema"):
         aseh_operator._repair_transition_receipt_id(receipt)
+
+
+def test_aseh_repair_transition_followup_receipt_is_closed_and_chained() -> None:
+    witness = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "aseh-nonterminal-integration-witness@1"
+        ),
+        "base_head": "1" * 40,
+        "base_tree": "2" * 40,
+        "target_head": "3" * 40,
+        "target_tree": "4" * 40,
+        "request_id": "request:aseh-followup",
+        "merge_request_cid": "sha256:" + ("5" * 64),
+        "task_id": "ASEH-001",
+        "task_cid": "task:aseh-followup",
+        "candidate_commit": "6" * 40,
+        "candidate_tree": "7" * 40,
+        "integration_commit": "3" * 40,
+        "integration_tree": "4" * 40,
+        "baseline_ref": "8" * 40,
+        "changed_paths": ["sealed.json"],
+        "validation_proof_cid": "sha256:" + ("9" * 64),
+        "completion_authoritative": False,
+        "task_completion_admitted": False,
+    }
+    witness["receipt_cid"] = aseh_operator._identity(witness)
+    receipt = {
+        "schema": aseh_operator.REPAIR_FOLLOWUP_TRANSITION_SCHEMA,
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R2"
+        ),
+        "program_id": aseh_operator.PROGRAM,
+        "transition_revision": 2,
+        "bootstrap_receipt_id": "sha256:" + ("a" * 64),
+        "previous_receipt_cid": "sha256:" + ("b" * 64),
+        "base_integration_witness": witness,
+        "authorization_task_observation": {
+            "task_id": "ASEH-001",
+            "task_cid": "task:aseh-followup",
+            "status": "blocked",
+            "revision": 6,
+            "completion_authoritative": False,
+            "observed_at": 1.0,
+        },
+        "plan_root_cid": "plan:sealed",
+        "repository_tree_id": "tree:sealed",
+        "base_head": "3" * 40,
+        "base_tree": "4" * 40,
+        "repair_head": "c" * 40,
+        "repair_tree": "d" * 40,
+        "changed_paths": list(
+            aseh_operator.REPAIR_FOLLOWUP_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": "sha256:" + ("e" * 64),
+        "dependencies": [
+            "ASEH-BOOTSTRAP-002@ASEH-PLAN-R1",
+            "ASEH-001",
+        ],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": "explicit follow-up repair authority",
+        "validation_results": [],
+        "terminal_success_criteria": "exact automatic recovery",
+        "terminal_non_success_criteria": "all drift rejected",
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    assert aseh_operator._repair_followup_transition_receipt_id(receipt) == (
+        receipt["receipt_cid"]
+    )
+
+    receipt["transition_revision"] = 3
+    receipt["receipt_cid"] = aseh_operator._identity(
+        {key: value for key, value in receipt.items() if key != "receipt_cid"}
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="schema"):
+        aseh_operator._repair_followup_transition_receipt_id(receipt)
 
 
 def test_aseh_repair_authorization_replay_rejects_head_regression(

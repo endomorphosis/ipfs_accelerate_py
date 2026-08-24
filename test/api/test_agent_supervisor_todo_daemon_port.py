@@ -79,7 +79,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
 )
 from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import (
     _DEFAULT_CODEX_TIMEOUT_SECONDS,
-    _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+    _DEFAULT_GROK_TIMEOUT_SECONDS,
     _timeout_seconds,
     llm_merge_resolver_fallback_command,
 )
@@ -4746,22 +4746,21 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
 
 
 def test_llm_merge_resolver_provider_defaults_fit_outer_budget(monkeypatch):
+    monkeypatch.delenv("GROK_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
-    monkeypatch.delenv("COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS", raising=False)
 
+    grok_timeout = _timeout_seconds(
+        "GROK_MERGE_RESOLVER_TIMEOUT_SECONDS",
+        _DEFAULT_GROK_TIMEOUT_SECONDS,
+    )
     codex_timeout = _timeout_seconds(
-        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS",
-        _DEFAULT_CODEX_TIMEOUT_SECONDS,
-    )
-    copilot_timeout = _timeout_seconds(
-        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS",
-        _DEFAULT_COPILOT_TIMEOUT_SECONDS,
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS", _DEFAULT_CODEX_TIMEOUT_SECONDS
     )
 
-    assert codex_timeout == 900
-    assert copilot_timeout == 600
+    assert grok_timeout == 900
+    assert codex_timeout == 600
     assert (
-        codex_timeout + copilot_timeout
+        grok_timeout + codex_timeout
         < merge_resolver.DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS
     )
 
@@ -11316,6 +11315,101 @@ def test_implementation_daemon_run_once_cleans_already_merged_worktree(tmp_path)
     assert branch_exists.returncode != 0
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert any(event["type"] == "merged_worktree_cleanup" for event in events)
+
+
+def test_implementation_daemon_repairs_locked_missing_merged_worktree_registration(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/accel-locked-missing-attempt-1"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("merged payload\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "add merged payload")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch_name)
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "locked-missing"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    _git(
+        repo,
+        "worktree",
+        "lock",
+        "--reason",
+        "initializing",
+        str(worktree_path),
+    )
+    shutil.rmtree(worktree_path)
+    listing_before = _git(repo, "worktree", "list", "--porcelain")
+    assert f"worktree {worktree_path}" in listing_before.splitlines()
+    assert "locked initializing" in listing_before.splitlines()
+
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Completed merged-worktree cleanup fixture
+
+- Status: completed
+- Completion: manual
+- Priority: P2
+- Track: ops
+- Depends on:
+- Outputs: feature.txt
+- Validation: test -f feature.txt
+- Acceptance: The fixture branch is already merged.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=worktree_root,
+        merged_worktree_cleanup_max=5,
+    )
+    original_locked_cleanup = daemon._cleanup_already_merged_worktrees_locked
+    checkout_lock_observed: list[bool] = []
+
+    def observe_checkout_lock(**kwargs):
+        checkout_lock_observed.append(daemon._repo_merge_lock_path().exists())
+        return original_locked_cleanup(**kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_cleanup_already_merged_worktrees_locked",
+        observe_checkout_lock,
+    )
+
+    result = daemon.run_once()
+
+    cleanup = result["merged_worktree_cleanup"]
+    assert checkout_lock_observed == [True]
+    assert cleanup["removed_count"] == 1
+    assert cleanup["removed"][0]["cleanup_result"]["cleaned"] is True
+    stale_cleanup = cleanup["removed"][0]["cleanup_result"][
+        "stale_registration_cleanup"
+    ]
+    assert stale_cleanup == {
+        "attempted": True,
+        "removed": True,
+        "registered_after": False,
+    }
+    listing_after = _git(repo, "worktree", "list", "--porcelain")
+    assert f"worktree {worktree_path}" not in listing_after.splitlines()
 
 
 def test_implementation_daemon_fences_preparing_worktree_from_peer_merged_cleanup(
@@ -28100,6 +28194,16 @@ def test_implementation_supervisor_tolerates_worktree_removed_during_cleanup(
         "_git_ref_is_ancestor",
         lambda _repo, _ancestor, _descendant: True,
     )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_ref_commit",
+        lambda _repo, _ref: "abc123",
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_ref_exists",
+        lambda _repo, _ref: True,
+    )
 
     def remove_then_report_dirty(_path: Path) -> list[str]:
         worktree_path.rmdir()
@@ -28114,8 +28218,96 @@ def test_implementation_supervisor_tolerates_worktree_removed_during_cleanup(
 
     result = supervisor.cleanup_backlogged_worktrees()
 
-    assert result["removed_count"] == 0
-    assert result["skipped_reason_counts"]["worktree_removed_concurrently"] == 1
+    assert result["removed_count"] == 1
+    assert result["removed"][0]["reason"] == "orphaned_registration_removed"
+
+
+def test_implementation_supervisor_repairs_locked_missing_merged_registration_under_checkout_lock(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/supervisor-locked-missing"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("merged payload\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "add merged payload")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch_name)
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "locked-missing"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    _git(
+        repo,
+        "worktree",
+        "lock",
+        "--reason",
+        "initializing",
+        str(worktree_path),
+    )
+    shutil.rmtree(worktree_path)
+    listing_before = _git(repo, "worktree", "list", "--porcelain")
+    assert f"worktree {worktree_path}" in listing_before.splitlines()
+    assert "locked initializing" in listing_before.splitlines()
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+            merge_target_branch="main",
+        )
+    )
+    monkeypatch.setattr(supervisor, "_list_process_commands", lambda: [])
+    original_cleanup = supervisor._cleanup_missing_worktree_registration_locked
+    mismatched = original_cleanup(
+        path=worktree_path,
+        branch=branch_name,
+        head=_git(repo, "rev-parse", "main^1"),
+        target_ref="main",
+    )
+    assert mismatched["removed"] is False
+    assert mismatched["reason"] == (
+        "registered_head_or_branch_not_exactly_merged"
+    )
+    assert f"worktree {worktree_path}" in _git(
+        repo, "worktree", "list", "--porcelain"
+    ).splitlines()
+    checkout_lock_observed: list[bool] = []
+
+    def observe_checkout_lock(**kwargs):
+        checkout_lock_observed.append(supervisor._repo_merge_lock_path().exists())
+        return original_cleanup(**kwargs)
+
+    monkeypatch.setattr(
+        supervisor,
+        "_cleanup_missing_worktree_registration_locked",
+        observe_checkout_lock,
+    )
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert checkout_lock_observed == [True]
+    assert result["removed_count"] == 1
+    assert result["removed"][0]["reason"] == "orphaned_registration_removed"
+    assert result["removed"][0]["registered_after"] is False
+    assert result["removed"][0]["branch_delete"]["deleted"] is True
+    assert not supervisor._repo_merge_lock_path().exists()
+    listing_after = _git(repo, "worktree", "list", "--porcelain")
+    assert f"worktree {worktree_path}" not in listing_after.splitlines()
 
 
 def test_implementation_supervisor_keeps_peer_lane_active_worktree(tmp_path):

@@ -115,6 +115,87 @@ REPAIR_TRANSITION_VALIDATIONS: Final = (
         ),
     ),
 )
+REPAIR_FOLLOWUP_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-followup-transition@1"
+)
+REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD: Final = (
+    "73a06a7d6f8303cbfbeed4662e847cde5d71a4d4"
+)
+REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT: Final = (
+    "a398362913bba4bce0d3ecf1b62cee7f67e0c72a"
+)
+REPAIR_FOLLOWUP_TRANSITION_CANDIDATE: Final = (
+    "7d4f19ef5a6f59beacffd34804c3465a76f079c5"
+)
+REPAIR_FOLLOWUP_TRANSITION_TASK_ALIAS: Final = "ASEH-001"
+REPAIR_FOLLOWUP_TRANSITION_CHANGED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    "test/api/test_agent_supervisor_database_implementation_daemon.py",
+    "test/api/test_agent_supervisor_database_portal_bridge.py",
+    "test/api/test_agent_supervisor_incremental_runtime.py",
+    "test/api/test_agent_supervisor_quack_transport_defaults.py",
+    "test/api/test_agent_supervisor_todo_daemon_port.py",
+)
+REPAIR_FOLLOWUP_TRANSITION_VALIDATIONS: Final = (
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k", "canonical_merge_suffix or repair_transition",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_incremental_runtime.py", "-k",
+        (
+            "worktree_pool_discard_removes_locked_missing_registration_and_sidecar "
+            "or worktree_pool_discard_preserves_state_until_registry_is_verified"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_todo_daemon_port.py", "-k",
+        (
+            "implementation_daemon_repairs_locked_missing_merged_worktree_registration "
+            "or implementation_daemon_run_once_cleans_already_merged_worktree "
+            "or implementation_daemon_fences_preparing_worktree_from_peer_merged_cleanup "
+            "or implementation_supervisor_repairs_locked_missing_merged_registration_under_checkout_lock "
+            "or implementation_supervisor_tolerates_worktree_removed_during_cleanup "
+            "or implementation_supervisor_defers_worktree_cleanup_behind_checkout_lock "
+            "or implementation_supervisor_keeps_peer_lane_active_worktree"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_database_portal_bridge.py", "-k",
+        (
+            "post_merge_wrapper_accepts_false_completion_reintegration_schema "
+            "or post_merge_rearm_endpoints_fail_closed_on_invalid_payloads"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_database_implementation_daemon.py", "-k",
+        (
+            "post_merge_recovery_settles_before_claiming_next_task "
+            "or quack_transport_unavailable_defers_whole_pass_without_claim "
+            "or quack_transport_unavailable_after_preflight_marks_effects_unknown "
+            "or quack_transport_deferral_rejects_untyped_or_foreign_endpoint_errors "
+            "or database_portal_reason_does_not_remint_application_failures_as_quack "
+            "or quack_attach_contention_defers_instead_of_crashing "
+            "or quack_attach_contention_requests_owner_board_unstall "
+            "or quack_attach_contention_still_expires_running_attempts"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_quack_transport_defaults.py",
+    ),
+)
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
         "schema", "source_head", "repository_tree_id", "plan_root_cid",
@@ -134,6 +215,37 @@ REPAIR_TRANSITION_RECEIPT_FIELDS: Final = frozenset(
         "validation_results", "terminal_success_criteria",
         "terminal_non_success_criteria", "semantic_corpus_changed",
         "database_mutated", "authorized_at", "receipt_cid",
+    }
+)
+REPAIR_FOLLOWUP_TRANSITION_RECEIPT_FIELDS: Final = frozenset(
+    {
+        "schema", "task_id", "stable_identity", "program_id",
+        "transition_revision", "bootstrap_receipt_id",
+        "previous_receipt_cid", "base_integration_witness",
+        "authorization_task_observation",
+        "plan_root_cid", "repository_tree_id", "base_head", "base_tree",
+        "repair_head", "repair_tree", "changed_paths", "patch_digest",
+        "dependencies", "owning_repository", "risk_class",
+        "authority_requirement", "validation_results",
+        "terminal_success_criteria", "terminal_non_success_criteria",
+        "semantic_corpus_changed", "database_mutated", "authorized_at",
+        "receipt_cid",
+    }
+)
+REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
+    {
+        "schema", "base_head", "base_tree", "target_head", "target_tree",
+        "request_id", "merge_request_cid", "task_id", "task_cid",
+        "candidate_commit", "candidate_tree", "integration_commit",
+        "integration_tree", "baseline_ref", "changed_paths",
+        "validation_proof_cid", "completion_authoritative",
+        "task_completion_admitted", "receipt_cid",
+    }
+)
+REPAIR_FOLLOWUP_TASK_OBSERVATION_FIELDS: Final = frozenset(
+    {
+        "task_id", "task_cid", "status", "revision",
+        "completion_authoritative", "observed_at",
     }
 )
 DUCKLAKE_SCHEMA: Final = (
@@ -328,6 +440,28 @@ def _repair_transition_receipt_id(payload: Mapping[str, Any]) -> str:
     return receipt_id
 
 
+def _repair_followup_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-2 receipt without changing revision 1."""
+
+    if (
+        payload.get("schema") != REPAIR_FOLLOWUP_TRANSITION_SCHEMA
+        or set(payload) != REPAIR_FOLLOWUP_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 2
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+    ):
+        raise OperatorError("bootstrap repair follow-up schema is invalid")
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError("bootstrap repair follow-up CID is invalid")
+    return receipt_id
+
+
 def _run(
     argv: Sequence[str],
     *,
@@ -418,6 +552,25 @@ def _run_repair_transition_validations() -> list[dict[str, Any]]:
     return results
 
 
+def _run_repair_followup_transition_validations() -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for command in REPAIR_FOLLOWUP_TRANSITION_VALIDATIONS:
+        completed = _run(command, timeout=900)
+        result = {
+            "argv": list(command),
+            "returncode": int(completed.returncode),
+            "stdout_digest": _identity(completed.stdout.encode("utf-8")),
+            "stderr_digest": _identity(completed.stderr.encode("utf-8")),
+        }
+        results.append(result)
+        if completed.returncode != 0:
+            raise OperatorError(
+                "bootstrap repair follow-up validation failed: "
+                + " ".join(command)
+            )
+    return results
+
+
 def _safe_path(value: str, *, field: str) -> Path:
     candidate = (ROOT / value).resolve()
     try:
@@ -495,6 +648,11 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-transition.json"
+    )
+    result["repair_followup_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-followup-transition.json"
     )
     result["status_receipt"] = (
         result["evidence"] / "control-plane" / "live-status.json"
@@ -1874,6 +2032,7 @@ def _admit_canonical_merge_suffix(
     integrity: Mapping[str, Any],
     task_outputs: Mapping[str, Sequence[str]],
     completed_requests: Sequence[Any],
+    admission_mode: str = "canonical_completion",
 ) -> dict[str, Any]:
     """Prove every first-parent advance is one exact admitted queue merge."""
 
@@ -1886,6 +2045,16 @@ def _admit_canonical_merge_suffix(
 
     base = str(base_head or "").strip().casefold()
     target = str(target_head or "").strip().casefold()
+    if admission_mode not in {
+        "canonical_completion", "followup_repair_base",
+    }:
+        raise OperatorError("continuity admission mode is invalid")
+    followup_repair_base = admission_mode == "followup_repair_base"
+    if followup_repair_base and (
+        base != REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT
+        or target != REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD
+    ):
+        raise OperatorError("follow-up repair base identity differs")
     if _git("rev-parse", "--verify", f"{base}^{{commit}}") != base:
         raise OperatorError("continuity base commit is unavailable")
     if _git("merge-base", "--is-ancestor", base, target) != "":
@@ -1907,6 +2076,10 @@ def _admit_canonical_merge_suffix(
         "rev-list", "--first-parent", "--reverse", f"{base}..{target}"
     )
     commits = tuple(item for item in raw_suffix.splitlines() if item)
+    if followup_repair_base and commits != (
+        REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD,
+    ):
+        raise OperatorError("follow-up repair base is not one exact integration")
     previous = base
     admitted: list[dict[str, Any]] = []
     used_requests: set[str] = set()
@@ -1933,6 +2106,15 @@ def _admit_canonical_merge_suffix(
         metadata = request.metadata
         alias = str(request.task_id or "").strip()
         task_cid = str(request.canonical_task_id or "").strip()
+        status = str(statuses.get(alias) or "").strip().casefold()
+        lifecycle_admitted = status in COMPLETED_STATUSES
+        if followup_repair_base:
+            lifecycle_admitted = (
+                integration_commit == REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD
+                and candidate == REPAIR_FOLLOWUP_TRANSITION_CANDIDATE
+                and alias == REPAIR_FOLLOWUP_TRANSITION_TASK_ALIAS
+                and bool(status)
+            )
         if (
             request.status != "completed"
             or metadata.get("schema")
@@ -1944,7 +2126,7 @@ def _admit_canonical_merge_suffix(
             != board.merge_target_branch
             or task_cids.get(alias) != task_cid
             or request.canonical_task_key != task_cid
-            or statuses.get(alias) not in COMPLETED_STATUSES
+            or not lifecycle_admitted
             or type(revisions.get(alias)) is not int
             or int(revisions[alias]) <= int(sealed_revisions.get(alias, -1))
             or metadata.get("completion_task_cids") != {alias: task_cid}
@@ -2032,18 +2214,29 @@ def _admit_canonical_merge_suffix(
         if proof.get("passed") is not True:
             raise OperatorError("continuity candidate handoff is not integrated")
         integration_tree = _git("rev-parse", f"{integration_commit}^{{tree}}")
-        admitted.append(
-            {
-                "request_id": str(request.request_id),
-                "task_alias": alias,
-                "task_cid": task_cid,
-                "candidate_commit": candidate,
-                "candidate_tree": candidate_tree,
-                "integration_commit": integration_commit,
-                "integration_tree": integration_tree,
-                "changed_paths": list(landed_paths),
-            }
-        )
+        integration = {
+            "request_id": str(request.request_id),
+            "task_alias": alias,
+            "task_cid": task_cid,
+            "candidate_commit": candidate,
+            "candidate_tree": candidate_tree,
+            "integration_commit": integration_commit,
+            "integration_tree": integration_tree,
+            "changed_paths": list(landed_paths),
+        }
+        if followup_repair_base:
+            integration.update(
+                {
+                    "merge_request_cid": _identity(request.to_dict()),
+                    "baseline_ref": baseline_ref,
+                    "validation_proof_cid": _identity(validation),
+                    "completion_authoritative": False,
+                    "task_completion_admitted": False,
+                    "observed_task_status": status,
+                    "observed_task_revision": int(revisions[alias]),
+                }
+            )
+        admitted.append(integration)
         used_requests.add(str(request.request_id))
         previous = integration_commit
     if previous != target:
@@ -2051,13 +2244,20 @@ def _admit_canonical_merge_suffix(
     result = {
         "schema": (
             "ipfs_accelerate_py/agent-supervisor/"
-            "aseh-canonical-merge-suffix@1"
+            + (
+                "aseh-nonterminal-integration-base@1"
+                if followup_repair_base
+                else "aseh-canonical-merge-suffix@1"
+            )
         ),
         "base_head": base,
         "target_head": target,
         "target_tree": _git("rev-parse", f"{target}^{{tree}}"),
         "integrations": admitted,
     }
+    if followup_repair_base:
+        result["completion_authoritative"] = False
+        result["task_completion_admitted"] = False
     return {**result, "receipt_cid": _identity(result)}
 
 
@@ -2349,6 +2549,300 @@ def _validate_repair_transition(
     return result
 
 
+def _repair_followup_witness_from_proof(
+    proof: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Separate immutable integration evidence from its live lifecycle view."""
+
+    integrations = proof.get("integrations")
+    if (
+        proof.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "aseh-nonterminal-integration-base@1"
+        )
+        or proof.get("base_head")
+        != REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT
+        or proof.get("target_head") != REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD
+        or proof.get("completion_authoritative") is not False
+        or proof.get("task_completion_admitted") is not False
+        or not isinstance(integrations, list)
+        or len(integrations) != 1
+        or not isinstance(integrations[0], Mapping)
+    ):
+        raise OperatorError("follow-up nonterminal integration proof differs")
+    integration = integrations[0]
+    if (
+        integration.get("task_alias")
+        != REPAIR_FOLLOWUP_TRANSITION_TASK_ALIAS
+        or integration.get("candidate_commit")
+        != REPAIR_FOLLOWUP_TRANSITION_CANDIDATE
+        or integration.get("integration_commit")
+        != REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD
+        or integration.get("completion_authoritative") is not False
+        or integration.get("task_completion_admitted") is not False
+    ):
+        raise OperatorError("follow-up integration identity differs")
+    witness = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "aseh-nonterminal-integration-witness@1"
+        ),
+        "base_head": REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT,
+        "base_tree": _git(
+            "rev-parse",
+            f"{REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT}^{{tree}}",
+        ),
+        "target_head": REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD,
+        "target_tree": str(proof.get("target_tree") or ""),
+        "request_id": str(integration.get("request_id") or ""),
+        "merge_request_cid": str(
+            integration.get("merge_request_cid") or ""
+        ),
+        "task_id": REPAIR_FOLLOWUP_TRANSITION_TASK_ALIAS,
+        "task_cid": str(integration.get("task_cid") or ""),
+        "candidate_commit": REPAIR_FOLLOWUP_TRANSITION_CANDIDATE,
+        "candidate_tree": str(integration.get("candidate_tree") or ""),
+        "integration_commit": REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD,
+        "integration_tree": str(integration.get("integration_tree") or ""),
+        "baseline_ref": str(integration.get("baseline_ref") or ""),
+        "changed_paths": list(integration.get("changed_paths") or ()),
+        "validation_proof_cid": str(
+            integration.get("validation_proof_cid") or ""
+        ),
+        "completion_authoritative": False,
+        "task_completion_admitted": False,
+    }
+    witness["receipt_cid"] = _identity(witness)
+    observation = {
+        "task_id": REPAIR_FOLLOWUP_TRANSITION_TASK_ALIAS,
+        "task_cid": witness["task_cid"],
+        "status": str(integration.get("observed_task_status") or ""),
+        "revision": integration.get("observed_task_revision"),
+        "completion_authoritative": False,
+        "observed_at": time.time(),
+    }
+    return witness, observation
+
+
+def _validate_repair_followup_base_witness(
+    witness: Mapping[str, Any],
+) -> str:
+    if (
+        set(witness) != REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS
+        or witness.get("schema")
+        != (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "aseh-nonterminal-integration-witness@1"
+        )
+        or witness.get("base_head")
+        != REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT
+        or witness.get("target_head")
+        != REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD
+        or witness.get("integration_commit")
+        != REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD
+        or witness.get("candidate_commit")
+        != REPAIR_FOLLOWUP_TRANSITION_CANDIDATE
+        or witness.get("task_id")
+        != REPAIR_FOLLOWUP_TRANSITION_TASK_ALIAS
+        or witness.get("completion_authoritative") is not False
+        or witness.get("task_completion_admitted") is not False
+        or not str(witness.get("request_id") or "")
+        or not str(witness.get("task_cid") or "")
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(witness.get("merge_request_cid") or ""),
+        )
+        is None
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(witness.get("validation_proof_cid") or ""),
+        )
+        is None
+        or not isinstance(witness.get("changed_paths"), list)
+    ):
+        raise OperatorError("bootstrap repair follow-up witness differs")
+    if (
+        witness.get("base_tree")
+        != _git(
+            "rev-parse",
+            f"{REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT}^{{tree}}",
+        )
+        or witness.get("target_tree")
+        != _git(
+            "rev-parse", f"{REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD}^{{tree}}"
+        )
+        or witness.get("candidate_tree")
+        != _git(
+            "rev-parse", f"{REPAIR_FOLLOWUP_TRANSITION_CANDIDATE}^{{tree}}"
+        )
+        or witness.get("integration_tree") != witness.get("target_tree")
+        or _git(
+            "show", "-s", "--format=%P",
+            REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD,
+        ).split()
+        != [
+            REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT,
+            REPAIR_FOLLOWUP_TRANSITION_CANDIDATE,
+        ]
+    ):
+        raise OperatorError("bootstrap repair follow-up Git witness differs")
+    unsigned = dict(witness)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError("bootstrap repair follow-up witness CID is invalid")
+    return receipt_id
+
+
+def _validate_repair_followup_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 2 chained to the immutable revision-1 receipt."""
+
+    receipt_id = _repair_followup_transition_receipt_id(receipt)
+    previous_receipt_id = _repair_transition_receipt_id(previous_receipt)
+    expected_authority = (
+        "the operator explicitly directed the bootstrap engineering agent "
+        "to fix the existing canonical supervisor so it automatically "
+        "recovers ASEH runtime faults without state-writer contention"
+    )
+    if (
+        receipt.get("stable_identity")
+        != f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R2"
+        or receipt.get("previous_receipt_cid") != previous_receipt_id
+        or receipt.get("bootstrap_receipt_id")
+        != bootstrap.get("bootstrap_receipt_id")
+        or receipt.get("plan_root_cid") != bootstrap.get("plan_root_cid")
+        or receipt.get("repository_tree_id")
+        != bootstrap.get("repository_tree_id")
+        or receipt.get("base_head")
+        != REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD
+        or receipt.get("changed_paths")
+        != list(REPAIR_FOLLOWUP_TRANSITION_CHANGED_PATHS)
+        or receipt.get("dependencies")
+        != ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R1", "ASEH-001"]
+        or receipt.get("owning_repository") != "ipfs_accelerate_py"
+        or receipt.get("risk_class")
+        != "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+        or receipt.get("authority_requirement") != expected_authority
+        or type(receipt.get("authorized_at")) not in {int, float}
+        or float(receipt["authorized_at"]) <= 0.0
+    ):
+        raise OperatorError("bootstrap repair follow-up authority differs")
+    repair = str(receipt.get("repair_head") or "").strip().casefold()
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", repair) is None
+        or _git("show", "-s", "--format=%P", repair).split()
+        != [REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD]
+    ):
+        raise OperatorError("bootstrap repair follow-up must be one exact child")
+    base_tree = _git(
+        "rev-parse", f"{REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD}^{{tree}}"
+    )
+    repair_tree = _git("rev-parse", f"{repair}^{{tree}}")
+    if (
+        receipt.get("base_tree") != base_tree
+        or receipt.get("repair_tree") != repair_tree
+        or _git_changed_paths(REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD, repair)
+        != REPAIR_FOLLOWUP_TRANSITION_CHANGED_PATHS
+        or receipt.get("patch_digest")
+        != _git_patch_digest(REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD, repair)
+    ):
+        raise OperatorError("bootstrap repair follow-up Git proof differs")
+    forest = bootstrap.get("source_forest")
+    by_owner = forest.get("by_owner") if isinstance(forest, Mapping) else None
+    if not isinstance(by_owner, Mapping):
+        raise OperatorError("bootstrap source forest owner binding is absent")
+    for owner, path in (
+        ("ipfs_datasets_py", "ipfs_datasets_py"),
+        ("ipfs_kit_py", "ipfs_kit_py"),
+    ):
+        expected = by_owner.get(owner)
+        if (
+            not isinstance(expected, Mapping)
+            or _git("rev-parse", f"{repair}:{path}")
+            != expected.get("commit")
+        ):
+            raise OperatorError("bootstrap repair follow-up changed a sibling")
+    witness = receipt.get("base_integration_witness")
+    if not isinstance(witness, Mapping):
+        raise OperatorError("bootstrap repair follow-up witness is absent")
+    witness_id = _validate_repair_followup_base_witness(witness)
+    observation = receipt.get("authorization_task_observation")
+    sealed_revisions = bootstrap.get("integrity", {}).get("task_revisions")
+    sealed_revision = (
+        sealed_revisions.get(REPAIR_FOLLOWUP_TRANSITION_TASK_ALIAS)
+        if isinstance(sealed_revisions, Mapping)
+        else None
+    )
+    if (
+        not isinstance(observation, Mapping)
+        or set(observation) != REPAIR_FOLLOWUP_TASK_OBSERVATION_FIELDS
+        or observation.get("task_id")
+        != REPAIR_FOLLOWUP_TRANSITION_TASK_ALIAS
+        or observation.get("task_cid") != witness.get("task_cid")
+        or observation.get("status") not in {"blocked", "retrying"}
+        or type(observation.get("revision")) is not int
+        or type(sealed_revision) is not int
+        or int(observation["revision"]) <= sealed_revision
+        or observation.get("completion_authoritative") is not False
+        or type(observation.get("observed_at")) not in {int, float}
+        or float(observation["observed_at"]) <= 0.0
+    ):
+        raise OperatorError("bootstrap repair follow-up observation differs")
+    stored_results = receipt.get("validation_results")
+    if (
+        not isinstance(stored_results, list)
+        or len(stored_results) != len(REPAIR_FOLLOWUP_TRANSITION_VALIDATIONS)
+    ):
+        raise OperatorError("bootstrap repair follow-up validation differs")
+    for stored, command in zip(
+        stored_results, REPAIR_FOLLOWUP_TRANSITION_VALIDATIONS, strict=True
+    ):
+        if (
+            not isinstance(stored, Mapping)
+            or set(stored)
+            != {"argv", "returncode", "stdout_digest", "stderr_digest"}
+            or stored.get("argv") != list(command)
+            or stored.get("returncode") != 0
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(stored.get("stdout_digest") or "")
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(stored.get("stderr_digest") or "")
+            )
+            is None
+        ):
+            raise OperatorError("bootstrap repair follow-up validation differs")
+    if rerun_validations:
+        rerun = _run_repair_followup_transition_validations()
+        if [item["argv"] for item in rerun] != [
+            item.get("argv") for item in stored_results
+        ]:
+            raise OperatorError("bootstrap repair follow-up commands differ")
+    return {
+        "schema": REPAIR_FOLLOWUP_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 2,
+        "base_head": REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD,
+        "base_tree": base_tree,
+        "repair_head": repair,
+        "repair_tree": repair_tree,
+        "changed_paths": list(REPAIR_FOLLOWUP_TRANSITION_CHANGED_PATHS),
+        "patch_digest": str(receipt.get("patch_digest") or ""),
+        "previous_receipt_cid": previous_receipt_id,
+        "base_integration_witness_cid": witness_id,
+        "base_integration_witness": dict(witness),
+        "authorization_task_observation": dict(observation),
+        "receipt_cid": receipt_id,
+    }
+
+
 def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
     """Replay projections on a private clone, never on authoritative bytes."""
 
@@ -2468,6 +2962,102 @@ def _read_continuity_state(
     return snapshot, ready, integrity, outputs, requests
 
 
+def _admit_repair_followup_base(
+    board: Any,
+    *,
+    bootstrap: Mapping[str, Any],
+    integrity: Mapping[str, Any],
+    task_outputs: Mapping[str, Sequence[str]],
+    completed_requests: Sequence[Any],
+    stored_followup: Mapping[str, Any] | None = None,
+    require_nonterminal: bool = False,
+) -> dict[str, Any]:
+    """Admit exact integrated bytes without converting them to completion."""
+
+    statuses = integrity.get("task_statuses")
+    revisions = integrity.get("task_revisions")
+    task_cids = integrity.get("task_cids")
+    alias = REPAIR_FOLLOWUP_TRANSITION_TASK_ALIAS
+    if not all(
+        isinstance(value, Mapping) for value in (statuses, revisions, task_cids)
+    ):
+        raise OperatorError("follow-up lifecycle authority is incomplete")
+    status = str(statuses.get(alias) or "").strip().casefold()
+    revision = revisions.get(alias)
+    task_cid = str(task_cids.get(alias) or "")
+    if type(revision) is not int or not task_cid:
+        raise OperatorError("follow-up lifecycle identity is incomplete")
+    historical: Mapping[str, Any] = {}
+    stored_witness: Mapping[str, Any] = {}
+    if stored_followup is not None:
+        raw_historical = stored_followup.get("authorization_task_observation")
+        raw_witness = stored_followup.get("base_integration_witness")
+        if not isinstance(raw_historical, Mapping) or not isinstance(
+            raw_witness, Mapping
+        ):
+            raise OperatorError("follow-up historical evidence is absent")
+        historical = raw_historical
+        stored_witness = raw_witness
+        if (
+            historical.get("task_cid") != task_cid
+            or type(historical.get("revision")) is not int
+            or revision < int(historical["revision"])
+            or (
+                revision == int(historical["revision"])
+                and status != str(historical.get("status") or "")
+            )
+            or stored_witness.get("task_cid") != task_cid
+        ):
+            raise OperatorError("follow-up task identity or revision regressed")
+    if require_nonterminal and status not in {"blocked", "retrying"}:
+        raise OperatorError(
+            "follow-up authorization requires blocked or retrying ASEH-001"
+        )
+    witness_proof = _admit_canonical_merge_suffix(
+        board,
+        base_head=REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT,
+        target_head=REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD,
+        bootstrap=bootstrap,
+        integrity=integrity,
+        task_outputs=task_outputs,
+        completed_requests=completed_requests,
+        admission_mode="followup_repair_base",
+    )
+    witness, current_observation = _repair_followup_witness_from_proof(
+        witness_proof
+    )
+    if stored_followup is not None and witness != dict(stored_witness):
+        raise OperatorError("follow-up immutable integration witness drifted")
+    result = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "aseh-followup-base-continuity@1"
+        ),
+        "admission": "immutable_integration_witness",
+        "task_completion_admitted": False,
+        "proof": witness_proof,
+        "base_integration_witness": witness,
+        "authorization_task_observation": (
+            dict(historical)
+            if stored_followup is not None
+            else current_observation
+        ),
+    }
+    if status in COMPLETED_STATUSES:
+        result["canonical_completion_proof"] = _admit_canonical_merge_suffix(
+            board,
+            base_head=REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT,
+            target_head=REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD,
+            bootstrap=bootstrap,
+            integrity=integrity,
+            task_outputs=task_outputs,
+            completed_requests=completed_requests,
+        )
+        result["admission"] = "canonical_completion"
+        result["task_completion_admitted"] = True
+    return result
+
+
 def authorize_repair_transition(config_path: Path) -> dict[str, Any]:
     """Authorize the one user-directed bootstrap repair after it is committed."""
 
@@ -2486,17 +3076,27 @@ def authorize_repair_transition(config_path: Path) -> dict[str, Any]:
             paths["repair_transition_receipt"],
             max_bytes=STATUS_RECEIPT_MAX_BYTES,
         )
-        advanced = prior.get("repair_head") != head
-        _validate_repair_transition(
-            prior, bootstrap=bootstrap, rerun_validations=not advanced
+        prior_transition = _validate_repair_transition(
+            prior, bootstrap=bootstrap, rerun_validations=False
         )
-        # Replaying authorization after legitimate board progress remains
-        # useful, but only after the same strict current-head continuity gate
-        # used by launch admits every intervening canonical task merge.
-        current_admission = None
-        if advanced:
-            repair_head = str(prior.get("repair_head") or "").casefold()
-            _git("merge-base", "--is-ancestor", repair_head, head)
+        repair_head = str(prior_transition["repair_head"])
+        _git("merge-base", "--is-ancestor", repair_head, head)
+        followup_path = paths.get("repair_followup_transition_receipt")
+        if isinstance(followup_path, Path) and followup_path.is_file():
+            followup = _secure_runtime_json(
+                followup_path, max_bytes=STATUS_RECEIPT_MAX_BYTES
+            )
+            advanced = followup.get("repair_head") != head
+            followup_transition = _validate_repair_followup_transition(
+                followup,
+                bootstrap=bootstrap,
+                previous_receipt=prior,
+                rerun_validations=not advanced,
+            )
+            _git(
+                "merge-base", "--is-ancestor",
+                str(followup_transition["repair_head"]), head,
+            )
             current_admission = _admit_materialized_launch(
                 board, _config, paths
             )
@@ -2506,26 +3106,139 @@ def authorize_repair_transition(config_path: Path) -> dict[str, Any]:
             )
             if (
                 not isinstance(admitted_repair, Mapping)
-                or admitted_repair.get("repair_head") != repair_head
+                or admitted_repair.get("repair_head")
+                != followup_transition["repair_head"]
                 or not isinstance(admitted_continuity, Mapping)
                 or "repair_to_current" not in admitted_continuity
             ):
                 raise OperatorError(
                     "current admission does not retain the repair transition"
                 )
-        result = {
+            return {
+                "schema": OPERATOR_SCHEMA,
+                "command": "authorize-repair-transition",
+                "ok": True,
+                "idempotent_replay": True,
+                "repair_transition_receipt": followup,
+                "repair_transition_chain": [prior, followup],
+                "current_admission_cid": current_admission["admission_cid"],
+                "runtime_source_head": current_admission[
+                    "runtime_source_head"
+                ],
+            }
+
+        if head == REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD:
+            raise OperatorError(
+                "bootstrap repair follow-up has not been committed"
+            )
+        if repair_head != REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT:
+            raise OperatorError("prior bootstrap repair identity differs")
+        snapshot, _ready, integrity, outputs, requests = (
+            _read_continuity_state(board, paths, bootstrap)
+        )
+        base_proof = _admit_canonical_merge_suffix(
+            board,
+            base_head=str(bootstrap["source_head"]),
+            target_head=REPAIR_TRANSITION_BASE_HEAD,
+            bootstrap=bootstrap,
+            integrity=integrity,
+            task_outputs=outputs,
+            completed_requests=requests,
+        )
+        if not base_proof["integrations"]:
+            raise OperatorError(
+                "bootstrap repair base lacks a canonical merge suffix"
+            )
+        followup_base = _admit_repair_followup_base(
+            board,
+            bootstrap=bootstrap,
+            integrity=integrity,
+            task_outputs=outputs,
+            completed_requests=requests,
+            require_nonterminal=True,
+        )
+        parents = _git("show", "-s", "--format=%P", head).split()
+        if parents != [REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD]:
+            raise OperatorError(
+                "bootstrap repair follow-up must be one child of the exact base"
+            )
+        if _git_changed_paths(
+            REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD, head
+        ) != REPAIR_FOLLOWUP_TRANSITION_CHANGED_PATHS:
+            raise OperatorError("bootstrap repair follow-up changed-path set differs")
+        validation_results = _run_repair_followup_transition_validations()
+        receipt = {
+            "schema": REPAIR_FOLLOWUP_TRANSITION_SCHEMA,
+            "task_id": REPAIR_TRANSITION_TASK_ID,
+            "stable_identity": (
+                f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R2"
+            ),
+            "program_id": PROGRAM,
+            "transition_revision": 2,
+            "bootstrap_receipt_id": bootstrap_id,
+            "previous_receipt_cid": prior_transition["receipt_cid"],
+            "base_integration_witness": followup_base[
+                "base_integration_witness"
+            ],
+            "authorization_task_observation": followup_base[
+                "authorization_task_observation"
+            ],
+            "plan_root_cid": bootstrap["plan_root_cid"],
+            "repository_tree_id": bootstrap["repository_tree_id"],
+            "base_head": REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD,
+            "base_tree": _git(
+                "rev-parse", f"{REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD}^{{tree}}"
+            ),
+            "repair_head": head,
+            "repair_tree": _git("rev-parse", f"{head}^{{tree}}"),
+            "changed_paths": list(REPAIR_FOLLOWUP_TRANSITION_CHANGED_PATHS),
+            "patch_digest": _git_patch_digest(
+                REPAIR_FOLLOWUP_TRANSITION_BASE_HEAD, head
+            ),
+            "dependencies": [
+                "ASEH-BOOTSTRAP-002@ASEH-PLAN-R1",
+                "ASEH-001",
+            ],
+            "owning_repository": "ipfs_accelerate_py",
+            "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+            "authority_requirement": (
+                "the operator explicitly directed the bootstrap engineering "
+                "agent to fix the existing canonical supervisor so it "
+                "automatically recovers ASEH runtime faults without "
+                "state-writer contention"
+            ),
+            "validation_results": validation_results,
+            "terminal_success_criteria": (
+                "The existing supervisor recovers exact missing Git worktree "
+                "registrations, settles recovery before new claims, and "
+                "defers exact Quack transport unavailability without a "
+                "second writer or fabricated completion."
+            ),
+            "terminal_non_success_criteria": (
+                "Any identity drift, broad error reminting, unverified cleanup, "
+                "claim during recovery settlement, duplicate writer, task "
+                "completion claim, validation failure, or sibling change is "
+                "rejected."
+            ),
+            "semantic_corpus_changed": False,
+            "database_mutated": False,
+            "authorized_at": time.time(),
+        }
+        receipt["receipt_cid"] = _identity(receipt)
+        if not isinstance(followup_path, Path):
+            raise OperatorError("bootstrap repair follow-up path is absent")
+        _atomic_json(followup_path, receipt)
+        return {
             "schema": OPERATOR_SCHEMA,
             "command": "authorize-repair-transition",
             "ok": True,
-            "idempotent_replay": True,
-            "repair_transition_receipt": prior,
+            "idempotent_replay": False,
+            "authoritative_event_cursor": snapshot["event_cursor"],
+            "canonical_base_suffix": base_proof,
+            "initial_repair_to_followup_base": followup_base,
+            "repair_transition_receipt": receipt,
+            "repair_transition_chain": [prior, receipt],
         }
-        if current_admission is not None:
-            result["current_admission_cid"] = current_admission["admission_cid"]
-            result["runtime_source_head"] = current_admission[
-                "runtime_source_head"
-            ]
-        return result
     snapshot, _ready, integrity, outputs, requests = _read_continuity_state(
         board, paths, bootstrap
     )
@@ -2622,6 +3335,7 @@ def _admit_materialized_launch(
     )
     continuity: dict[str, Any] = {}
     repair_transition: dict[str, Any] = {}
+    repair_transition_chain: list[dict[str, Any]] = []
     if exact_bootstrap:
         with _offline_database_guard(paths):
             projection_matches = _projection_matches_events_on_disposable_copy(
@@ -2660,6 +3374,7 @@ def _admit_materialized_launch(
         repair_transition = _validate_repair_transition(
             repair_receipt, bootstrap=bootstrap, rerun_validations=True
         )
+        repair_transition_chain = [repair_transition]
         snapshot, ready, integrity, outputs, requests = _read_continuity_state(
             board, paths, bootstrap
         )
@@ -2672,19 +3387,60 @@ def _admit_materialized_launch(
             task_outputs=outputs,
             completed_requests=requests,
         )
-        current_proof = _admit_canonical_merge_suffix(
-            board,
-            base_head=str(repair_transition["repair_head"]),
-            target_head=str(population["source_head"]),
-            bootstrap=bootstrap,
-            integrity=integrity,
-            task_outputs=outputs,
-            completed_requests=requests,
-        )
-        continuity = {
-            "bootstrap_to_repair_base": base_proof,
-            "repair_to_current": current_proof,
-        }
+        followup_path = paths.get("repair_followup_transition_receipt")
+        if isinstance(followup_path, Path) and followup_path.is_file():
+            followup_receipt = _secure_runtime_json(
+                followup_path, max_bytes=STATUS_RECEIPT_MAX_BYTES
+            )
+            followup_transition = _validate_repair_followup_transition(
+                followup_receipt,
+                bootstrap=bootstrap,
+                previous_receipt=repair_receipt,
+                rerun_validations=True,
+            )
+            if (
+                repair_transition["repair_head"]
+                != REPAIR_FOLLOWUP_TRANSITION_FIRST_PARENT
+            ):
+                raise OperatorError("prior bootstrap repair identity differs")
+            followup_base = _admit_repair_followup_base(
+                board,
+                bootstrap=bootstrap,
+                integrity=integrity,
+                task_outputs=outputs,
+                completed_requests=requests,
+                stored_followup=followup_receipt,
+            )
+            current_proof = _admit_canonical_merge_suffix(
+                board,
+                base_head=str(followup_transition["repair_head"]),
+                target_head=str(population["source_head"]),
+                bootstrap=bootstrap,
+                integrity=integrity,
+                task_outputs=outputs,
+                completed_requests=requests,
+            )
+            repair_transition = followup_transition
+            repair_transition_chain.append(followup_transition)
+            continuity = {
+                "bootstrap_to_repair_base": base_proof,
+                "initial_repair_to_followup_base": followup_base,
+                "repair_to_current": current_proof,
+            }
+        else:
+            current_proof = _admit_canonical_merge_suffix(
+                board,
+                base_head=str(repair_transition["repair_head"]),
+                target_head=str(population["source_head"]),
+                bootstrap=bootstrap,
+                integrity=integrity,
+                task_outputs=outputs,
+                completed_requests=requests,
+            )
+            continuity = {
+                "bootstrap_to_repair_base": base_proof,
+                "repair_to_current": current_proof,
+            }
     admission = {
         "source_head": bootstrap["source_head"],
         "repository_tree_id": bootstrap["repository_tree_id"],
@@ -2695,6 +3451,7 @@ def _admit_materialized_launch(
         "plan_root_cid": bootstrap["plan_root_cid"],
         "bootstrap_receipt_id": receipt_id,
         "repair_transition": repair_transition,
+        "repair_transition_chain": repair_transition_chain,
         "canonical_continuity": continuity,
         "projection_cid": snapshot["projection_cid"],
         "event_cursor": snapshot["event_cursor"],

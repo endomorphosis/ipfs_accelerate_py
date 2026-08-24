@@ -51,6 +51,10 @@ _QUACK_TRANSPORT_URI_RE = re.compile(
     r"^quack:(?://)?(?:127\.0\.0\.1|localhost|::1):\d{1,5}$",
     re.IGNORECASE,
 )
+_QUACK_TRANSPORT_ENDPOINT_RE = re.compile(
+    r"^quack:(?://)?(?P<host>127\.0\.0\.1|localhost|::1):(?P<port>\d{1,5})$",
+    re.IGNORECASE,
+)
 
 # These settings are connection-birth policy, not mutable query preferences.
 # ``lock_configuration`` is deliberately supplied in the same connect call and
@@ -3066,12 +3070,102 @@ def quack_attach_error_is_contention(exc: BaseException) -> bool:
     return any(marker in text for marker in _QUACK_ATTACH_CONTENTION_MARKERS)
 
 
-def reset_quack_transport_cache() -> None:
-    """Drop cached loopback Quack attachments (tests and owner restart)."""
+_QUACK_TRANSPORT_UNAVAILABLE_FORBIDDEN_MARKERS = (
+    "authentication",
+    "unauthorized",
+    "forbidden",
+    "permission",
+    "policy",
+    "schema",
+    "catalog",
+    "parser",
+    "binder",
+    "constraint",
+    "conversion",
+    "corrupt",
+    "invalid",
+)
+
+
+def quack_transport_error_is_unavailable(
+    exc: BaseException,
+    *,
+    uri: object,
+) -> bool:
+    """Recognize only DuckDB's exact live loopback Quack connection failure.
+
+    This classifier is deliberately narrower than ATTACH contention.  It
+    cannot turn an application ``RuntimeError`` or an authentication, policy,
+    schema, or data error into a retryable transport observation.  The server
+    named by DuckDB must exactly match the admitted loopback Quack URI.
+    """
+
+    canonical_uri = quack_transport_uri(uri)
+    endpoint_match = _QUACK_TRANSPORT_ENDPOINT_RE.fullmatch(canonical_uri)
+    if endpoint_match is None:
+        return False
+    host = endpoint_match.group("host").casefold()
+    port = int(endpoint_match.group("port"))
+    if port < 1 or port > 65_535:
+        return False
+    endpoints = {f"{host}:{port}"}
+    if host == "::1":
+        endpoints.add(f"[{host}]:{port}")
+
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and len(chain) < 8 and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(current)
+        cause = current.__cause__
+        current = cause if cause is not None else current.__context__
+
+    messages = [" ".join(str(item).casefold().split()) for item in chain]
+    if any(
+        marker in message
+        for message in messages
+        for marker in _QUACK_TRANSPORT_UNAVAILABLE_FORBIDDEN_MARKERS
+    ):
+        return False
+    for item, message in zip(chain, messages):
+        exception_type = type(item)
+        if (
+            exception_type.__module__ not in {"duckdb", "_duckdb"}
+            or exception_type.__name__ != "IOException"
+        ):
+            continue
+        if any(
+            "failed to send message: could not connect to server "
+            f'"{endpoint}"' in message
+            for endpoint in endpoints
+        ):
+            return True
+    return False
+
+
+def reset_quack_transport_cache(uri: object = "") -> None:
+    """Drop cached loopback Quack attachments (tests and owner restart).
+
+    When ``uri`` is supplied, evict only that exact admitted endpoint so one
+    temporarily unavailable owner cannot disrupt an unrelated Quack session.
+    """
 
     with _QUACK_ATTACH_LOCK:
-        cached = list(_QUACK_TRANSPORT_CACHE.items())
-        _QUACK_TRANSPORT_CACHE.clear()
+        target = quack_transport_uri(uri) if str(uri or "").strip() else ""
+        if target:
+            # Endpoint-scoped recovery may run while another same-process
+            # reader still holds the pooled wrapper.  Evict it for future
+            # attaches, but never close a session already borrowed elsewhere.
+            # A confirmed owner restart/global teardown uses the no-argument
+            # path below and may close every cached session under the lock.
+            _QUACK_TRANSPORT_CACHE.pop(target, None)
+            cached: list[tuple[str, DuckDBConnection]] = []
+        elif str(uri or "").strip():
+            cached = []
+        else:
+            cached = list(_QUACK_TRANSPORT_CACHE.items())
+            _QUACK_TRANSPORT_CACHE.clear()
         for _uri, connection in cached:
             try:
                 connection._pooled = False

@@ -843,9 +843,13 @@ class WorktreePool:
         if not reusable:
             discard = self._discard_state(state)
             self._remove_lock(lock_path)
-            self._metrics["discarded_entries"] += 1
+            discarded = discard.get("removed") is True
+            if discarded:
+                self._metrics["discarded_entries"] += 1
             return {
-                "released": True,
+                "released": discarded,
+                "deferred": not discarded,
+                "retryable": not discarded,
                 "pooled": False,
                 "reason": "reuse_disabled",
                 "discard": discard,
@@ -860,9 +864,13 @@ class WorktreePool:
             discard = self._discard_state(state)
             self._remove_lock(lock_path)
             self._record_rejection(reason)
-            self._metrics["discarded_entries"] += 1
+            discarded = discard.get("removed") is True
+            if discarded:
+                self._metrics["discarded_entries"] += 1
             return {
-                "released": True,
+                "released": discarded,
+                "deferred": not discarded,
+                "retryable": not discarded,
                 "pooled": False,
                 "reason": reason,
                 "discard": discard,
@@ -874,9 +882,13 @@ class WorktreePool:
             discard = self._discard_state(state)
             self._remove_lock(lock_path)
             self._record_rejection(reason)
-            self._metrics["discarded_entries"] += 1
+            discarded = discard.get("removed") is True
+            if discarded:
+                self._metrics["discarded_entries"] += 1
             return {
-                "released": True,
+                "released": discarded,
+                "deferred": not discarded,
+                "retryable": not discarded,
                 "pooled": False,
                 "reason": reason,
                 "discard": discard,
@@ -1528,18 +1540,19 @@ class WorktreePool:
                 ):
                     continue
                 discard = self._discard_state(current)
-                self._record_rejection("dead_lease_owner")
-                self._metrics["reclaimed_dead_leases"] += 1
-                self._metrics["discarded_entries"] += 1
-                reclaimed.append(
-                    {
-                        "entry_id": entry_id,
-                        "state": str(current.get("state") or ""),
-                        "lease_pid": current_owner_pid,
-                        "path": str(current.get("path") or ""),
-                        "discard": discard,
-                    }
-                )
+                if discard.get("removed") is True:
+                    self._record_rejection("dead_lease_owner")
+                    self._metrics["reclaimed_dead_leases"] += 1
+                    self._metrics["discarded_entries"] += 1
+                    reclaimed.append(
+                        {
+                            "entry_id": entry_id,
+                            "state": str(current.get("state") or ""),
+                            "lease_pid": current_owner_pid,
+                            "path": str(current.get("path") or ""),
+                            "discard": discard,
+                        }
+                    )
             finally:
                 self._remove_lock(lock_path)
         return reclaimed
@@ -1594,17 +1607,52 @@ class WorktreePool:
                 "removed": False,
                 "reason": "unsafe_or_invalid_worktree_path",
             }
-        remove = self._run(("git", "worktree", "remove", "--force", str(path)), cwd=self.repo_root)
-        if path.exists():
+        # This discard already holds the pool entry's authorized sidecar lock.
+        # Git requires force twice for a worktree left locked by a crash during
+        # initialization.  A single force used to leave the registration
+        # behind while the code deleted its only pool-state owner.
+        remove = self._run(
+            ("git", "worktree", "remove", "--force", "--force", str(path)),
+            cwd=self.repo_root,
+        )
+        registry = self._run(
+            ("git", "worktree", "list", "--porcelain"),
+            cwd=self.repo_root,
+        )
+        registered = True
+        if registry.ok:
+            expected = path.resolve(strict=False)
+            registered = any(
+                candidate.resolve(strict=False) == expected
+                for candidate in git_worktree_paths_from_porcelain(registry.stdout)
+            )
+        # Delete residual bytes only after Git proves that this exact path is
+        # no longer registered.  Git lock/contention or an unverifiable
+        # registry preserves both checkout bytes and the authoritative sidecar.
+        if registry.ok and not registered and path.exists():
             shutil.rmtree(path, ignore_errors=True)
-        try:
-            self._state_path(str(state.get("lease_token") or "")).unlink()
-        except FileNotFoundError:
-            pass
+        removed = not path.exists() and registry.ok and not registered
+        if removed:
+            try:
+                self._state_path(str(state.get("lease_token") or "")).unlink()
+            except FileNotFoundError:
+                pass
         return {
             "path": str(path),
-            "removed": not path.exists(),
+            "removed": removed,
+            "reason": (
+                "discarded"
+                if removed
+                else (
+                    "worktree_registry_unverifiable"
+                    if not registry.ok
+                    else "worktree_registration_persisted"
+                )
+            ),
             "git_remove": remove.compact(limit=2000),
+            "git_registry": registry.compact(limit=2000),
+            "registered": registered,
+            "state_preserved": not removed,
         }
 
     def _prune_excess_idle(self, *, exclude_entry_id: str) -> None:

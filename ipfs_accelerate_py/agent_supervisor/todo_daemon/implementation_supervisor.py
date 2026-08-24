@@ -15445,6 +15445,186 @@ class PortalImplementationSupervisor:
                 operation="cleanup_backlogged_worktrees",
             )
 
+    def _cleanup_missing_worktree_registration_locked(
+        self,
+        *,
+        path: Path,
+        branch: str,
+        head: str,
+        target_ref: str,
+    ) -> dict[str, Any]:
+        """Remove one absent, merged Git registration under the checkout lock."""
+
+        detail: dict[str, Any] = {
+            "path": str(path),
+            "branch": branch,
+            "head": head,
+            "orphaned_registration": True,
+        }
+        if path.exists():
+            return {**detail, "removed": False, "reason": "worktree_reappeared"}
+        resolved_head = (
+            self._git_ref_commit(self.config.repo_root, head) if head else ""
+        )
+        head_merged = bool(resolved_head) and resolved_head == head and self._git_ref_is_ancestor(
+            self.config.repo_root,
+            head,
+            target_ref,
+        )
+        branch_exists = bool(branch) and self._git_ref_exists(
+            self.config.repo_root,
+            branch,
+        )
+        branch_head = (
+            self._git_ref_commit(self.config.repo_root, branch)
+            if branch_exists
+            else ""
+        )
+        branch_merged = branch_exists and self._git_ref_is_ancestor(
+            self.config.repo_root,
+            branch,
+            target_ref,
+        )
+        if not head_merged or (
+            branch_exists and (branch_head != head or not branch_merged)
+        ):
+            return {
+                **detail,
+                "removed": False,
+                "reason": "registered_head_or_branch_not_exactly_merged",
+                "resolved_head": resolved_head,
+                "branch_exists": branch_exists,
+                "branch_head": branch_head,
+                "head_merged": head_merged,
+                "branch_merged": branch_merged,
+            }
+
+        lifecycle_store = WorktreeLifecycleStore(self.config.repo_root)
+        try:
+            lifecycle = lifecycle_store.authorize_cleanup(
+                workspace_path=path,
+                branch=branch,
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            return {
+                **detail,
+                "removed": False,
+                "reason": "lifecycle_authority_unavailable",
+                "error_type": type(exc).__name__,
+            }
+        lifecycle_payload = lifecycle.to_dict()
+        if not lifecycle.allowed:
+            return {
+                **detail,
+                "removed": False,
+                "reason": f"lifecycle_{lifecycle.reason or 'fenced'}",
+                "lifecycle": lifecycle_payload,
+            }
+
+        remove = subprocess.run(
+            ["git", "worktree", "remove", "--force", "--force", str(path)],
+            cwd=self.config.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        verify = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=self.config.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        registered_after: bool | None = None
+        if verify.returncode == 0:
+            expected = path.resolve(strict=False)
+            registered_after = any(
+                Path(line.split(" ", 1)[1]).resolve(strict=False) == expected
+                for line in verify.stdout.splitlines()
+                if line.startswith("worktree ") and line.split(" ", 1)[1]
+            )
+        removed = registered_after is False and not path.exists()
+        lifecycle_finalize: dict[str, Any] = {}
+        if removed and lifecycle.record is not None:
+            try:
+                terminal = lifecycle.record
+                if not terminal.is_terminal:
+                    terminal = lifecycle_store.mark_terminal(
+                        terminal.workspace_path,
+                        lease_id=terminal.lease_id,
+                        expected_fence=terminal.fence,
+                        reason="orphaned_registration_removed",
+                    )
+                deleted = lifecycle_store.compare_and_delete(
+                    terminal.workspace_path,
+                    expected_fence=terminal.fence,
+                    lease_id=terminal.lease_id,
+                )
+                lifecycle_finalize = {
+                    "attempted": True,
+                    "finalized": deleted,
+                    "fence": terminal.fence,
+                    "reason": (
+                        "orphaned_registration_removed"
+                        if deleted
+                        else "lifecycle_compare_delete_race"
+                    ),
+                }
+            except (OSError, RuntimeError, ValueError) as exc:
+                lifecycle_finalize = {
+                    "attempted": True,
+                    "finalized": False,
+                    "reason": "lifecycle_finalize_failed",
+                    "error_type": type(exc).__name__,
+                }
+        branch_delete: dict[str, Any] = {}
+        if (
+            removed
+            and self._worktree_branch_can_delete_after_merge(branch)
+            and branch_merged
+        ):
+            delete = subprocess.run(
+                ["git", "branch", "-D", branch],
+                cwd=self.config.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            branch_delete = {
+                "attempted": True,
+                "deleted": delete.returncode == 0,
+                "returncode": delete.returncode,
+                "stdout": delete.stdout[-4000:],
+                "stderr": delete.stderr[-4000:],
+            }
+        return {
+            **detail,
+            "removed": removed,
+            "reason": (
+                "orphaned_registration_removed"
+                if removed
+                else (
+                    "worktree_registry_unverifiable"
+                    if registered_after is None
+                    else "worktree_registration_persisted"
+                )
+            ),
+            "returncode": remove.returncode,
+            "stdout": remove.stdout[-4000:],
+            "stderr": remove.stderr[-4000:],
+            "verification_returncode": verify.returncode,
+            "verification_stderr": verify.stderr[-4000:],
+            "registered_after": registered_after,
+            "resolved_head": resolved_head,
+            "branch_exists": branch_exists,
+            "branch_head": branch_head,
+            "branch_merged": branch_merged,
+            "head_merged": head_merged,
+            "branch_delete": branch_delete,
+            "lifecycle": lifecycle_payload,
+            "lifecycle_finalize": lifecycle_finalize,
+        }
+
     def _cleanup_backlogged_worktrees_locked(self) -> dict[str, Any]:
         """Clean merged worktrees while holding the checkout mutation lock."""
 
@@ -15452,13 +15632,6 @@ class PortalImplementationSupervisor:
         if worktree_root is None:
             return {"attempted": False, "reason": "worktree_root_not_configured"}
         repo_root = self.config.repo_root
-        prune = subprocess.run(
-            ["git", "worktree", "prune"],
-            cwd=repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
         records = self._git_worktree_records(repo_root)
         try:
             root_resolved = worktree_root.resolve()
@@ -15490,14 +15663,6 @@ class PortalImplementationSupervisor:
                 path_resolved.relative_to(root_resolved)
             except (OSError, ValueError):
                 continue
-            if not path_resolved.exists():
-                skipped.append(
-                    {
-                        "path": str(path),
-                        "reason": "worktree_removed_concurrently",
-                    }
-                )
-                continue
             active_skip = self._active_worktree_skip_detail(
                 path_resolved,
                 active_worktree_owners,
@@ -15511,6 +15676,18 @@ class PortalImplementationSupervisor:
 
             branch = str(record.get("branch") or "").removeprefix("refs/heads/")
             head = str(record.get("HEAD") or "")
+            if not path_resolved.exists():
+                orphan_cleanup = self._cleanup_missing_worktree_registration_locked(
+                    path=path_resolved,
+                    branch=branch,
+                    head=head,
+                    target_ref=target_ref,
+                )
+                if orphan_cleanup.get("removed") is True:
+                    removed.append(orphan_cleanup)
+                else:
+                    skipped.append(orphan_cleanup)
+                continue
             cached_entry = self._worktree_scan_cache_entry(
                 scan_cache,
                 phase="cleanup",
@@ -15551,13 +15728,16 @@ class PortalImplementationSupervisor:
                 continue
             dirty = self._git_status_short(path) if path.exists() else []
             if not path.exists():
-                skipped.append(
-                    {
-                        "path": str(path),
-                        "branch": branch,
-                        "reason": "worktree_removed_concurrently",
-                    }
+                orphan_cleanup = self._cleanup_missing_worktree_registration_locked(
+                    path=path_resolved,
+                    branch=branch,
+                    head=head,
+                    target_ref=target_ref,
                 )
+                if orphan_cleanup.get("removed") is True:
+                    removed.append(orphan_cleanup)
+                else:
+                    skipped.append(orphan_cleanup)
                 continue
             dirty_redundancy: dict[str, Any] = {}
             if dirty:
@@ -15663,9 +15843,8 @@ class PortalImplementationSupervisor:
             "worktree_root": str(worktree_root),
             "target_ref": target_ref,
             "target_signature": target_signature,
-            "prune_returncode": prune.returncode,
-            "prune_stdout": prune.stdout[-4000:],
-            "prune_stderr": prune.stderr[-4000:],
+            "prune_attempted": False,
+            "prune_returncode": None,
             "removed_count": sum(1 for item in removed if item.get("removed")),
             "skipped_count": len(skipped),
             "skipped_reason_counts": skip_summary["reason_counts"],
