@@ -9,6 +9,9 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as daemon_module,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 VALIDATOR = ROOT / "scripts/validate_agent_supervisor_procedure_compiler_board.py"
@@ -75,6 +78,30 @@ def test_board_validator_accepts_sealed_program() -> None:
     benchmark = _check(report, "benchmark_frozen_state")
     assert benchmark["passed"] is True
     assert benchmark["detail"]["accepted_state"] == "qualified_frozen"
+
+
+def test_board_validator_accepts_host_socket_bound_outside_sealed_container(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        daemon_module,
+        "_DOCKER_LOCAL_ENDPOINTS",
+        frozenset(
+            {
+                "unix:///var/run/docker.sock",
+                "unix:///run/user/0/docker.sock",
+            }
+        ),
+    )
+
+    report = _validator_module().validate_program()
+
+    assert report["valid"] is True, json.dumps(report["errors"], indent=2)
+    assert _check(report, "scheduler_schema") == {
+        "name": "scheduler_schema",
+        "passed": True,
+        "detail": "",
+    }
 
 
 def test_board_validator_accepts_exact_safe_benchmark_scaffold(
