@@ -1,0 +1,25 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/residual-adversarial-campaign-report@1",
+  "tree_cid": "tree:fixture-not-qualified",
+  "critical_zero_escape": true,
+  "mutant_families": [
+    "family",
+    "risk",
+    "effect",
+    "test",
+    "proof",
+    "cache",
+    "procedure",
+    "abstention",
+    "injection",
+    "confidence",
+    "staleness",
+    "quantization",
+    "disagreement",
+    "leakage",
+    "privacy",
+    "authority",
+    "completion"
+  ],
+  "status": "fixture_campaign_not_production_authority"
+}
