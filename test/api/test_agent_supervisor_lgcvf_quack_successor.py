@@ -41,7 +41,9 @@ OPERATOR_PATH = ROOT / (
 
 
 def _operator() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("lgcvf_quack_successor", OPERATOR_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "lgcvf_quack_successor", OPERATOR_PATH
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -86,7 +88,9 @@ def _seed_datasets_profile(database: Path) -> None:
         repository.close()
 
 
-def test_datasets_profile_callback_rejects_default_catalog_drift(tmp_path: Path) -> None:
+def test_datasets_profile_callback_rejects_default_catalog_drift(
+    tmp_path: Path,
+) -> None:
     operator = _operator()
     database = tmp_path / "control.duckdb"
 
@@ -166,13 +170,32 @@ def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(
 
     assert source_digest == operator._sha256_regular_file(source)
     assert source_digest == operator._sha256_regular_file(target)
+    assert {item.name for item in target.parent.iterdir()} == {
+        "control.duckdb",
+        "evidence",
+    }
+    assert {item.name for item in provenance.parent.iterdir()} == {provenance.name}
+    assert not tuple(tmp_path.glob(".run-v18.*.stage"))
+    for path, expected_mode in (
+        (target.parent, 0o700),
+        (provenance.parent, 0o700),
+        (target, 0o600),
+        (provenance, 0o600),
+    ):
+        metadata = path.stat()
+        assert metadata.st_mode & 0o777 == expected_mode
+        if path.is_file():
+            assert metadata.st_nlink == 1
     assert receipt["source_generation"] == "lgcvf-run-v17"
     assert receipt["target_generation"] == "lgcvf-run-v18"
     assert receipt["source_database_statuses_read"] is False
-    assert operator._strict_json(
-        provenance,
-        expected_schema=operator.PROVENANCE_SCHEMA,
-    ) == receipt
+    assert (
+        operator._strict_json(
+            provenance,
+            expected_schema=operator.PROVENANCE_SCHEMA,
+        )
+        == receipt
+    )
     with pytest.raises(operator.SuccessorOperatorError, match="overwrite"):
         operator.clone_verified_successor(
             source,
@@ -180,6 +203,306 @@ def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(
             provenance,
             recovery_verification=recovery,
         )
+
+
+@pytest.mark.parametrize("existing_kind", ("directory", "file", "dangling_link"))
+def test_successor_bootstrap_rejects_any_preexisting_generation(
+    tmp_path: Path, existing_kind: str
+) -> None:
+    operator = _operator()
+    source = tmp_path / "run-v17" / "control.duckdb"
+    target = tmp_path / "run-v18" / "control.duckdb"
+    provenance = tmp_path / "run-v18" / "evidence" / "provenance.json"
+    source.parent.mkdir(parents=True)
+    _seed_datasets_profile(source)
+    if existing_kind == "directory":
+        target.parent.mkdir()
+    elif existing_kind == "file":
+        target.parent.write_bytes(b"occupied")
+    else:
+        target.parent.symlink_to("missing-run-v18")
+    before = os.lstat(target.parent)
+    recovery = {
+        "valid": True,
+        "target_generation": "lgcvf-run-v17",
+        "stores_unchanged": True,
+        "source_database_statuses_read": False,
+    }
+
+    with pytest.raises(operator.SuccessorOperatorError, match="overwrite"):
+        operator.clone_verified_successor(
+            source,
+            target,
+            provenance,
+            recovery_verification=recovery,
+        )
+
+    after = os.lstat(target.parent)
+    assert (after.st_dev, after.st_ino, after.st_mode) == (
+        before.st_dev,
+        before.st_ino,
+        before.st_mode,
+    )
+
+
+def test_successor_receipt_failure_never_publishes_database_only_generation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    operator = _operator()
+    source = tmp_path / "run-v17" / "control.duckdb"
+    target = tmp_path / "run-v18" / "control.duckdb"
+    provenance = tmp_path / "run-v18" / "evidence" / "provenance.json"
+    source.parent.mkdir(parents=True)
+    _seed_datasets_profile(source)
+
+    def fail_receipt(*args: object, **kwargs: object) -> None:
+        raise OSError("injected receipt failure")
+
+    monkeypatch.setattr(operator, "_atomic_json", fail_receipt)
+    with pytest.raises(OSError, match="injected receipt failure"):
+        operator.clone_verified_successor(
+            source,
+            target,
+            provenance,
+            recovery_verification={
+                "valid": True,
+                "target_generation": "lgcvf-run-v17",
+                "stores_unchanged": True,
+                "source_database_statuses_read": False,
+            },
+        )
+
+    assert not os.path.lexists(target.parent)
+    assert not tuple(tmp_path.glob(".run-v18.*.stage"))
+
+
+@pytest.mark.parametrize(
+    ("custody_change", "error"),
+    (
+        ("database_hardlink", "bounded private"),
+        ("database_wal", "live WAL"),
+        ("provenance_symlink", "unreadable"),
+    ),
+)
+def test_successor_load_rejects_aliases_and_live_wal(
+    tmp_path: Path, custody_change: str, error: str
+) -> None:
+    operator = _operator()
+    source = tmp_path / "run-v17" / "control.duckdb"
+    target = tmp_path / "run-v18" / "control.duckdb"
+    provenance = tmp_path / "run-v18" / "evidence" / "provenance.json"
+    source.parent.mkdir(parents=True)
+    _seed_datasets_profile(source)
+    operator.clone_verified_successor(
+        source,
+        target,
+        provenance,
+        recovery_verification={
+            "valid": True,
+            "target_generation": "lgcvf-run-v17",
+            "stores_unchanged": True,
+            "source_database_statuses_read": False,
+        },
+    )
+    paths = {
+        "source_database": source,
+        "successor_database": target,
+        "provenance": provenance,
+    }
+    assert operator._load_provenance(paths, root=tmp_path)["target_database"] == str(
+        target
+    )
+
+    if custody_change == "database_hardlink":
+        os.link(target, target.with_name("hidden-control-alias.duckdb"))
+    elif custody_change == "database_wal":
+        target.with_name(target.name + ".wal").touch(mode=0o600)
+    else:
+        receipt = operator._strict_json(provenance)
+        alias = provenance.with_name("identical-provenance.json")
+        operator._atomic_json(alias, receipt, replace=False)
+        provenance.unlink()
+        provenance.symlink_to(alias.name)
+
+    with pytest.raises(operator.SuccessorOperatorError, match=error):
+        operator._load_provenance(paths, root=tmp_path)
+
+
+def test_sealed_manifest_identity_and_policy_authority_are_fail_closed(
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    manifest_path = tmp_path / "manifest.json"
+    addressed = {
+        "schema": operator.FRESH_RECOVERY_MANIFEST_SCHEMA,
+        "value": "sealed-test",
+    }
+    addressed["manifest_cid"] = operator._content_id(addressed)
+    operator._atomic_json(manifest_path, addressed, replace=False)
+    assert (
+        operator._strict_addressed_json(
+            manifest_path,
+            expected_schema=operator.FRESH_RECOVERY_MANIFEST_SCHEMA,
+            identity_field="manifest_cid",
+            noun="test manifest",
+        )
+        == addressed
+    )
+    tampered = dict(addressed)
+    tampered["value"] = "changed"
+    operator._atomic_json(manifest_path, tampered, replace=True)
+    with pytest.raises(operator.SuccessorOperatorError, match="content identity"):
+        operator._strict_addressed_json(
+            manifest_path,
+            expected_schema=operator.FRESH_RECOVERY_MANIFEST_SCHEMA,
+            identity_field="manifest_cid",
+            noun="test manifest",
+        )
+
+    config = json.loads(
+        (
+            ROOT / "config/agent_supervisor_logic_governed_compositional_"
+            "verification_fabric_scheduler.json"
+        ).read_text(encoding="utf-8")
+    )
+    policy = config["fresh_generation_recovery"]
+    false_authority = {
+        "candidate_authored_validation": True,
+        "validation_self_authority": False,
+        "validation_completion_authoritative": False,
+        "source_database_statuses_read": False,
+        "source_database_completion_records_imported": False,
+        "synthetic_source_disposition": "quarantined_not_imported",
+        "network_isolation_enforced": True,
+        "model_provider_route": "none",
+        "task_implementation_complete": False,
+        "test_qualification_complete": False,
+        "objective_complete": False,
+        "release_qualified": False,
+        "production_authorized": False,
+    }
+    common = {
+        "source_generation": policy["source_generation"],
+        "target_generation": policy["target_generation"],
+        "source_head": "a" * 40,
+        "source_tree": "b" * 40,
+        "source_evidence_cid": "source:test",
+        "plan_root_cid": config["plan_binding"]["formal_plan_content_id"],
+        "population_root": "population:test",
+        "validation_qualification_cid": "qualification:test",
+        **false_authority,
+    }
+    manifest = {
+        **common,
+        "source_runtime_root": policy["source_runtime_root"],
+        "target_runtime_root": policy["target_runtime_root"],
+        "completion_partition": {
+            "construction_completed_task_ids": list(
+                operator.CONSTRUCTION_COMPLETED_TASK_IDS
+            ),
+            "recovered_completed_task_ids": list(operator.RECOVERED_COMPLETED_TASK_IDS),
+            "rejected_synthetic_task_ids": list(operator.TODO_TASK_IDS),
+            "preserved_blocked_task_ids": list(operator.BLOCKED_TASK_IDS),
+            "completed_count": 13,
+            "todo_count": 13,
+            "blocked_count": 2,
+        },
+        "retained_completion_binding": {
+            "binding_cid": policy["retained_completion_binding_cid"],
+            "construction_completion_count": 7,
+            "delta_cid": policy["retained_delta_cid"],
+            "dynamic_completion_receipt_count": 5,
+            "logical_completion_count": 12,
+            "path": policy["retained_revision_receipt_path"],
+            "protected_blocker_binding_cid": policy[
+                "retained_protected_blocker_binding_cid"
+            ],
+            "receipt_cid": policy["retained_revision_receipt_cid"],
+            "sha256": policy["retained_revision_receipt_sha256"],
+            "successor_revision_cid": policy["retained_successor_revision_cid"],
+        },
+        "wrong_default_quarantine": {
+            "incident_manifest_path": policy["wrong_default_incident_manifest_path"],
+            "incident_manifest_sha256": policy[
+                "wrong_default_incident_manifest_sha256"
+            ],
+            "incident_manifest_cid": policy["wrong_default_incident_manifest_cid"],
+            "contaminated_coordination_manifest_path": policy[
+                "contaminated_coordination_projection_path"
+            ],
+            "contaminated_coordination_manifest_sha256": policy[
+                "contaminated_coordination_projection_sha256"
+            ],
+            "contaminated_coordination_manifest_cid": policy[
+                "contaminated_coordination_projection_manifest_cid"
+            ],
+            "rejected_record_set_cid": policy[
+                "contaminated_coordination_rejected_record_set_cid"
+            ],
+            "rejected_contaminated_coordination_projection_root": policy[
+                "rejected_contaminated_coordination_projection_root"
+            ],
+            "rejected_synthetic_task_ids": list(operator.TODO_TASK_IDS),
+            "disposition": "preserved_forensic_quarantine_not_imported",
+            "source_database_opened": False,
+        },
+        "merge_completion_evidence": [
+            dict(item) for item in policy["merge_completions"]
+        ],
+    }
+    receipt = {
+        **common,
+        "completed_task_ids": list(operator.COMPLETED_TASK_IDS),
+        "todo_task_ids": list(operator.TODO_TASK_IDS),
+        "blocked_task_ids": list(operator.BLOCKED_TASK_IDS),
+        "completed_count": 13,
+        "todo_count": 13,
+        "blocked_count": 2,
+        "atomic_publish": True,
+    }
+    operator._validate_recovery_policy_projection(
+        config=config,
+        manifest=manifest,
+        receipt=receipt,
+    )
+    receipt["production_authorized"] = True
+    with pytest.raises(operator.SuccessorOperatorError, match="projection|ceiling"):
+        operator._validate_recovery_policy_projection(
+            config=config,
+            manifest=manifest,
+            receipt=receipt,
+        )
+
+
+def test_sealed_continuity_cli_requires_all_six_raw_byte_pins() -> None:
+    operator = _operator()
+    parser = operator._build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            ["bootstrap-sealed-continuity", "--source-root", "/tmp/run-v17"]
+        )
+    pin = "sha256:" + ("ab" * 32)
+    parsed = parser.parse_args(
+        [
+            "bootstrap-sealed-continuity",
+            "--source-root",
+            "/tmp/run-v17",
+            "--control-sha256",
+            pin,
+            "--coordination-sha256",
+            pin,
+            "--execution-sha256",
+            pin,
+            "--bootstrap-sha256",
+            pin,
+            "--manifest-sha256",
+            pin,
+            "--recovery-receipt-sha256",
+            pin,
+        ]
+    )
+    assert parsed.command == "bootstrap-sealed-continuity"
+    assert parsed.control_sha256 == pin
 
 
 def test_owner_socket_and_ducklake_projection_are_physically_separate(
@@ -215,9 +538,10 @@ def test_owner_socket_and_ducklake_projection_are_physically_separate(
     assert preflight["provenance_receipt_present"] is False
     assert preflight["source_admitted"] is False
     assert Path(preflight["projection_root"]) == runtime_paths["projection_root"]
-    assert runtime_paths["projection_root"] / "control.duckdb" != runtime_paths[
-        "successor_database"
-    ]
+    assert (
+        runtime_paths["projection_root"] / "control.duckdb"
+        != runtime_paths["successor_database"]
+    )
     assert preflight["authoritative"] is False
     assert preflight["scheduling_authority"] is False
     assert preflight["completion_authority"] is False
@@ -501,7 +825,9 @@ def _wait_for_paths(paths: list[Path], processes: list[subprocess.Popen[str]]) -
     while time.monotonic() < deadline:
         if all(path.is_file() for path in paths):
             return
-        exited = [process.returncode for process in processes if process.poll() is not None]
+        exited = [
+            process.returncode for process in processes if process.poll() is not None
+        ]
         if exited:
             raise AssertionError(f"worker exited before the CAS gate: {exited}")
         time.sleep(0.02)
@@ -684,9 +1010,9 @@ def test_real_four_process_quack_cas_has_one_winner_and_private_sidecars(
         mutation_inbox = Path(str(ready["mutation_inbox"]))
         assert typed_socket == test_paths["owner_socket"]
         assert len(os.fsencode(typed_socket)) <= operator.UNIX_SOCKET_PATH_CEILING
-        assert token.encode("ascii") not in Path(
-            f"/proc/{owner.pid}/cmdline"
-        ).read_bytes()
+        assert (
+            token.encode("ascii") not in Path(f"/proc/{owner.pid}/cmdline").read_bytes()
+        )
 
         sink = operator._token_sink(owner_state)
         gate = tmp_path / "cas.go"
@@ -755,7 +1081,9 @@ def test_real_four_process_quack_cas_has_one_winner_and_private_sidecars(
         gate.write_text("go\n", encoding="utf-8")
         outputs = [process.communicate(timeout=45.0) for process in processes]
         assert all(process.returncode == 0 for process in processes), outputs
-        results = [json.loads(path.read_text(encoding="utf-8")) for path in result_paths]
+        results = [
+            json.loads(path.read_text(encoding="utf-8")) for path in result_paths
+        ]
         assert sorted(result["outcome"] for result in results) == [
             "conflict",
             "conflict",
@@ -765,17 +1093,20 @@ def test_real_four_process_quack_cas_has_one_winner_and_private_sidecars(
         assert {result.get("revision") for result in results} == {None, 2}
         for field in ("database_path", "coordination_path", "execution_path"):
             assert len({result[field] for result in results}) == 4
-        assert len(
-            {
-                result[field]
-                for result in results
-                for field in (
-                    "database_path",
-                    "coordination_path",
-                    "execution_path",
-                )
-            }
-        ) == 12
+        assert (
+            len(
+                {
+                    result[field]
+                    for result in results
+                    for field in (
+                        "database_path",
+                        "coordination_path",
+                        "execution_path",
+                    )
+                }
+            )
+            == 12
+        )
         for result in results:
             assert Path(result["coordination_path"]).is_file()
             assert Path(result["execution_path"]).is_file()
