@@ -2258,44 +2258,17 @@ def state_owner(
         authentication_key=secrets.token_bytes(32),
     )
     server.bind_typed_status_scope()
-    # Prove the loopback Quack transport before any owner worker or child can
-    # use the shared DuckDB connection.  ``ready()`` performs a live extension
-    # query on that connection; running it after concurrent admission would
-    # bypass the gateway transaction lock and corrupt an otherwise valid
-    # semantic-command observation.
-    ready = server.ready()
-    outbox_runtime = server.start_federation_outbox_worker()
-    if _state_owner_outbox_health(server)["healthy"] is not True:
-        raise OperatorError("state-owner outbox worker failed startup health")
-    task_projection = {
-        "task_count": int(projection.get("task_count") or 0),
-        "completed_count": len(completed_task_refs),
-        "ready_count": len(ready_task_refs),
-    }
-    supervisor_process, supervisor_birth = _spawn_event_supervisor(
-        server=server,
-        board=board,
-        config_path=config_path,
-        paths=paths,
-        admission=admission,
-        task_projection=task_projection,
-    )
-    final_outbox_health = _state_owner_outbox_health(server)
-    if final_outbox_health["healthy"] is not True:
-        try:
-            _terminate_birth(supervisor_birth, grace_seconds=15.0)
-        finally:
-            owner_client.close()
-            server.stop()
-        raise OperatorError(
-            "state-owner outbox worker failed coordinator-admission health"
-        )
-    executor_process: subprocess.Popen[Any] | None = None
-    executor_supervisor_birth: dict[str, Any] | None = None
-    executor_broker: _ExecutorBootstrapBroker | None = None
+    supervisor_birth: dict[str, Any] | None = None
+    execution_route_policy: Any | None = None
     execution_route_summary: dict[str, Any] | None = None
-    if admit_task_execution:
-        try:
+    try:
+        # Prove the loopback Quack transport before any owner worker or child can
+        # use the shared DuckDB connection.  ``ready()`` performs a live extension
+        # query on that connection; running it after concurrent admission would
+        # bypass the gateway transaction lock and corrupt an otherwise valid
+        # semantic-command observation.
+        ready = server.ready()
+        if admit_task_execution:
             from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
                 TypedDatabaseTaskSource,
             )
@@ -2317,6 +2290,44 @@ def state_owner(
                 execution_route_policy,
                 require_casf_population=True,
             )
+        outbox_runtime = server.start_federation_outbox_worker()
+        if _state_owner_outbox_health(server)["healthy"] is not True:
+            raise OperatorError("state-owner outbox worker failed startup health")
+        task_projection = {
+            "task_count": int(projection.get("task_count") or 0),
+            "completed_count": len(completed_task_refs),
+            "ready_count": len(ready_task_refs),
+        }
+        supervisor_process, supervisor_birth = _spawn_event_supervisor(
+            server=server,
+            board=board,
+            config_path=config_path,
+            paths=paths,
+            admission=admission,
+            task_projection=task_projection,
+        )
+        final_outbox_health = _state_owner_outbox_health(server)
+        if final_outbox_health["healthy"] is not True:
+            raise OperatorError(
+                "state-owner outbox worker failed coordinator-admission health"
+            )
+    except BaseException:
+        try:
+            if supervisor_birth is not None:
+                _terminate_birth(supervisor_birth, grace_seconds=15.0)
+        finally:
+            try:
+                owner_client.close()
+            finally:
+                server.stop()
+        raise
+    executor_process: subprocess.Popen[Any] | None = None
+    executor_supervisor_birth: dict[str, Any] | None = None
+    executor_broker: _ExecutorBootstrapBroker | None = None
+    if admit_task_execution:
+        try:
+            if execution_route_policy is None:
+                raise OperatorError("execution-route policy was not sealed")
             (
                 executor_process,
                 executor_supervisor_birth,
@@ -2333,8 +2344,10 @@ def state_owner(
             try:
                 _terminate_birth(supervisor_birth, grace_seconds=15.0)
             finally:
-                owner_client.close()
-                server.stop()
+                try:
+                    owner_client.close()
+                finally:
+                    server.stop()
             raise
     print(
         json.dumps(

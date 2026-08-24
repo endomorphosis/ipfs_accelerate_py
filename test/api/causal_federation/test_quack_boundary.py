@@ -525,6 +525,17 @@ def test_operator_uses_default_owner_transport_connection_and_blocking_event() -
         and node.func.value.id == "server"
         and node.func.attr == "ready"
     )
+    route_seal_calls = [
+        node
+        for node in ast.walk(state_owner)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "route_projection"
+        and node.func.attr == "seal_execution_route_policy"
+    ]
+    assert len(route_seal_calls) == 1
+    route_seal_call = route_seal_calls[0]
     worker_call = next(
         node
         for node in ast.walk(state_owner)
@@ -552,6 +563,11 @@ def test_operator_uses_default_owner_transport_connection_and_blocking_event() -
         key=lambda node: node.lineno,
     )
     assert len(health_calls) >= 3
-    assert ready_call.lineno < worker_call.lineno < spawn_call.lineno
+    assert (
+        ready_call.lineno
+        < route_seal_call.lineno
+        < worker_call.lineno
+        < spawn_call.lineno
+    )
     assert worker_call.lineno < health_calls[0].lineno < spawn_call.lineno
     assert spawn_call.lineno < health_calls[1].lineno
