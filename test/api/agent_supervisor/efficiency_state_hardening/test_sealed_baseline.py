@@ -68,6 +68,29 @@ ARTIFACT_PATHS = (
     MANIFEST_PATH,
 )
 
+ARTIFACT_RELATIVE_PATHS = {
+    BASELINE_PATH: (
+        "docs/architecture/agent_supervisor_efficiency_state_hardening_inventory/"
+        "sealed_baseline.json"
+    ),
+    PROVIDER_PATH: (
+        "benchmarks/agent_supervisor/efficiency_state_hardening/"
+        "provider_model_config.json"
+    ),
+    PRICE_PATH: (
+        "benchmarks/agent_supervisor/efficiency_state_hardening/"
+        "price_snapshot.json"
+    ),
+    ENVIRONMENT_PATH: (
+        "benchmarks/agent_supervisor/efficiency_state_hardening/"
+        "environment_identity.json"
+    ),
+    MANIFEST_PATH: (
+        "benchmarks/agent_supervisor/efficiency_state_hardening/"
+        "sealed_input_manifest.json"
+    ),
+}
+
 SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
 CID_RE = re.compile(r"^b[a-z2-7]{20,}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -265,9 +288,40 @@ def test_artifacts_are_canonical_json_with_stable_identity() -> None:
         assert payload["authority"] is False
         cid = _identity_of(payload)
         _assert_cid(cid, field=str(path))
-        assert cid == _identity_of(payload)
-        if "identity" in payload:
-            assert payload["identity"] == cid
+        assert payload["identity"] == cid
+
+
+def test_every_sealed_artifact_has_an_exact_external_binding() -> None:
+    baseline = _load(BASELINE_PATH)
+    manifest = _load(MANIFEST_PATH)
+    manifest_outputs = {item["path"]: item for item in manifest["sealed_outputs"]}
+    baseline_bindings = {
+        PROVIDER_PATH: baseline["provider_and_model_configuration"],
+        PRICE_PATH: baseline["price_snapshot"],
+        ENVIRONMENT_PATH: baseline["environment_identity"],
+        MANIFEST_PATH: baseline["sealed_input_manifest"],
+    }
+    for path, relative in ARTIFACT_RELATIVE_PATHS.items():
+        payload = _load(path)
+        live_identity = _identity_of(payload)
+        live_sha256 = _sha256_file(path)
+        if path == BASELINE_PATH:
+            # Its top-level CID seals its body; self-referential file hashes
+            # would be mathematically unsatisfiable.
+            assert payload["identity"] == live_identity
+            continue
+        bound = baseline_bindings[path]
+        required_binding = {
+            "identity": live_identity,
+            "path": relative,
+            "sha256": live_sha256,
+        }
+        assert {key: bound[key] for key in required_binding} == required_binding
+        if path == PRICE_PATH:
+            assert bound["captured_at"] == payload["captured_at"]
+        if path not in {BASELINE_PATH, MANIFEST_PATH}:
+            assert manifest_outputs[relative]["identity"] == live_identity
+            assert manifest_outputs[relative]["sha256"] == live_sha256
 
 
 def test_required_baseline_fields_are_bound() -> None:
