@@ -1849,7 +1849,12 @@ def _result_rows(result: Any) -> list[list[Any]]:
 class TypedOwnerResult:
     """Small DB-API-shaped result returned to existing transaction code."""
 
-    def __init__(self, columns: Sequence[str], rows: Sequence[Sequence[Any]], rowcount: int) -> None:
+    def __init__(
+        self,
+        columns: Sequence[str],
+        rows: Sequence[Sequence[Any]],
+        rowcount: int,
+    ) -> None:
         self._columns = tuple(str(item) for item in columns)
         self.description = tuple((name,) for name in self._columns)
         self._rows = [tuple(item) for item in rows]
@@ -2539,7 +2544,9 @@ class TypedStateOwnerGateway:
                             raise TypedStateOwnerProtocolError("transaction already active")
                         command = StateCommand.from_dict(request.get("command") or {})
                         if not self._transaction_lock.acquire(timeout=30.0):
-                            raise TypedStateOwnerProtocolError("owner transaction admission timed out")
+                            raise TypedStateOwnerProtocolError(
+                                "owner transaction admission timed out"
+                            )
                         try:
                             self._authorize_command(command, client_id, grant=grant)
                             self._connection.execute("BEGIN TRANSACTION")
@@ -2738,7 +2745,11 @@ class TypedStateOwnerGateway:
                         )
                         _send_frame(
                             channel,
-                            {"schema": TYPED_STATE_OWNER_SCHEMA, "request_id": request_id, "ok": True},
+                            {
+                                "schema": TYPED_STATE_OWNER_SCHEMA,
+                                "request_id": request_id,
+                                "ok": True,
+                            },
                         )
                         return
                     else:
@@ -5517,7 +5528,11 @@ class TypedStateOwnerConnection:
             raise TypedStateOwnerProtocolError("cannot replace an active command")
         self._prepared_command = command
 
-    def execute_operation(self, operation: str, parameters: Sequence[Any] | None = None) -> TypedOwnerResult:
+    def execute_operation(
+        self,
+        operation: str,
+        parameters: Sequence[Any] | None = None,
+    ) -> TypedOwnerResult:
         response = self._request(
             "execute",
             operation=str(operation or ""),
