@@ -34556,11 +34556,6 @@ class PortalImplementationDaemon:
             # target checkout as already-merged while the owner is still mid
             # setup (ASI-171 / AICAT-025 prerequisite).
             try:
-                self._reclaim_dead_task_attempt_before_retry(
-                    task=task,
-                    attempt=attempt,
-                    merge_target=self._main_branch_name(),
-                )
                 lifecycle_record = self.worktree_lifecycle.begin_preparing(
                     task_id=task.task_id,
                     canonical_task_cid=self._canonical_ref(task),
@@ -34572,7 +34567,7 @@ class PortalImplementationDaemon:
                     state_dir=str(self.state_path.parent.resolve()),
                 )
                 self._active_worktree_lifecycle = lifecycle_record
-            except WorktreeLifecycleError as exc:
+            except DuplicateAttemptError as exc:
                 return lifecycle_race_result(
                     reason="worktree_lifecycle_claim_exists",
                     task_id=task.task_id,
@@ -56317,49 +56312,6 @@ class PortalImplementationDaemon:
         """Lane state directory used as the same-lane reclaim boundary."""
 
         return self.state_path.parent.resolve()
-
-    def _reclaim_dead_task_attempt_before_retry(
-        self,
-        *,
-        task: PortalTask,
-        attempt: int,
-        merge_target: str,
-    ) -> WorkspaceLifecycleRecord | None:
-        """Fence an exact dead prior claim before publishing its retry.
-
-        Database Portal attempt directories rotate between typed retries, so
-        the lane-wide same-directory restart sweep cannot see the prior
-        worker's claim. The lifecycle store admits that rotation only after
-        proving the old process birth dead and revalidating every persisted
-        task/workspace/branch/repository/index/fence binding under lock.
-        """
-
-        recovered = (
-            self.worktree_lifecycle.reclaim_exact_dead_task_attempt_for_retry(
-                task_id=task.task_id,
-                canonical_task_cid=self._canonical_ref(task),
-                attempt=attempt,
-                merge_target=merge_target,
-                expected_state_dir=self._worktree_lifecycle_lane_state_dir(),
-                reason="dead_task_attempt_reclaimed_before_retry",
-            )
-        )
-        if recovered is not None:
-            self._record_event(
-                "worktree_lifecycle_dead_task_attempt_reclaimed",
-                {
-                    "task_id": recovered.task_id,
-                    "canonical_task_cid": recovered.canonical_task_cid,
-                    "attempt": recovered.attempt,
-                    "workspace_path": recovered.workspace_path,
-                    "branch": recovered.branch,
-                    "merge_target": recovered.merge_target,
-                    "state_dir": recovered.state_dir,
-                    "fence": recovered.fence,
-                    "terminal_reason": recovered.terminal_reason,
-                },
-            )
-        return recovered
 
     def _reconciled_implementation_candidate_keys(self) -> set[tuple[str, str]]:
         """Return ``(task_id, implementation_commit)`` pairs that are settled."""

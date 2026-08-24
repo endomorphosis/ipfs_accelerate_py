@@ -1511,7 +1511,7 @@ def test_nonpooled_provider_exit_finalizes_preserved_worktree_lifecycle(
     )
 
 
-def test_rotated_database_portal_attempt_reclaims_exact_dead_worker_before_dispatch(
+def test_rotated_dead_active_attempt_with_stale_no_dispatch_event_stays_fenced(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1540,6 +1540,7 @@ def test_rotated_database_portal_attempt_reclaims_exact_dead_worker_before_dispa
     attempt_root = tmp_path / "state" / "database_portal_attempts"
     old_state_dir = attempt_root / ("1" * 24)
     new_state_dir = attempt_root / ("2" * 24)
+    provider_marker = tmp_path / "provider-called"
     daemon = PortalImplementationDaemon(
         todo_path=new_state_dir / "task-projection.md",
         state_path=new_state_dir / "portal-task-state.json",
@@ -1547,7 +1548,10 @@ def test_rotated_database_portal_attempt_reclaims_exact_dead_worker_before_dispa
         events_path=new_state_dir / "events.jsonl",
         repo_root=repo,
         implement=True,
-        implementation_command=_python_c("raise SystemExit(7)"),
+        implementation_command=_python_c(
+            "from pathlib import Path; "
+            f"Path({str(provider_marker)!r}).write_text('called')"
+        ),
         use_ephemeral_worktree=True,
         worktree_root=tmp_path / "worktrees",
         worktree_pool_enabled=False,
@@ -1583,37 +1587,74 @@ def test_rotated_database_portal_attempt_reclaims_exact_dead_worker_before_dispa
         lease_id=old.lease_id,
         expected_fence=old.fence,
     )
+    old_state_dir.mkdir(parents=True, exist_ok=True)
+    # CASF-035 exposed this exact ambiguity: the Portal result still claimed
+    # no dispatch while the provider log already contained real Grok frames.
+    # Neither artifact grants authority to replace the fenced ACTIVE claim.
+    old_log = (
+        old_state_dir
+        / "implementation-logs"
+        / "inc-reload-rotated-attempt-1.log"
+    )
+    old_log.parent.mkdir(parents=True)
+    old_log.write_text(
+        """{"type":"response","status":402,"provider":"grok"}
+{"type":"available_commands","commands":["read_file"]}
+{"type":"available_commands","commands":["apply_patch"]}
+""",
+        encoding="utf-8",
+    )
+    old_event = {
+        "type": "implementation_finished",
+        "task_id": task.task_id,
+        "attempt": 1,
+        "attempt_consumed": False,
+        "provider_dispatched": False,
+        "reason": "source_reload_interrupted",
+    }
+    old_events = old_state_dir / "events.jsonl"
+    old_events.write_text(
+        json.dumps(old_event, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    PortalTaskState(
+        active_task_id=task.task_id,
+        active_task_key=task.canonical_task_key,
+        active_task_cid=task.canonical_task_cid,
+        active_attempt=1,
+        active_phase="implementing",
+        active_phase_detail="",
+        active_log_path=str(old_log),
+        active_worktree_path=str(old_workspace.resolve()),
+        active_branch=old.branch,
+        implementation_in_progress=True,
+    ).save(old_state_dir / "portal-task-state.json")
+    record_path = daemon.worktree_lifecycle.workspace_path_for(old_workspace)
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=old.canonical_task_cid,
+        task_id=old.task_id,
+        attempt=old.attempt,
+    )
+    record_before = record_path.read_bytes()
+    index_before = index_path.read_bytes()
+    event_before = old_events.read_bytes()
+    log_before = old_log.read_bytes()
     daemon._active_provider_capacity_backoff = (  # type: ignore[method-assign]
         lambda: {}
     )
 
     result = daemon._run_implementation(task, PortalTaskState())
 
-    assert result.get("returncode") == 7, json.dumps(result, indent=2)
-    assert result.get("reason") != "worktree_lifecycle_claim_exists"
-    recovered = daemon.worktree_lifecycle.load_workspace(old_workspace)
-    assert recovered is not None
-    assert recovered.state is WorkspaceLifecycleState.TERMINAL
-    assert recovered.fence == old.fence + 1
-    assert recovered.terminal_reason == (
-        "dead_task_attempt_reclaimed_before_retry"
-    )
-    events = [
-        json.loads(line)
-        for line in (new_state_dir / "events.jsonl")
-        .read_text(encoding="utf-8")
-        .splitlines()
-        if line.strip()
-    ]
-    reclaim = next(
-        event
-        for event in events
-        if event.get("type")
-        == "worktree_lifecycle_dead_task_attempt_reclaimed"
-    )
-    assert reclaim["task_id"] == task.task_id
-    assert reclaim["canonical_task_cid"] == task.canonical_task_cid
-    assert reclaim["workspace_path"] == str(old_workspace.resolve())
+    assert result.get("reason") == "worktree_lifecycle_claim_exists"
+    assert result.get("provider_dispatched") is not True
+    assert result.get("attempt_consumed") is False
+    assert result.get("provider_call_allowed") is False
+    assert not provider_marker.exists()
+    assert daemon.worktree_lifecycle.load_workspace(old_workspace) == old
+    assert record_path.read_bytes() == record_before
+    assert index_path.read_bytes() == index_before
+    assert old_events.read_bytes() == event_before
+    assert old_log.read_bytes() == log_before
 
 
 def test_missing_pooled_workspace_is_discarded_after_setup_race(
