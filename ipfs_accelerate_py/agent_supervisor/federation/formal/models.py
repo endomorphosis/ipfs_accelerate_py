@@ -251,6 +251,35 @@ class FederationFormalIdentity:
     def from_dict(cls, value: Mapping[str, Any]) -> FederationFormalIdentity:
         if not isinstance(value, Mapping):
             raise FederationFormalError("formal identity must be an object")
+        # This is a wire boundary, rather than a convenience constructor: a
+        # silently accepted field could make a signed/formal identity appear
+        # to bind more authority than the model actually consumes.  Keep the
+        # optional content identity separate from the normative closed shape.
+        allowed = {
+            "schema",
+            "source_revision",
+            "source_tree",
+            "state_schema",
+            "generation_id",
+            "policy_id",
+            "policy_revision",
+            "capability_ids",
+            "federation_id",
+            "supervisor_ids",
+            "task_id",
+            "attempt_id",
+            "lease_id",
+            "fencing_epoch",
+            "assignment_revision",
+            "worktree_id",
+            "identity",
+        }
+        unknown = set(value) - allowed
+        if unknown:
+            raise FederationFormalError(
+                "formal identity has unknown fields: "
+                + repr(sorted((str(item) for item in unknown)))
+            )
         result = cls(
             source_revision=value.get("source_revision", ""),
             source_tree=value.get("source_tree", ""),

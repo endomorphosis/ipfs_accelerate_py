@@ -152,6 +152,14 @@ def test_exact_identity_is_typed_canonical_and_tamper_evident() -> None:
         )
 
 
+def test_identity_wire_decoder_rejects_unknown_authority_shaped_fields() -> None:
+    payload = _identity().to_dict()
+    payload["authority_created"] = True
+
+    with pytest.raises(FederationFormalError, match="unknown fields"):
+        FederationFormalIdentity.from_dict(payload)
+
+
 def test_suite_reuses_transition_rules_bounds_and_tla_generator_deterministically() -> None:
     first = _suite()
     second = _suite()
