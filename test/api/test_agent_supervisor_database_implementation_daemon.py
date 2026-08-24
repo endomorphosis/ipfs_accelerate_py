@@ -5530,6 +5530,48 @@ def test_quack_preprojection_recovery_supersedes_only_expired_same_task_queue_li
         assert task.body["completion_receipt"][
             "superseded_queue_lineage"
         ] == lineage
+        verified = (
+            daemon._verified_quack_preprojection_transport_recovery_state(
+                second_attempt,
+                task,
+            )
+        )
+        assert verified["receipt"]["superseded_queue_lineage"] == lineage
+        assert daemon.reconcile_terminal_portal_failures() == []
+
+        tampered_body = json.loads(json.dumps(dict(task.body)))
+        tampered_body["completion_receipt"][
+            "superseded_queue_lineage"
+        ]["observed_at_ms"] = lineage["prior_retry_not_before_ms"] - 1
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="control state is not exact",
+        ):
+            daemon._verified_quack_preprojection_transport_recovery_state(
+                second_attempt,
+                SimpleNamespace(
+                    status=task.status,
+                    revision=task.revision,
+                    body=tampered_body,
+                ),
+            )
+
+        tampered_body = json.loads(json.dumps(dict(task.body)))
+        tampered_body["completion_receipt"][
+            "superseded_queue_lineage"
+        ]["prior_attempt_number"] = True
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="control state is not exact",
+        ):
+            daemon._verified_quack_preprojection_transport_recovery_state(
+                second_attempt,
+                SimpleNamespace(
+                    status=task.status,
+                    revision=task.revision,
+                    body=tampered_body,
+                ),
+            )
     finally:
         daemon.close()
 

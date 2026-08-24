@@ -4266,6 +4266,64 @@ def test_aseh_repair_quack_publication_contention_transition_is_closed_and_chain
         )
 
 
+def test_aseh_repair_quack_recovery_replay_transition_is_closed_and_chained(
+) -> None:
+    receipt = {
+        "schema": aseh_operator.REPAIR_QUACK_RECOVERY_REPLAY_TRANSITION_SCHEMA,
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R8"
+        ),
+        "program_id": aseh_operator.PROGRAM,
+        "transition_revision": 8,
+        "bootstrap_receipt_id": "sha256:" + ("a" * 64),
+        "previous_receipt_cid": "sha256:" + ("b" * 64),
+        "plan_root_cid": "plan:sealed",
+        "repository_tree_id": "tree:sealed",
+        "base_head": "1" * 40,
+        "base_tree": "2" * 40,
+        "repair_head": "3" * 40,
+        "repair_tree": "4" * 40,
+        "changed_paths": list(
+            aseh_operator.REPAIR_QUACK_RECOVERY_REPLAY_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": "sha256:" + ("5" * 64),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R7"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            aseh_operator.REPAIR_QUACK_RECOVERY_REPLAY_TRANSITION_AUTHORITY
+        ),
+        "validation_results": [],
+        "terminal_success_criteria": "idempotent exact replay",
+        "terminal_non_success_criteria": "all drift rejected",
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    assert (
+        aseh_operator._repair_quack_recovery_replay_transition_receipt_id(
+            receipt
+        )
+        == receipt["receipt_cid"]
+    )
+
+    receipt["transition_revision"] = 7
+    receipt["receipt_cid"] = aseh_operator._identity(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_cid"
+        }
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="schema"):
+        aseh_operator._repair_quack_recovery_replay_transition_receipt_id(
+            receipt
+        )
+
+
 def test_aseh_repair_runtime_hardening_transition_rejects_wrong_parent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4408,7 +4466,7 @@ def test_aseh_repair_clean_launch_transition_publication_is_create_only(
     ) == first
 
 
-def test_aseh_repair_quack_publication_contention_transition_is_active_admission_base(
+def test_aseh_repair_quack_recovery_replay_transition_is_active_admission_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4420,6 +4478,7 @@ def test_aseh_repair_quack_publication_contention_transition_is_active_admission
     quack_recovery_path = tmp_path / "repair-r5.json"
     parallel_startup_path = tmp_path / "repair-r6.json"
     publication_contention_path = tmp_path / "repair-r7.json"
+    recovery_replay_path = tmp_path / "repair-r8.json"
     database_path = tmp_path / "control.duckdb"
     for path in (
         bootstrap_path,
@@ -4430,6 +4489,7 @@ def test_aseh_repair_quack_publication_contention_transition_is_active_admission
         quack_recovery_path,
         parallel_startup_path,
         publication_contention_path,
+        recovery_replay_path,
         database_path,
     ):
         path.touch()
@@ -4448,6 +4508,9 @@ def test_aseh_repair_quack_publication_contention_transition_is_active_admission
         "repair_quack_publication_contention_transition_receipt": (
             publication_contention_path
         ),
+        "repair_quack_recovery_replay_transition_receipt": (
+            recovery_replay_path
+        ),
         "database": database_path,
     }
     bootstrap = {
@@ -4465,13 +4528,15 @@ def test_aseh_repair_quack_publication_contention_transition_is_active_admission
     r5_receipt = {"revision": 5}
     r6_receipt = {"revision": 6}
     r7_receipt = {"revision": 7}
+    r8_receipt = {"revision": 8}
     r3_head = aseh_operator.REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD
     r4_head = "4" * 40
     r5_head = "5" * 40
     r6_head = "6" * 40
     r7_head = "7" * 40
+    r8_head = "8" * 40
     population = {
-        "source_head": r7_head,
+        "source_head": r8_head,
         "repository_tree_id": "tree:runtime",
         "plan_root_cid": "plan:sealed",
         "source_forest": {"forest_cid": "forest:runtime"},
@@ -4517,6 +4582,12 @@ def test_aseh_repair_quack_publication_contention_transition_is_active_admission
         "transition_revision": 7,
         "receipt_cid": "receipt:r7",
     }
+    r8 = {
+        "base_head": r7_head,
+        "repair_head": r8_head,
+        "transition_revision": 8,
+        "receipt_cid": "receipt:r8",
+    }
     payloads = {
         bootstrap_path: bootstrap,
         repair_path: r1_receipt,
@@ -4526,6 +4597,7 @@ def test_aseh_repair_quack_publication_contention_transition_is_active_admission
         quack_recovery_path: r5_receipt,
         parallel_startup_path: r6_receipt,
         publication_contention_path: r7_receipt,
+        recovery_replay_path: r8_receipt,
     }
     suffix_calls: list[tuple[str, str]] = []
 
@@ -4579,6 +4651,11 @@ def test_aseh_repair_quack_publication_contention_transition_is_active_admission
     )
     monkeypatch.setattr(
         aseh_operator,
+        "_validate_repair_quack_recovery_replay_transition",
+        lambda *_args, **_kwargs: r8,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
         "_read_continuity_state",
         lambda *_args, **_kwargs: (
             {"projection_cid": "projection:current", "event_cursor": 79},
@@ -4617,12 +4694,12 @@ def test_aseh_repair_quack_publication_contention_transition_is_active_admission
         object(), {}, paths
     )
 
-    assert admission["repair_transition"] == r7
+    assert admission["repair_transition"] == r8
     assert [
         item.get("transition_revision", 1)
         for item in admission["repair_transition_chain"]
-    ] == [1, 2, 3, 4, 5, 6, 7]
-    assert suffix_calls[-1] == (r7_head, r7_head)
+    ] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert suffix_calls[-1] == (r8_head, r8_head)
     assert admission["canonical_continuity"][
         "followup_to_clean_launch"
     ] == r3
@@ -4638,6 +4715,9 @@ def test_aseh_repair_quack_publication_contention_transition_is_active_admission
     assert admission["canonical_continuity"][
         "parallel_blocked_startup_to_quack_publication_contention"
     ] == r7
+    assert admission["canonical_continuity"][
+        "quack_publication_contention_to_quack_recovery_replay"
+    ] == r8
 
 
 def test_aseh_repair_authorization_replay_rejects_head_regression(

@@ -81289,6 +81289,92 @@ class DatabaseImplementationDaemon:
         )[:2048]
         queue_entry = self.task_source.get_queue_entry(attempt.task_cid)
         coordination = control.get("coordination")
+        has_superseded_queue_lineage = (
+            "superseded_queue_lineage" in control
+        )
+        superseded_queue_lineage = control.get(
+            "superseded_queue_lineage"
+        )
+        superseded_queue_lineage_invalid = False
+        if has_superseded_queue_lineage:
+            expected_lineage_fields = {
+                "task_cid",
+                "prior_attempt_id",
+                "prior_attempt_number",
+                "prior_reason",
+                "prior_retry_not_before_ms",
+                "prior_state",
+                "successor_attempt_id",
+                "successor_attempt_number",
+                "observed_at_ms",
+            }
+            lineage = (
+                superseded_queue_lineage
+                if isinstance(superseded_queue_lineage, Mapping)
+                else {}
+            )
+            prior_attempt_id = str(lineage.get("prior_attempt_id") or "")
+            prior_reason = str(lineage.get("prior_reason") or "")
+            prior_reason_match = re.fullmatch(
+                r"database_portal_retry:(attempt:[0-9a-f]{32}):.{1,1024}",
+                prior_reason,
+            )
+            prior_attempt = (
+                self.get_attempt(prior_attempt_id)
+                if re.fullmatch(r"attempt:[0-9a-f]{32}", prior_attempt_id)
+                is not None
+                else None
+            )
+            queue_receipt = control.get("queue_receipt")
+            queue_details = (
+                queue_receipt.get("details")
+                if isinstance(queue_receipt, Mapping)
+                else None
+            )
+            prior_retry_not_before_ms = lineage.get(
+                "prior_retry_not_before_ms"
+            )
+            observed_at_ms = lineage.get("observed_at_ms")
+            prior_attempt_number = lineage.get("prior_attempt_number")
+            successor_attempt_number = lineage.get(
+                "successor_attempt_number"
+            )
+            superseded_queue_lineage_invalid = bool(
+                not isinstance(superseded_queue_lineage, Mapping)
+                or set(lineage) != expected_lineage_fields
+                or type(lineage.get("task_cid")) is not str
+                or lineage.get("task_cid") != attempt.task_cid
+                or type(lineage.get("successor_attempt_id")) is not str
+                or lineage.get("successor_attempt_id")
+                != attempt.attempt_id
+                or type(successor_attempt_number) is not int
+                or successor_attempt_number != int(attempt.attempt_number)
+                or type(lineage.get("prior_state")) is not str
+                or lineage.get("prior_state") != "released"
+                or type(prior_attempt_number) is not int
+                or type(lineage.get("prior_attempt_id")) is not str
+                or type(lineage.get("prior_reason")) is not str
+                or type(prior_retry_not_before_ms) is not int
+                or type(observed_at_ms) is not int
+                or int(prior_retry_not_before_ms) < 0
+                or int(observed_at_ms) <= 0
+                or int(prior_retry_not_before_ms) > int(observed_at_ms)
+                or prior_reason_match is None
+                or prior_reason_match.group(1) != prior_attempt_id
+                or prior_attempt is None
+                or prior_attempt.task_cid != attempt.task_cid
+                or prior_attempt.attempt_id == attempt.attempt_id
+                or prior_attempt.status != "failed"
+                or prior_attempt.committed_phase != ATTEMPT_PHASE_FAILED
+                or int(prior_attempt.attempt_number)
+                != prior_attempt_number
+                or int(prior_attempt.attempt_number)
+                >= int(attempt.attempt_number)
+                or control.get("queue_reused") is not False
+                or not isinstance(queue_details, Mapping)
+                or queue_details.get("task_cid") != attempt.task_cid
+                or queue_details.get("reason") != queue_reason
+            )
         expected_source = (
             "quack_preprojection_transport_recovered:"
             + str(seed["receipt_id"])
@@ -81318,8 +81404,11 @@ class DatabaseImplementationDaemon:
             "control_expected_status",
             "control_expected_revision",
         }
+        if has_superseded_queue_lineage:
+            expected_control_fields.add("superseded_queue_lineage")
         if (
             set(control) != expected_control_fields
+            or superseded_queue_lineage_invalid
             or isinstance(task_revision, bool)
             or not isinstance(task_revision, int)
             or control.get("operation")
