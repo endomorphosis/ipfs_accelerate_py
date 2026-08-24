@@ -516,6 +516,170 @@ def test_admitted_health_requires_exact_live_executor_and_authoritative_progress
     assert unhealthy["healthy"] is False
 
 
+def _project_executor_supervisor_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operator: ModuleType,
+    *,
+    supervisor_status: str,
+    maintenance_status: str | None = None,
+    maintenance_error: str = "",
+) -> dict[str, Any]:
+    supervisor_birth = {"pid": 4401, "start_time_ticks": 101}
+    executor_birth = {"pid": 4402, "start_time_ticks": 102}
+    paths = {
+        "executor_current": tmp_path / "executor-current.json",
+        "executor_history": tmp_path / "executor-history.json",
+        "executor_state": tmp_path,
+        "executor_supervisor_status": tmp_path / "executor-status.json",
+    }
+    paths["executor_current"].write_text(
+        json.dumps(
+            {
+                "supervisor_process_birth": supervisor_birth,
+                "executor_process_birth": executor_birth,
+            }
+        ),
+        encoding="utf-8",
+    )
+    status_payload: dict[str, Any] = {
+        "status": supervisor_status,
+        "supervisor_pid": supervisor_birth["pid"],
+        "supervisor_pid_alive": True,
+        "daemon_pid": executor_birth["pid"],
+        "daemon_pid_alive": True,
+        "stalled_without_active_worker": False,
+    }
+    if maintenance_status is not None:
+        status_payload["last_agentic_maintenance_status"] = maintenance_status
+    if maintenance_error:
+        status_payload["last_agentic_maintenance_error"] = maintenance_error
+    paths["executor_supervisor_status"].write_text(
+        json.dumps(status_payload),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(operator, "_birth_liveness", lambda _birth: "alive")
+    return operator._executor_runtime_projection(
+        paths,
+        expected_supervisor_birth=supervisor_birth,
+    )
+
+
+def _classify_projected_executor_health(
+    operator: ModuleType,
+    projection: Mapping[str, Any],
+) -> dict[str, Any]:
+    from test.api.causal_federation.test_operator import (
+        _first_tranche_authority,
+        _first_tranche_runtime,
+    )
+
+    runtime = _first_tranche_runtime(
+        runtime_updates={
+            "task_execution_admitted": True,
+            "executor": dict(projection),
+        }
+    )
+    runtime["outbox_worker"]["watermark"] = 23
+    runtime["outbox_worker"]["committed_sequence"] = 23
+    authority = _first_tranche_authority()
+    authority.update({"event_cursor": 22, "active_count": 1})
+    return operator.classify_health(
+        owner_liveness="alive",
+        master_liveness="alive",
+        task_authority=authority,
+        runtime=runtime,
+        baseline={"event_cursor": 20, "completed_count": 12},
+        within_startup_grace=False,
+    )
+
+
+@pytest.mark.parametrize(
+    ("supervisor_status", "maintenance_status"),
+    (
+        ("running", None),
+        ("agentic_maintenance_started", "running"),
+        ("agentic_maintenance_completed", "completed"),
+    ),
+)
+def test_executor_runtime_projection_admits_closed_healthy_status_vocabulary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    supervisor_status: str,
+    maintenance_status: str | None,
+) -> None:
+    operator = _operator()
+    projection = _project_executor_supervisor_status(
+        tmp_path,
+        monkeypatch,
+        operator,
+        supervisor_status=supervisor_status,
+        maintenance_status=maintenance_status,
+    )
+
+    assert projection["supervisor_process_bound"] is True
+    assert projection["executor_process_bound"] is True
+    assert projection["status_fresh"] is True
+    assert projection["clean_error_state"] is True
+    assert projection["supervisor_status"]["status"] == supervisor_status
+    if maintenance_status is not None:
+        assert projection["supervisor_status"][
+            "last_agentic_maintenance_status"
+        ] == maintenance_status
+
+    classified = _classify_projected_executor_health(operator, projection)
+    assert classified["classification"] == "progressing"
+    assert classified["healthy"] is True
+
+
+@pytest.mark.parametrize(
+    ("supervisor_status", "maintenance_status", "maintenance_error"),
+    (
+        ("agentic_maintenance_failed", "failed", ""),
+        ("agentic_maintenance_cancelled", "cancelled", ""),
+        ("agentic_maintenance_unknown", "unknown", ""),
+        (
+            "agentic_maintenance_started",
+            "running",
+            "RuntimeError: maintenance failed",
+        ),
+    ),
+)
+def test_executor_runtime_projection_rejects_nonhealthy_maintenance_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    supervisor_status: str,
+    maintenance_status: str,
+    maintenance_error: str,
+) -> None:
+    operator = _operator()
+    projection = _project_executor_supervisor_status(
+        tmp_path,
+        monkeypatch,
+        operator,
+        supervisor_status=supervisor_status,
+        maintenance_status=maintenance_status,
+        maintenance_error=maintenance_error,
+    )
+
+    assert projection["clean_error_state"] is False
+    assert projection["supervisor_status"][
+        "last_agentic_maintenance_status"
+    ] == maintenance_status
+    if maintenance_error:
+        assert projection["supervisor_status"][
+            "last_agentic_maintenance_error"
+        ] == maintenance_error
+        assert "last_agentic_maintenance_error" in projection["error_fields"]
+
+    classified = _classify_projected_executor_health(operator, projection)
+    assert classified["classification"] == "stuck"
+    assert classified["healthy"] is False
+    assert classified["reason_codes"] == [
+        "admitted_executor_process_or_status_unhealthy"
+    ]
+
+
 def test_runtime_projection_read_retries_only_a_bounded_parse_race(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

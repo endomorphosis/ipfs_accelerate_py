@@ -3744,16 +3744,47 @@ def _executor_runtime_projection(
             "error_class",
             "last_error_class",
             "launch_error",
+            "last_agentic_maintenance_status",
+            "last_agentic_maintenance_error",
         )
         if key in status_payload
     }
     errors = [
         name
-        for name in ("error_class", "last_error_class", "launch_error")
+        for name in (
+            "error_class",
+            "last_error_class",
+            "launch_error",
+            "last_agentic_maintenance_error",
+        )
         if str(status.get(name) or "").strip()
     ]
+    supervisor_status = status.get("status")
+    maintenance_status = status.get("last_agentic_maintenance_status")
+    healthy_statuses = frozenset(
+        {
+            "running",
+            "agentic_maintenance_started",
+            "agentic_maintenance_completed",
+        }
+    )
+    maintenance_status_valid = bool(
+        (
+            supervisor_status == "running"
+            and maintenance_status in {None, "", "completed"}
+        )
+        or (
+            supervisor_status == "agentic_maintenance_started"
+            and maintenance_status == "running"
+        )
+        or (
+            supervisor_status == "agentic_maintenance_completed"
+            and maintenance_status == "completed"
+        )
+    )
     clean = bool(
-        status.get("status") == "running"
+        supervisor_status in healthy_statuses
+        and maintenance_status_valid
         and not errors
         and status.get("stalled_without_active_worker") is not True
     )
