@@ -4,7 +4,7 @@
   "program_id": "agent-supervisor-causal-event-federation-v1",
   "objective_id": "CASF-039",
   "frozen": true,
-  "state": "capability_blocked_specification_only",
+  "state": "capability_unavailable",
   "authoritative": false,
   "promotion_eligible": false,
   "matrix_binding": {
@@ -18,16 +18,34 @@
     "subprocess_budget": 12,
     "real_independent_processes_required": true,
     "in_process_simulation_qualifies": false,
+    "admitted_execution_interface": "CASFParallelAdmittedExecution@1",
+    "admitted_execution_available": false,
     "network_permitted": false,
     "direct_database_access_permitted": false,
     "ducklake_scheduling_authority_permitted": false,
     "launch_permitted": false
   },
   "parallel_comparison": {
-    "baseline_qualified_supervisors": 1,
+    "future_required_arms": [
+      {
+        "arm_id": "baseline",
+        "required_supervisor_processes": 1,
+        "availability": "unavailable",
+        "execution_status": "not_run",
+        "qualified": false
+      },
+      {
+        "arm_id": "candidate",
+        "required_supervisor_processes": 12,
+        "availability": "unavailable",
+        "execution_status": "not_run",
+        "qualified": false
+      }
+    ],
     "comparison_identity": "same-host-tasks-providers-tests-proofs-budgets",
     "minimum_accepted_task_throughput_multiplier": 3.0,
-    "lower_assurance_permitted": false
+    "lower_assurance_permitted": false,
+    "measurement_status": "not_run"
   },
   "zero_tolerance_gates": [
     "lost_deliveries",
@@ -39,7 +57,11 @@
     "secret_leaks",
     "reduced_assurance"
   ],
-  "identity_requirements": [
+  "source_modules": [
+    "benchmarks/agent_supervisor/causal_event_federation/parallel_manifest.json",
+    "benchmarks/agent_supervisor/causal_event_federation/run_parallel.py"
+  ],
+  "future_identity_requirements": [
     "repository_commit",
     "repository_tree",
     "control_plane_generation",
@@ -55,10 +77,6 @@
     "assignment_revision",
     "fencing_epoch"
   ],
-  "source_modules": [
-    "benchmarks/agent_supervisor/causal_event_federation/parallel_manifest.json",
-    "benchmarks/agent_supervisor/causal_event_federation/run_parallel.py"
-  ],
   "live_capability": {
     "availability": "unavailable",
     "execution_status": "not_run",
@@ -67,15 +85,15 @@
     "required_evidence": "current_generation_accepted_gate_and_live_telemetry",
     "metrics_omitted": true
   },
-  "result_storage": "No result is emitted while capability is unavailable. A future admitted run must produce a content-addressed non-authoritative artifact and compact state-owner receipt; neither grants scheduling, completion, acceptance, or promotion authority.",
+  "result_storage": "Emit one canonical content-addressed unavailable/not-run artifact bound to the twice-observed clean repository commit and tree; it grants no scheduling, completion, acceptance, release, or promotion authority.",
   "nonclaims": [
-    "This frozen recipe is not itself a benchmark result.",
-    "No twelve-supervisor process launch occurred while the capability is unavailable.",
-    "An in-process simulation, object graph, or synthetic process count cannot qualify this benchmark.",
-    "No caller-supplied metric, telemetry, attestation, or old observation can satisfy the live-capacity gate.",
-    "No direct database access, file fallback, network access, credential use, or DuckLake scheduling authority is permitted.",
-    "A capability preflight failure is not a qualification result or a proof of safe parallel behavior.",
-    "Metrics alone cannot establish completion, release, acceptance, or promotion.",
+    "This frozen recipe and its unavailable artifact are not benchmark measurements.",
+    "Neither the one-supervisor baseline arm nor the twelve-supervisor candidate arm ran or qualified.",
+    "No twelve-supervisor process launch occurred while the capability was unavailable.",
+    "An in-process simulation, object graph, synthetic process count, or caller-supplied observation cannot qualify this benchmark.",
+    "The minimum 3.0 throughput multiplier is a future acceptance threshold, not an observed value.",
+    "No direct database access, file fallback, network access, credential use, provider call, or DuckLake scheduling authority occurred.",
+    "Unavailable and not-run evidence contains no metrics and cannot establish completion, release, acceptance, promotion, or safe parallel behavior.",
     "This benchmark does not qualify 256-agent load, 64-slot concurrency, token efficiency, multihost behavior, or production behavior."
   ]
 }

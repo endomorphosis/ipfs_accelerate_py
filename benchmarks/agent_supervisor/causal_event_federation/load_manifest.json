@@ -4,7 +4,7 @@
   "program_id": "agent-supervisor-causal-event-federation-v1",
   "objective_id": "CASF-040",
   "frozen": true,
-  "state": "capability_blocked_specification_only",
+  "state": "capability_unavailable",
   "authoritative": false,
   "promotion_eligible": false,
   "matrix_binding": {
@@ -13,7 +13,7 @@
     "sha256": "b23681a8c811f2020ef97e1b1b0172c15c87577d7882a4323f67e072dd7dfd9f"
   },
   "execution": {
-    "measurement_scope": "twelve_independent_supervisor_processes_256_registered_agents_qualified_live_profile",
+    "measurement_scope": "twelve_independent_supervisor_processes_256_registered_agents_required_live_profile",
     "required_supervisor_processes": 12,
     "registered_logical_agents": 256,
     "maximum_concurrent_subagents": 64,
@@ -22,10 +22,26 @@
     "subprocess_budget": 12,
     "real_independent_processes_required": true,
     "in_process_simulation_qualifies": false,
+    "admitted_execution_interface": "CASFLoadAdmittedExecution@1",
+    "admitted_execution_available": false,
     "network_permitted": false,
+    "authenticated_typed_quack_required": true,
     "direct_database_access_permitted": false,
     "ducklake_scheduling_authority_permitted": false,
+    "ducklake_projection_authoritative": false,
     "launch_permitted": false
+  },
+  "capacity_preflight": {
+    "schema": "casf/load-capacity-preflight@1",
+    "current_supervisor_processes": 1,
+    "current_registered_logical_agents": 1,
+    "current_maximum_concurrent_subagents": 1,
+    "required_supervisor_processes": 12,
+    "required_registered_logical_agents": 256,
+    "required_maximum_concurrent_subagents": 64,
+    "authenticated_typed_quack_live_capacity": false,
+    "availability": "unavailable",
+    "reason_code": "qualified_256_agent_bounded_load_live_capacity_not_admitted"
   },
   "zero_tolerance_gates": [
     "lost_deliveries",
@@ -41,7 +57,7 @@
     "ducklake_authority_promotion",
     "reduced_assurance"
   ],
-  "identity_requirements": [
+  "future_identity_requirements": [
     "repository_commit",
     "repository_tree",
     "control_plane_generation",
@@ -64,20 +80,22 @@
   "live_capability": {
     "availability": "unavailable",
     "execution_status": "not_run",
+    "ran": false,
+    "qualified": false,
     "reason_code": "qualified_256_agent_bounded_load_live_capacity_not_admitted",
     "required_attestation": "casf/load-live-capacity-attestation@1",
     "required_evidence": "current_generation_accepted_gate_current_fences_and_live_host_provider_proof_merge_storage_telemetry",
     "metrics_omitted": true
   },
-  "result_storage": "No result is emitted while capability is unavailable. A future admitted run must produce a content-addressed non-authoritative artifact and compact state-owner receipt; neither grants scheduling, completion, acceptance, or promotion authority.",
+  "result_storage": "Emit one canonical content-addressed unavailable/not-run artifact bound to the twice-observed clean repository commit and tree, exact manifest, matrix, and source bytes; it grants no scheduling, completion, acceptance, release, or promotion authority.",
   "nonclaims": [
-    "This frozen recipe is not itself a benchmark result.",
-    "No 256-agent load process launch occurred while the capability is unavailable.",
+    "This frozen recipe and its unavailable artifact are not benchmark measurements.",
+    "No twelve-supervisor, 256-agent, 64-slot, task, delivery, or replay workload ran or qualified.",
+    "The 1000-task and 100000-delivery requirements are future acceptance thresholds, not observed metric values.",
     "An in-process simulation, object graph, synthetic agent count, or caller-supplied telemetry cannot qualify this benchmark.",
-    "No direct database access, file fallback, network access, credential use, or DuckLake scheduling authority is permitted.",
-    "A capability preflight failure is not a qualification result or proof of safe causal or parallel behavior.",
-    "Metrics alone cannot establish completion, release, acceptance, or promotion.",
-    "This benchmark does not qualify token efficiency, multihost behavior, production behavior, or any capability outside its separately admitted live profile.",
-    "Model-created authority, policy permission, completion, or promotion remains prohibited."
+    "No direct database access, file fallback, network access, credential use, provider call, or DuckLake scheduling authority occurred.",
+    "Any future live authority requires an authenticated typed Quack admission and can never come from direct DuckDB access or DuckLake.",
+    "Unavailable and not-run evidence contains no metrics and cannot establish completion, release, acceptance, promotion, or safe load behavior.",
+    "This benchmark does not qualify token efficiency, multihost behavior, production behavior, or any capability outside its separately admitted live profile."
   ]
 }
