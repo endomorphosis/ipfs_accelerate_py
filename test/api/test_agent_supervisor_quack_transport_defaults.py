@@ -360,6 +360,33 @@ def test_apply_owner_command_payload_unstalls_without_client_sql(tmp_path) -> No
     assert tuple(status) == ("retrying", 10)
 
 
+def test_apply_owner_command_payload_reports_losing_cas_zero() -> None:
+    import duckdb
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        apply_owner_command_payload,
+    )
+
+    connection = duckdb.connect(":memory:")
+    connection.execute(
+        "CREATE TABLE tasks (task_cid VARCHAR PRIMARY KEY, revision BIGINT NOT NULL)"
+    )
+    connection.execute("INSERT INTO tasks VALUES ('cid-043', 47)")
+
+    reply = apply_owner_command_payload(
+        connection,
+        {
+            "sql": (
+                "UPDATE tasks SET revision = 47 "
+                "WHERE task_cid = ? AND revision = ?"
+            ),
+            "parameters": ["cid-043", 46],
+        },
+    )
+
+    assert reply == {"ok": True, "rowcount": 0}
+
+
 def test_request_owner_board_unstall_writes_inbox_without_waiting(
     tmp_path, monkeypatch
 ) -> None:
@@ -440,6 +467,44 @@ def test_owner_recycles_for_pending_request_without_bounce(tmp_path) -> None:
     old = time.time() - 20
     os.utime(request, (old, old))
     assert owner_should_recycle_for_board_unstall(inbox, min_age_seconds=15) is True
+
+
+def test_owner_mutation_wait_outlives_recycle_cooldown() -> None:
+    """One logical CAS must not time out into a second claim before recycle."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    assert ds.QUACK_OWNER_MUTATION_TIMEOUT_SECONDS >= (
+        ds.OWNER_BOARD_UNSTALL_COOLDOWN_SECONDS + 60.0
+    )
+
+
+def test_owner_mutation_preserves_zero_rowcount(tmp_path, monkeypatch) -> None:
+    """A losing queued CAS remains a conflict, never an unknown success."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    inbox = tmp_path / "mutations"
+    inbox.mkdir()
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
+    monkeypatch.setattr(ds, "QUACK_OWNER_MUTATION_TIMEOUT_SECONDS", 2.0)
+
+    def fake_sleep(_seconds: float) -> None:
+        pending = list(inbox.glob("*.request.json"))
+        if not pending:
+            return
+        request = pending[0]
+        done = request.with_name(request.name.replace(".request.json", ".done.json"))
+        done.write_text('{"ok": true, "rowcount": 0}\n', encoding="utf-8")
+
+    monkeypatch.setattr(ds.time, "sleep", fake_sleep)
+    cursor = ds._execute_quack_owner_mutation(
+        "UPDATE tasks SET revision = 47 WHERE task_cid = ? AND revision = 46",
+        ["cid-043"],
+        dml=True,
+    )
+
+    assert cursor.rowcount == 0
 
 
 def test_owner_mutation_retries_after_listen_handle_reject(

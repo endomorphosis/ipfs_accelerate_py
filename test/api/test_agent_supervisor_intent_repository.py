@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -487,6 +488,102 @@ def test_cas_heads_reject_stale_revisions(tmp_path: Path) -> None:
                 title="stale",
                 expected_revision=0,
             )
+
+
+class _QueuedCASResult:
+    def __init__(self, rows=(), *, rowcount: int = -1) -> None:
+        self._rows = list(rows)
+        self.rowcount = int(rowcount)
+
+    def fetchall(self):
+        return list(self._rows)
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+
+def _queued_cas_connection(*, update_rowcount: int, landed_body: str = ""):
+    statements: list[str] = []
+
+    class _Connection:
+        def execute(self, sql, _parameters=None):
+            normalized = " ".join(str(sql).split())
+            statements.append(normalized)
+            if normalized.startswith(
+                "SELECT task_cid, task_alias, goal_cid, status, revision, body_json"
+            ):
+                return _QueuedCASResult(
+                    [
+                        (
+                            "task:cid:043",
+                            "PCCE-043",
+                            "goal:cid:g400",
+                            "ready",
+                            46,
+                            "{}",
+                        )
+                    ]
+                )
+            if normalized.startswith("UPDATE tasks SET status"):
+                return _QueuedCASResult(rowcount=update_rowcount)
+            if normalized.startswith(
+                "SELECT status, revision, body_json FROM tasks"
+            ):
+                return _QueuedCASResult(
+                    [("in_progress", 47, landed_body)]
+                )
+            raise AssertionError(f"CAS continued after losing owner update: {normalized}")
+
+    @contextmanager
+    def _connection(*, write=False):
+        assert write is True
+        yield _Connection()
+
+    return _connection, statements
+
+
+def test_task_status_cas_rejects_owner_zero_rowcount_before_follow_on_writes(
+    tmp_path: Path,
+) -> None:
+    with _repo(tmp_path) as repo:
+        fake_connection, statements = _queued_cas_connection(update_rowcount=0)
+        repo._connection = fake_connection  # type: ignore[method-assign]
+
+        with pytest.raises(IntentRepositoryConflictError, match="did not update"):
+            repo.cas_task_status(
+                task_cid="task:cid:043",
+                expected_revision=46,
+                new_status="in_progress",
+                receipt={"claim_id": "loser"},
+            )
+
+        assert len(statements) == 2
+
+
+def test_task_status_cas_rejects_unknown_rowcount_without_exact_readback(
+    tmp_path: Path,
+) -> None:
+    winner_body = json.dumps(
+        {"completion_receipt": {"claim_id": "winner"}},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    with _repo(tmp_path) as repo:
+        fake_connection, statements = _queued_cas_connection(
+            update_rowcount=-1,
+            landed_body=winner_body,
+        )
+        repo._connection = fake_connection  # type: ignore[method-assign]
+
+        with pytest.raises(IntentRepositoryConflictError, match="exact state"):
+            repo.cas_task_status(
+                task_cid="task:cid:043",
+                expected_revision=46,
+                new_status="in_progress",
+                receipt={"claim_id": "loser"},
+            )
+
+        assert len(statements) == 3
 
 
 # ---------------------------------------------------------------------------

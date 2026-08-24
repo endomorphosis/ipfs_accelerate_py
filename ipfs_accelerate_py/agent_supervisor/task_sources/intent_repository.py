@@ -2800,7 +2800,8 @@ class IntentRepository:
             body_map = dict(body_map)
             if receipt_map:
                 body_map["completion_receipt"] = receipt_map
-            connection.execute(
+            expected_body_json = _canonical(body_map, noun="task body")
+            update_result = connection.execute(
                 """
                 UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
                     body_json = ?
@@ -2810,11 +2811,44 @@ class IntentRepository:
                     status_text,
                     revision,
                     now,
-                    _canonical(body_map, noun="task body"),
+                    expected_body_json,
                     resolved_cid,
                     current_revision,
                 ],
             )
+            try:
+                update_rowcount = int(getattr(update_result, "rowcount", -1))
+            except (TypeError, ValueError):
+                update_rowcount = -1
+            if update_rowcount == 0:
+                raise IntentRepositoryConflictError(
+                    "task status CAS did not update the expected revision"
+                )
+            if update_rowcount not in {-1, 1}:
+                raise IntentRepositoryConflictError(
+                    "task status CAS updated an unexpected row population"
+                )
+            if update_rowcount == -1:
+                # Some compatibility cursors cannot report affected rows.
+                # Prove the exact status/revision/body binding before emitting
+                # revision or event records; a queued competing receipt must
+                # never be mistaken for this caller's successful claim.
+                landed = connection.execute(
+                    """
+                    SELECT status, revision, body_json FROM tasks
+                    WHERE task_cid = ?
+                    """,
+                    [resolved_cid],
+                ).fetchone()
+                if (
+                    landed is None
+                    or str(landed[0]) != status_text
+                    or int(landed[1]) != revision
+                    or str(landed[2]) != expected_body_json
+                ):
+                    raise IntentRepositoryConflictError(
+                        "task status CAS did not land the exact state"
+                    )
             connection.execute(
                 """
                 INSERT INTO task_revisions (

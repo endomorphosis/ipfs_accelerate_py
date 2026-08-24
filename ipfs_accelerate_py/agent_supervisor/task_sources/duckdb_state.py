@@ -604,7 +604,6 @@ QUACK_ATTACH_BACKOFF_SECONDS: tuple[float, ...] = (
     8.0,
     8.0,
 )
-QUACK_OWNER_MUTATION_TIMEOUT_SECONDS = 90.0
 _QUACK_ATTACH_CONTENTION_MARKERS = (
     "authentication failed",
     "could not set lock",
@@ -814,6 +813,12 @@ BOARD_UNSTALL_BOUNCE_NAME = "board-unstall.bounce"
 BOARD_UNSTALL_COOLDOWN_NAME = "board-unstall.cooldown"
 OWNER_BOARD_UNSTALL_BOUNCE_MIN_AGE_SECONDS = 15.0
 OWNER_BOARD_UNSTALL_COOLDOWN_SECONDS = 600.0
+# A caller must still be waiting when the watch reaches its worst-case recycle
+# window.  Otherwise the daemon can acquire a new fenced claim and enqueue a
+# second, differently receipted CAS for the same expected board revision.
+QUACK_OWNER_MUTATION_TIMEOUT_SECONDS = (
+    OWNER_BOARD_UNSTALL_COOLDOWN_SECONDS + 60.0
+)
 _OWNER_INBOX_DML_PREFIXES = _QUACK_OWNER_DML_PREFIXES + ("INSERT ",)
 
 
@@ -857,8 +862,16 @@ def apply_owner_command_payload(
     )
     rowcount = -1
     try:
-        if getattr(result, "description", None):
-            result.fetchall()
+        description = getattr(result, "description", None)
+        if description:
+            rows = result.fetchall()
+            if (
+                len(description) == 1
+                and str(description[0][0]).lower() == "count"
+                and len(rows) == 1
+                and isinstance(rows[0][0], int)
+            ):
+                rowcount = int(rows[0][0])
         elif hasattr(result, "rowcount"):
             rowcount = int(result.rowcount)
     except Exception:
@@ -1155,7 +1168,10 @@ def _execute_quack_owner_mutation(
                 cursor._columns = ()
                 cursor._rows = []
                 cursor._offset = 0
-                cursor.rowcount = int(payload.get("rowcount") or -1)
+                raw_rowcount = payload.get("rowcount")
+                cursor.rowcount = int(
+                    -1 if raw_rowcount is None else raw_rowcount
+                )
                 return cursor
             last_error = str(payload.get("error") or "unknown")
             if not quack_owner_mutation_error_is_retryable(last_error):
