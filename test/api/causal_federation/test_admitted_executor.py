@@ -3529,6 +3529,33 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         database_program=program,
         merge_target_branch=temporary_branch,
     )
+    configured_executor_environment = operator._executor_environment
+
+    def _hermetic_executor_environment(
+        selected_board: Any,
+        route: Mapping[str, Any],
+        *,
+        owner_identity: Mapping[str, Any],
+    ) -> dict[str, str]:
+        environment = configured_executor_environment(
+            selected_board,
+            route,
+            owner_identity=owner_identity,
+        )
+        route_environment = route.get("environment")
+        assert isinstance(route_environment, Mapping)
+        # This fixture supplies an explicit hermetic command so it cannot make a
+        # paid provider call. Production still rejects pairing an explicit
+        # implementation command with the sealed Grok/Codex route environment.
+        for name in route_environment:
+            environment.pop(str(name), None)
+        return environment
+
+    monkeypatch.setattr(
+        operator,
+        "_executor_environment",
+        _hermetic_executor_environment,
+    )
     paths = operator._runtime_paths(managed_board)
     paths["owner_socket"] = server.typed_command_socket_path()
 

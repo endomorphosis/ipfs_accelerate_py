@@ -3029,6 +3029,7 @@ def _grok_cli_trusted_failure_command(
         max_turns if max_turns.isdigit() else "100000",
         "--mode",
         "agent",
+        "--require-terminal-quota-frame",
         "--grok-bin",
         grok,
     ]
@@ -66310,6 +66311,13 @@ class PortalImplementationDaemon:
                 if task is not None
                 else None
             )
+            route_receipt_path: Path | None = None
+            if task is not None and attempt > 0:
+                route_receipt_path = (
+                    self._ensure_provider_route_receipt_dir(task)
+                    / f"provider-route-{attempt}.json"
+                )
+                _prepare_provider_route_receipt(route_receipt_path)
             return _ordered_provider_fallback_command(
                 workspace_path=workspace_path,
                 primary_provider="grok",
@@ -66329,6 +66337,7 @@ class PortalImplementationDaemon:
                     ),
                 ),
                 fallback_policy=GROK_QUOTA_ONLY_FALLBACK_POLICY,
+                route_receipt_path=route_receipt_path,
                 route_task_id=(task.task_id if task is not None else ""),
                 route_attempt=(attempt if attempt > 0 else None),
                 route_stage="implementation",
