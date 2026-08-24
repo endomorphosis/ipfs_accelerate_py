@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fcntl
 import importlib.util
 import json
 import os
@@ -326,6 +327,92 @@ def test_successor_load_rejects_aliases_and_live_wal(
 
     with pytest.raises(operator.SuccessorOperatorError, match=error):
         operator._load_provenance(paths, root=tmp_path)
+
+
+def test_controller_lock_is_held_before_locked_admission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    operator = _operator()
+    paths = operator._paths(tmp_path)
+    held = operator._open_private_lock(paths["controller_lock"])
+    fcntl.flock(held.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    entered = False
+
+    def locked_run(*args: object, **kwargs: object) -> int:
+        nonlocal entered
+        entered = True
+        return 0
+
+    monkeypatch.setattr(operator, "_run_locked_successor", locked_run)
+    try:
+        with pytest.raises(operator.SuccessorOperatorError, match="owns the lock"):
+            operator.run_successor(
+                tmp_path / "candidate.json",
+                root=tmp_path,
+                implement=False,
+                duration_seconds=1.0,
+            )
+    finally:
+        fcntl.flock(held.fileno(), fcntl.LOCK_UN)
+        held.close()
+    assert entered is False
+
+
+def test_tracked_runtime_inventory_hashes_bytes_and_rejects_ignored_source(
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    repository = tmp_path / "repo"
+    package = repository / "package"
+    package.mkdir(parents=True)
+    module = package / "module.py"
+    module.write_text("value = 1\n", encoding="utf-8")
+    (repository / ".gitignore").write_text(
+        "__pycache__/\npackage/shadow.py\n", encoding="utf-8"
+    )
+    for arguments in (
+        ("init", "-q"),
+        ("config", "user.email", "lgcvf-test@example.invalid"),
+        ("config", "user.name", "LGCVF Test"),
+        ("add", ".gitignore", "package/module.py"),
+        ("commit", "-qm", "inventory"),
+    ):
+        subprocess.run(
+            ["/usr/bin/git", *arguments],
+            cwd=repository,
+            check=True,
+            env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
+        )
+    head = subprocess.check_output(
+        ["/usr/bin/git", "rev-parse", "HEAD"],
+        cwd=repository,
+        text=True,
+    ).strip()
+    receipt = operator._tracked_runtime_inventory(
+        repository,
+        head=head,
+        pathspecs=("package",),
+        noun="test runtime",
+    )
+    assert receipt["tracked_object_count"] == 1
+
+    module.write_text("value = 2\n", encoding="utf-8")
+    with pytest.raises(operator.SuccessorOperatorError, match="bytes differ"):
+        operator._tracked_runtime_inventory(
+            repository,
+            head=head,
+            pathspecs=("package",),
+            noun="test runtime",
+        )
+    module.write_text("value = 1\n", encoding="utf-8")
+    (package / "shadow.py").write_text("value = 3\n", encoding="utf-8")
+    with pytest.raises(operator.SuccessorOperatorError, match="ignored executable"):
+        operator._tracked_runtime_inventory(
+            repository,
+            head=head,
+            pathspecs=("package",),
+            noun="test runtime",
+        )
 
 
 def test_sealed_manifest_identity_and_policy_authority_are_fail_closed(

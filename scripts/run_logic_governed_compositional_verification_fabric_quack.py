@@ -47,8 +47,27 @@ from pathlib import Path
 from typing import Any, Final
 
 ROOT: Final = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+_AMBIENT_PYTHONPATH: Final = frozenset(
+    item for item in os.environ.get("PYTHONPATH", "").split(os.pathsep) if item
+)
+_NESTED_DATASETS_ROOT: Final = ROOT / "ipfs_datasets_py"
+sys.path[:] = [
+    str(ROOT),
+    str(_NESTED_DATASETS_ROOT),
+    *(
+        item
+        for item in sys.path
+        if item
+        and item not in _AMBIENT_PYTHONPATH
+        and item not in {str(ROOT), str(_NESTED_DATASETS_ROOT)}
+        and not item.startswith("__editable__.")
+    ),
+]
+_RUNTIME_PYCACHE: Final = tempfile.TemporaryDirectory(
+    prefix=f"lgcvf-quack-pycache-{os.geteuid()}-"
+)
+os.chmod(_RUNTIME_PYCACHE.name, 0o700)
+sys.pycache_prefix = _RUNTIME_PYCACHE.name
 PROGRAM_ROOT_RELATIVE: Final = Path(
     "data/agent_supervisor/logic_governed_compositional_verification_fabric"
 )
@@ -329,6 +348,7 @@ def _strict_json(
     *,
     expected_schema: str = "",
     require_private_owner: bool = False,
+    verify_content_identity: bool = True,
 ) -> dict[str, Any]:
     raw = _read_bounded_regular_file(
         path,
@@ -345,7 +365,7 @@ def _strict_json(
     if expected_schema and value.get("schema") != expected_schema:
         raise SuccessorOperatorError(f"receipt schema differs: {path}")
     claimed = str(value.get("receipt_cid") or value.get("status_cid") or "")
-    if claimed:
+    if claimed and verify_content_identity:
         unsigned = dict(value)
         unsigned.pop("receipt_cid", None)
         unsigned.pop("status_cid", None)
@@ -822,20 +842,159 @@ def _git_quiet(root: Path, arguments: Sequence[str], *, noun: str) -> None:
     _git_text(root, arguments, noun=noun)
 
 
-def _target_source_continuity(
-    root: Path,
+def _regular_git_blob_oid(path: Path, *, noun: str) -> str:
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError as exc:
+        raise SuccessorOperatorError(f"{noun} is unreadable: {path}") from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_size < 0
+            or before.st_size > MAX_DATABASE_BYTES
+        ):
+            raise SuccessorOperatorError(f"{noun} is not a bounded regular file")
+        digest = hashlib.sha1(usedforsecurity=False)
+        digest.update(f"blob {before.st_size}\0".encode("ascii"))
+        while True:
+            block = os.read(descriptor, 1024 * 1024)
+            if not block:
+                break
+            digest.update(block)
+        after = os.fstat(descriptor)
+        if (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        ) != (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        ):
+            raise SuccessorOperatorError(f"{noun} changed while hashing")
+        return digest.hexdigest()
+    finally:
+        os.close(descriptor)
+
+
+def _tracked_runtime_inventory(
+    repository: Path,
     *,
-    source_head: str,
-    source_tree: str,
-    config: Mapping[str, Any],
-) -> dict[str, str]:
+    head: str,
+    pathspecs: Sequence[str],
+    noun: str,
+) -> dict[str, Any]:
     if (
-        re.fullmatch(r"[0-9a-f]{40}", source_head) is None
-        or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
+        _git_text(
+            repository,
+            ("rev-parse", "--show-object-format"),
+            noun=f"{noun} object format",
+        )
+        != "sha1"
     ):
-        raise SuccessorOperatorError("sealed source Git identity is malformed")
+        raise SuccessorOperatorError(f"{noun} object format is unsupported")
+    special_index = _git_text(
+        repository,
+        ("ls-files", "-v", "-z", "--", *pathspecs),
+        noun=f"{noun} index flags",
+    )
+    if any(
+        record and not record.startswith("H ") for record in special_index.split("\0")
+    ):
+        raise SuccessorOperatorError(f"{noun} has special index flags")
+    raw_records = _git_text(
+        repository,
+        ("ls-tree", "-r", "-z", head, "--", *pathspecs),
+        noun=f"{noun} tracked inventory",
+    )
+    observed: list[tuple[str, str, str]] = []
+    for raw in raw_records.split("\0"):
+        if not raw:
+            continue
+        try:
+            metadata, relative = raw.split("\t", 1)
+            mode, object_type, expected_oid = metadata.split(" ", 2)
+        except ValueError as exc:
+            raise SuccessorOperatorError(f"{noun} inventory is malformed") from exc
+        relative_path = Path(relative)
+        if (
+            object_type != "blob"
+            or mode not in {"100644", "100755"}
+            or relative_path.is_absolute()
+            or ".." in relative_path.parts
+        ):
+            raise SuccessorOperatorError(f"{noun} contains an unsafe tracked object")
+        observed_oid = _regular_git_blob_oid(
+            repository / relative_path, noun=f"{noun} tracked object"
+        )
+        if observed_oid != expected_oid:
+            raise SuccessorOperatorError(f"{noun} tracked bytes differ from HEAD")
+        observed.append((relative_path.as_posix(), mode, observed_oid))
+    ignored = _git_text(
+        repository,
+        (
+            "ls-files",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "-z",
+            "--",
+            *pathspecs,
+        ),
+        noun=f"{noun} ignored inventory",
+    )
+    quarantined_pycache = 0
+    for raw in ignored.split("\0"):
+        if not raw:
+            continue
+        relative_path = Path(raw)
+        path = repository / relative_path
+        try:
+            metadata = os.lstat(path)
+        except OSError as exc:
+            raise SuccessorOperatorError(
+                f"{noun} ignored object cannot be inspected"
+            ) from exc
+        if (
+            relative_path.suffix != ".pyc"
+            or "__pycache__" not in relative_path.parts
+            or not stat.S_ISREG(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+        ):
+            raise SuccessorOperatorError(
+                f"{noun} contains an ignored executable or data object"
+            )
+        quarantined_pycache += 1
+    inventory_root = "sha256:" + hashlib.sha256(_canonical_bytes(observed)).hexdigest()
+    return {
+        "tracked_object_count": len(observed),
+        "tracked_inventory_root": inventory_root,
+        "ignored_pycache_quarantined": quarantined_pycache,
+        "pycache_prefix": str(sys.pycache_prefix or ""),
+    }
+
+
+def _candidate_runtime_continuity(root: Path) -> dict[str, Any]:
+    if (
+        _AMBIENT_PYTHONPATH
+        or sys.path[:2] != [str(root), str(root / "ipfs_datasets_py")]
+        or not sys.pycache_prefix
+    ):
+        raise SuccessorOperatorError("candidate Python import boundary differs")
+    _require_private_directory(
+        Path(sys.pycache_prefix), noun="candidate Python bytecode quarantine"
+    )
     branch = _git_text(root, ("symbolic-ref", "--short", "HEAD"), noun="board branch")
-    if branch != APPROVED_BOARD_BRANCH or config.get("merge_target_branch") != branch:
+    if branch != APPROVED_BOARD_BRANCH:
         raise SuccessorOperatorError(
             "continuity verification is not on the approved board branch"
         )
@@ -899,6 +1058,56 @@ def _target_source_continuity(
         raise SuccessorOperatorError(
             "current board candidate is not the resolved remote branch"
         )
+    superproject_inventory = _tracked_runtime_inventory(
+        root,
+        head=current_head,
+        pathspecs=(
+            "ipfs_accelerate_py",
+            "scripts/ops",
+            "scripts/run_logic_governed_compositional_verification_fabric_quack.py",
+            str(DEFAULT_SUCCESSOR_CONFIG_RELATIVE),
+        ),
+        noun="candidate runtime",
+    )
+    datasets_inventory = _tracked_runtime_inventory(
+        datasets,
+        head=datasets_head,
+        pathspecs=("ipfs_datasets_py",),
+        noun="nested runtime",
+    )
+    return {
+        "approved_branch": branch,
+        "resolved_remote_head": remote_head,
+        "current_head": current_head,
+        "current_tree": current_tree,
+        "candidate_worktree_clean": True,
+        "datasets_head": datasets_head,
+        "datasets_tree": datasets_tree,
+        "datasets_worktree_clean": True,
+        "superproject_runtime_inventory": superproject_inventory,
+        "datasets_runtime_inventory": datasets_inventory,
+    }
+
+
+def _target_source_continuity(
+    root: Path,
+    *,
+    source_head: str,
+    source_tree: str,
+    config: Mapping[str, Any],
+) -> dict[str, str]:
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", source_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
+    ):
+        raise SuccessorOperatorError("sealed source Git identity is malformed")
+    candidate = _candidate_runtime_continuity(root)
+    branch = str(candidate["approved_branch"])
+    if config.get("merge_target_branch") != branch:
+        raise SuccessorOperatorError(
+            "continuity verification is not on the approved board branch"
+        )
+    current_head = str(candidate["current_head"])
     observed_source_tree = _git_text(
         root,
         ("show", "-s", "--format=%T", source_head),
@@ -954,14 +1163,7 @@ def _target_source_continuity(
         noun="sealed/current authority source",
     )
     return {
-        "approved_branch": branch,
-        "resolved_remote_head": remote_head,
-        "current_head": current_head,
-        "current_tree": current_tree,
-        "candidate_worktree_clean": "true",
-        "datasets_head": datasets_head,
-        "datasets_tree": datasets_tree,
-        "datasets_worktree_clean": "true",
+        **candidate,
         "target_source_head": source_head,
         "target_source_tree": source_tree,
     }
@@ -1701,6 +1903,7 @@ def verify_sealed_target_continuity(
     """Admit one reviewed hash-pinned snapshot with bounded semantic checks."""
 
     root = root.resolve(strict=True)
+    _candidate_runtime_continuity(root)
     paths = _sealed_source_paths(source_root)
     pins = {
         "control_sha256": _require_sha256_pin(
@@ -2427,11 +2630,21 @@ def _load_provenance(paths: Mapping[str, Path], *, root: Path = ROOT) -> dict[st
     )
     if os.path.lexists(database.with_name(database.name + ".wal")):
         raise SuccessorOperatorError("successor control database has a live WAL")
+    initial_receipt = _strict_json(
+        paths["provenance"],
+        expected_schema=PROVENANCE_SCHEMA,
+        require_private_owner=True,
+        verify_content_identity=False,
+    )
+    if initial_receipt.get("admission_mode") == SEALED_CONTINUITY_MODE:
+        _candidate_runtime_continuity(root)
     receipt = _strict_json(
         paths["provenance"],
         expected_schema=PROVENANCE_SCHEMA,
         require_private_owner=True,
     )
+    if receipt != initial_receipt:
+        raise SuccessorOperatorError("successor provenance changed during admission")
     target_digest = _sha256_regular_file(
         database,
         noun="successor control database",
@@ -2820,6 +3033,20 @@ def _child_environment(
     environment[BOARD_EXTENSION_INSTALL_POLICY_ENV] = (
         BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
     )
+    child_pycache = owner_state / "python-pycache"
+    child_pycache.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _privatize_owned_directory(child_pycache, noun="scheduler Python bytecode root")
+    for name in (
+        "PYTHONHOME",
+        "PYTHONINSPECT",
+        "PYTHONSTARTUP",
+        "PYTHONUSERBASE",
+    ):
+        environment.pop(name, None)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        (str(root), str(root / "ipfs_datasets_py"))
+    )
+    environment["PYTHONPYCACHEPREFIX"] = str(child_pycache)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     return environment
 
@@ -2907,6 +3134,37 @@ def run_successor(
     implement: bool,
     duration_seconds: float,
 ) -> int:
+    paths = _paths(root)
+    lock_handle = _open_private_lock(paths["controller_lock"])
+    try:
+        try:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise SuccessorOperatorError(
+                "another successor controller owns the lock"
+            ) from exc
+        return _run_locked_successor(
+            config_path,
+            root=root,
+            implement=implement,
+            duration_seconds=duration_seconds,
+        )
+    finally:
+        try:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            lock_handle.close()
+
+
+def _run_locked_successor(
+    config_path: Path,
+    *,
+    root: Path,
+    implement: bool,
+    duration_seconds: float,
+) -> int:
+    paths = _paths(root)
+    provenance = _load_provenance(paths, root=root)
     from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
         current_process_birth,
     )
@@ -2920,8 +3178,6 @@ def run_successor(
         build_server,
     )
 
-    paths = _paths(root)
-    provenance = _load_provenance(paths, root=root)
     board, program, host, port = _validate_successor_board(config_path, root)
     rendered_plan = configured_board_launch_plan(
         board,
@@ -2954,7 +3210,6 @@ def run_successor(
     os.environ[STORE_GENERATION_ENV] = program.store_generation
     paths["owner_state"].mkdir(mode=0o700, parents=True, exist_ok=True)
     _prepare_private_owner_socket(paths["owner_socket"])
-    lock_handle = _open_private_lock(paths["controller_lock"])
     server: Any | None = None
 
     def stop_owner() -> Mapping[str, Any]:
@@ -2966,13 +3221,10 @@ def run_successor(
         return owned_server.stop()
 
     try:
-        try:
-            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
+        if _load_provenance(paths, root=root) != provenance:
             raise SuccessorOperatorError(
-                "another successor controller owns the lock"
-            ) from exc
-
+                "successor provenance changed before owner construction"
+            )
         controller_birth = current_process_birth()
         server = build_server(
             database_path=paths["successor_database"],
@@ -3156,10 +3408,6 @@ def run_successor(
                     "LGCVF owner emergency stop failed: "
                     f"{type(cleanup_exc).__name__}\n"
                 )
-        try:
-            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
-        finally:
-            lock_handle.close()
 
 
 def controller_status(root: Path = ROOT) -> dict[str, Any]:
