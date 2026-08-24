@@ -109,6 +109,7 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
         "attempt_id": attempt_id,
         "claim_id": "claim:vrif-010",
         "task_cid": task_cid,
+        "canonical_task_key": "task/v1/vrif-010",
         "task_alias": "VRIF-010",
         "goal_cid": "goal:vrif",
         "plan_cid": "plan:vrif",
@@ -117,6 +118,8 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
         "fence_epoch": 1,
         "lease_id": "database-lease-vrif-010",
         "task_body_digest": "sha256:body",
+        "task_contract_digest": "sha256:" + "a" * 64,
+        "repository_tree_id": "git-tree:" + "b" * 40,
         "projection_seed_digest": "sha256:seed",
         "projection_immutable_digest": "sha256:projection",
         "authoritative_task_store": "duckdb",
@@ -316,6 +319,10 @@ def test_control_plane_reload_defers_for_exact_nested_database_pool_lease(
         "malformed_lifecycle",
         "terminal_lifecycle",
         "malformed_binding",
+        "legacy_binding_schema",
+        "missing_canonical_task_key",
+        "tampered_task_contract",
+        "missing_repository_tree",
         "malformed_nested_state",
     ],
 )
@@ -374,6 +381,88 @@ def test_database_pool_lease_never_defers_without_exact_corroboration(
         _write_json(fixture["lifecycle_path"], lifecycle)
     elif case == "malformed_binding":
         fixture["binding_path"].write_text("[]\n", encoding="utf-8")
+    elif case == "legacy_binding_schema":
+        binding = json.loads(
+            fixture["binding_path"].read_text(encoding="utf-8")
+        )
+        binding.pop("canonical_task_key")
+        binding.pop("task_contract_digest")
+        binding.pop("repository_tree_id")
+        body = dict(binding)
+        body.pop("binding_id")
+        binding["binding_id"] = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    body,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+        )
+        _write_json(fixture["binding_path"], binding)
+    elif case == "tampered_task_contract":
+        binding = json.loads(
+            fixture["binding_path"].read_text(encoding="utf-8")
+        )
+        binding["task_contract_digest"] = "sha256:not-a-digest"
+        body = dict(binding)
+        body.pop("binding_id")
+        binding["binding_id"] = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    body,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+        )
+        _write_json(fixture["binding_path"], binding)
+    elif case == "missing_canonical_task_key":
+        binding = json.loads(
+            fixture["binding_path"].read_text(encoding="utf-8")
+        )
+        binding["canonical_task_key"] = ""
+        body = dict(binding)
+        body.pop("binding_id")
+        binding["binding_id"] = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    body,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+        )
+        _write_json(fixture["binding_path"], binding)
+    elif case == "missing_repository_tree":
+        binding = json.loads(
+            fixture["binding_path"].read_text(encoding="utf-8")
+        )
+        binding["repository_tree_id"] = ""
+        body = dict(binding)
+        body.pop("binding_id")
+        binding["binding_id"] = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    body,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+        )
+        _write_json(fixture["binding_path"], binding)
     elif case == "malformed_nested_state":
         fixture["nested_state_path"].write_text("[]\n", encoding="utf-8")
 

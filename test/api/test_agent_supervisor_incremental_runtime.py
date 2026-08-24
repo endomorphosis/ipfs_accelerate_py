@@ -11,6 +11,8 @@ from dataclasses import asdict
 from hashlib import sha256
 from pathlib import Path
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.objectives import objective_graph
 from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     CodebaseScanInventory,
@@ -1507,6 +1509,156 @@ def test_nonpooled_provider_exit_finalizes_preserved_worktree_lifecycle(
         )
         is None
     )
+
+
+def test_rotated_dead_active_attempt_with_stale_no_dispatch_event_stays_fenced(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # This regression exercises the raw-command route.  Keep it independent
+    # from supervisor tests which may configure one or more sealed-route
+    # fields in the process environment.
+    route_fields = {
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT",
+    }
+    for name in tuple(os.environ):
+        if name not in route_fields and not name.startswith(
+            "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_"
+        ):
+            continue
+        monkeypatch.delenv(name, raising=False)
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    attempt_root = tmp_path / "state" / "database_portal_attempts"
+    old_state_dir = attempt_root / ("1" * 24)
+    new_state_dir = attempt_root / ("2" * 24)
+    provider_marker = tmp_path / "provider-called"
+    daemon = PortalImplementationDaemon(
+        todo_path=new_state_dir / "task-projection.md",
+        state_path=new_state_dir / "portal-task-state.json",
+        strategy_path=new_state_dir / "strategy.json",
+        events_path=new_state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=_python_c(
+            "from pathlib import Path; "
+            f"Path({str(provider_marker)!r}).write_text('called')"
+        ),
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    clock_now = [1_000.0]
+    daemon.worktree_lifecycle.clock = lambda: clock_now[0]
+    task = PortalTask(
+        task_id="INC-RELOAD-ROTATED",
+        title="Recover a source-reloaded database Portal attempt",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+        canonical_task_key="task/v1/inc-reload-rotated",
+        canonical_task_cid="cid:inc-reload-rotated",
+    )
+    old_workspace = tmp_path / "worktrees" / "old-worker"
+    old = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=1,
+        lane_id="source-reloaded-worker",
+        workspace_path=old_workspace,
+        branch="implementation/inc-reload-rotated-old",
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(old_state_dir),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 31,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    old = daemon.worktree_lifecycle.mark_active(
+        old_workspace,
+        lease_id=old.lease_id,
+        expected_fence=old.fence,
+    )
+    old_state_dir.mkdir(parents=True, exist_ok=True)
+    # CASF-035 exposed this exact ambiguity: the Portal result still claimed
+    # no dispatch while the provider log already contained real Grok frames.
+    # Neither artifact grants authority to replace the fenced ACTIVE claim.
+    old_log = (
+        old_state_dir
+        / "implementation-logs"
+        / "inc-reload-rotated-attempt-1.log"
+    )
+    old_log.parent.mkdir(parents=True)
+    old_log.write_text(
+        """{"type":"response","status":402,"provider":"grok"}
+{"type":"available_commands","commands":["read_file"]}
+{"type":"available_commands","commands":["apply_patch"]}
+""",
+        encoding="utf-8",
+    )
+    old_event = {
+        "type": "implementation_finished",
+        "task_id": task.task_id,
+        "attempt": 1,
+        "attempt_consumed": False,
+        "provider_dispatched": False,
+        "reason": "source_reload_interrupted",
+    }
+    old_events = old_state_dir / "events.jsonl"
+    old_events.write_text(
+        json.dumps(old_event, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    PortalTaskState(
+        active_task_id=task.task_id,
+        active_task_key=task.canonical_task_key,
+        active_task_cid=task.canonical_task_cid,
+        active_attempt=1,
+        active_phase="implementing",
+        active_phase_detail="",
+        active_log_path=str(old_log),
+        active_worktree_path=str(old_workspace.resolve()),
+        active_branch=old.branch,
+        implementation_in_progress=True,
+    ).save(old_state_dir / "portal-task-state.json")
+    record_path = daemon.worktree_lifecycle.workspace_path_for(old_workspace)
+    index_path = daemon.worktree_lifecycle.task_index_path_for(
+        canonical_task_cid=old.canonical_task_cid,
+        task_id=old.task_id,
+        attempt=old.attempt,
+    )
+    record_before = record_path.read_bytes()
+    index_before = index_path.read_bytes()
+    event_before = old_events.read_bytes()
+    log_before = old_log.read_bytes()
+    assert daemon.worktree_lifecycle.lease_seconds == 21_600.0
+    clock_now[0] = old.expires_at + 1.0
+    daemon._active_provider_capacity_backoff = (  # type: ignore[method-assign]
+        lambda: {}
+    )
+
+    result = daemon._run_implementation(task, PortalTaskState())
+
+    assert result.get("reason") == "worktree_lifecycle_claim_exists"
+    assert result.get("provider_dispatched") is not True
+    assert result.get("attempt_consumed") is False
+    assert result.get("provider_call_allowed") is False
+    assert not provider_marker.exists()
+    assert daemon.worktree_lifecycle.load_workspace(old_workspace) == old
+    assert record_path.read_bytes() == record_before
+    assert index_path.read_bytes() == index_before
+    assert old_events.read_bytes() == event_before
+    assert old_log.read_bytes() == log_before
 
 
 def test_missing_pooled_workspace_is_discarded_after_setup_race(
