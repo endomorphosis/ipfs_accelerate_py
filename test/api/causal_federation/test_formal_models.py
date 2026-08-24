@@ -427,3 +427,49 @@ def test_checker_runtime_unavailability_cannot_be_promoted_by_matrix_capability(
     assert all(item.status is ExternalCheckStatus.ERROR for item in receipts)
     assert all(item.ran for item in receipts)
     assert all(not item.passed for item in receipts)
+
+
+def test_checker_boundary_failure_is_recorded_as_not_run_and_never_passed() -> None:
+    class ExplodingChecker(SupervisorStateModelChecker):
+        def check(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            del args, kwargs
+            raise RuntimeError("execution boundary failed")
+
+    receipts = run_external_model_checks(
+        _suite(),
+        matrix=_qualified_matrix(_MatrixRuntime()),
+        checker=ExplodingChecker(),
+    )
+
+    assert len(receipts) == 12
+    assert all(item.status is ExternalCheckStatus.NOT_RUN for item in receipts)
+    assert all(not item.ran and not item.passed for item in receipts)
+    assert all(not item.model_check_receipt_id for item in receipts)
+    assert all("did not produce a typed receipt" in item.reason for item in receipts)
+
+
+def test_untyped_checker_result_is_recorded_as_not_run_and_never_passed() -> None:
+    class UntypedReceiptChecker(SupervisorStateModelChecker):
+        def check(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            del args, kwargs
+            return object()
+
+    receipts = run_external_model_checks(
+        _suite(),
+        matrix=_qualified_matrix(_MatrixRuntime()),
+        checker=UntypedReceiptChecker(),
+    )
+
+    assert len(receipts) == 12
+    assert all(item.status is ExternalCheckStatus.NOT_RUN for item in receipts)
+    assert all(not item.ran and not item.passed for item in receipts)
+    assert all(not item.model_check_receipt_id for item in receipts)
+
+
+def test_external_checker_must_be_the_canonical_typed_checker() -> None:
+    with pytest.raises(FederationFormalError, match="SupervisorStateModelChecker"):
+        run_external_model_checks(
+            _suite(),
+            matrix=_qualified_matrix(_MatrixRuntime()),
+            checker=object(),  # type: ignore[arg-type]
+        )
