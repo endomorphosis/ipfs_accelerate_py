@@ -8,6 +8,7 @@ pattern as the legal-boards owner.  Does not mount a Docker socket.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import signal
@@ -27,6 +28,17 @@ PORT = 19495
 SECRET_HANDLE = "secret-handle:eaaef-quack-owner-v1"
 
 
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse the intentionally argument-free legacy launch contract.
+
+    Parsing must remain the first operation in :func:`main`: ``--help`` and
+    malformed invocations are operator inspection paths, not launch requests.
+    """
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    return parser.parse_args(argv)
+
+
 def _active_generation() -> str:
     generation = "eaaef-run-v14"
     if CURSOR_PATH.is_file():
@@ -40,7 +52,8 @@ def _active_generation() -> str:
     return generation
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    _parse_args(argv)
     generation = _active_generation()
     run_dir = DATA / generation.removeprefix("eaaef-")
     database = run_dir / "control.duckdb"
@@ -54,12 +67,7 @@ def main() -> int:
     state_dir.mkdir(parents=True, exist_ok=True)
     mutation_dir.mkdir(parents=True, exist_ok=True)
 
-    from ipfs_accelerate_py.agent_supervisor.validation.control_plane_identity_recovery import (
-        OWNER_IDENTITY_RECOVERY_SQL,
-    )
-
     import duckdb
-
     from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
         InProcessQuackTransport,
         build_server,
@@ -77,6 +85,9 @@ def main() -> int:
     )
     from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
         probe_quack_capabilities,
+    )
+    from ipfs_accelerate_py.agent_supervisor.validation.control_plane_identity_recovery import (
+        OWNER_IDENTITY_RECOVERY_SQL,
     )
 
     def _probe():
