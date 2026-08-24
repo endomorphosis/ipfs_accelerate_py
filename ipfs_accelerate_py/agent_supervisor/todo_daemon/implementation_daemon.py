@@ -6459,6 +6459,52 @@ class PortalImplementationDaemon:
         """Acquire a bounded repo-wide lease for the final protected snapshot."""
 
         lock_path = self._repo_merge_lock_path()
+        current = self._current_checkout_mutation_lease()
+        transaction_depth = int(
+            getattr(
+                self._checkout_mutation_context,
+                "transaction_depth",
+                0,
+            )
+            or 0
+        )
+        if current is not None and transaction_depth > 0:
+            observed = read_checkout_mutation_lease(lock_path)
+            borrowed = bool(
+                observed is not None
+                and current.lock_path == lock_path
+                and observed.lock_path == current.lock_path
+                and observed.lease_id == current.lease_id
+                and observed.device == current.device
+                and observed.inode == current.inode
+            )
+            result: dict[str, Any] = {
+                "acquired": borrowed,
+                "borrowed_checkout_mutation_lease": borrowed,
+                "reason": (
+                    "preacquired_checkout_mutation_lease"
+                    if borrowed
+                    else "preacquired_checkout_mutation_lease_lost"
+                ),
+                "lock_path": str(lock_path),
+                "waited_seconds": 0.0,
+            }
+            if borrowed:
+                result["lease"] = current
+            elif observed is not None:
+                result["lock_owner_pid"] = int(
+                    observed.metadata.get("pid") or 0
+                )
+                result["lock_owner_task_id"] = str(
+                    observed.metadata.get("task_id") or ""
+                )
+                result["lock_owner_branch"] = str(
+                    observed.metadata.get("branch") or ""
+                )
+                result["lock_owner_operation"] = str(
+                    observed.metadata.get("operation") or ""
+                )
+            return result
         lease, reason, existing, waited_seconds = (
             self._acquire_checkout_mutation_lease(
                 task_id=task_id,
@@ -6504,6 +6550,30 @@ class PortalImplementationDaemon:
         lease = lock_result.get("lease")
         if not isinstance(lease, CheckoutMutationLease):
             return False
+        if lock_result.get("borrowed_checkout_mutation_lease") is True:
+            current = self._current_checkout_mutation_lease()
+            observed = read_checkout_mutation_lease(lease.lock_path)
+            transaction_depth = int(
+                getattr(
+                    self._checkout_mutation_context,
+                    "transaction_depth",
+                    0,
+                )
+                or 0
+            )
+            return bool(
+                current is not None
+                and transaction_depth > 0
+                and current.lock_path == lease.lock_path
+                and current.lease_id == lease.lease_id
+                and current.device == lease.device
+                and current.inode == lease.inode
+                and observed is not None
+                and observed.lock_path == lease.lock_path
+                and observed.lease_id == lease.lease_id
+                and observed.device == lease.device
+                and observed.inode == lease.inode
+            )
         return self._release_checkout_mutation_lease(lease)
 
     def _implementation_protected_verification_deferred(

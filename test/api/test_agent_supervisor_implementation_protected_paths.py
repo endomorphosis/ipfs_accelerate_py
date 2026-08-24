@@ -1870,6 +1870,68 @@ def test_protected_verification_release_preserves_replacement_lock(
     assert json.loads(lock_path.read_text(encoding="utf-8")) == replacement
 
 
+def test_protected_verification_borrows_enclosing_checkout_transaction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _repo, workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    original_acquire = (
+        daemon._acquire_implementation_protected_verification_lock
+    )
+    borrowed: dict[str, object] = {}
+
+    def verify_inside_transaction() -> dict[str, object]:
+        lock_result = original_acquire(
+            task_id=task.task_id,
+            attempt=1,
+            workspace_path=workspace,
+        )
+        borrowed.update(lock_result)
+        assert lock_result["acquired"] is True
+        assert lock_result["borrowed_checkout_mutation_lease"] is True
+        assert daemon._release_implementation_protected_verification_lock(
+            lock_result
+        )
+        assert Path(str(lock_result["lock_path"])).is_file()
+        return {
+            "violation": daemon._implementation_protected_path_violation(
+                task=task,
+                attempt=1,
+                workspace_path=workspace,
+                before=before,
+            )
+        }
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "IMPLEMENTATION_PROTECTED_VERIFICATION_LOCK_TIMEOUT_SECONDS",
+        0.0,
+    )
+    result = daemon._run_checkout_mutation_transaction(
+        task_id=task.task_id,
+        branch="implementation/example-protected-recovery",
+        operation="reconcile_protected_preservation_candidate",
+        callback=verify_inside_transaction,
+    )
+
+    assert borrowed["reason"] == "preacquired_checkout_mutation_lease"
+    assert result["violation"] == {}
+    assert not checkout_mutation_lock_path(daemon.repo_root).exists()
+    assert not any(
+        event.get("type")
+        == "implementation_protected_path_verification_lock_timeout"
+        for event in daemon._iter_events()
+    )
+
+
 def test_protected_verification_lock_timeout_defers_without_latching(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
