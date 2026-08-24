@@ -2791,6 +2791,7 @@ def _lane_status_observations(board: Any, *, now: float) -> list[dict[str, Any]]
                         "running",
                         "restarting",
                         "agentic_maintenance_started",
+                        "agentic_maintenance_completed",
                     }
                 ),
                 "receipt_cid": (

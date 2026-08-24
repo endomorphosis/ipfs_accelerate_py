@@ -2180,6 +2180,28 @@ def test_aseh_lane_status_projects_worker_watchdog(
     assert observations[0]["worker_phase_age_seconds"] is None
     assert observations[0]["stalled_without_active_worker"] is None
 
+    # A no-work maintenance pass publishes this fresh, quiescent state until
+    # the next managed-daemon cycle.  It remains an admitted live lane when
+    # the exact worker census and watchdog evidence above are current.
+    payload["status"] = "agentic_maintenance_completed"
+    payload["worker_observed_at_ns"] = time.time_ns()
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    maintenance_completed = aseh_operator._lane_status_observations(
+        board, now=time.time()
+    )
+    assert maintenance_completed[0]["admissible"] is True
+    assert maintenance_completed[0]["watchdog_admissible"] is True
+
+    payload["status"] = "agentic_maintenance_failed"
+    payload["worker_observed_at_ns"] = time.time_ns()
+    status_path.write_text(json.dumps(payload), encoding="utf-8")
+    maintenance_failed = aseh_operator._lane_status_observations(
+        board, now=time.time()
+    )
+    assert maintenance_failed[0]["admissible"] is False
+
+    payload["status"] = "running"
+
     payload["worker_observed_at_ns"] = time.time_ns() + 250_000_000
     status_path.write_text(json.dumps(payload), encoding="utf-8")
     future_obs = aseh_operator._lane_status_observations(
