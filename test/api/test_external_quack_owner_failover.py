@@ -1,221 +1,213 @@
-"""EAAEF-093: one fenced in-memory DuckDB/Quack owner and failover."""
+"""EAAEF-093: bind qualification to the real fenced Quack state owner."""
 
 from __future__ import annotations
 
-from threading import Thread
+import os
+from pathlib import Path
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.runtime.external_quack_owner import (
-    INITIAL_EPOCH,
-    LIVE_QUACK_PORT,
-    REMOTE_CAPABILITIES,
+    EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER,
     BoundedQuackTransport,
-    DuplicateOwnerError,
     ExternalQuackOwner,
+    ExternalQuackOwnerNotReady,
     RemoteSqlRefusedError,
+    RetiredInMemoryOwnerError,
     StaleOwnerError,
-    TransportAuthError,
-    UnsignedEnvelopeError,
     issue_envelope,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+    InProcessQuackTransport,
+    QuackStateServer,
+    QuackStateServerNotRunningError,
+    QuackStateServerOwnershipError,
+    build_server,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.quack_daemon_gateway import (
+    QuackDaemonGatewayError,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    TypedStateOwnerConnection,
+    TypedStateOwnerProtocolError,
+)
+
+BOARD_NAMESPACE = "external-agent-autonomous-execution-fabric-v1"
+SHARD_ID = "eaaef-093-disposable-shard"
+STORE_ID = "eaaef-093-control"
 
 
-OWNER_A = "owner-a"
-OWNER_B = "owner-b"
-
-
-def _owner(owner_id: str = OWNER_A) -> ExternalQuackOwner:
-    return ExternalQuackOwner(owner_id, shard_id="disposable-test-shard")
-
-
-def _put(
-    key: str = "task-1",
-    *,
-    status: str = "claimed",
-    principal_id: str = "principal:worker",
-    idempotency_key: str = "idem-1",
-) -> dict[str, object]:
-    return issue_envelope(
-        operation="put",
-        key=key,
-        value={"status": status},
-        principal_id=principal_id,
-        idempotency_key=idempotency_key,
+def _server(root: Path) -> QuackStateServer:
+    return build_server(
+        database_path=root / "control.duckdb",
+        state_dir=root / "owner",
+        port=0,
+        repository_id="repository:eaaef-093-test",
+        store_id=STORE_ID,
+        secret_handle="handle:eaaef-093-test-owner",
     )
 
 
-def test_single_owner_epoch_starts_at_one() -> None:
-    owner = _owner()
-    lease = owner.lease()
-    assert owner.epoch == INITIAL_EPOCH == 1
-    assert owner.owner_id == OWNER_A
-    assert lease.owner_id == OWNER_A
-    assert lease.epoch == 1
-    assert lease.fence == 1
-    assert owner.claim(OWNER_A, epoch=1).epoch == 1
-    assert owner.operational_table_exposed is False
-    assert owner.remote_capabilities == frozenset({"append", "read"})
-    assert owner.bound_port is None
-    assert owner.transport.bound_port is None
-    assert owner.transport.listen_uri == ""
-    assert LIVE_QUACK_PORT == 19495
+def _owner(server: QuackStateServer) -> ExternalQuackOwner:
+    owner = server.bind_external_quack_owner(
+        board_namespace=BOARD_NAMESPACE,
+        shard_id=SHARD_ID,
+    )
+    assert isinstance(owner, ExternalQuackOwner)
+    return owner
 
 
-def test_failover_advances_epoch() -> None:
-    owner = _owner()
-    first = owner.lease()
-    owner.apply(_put(), owner_id=OWNER_A, epoch=first.epoch)
-    takeover = owner.failover(OWNER_B)
-    assert takeover.owner_id == OWNER_B
-    assert takeover.epoch == first.epoch + 1
-    assert takeover.fence == first.fence + 1
-    assert owner.epoch == 2
-    assert owner.owner_id == OWNER_B
-    restart = owner.failover()
-    assert restart.owner_id == OWNER_B
-    assert restart.epoch == 3
-    assert owner.get("task-1") is not None
+def test_process_local_owner_and_transport_are_retired() -> None:
+    with pytest.raises(TypeError, match="issued only by a READY QuackStateServer"):
+        ExternalQuackOwner("owner-a", shard_id=SHARD_ID)
+    with pytest.raises(RetiredInMemoryOwnerError) as envelope:
+        issue_envelope(operation="put")
+    assert envelope.value.reason_code == "in_memory_owner_retired"
+    with pytest.raises(RetiredInMemoryOwnerError):
+        BoundedQuackTransport()
 
 
-def test_stale_owner_with_old_epoch_is_rejected() -> None:
-    owner = _owner()
-    stale = owner.lease()
-    owner.apply(_put(), owner_id=stale.owner_id, epoch=stale.epoch)
-    owner.failover(OWNER_B)
-    with pytest.raises(StaleOwnerError, match="stale owner") as err:
-        owner.apply(
-            _put(status="running", idempotency_key="idem-stale"),
-            owner_id=stale.owner_id,
-            epoch=stale.epoch,
+def test_ready_real_owner_issues_resource_free_fail_closed_facade(
+    tmp_path: Path,
+) -> None:
+    server = _server(tmp_path)
+    with pytest.raises(QuackStateServerNotRunningError):
+        server.bind_external_quack_owner(
+            board_namespace=BOARD_NAMESPACE,
+            shard_id=SHARD_ID,
         )
-    assert err.value.reason_code == "stale_owner"
-    assert owner.get("task-1")["status"] == "claimed"
-    receipt = owner.apply(
-        _put(status="running", idempotency_key="idem-2"),
-        owner_id=OWNER_B,
-        epoch=2,
+
+    identity = server.start()
+    try:
+        owner = _owner(server)
+        lease = owner.lease()
+        assert isinstance(server.transport, InProcessQuackTransport)
+        assert owner.owner_id == identity.server_id
+        assert owner.board_namespace == BOARD_NAMESPACE
+        assert owner.epoch == identity.generation
+        assert owner.fence == identity.fence_epoch
+        assert owner.bound_port > 0
+        assert owner.listen_uri == identity.listen_uri
+        assert owner.operational_table_exposed is False
+        assert owner.production_admitted is False
+        assert owner.assert_current(lease) == lease
+        assert not hasattr(owner, "database_path")
+        assert not hasattr(owner, "connection")
+        assert not hasattr(owner, "execute")
+        assert not hasattr(owner, "execute_sql")
+
+        evidence = owner.evidence()
+        assert evidence["backing_owner_interface"] == "QuackStateServer@1"
+        assert evidence["opens_database"] is False
+        assert evidence["creates_dispatcher"] is False
+        assert evidence["local_sidecar_writes"] is False
+        assert evidence["direct_task_source"] is False
+        assert evidence["arbitrary_sql_enabled"] is False
+        assert evidence["production_admitted"] is False
+        assert evidence["production_blockers"] == [
+            EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER
+        ]
+
+        with pytest.raises(
+            QuackDaemonGatewayError,
+            match=EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER,
+        ):
+            owner.daemon_gateway()
+    finally:
+        server.stop()
+
+
+def test_second_real_owner_is_refused_before_database_open(tmp_path: Path) -> None:
+    first = _server(tmp_path)
+    first_identity = first.start()
+    try:
+        owner = _owner(first)
+        assert owner.lease().server_id == first_identity.server_id
+        second = _server(tmp_path)
+        with pytest.raises(
+            QuackStateServerOwnershipError,
+            match="second state-owner refused",
+        ):
+            second.start()
+        assert second._connection is None  # noqa: SLF001 - exact owner boundary
+        assert first.ready()["ready"] is True
+        assert owner.assert_current(owner.lease()).server_id == first_identity.server_id
+    finally:
+        first.stop()
+
+
+def test_restart_advances_generation_and_rejects_stale_lease_and_token(
+    tmp_path: Path,
+) -> None:
+    first = _server(tmp_path)
+    first_identity = first.start()
+    first_owner = _owner(first)
+    stale = first_owner.lease()
+    client_id = "eaaef-093-prior-generation-client"
+    process_birth_id = "birth:eaaef-093-prior-generation-client"
+    stale_token = first.issue_typed_client_grant(
+        client_id=client_id,
+        process_birth_id=process_birth_id,
+        allowed_operations=("load_store_generation",),
+        peer_pid=os.getpid(),
     )
-    assert receipt["status"] == "applied"
-    assert receipt["epoch"] == 2
-    assert owner.get("task-1")["status"] == "running"
+    first.stop()
+    with pytest.raises(ExternalQuackOwnerNotReady):
+        first_owner.lease()
+
+    second = _server(tmp_path)
+    second_identity = second.start()
+    try:
+        successor = _owner(second)
+        current = successor.assert_successor(stale)
+        assert current.generation > first_identity.generation
+        assert current.fence_epoch > first_identity.fence_epoch
+        assert current.server_id == second_identity.server_id
+        assert current.server_id != stale.server_id
+        with pytest.raises(StaleOwnerError, match="stale owner") as rejected:
+            successor.assert_current(stale)
+        assert rejected.value.reason_code == "stale_owner"
+
+        # The restarted gateway owns a fresh in-memory grant set.  A token
+        # minted by the prior server generation is rejected during handshake;
+        # authentication failures deliberately close the channel silently.
+        with pytest.raises(TypedStateOwnerProtocolError, match="channel closed"):
+            TypedStateOwnerConnection(
+                socket_path=second.typed_command_socket_path(),
+                token=stale_token,
+                client_id=client_id,
+                process_birth_id=process_birth_id,
+                store_id=STORE_ID,
+            )
+    finally:
+        second.stop()
 
 
-def test_second_owner_without_failover_fails_closed() -> None:
-    owner = _owner()
-    with pytest.raises(DuplicateOwnerError, match="second owner") as err:
-        owner.claim(OWNER_B, epoch=1)
-    assert err.value.reason_code == "duplicate_owner"
-    with pytest.raises(StaleOwnerError, match="stale owner"):
-        owner.apply(_put(), owner_id=OWNER_B, epoch=1)
-    assert owner.get("task-1") is None
+def test_owner_gateway_rejects_sql_and_all_unqualified_dispatch(
+    tmp_path: Path,
+) -> None:
+    server = _server(tmp_path)
+    server.start()
+    try:
+        owner = _owner(server)
+        for operation in (
+            "sql.execute",
+            "execute_sql",
+            "remote_update_sql",
+            "UPDATE tasks SET status='claimed'",
+        ):
+            with pytest.raises(RemoteSqlRefusedError) as rejected:
+                owner.require_operation(operation)
+            assert rejected.value.reason_code == "remote_sql_refused"
 
-
-def test_remote_update_sql_and_arbitrary_sql_are_refused() -> None:
-    owner = _owner()
-    sql = "UPDATE tasks SET status = 'hijacked'"
-    with pytest.raises(RemoteSqlRefusedError, match="remote UPDATE") as remote:
-        owner.remote_update_sql(sql)
-    assert remote.value.reason_code == "remote_sql_refused"
-    with pytest.raises(RemoteSqlRefusedError, match="arbitrary SQL") as arbitrary:
-        owner.execute_sql("SELECT * FROM tasks")
-    assert arbitrary.value.reason_code == "remote_sql_refused"
-    with pytest.raises(RemoteSqlRefusedError, match="remote UPDATE"):
-        owner.transport.remote_update_sql(sql)
-    with pytest.raises(RemoteSqlRefusedError, match="arbitrary SQL"):
-        owner.transport.execute_sql("DROP TABLE tasks")
-    assert owner.get("task-1") is None
-    assert owner.operational_table_exposed is False
-
-
-def test_unsigned_and_forged_envelopes_fail_closed() -> None:
-    owner = _owner()
-    with pytest.raises(UnsignedEnvelopeError, match="missing") as missing:
-        owner.apply({}, owner_id=OWNER_A, epoch=1)
-    assert missing.value.reason_code == "unsigned_envelope"
-    forged = _put()
-    forged["value"] = {"status": "forged"}
-    with pytest.raises(UnsignedEnvelopeError, match="forged") as err:
-        owner.apply(forged, owner_id=OWNER_A, epoch=1)
-    assert err.value.reason_code == "forged_envelope"
-    assert owner.get("task-1") is None
-
-
-def test_signed_envelope_serializes_private_duckdb_transaction() -> None:
-    owner = _owner()
-    first = owner.apply(_put(), owner_id=OWNER_A, epoch=1)
-    replay = owner.apply(_put(), owner_id=OWNER_A, epoch=1)
-    assert first["status"] == "applied"
-    assert replay["envelope_content_id"] == first["envelope_content_id"]
-    assert dict(replay) == dict(first)
-    assert owner.get("task-1")["status"] == "claimed"
-    owner.apply(
-        _put(status="running", idempotency_key="idem-2"),
-        owner_id=OWNER_A,
-        epoch=1,
-    )
-    assert owner.get("task-1")["status"] == "running"
-
-
-def test_transport_is_authenticated_multi_reader_multi_writer() -> None:
-    owner = _owner()
-    transport = owner.transport
-    writer_a = transport.attach("writer-a", role="writer", token="token-a")
-    writer_b = transport.attach("writer-b", role="writer", token="token-b")
-    reader_a = transport.attach("reader-a", role="reader", token="token-c")
-    reader_b = transport.attach("reader-b", role="reader", token="token-d")
-    first = _put(key="task-a", idempotency_key="idem-a")
-    second = _put(key="task-b", status="queued", idempotency_key="idem-b")
-    transport.append(writer_a, first)
-    transport.append(writer_b, second)
-    seen_a = transport.read(reader_a)
-    seen_b = transport.read(reader_b)
-    assert len(seen_a) == 2
-    assert seen_a == seen_b
-    assert REMOTE_CAPABILITIES == frozenset({"append", "read"})
-    with pytest.raises(TransportAuthError, match="reader"):
-        transport.append(reader_a, _put(idempotency_key="idem-reader"))
-    with pytest.raises(TransportAuthError, match="writer"):
-        transport.read(writer_a)
-    with pytest.raises(TransportAuthError, match="token is required") as blank:
-        transport.attach("blank", role="writer", token="")
-    assert blank.value.reason_code == "transport_auth"
-    receipts = owner.apply_from_transport(owner_id=OWNER_A, epoch=1)
-    assert {receipt["key"] for receipt in receipts} == {"task-a", "task-b"}
-    assert owner.get("task-a")["status"] == "claimed"
-    assert owner.get("task-b")["status"] == "queued"
-
-
-def test_never_binds_live_quack_port() -> None:
-    owner = _owner()
-    assert owner.bound_port is not LIVE_QUACK_PORT
-    assert owner.bound_port is None
-    assert owner.transport.bound_port is None
-    assert "19495" not in owner.transport.listen_uri
-    assert isinstance(owner.transport, BoundedQuackTransport)
-
-
-def test_private_duckdb_transactions_are_serialized() -> None:
-    owner = _owner()
-    errors: list[BaseException] = []
-
-    def worker(index: int) -> None:
-        envelope = issue_envelope(
-            operation="increment",
-            key="counter",
-            value={"n": 1},
-            principal_id=f"principal:{index}",
-            idempotency_key=f"inc-{index}",
-        )
-        try:
-            owner.apply(envelope, owner_id=OWNER_A, epoch=1)
-        except BaseException as exc:  # noqa: BLE001 — collect then assert
-            errors.append(exc)
-
-    threads = tuple(Thread(target=worker, args=(index,)) for index in range(16))
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-    assert errors == []
-    assert owner.get("counter")["n"] == 16
+        with pytest.raises(
+            QuackDaemonGatewayError,
+            match=EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER,
+        ):
+            owner.require_operation("task.ready")
+        with pytest.raises(
+            QuackDaemonGatewayError,
+            match=EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER,
+        ):
+            owner.daemon_gateway()
+    finally:
+        server.stop()

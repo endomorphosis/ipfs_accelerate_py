@@ -1,23 +1,34 @@
-"""In-memory fenced DuckDB/Quack owner (EAAEF-093).
+"""Fenced EAAEF facade over the sole live :class:`QuackStateServer` owner.
 
-Quack supplies bounded authenticated multi-reader/multi-writer transport.
-Exactly one local owner validates bound envelopes and serializes private
-DuckDB transactions. ``failover()`` advances the epoch; a stale owner with
-an old epoch is rejected. Remote UPDATE and arbitrary SQL are refused.
+EAAEF-093 used to model an owner with process-local dictionaries and a Python
+list standing in for Quack.  That model was unsafe as qualification evidence:
+it opened no DuckDB database, bound no Quack endpoint, and advanced an integer
+instead of acquiring the durable state-owner generation.
 
-This module is process-local. It does not bind, start, or stop live Quack
-on :19495, overlay runtime CAS, or issue cryptographic signatures.
+The facade in this module owns no resources.  A READY ``QuackStateServer``
+creates it from the server's exact live identity.  It never opens a database,
+creates a dispatcher, accepts a task-source callback, or exposes SQL.  It also
+refuses to synthesize a generic daemon gateway while the canonical 39-operation
+owner handler, host artifacts, and Plan R2 admission remain unqualified.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
-from threading import Lock
 from types import MappingProxyType
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
-from ..proof.formal_verification_contracts import content_identity
+from ..task_sources.control_plane_contracts import content_identity
+from ..task_sources.quack_daemon_gateway import (
+    QUACK_DAEMON_HANDLER_QUALIFICATION_STATUS,
+    REQUIRED_QUACK_DAEMON_OPERATIONS,
+    QuackDaemonGatewayError,
+    quack_daemon_owner_operation_dispositions,
+)
+
+if TYPE_CHECKING:
+    from .quack_state_server import QuackStateServer, StateServerIdentity
 
 
 CONTRACT_VERSION: Final[int] = 1
@@ -31,6 +42,8 @@ OWNER_LEASE_INTERFACE: Final[str] = "ExternalQuackOwnerLease@1"
 OWNER_LEASE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/external-quack-owner-lease@1"
 )
+# Import-compatible identities for the retired process-local artifacts.  No
+# issuer or transport implementation remains behind these names.
 ENVELOPE_INTERFACE: Final[str] = "ExternalQuackEnvelope@1"
 ENVELOPE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/external-quack-envelope@1"
@@ -42,347 +55,223 @@ TRANSPORT_INTERFACE: Final[str] = "BoundedQuackTransport@1"
 TRANSPORT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/bounded-quack-transport@1"
 )
+EXTERNAL_QUACK_OWNER_QUALIFICATION_STATUS: Final[str] = (
+    "real_owner_bound_gateway_operations_unqualified_fail_closed"
+)
+EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER: Final[str] = (
+    "canonical_39_operation_owner_handler_unqualified"
+)
 
+# Compatibility identities retained for later EAAEF integration tests.  They
+# no longer describe a process-local qualification implementation.
 INITIAL_EPOCH: Final[int] = 1
 INITIAL_FENCE: Final[int] = 1
 LIVE_QUACK_PORT: Final[int] = 19495
-REMOTE_CAPABILITIES: Final[frozenset[str]] = frozenset({"append", "read"})
-ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset({"put", "increment"})
-ALLOWED_TRANSPORT_ROLES: Final[frozenset[str]] = frozenset(
-    {"reader", "writer", "readwrite"}
-)
-SQL_OPERATIONS: Final[frozenset[str]] = frozenset(
-    {"sql", "execute_sql", "remote_update_sql", "update", "query"}
-)
+ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset()
+REMOTE_CAPABILITIES: Final[frozenset[str]] = frozenset()
 
-_IDENTITY_KEYS: Final[frozenset[str]] = frozenset(
-    {"content_id", "cid", "identity", "canonical_id"}
+_FACADE_CONSTRUCTION_TOKEN: Final[object] = object()
+_SQL_OPERATION_MARKERS: Final[frozenset[str]] = frozenset(
+    {"sql", "execute_sql", "remote_update_sql", "update", "query"}
 )
 
 
 class ExternalQuackOwnerError(ValueError):
-    """Fenced owner or transport operation failed closed."""
+    """The external owner facade was unavailable or cross-bound."""
 
     def __init__(self, message: str, *, reason_code: str) -> None:
         super().__init__(message)
         self.reason_code = reason_code
 
 
+class ExternalQuackOwnerNotReady(ExternalQuackOwnerError):
+    """The backing server is not the exact READY exclusive owner."""
+
+
 class StaleOwnerError(ExternalQuackOwnerError):
-    """Caller epoch or owner id is not the current fenced owner."""
+    """A lease belongs to an earlier server generation or fence."""
 
 
 class DuplicateOwnerError(ExternalQuackOwnerError):
-    """A second owner attempted to claim the same epoch without failover."""
+    """Compatibility error name for a refused second owner."""
 
 
 class RemoteSqlRefusedError(ExternalQuackOwnerError):
-    """Remote UPDATE or arbitrary SQL was refused."""
+    """SQL is outside the closed command-gateway vocabulary."""
 
 
-class UnsignedEnvelopeError(ExternalQuackOwnerError):
-    """Envelope content identity was missing or did not match the payload."""
+class RetiredInMemoryOwnerError(ExternalQuackOwnerError):
+    """A caller attempted to use the retired process-local owner model."""
 
 
-class TransportAuthError(ExternalQuackOwnerError):
-    """Transport attach, append, or read lacked an admitted session."""
+class UnsignedEnvelopeError(RetiredInMemoryOwnerError):
+    """Compatibility name for the retired content-hash envelope model."""
 
 
-def _text(value: object, name: str, *, required: bool = True) -> str:
-    text = "" if value is None else str(value).strip()
-    if required and not text:
-        raise ExternalQuackOwnerError(f"{name} is required", reason_code="malformed")
-    if "\x00" in text:
-        raise ExternalQuackOwnerError(
-            f"{name} must not contain NUL", reason_code="malformed"
-        )
-    return text
+class TransportAuthError(RetiredInMemoryOwnerError):
+    """Compatibility name for the retired list-backed transport model."""
 
 
-def _mapping(value: object, name: str) -> Mapping[str, Any]:
-    if isinstance(value, Mapping):
-        return value
-    raise ExternalQuackOwnerError(f"{name} must be an object", reason_code="malformed")
-
-
-def _positive_int(value: object, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-        raise ExternalQuackOwnerError(
-            f"{name} must be a positive integer", reason_code="malformed"
-        )
-    return int(value)
-
-
-def _envelope_payload(envelope: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        str(key): envelope[key]
-        for key in envelope
-        if str(key) not in _IDENTITY_KEYS
-    }
-
-
-def issue_envelope(
-    *,
-    operation: str,
-    key: str,
-    value: Mapping[str, Any] | None = None,
-    principal_id: str,
-    idempotency_key: str = "",
-) -> dict[str, Any]:
-    """Issue a bound envelope whose content identity covers the payload."""
-
-    op = _text(operation, "operation")
-    payload = {
-        "schema": ENVELOPE_SCHEMA,
-        "interface": ENVELOPE_INTERFACE,
-        "operation": op,
-        "key": _text(key, "key"),
-        "value": dict(_mapping(value or {}, "value")),
-        "principal_id": _text(principal_id, "principal_id"),
-        "idempotency_key": _text(idempotency_key, "idempotency_key", required=False),
-    }
-    envelope = dict(payload)
-    envelope["content_id"] = content_identity(payload)
-    return envelope
-
-
-def verify_envelope(envelope: object) -> dict[str, Any]:
-    """Fail closed on a missing, unsigned, or forged bound envelope."""
-
-    if envelope is None:
-        raise UnsignedEnvelopeError(
-            "signed envelope is missing", reason_code="unsigned_envelope"
-        )
-    body = _mapping(envelope, "envelope")
-    claimed = _text(
-        body.get("content_id") or body.get("cid"),
-        "envelope content identity",
-        required=False,
+def _retired_model() -> RetiredInMemoryOwnerError:
+    return RetiredInMemoryOwnerError(
+        "the process-local EAAEF-093 owner model is retired; bind the exact "
+        "READY QuackStateServer owner instead",
+        reason_code="in_memory_owner_retired",
     )
-    if not claimed:
-        raise UnsignedEnvelopeError(
-            "signed envelope is missing", reason_code="unsigned_envelope"
-        )
-    expected = content_identity(_envelope_payload(body))
-    if claimed != expected:
-        raise UnsignedEnvelopeError(
-            "forged envelope rejected", reason_code="forged_envelope"
-        )
-    operation = _text(body.get("operation"), "operation")
-    if operation in SQL_OPERATIONS:
-        raise RemoteSqlRefusedError(
-            "arbitrary SQL is refused", reason_code="remote_sql_refused"
-        )
-    if operation not in ALLOWED_OPERATIONS:
-        raise ExternalQuackOwnerError(
-            f"unknown envelope operation: {operation}", reason_code="malformed"
-        )
-    _text(body.get("key"), "key")
-    _text(body.get("principal_id"), "principal_id")
-    value = body.get("value") or {}
-    _mapping(value, "value")
-    return dict(body)
 
 
-@dataclass(frozen=True)
+def issue_envelope(**_kwargs: Any) -> dict[str, Any]:
+    """Refuse the retired content-hash envelope issuer.
+
+    Signed operational commands are issued by the independently admitted
+    command-authorizer path, not by an owner helper.
+    """
+
+    raise _retired_model()
+
+
+def verify_envelope(_envelope: object) -> dict[str, Any]:
+    """Refuse the retired content-hash envelope verifier."""
+
+    raise _retired_model()
+
+
+class BoundedQuackTransport:
+    """Compatibility tombstone for the retired list-backed transport."""
+
+    INTERFACE: Final[str] = TRANSPORT_INTERFACE
+    SCHEMA: Final[str] = TRANSPORT_SCHEMA
+
+    def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+        raise _retired_model()
+
+
+class TransportSession:
+    """Compatibility tombstone for retired process-local sessions."""
+
+    def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+        raise _retired_model()
+
+
+@dataclass(frozen=True, slots=True)
 class OwnerLease:
-    """Current single-owner epoch and fence."""
+    """Public, token-free binding to one live owner generation."""
 
-    owner_id: str
-    epoch: int
-    fence: int
+    board_namespace: str
+    server_id: str
+    store_id: str
+    database_uuid: str
+    generation: int
+    fence_epoch: int
+    secret_handle: str
+    listen_uri: str
     shard_id: str
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "owner_id", _text(self.owner_id, "owner_id"))
-        object.__setattr__(self, "epoch", _positive_int(self.epoch, "epoch"))
-        object.__setattr__(self, "fence", _positive_int(self.fence, "fence"))
-        object.__setattr__(self, "shard_id", _text(self.shard_id, "shard_id"))
+    @property
+    def owner_id(self) -> str:
+        return self.server_id
+
+    @property
+    def epoch(self) -> int:
+        return self.generation
+
+    @property
+    def fence(self) -> int:
+        return self.fence_epoch
 
     def to_dict(self) -> Mapping[str, Any]:
         return MappingProxyType(
             {
                 "schema": OWNER_LEASE_SCHEMA,
                 "interface": OWNER_LEASE_INTERFACE,
-                "owner_id": self.owner_id,
-                "epoch": self.epoch,
-                "fence": self.fence,
+                "board_namespace": self.board_namespace,
+                "server_id": self.server_id,
+                "store_id": self.store_id,
+                "database_uuid": self.database_uuid,
+                "generation": self.generation,
+                "fence_epoch": self.fence_epoch,
+                "secret_handle": self.secret_handle,
+                "listen_uri": self.listen_uri,
                 "shard_id": self.shard_id,
             }
         )
 
-
-@dataclass(frozen=True)
-class TransportSession:
-    """Authenticated append/read session. Never a DuckDB handle."""
-
-    client_id: str
-    role: str
-    token: str
-
-    def __post_init__(self) -> None:
-        try:
-            object.__setattr__(self, "client_id", _text(self.client_id, "client_id"))
-            role = _text(self.role, "role")
-            token = _text(self.token, "token")
-        except ExternalQuackOwnerError as exc:
-            raise TransportAuthError(str(exc), reason_code="transport_auth") from exc
-        if role not in ALLOWED_TRANSPORT_ROLES:
-            raise TransportAuthError(
-                f"unknown transport role: {role}", reason_code="transport_auth"
-            )
-        object.__setattr__(self, "role", role)
-        object.__setattr__(self, "token", token)
-
-
-class BoundedQuackTransport:
-    """In-memory authenticated multi-reader/multi-writer append/read transport.
-
-    Remote clients receive append and read only. The operational table is never
-    exposed for UPDATE or arbitrary SQL. No loopback port is bound.
-    """
-
-    INTERFACE: Final[str] = TRANSPORT_INTERFACE
-    SCHEMA: Final[str] = TRANSPORT_SCHEMA
-
-    def __init__(self) -> None:
-        self._lock = Lock()
-        self._sessions: dict[str, TransportSession] = {}
-        self._log: list[Mapping[str, Any]] = []
-        self._cursor = 0
-
     @property
-    def bound_port(self) -> int | None:
-        return None
-
-    @property
-    def listen_uri(self) -> str:
-        return ""
-
-    @property
-    def remote_capabilities(self) -> frozenset[str]:
-        return REMOTE_CAPABILITIES
-
-    @property
-    def length(self) -> int:
-        with self._lock:
-            return len(self._log)
-
-    def attach(
-        self,
-        client_id: str,
-        *,
-        role: str,
-        token: str,
-    ) -> TransportSession:
-        session = TransportSession(client_id=client_id, role=role, token=token)
-        with self._lock:
-            existing = self._sessions.get(session.client_id)
-            if existing is not None and existing.token != session.token:
-                raise TransportAuthError(
-                    "client already attached with a different token",
-                    reason_code="transport_auth",
-                )
-            self._sessions[session.client_id] = session
-        return session
-
-    def _require(
-        self,
-        session: TransportSession,
-        *,
-        write: bool = False,
-        read: bool = False,
-    ) -> TransportSession:
-        admitted = self._sessions.get(session.client_id)
-        if (
-            admitted is None
-            or admitted.token != session.token
-            or admitted.role != session.role
-        ):
-            raise TransportAuthError(
-                "transport session is not authenticated",
-                reason_code="transport_auth",
-            )
-        if write and admitted.role not in {"writer", "readwrite"}:
-            raise TransportAuthError(
-                "reader sessions cannot append", reason_code="transport_auth"
-            )
-        if read and admitted.role not in {"reader", "readwrite"}:
-            raise TransportAuthError(
-                "writer sessions cannot read", reason_code="transport_auth"
-            )
-        return admitted
-
-    def append(self, session: TransportSession, envelope: Mapping[str, Any]) -> int:
-        verified = verify_envelope(envelope)
-        with self._lock:
-            self._require(session, write=True)
-            self._cursor += 1
-            self._log.append(
-                MappingProxyType({"ordinal": self._cursor, "envelope": dict(verified)})
-            )
-            return self._cursor
-
-    def read(
-        self,
-        session: TransportSession,
-        *,
-        after: int = 0,
-    ) -> tuple[Mapping[str, Any], ...]:
-        if isinstance(after, bool) or not isinstance(after, int) or after < 0:
-            raise ExternalQuackOwnerError(
-                "after must be a non-negative integer", reason_code="malformed"
-            )
-        with self._lock:
-            self._require(session, read=True)
-            return tuple(row for row in self._log if int(row["ordinal"]) > after)
-
-    def owner_drain(self) -> tuple[Mapping[str, Any], ...]:
-        """Local owner snapshot of appended envelopes. Not a remote table."""
-
-        with self._lock:
-            return tuple(dict(row["envelope"]) for row in self._log)
-
-    def remote_update_sql(self, sql: str, *args: Any, **kwargs: Any) -> Any:
-        del sql, args, kwargs
-        raise RemoteSqlRefusedError(
-            "operational tables are not exposed for remote UPDATE",
-            reason_code="remote_sql_refused",
-        )
-
-    def execute_sql(self, sql: str, *args: Any, **kwargs: Any) -> Any:
-        del sql, args, kwargs
-        raise RemoteSqlRefusedError(
-            "arbitrary SQL is refused", reason_code="remote_sql_refused"
-        )
+    def content_id(self) -> str:
+        return content_identity(dict(self.to_dict()))
 
 
 class ExternalQuackOwner:
-    """Sole local owner of one in-memory operational shard."""
+    """Resource-free facade bound to one exact READY ``QuackStateServer``."""
 
     INTERFACE: Final[str] = EXTERNAL_QUACK_OWNER_INTERFACE
     SCHEMA: Final[str] = EXTERNAL_QUACK_OWNER_SCHEMA
 
+    __slots__ = (
+        "_board_namespace",
+        "_identity",
+        "_owner_server",
+        "_shard_id",
+    )
+
     def __init__(
         self,
-        owner_id: str,
+        owner_server: QuackStateServer | object,
         *,
-        shard_id: str = "disposable-test-shard",
-        transport: BoundedQuackTransport | None = None,
+        shard_id: str = "",
+        board_namespace: str = "",
+        _construction_token: object | None = None,
     ) -> None:
-        self._lock = Lock()
-        self._owner_id = _text(owner_id, "owner_id")
-        self._shard_id = _text(shard_id, "shard_id")
-        self._epoch = INITIAL_EPOCH
-        self._fence = INITIAL_FENCE
-        self._rows: dict[str, dict[str, Any]] = {}
-        self._idempotency: dict[str, Mapping[str, Any]] = {}
-        self._claimed = True
-        self._transport = transport if transport is not None else BoundedQuackTransport()
+        if _construction_token is not _FACADE_CONSTRUCTION_TOKEN:
+            raise TypeError(
+                "ExternalQuackOwner is issued only by a READY QuackStateServer"
+            )
+        identity = getattr(owner_server, "identity", None)
+        if identity is None:
+            raise ExternalQuackOwnerNotReady(
+                "external owner facade requires a READY state owner",
+                reason_code="owner_not_ready",
+            )
+        self._owner_server = owner_server
+        self._identity = identity
+        self._board_namespace = str(board_namespace or "").strip()
+        self._shard_id = str(shard_id or "").strip()
+        if not self._board_namespace or not self._shard_id:
+            raise ExternalQuackOwnerError(
+                "board_namespace and shard_id are required",
+                reason_code="malformed_binding",
+            )
+        self._require_current_identity()
+
+    def _require_current_identity(self) -> StateServerIdentity:
+        from .quack_state_server import ServerLifecycle
+
+        server = self._owner_server
+        identity = getattr(server, "identity", None)
+        owner = getattr(server, "_owner", None)
+        connection = getattr(server, "_connection", None)
+        if (
+            getattr(server, "lifecycle", None) is not ServerLifecycle.READY
+            or identity is None
+            or identity is not self._identity
+            or connection is None
+            or owner is None
+            or not getattr(owner, "held", False)
+            or getattr(owner, "fence_token", "") == ""
+        ):
+            raise ExternalQuackOwnerNotReady(
+                "backing QuackStateServer is not the exact READY exclusive owner",
+                reason_code="owner_not_ready",
+            )
+        return identity
 
     @property
     def owner_id(self) -> str:
-        return self._owner_id
+        return self._identity.server_id
+
+    @property
+    def board_namespace(self) -> str:
+        return self._board_namespace
 
     @property
     def shard_id(self) -> str:
@@ -390,198 +279,160 @@ class ExternalQuackOwner:
 
     @property
     def epoch(self) -> int:
-        return self._epoch
+        return int(self._identity.generation)
 
     @property
     def fence(self) -> int:
-        return self._fence
+        return int(self._identity.fence_epoch)
 
     @property
-    def transport(self) -> BoundedQuackTransport:
-        return self._transport
+    def listen_uri(self) -> str:
+        return self._identity.listen_uri
 
     @property
-    def bound_port(self) -> int | None:
-        return self._transport.bound_port
-
-    @property
-    def remote_capabilities(self) -> frozenset[str]:
-        return REMOTE_CAPABILITIES
+    def bound_port(self) -> int:
+        return int(self.listen_uri.rsplit(":", 1)[1])
 
     @property
     def operational_table_exposed(self) -> bool:
         return False
 
+    @property
+    def production_admitted(self) -> bool:
+        return False
+
     def lease(self) -> OwnerLease:
-        with self._lock:
-            return OwnerLease(
-                owner_id=self._owner_id,
-                epoch=self._epoch,
-                fence=self._fence,
-                shard_id=self._shard_id,
-            )
-
-    def _require_owner(self, owner_id: str, epoch: int) -> None:
-        claimed_owner = _text(owner_id, "owner_id")
-        claimed_epoch = _positive_int(epoch, "epoch")
-        if claimed_epoch != self._epoch or claimed_owner != self._owner_id:
-            raise StaleOwnerError(
-                "stale owner rejected", reason_code="stale_owner"
-            )
-
-    def claim(self, owner_id: str, *, epoch: int) -> OwnerLease:
-        """Idempotent claim of the current owner epoch. A second owner fails."""
-
-        with self._lock:
-            claimed_owner = _text(owner_id, "owner_id")
-            claimed_epoch = _positive_int(epoch, "epoch")
-            if claimed_epoch != self._epoch:
-                raise StaleOwnerError(
-                    "stale owner rejected", reason_code="stale_owner"
-                )
-            if claimed_owner != self._owner_id:
-                raise DuplicateOwnerError(
-                    "second owner refused without failover",
-                    reason_code="duplicate_owner",
-                )
-            return OwnerLease(
-                owner_id=self._owner_id,
-                epoch=self._epoch,
-                fence=self._fence,
-                shard_id=self._shard_id,
-            )
-
-    def failover(self, new_owner_id: str | None = None) -> OwnerLease:
-        """Advance epoch (and fence). The previous owner lease is stale."""
-
-        with self._lock:
-            replacement = (
-                _text(new_owner_id, "new_owner_id")
-                if new_owner_id is not None
-                else self._owner_id
-            )
-            self._epoch += 1
-            self._fence += 1
-            self._owner_id = replacement
-            return OwnerLease(
-                owner_id=self._owner_id,
-                epoch=self._epoch,
-                fence=self._fence,
-                shard_id=self._shard_id,
-            )
-
-    def get(self, key: str) -> Mapping[str, Any] | None:
-        row_key = _text(key, "key")
-        with self._lock:
-            row = self._rows.get(row_key)
-            return None if row is None else MappingProxyType(dict(row))
-
-    def rows(self) -> Mapping[str, Mapping[str, Any]]:
-        with self._lock:
-            return MappingProxyType(
-                {key: MappingProxyType(dict(value)) for key, value in self._rows.items()}
-            )
-
-    def _apply_unlocked(self, envelope: Mapping[str, Any]) -> Mapping[str, Any]:
-        verified = verify_envelope(envelope)
-        idempotency_key = _text(
-            verified.get("idempotency_key"), "idempotency_key", required=False
+        identity = self._require_current_identity()
+        return OwnerLease(
+            board_namespace=self._board_namespace,
+            server_id=identity.server_id,
+            store_id=identity.store_id,
+            database_uuid=identity.database_uuid,
+            generation=int(identity.generation),
+            fence_epoch=int(identity.fence_epoch),
+            secret_handle=identity.secret_handle,
+            listen_uri=identity.listen_uri,
+            shard_id=self._shard_id,
         )
-        if idempotency_key:
-            existing = self._idempotency.get(idempotency_key)
-            if existing is not None:
-                return existing
-        key = _text(verified.get("key"), "key")
-        operation = _text(verified.get("operation"), "operation")
-        value = dict(_mapping(verified.get("value") or {}, "value"))
-        if operation == "put":
-            self._rows[key] = value
-        elif operation == "increment":
-            current = self._rows.get(key, {})
-            amount = value.get("n", 1)
-            if isinstance(amount, bool) or not isinstance(amount, int):
-                raise ExternalQuackOwnerError(
-                    "increment n must be an integer", reason_code="malformed"
-                )
-            base = current.get("n", 0)
-            if isinstance(base, bool) or not isinstance(base, int):
-                base = 0
-            self._rows[key] = {"n": int(base) + int(amount)}
-        else:
-            raise RemoteSqlRefusedError(
-                "arbitrary SQL is refused", reason_code="remote_sql_refused"
+
+    def assert_current(self, lease: OwnerLease) -> OwnerLease:
+        if not isinstance(lease, OwnerLease):
+            raise StaleOwnerError(
+                "owner lease is not the exact typed binding",
+                reason_code="stale_owner",
             )
-        receipt = MappingProxyType(
+        current = self.lease()
+        if current != lease:
+            raise StaleOwnerError(
+                "stale owner generation or fence rejected",
+                reason_code="stale_owner",
+            )
+        return current
+
+    def assert_successor(self, previous: OwnerLease) -> OwnerLease:
+        current = self.lease()
+        if (
+            not isinstance(previous, OwnerLease)
+            or current.board_namespace != previous.board_namespace
+            or current.shard_id != previous.shard_id
+            or current.store_id != previous.store_id
+            or current.database_uuid != previous.database_uuid
+            or current.generation <= previous.generation
+            or current.fence_epoch <= previous.fence_epoch
+            or current.server_id == previous.server_id
+        ):
+            raise StaleOwnerError(
+                "replacement is not a later generation of the same owner store",
+                reason_code="invalid_failover",
+            )
+        return current
+
+    def require_operation(self, operation: str) -> None:
+        """Reject SQL and every still-unqualified generic daemon operation."""
+
+        name = str(operation or "").strip()
+        lowered = name.casefold()
+        if (
+            name not in REQUIRED_QUACK_DAEMON_OPERATIONS
+            and any(marker in lowered for marker in _SQL_OPERATION_MARKERS)
+        ):
+            raise RemoteSqlRefusedError(
+                "remote UPDATE and arbitrary SQL are outside the owner gateway",
+                reason_code="remote_sql_refused",
+            )
+        if name not in REQUIRED_QUACK_DAEMON_OPERATIONS:
+            raise QuackDaemonGatewayError(
+                "operation is outside the closed 39-operation daemon vocabulary"
+            )
+        disposition = quack_daemon_owner_operation_dispositions()[name]
+        reason = str(disposition.get("reason_code") or "")
+        raise QuackDaemonGatewayError(
+            f"{EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER}: operation={name};"
+            f"reason_code={reason or 'owner_dispatcher_unavailable'}"
+        )
+
+    def daemon_gateway(self) -> None:
+        """Fail closed until one signed owner-dispatch capability is admitted.
+
+        ``QuackStateServer`` currently owns ``TypedStateOwnerGateway``.  It
+        cannot truthfully synthesize the separate signed host capability and
+        complete 39-operation dispatcher required by
+        ``QuackDaemonCommandGateway@1``.  Returning a structural lookalike here
+        would recreate the fake authority that this facade retires.
+        """
+
+        self._require_current_identity()
+        raise QuackDaemonGatewayError(
+            f"{EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER}: the real owner cannot "
+            "self-issue the missing signed dispatcher/host admission"
+        )
+
+    def evidence(self) -> Mapping[str, Any]:
+        lease = self.lease()
+        return MappingProxyType(
             {
-                "schema": APPLY_RECEIPT_SCHEMA,
-                "status": "applied",
-                "owner_id": self._owner_id,
-                "epoch": self._epoch,
-                "fence": self._fence,
-                "shard_id": self._shard_id,
-                "operation": operation,
-                "key": key,
-                "row": dict(self._rows[key]),
-                "idempotency_key": idempotency_key,
-                "envelope_content_id": verified["content_id"],
+                "schema": self.SCHEMA,
+                "interface": self.INTERFACE,
+                "qualification_status": EXTERNAL_QUACK_OWNER_QUALIFICATION_STATUS,
+                "backing_owner_interface": "QuackStateServer@1",
+                "lease_cid": lease.content_id,
+                "board_namespace": lease.board_namespace,
+                "shard_id": lease.shard_id,
+                "server_id": lease.server_id,
+                "store_id": lease.store_id,
+                "owner_generation": lease.generation,
+                "fence_epoch": lease.fence_epoch,
+                "listen_uri": lease.listen_uri,
+                "opens_database": False,
+                "creates_dispatcher": False,
+                "local_sidecar_writes": False,
+                "direct_task_source": False,
+                "arbitrary_sql_enabled": False,
+                "production_admitted": False,
+                "canonical_owner_handler_qualification_status": (
+                    QUACK_DAEMON_HANDLER_QUALIFICATION_STATUS
+                ),
+                "production_blockers": [
+                    EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER
+                ],
             }
         )
-        if idempotency_key:
-            self._idempotency[idempotency_key] = receipt
-        return receipt
 
-    def apply(
-        self,
-        envelope: Mapping[str, Any],
-        *,
-        owner_id: str,
-        epoch: int,
-    ) -> Mapping[str, Any]:
-        """Validate a bound envelope and serialize one private DuckDB transaction."""
 
-        with self._lock:
-            self._require_owner(owner_id, epoch)
-            return self._apply_unlocked(envelope)
+def _bind_external_quack_owner(
+    *,
+    owner_server: QuackStateServer,
+    board_namespace: str,
+    shard_id: str,
+) -> ExternalQuackOwner:
+    """Construct the facade only from ``QuackStateServer`` owner code."""
 
-    def apply_from_transport(
-        self,
-        *,
-        owner_id: str,
-        epoch: int,
-        envelopes: Sequence[Mapping[str, Any]] | None = None,
-    ) -> tuple[Mapping[str, Any], ...]:
-        """Owner-only drain: apply appended envelopes as private transactions."""
-
-        pending = (
-            tuple(envelopes)
-            if envelopes is not None
-            else self._transport.owner_drain()
-        )
-        receipts: list[Mapping[str, Any]] = []
-        with self._lock:
-            self._require_owner(owner_id, epoch)
-            seen: set[str] = set()
-            for envelope in pending:
-                content_id = str(_mapping(envelope, "envelope").get("content_id") or "")
-                if content_id and content_id in seen:
-                    continue
-                if content_id:
-                    seen.add(content_id)
-                receipts.append(self._apply_unlocked(envelope))
-        return tuple(receipts)
-
-    def remote_update_sql(self, sql: str, *args: Any, **kwargs: Any) -> Any:
-        del sql, args, kwargs
-        raise RemoteSqlRefusedError(
-            "operational tables are not exposed for remote UPDATE",
-            reason_code="remote_sql_refused",
-        )
-
-    def execute_sql(self, sql: str, *args: Any, **kwargs: Any) -> Any:
-        del sql, args, kwargs
-        raise RemoteSqlRefusedError(
-            "arbitrary SQL is refused", reason_code="remote_sql_refused"
-        )
+    return ExternalQuackOwner(
+        owner_server,
+        board_namespace=board_namespace,
+        shard_id=shard_id,
+        _construction_token=_FACADE_CONSTRUCTION_TOKEN,
+    )
 
 
 __all__ = (
@@ -593,16 +444,21 @@ __all__ = (
     "ENVELOPE_INTERFACE",
     "ENVELOPE_SCHEMA",
     "EXTERNAL_QUACK_OWNER_INTERFACE",
+    "EXTERNAL_QUACK_OWNER_PRODUCTION_BLOCKER",
+    "EXTERNAL_QUACK_OWNER_QUALIFICATION_STATUS",
     "EXTERNAL_QUACK_OWNER_SCHEMA",
     "ExternalQuackOwner",
     "ExternalQuackOwnerError",
+    "ExternalQuackOwnerNotReady",
     "INITIAL_EPOCH",
+    "INITIAL_FENCE",
     "LIVE_QUACK_PORT",
     "OWNER_LEASE_INTERFACE",
     "OWNER_LEASE_SCHEMA",
     "OwnerLease",
     "REMOTE_CAPABILITIES",
     "RemoteSqlRefusedError",
+    "RetiredInMemoryOwnerError",
     "StaleOwnerError",
     "TRANSPORT_INTERFACE",
     "TRANSPORT_SCHEMA",

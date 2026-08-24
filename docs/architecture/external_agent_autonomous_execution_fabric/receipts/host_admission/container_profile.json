@@ -4,7 +4,7 @@
   "decision": "admitted",
   "evidence": {
     "artifact": "container_execution_profile_v2",
-    "artifact_cid": "sha256:77e1d75fbca24dd8714e7fb2ad16e1943724b84e6daeac10d5dc6e2f8256a7f1",
+    "artifact_cid": "sha256:9f9162bceafa4108f78b8cbe61dcb7c43637c5b91154d30f3835931c1f1ebf3e",
     "artifact_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/host-evidence/container-execution-profile-v2.json",
     "cap_drop": [
       "ALL"
@@ -16,7 +16,7 @@
     "independent_signature_present": true,
     "live_dispatch_claimed": false,
     "nonroot_user": "65532:65532",
-    "profile_cid": "sha256:e17d508356130d412ff7cd001147d7cba64d03090a03eaa4e0957b426a9784e3",
+    "profile_cid": "sha256:d7f9361d4567cbece6dd2582606ddbdfe4036debfe5329a16e02abce3ecabd11",
     "profile_schema": "ipfs_accelerate_py/agent-supervisor/external-agent-worker-container-profile@2",
     "read_only_base": true,
     "schema": "ipfs_accelerate_py/agent-supervisor/source-addressed-container-execution-profile-launch@2",
@@ -27,12 +27,12 @@
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:337738438f35136ba8e27391c3b21311f7c076577e4ed32f8565ce3a8cb4aa07",
+  "receipt_cid": "sha256:5b786b4788db1face10794bcadce7ce8c7cc536e12460a45e50cdd9d0bb720b6",
   "receipt_name": "container_profile.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "e8d4b1e3ccf68c284f65bb6595b24c402cf82565",
-  "source_tree": "0e8fa360e0fef8d0d5f71d74c213354f61fe9824",
+  "source_head": "1875880fbaa1943c074dcaa71734e8a515fa9615",
+  "source_tree": "946a45dd289d34f8081f9ae5c95ac379e75e7bdf",
   "supervisor_process_started": false,
   "task_id": "EAAEF-186"
 }

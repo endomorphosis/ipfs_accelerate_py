@@ -4,7 +4,7 @@
   "decision": "admitted",
   "evidence": {
     "artifact": "task_capable_worker_image_and_sbom",
-    "artifact_cid": "sha256:572650d57c15826188f9043929500be68e4f0adc75b63946e2d92e2b67d4fc57",
+    "artifact_cid": "sha256:8543d722a2a08308a0789e266d2bd9e7f4c716973eceb16dc7f40d26392fa9f0",
     "artifact_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/host-evidence/worker-image-qualification.json",
     "configured_board_launch": false,
     "decision": "admitted",
@@ -29,12 +29,12 @@
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:335a447e0586762681c95c1d305ca0618ebf680d200eeb31f99ff6cf1f36bf04",
+  "receipt_cid": "sha256:60ade32d4c6a1e4593383d0dbf6f6628fa6eb0d18d1afe258ec6b501ea78ad22",
   "receipt_name": "worker_image.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "e8d4b1e3ccf68c284f65bb6595b24c402cf82565",
-  "source_tree": "0e8fa360e0fef8d0d5f71d74c213354f61fe9824",
+  "source_head": "1875880fbaa1943c074dcaa71734e8a515fa9615",
+  "source_tree": "946a45dd289d34f8081f9ae5c95ac379e75e7bdf",
   "supervisor_process_started": false,
   "task_id": "EAAEF-185"
 }
