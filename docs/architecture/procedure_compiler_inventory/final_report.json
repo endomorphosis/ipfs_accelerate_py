@@ -1,0 +1,184 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-final-qualification-report@1",
+  "program": "agent-supervisor-proof-carrying-procedure-compiler-v1",
+  "report_kind": "current_tree_qualification_and_residual_gap",
+  "observation": {
+    "repository_commit": "4e733c2aa33da459670131880b6a2fd85cf6c48c",
+    "repository_tree": "5a13dc008a28fcc180587e52df1900135f119249",
+    "branch": "implementation/pcpc-031-8e98deb8e2a7-attempt-1-1787541849",
+    "starting_commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "starting_tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58",
+    "working_tree_at_observation": "clean_tracked_checkout; ignored state files excluded",
+    "scope_note": "The ending commit/tree identify HEAD before these report files were written; these reports are not qualification receipts and do not alter that Git tree."
+  },
+  "change_inventory": {
+    "summary": "The procedure compiler package, benchmark corpus, and 32 focused test modules were added after the starting baseline. The changed procedure-compiler source set contains 25 files and 39,915 added lines; the package, benchmark, and focused tests together contain 60 added files and 58,901 added lines.",
+    "implementation_files": [
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/__init__.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/anti_unification.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/cegis.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/certificate.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/cli.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/distillation.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/experiments.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/hole_resolution.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/interpreter.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/invariant_mining.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/metrics.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/planner_adapter.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/procedure_ir.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/recovery.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/registry.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/runtime.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/specification_mining.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/task_family.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/tool_synthesis.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/trajectory.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/transfer.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/transition_model.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/verifier.py",
+      "ipfs_accelerate_py/agent_supervisor/procedure_compiler/world_model.py"
+    ],
+    "test_files": "32 added modules under test/api/procedure_compiler; the exact module list is the collected target of the recorded pytest command.",
+    "benchmark_files": [
+      "benchmarks/agent_supervisor/procedure_compiler/README.md",
+      "benchmarks/agent_supervisor/procedure_compiler/case_recipes.fixture",
+      "benchmarks/agent_supervisor/procedure_compiler/manifest.json"
+    ],
+    "principal_symbols": [
+      "ProofCarryingProcedureCompiler",
+      "ProcedureInterpreter",
+      "ProcedureCegis",
+      "ProcedureCertificateVerifier",
+      "ProcedureRegistry",
+      "ProcedurePlannerAdapter",
+      "ProcedurePromotionGate",
+      "ProcedureTransferGate",
+      "ProcedureDriftMonitor",
+      "ProcedureRecoveryPlanner",
+      "ProcedureRollbackService",
+      "ProcedureControlServiceAdapter",
+      "ProcedureGuidedRepairAdapter"
+    ],
+    "contracts": [
+      "ProcedureCompilerContracts@1",
+      "ProcedureIR@1",
+      "ProcedureInterpreter@1",
+      "RepositoryWorldModel@1",
+      "TransitionModel@1",
+      "ProcedureControlService@1",
+      "ProcedureCLI@1",
+      "ProcedureMCPSurface@1",
+      "ProcedureCompilerReleaseReceipt"
+    ]
+  },
+  "benchmark": {
+    "status": "qualified_frozen",
+    "corpus_case_count": 138,
+    "task_family_count": 23,
+    "partition_case_counts": {
+      "synthesis": 23,
+      "development": 23,
+      "held_out": 23,
+      "negative": 23,
+      "boundary": 23,
+      "adversarial": 23
+    },
+    "corpus_sha256": "2f22bef626d0ab2257953a97f96771e9915f05264faec44b20af5e5bd5221618",
+    "manifest_result": "The board validator accepted the frozen benchmark declaration; this validates fixture structure and does not establish live performance, safety, transfer, or release evidence."
+  },
+  "procedure_artifacts": {
+    "synthesized_procedures": {"observed_count": 0, "status": "no admitted current-tree synthesis receipt was supplied or found"},
+    "promoted_procedures": {"observed_count": 0, "status": "no authorized current-tree promotion decision was supplied or found"},
+    "rejected_procedures": {"observed_count": 0, "status": "no admitted current-tree rejection ledger was supplied or found"},
+    "boundaries_and_counterexamples": {"observed_count": 0, "status": "implementation tests exercise typed boundary/counterexample behavior, but no admitted runtime corpus or ledger was supplied"},
+    "interpretation": "Fixture-created candidates, certificates, promotion-gate results, and transfer decisions are test evidence only and are not reported as live procedures or live decisions."
+  },
+  "qualification_execution": {
+    "tests_run": [
+      {
+        "command": "python scripts/validate_agent_supervisor_procedure_compiler_board.py --check-all",
+        "result": "failed",
+        "exact_failure": "scheduler_schema: ConfiguredBoardError: provider.external_isolation is unavailable: external isolation Docker endpoint must be an admitted local socket"
+      },
+      {
+        "command": "python -m pytest -q test/api/procedure_compiler",
+        "result": "failed",
+        "collected": 622,
+        "counts": {"passed": 609, "failed": 12, "skipped": 1},
+        "duration_seconds": 18.60,
+        "failed_tests": [
+          "test_board.py::test_board_validator_accepts_sealed_program",
+          "test_inventory.py::test_deterministic_per_authority_probe_binds_current_tree",
+          "test_inventory.py::test_prerequisite_probe_identity_rejects_inventory_digest_edit",
+          "test_materialization_receipts.py::test_ducklake_projection_admits_only_required_checkpoint_sidecar",
+          "test_program_launcher.py::test_materialization_verification_uses_isolated_extension_home_and_rejects_extra_field",
+          "test_program_launcher.py::test_supervisor_launch_rejects_unknown_receipt_and_path_forgery[unknown_field]",
+          "test_program_launcher.py::test_supervisor_launch_rejects_unknown_receipt_and_path_forgery[log_path_escape]",
+          "test_program_launcher.py::test_supervisor_launch_rejects_unknown_receipt_and_path_forgery[stdout_contamination]",
+          "test_program_launcher.py::test_supervisor_launch_rejects_forged_unrelated_live_pid",
+          "test_program_launcher.py::test_supervisor_launch_rejects_coordinator_without_all_lane_heartbeats",
+          "test_program_launcher.py::test_supervisor_launch_admits_exact_identity_and_all_lane_heartbeats",
+          "test_program_launcher.py::test_post_receipt_blocked_probe_fences_coordinator_and_retry_is_unblocked"
+        ],
+        "failure_classes": [
+          "scheduler_schema: ConfiguredBoardError: provider.external_isolation is unavailable: external isolation Docker endpoint must be an admitted local socket",
+          "current-tree source drift for ipfs_accelerate_py/agent_supervisor/control/control_plane.py: expected f06b091ff4e5a0a3ea09da81c866845bf064af9b, observed 01bdede85b470ca7fbf8d3274e3e32875b8553db",
+          "DuckLake checkpoint-sidecar projection assertion mismatch",
+          "ProgramLaunchError: python_environment_invalid: active Python user site is unavailable for isolated qualification"
+        ]
+      }
+    ],
+    "proofs_run": [],
+    "proofs_omitted": "No independent proof producer or proof receipt bound to 4e733c2aa33da459670131880b6a2fd85cf6c48c was supplied or found.",
+    "tests_omitted": "The complete 622-item target was run and failed; no test omission is waived. No successful post-merge rerun exists in this report."
+  },
+  "metrics": {
+    "evidence_status": "unevaluable_without_admitted_current_tree_measurement_population",
+    "model_tokens_costs_interventions": "No admitted provider, token, cost, retry, model-call, or human-intervention receipts bound to the ending tree were supplied or found.",
+    "idle_stability": "No admitted idle-stability observation bound to the ending tree establishes absence of task, model, or mutation churn.",
+    "required_cost_kinds_without_observed_values": ["match", "synthesis", "shadow", "hole_filling", "validation", "rollback", "review"],
+    "qualified_autonomous_comparison_baseline": "missing",
+    "amortization": "not evaluable: no observed-use count or admitted per-use savings exists.",
+    "numeric_release_gates": "not evaluated; fixture tests of ProcedurePromotionGate do not satisfy release denominators."
+  },
+  "safety_and_transfer": {
+    "safety_gate_observations": "not established by an admitted live current-tree run; fixture tests do not establish a zero-violation release population.",
+    "unsafe_matches": "no admitted current-tree unsafe-match ledger was supplied or found",
+    "transfer_results": "no admitted cross-repository transfer or held-out transfer result was supplied or found",
+    "unsafe_cross_repository_transfer_count": "not established; do not interpret the implementation constant or fixture tests as a live zero result",
+    "post_merge_requalification": "failed/incomplete: the board validation and prerequisite probe failures prevent a post-merge qualification claim."
+  },
+  "residual_gaps": [
+    {"id": "PCPC-031-SCHEDULER-ISOLATION", "status": "blocking", "detail": "Configured scheduler external isolation is unavailable because its Docker endpoint is not an admitted local socket."},
+    {"id": "PCPC-031-PREREQUISITE-DRIFT", "status": "blocking", "detail": "The sealed prerequisite probe rejects current control_plane.py: expected blob f06b091ff4e5a0a3ea09da81c866845bf064af9b; observed blob 01bdede85b470ca7fbf8d3274e3e32875b8553db."},
+    {"id": "PCPC-031-LIVE-EVIDENCE", "status": "blocking", "detail": "No admitted current-tree materialization, proof, adversarial, held-out, shadow, or release-decision receipt was supplied or found."},
+    {"id": "PCPC-031-METRIC-BASELINE", "status": "blocking", "detail": "The qualified autonomous-meta-controller comparison baseline and complete metric denominators are absent."},
+    {"id": "PCPC-031-ISOLATED-PYTHON", "status": "blocking", "detail": "The complete target reports python_environment_invalid: the active Python user site is unavailable for isolated qualification. This failure is not evidence that the program launcher is usable in the authoritative environment."},
+    {"id": "PCPC-031-IDLE-STABILITY", "status": "blocking", "detail": "No admitted idle-stability observation establishes absence of task, model, or mutation churn."},
+    {"id": "PCPC-031-ADAPTIVE-PLANNER", "status": "blocked_feature", "detail": "AdaptivePlanner remains incompatible: HAMMER_TRACE_SCHEMA is undefined in multi_prover_router.py."},
+    {"id": "PCPC-031-TRANSFER", "status": "blocked_feature", "detail": "Dynamic cross-lane transfer remains unavailable pending a schema-compatible Quack coordination adapter and later recovery qualification."},
+    {"id": "PCPC-031-LIVE-QUACK", "status": "blocked_feature", "detail": "Live launch remains forbidden unless owner, provider, and candidate-validation boundaries are admitted exactly; direct writer serving and host-mode Quack are not fallbacks."}
+  ],
+  "availability": {
+    "available_for_release_or_promotion": false,
+    "promotion_eligibility": "not_eligible",
+    "authorized_release_decision_present": false,
+    "blocked_features": [
+      "AdaptivePlanner procedure integration",
+      "dynamic cross-lane transfer",
+      "live Quack/writer serving fallback",
+      "autonomous-meta-controller-baseline-dependent token and autonomy claims",
+      "procedure promotion or release"
+    ],
+    "allowed_interpretation": "The tree contains implementation and fixture coverage only. It is not qualified for promotion, release, autonomous execution claims, or performance claims."
+  },
+  "rollback": {
+    "source_rollback_target_commit": "bbf7f68799072c2b81f7d96eac91f2df3c4b3952",
+    "source_rollback_target_tree": "a698da9e4b54e2929adacb613bc61ba3e72eed58",
+    "status": "declared_initial_target_only; no authorized release or rollback operation was performed",
+    "constraint": "Any source rollback requires a reviewed Git operation and must not rewrite unrelated operator work."
+  },
+  "disposition": "not_qualified_not_eligible"
+}
