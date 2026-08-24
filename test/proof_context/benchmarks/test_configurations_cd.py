@@ -354,8 +354,11 @@ def test_descriptor_copies_and_observations_are_frozen() -> None:
 
 
 def test_module_is_provider_neutral_and_has_no_direct_io_or_network() -> None:
-    path = Path("ipfs_accelerate_py/proof_context/benchmarks/configurations_cd.py")
-    source = path.read_text()
+    path = (
+        Path(__file__).parents[3]
+        / "ipfs_accelerate_py/proof_context/benchmarks/configurations_cd.py"
+    )
+    source = path.read_text(encoding="utf-8")
     tree = ast.parse(source)
     imports = {
         alias.name.split(".")[0]
