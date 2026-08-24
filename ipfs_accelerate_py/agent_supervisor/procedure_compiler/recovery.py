@@ -42,6 +42,16 @@ from .registry import (
     RegistryOperation,
     drift_disposition_for,
 )
+from ..autonomous_repair.procedure_guided import (
+    AUTONOMOUS_MERGE_CEILING_INTERFACE,
+    PROCEDURE_GUIDED_REPAIR_INTERFACE,
+    AutonomousMergeCeiling,
+    ProcedureGuidedRepairAdapter,
+    ProcedureGuidedRepairError,
+    ProcedureGuidedRepairRequest,
+    ProcedureGuidedRepairResult,
+    ProcedureRepairDisposition,
+)
 
 PROCEDURE_DRIFT_MONITOR_REVISION: Final[str] = "ProcedureDriftMonitor@1"
 PROCEDURE_RECOVERY_PLANNER_REVISION: Final[str] = "ProcedureRecoveryPlanner@1"
@@ -508,21 +518,29 @@ class ProcedureRollbackService:
 
 
 __all__ = [
+    "AUTONOMOUS_MERGE_CEILING_INTERFACE",
     "DriftDimension",
     "DriftDisposition",
     "PROCEDURE_DRIFT_MONITOR_REVISION",
     "PROCEDURE_DRIFT_OBSERVATION_SCHEMA",
     "PROCEDURE_RECOVERY_PLANNER_REVISION",
     "PROCEDURE_ROLLBACK_SERVICE_REVISION",
+    "PROCEDURE_GUIDED_REPAIR_INTERFACE",
+    "AutonomousMergeCeiling",
     "ProcedureDriftMonitor",
     "ProcedureDriftObservation",
     "ProcedureDriftReport",
     "ProcedureDriftResult",
+    "ProcedureGuidedRepairAdapter",
+    "ProcedureGuidedRepairError",
+    "ProcedureGuidedRepairRequest",
+    "ProcedureGuidedRepairResult",
     "ProcedureRecoveryError",
     "ProcedureRecoveryPlanner",
     "ProcedureRollbackFailure",
     "ProcedureRollbackPostconditionError",
     "ProcedureRollbackService",
+    "ProcedureRepairDisposition",
     "REGISTRY_RECOVERY_PLAN_SCHEMA",
     "RecoveryPlan",
     "RegistryRecoveryPlan",
