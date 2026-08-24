@@ -1102,14 +1102,25 @@ def _candidate_runtime_continuity(root: Path) -> dict[str, Any]:
             "ipfs_accelerate_py",
             "scripts/ops",
             "scripts/run_logic_governed_compositional_verification_fabric_quack.py",
+            "scripts/validate_logic_governed_compositional_verification_fabric_plan.py",
+            "config/agent_supervisor_logic_governed_compositional_verification_"
+            "fabric_scheduler.json",
             str(DEFAULT_SUCCESSOR_CONFIG_RELATIVE),
+            "docs/architecture/logic_governed_compositional_verification_"
+            "fabric.todo.md",
+            "docs/architecture/logic_governed_compositional_verification_"
+            "fabric.objectives.md",
+            "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_"
+            "FABRIC_PLAN.md",
+            "data/agent_supervisor/logic_governed_compositional_verification_"
+            "fabric/formal_work_plan.json",
         ),
         noun="candidate runtime",
     )
     datasets_inventory = _tracked_runtime_inventory(
         datasets,
         head=datasets_head,
-        pathspecs=("ipfs_datasets_py",),
+        pathspecs=("__init__.py", "ipfs_datasets_py"),
         noun="nested runtime",
     )
     return {
