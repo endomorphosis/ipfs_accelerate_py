@@ -1,6 +1,6 @@
 {
   "candidate_suites_are_self_authority": false,
-  "checkout_fingerprint_cid": "baguqeerauvlz3caortf7w4weutzl6lkwlksm7epb5majmpnbu3ide4s4zktq",
+  "checkout_fingerprint_cid": "baguqeeraazxddtbh64hlmvrlswrwjei4j2x4vpagkzyamrfv6ej2w7hxumzq",
   "checkout_unchanged": true,
   "cohort": "hermetic_local_execution",
   "independent_fixed_manifest_executed": true,
@@ -18,12 +18,12 @@
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "result_cid": "baguqeera7hxs6osc7or4lflqrsc36jk3r5qsyh3sdroomqtqvdkm3csqassa",
+  "result_cid": "baguqeerakx4eeiowvxbjpittvxaneqabgzsd5hxune4ogauk3t63a7mh2uva",
   "schema": "lgcvf-independent-hermetic-qualification@1",
   "suites": [
     {
       "collected": 9,
-      "duration_ms": 3367,
+      "duration_ms": 6358,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -63,19 +63,19 @@
         "suite_id": "candidate_focused"
       },
       "nodeids_cid": "baguqeera3zvgtvi5l3llqyyo7wr2nzz5cx2zuovoduqrza77vyzgoxy57ksq",
-      "observation_cid": "baguqeerajgmlhykt4vcyexnvr6wiuokyn4liljuwnsjew5m6d54ltuwirpia",
+      "observation_cid": "baguqeerapru4p5b7jw7aes4kyd3cxwhvny73imof2hgfbxx5rl6tdbb2yv6a",
       "passed": true,
       "passed_count": 9,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "candidate_focused",
-      "transcript_sha256": "sha256:aa51e6f12e5cb7c5c30697a7f40f7f55fb261453615e051b51f2f1f4b11c5cc8",
+      "transcript_sha256": "sha256:ea28cb6def1e8c3695092b53dd3af7c9a1f37a0f5c1f386276e87a7ca5a58a1b",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
       "collected": 10,
-      "duration_ms": 2687,
+      "duration_ms": 4915,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -115,19 +115,19 @@
         "suite_id": "candidate_adversarial"
       },
       "nodeids_cid": "baguqeerawyxjp67p656suousq2s2yoqpnagcljminuhw6ooto6mz23zec7ma",
-      "observation_cid": "baguqeera7nwy6wonpycsfhrsw7mt2xdvcsrhkywt5y2cnbpublhfgw5nihga",
+      "observation_cid": "baguqeeragzbrsllfknpnqcqydnbwvwgddm3zu3sleuwfd7fm7byk5gjvvbla",
       "passed": true,
       "passed_count": 10,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "candidate_adversarial",
-      "transcript_sha256": "sha256:141953012e622d537a245f57d87dcf9986aa6510c58270c4bf026ebb58421f3e",
+      "transcript_sha256": "sha256:3ca822de3fae6dd7673e478eae41eb5e0e0b525f6a4add6d78bdbab214b28b01",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
       "collected": 143,
-      "duration_ms": 2692,
+      "duration_ms": 5355,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -215,19 +215,19 @@
         "suite_id": "fixed_datasets_semantics"
       },
       "nodeids_cid": "baguqeeraynd5gnhnlb7gfytao7zvmjsaxqk3zt3bbpx5ma7e3mzgv6wdohya",
-      "observation_cid": "baguqeerajpcunb5mdao2kmqsnqncbyov4yht2uovswtmdchcja7uf6pdhata",
+      "observation_cid": "baguqeerajbxjkgx4hieffqoctahh443ozwtmnmtn5ld2r7244u6zcyvwvs5a",
       "passed": true,
       "passed_count": 143,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "fixed_datasets_semantics",
-      "transcript_sha256": "sha256:e89974a33a9b0925a0a7d6e0f60601913ab37661c923d83de1e4c11344ba4262",
+      "transcript_sha256": "sha256:bfbaf5b7e5c7d47c8c34cb0a02491756cd8c6816fcf69d7f0f91bf9783fa6bb8",
       "xfailed_count": 0,
       "xpassed_count": 0
     },
     {
-      "collected": 199,
-      "duration_ms": 142350,
+      "collected": 349,
+      "duration_ms": 795925,
       "error_count": 0,
       "exit_code": 0,
       "failed_count": 0,
@@ -252,7 +252,7 @@
       },
       "manifest": {
         "candidate_authored": false,
-        "manifest_cid": "baguqeeralpmbbajd6lhrlh5idh2dsvcd3oizqr532ftqh72il4cybbcshr5a",
+        "manifest_cid": "baguqeera36qn26vkccc5ece6za74c54s3ygum3ic76wyhv6nmv7zfucnxqha",
         "owner_root": ".",
         "paths": [
           "test/api/test_agent_supervisor_compositional_verification_vertical.py",
@@ -272,18 +272,18 @@
           },
           {
             "path": "test/api/test_agent_supervisor_database_implementation_daemon.py",
-            "sha256": "sha256:327b6ea511102c4444629194de5b5107a4741c77447bcf008b18d85032c0270a",
-            "size_bytes": 102012
+            "sha256": "sha256:7c6c7db014a06a85dbb18c946d6030a8ff7ac79bae0da468cad0b79eb18381a9",
+            "size_bytes": 292160
           },
           {
             "path": "test/api/test_agent_supervisor_database_portal_bridge.py",
-            "sha256": "sha256:97704ea805b1e8d4bbed74c0261319ad7adb9e82319f05bff3fcca11ef395211",
-            "size_bytes": 44623
+            "sha256": "sha256:ddca2dad313d0a99e76ac39d9ec7188aef92412516d4a021be15cf5e20aa7617",
+            "size_bytes": 133307
           },
           {
             "path": "test/api/test_agent_supervisor_manual_completion_authority_runtime.py",
-            "sha256": "sha256:2af3064212b50e1a0684a988f14046810ae40869995e834102840e6227ee7ccd",
-            "size_bytes": 111862
+            "sha256": "sha256:19de333dd44664d18ec4842361ac607e33ef76e1b785bfbe19873432e023d16f",
+            "size_bytes": 111946
           },
           {
             "path": "test/api/test_agent_supervisor_expected_output_submodule_preflight.py",
@@ -308,14 +308,14 @@
         ],
         "suite_id": "fixed_accelerator_authority"
       },
-      "nodeids_cid": "baguqeerar533oighzztc5b5bazgduez2ksn66mzh2vu6c6a6gchquvkqlf2a",
-      "observation_cid": "baguqeerau2n5xvgwefyhby2um2c5lfbo73wzynrs4rtv2k355x3i74kweurq",
+      "nodeids_cid": "baguqeeraacn7efk2fnaowtsihyznravxz5mttsiieoyzaptvx2pdunuo5h6a",
+      "observation_cid": "baguqeeracv6zngbqve3d7ligmblxdol75lkhgolbzyrod3xcgcu32s7u3gka",
       "passed": true,
-      "passed_count": 199,
+      "passed_count": 349,
       "schema": "lgcvf-independent-pytest-observation@1",
       "skipped_count": 0,
       "suite_id": "fixed_accelerator_authority",
-      "transcript_sha256": "sha256:9b63a56241ab33ebb3ccc062ca3536e40ec4636ab69e010df6053d2c45ff003b",
+      "transcript_sha256": "sha256:33691a5c71ddd108a17226c0f9ba2a602b7a8fac7b3612dd551a973ff3377357",
       "xfailed_count": 0,
       "xpassed_count": 0
     }
@@ -323,10 +323,10 @@
   "task_implementation_complete": false,
   "test_qualification_complete": true,
   "totals": {
-    "collected": 361,
+    "collected": 511,
     "error_count": 0,
     "failed_count": 0,
-    "passed_count": 361,
+    "passed_count": 511,
     "skipped_count": 0,
     "xfailed_count": 0,
     "xpassed_count": 0
