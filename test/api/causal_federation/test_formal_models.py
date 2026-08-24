@@ -382,6 +382,7 @@ def test_absent_tlc_and_apalache_are_unavailable_and_never_run_or_pass() -> None
     assert all(not item.ran and not item.passed for item in receipts)
     assert all(not item.model_check_receipt_id for item in receipts)
     assert all(not item.paired_hermetic_receipt_id for item in receipts)
+    assert all(item.paired_hermetic_status is None for item in receipts)
     assert all(not item.casf_property_satisfied_by_pair for item in receipts)
     assert all(item.to_dict()["unbounded_proof"] is False for item in receipts)
 
@@ -460,6 +461,7 @@ def test_external_pass_requires_both_qualified_matrix_and_executed_receipt() -> 
     assert {item.scenario_property for item in receipts} == set(FederationFormalProperty)
     assert all(item.model_check_receipt_id for item in receipts)
     assert all(not item.paired_hermetic_receipt_id for item in receipts)
+    assert all(item.paired_hermetic_status is None for item in receipts)
     assert all(not item.casf_property_satisfied_by_pair for item in receipts)
     assert all(item.to_dict()["unbounded_proof"] is False for item in receipts)
     assert len(checker_runtime.requests) == 24  # version plus bounded check per result
@@ -489,6 +491,11 @@ def test_casf_property_satisfaction_requires_exact_trusted_hermetic_pairing() ->
         == hermetic_by_property[item.scenario_property].receipt_id
         for item in receipts
     )
+    assert all(
+        item.paired_hermetic_status
+        is hermetic_by_property[item.scenario_property].status
+        for item in receipts
+    )
     assert all(item.property is ExternalModelInvariant.SUPERVISOR_SAFETY for item in receipts)
 
     unavailable = run_external_model_checks(
@@ -497,6 +504,7 @@ def test_casf_property_satisfaction_requires_exact_trusted_hermetic_pairing() ->
         hermetic_receipts=hermetic_receipts,
     )
     assert all(item.paired_hermetic_receipt_id for item in unavailable)
+    assert all(item.paired_hermetic_status is HermeticCheckStatus.PASSED for item in unavailable)
     assert all(not item.passed for item in unavailable)
     assert all(not item.casf_property_satisfied_by_pair for item in unavailable)
 
@@ -510,6 +518,74 @@ def test_casf_property_satisfaction_requires_exact_trusted_hermetic_pairing() ->
             matrix=_qualified_matrix(_MatrixRuntime()),
             checker=SupervisorStateModelChecker(command_runner=_MatrixRuntime().run),
             hermetic_receipts=(forged,),
+        )
+
+
+def test_generic_external_pass_cannot_promote_inconclusive_hermetic_pair() -> None:
+    suite = build_federation_formal_suite(_identity(), bounds=_bounds(max_steps=1))
+    hermetic_receipts = check_federation_formal_suite(suite)
+    hermetic_by_property = {item.property: item for item in hermetic_receipts}
+    inconclusive_properties = {
+        item.property
+        for item in hermetic_receipts
+        if item.status is HermeticCheckStatus.INCONCLUSIVE
+    }
+    assert inconclusive_properties
+
+    receipts = run_external_model_checks(
+        suite,
+        matrix=_qualified_matrix(_MatrixRuntime()),
+        checker=SupervisorStateModelChecker(command_runner=_MatrixRuntime().run),
+        hermetic_receipts=hermetic_receipts,
+    )
+
+    assert all(item.passed for item in receipts)
+    for receipt in receipts:
+        paired = hermetic_by_property[receipt.scenario_property]
+        assert receipt.paired_hermetic_receipt_id == paired.receipt_id
+        assert receipt.paired_hermetic_status is paired.status
+        assert receipt.casf_property_satisfied_by_pair is paired.passed
+        if receipt.scenario_property in inconclusive_properties:
+            assert not receipt.casf_property_passed
+
+    inconclusive_external = next(
+        item for item in receipts if item.scenario_property in inconclusive_properties
+    )
+    with pytest.raises(FederationFormalError, match="exact passed hermetic receipt"):
+        replace(
+            inconclusive_external,
+            casf_property_satisfied_by_pair=True,
+        )
+
+    inconclusive_hermetic = next(
+        item
+        for item in hermetic_receipts
+        if item.status is HermeticCheckStatus.INCONCLUSIVE
+    )
+    forged_pass = replace(inconclusive_hermetic, status=HermeticCheckStatus.PASSED)
+    with pytest.raises(FederationFormalError, match="trusted finite exploration"):
+        run_external_model_checks(
+            suite,
+            matrix=_qualified_matrix(_MatrixRuntime()),
+            checker=SupervisorStateModelChecker(command_runner=_MatrixRuntime().run),
+            hermetic_receipts=(forged_pass,),
+        )
+
+
+def test_counterexample_hermetic_receipt_cannot_be_used_as_a_successful_pair() -> None:
+    suite = _suite()
+    counterexample = check_federation_scenario(
+        suite.scenario(FederationFormalProperty.EVENT_DELIVERY),
+        mutation=AdversarialMutation.DUPLICATE_EVENT_EFFECT,
+    )
+    assert counterexample.status is HermeticCheckStatus.COUNTEREXAMPLE
+
+    with pytest.raises(FederationFormalError, match="trusted finite exploration"):
+        run_external_model_checks(
+            suite,
+            matrix=_qualified_matrix(_MatrixRuntime()),
+            checker=SupervisorStateModelChecker(command_runner=_MatrixRuntime().run),
+            hermetic_receipts=(counterexample,),
         )
 
 

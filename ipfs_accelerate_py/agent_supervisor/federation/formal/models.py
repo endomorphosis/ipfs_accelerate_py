@@ -57,7 +57,7 @@ CASF_FORMAL_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/causal-federation/formal-check-receipt@1"
 )
 CASF_EXTERNAL_CHECK_RECEIPT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/causal-federation/external-model-check-receipt@2"
+    "ipfs_accelerate_py/agent-supervisor/causal-federation/external-model-check-receipt@3"
 )
 CASF_FORMAL_TASK_ID: Final = "CASF-036"
 MAX_HERMETIC_EXPLORED_STATES: Final = 200_000
@@ -682,6 +682,7 @@ class ExternalModelCheckReceipt:
     generated_model_identity: str
     model_check_receipt_id: str
     paired_hermetic_receipt_id: str
+    paired_hermetic_status: HermeticCheckStatus | None
     casf_property_satisfied_by_pair: bool
     reason: str
     schema: str = CASF_EXTERNAL_CHECK_RECEIPT_SCHEMA
@@ -703,6 +704,11 @@ class ExternalModelCheckReceipt:
             raise FederationFormalError("external receipt ran flag must be boolean")
         if type(self.casf_property_satisfied_by_pair) is not bool:
             raise FederationFormalError("paired CASF satisfaction flag must be boolean")
+        if self.paired_hermetic_status is not None and not isinstance(
+            self.paired_hermetic_status,
+            HermeticCheckStatus,
+        ):
+            raise FederationFormalError("paired hermetic status is not closed")
         for name in (
             "scenario_id",
             "matrix_snapshot_id",
@@ -721,18 +727,25 @@ class ExternalModelCheckReceipt:
             required=False,
         )
         _bounded_text(self.reason, "reason")
+        has_hermetic_pair = bool(self.paired_hermetic_receipt_id)
+        if has_hermetic_pair != (self.paired_hermetic_status is not None):
+            raise FederationFormalError(
+                "paired hermetic receipt identity and status must be present together"
+            )
         if self.status in {ExternalCheckStatus.UNAVAILABLE, ExternalCheckStatus.NOT_RUN}:
             if self.ran or self.model_check_receipt_id:
                 raise FederationFormalError("unavailable/not-run checks cannot claim execution")
         elif not self.ran or not self.model_check_receipt_id:
             raise FederationFormalError("executed external outcomes require an exact receipt")
         expected_pair_satisfaction = bool(
-            self.passed and self.paired_hermetic_receipt_id
+            self.passed
+            and has_hermetic_pair
+            and self.paired_hermetic_status is HermeticCheckStatus.PASSED
         )
         if self.casf_property_satisfied_by_pair != expected_pair_satisfaction:
             raise FederationFormalError(
                 "CASF property satisfaction requires both a generic external pass "
-                "and paired hermetic evidence"
+                "and an exact passed hermetic receipt"
             )
 
     @property
@@ -770,6 +783,11 @@ class ExternalModelCheckReceipt:
             "generated_model_identity": self.generated_model_identity,
             "model_check_receipt_id": self.model_check_receipt_id,
             "paired_hermetic_receipt_id": self.paired_hermetic_receipt_id,
+            "paired_hermetic_status": (
+                self.paired_hermetic_status.value
+                if self.paired_hermetic_status is not None
+                else None
+            ),
             "casf_property_satisfied_by_pair": (
                 self.casf_property_satisfied_by_pair
             ),
@@ -1791,7 +1809,11 @@ def _validated_hermetic_pairings(
             )
         if receipt.property in pairings:
             raise FederationFormalError("hermetic pairing contains a duplicate property")
-        pairings[receipt.property] = receipt
+        # Use the independently reconstructed receipt downstream.  Equality
+        # above proves the submitted bytes describe it exactly; retaining the
+        # reconstructed object makes its trusted status, rather than a caller
+        # assertion, the source of CASF-pair satisfaction.
+        pairings[receipt.property] = expected
     return MappingProxyType(pairings)
 
 
@@ -1961,6 +1983,9 @@ def run_external_model_checks(
                 "paired_hermetic_receipt_id": (
                     hermetic_receipt.receipt_id if hermetic_receipt is not None else ""
                 ),
+                "paired_hermetic_status": (
+                    hermetic_receipt.status if hermetic_receipt is not None else None
+                ),
             }
             if entry is None or entry.absent:
                 results.append(
@@ -2057,6 +2082,7 @@ def run_external_model_checks(
                     casf_property_satisfied_by_pair=(
                         receipt.status is ModelCheckStatus.PASSED
                         and hermetic_receipt is not None
+                        and hermetic_receipt.passed
                     ),
                     reason=receipt.reason,
                 )
