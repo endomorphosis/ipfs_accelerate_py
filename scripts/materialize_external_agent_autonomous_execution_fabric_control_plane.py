@@ -32,6 +32,9 @@ if str(ROOT) not in sys.path:
     # the immutable namespace claim has already been published.
     sys.path.insert(0, str(ROOT))
 CONFIG_PATH = ROOT / "config/external_agent_autonomous_execution_fabric_scheduler.json"
+EAAEF_BOARD_PATH = (
+    ROOT / "docs/architecture/external_agent_autonomous_execution_fabric/task_board.json"
+)
 RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "external-agent-autonomous-execution-fabric-materialization@2"
@@ -1207,7 +1210,27 @@ def _host_receipt_decision(task_id: str) -> str:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return ""
-    return str(payload.get("decision") or "") if isinstance(payload, dict) else ""
+    if not isinstance(payload, dict):
+        return ""
+    decision = str(payload.get("decision") or "")
+    if task_id != "EAAEF-191" or decision != "admitted":
+        return decision
+    try:
+        from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
+            verify_admission_bundle_receipt,
+        )
+
+        board = _load_object(EAAEF_BOARD_PATH)
+        verification = verify_admission_bundle_receipt(
+            receipt_dir=path.parent,
+            expected_source_head=_git("rev-parse", "HEAD"),
+            expected_source_tree=_git("rev-parse", "HEAD^{tree}"),
+            expected_board_namespace=str(board.get("board_namespace") or ""),
+            expected_board_cid=str(board.get("board_cid") or ""),
+        )
+    except Exception:
+        return "no_go"
+    return "admitted" if verification.get("admitted") is True else "no_go"
 
 
 def _drop_stale_launch_blockers(blockers: list[str]) -> list[str]:
