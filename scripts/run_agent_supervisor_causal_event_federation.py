@@ -2140,6 +2140,7 @@ def _spawn_configured_executor(
     child_descriptor = os.dup(owner_channel.fileno())
     os.set_inheritable(child_descriptor, True)
     process: subprocess.Popen[Any] | None = None
+    supervisor_birth: dict[str, Any] | None = None
     broker: _ExecutorBootstrapBroker | None = None
     paths["executor_state"].mkdir(parents=True, exist_ok=True)
     log_handle = paths["executor_log"].open("ab")
@@ -2186,10 +2187,14 @@ def _spawn_configured_executor(
             if broker.failure:
                 raise OperatorError("executor credential bootstrap failed closed")
             current = _read_optional_json(
-                paths["executor_current"], transient_retry_attempts=5
+                paths["executor_current"],
+                transient_retry_attempts=5,
+                retry_missing=True,
             )
             status_payload = _read_optional_json(
-                paths["executor_supervisor_status"], transient_retry_attempts=5
+                paths["executor_supervisor_status"],
+                transient_retry_attempts=5,
+                retry_missing=True,
             )
             executor_birth = current.get("executor_process_birth")
             executor_liveness = (
@@ -2273,14 +2278,10 @@ def _spawn_configured_executor(
             except OSError:
                 pass
         if process is not None:
-            try:
-                failed_supervisor_birth = _process_birth(process.pid)
-            except Exception:
-                failed_supervisor_birth = None
-            if isinstance(failed_supervisor_birth, Mapping):
+            if isinstance(supervisor_birth, Mapping):
                 _retire_configured_executor(
                     paths=paths,
-                    supervisor_birth=failed_supervisor_birth,
+                    supervisor_birth=supervisor_birth,
                     broker=broker,
                     fallback_executor_birth=fallback_birth,
                     grace_seconds=5.0,
@@ -2637,14 +2638,24 @@ def _read_optional_json(
     *,
     maximum_bytes: int = 4_194_304,
     transient_retry_attempts: int = 1,
+    retry_missing: bool = False,
 ) -> dict[str, Any]:
-    """Read one private runtime projection without following a symlink."""
+    """Read one private runtime projection without following a symlink.
+
+    Missing-file retries are opt-in for bounded pre-receipt startup waits.
+    Malformed content is retried only when the pathname was replaced or
+    changed while it was being read; a stable malformed authority artifact is
+    rejected instead of being treated as temporarily absent.
+    """
 
     attempts = max(1, int(transient_retry_attempts))
     for attempt in range(attempts):
         try:
             metadata = os.lstat(path)
         except FileNotFoundError:
+            if retry_missing and attempt + 1 < attempts:
+                time.sleep(0.01)
+                continue
             return {}
         except OSError as exc:
             raise OperatorError(f"runtime projection is uninspectable: {path}") from exc
@@ -2657,10 +2668,34 @@ def _read_optional_json(
             raise OperatorError(f"runtime projection is not a bounded regular file: {path}")
         try:
             return _json_object(path)
-        except OperatorError:
+        except OperatorError as parse_error:
             if attempt + 1 >= attempts:
                 raise
             time.sleep(0.01)
+            try:
+                current = os.lstat(path)
+            except FileNotFoundError:
+                if retry_missing:
+                    continue
+                raise parse_error
+            except OSError as exc:
+                raise OperatorError(
+                    f"runtime projection is uninspectable: {path}"
+                ) from exc
+            prior_identity = (
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_mtime_ns,
+                metadata.st_size,
+            )
+            current_identity = (
+                current.st_dev,
+                current.st_ino,
+                current.st_mtime_ns,
+                current.st_size,
+            )
+            if current_identity == prior_identity:
+                raise parse_error
     raise AssertionError("bounded runtime projection read exhausted")
 
 
@@ -3295,8 +3330,16 @@ def _wait_for_owner(
             "supervisor_process_birth": supervisor_birth,
         }
         if require_executor:
-            executor_current = _read_optional_json(paths["executor_current"])
-            executor_status = _read_optional_json(paths["executor_supervisor_status"])
+            executor_current = _read_optional_json(
+                paths["executor_current"],
+                transient_retry_attempts=5,
+                retry_missing=True,
+            )
+            executor_status = _read_optional_json(
+                paths["executor_supervisor_status"],
+                transient_retry_attempts=5,
+                retry_missing=True,
+            )
             executor_supervisor_pid = _read_pid(paths["executor_supervisor_pid"])
             executor_birth = executor_current.get("executor_process_birth")
             if (
@@ -3347,6 +3390,146 @@ def _wait_for_owner(
             )
         return ready
     raise OperatorError("timed out waiting for exact Quack owner readiness")
+
+
+def _started_configured_executor_births(
+    paths: Mapping[str, Path],
+    *,
+    owner_birth: Mapping[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Recover only an exact configured-executor child for failed-launch cleanup.
+
+    This is cleanup authority, not readiness authority.  A projection may be
+    absent or malformed during startup, so the durable PID markers are
+    corroborated against current procfs births, the exact live owner/child
+    relationship, and the closed configured-supervisor argv.  No unbound PID
+    is ever returned for signalling.
+    """
+
+    if _birth_liveness(owner_birth) != "alive":
+        return None, None
+    try:
+        owner_pid = int(owner_birth.get("pid") or 0)
+        owner_start = int(owner_birth.get("start_time_ticks") or 0)
+    except (TypeError, ValueError):
+        return None, None
+    owner_boot = str(owner_birth.get("boot_id") or "")
+    if owner_pid <= 1 or owner_start <= 0:
+        return None, None
+
+    current: dict[str, Any] = {}
+    try:
+        current = _read_optional_json(
+            paths["executor_current"],
+            transient_retry_attempts=3,
+            retry_missing=True,
+        )
+    except OperatorError:
+        # A malformed readiness projection is never used as signal authority.
+        current = {}
+
+    raw_supervisor = current.get("supervisor_process_birth")
+    supervisor_pid: int | None = None
+    if isinstance(raw_supervisor, Mapping):
+        try:
+            supervisor_pid = int(raw_supervisor.get("pid") or 0)
+        except (TypeError, ValueError):
+            supervisor_pid = None
+    if not supervisor_pid:
+        try:
+            supervisor_pid = _read_pid(paths["executor_supervisor_pid"])
+        except OperatorError:
+            return None, None
+    if supervisor_pid is None or supervisor_pid <= 1:
+        return None, None
+    try:
+        supervisor_birth = _process_birth(supervisor_pid)
+    except OperatorError:
+        return None, None
+    if isinstance(raw_supervisor, Mapping) and dict(raw_supervisor) != supervisor_birth:
+        return None, None
+    try:
+        supervisor_start = int(supervisor_birth.get("start_time_ticks") or 0)
+        supervisor_parent = int(supervisor_birth.get("parent_pid") or 0)
+    except (TypeError, ValueError):
+        return None, None
+    if (
+        supervisor_parent != owner_pid
+        or supervisor_start < owner_start
+        or _birth_liveness(supervisor_birth) != "alive"
+        or (
+            owner_boot
+            and str(supervisor_birth.get("boot_id") or "") != owner_boot
+        )
+    ):
+        return None, None
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+        IMPLEMENTATION_ENTRY_PATH,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+        read_process_command_argv,
+    )
+
+    argv = read_process_command_argv(supervisor_pid)
+    expected_entry = str((ROOT / IMPLEMENTATION_ENTRY_PATH).resolve())
+    if argv is None or expected_entry not in argv:
+        return None, None
+    required_pairs = {
+        "--state-dir": str(paths["executor_state"]),
+        "--state-prefix": "casf_executor",
+    }
+    for option, expected in required_pairs.items():
+        indexes = [index for index, value in enumerate(argv) if value == option]
+        if (
+            len(indexes) != 1
+            or indexes[0] + 1 >= len(argv)
+            or argv[indexes[0] + 1] != expected
+        ):
+            return None, None
+
+    raw_executor = current.get("executor_process_birth")
+    executor_pid: int | None = None
+    if isinstance(raw_executor, Mapping):
+        try:
+            executor_pid = int(raw_executor.get("pid") or 0)
+        except (TypeError, ValueError):
+            executor_pid = None
+    if not executor_pid:
+        try:
+            executor_pid = _read_pid(paths["executor_daemon_pid"])
+        except OperatorError:
+            executor_pid = None
+    executor_birth: dict[str, Any] | None = None
+    if executor_pid is not None and executor_pid > 1:
+        try:
+            observed_executor = _process_birth(executor_pid)
+        except OperatorError:
+            observed_executor = None
+        if observed_executor is not None:
+            try:
+                executor_start = int(
+                    observed_executor.get("start_time_ticks") or 0
+                )
+                executor_parent = int(observed_executor.get("parent_pid") or 0)
+            except (TypeError, ValueError):
+                executor_start = 0
+                executor_parent = 0
+            if (
+                (
+                    not isinstance(raw_executor, Mapping)
+                    or dict(raw_executor) == observed_executor
+                )
+                and executor_parent == supervisor_pid
+                and executor_start >= supervisor_start
+                and _birth_liveness(observed_executor) == "alive"
+                and (
+                    not owner_boot
+                    or str(observed_executor.get("boot_id") or "") == owner_boot
+                )
+            ):
+                executor_birth = observed_executor
+    return supervisor_birth, executor_birth
 
 
 def _retire_consumed_generation(paths: Mapping[str, Path], *, launch_id: str) -> None:
@@ -3429,6 +3612,8 @@ def _launch_owner(
             command.extend(
                 ["--executor-implementation-command", implementation_command]
             )
+    process: subprocess.Popen[Any]
+    owner_birth: dict[str, Any] | None = None
     try:
         process = subprocess.Popen(
             command,
@@ -3442,6 +3627,7 @@ def _launch_owner(
     finally:
         log_handle.close()
     try:
+        owner_birth = _process_birth(process.pid)
         ready = _wait_for_owner(
             _load_config(config_path)[0],
             paths,
@@ -3451,9 +3637,29 @@ def _launch_owner(
             require_executor=admit_task_execution,
         )
     except BaseException:
+        if owner_birth is None:
+            try:
+                owner_birth = _process_birth(process.pid)
+            except OperatorError:
+                owner_birth = None
+        if isinstance(owner_birth, Mapping):
+            supervisor_birth, executor_birth = _started_configured_executor_births(
+                paths,
+                owner_birth=owner_birth,
+            )
+            if isinstance(supervisor_birth, Mapping):
+                try:
+                    _retire_configured_executor(
+                        paths=paths,
+                        supervisor_birth=supervisor_birth,
+                        fallback_executor_birth=executor_birth,
+                        grace_seconds=5.0,
+                    )
+                except Exception:
+                    pass
         try:
-            birth = _process_birth(process.pid)
-            _terminate_birth(birth, grace_seconds=5.0)
+            if isinstance(owner_birth, Mapping):
+                _terminate_birth(owner_birth, grace_seconds=5.0)
         except Exception:
             pass
         raise
@@ -3709,8 +3915,11 @@ def _executor_runtime_projection(
             and status_payload.get("supervisor_pid_alive") is True
         )
     if isinstance(daemon_birth, Mapping):
+        status_daemon_birth = status_payload.get("daemon_process_birth")
         daemon_bound = bool(
             _birth_liveness(daemon_birth) == "alive"
+            and isinstance(status_daemon_birth, Mapping)
+            and dict(status_daemon_birth) == dict(daemon_birth)
             and int(status_payload.get("daemon_pid") or 0)
             == int(daemon_birth.get("pid") or 0)
             and status_payload.get("daemon_pid_alive") is True
@@ -3734,6 +3943,7 @@ def _executor_runtime_projection(
             "supervisor_pid_alive",
             "daemon_pid",
             "daemon_pid_alive",
+            "daemon_process_birth",
             "current_status_path",
             "progress_path",
             "state_path",
@@ -4555,6 +4765,23 @@ def launch(
         if not isinstance(identity, Mapping):
             raise OperatorError("owner launch returned no typed identity")
         owner_birth = dict(identity["process_birth"])
+        sealed_supervisor_birth = owner_ready.get("supervisor_process_birth")
+        if not isinstance(sealed_supervisor_birth, Mapping):
+            raise OperatorError("state owner did not attest the supervisor process birth")
+        master_birth = dict(sealed_supervisor_birth)
+        executor_supervisor_birth = owner_ready.get(
+            "executor_supervisor_process_birth"
+        )
+        executor_birth = owner_ready.get("executor_process_birth")
+        if _birth_liveness(master_birth) != "alive":
+            raise OperatorError("state-owner-attested supervisor process is not alive")
+        if admit_task_execution and (
+            not isinstance(executor_supervisor_birth, Mapping)
+            or not isinstance(executor_birth, Mapping)
+            or _birth_liveness(executor_supervisor_birth) != "alive"
+            or _birth_liveness(executor_birth) != "alive"
+        ):
+            raise OperatorError("state owner did not attest a live configured executor")
         task_authority = _query_quack_tasks(board, paths)
         outbox_worker = _outbox_worker_health(
             _read_optional_json(paths["owner_status"])
@@ -4588,23 +4815,6 @@ def launch(
             raise OperatorError(
                 "live coordinator lacks authoritative runtime/event acknowledgement evidence"
             )
-        sealed_supervisor_birth = owner_ready.get("supervisor_process_birth")
-        if not isinstance(sealed_supervisor_birth, Mapping):
-            raise OperatorError("state owner did not attest the supervisor process birth")
-        master_birth = dict(sealed_supervisor_birth)
-        if _birth_liveness(master_birth) != "alive":
-            raise OperatorError("state-owner-attested supervisor process is not alive")
-        executor_supervisor_birth = owner_ready.get(
-            "executor_supervisor_process_birth"
-        )
-        executor_birth = owner_ready.get("executor_process_birth")
-        if admit_task_execution and (
-            not isinstance(executor_supervisor_birth, Mapping)
-            or not isinstance(executor_birth, Mapping)
-            or _birth_liveness(executor_supervisor_birth) != "alive"
-            or _birth_liveness(executor_birth) != "alive"
-        ):
-            raise OperatorError("state owner did not attest a live configured executor")
         execution_route_summary = None
         if admit_task_execution:
             execution_route_summary = _validated_execution_route_summary(

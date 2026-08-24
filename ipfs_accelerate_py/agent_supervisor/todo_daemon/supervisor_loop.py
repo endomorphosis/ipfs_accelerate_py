@@ -230,6 +230,14 @@ class SupervisorLoop:
             )
         if extra:
             payload_extra.update(dict(extra))
+        if child is not None and child.identity_process_birth is not None:
+            if child.identity_process_birth.pid != child.pid:
+                raise RuntimeError(
+                    "managed daemon PID differs from its process-birth identity"
+                )
+            payload_extra["daemon_process_birth"] = (
+                child.identity_process_birth.to_dict()
+            )
         self.status.write(
             status,
             run_id=run_id,

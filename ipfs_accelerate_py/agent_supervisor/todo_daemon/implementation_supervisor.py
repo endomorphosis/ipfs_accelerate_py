@@ -7096,6 +7096,7 @@ class PortalImplementationSupervisor:
         started_at: str,
         error: str = "",
         daemon_pid: int | None = None,
+        daemon_process_birth: ProcessBirthIdentity | None = None,
     ) -> None:
         """Refresh supervisor status while recovery/refill work is running."""
 
@@ -7104,7 +7105,22 @@ class PortalImplementationSupervisor:
         now = utc_now()
         timeout_seconds = self._supervisor_maintenance_timeout_seconds()
         active = status == "running"
-        daemon_alive = bool(daemon_pid and process_is_running(int(daemon_pid)))
+        daemon_birth_payload: dict[str, Any] | None = None
+        if daemon_process_birth is not None:
+            if not isinstance(daemon_process_birth, ProcessBirthIdentity):
+                raise TypeError("maintenance daemon birth must be typed")
+            daemon_birth_payload = daemon_process_birth.to_dict()
+            if (
+                not daemon_pid
+                or int(daemon_pid) != daemon_process_birth.pid
+            ):
+                raise RuntimeError(
+                    "maintenance daemon PID differs from its managed process birth"
+                )
+        daemon_alive = bool(
+            daemon_process_birth is not None
+            and owner_liveness(daemon_process_birth) is OwnerLiveness.ALIVE
+        )
         payload.update(
             {
                 "schema": "ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor",
@@ -7114,6 +7130,7 @@ class PortalImplementationSupervisor:
                 "supervisor_pid_alive": True,
                 "daemon_pid": int(daemon_pid) if daemon_pid else None,
                 "daemon_pid_alive": daemon_alive,
+                "daemon_process_birth": daemon_birth_payload,
                 "repo_root": str(self.config.repo_root),
                 "current_status_path": str(self.config.state_path),
                 "progress_path": str(self.config.state_path),
@@ -7181,7 +7198,13 @@ class PortalImplementationSupervisor:
         payload.update(self._control_plane_status_projection())
         write_json_atomic(status_path, payload)
 
-    def _begin_supervisor_maintenance_heartbeat(self, phase: str, *, daemon_pid: int | None = None):
+    def _begin_supervisor_maintenance_heartbeat(
+        self,
+        phase: str,
+        *,
+        daemon_pid: int | None = None,
+        daemon_process_birth: ProcessBirthIdentity | None = None,
+    ):
         """Return phase-update and finish callbacks for long supervisor recovery passes."""
 
         started_at = utc_now()
@@ -7197,6 +7220,7 @@ class PortalImplementationSupervisor:
                     started_at=started_at,
                     error=error,
                     daemon_pid=daemon_pid,
+                    daemon_process_birth=daemon_process_birth,
                 )
             except Exception:
                 logger.warning("Failed to update supervisor maintenance heartbeat", exc_info=True)
@@ -9019,9 +9043,11 @@ class PortalImplementationSupervisor:
 
         self._last_supervisor_maintenance_at = now_monotonic
         daemon_pid = int(getattr(_child, "pid", 0) or 0) or None
+        daemon_process_birth = getattr(_child, "identity_process_birth", None)
         update_maintenance_phase, finish_maintenance = self._begin_supervisor_maintenance_heartbeat(
             "watchdog",
             daemon_pid=daemon_pid,
+            daemon_process_birth=daemon_process_birth,
         )
         failed = False
         try:

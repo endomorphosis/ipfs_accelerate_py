@@ -548,6 +548,7 @@ def _project_executor_supervisor_status(
         "supervisor_pid_alive": True,
         "daemon_pid": executor_birth["pid"],
         "daemon_pid_alive": True,
+        "daemon_process_birth": executor_birth,
         "stalled_without_active_worker": False,
     }
     if maintenance_status is not None:
@@ -680,6 +681,195 @@ def test_executor_runtime_projection_rejects_nonhealthy_maintenance_status(
     ]
 
 
+def test_actual_maintenance_producer_projects_exact_managed_daemon_birth(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        TodoImplementationSupervisor,
+        TodoSupervisorConfig,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+        read_process_birth,
+    )
+
+    operator = _operator()
+    repo = tmp_path / "repo"
+    state_dir = repo / "state"
+    repo.mkdir()
+    state_dir.mkdir()
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "casf_executor_task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            state_prefix="casf_executor",
+        )
+    )
+    child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        start_new_session=True,
+    )
+    try:
+        supervisor_birth = read_process_birth(os.getpid())
+        daemon_birth = read_process_birth(child.pid)
+        assert supervisor_birth is not None
+        assert daemon_birth is not None
+        supervisor._write_supervisor_maintenance_status(
+            "watchdog",
+            status="running",
+            started_at="2026-08-24T00:00:00Z",
+            daemon_pid=child.pid,
+            daemon_process_birth=daemon_birth,
+        )
+        current_path = state_dir / "executor-current.json"
+        history_path = state_dir / "executor-history.json"
+        current_path.write_text(
+            json.dumps(
+                {
+                    "supervisor_process_birth": supervisor_birth.to_dict(),
+                    "executor_process_birth": daemon_birth.to_dict(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        paths = {
+            "executor_current": current_path,
+            "executor_history": history_path,
+            "executor_state": state_dir,
+            "executor_supervisor_status": (
+                state_dir / "casf_executor_supervisor_status.json"
+            ),
+        }
+        projection = operator._executor_runtime_projection(
+            paths,
+            expected_supervisor_birth=supervisor_birth.to_dict(),
+        )
+
+        assert projection["supervisor_process_bound"] is True
+        assert projection["executor_process_bound"] is True
+        assert projection["clean_error_state"] is True
+        assert projection["supervisor_status"]["daemon_process_birth"] == (
+            daemon_birth.to_dict()
+        )
+    finally:
+        os.killpg(child.pid, signal.SIGKILL)
+        child.wait(timeout=5.0)
+
+
+def test_executor_projection_rejects_maintenance_daemon_birth_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    projection = _project_executor_supervisor_status(
+        tmp_path,
+        monkeypatch,
+        operator,
+        supervisor_status="agentic_maintenance_started",
+        maintenance_status="running",
+    )
+    status_path = tmp_path / "executor-status.json"
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    status["daemon_process_birth"]["start_time_ticks"] += 1
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+
+    projection = operator._executor_runtime_projection(
+        {
+            "executor_current": tmp_path / "executor-current.json",
+            "executor_history": tmp_path / "executor-history.json",
+            "executor_state": tmp_path,
+            "executor_supervisor_status": status_path,
+        },
+        expected_supervisor_birth={"pid": 4401, "start_time_ticks": 101},
+    )
+    assert projection["executor_process_bound"] is False
+
+
+def test_normal_supervisor_status_projects_exact_managed_daemon_birth(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
+        TodoImplementationSupervisor,
+        TodoSupervisorConfig,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
+        SupervisorLoop,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+        SupervisedChild,
+        read_process_birth,
+    )
+
+    operator = _operator()
+    state_dir = tmp_path / "executor"
+    state_dir.mkdir()
+    todo_path = tmp_path / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "casf_executor_task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=ROOT,
+            state_prefix="casf_executor",
+        )
+    )
+    loop = SupervisorLoop(supervisor.build_supervisor_loop_config())
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        start_new_session=True,
+    )
+    try:
+        supervisor_birth = read_process_birth(os.getpid())
+        daemon_birth = read_process_birth(process.pid)
+        assert supervisor_birth is not None
+        assert daemon_birth is not None
+        child = SupervisedChild(
+            pid=process.pid,
+            command=(sys.executable, "-c", "import time; time.sleep(30)"),
+            log_path=state_dir / "daemon.log",
+            child_pid_path=state_dir / "casf_executor_managed_daemon.pid",
+            identity_process_birth=daemon_birth,
+        )
+        loop._write_status("running", child=child)
+        current_path = state_dir / "executor-current.json"
+        current_path.write_text(
+            json.dumps(
+                {
+                    "supervisor_process_birth": supervisor_birth.to_dict(),
+                    "executor_process_birth": daemon_birth.to_dict(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        projection = operator._executor_runtime_projection(
+            {
+                "executor_current": current_path,
+                "executor_history": state_dir / "executor-history.json",
+                "executor_state": state_dir,
+                "executor_supervisor_status": (
+                    state_dir / "casf_executor_supervisor_status.json"
+                ),
+            },
+            expected_supervisor_birth=supervisor_birth.to_dict(),
+        )
+
+        assert projection["supervisor_process_bound"] is True
+        assert projection["executor_process_bound"] is True
+        assert projection["clean_error_state"] is True
+        assert projection["supervisor_status"]["daemon_process_birth"] == (
+            daemon_birth.to_dict()
+        )
+    finally:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait(timeout=5.0)
+
+
 def test_runtime_projection_read_retries_only_a_bounded_parse_race(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -692,7 +882,10 @@ def test_runtime_projection_read_retries_only_a_bounded_parse_race(
     def _flaky_read(_path: Path) -> dict[str, Any]:
         nonlocal attempts
         attempts += 1
-        if attempts < 3:
+        if attempts == 1:
+            replacement = projection.with_suffix(".replacement")
+            replacement.write_text('{"status":"running"}', encoding="utf-8")
+            replacement.replace(projection)
             raise operator.OperatorError("transient partial JSON")
         return {"status": "running"}
 
@@ -701,7 +894,236 @@ def test_runtime_projection_read_retries_only_a_bounded_parse_race(
     assert operator._read_optional_json(
         projection, transient_retry_attempts=3
     ) == {"status": "running"}
-    assert attempts == 3
+    assert attempts == 2
+
+
+def test_runtime_projection_read_rejects_stable_malformed_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    projection = tmp_path / "supervisor-status.json"
+    projection.write_text("{", encoding="utf-8")
+    attempts = 0
+
+    def _malformed(_path: Path) -> dict[str, Any]:
+        nonlocal attempts
+        attempts += 1
+        raise operator.OperatorError("malformed authority")
+
+    monkeypatch.setattr(operator, "_json_object", _malformed)
+
+    with pytest.raises(operator.OperatorError, match="malformed authority"):
+        operator._read_optional_json(
+            projection,
+            transient_retry_attempts=5,
+            retry_missing=True,
+        )
+    assert attempts == 1
+
+
+def test_runtime_projection_read_retries_missing_only_when_requested(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    projection = tmp_path / "executor-status.json"
+    sleeps = 0
+
+    def _publish(_seconds: float) -> None:
+        nonlocal sleeps
+        sleeps += 1
+        projection.write_text('{"status":"running"}', encoding="utf-8")
+
+    monkeypatch.setattr(operator.time, "sleep", _publish)
+
+    assert operator._read_optional_json(
+        projection,
+        transient_retry_attempts=2,
+        retry_missing=True,
+    ) == {"status": "running"}
+    assert sleeps == 1
+
+
+def test_runtime_projection_disappearing_during_read_preserves_operator_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    projection = tmp_path / "executor-status.json"
+    projection.write_text("{", encoding="utf-8")
+
+    monkeypatch.setattr(
+        operator,
+        "_json_object",
+        lambda _path: (_ for _ in ()).throw(
+            operator.OperatorError("malformed authority")
+        ),
+    )
+    monkeypatch.setattr(operator.time, "sleep", lambda _seconds: projection.unlink())
+
+    with pytest.raises(operator.OperatorError, match="malformed authority"):
+        operator._read_optional_json(
+            projection,
+            transient_retry_attempts=2,
+            retry_missing=False,
+        )
+
+
+def test_failed_executor_readiness_retires_captured_supervisor_birth(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    captured_birth = {
+        "pid": 7812,
+        "start_time_ticks": 55,
+        "boot_id": "boot:test",
+        "parent_pid": os.getpid(),
+    }
+    retired: list[dict[str, Any]] = []
+
+    class _Process:
+        pid = captured_birth["pid"]
+
+        @staticmethod
+        def poll() -> None:
+            return None
+
+    class _Broker:
+        failure = ""
+        current: dict[str, Any] = {}
+
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        @staticmethod
+        def start() -> None:
+            return None
+
+        @staticmethod
+        def stop() -> None:
+            return None
+
+    paths = {
+        "executor_state": tmp_path / "executor",
+        "executor_log": tmp_path / "executor" / "executor.log",
+        "executor_supervisor_pid": tmp_path / "executor" / "supervisor.pid",
+        "executor_current": tmp_path / "executor" / "current.json",
+        "executor_supervisor_status": tmp_path / "executor" / "status.json",
+        "executor_history": tmp_path / "executor" / "history.json",
+    }
+    monkeypatch.setattr(operator, "_route_preflight", lambda _board: {})
+    monkeypatch.setattr(operator, "_executor_command", lambda *_args, **_kwargs: ["executor"])
+    monkeypatch.setattr(operator, "_executor_environment", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(operator.subprocess, "Popen", lambda *_args, **_kwargs: _Process())
+    monkeypatch.setattr(operator, "_process_birth", lambda _pid: dict(captured_birth))
+    monkeypatch.setattr(operator, "_atomic_text", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(operator, "_ExecutorBootstrapBroker", _Broker)
+    monkeypatch.setattr(
+        operator,
+        "_read_optional_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            operator.OperatorError("transient readiness parse")
+        ),
+    )
+
+    def _retire(**kwargs: Any) -> tuple[list[Any], list[Any]]:
+        retired.append(dict(kwargs["supervisor_birth"]))
+        return [], []
+
+    monkeypatch.setattr(operator, "_retire_configured_executor", _retire)
+
+    with pytest.raises(operator.OperatorError, match="transient readiness parse"):
+        operator._spawn_configured_executor(
+            server=SimpleNamespace(),
+            board=SimpleNamespace(),
+            paths=paths,
+            owner_identity={},
+            execution_route_policy=SimpleNamespace(),
+        )
+    assert retired == [captured_birth]
+
+
+def test_failed_owner_readiness_recovers_exact_executor_from_pid_markers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+        IMPLEMENTATION_ENTRY_PATH,
+    )
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
+
+    operator = _operator()
+    owner_birth = {
+        "pid": 7100,
+        "start_time_ticks": 10,
+        "boot_id": "boot:test",
+        "parent_pid": 1,
+    }
+    supervisor_birth = {
+        "pid": 7200,
+        "start_time_ticks": 20,
+        "boot_id": "boot:test",
+        "parent_pid": owner_birth["pid"],
+    }
+    executor_birth = {
+        "pid": 7300,
+        "start_time_ticks": 30,
+        "boot_id": "boot:test",
+        "parent_pid": supervisor_birth["pid"],
+    }
+    paths = {
+        "executor_current": tmp_path / "malformed-current.json",
+        "executor_supervisor_pid": tmp_path / "supervisor.pid",
+        "executor_daemon_pid": tmp_path / "daemon.pid",
+        "executor_state": tmp_path / "executor",
+    }
+    monkeypatch.setattr(
+        operator,
+        "_read_optional_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            operator.OperatorError("startup projection race")
+        ),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_read_pid",
+        lambda path: (
+            supervisor_birth["pid"]
+            if path == paths["executor_supervisor_pid"]
+            else executor_birth["pid"]
+        ),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_process_birth",
+        lambda pid: dict(
+            supervisor_birth if pid == supervisor_birth["pid"] else executor_birth
+        ),
+    )
+    monkeypatch.setattr(operator, "_birth_liveness", lambda _birth: "alive")
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "read_process_command_argv",
+        lambda _pid: (
+            sys.executable,
+            str((operator.ROOT / IMPLEMENTATION_ENTRY_PATH).resolve()),
+            "--state-dir",
+            str(paths["executor_state"]),
+            "--state-prefix",
+            "casf_executor",
+        ),
+    )
+
+    observed_supervisor, observed_executor = (
+        operator._started_configured_executor_births(
+            paths,
+            owner_birth=owner_birth,
+        )
+    )
+    assert observed_supervisor == supervisor_birth
+    assert observed_executor == executor_birth
 
 
 def test_typed_database_task_source_reads_claims_and_records_evidence(
@@ -3468,6 +3890,7 @@ def test_real_duckdb_owner_bootstrap_claim_restart_status_and_stop(
                     "supervisor_pid_alive": True,
                     "daemon_pid": second.pid,
                     "daemon_pid_alive": True,
+                    "daemon_process_birth": second_birth,
                     "current_status_path": str(tmp_path / "actual-task-state.json"),
                     "stalled_without_active_worker": False,
                 }
