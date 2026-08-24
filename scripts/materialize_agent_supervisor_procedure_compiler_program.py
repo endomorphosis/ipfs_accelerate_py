@@ -15,6 +15,7 @@ import importlib.util
 import json
 import os
 import re
+import select
 import stat
 import subprocess
 import sys
@@ -115,6 +116,7 @@ SEALED_DUCKDB_CONNECTION_SETTINGS = {
 MAX_CONTROL_DATABASE_BYTES = 512 * 1024 * 1024
 CONTROL_DATABASE_COPY_CHUNK_BYTES = 1024 * 1024
 MAX_OWNER_EVIDENCE_BYTES = 1024 * 1024
+MAX_PREREQUISITE_DOCUMENT_BYTES = 1024 * 1024
 MAX_CAPTURE_BYTES = 64_000
 MAX_PREREQUISITE_PRODUCERS = 64
 PREREQUISITE_PRODUCER_TIMEOUT_SECONDS = 900
@@ -292,6 +294,234 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _historical_git(*args: str) -> bytes:
+    """Run one read-only Git query with object replacements disabled."""
+
+    environment = {
+        **os.environ,
+        "GIT_NO_LAZY_FETCH": "1",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+    try:
+        result = subprocess.run(
+            ("git", "--no-replace-objects", *args),
+            cwd=REPO_ROOT,
+            env=environment,
+            capture_output=True,
+            check=False,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise MaterializationError("historical repository query failed") from exc
+    if result.returncode:
+        raise MaterializationError(
+            result.stderr.decode("utf-8", errors="replace").strip()
+            or "historical repository query failed"
+        )
+    return result.stdout
+
+
+def _historical_object_bytes(
+    object_id: str, *, object_type: str, maximum_bytes: int
+) -> bytes:
+    """Stream and re-hash one Git object through a hard byte ceiling."""
+
+    if (
+        not _valid_blob_id(object_id)
+        or object_type not in {"blob", "commit", "tree"}
+        or type(maximum_bytes) is not int
+        or maximum_bytes < 1
+    ):
+        raise MaterializationError("historical repository object request is invalid")
+    try:
+        size = int(
+            _historical_git("cat-file", "-s", object_id).decode("ascii").strip()
+        )
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise MaterializationError("historical repository object size is invalid") from exc
+    if size < 0 or size > maximum_bytes:
+        raise MaterializationError("historical repository object is out of bounds")
+
+    environment = {
+        **os.environ,
+        "GIT_NO_LAZY_FETCH": "1",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+    process: subprocess.Popen[bytes] | None = None
+    try:
+        process = subprocess.Popen(
+            ("git", "--no-replace-objects", "cat-file", object_type, object_id),
+            cwd=REPO_ROOT,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        assert process.stdout is not None
+        descriptor = process.stdout.fileno()
+        chunks: list[bytes] = []
+        remaining = size + 1
+        deadline = time.monotonic() + 60
+        while remaining:
+            wait_seconds = deadline - time.monotonic()
+            if wait_seconds <= 0:
+                raise MaterializationError("historical repository object read timed out")
+            readable, _, _ = select.select([descriptor], [], [], wait_seconds)
+            if not readable:
+                raise MaterializationError("historical repository object read timed out")
+            chunk = os.read(
+                descriptor, min(CONTROL_DATABASE_COPY_CHUNK_BYTES, remaining)
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        if len(raw) != size:
+            raise MaterializationError("historical repository object violated its size bound")
+        try:
+            returncode = process.wait(timeout=max(0.001, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired as exc:
+            raise MaterializationError("historical repository object read timed out") from exc
+        if returncode:
+            raise MaterializationError("historical repository object could not be read exactly")
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise MaterializationError("historical repository object read failed") from exc
+    finally:
+        if process is not None:
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+    identity = hashlib.sha1(usedforsecurity=False)
+    identity.update(f"{object_type} {size}\0".encode("ascii"))
+    identity.update(raw)
+    if identity.hexdigest() != object_id:
+        raise MaterializationError("historical repository object identity does not match Git")
+    return raw
+
+
+def _historical_commit_tree(commit_id: str) -> str:
+    raw = _historical_object_bytes(
+        commit_id,
+        object_type="commit",
+        maximum_bytes=MAX_OWNER_EVIDENCE_BYTES,
+    )
+    first_line = raw.split(b"\n", 1)[0]
+    if not first_line.startswith(b"tree "):
+        raise MaterializationError("historical commit lacks one root tree")
+    try:
+        tree_id = first_line.removeprefix(b"tree ").decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise MaterializationError("historical commit tree identity is invalid") from exc
+    if not _valid_blob_id(tree_id):
+        raise MaterializationError("historical commit tree identity is invalid")
+    return tree_id
+
+
+def _tree_entry(raw: bytes, *, name: bytes) -> tuple[bytes, str]:
+    matches: list[tuple[bytes, str]] = []
+    offset = 0
+    while offset < len(raw):
+        space = raw.find(b" ", offset)
+        terminator = raw.find(b"\0", space + 1) if space >= 0 else -1
+        object_end = terminator + 21
+        if space <= offset or terminator <= space + 1 or object_end > len(raw):
+            raise MaterializationError("historical repository tree is malformed")
+        mode = raw[offset:space]
+        entry_name = raw[space + 1 : terminator]
+        object_id = raw[terminator + 1 : object_end].hex()
+        if entry_name == name:
+            matches.append((mode, object_id))
+        offset = object_end
+    if offset != len(raw) or len(matches) != 1:
+        raise MaterializationError("historical repository tree entry is not exact")
+    mode, object_id = matches[0]
+    if not _valid_blob_id(object_id):
+        raise MaterializationError("historical repository tree object identity is invalid")
+    return mode, object_id
+
+
+def _repository_blob_bytes(
+    revision: str, path: str, *, expected_tree: str = ""
+) -> bytes:
+    """Walk and re-hash an exact commit/tree path to one bounded blob."""
+
+    if not _valid_blob_id(revision):
+        raise MaterializationError("historical repository revision is not exact")
+    canonical_path = _relative_repository_path(path, field="historical repository path")
+    tree_id = _historical_commit_tree(revision)
+    if expected_tree and tree_id != expected_tree:
+        raise MaterializationError("historical commit root tree does not match owner")
+    components = canonical_path.encode("utf-8").split(b"/")
+    for index, component in enumerate(components):
+        tree_raw = _historical_object_bytes(
+            tree_id,
+            object_type="tree",
+            maximum_bytes=MAX_PREREQUISITE_DOCUMENT_BYTES,
+        )
+        mode, object_id = _tree_entry(tree_raw, name=component)
+        if index < len(components) - 1:
+            if mode != b"40000":
+                raise MaterializationError("historical prerequisite parent is not a tree")
+            tree_id = object_id
+            continue
+        if mode != b"100644":
+            raise MaterializationError("historical prerequisite is not a regular blob")
+        raw = _historical_object_bytes(
+            object_id,
+            object_type="blob",
+            maximum_bytes=MAX_PREREQUISITE_DOCUMENT_BYTES,
+        )
+        if not raw:
+            raise MaterializationError("historical prerequisite blob is empty")
+        return raw
+    raise MaterializationError("historical prerequisite path is empty")
+
+
+def _repository_json(
+    revision: str, path: str, *, expected_tree: str = ""
+) -> tuple[dict[str, Any], bytes]:
+    raw = _repository_blob_bytes(revision, path, expected_tree=expected_tree)
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise MaterializationError("historical prerequisite document is not valid JSON") from exc
+    if not isinstance(value, dict):
+        raise MaterializationError("historical prerequisite document is not one JSON object")
+    return value, raw
+
+
+def _repository_identity_is_exact(*, head: str, tree: str) -> bool:
+    if (
+        not _valid_blob_id(head)
+        or not _valid_blob_id(tree)
+        or not _valid_blob_id(BASE_COMMIT)
+    ):
+        return False
+    try:
+        return (
+            _historical_commit_tree(head) == tree
+            and bool(
+                _historical_object_bytes(
+                    tree,
+                    object_type="tree",
+                    maximum_bytes=MAX_PREREQUISITE_DOCUMENT_BYTES,
+                )
+            )
+            and _historical_git("merge-base", "--is-ancestor", BASE_COMMIT, head) == b""
+        )
+    except MaterializationError:
+        return False
 
 
 def _database_file_identity(value: os.stat_result) -> tuple[int, ...]:
@@ -1531,11 +1761,16 @@ def _probe_prerequisite_inventory() -> dict[str, Any]:
     return payload
 
 
-def _stored_prerequisite_probe_is_intact(probe: object, *, head: str, tree: str) -> bool:
+def _stored_prerequisite_probe_matches_digests(
+    probe: object,
+    *,
+    head: str,
+    tree: str,
+    baseline_sha256: str,
+    prerequisites_sha256: str,
+) -> bool:
     if not isinstance(probe, Mapping):
         return False
-    baseline_path = REPO_ROOT / BASELINE_RELATIVE
-    prerequisites_path = REPO_ROOT / PREREQUISITES_RELATIVE
     return (
         probe.get("schema")
         == "ipfs_accelerate_py/agent-supervisor/procedure-compiler-prerequisite-probe@1"
@@ -1543,8 +1778,8 @@ def _stored_prerequisite_probe_is_intact(probe: object, *, head: str, tree: str)
         and probe.get("baseline_commit") == BASE_COMMIT
         and probe.get("repository_commit") == head
         and probe.get("repository_tree") == tree
-        and probe.get("baseline_sha256") == _sha256_file(baseline_path)
-        and probe.get("prerequisites_sha256") == _sha256_file(prerequisites_path)
+        and probe.get("baseline_sha256") == baseline_sha256
+        and probe.get("prerequisites_sha256") == prerequisites_sha256
         and type(probe.get("authority_count")) is int
         and probe.get("authority_count", 0) > 0
         and type(probe.get("test_producer_count")) is int
@@ -1554,6 +1789,18 @@ def _stored_prerequisite_probe_is_intact(probe: object, *, head: str, tree: str)
         and probe.get("source_drift_permitted") is False
         and probe.get("simulated") is False
         and _has_valid_embedded_identity(probe, identity_field="probe_cid")
+    )
+
+
+def _stored_prerequisite_probe_is_intact(probe: object, *, head: str, tree: str) -> bool:
+    baseline_path = REPO_ROOT / BASELINE_RELATIVE
+    prerequisites_path = REPO_ROOT / PREREQUISITES_RELATIVE
+    return _stored_prerequisite_probe_matches_digests(
+        probe,
+        head=head,
+        tree=tree,
+        baseline_sha256=_sha256_file(baseline_path),
+        prerequisites_sha256=_sha256_file(prerequisites_path),
     )
 
 
@@ -1620,6 +1867,28 @@ def _valid_command_receipt(receipt: object, *, argv: Sequence[str], returncode: 
 
 
 def _stored_prerequisite_execution_is_intact(execution: object, *, head: str, tree: str) -> bool:
+    try:
+        baseline = _read_json(REPO_ROOT / BASELINE_RELATIVE)
+        inventory = _read_json(REPO_ROOT / PREREQUISITES_RELATIVE)
+    except (OSError, ValueError, MaterializationError):
+        return False
+    return _stored_prerequisite_execution_matches_documents(
+        execution,
+        head=head,
+        tree=tree,
+        baseline=baseline,
+        inventory=inventory,
+    )
+
+
+def _stored_prerequisite_execution_matches_documents(
+    execution: object,
+    *,
+    head: str,
+    tree: str,
+    baseline: Mapping[str, Any],
+    inventory: Mapping[str, Any],
+) -> bool:
     if not isinstance(execution, Mapping):
         return False
     if set(execution) != {
@@ -1637,11 +1906,6 @@ def _stored_prerequisite_execution_is_intact(execution: object, *, head: str, tr
         "simulated",
         "execution_cid",
     }:
-        return False
-    try:
-        baseline = _read_json(REPO_ROOT / BASELINE_RELATIVE)
-        inventory = _read_json(REPO_ROOT / PREREQUISITES_RELATIVE)
-    except (OSError, ValueError, MaterializationError):
         return False
     producers = baseline.get("test_producers")
     dispositions = inventory.get("dispositions")
@@ -1899,6 +2163,118 @@ def _stored_qualification_receipt_is_intact(
         ) and _stored_prerequisite_execution_is_intact(
             qualification.get("prerequisite_execution"), head=head, tree=tree
         )
+    return True
+
+
+def _stored_owner_bound_qualification_receipt_is_intact(
+    qualification: Mapping[str, Any], *, head: str, tree: str
+) -> bool:
+    """Validate stored qualification evidence at Quack's exact owner commit.
+
+    A completed campaign may legitimately update its tracked prerequisite
+    inventory after the owner was launched.  History projection therefore
+    verifies the qualification documents from the immutable owner commit,
+    while fresh launch/verification paths continue to require current-tree
+    documents through :func:`_stored_qualification_receipt_is_intact`.
+    """
+
+    if not _repository_identity_is_exact(head=head, tree=tree):
+        return False
+    if not _stored_qualification_receipt_is_intact(
+        qualification,
+        head=head,
+        tree=tree,
+        require_prerequisite_probe=False,
+    ):
+        return False
+    try:
+        baseline, baseline_raw = _repository_json(
+            head, BASELINE_RELATIVE, expected_tree=tree
+        )
+        inventory, prerequisites_raw = _repository_json(
+            head, PREREQUISITES_RELATIVE, expected_tree=tree
+        )
+    except (OSError, ValueError, MaterializationError):
+        return False
+    return _stored_prerequisite_probe_matches_digests(
+        qualification.get("prerequisite_probe"),
+        head=head,
+        tree=tree,
+        baseline_sha256=hashlib.sha256(baseline_raw).hexdigest(),
+        prerequisites_sha256=hashlib.sha256(prerequisites_raw).hexdigest(),
+    ) and _stored_prerequisite_execution_matches_documents(
+        qualification.get("prerequisite_execution"),
+        head=head,
+        tree=tree,
+        baseline=baseline,
+        inventory=inventory,
+    )
+
+
+def _qualification_is_bound_to_p0_history(
+    qualification: Mapping[str, Any],
+    *,
+    task_history: Mapping[str, tuple[str, Mapping[str, Any]]],
+    acceptance_rows: Sequence[tuple[Any, ...]],
+    head: str,
+    tree: str,
+) -> bool:
+    """Bind a stored qualification CID to sealed P0 task history."""
+
+    qualification_cid = qualification.get("qualification_cid")
+    if (
+        not isinstance(qualification_cid, str)
+        or not qualification_cid
+        or set(task_history) != set(P0_TASKS)
+        or len(acceptance_rows) != len(P0_TASKS)
+    ):
+        return False
+    for expected_alias, row in zip(P0_TASKS, acceptance_rows, strict=True):
+        if not isinstance(row, Sequence) or len(row) != 4:
+            return False
+        task_alias, acceptance_ordinal, criterion, evidence_policy_json = row
+        if (
+            task_alias != expected_alias
+            or type(acceptance_ordinal) is not int
+            or acceptance_ordinal != 0
+            or not isinstance(criterion, str)
+            or not criterion
+            or not isinstance(evidence_policy_json, str)
+        ):
+            return False
+        try:
+            evidence_policy = json.loads(evidence_policy_json)
+        except json.JSONDecodeError:
+            return False
+        if (
+            not isinstance(evidence_policy, Mapping)
+            or set(evidence_policy) != {"criterion", "evidence_kind", "required_digest"}
+            or evidence_policy.get("criterion") != criterion
+            or evidence_policy.get("evidence_kind") != "validation"
+            or evidence_policy.get("required_digest") != qualification_cid
+        ):
+            return False
+        status, body = task_history[expected_alias]
+        completion = body.get("completion_receipt")
+        if (
+            status != "completed"
+            or not isinstance(completion, Mapping)
+            or set(completion)
+            != {
+                "schema",
+                "task_id",
+                "qualification_cid",
+                "repository_commit",
+                "repository_tree",
+            }
+            or completion.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/procedure-compiler-p0-completion@1"
+            or completion.get("task_id") != expected_alias
+            or completion.get("qualification_cid") != qualification_cid
+            or completion.get("repository_commit") != head
+            or completion.get("repository_tree") != tree
+        ):
+            return False
     return True
 
 
@@ -2455,13 +2831,22 @@ def _live_history_projection_source(
             raise MaterializationError("sealed Quack read replica cannot be queried") from exc
         try:
             task_rows = connection.execute(
-                "SELECT task_cid, task_alias, status, revision, goal_cid "
+                "SELECT task_cid, task_alias, status, revision, goal_cid, body_json "
                 "FROM tasks ORDER BY ordinal, task_cid LIMIT ?",
                 [maximum_rows + 1],
             ).fetchall()
             plan_rows = connection.execute(
                 "SELECT plan_cid, plan_alias, status, body_json "
                 "FROM plans ORDER BY plan_cid LIMIT 2"
+            ).fetchall()
+            placeholders = ", ".join("?" for _ in P0_TASKS)
+            acceptance_rows = connection.execute(
+                "SELECT tasks.task_alias, task_acceptance.ordinal, "
+                "task_acceptance.criterion, task_acceptance.evidence_policy_json "
+                "FROM task_acceptance JOIN tasks USING (task_cid) "
+                f"WHERE tasks.task_alias IN ({placeholders}) "
+                "ORDER BY tasks.task_alias, task_acceptance.ordinal LIMIT ?",
+                [*P0_TASKS, len(P0_TASKS) + 1],
             ).fetchall()
         except Exception as exc:  # noqa: BLE001 - typed schema/source refusal
             raise MaterializationError("sealed Quack read replica lacks the PCPC projection") from exc
@@ -2489,15 +2874,9 @@ def _live_history_projection_source(
         raise MaterializationError("PCPC plan and Quack owner repository bindings disagree")
     evidence_root = REPO_ROOT / str(config.get("runtime_paths", {}).get("evidence") or "")
     qualification = _read_json(evidence_root / "p0-qualification.json")
-    if not _stored_qualification_receipt_is_intact(
-        qualification,
-        head=repository_commit,
-        tree=repository_tree,
-        require_prerequisite_probe=True,
-    ):
-        raise MaterializationError("stored PCPC qualification is not intact")
     tasks: list[dict[str, Any]] = []
-    for task_cid, task_alias, status, revision, goal_cid in task_rows:
+    p0_task_history: dict[str, tuple[str, Mapping[str, Any]]] = {}
+    for task_cid, task_alias, status, revision, goal_cid, body_json in task_rows:
         if (
             not str(task_cid)
             or not str(goal_cid)
@@ -2506,15 +2885,34 @@ def _live_history_projection_source(
             or revision < 1
         ):
             raise MaterializationError("Quack task history row is malformed")
+        try:
+            body = json.loads(str(body_json))
+        except json.JSONDecodeError as exc:
+            raise MaterializationError("Quack task history body is not valid JSON") from exc
+        if not isinstance(body, Mapping):
+            raise MaterializationError("Quack task history body is not one JSON object")
+        alias = str(task_alias)
+        if alias in P0_TASKS:
+            p0_task_history[alias] = (str(status), body)
         tasks.append(
             {
                 "task_cid": str(task_cid),
-                "task_alias": str(task_alias),
+                "task_alias": alias,
                 "status": str(status),
                 "revision": revision,
                 "goal_cid": str(goal_cid),
             }
         )
+    if not _stored_owner_bound_qualification_receipt_is_intact(
+        qualification, head=repository_commit, tree=repository_tree
+    ) or not _qualification_is_bound_to_p0_history(
+        qualification,
+        task_history=p0_task_history,
+        acceptance_rows=acceptance_rows,
+        head=repository_commit,
+        tree=repository_tree,
+    ):
+        raise MaterializationError("stored PCPC qualification is not intact")
     run_binding = {
         "schema": "ipfs_accelerate_py/agent-supervisor/pcpc-history-run@1",
         "program": PROGRAM,
