@@ -1,19 +1,19 @@
 {
   "schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-benchmark-manifest@1",
   "program": "agent-supervisor-proof-carrying-procedure-compiler-v1",
-  "status": "scaffold_only",
+  "status": "qualified_frozen",
   "frozen": true,
-  "frozen_scope": "family_and_partition_vocabulary",
-  "case_corpus_qualified": false,
-  "partition_coverage_established": false,
+  "frozen_scope": "manifest_and_recipe_corpus",
+  "case_corpus_qualified": true,
+  "partition_coverage_established": true,
   "held_out_disjoint": true,
   "partition_case_counts": {
-    "adversarial": 0,
-    "boundary": 0,
-    "development": 0,
-    "held_out": 0,
-    "negative": 0,
-    "synthesis": 0
+    "adversarial": 23,
+    "boundary": 23,
+    "development": 23,
+    "held_out": 23,
+    "negative": 23,
+    "synthesis": 23
   },
   "partitions": [
     "synthesis",
@@ -48,11 +48,35 @@
     "UNSAFE_NEAR_MATCH_TASK",
     "CROSS_REPOSITORY_TRANSFER"
   ],
-  "case_manifest_refs": [],
-  "pcpc_029_obligation": "populate every task family with disjoint synthesis, development, held_out, negative, boundary, and adversarial cases before qualification",
+  "case_manifest_refs": [
+    {
+      "path": "case_recipes.fixture",
+      "sha256": "65be6eeb01fc1fcf6b8ca2d61de0284fbfba45d7f0fb586ec30435dd7a81584d"
+    }
+  ],
+  "case_schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-benchmark-case@1",
+  "corpus_schema": "ipfs_accelerate_py/agent-supervisor/procedure-compiler-benchmark-recipes@1",
+  "corpus_case_count": 138,
+  "bounds": {
+    "max_case_count": 256,
+    "max_recipe_bytes": 32768
+  },
+  "corpus_sha256": "2f22bef626d0ab2257953a97f96771e9915f05264faec44b20af5e5bd5221618",
+  "case_identity_algorithm": "sha256(canonical-json(case-without-content_sha256))",
+  "partition_access": {
+    "synthesis": ["synthesis", "development", "negative", "boundary", "adversarial"],
+    "development": ["synthesis", "development", "negative", "boundary", "adversarial"],
+    "held_out": ["held_out"],
+    "evaluation": ["synthesis", "development", "held_out", "negative", "boundary", "adversarial"]
+  },
+  "privacy_policy": {
+    "allowed_data": ["synthetic identifiers", "reviewed expected decisions", "cryptographic digests"],
+    "forbidden_data": ["private prompts", "production source snapshots", "chain of thought", "bulk trajectories"]
+  },
+  "pcpc_029_obligation": "satisfied_by_case_recipes_json",
   "large_bodies_in_git": false,
   "private_prompts_included": false,
   "chain_of_thought_included": false,
   "synthesis_can_read_held_out": false,
-  "qualification_blocker": "PCPC-029 has not populated or independently qualified the case corpus"
+  "qualification_blocker": null
 }
