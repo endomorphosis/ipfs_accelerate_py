@@ -323,6 +323,12 @@ def _output_path(value: Any, *, noun: str) -> str:
         raise ControlPlaneBoundsError(f"{noun} exceeds its byte bound")
     if "\x00" in text or text.startswith("/") or "\\" in text:
         raise ControlPlaneIdentityError(f"{noun} is not a safe identifier")
+    # Board manifests historically use a trailing delimiter to declare a
+    # repository-relative directory.  Store the canonical path identity while
+    # retaining the same absolute, traversal, and empty-segment checks below.
+    text = text.rstrip("/")
+    if not text:
+        raise ControlPlaneIdentityError(f"{noun} must not be empty")
     parts = text.split("/")
     if any(part in {"", ".", ".."} for part in parts):
         raise ControlPlaneIdentityError(f"{noun} is not a safe identifier")

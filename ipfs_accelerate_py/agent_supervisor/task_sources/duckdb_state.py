@@ -930,6 +930,7 @@ class DuckDBConnection:
             )
             return _empty_duckdb_cursor()
         if catalog and not normalized.startswith("USE "):
+            statement = _qualify_quack_statement(statement, catalog)
             self._connection.execute(f"USE {catalog}")
             _consume_duckdb_result(self._connection)
         if parameters is None:
@@ -1262,6 +1263,26 @@ _QUACK_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,}$")
 _QUACK_TOKEN_FILE_SUFFIX = ".quack-token"
 _QUACK_STATUS_FILENAME = "quack-state-server.status.json"
 _QUACK_CONTROL_CATALOG = "control_plane"
+_QUACK_RELATION_RE = re.compile(
+    r"\b(FROM|JOIN)\s+(?![\w]+\.)([A-Za-z_][A-Za-z0-9_]*)",
+    re.IGNORECASE,
+)
+
+
+def _qualify_quack_statement(sql: str, catalog: str) -> str:
+    """Prefix unqualified FROM/JOIN tables with the attached Quack catalog.
+
+    TOKEN sessions accept ``control_plane.tasks`` at ATTACH probe time but
+    reject later unqualified ``FROM tasks`` with Authorization failed even
+    after USE. Qualification keeps the attached catalog explicit.
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        return f"{match.group(1)} {catalog}.{match.group(2)}"
+
+    return _QUACK_RELATION_RE.sub(_replace, str(sql))
+
+
 _QUACK_OWNER_DML_PREFIXES = (
     "UPDATE ",
     "DELETE ",
@@ -1433,6 +1454,11 @@ def quack_owner_mutation_mac(value: Mapping[str, Any], token: str) -> str:
 _QUACK_MUTATION_DIR_ENV = "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR"
 _RUNTIME_REGISTRY_PATH_ENV = "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"
 _STATE_AUTHORITY_MODE_ENV = "IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE"
+LEGACY_BOARD_UNSTALL_POLICY_ENV = (
+    "IPFS_ACCELERATE_AGENT_LEGACY_BOARD_UNSTALL_POLICY"
+)
+LEGACY_BOARD_UNSTALL_ENABLED = "enabled"
+LEGACY_BOARD_UNSTALL_DISABLED = "disabled"
 # Longer than implementation_max_timeout (14400s) so a live Grok run is not
 # stolen. Shorter than a multi-day freeze so a dead in_progress gate unblocks.
 STALE_IN_PROGRESS_UNSTALL_SECONDS = 16_200
@@ -1469,30 +1495,30 @@ _QUACK_ATTACH_CONTENTION_MARKERS = (
 )
 
 
-_QUACK_ATTACH_TOKEN_ENV = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
-_QUACK_SECRET_HANDLE_ENV = "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE"
+def legacy_board_unstall_enabled(
+    *, environment: Mapping[str, str] | None = None
+) -> bool:
+    """Return the explicit legacy board-unstall policy for this process.
 
-def resolve_quack_attach_token(
-    token: str = "",
-    *,
-    environment: Mapping[str, str] | None = None,
-) -> str:
-    """Return the admitted attach token without logging it.
-
-    Resolution order: explicit argument, ``IPFS_ACCELERATE_AGENT_QUACK_TOKEN``,
-    then the environment variable named by an ``env://`` secret handle.
+    Absence preserves the historical owner behavior for legacy launchers.
+    Typed launchers set the policy to ``disabled`` so neither a compatibility
+    request nor an owner-inbox payload can mutate task status outside the
+    typed compare-and-set authority.
     """
 
     source = os.environ if environment is None else environment
-    secret = str(token or source.get(_QUACK_ATTACH_TOKEN_ENV, "") or "").strip()
-    if secret:
-        return secret
-    handle = str(source.get(_QUACK_SECRET_HANDLE_ENV, "") or "").strip()
-    if handle.startswith("env://"):
-        target = handle[len("env://") :].strip()
-        if target:
-            secret = str(source.get(target, "") or "").strip()
-    return secret
+    raw = str(source.get(LEGACY_BOARD_UNSTALL_POLICY_ENV, "") or "").strip().lower()
+    if not raw or raw == LEGACY_BOARD_UNSTALL_ENABLED:
+        return True
+    if raw == LEGACY_BOARD_UNSTALL_DISABLED:
+        return False
+    raise DuckDBConnectionPolicyError(
+        "legacy board unstall policy must be 'enabled' or 'disabled'"
+    )
+
+
+_QUACK_ATTACH_TOKEN_ENV = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+_QUACK_SECRET_HANDLE_ENV = "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE"
 
 
 def _quack_token_fingerprint(token: str) -> str:
@@ -2950,6 +2976,8 @@ _OWNER_INBOX_DML_PREFIXES = _QUACK_OWNER_DML_PREFIXES + ("INSERT ",)
 def apply_owner_command_payload(
     connection: Any,
     payload: Mapping[str, Any],
+    *,
+    environment: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Apply one owner-inbox command on the exclusive writer connection.
 
@@ -2963,6 +2991,10 @@ def apply_owner_command_payload(
         raise ValueError("mutation request must be an object")
     op = str(payload.get("op") or "").strip()
     if op == BOARD_UNSTALL_OWNER_OP:
+        if not legacy_board_unstall_enabled(environment=environment):
+            raise DuckDBConnectionPolicyError(
+                "legacy board_unstall is disabled for typed task authority"
+            )
         stale_raw = payload.get("stale_seconds", STALE_IN_PROGRESS_UNSTALL_SECONDS)
         stale_seconds = int(stale_raw)
         result = unstall_stale_in_progress_tasks(
@@ -3001,6 +3033,7 @@ def request_owner_board_unstall(
     stale_seconds: int = STALE_IN_PROGRESS_UNSTALL_SECONDS,
     wait: bool = True,
     timeout_seconds: float = 15.0,
+    environment: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Ask the exclusive owner to retry leftover in_progress gates.
 
@@ -3009,6 +3042,12 @@ def request_owner_board_unstall(
     attach-deferral path so the process does not block on a dead owner.
     """
 
+    if not legacy_board_unstall_enabled(environment=environment):
+        return {
+            "ok": False,
+            "requested": False,
+            "error": "legacy_board_unstall_disabled",
+        }
     if int(stale_seconds) <= 0:
         raise ValueError("stale_seconds must be positive")
     target = quack_owner_mutation_dir()
@@ -3075,6 +3114,7 @@ def owner_should_recycle_for_board_unstall(
     mutation_dir: object = None,
     *,
     min_age_seconds: float = OWNER_BOARD_UNSTALL_BOUNCE_MIN_AGE_SECONDS,
+    environment: Mapping[str, str] | None = None,
 ) -> bool:
     """Return whether the exclusive owner should restart to apply board unstall.
 
@@ -3083,6 +3123,8 @@ def owner_should_recycle_for_board_unstall(
     than ``min_age_seconds`` means the live owner could not apply it.
     """
 
+    if not legacy_board_unstall_enabled(environment=environment):
+        return False
     if mutation_dir is not None:
         target = Path(str(mutation_dir))
     else:
@@ -3344,15 +3386,23 @@ def persist_quack_attach_token_vault(token: str = "") -> Path | None:
     return vault
 
 
-def resolve_quack_attach_token(token: str = "") -> str:
+def resolve_quack_attach_token(
+    token: str = "",
+    *,
+    environment: Mapping[str, str] | None = None,
+) -> str:
     """Resolve the current owner attach token.
 
-    The vault file is preferred over a process environment value so a
-    restarted owner generation is not blocked by a stale supervisor env.
-    When the vault is missing, persist the live env token so owner recycle
-    and operator status can keep draining the board.
+    Resolution order: explicit argument, the 0600 vault file (process env
+    only), ``IPFS_ACCELERATE_AGENT_QUACK_TOKEN``, then the environment
+    variable named by an ``env://`` secret handle.  The vault is preferred
+    over a process environment value so a restarted owner generation is not
+    blocked by a stale supervisor env.  When the vault is missing, persist
+    the live env token so owner recycle and operator status can keep
+    draining the board.
     """
 
+    source = os.environ if environment is None else environment
     explicit = str(token or "").strip()
     if explicit:
         if not _QUACK_TOKEN_RE.fullmatch(explicit):
@@ -3360,18 +3410,32 @@ def resolve_quack_attach_token(token: str = "") -> str:
                 "quack attach token must be an opaque url-safe secret"
             )
         return explicit
-    vault = quack_token_vault_path()
-    if vault is not None:
-        material = _read_quack_token_vault(vault)
-        if material:
-            return material
-    secret = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or "").strip()
-    if secret and not _QUACK_TOKEN_RE.fullmatch(secret):
-        raise DuckDBConnectionPolicyError(
-            "quack attach token must be an opaque url-safe secret"
-        )
+    if environment is None:
+        vault = quack_token_vault_path()
+        if vault is not None:
+            material = _read_quack_token_vault(vault)
+            if material:
+                return material
+    secret = str(source.get(_QUACK_ATTACH_TOKEN_ENV, "") or "").strip()
     if secret:
-        persist_quack_attach_token_vault(secret)
+        if not _QUACK_TOKEN_RE.fullmatch(secret):
+            raise DuckDBConnectionPolicyError(
+                "quack attach token must be an opaque url-safe secret"
+            )
+        if environment is None:
+            persist_quack_attach_token_vault(secret)
+        return secret
+    handle = str(source.get(_QUACK_SECRET_HANDLE_ENV, "") or "").strip()
+    if handle.startswith("env://"):
+        target = handle[len("env://") :].strip()
+        if target:
+            secret = str(source.get(target, "") or "").strip()
+            if secret:
+                if not _QUACK_TOKEN_RE.fullmatch(secret):
+                    raise DuckDBConnectionPolicyError(
+                        "quack attach token must be an opaque url-safe secret"
+                    )
+                return secret
     return secret
 
 
@@ -3498,14 +3562,33 @@ def _attach_quack_once(uri: str, secret: str) -> Any:
             raise DuckDBConnectionPolicyError(
                 "quack transport store generation does not match server binding"
             )
-        connection._quack_live_binding = binding
+        return connection, binding
     except Exception:
         try:
             connection.close()
         except Exception:
             pass
         raise
-    return connection
+
+
+def _attach_quack_serialized(uri: str, secret: str) -> Any:
+    """Serialize one ATTACH syscall across processes, then release the lock.
+
+    Sibling lanes share a listen backlog of a handful of TCP handshakes.
+    Holding ``attach.lock`` across retry sleep makes those lanes time out
+    on the lock and die. Authentication-failed contention still retries;
+    only the ATTACH itself is exclusive.
+    """
+
+    lock_path = quack_attach_lock_path(uri)
+    lock_timeout = max(DEFAULT_LOCK_TIMEOUT_SECONDS, 45.0)
+    try:
+        with exclusive_file_lock(lock_path, timeout_seconds=lock_timeout):
+            return _attach_quack_once(uri, secret)
+    except TimeoutError as exc:
+        raise DuckDBConnectionPolicyError(
+            f"timed out acquiring quack attach lock: {lock_path}"
+        ) from exc
 
 
 def _open_quack_transport_connection_once(
@@ -3519,11 +3602,12 @@ def _open_quack_transport_connection_once(
     one-writer file policy does not apply: Quack ATTACH requires a process
     that can reach the loopback state-owner.
 
-    Attach is serialized and retried: the owner DuckDB connection is the
-    single writer, the serve backlog is small, and a new ATTACH per query
-    otherwise loses the handshake to contention (often reported as
-    ``Authentication failed``). Live attachments are reused in-process.
-    Closed catalog mutations bind the live server identity onto the wrapper.
+    Attach is serialized across processes and retried: the owner DuckDB
+    connection is the single writer, the serve backlog is small, and a new
+    ATTACH per query otherwise loses the handshake to contention (often
+    reported as ``Authentication failed``). Retry sleeps happen outside
+    ``attach.lock``. Live attachments are reused in-process. Closed
+    catalog mutations bind the live server identity onto the wrapper.
     """
 
     text = quack_transport_uri(uri)
@@ -3583,7 +3667,15 @@ def _open_quack_transport_connection_once(
                         uri=text
                     )
                 try:
-                    raw = _attach_quack_once(text, secret)
+                    attached = _attach_quack_serialized(text, secret)
+                    if (
+                        isinstance(attached, tuple)
+                        and len(attached) == 2
+                    ):
+                        raw, binding = attached
+                    else:
+                        raw = attached
+                        binding = getattr(raw, "_quack_live_binding", None)
                 except BaseException as exc:
                     last_error = exc
                     if (
@@ -3600,7 +3692,6 @@ def _open_quack_transport_connection_once(
                 wrapped._default_catalog = _QUACK_CONTROL_CATALOG
                 wrapped._pooled = True
                 wrapped._quack_uri = text
-                binding = getattr(raw, "_quack_live_binding", None)
                 wrapped._quack_mutation_binding = (
                     dict(binding) if isinstance(binding, Mapping) else None
                 )

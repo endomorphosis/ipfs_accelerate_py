@@ -90,6 +90,7 @@ from ..runtime.worker_network_dispatch import (
     canonical_worker_network_launch_authority_json,
 )
 from ..task_sources.plan_revision_store import PlanRevisionStore
+from ..task_sources.duckdb_state import LEGACY_BOARD_UNSTALL_POLICY_ENV
 from ..proof.formal_verification_contracts import content_identity
 from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
 from .implementation_supervisor_runner import (
@@ -1559,6 +1560,7 @@ def _managed_daemon_child_environment(
         REPOSITORY_ROOT_ENV,
         STATE_STORE_LIVE_GENERATION_ENV,
         STATE_LIVE_SCHEMA_REVISION_ENV,
+        LEGACY_BOARD_UNSTALL_POLICY_ENV,
     ):
         value = str(os.environ.get(name, "") or "").strip()
         if value:
@@ -8682,6 +8684,9 @@ class PortalSupervisorConfig:
     board_namespace: str = ""
     state_prefix: str = "portal"
     database_program: DatabaseProgramConfig | None = None
+    database_owner_session_id: str = ""
+    state_owner_bootstrap_fd: int = -1
+    state_owner_bootstrap_store_id: str = ""
     reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
@@ -8833,6 +8838,24 @@ class PortalSupervisorConfig:
     supervisor_script_path: Path | None = None
 
     def __post_init__(self) -> None:
+        if (
+            isinstance(self.state_owner_bootstrap_fd, bool)
+            or not isinstance(self.state_owner_bootstrap_fd, int)
+            or (self.state_owner_bootstrap_fd != -1 and self.state_owner_bootstrap_fd < 3)
+        ):
+            raise ValueError("state_owner_bootstrap_fd must be -1 or a valid descriptor")
+        owner_session_id = str(self.database_owner_session_id or "").strip()
+        if any(character in owner_session_id for character in ("\x00", "\n", "\r")):
+            raise ValueError("database_owner_session_id must be a single-line identity")
+        self.database_owner_session_id = owner_session_id
+        bootstrap_store_id = str(self.state_owner_bootstrap_store_id or "").strip()
+        if any(character in bootstrap_store_id for character in ("\x00", "\n", "\r")):
+            raise ValueError("state_owner_bootstrap_store_id must be a single-line identity")
+        if self.state_owner_bootstrap_fd >= 3 and not bootstrap_store_id:
+            raise ValueError(
+                "state_owner_bootstrap_store_id is required with the bootstrap descriptor"
+            )
+        self.state_owner_bootstrap_store_id = bootstrap_store_id
         if self.plan_bound_dispatch:
             if (
                 self.plan_bound_accepted_tree_root is None
@@ -10901,6 +10924,11 @@ class PortalImplementationSupervisor:
             # children retain the admitted source root and database authority
             # bindings instead of falling back to an ambient installation.
             child_env=child_environment,
+            child_pass_fds=(
+                (self.config.state_owner_bootstrap_fd,)
+                if self.config.state_owner_bootstrap_fd >= 3
+                else ()
+            ),
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
                 fast_restart_backoff_seconds=min(2.0, max(0.0, float(self.config.check_interval))),
@@ -21331,6 +21359,12 @@ class PortalImplementationSupervisor:
             and int(self.config.accepted_control_plane_descriptor) >= 3
         ):
             pass_fds = (int(self.config.accepted_control_plane_descriptor),)
+        if self.config.state_owner_bootstrap_fd >= 3:
+            pass_fds = tuple(
+                dict.fromkeys(
+                    (*pass_fds, int(self.config.state_owner_bootstrap_fd))
+                )
+            )
         process = subprocess.Popen(
             command,
             cwd=self.config.repo_root,
@@ -22157,6 +22191,22 @@ class PortalImplementationSupervisor:
                     candidate_mode=program.authority_mode,
                 )
                 command.extend(program.daemon_cli_args())
+                if self.config.database_owner_session_id:
+                    command.extend(
+                        [
+                            "--owner-session-id",
+                            self.config.database_owner_session_id,
+                        ]
+                    )
+                if self.config.state_owner_bootstrap_fd >= 3:
+                    command.extend(
+                        [
+                            "--state-owner-bootstrap-fd",
+                            str(self.config.state_owner_bootstrap_fd),
+                            "--state-owner-bootstrap-store-id",
+                            self.config.state_owner_bootstrap_store_id,
+                        ]
+                    )
             if self.config.validation_max_workers is not None:
                 command.extend(
                     [
@@ -22819,6 +22869,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--runtime-registry-path", default="")
     parser.add_argument("--export-profile", default="")
     parser.add_argument(
+        "--database-owner-session-id",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--state-owner-bootstrap-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--state-owner-bootstrap-store-id",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--explicit-legacy-task-source",
         action="store_true",
         help="Acknowledge explicit legacy-Markdown authority.",
@@ -22911,15 +22977,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
-    parser.add_argument(
-        "--validation-max-workers",
-        type=int,
-        default=None,
-        help=(
-            "Maximum validation workers forwarded to the managed daemon. "
-            "Scheduler profiles require a positive bounded value."
-        ),
-    )
     parser.add_argument(
         "--implementation-max-timeout",
         type=float,
@@ -23584,6 +23641,15 @@ def supervisor_config_from_args(
         board_namespace=str(getattr(args, "board_namespace", "") or ""),
         state_prefix=args.state_prefix,
         database_program=database_program,
+        database_owner_session_id=str(
+            getattr(args, "database_owner_session_id", "") or ""
+        ),
+        state_owner_bootstrap_fd=int(
+            getattr(args, "state_owner_bootstrap_fd", -1)
+        ),
+        state_owner_bootstrap_store_id=str(
+            getattr(args, "state_owner_bootstrap_store_id", "") or ""
+        ),
         reconciliation_only=reconciliation_only,
         implement=implement,
         implementation_command=args.implementation_command,

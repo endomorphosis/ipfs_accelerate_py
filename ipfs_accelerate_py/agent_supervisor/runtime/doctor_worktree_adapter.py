@@ -1553,6 +1553,8 @@ class DoctorWorktreeAdapter:
             "commit.gpgSign=false",
             "-c",
             "core.fsync=committed",
+            "-c",
+            "core.fileMode=false",
             "-C",
             str(cwd),
             *arguments,
@@ -1566,7 +1568,6 @@ class DoctorWorktreeAdapter:
             cwd="/",
             timeout=120,
             close_fds=True,
-            start_new_session=True,
             check=False,
         )
         if check and result.returncode:

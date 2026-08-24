@@ -24,6 +24,7 @@ SUPERVISOR_RECOVERY_OWNER_SCRIPTS: Final[frozenset[str]] = frozenset(
 FENCE_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
     {
         "external_protected_checkout_recovery_required",
+        "external_protected_recovery_owner_active",
         "checkout_mutation_protected_recovery_required",
         "protected_recovery_owner_active",
         "supervisor_protected_recovery_owner_active",

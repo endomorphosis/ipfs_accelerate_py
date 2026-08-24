@@ -33,7 +33,14 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
 
+from ..merge.worktree_lifecycle import (
+    OwnerLiveness,
+    ProcessBirthIdentity,
+    owner_liveness,
+)
 from .control_plane_contracts import StateCommand, canonical_json_bytes, content_identity
+from .database_task_source import TaskSourceIntegrityError
+from .task_execution_route_policy import TaskExecutionRouteBinding
 
 TYPED_STATE_OWNER_INTERFACE: Final = "TypedStateOwnerCommandGateway@1"
 _UTC: Final = timezone.utc  # noqa: UP017 - Python 3.8 compatibility.
@@ -44,6 +51,63 @@ TYPED_STATE_OWNER_SOCKET_ENV: Final = "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"
 TYPED_STATE_OWNER_TOKEN_ENV: Final = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
 TYPED_STATE_OWNER_SOCKET_FILENAME: Final = "typed-state-owner.sock"
 TYPED_STATE_OWNER_TOKEN_FILENAME: Final = "typed-state-owner.token"
+TYPED_RETRY_COOLDOWN_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-retry-cooldown@1"
+)
+TYPED_DATABASE_CLAIM_PROCESS_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-database-claim-process@1"
+)
+TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-database-claim-reservation@1"
+)
+TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-database-attempt-admission@1"
+)
+TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-database-claim-recovery@1"
+)
+TYPED_DATABASE_CLAIM_RECOVERY_OPERATION: Final = (
+    "database_claim_lost_sidecar_recovery"
+)
+TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: Final = (
+    "task.claim.reservation.recover"
+)
+TYPED_DATABASE_CLAIM_RECOVERY_REASON: Final = (
+    "database_claim_lost_sidecar_dead_process"
+)
+TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-strict-resume-rejection@1"
+)
+TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION: Final = (
+    "database_strict_resume_requeue"
+)
+TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION: Final = (
+    "database_strict_resume_quarantine"
+)
+TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
+    {
+        "database_portal_retry",
+        "database_portal_validation_retry",
+        "database_portal_validation_retry_recovery",
+        "database_portal_protected_path_retry_recovery",
+        "database_portal_external_protected_checkout_retry_recovery",
+        "database_portal_inflight_process_retry_recovery",
+        "database_portal_validation_retry_seed_conflict_retry_recovery",
+        "database_portal_leftover_wait_deferral_budget_retry_recovery",
+        "database_portal_pooled_worktree_create_retry_recovery",
+        "database_post_merge_declared_outputs_repair_recovery",
+        "database_post_merge_declared_outputs_requalification_recovery",
+        "database_portal_inflight_deferral_unstall",
+        TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+    }
+)
+# Linux permits 107 pathname bytes in ``sockaddr_un.sun_path`` while other
+# supported Unix platforms can be slightly smaller.  Keep a little headroom
+# for the trailing NUL and fail over before ``bind(2)`` becomes platform
+# dependent.
+_SAFE_UNIX_SOCKET_PATH_BYTES: Final = 100
+_COMPACT_SOCKET_ROOT_PREFIX: Final = "ipfs-accelerate-typed-owner"
 MAX_FRAME_BYTES: Final = 16 * 1024 * 1024
 MAX_PARAMETER_COUNT: Final = 512
 MAX_ROW_COUNT: Final = 4096
@@ -51,6 +115,30 @@ MIN_GRANT_TTL_SECONDS: Final = 1.0
 MAX_GRANT_TTL_SECONDS: Final = 86_400.0
 DEFAULT_GRANT_TTL_SECONDS: Final = 3_600.0
 MAX_REMOTE_EVENT_WAIT_SECONDS: Final = 60.0
+TYPED_TASK_STATUS_VOCABULARY: Final[frozenset[str]] = frozenset(
+    {
+        "ready",
+        "todo",
+        "queued",
+        "pending",
+        "proposed",
+        "admitted",
+        "retrying",
+        "claimed",
+        "in_progress",
+        "running",
+        "blocked",
+        "completed",
+        "complete",
+        "done",
+        "skipped",
+        "cancelled",
+        "canceled",
+        "failed",
+        "quarantined",
+        "rejected",
+    }
+)
 STATUS_BOOTSTRAP_CLIENT_ID: Final = "casf-bootstrap-operator:typed-status"
 STATUS_BOOTSTRAP_GRANT_TTL_SECONDS: Final = 60.0
 STATUS_BOOTSTRAP_ALLOWED_OPERATIONS: Final[frozenset[str]] = frozenset(
@@ -333,6 +421,7 @@ class OwnerClientGrant:
             "authority_profile": self.authority_profile,
             "peer_pid": self.peer_pid,
             "peer_uid": self.peer_uid,
+            "peer_start_time_ticks": self.peer_start_time_ticks,
             "issued_at": self.issued_at,
             "expires_at": self.expires_at,
         }
@@ -391,6 +480,51 @@ def _process_runtime_facts(pid: int) -> tuple[int, int, str]:
     return start_time, parent_pid, boot_id
 
 
+def _process_birth_content_id(
+    pid: int,
+    start_time_ticks: int,
+    boot_id: str,
+    parent_pid: int,
+) -> str:
+    """Return the content identity used by launcher-attested process grants."""
+
+    material = (
+        f"{int(pid)}:{int(start_time_ticks)}:"
+        f"{str(boot_id or '')}:{int(parent_pid)}"
+    )
+    return f"birth:{hashlib.sha256(material.encode('utf-8')).hexdigest()[:32]}"
+
+
+def _claim_process_attestation(grant: OwnerClientGrant) -> dict[str, Any]:
+    """Resolve the exact kernel/grant identity admitted for a database claim."""
+
+    start_time, parent_pid, boot_id = _process_runtime_facts(grant.peer_pid)
+    expected_birth_id = _process_birth_content_id(
+        grant.peer_pid,
+        start_time,
+        boot_id,
+        parent_pid,
+    )
+    if (
+        start_time != grant.peer_start_time_ticks
+        or grant.process_birth_id != expected_birth_id
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "database claim process grant differs from kernel birth identity"
+        )
+    return {
+        "schema": TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+        "grant_id": grant.grant_id,
+        "client_id": grant.client_id,
+        "process_birth_id": grant.process_birth_id,
+        "pid": grant.peer_pid,
+        "uid": grant.peer_uid,
+        "start_time_ticks": start_time,
+        "boot_id": boot_id,
+        "parent_pid": parent_pid,
+    }
+
+
 def _kernel_peer_identity(channel: socket.socket) -> tuple[int, int, int]:
     """Return PID, UID, and PID start time proven by the Unix socket kernel."""
 
@@ -412,6 +546,760 @@ def _kernel_peer_identity(channel: socket.socket) -> tuple[int, int, int]:
 
 def _normalize_sql(sql: str) -> str:
     return " ".join(str(sql or "").strip().split())
+
+
+def _strict_scalar_equal(observed: Any, expected: Any) -> bool:
+    """Compare receipt scalars without Python's bool/int equivalence."""
+
+    return type(observed) is type(expected) and observed == expected
+
+
+def _validated_database_claim_identity(
+    receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the exact claim/fence tuple carried by a shared receipt."""
+
+    text_fields = (
+        "claim_id",
+        "attempt_id",
+        "lease_id",
+        "owner_session_id",
+    )
+    integer_fields = (
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+    )
+    identity: dict[str, Any] = {}
+    for name in text_fields:
+        value = receipt.get(name)
+        if (
+            type(value) is not str
+            or not value.strip()
+            or len(value.encode("utf-8")) > 1_024
+            or any(marker in value for marker in ("\x00", "\n", "\r"))
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                f"database claim receipt {name} is invalid"
+            )
+        identity[name] = value
+    for name in integer_fields:
+        value = receipt.get(name)
+        if type(value) is not int or value < 1:
+            raise TypedStateOwnerAuthorizationError(
+                f"database claim receipt {name} is invalid"
+            )
+        identity[name] = value
+    return identity
+
+
+def typed_database_strict_resume_rejection_receipt_id(
+    receipt: Mapping[str, Any],
+) -> str:
+    """Return the content identity of one strict-resume rejection receipt."""
+
+    body = dict(receipt)
+    body.pop("receipt_id", None)
+    return "sha256:" + hashlib.sha256(canonical_json_bytes(body)).hexdigest()
+
+
+def _validated_database_strict_resume_rejection_receipt(
+    receipt: Any,
+) -> dict[str, Any]:
+    """Validate the closed scheduling receipt used as a durable attempt floor."""
+
+    required = {
+        "schema",
+        "operation",
+        "task_cid",
+        "claim_id",
+        "attempt_id",
+        "attempt_number",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "rejected_task_alias",
+        "rejected_task_revision",
+        "provider_phase_committed",
+        "provider_invocation_receipt_present",
+        "max_task_attempts",
+        "attempt_budget_exhausted",
+        "task_shard_count",
+        "task_shard_index",
+        "reasons",
+        "shared_claim_binding",
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+        "receipt_id",
+    }
+    if not isinstance(receipt, Mapping) or set(receipt) != required:
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection receipt has unknown or missing fields"
+        )
+    values = dict(receipt)
+    operation = values.get("operation")
+    if (
+        values.get("schema")
+        != TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA
+        or operation
+        not in {
+            TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
+            TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION,
+        }
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection operation is invalid"
+        )
+    identity_names = (
+        "claim_id",
+        "attempt_id",
+        "lease_id",
+        "owner_session_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+    )
+    for name in ("task_cid", *identity_names[:4]):
+        value = values.get(name)
+        if (
+            type(value) is not str
+            or not value.strip()
+            or len(value.encode("utf-8")) > 1_024
+            or any(marker in value for marker in ("\x00", "\n", "\r"))
+        ):
+            raise TaskSourceIntegrityError(
+                f"typed strict-resume rejection {name} is invalid"
+            )
+    for name in (
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "rejected_task_revision",
+        "task_shard_count",
+    ):
+        value = values.get(name)
+        if type(value) is not int or value < 1:
+            raise TaskSourceIntegrityError(
+                f"typed strict-resume rejection {name} is invalid"
+            )
+    max_task_attempts = values.get("max_task_attempts")
+    shard_index = values.get("task_shard_index")
+    route_origin = values.get("execution_route_origin_revision")
+    if (
+        type(max_task_attempts) is not int
+        or not 0 <= max_task_attempts <= 10_000
+        or type(shard_index) is not int
+        or not 0 <= shard_index < values["task_shard_count"]
+        or type(route_origin) is not int
+        or route_origin < 0
+        or type(values.get("rejected_task_alias")) is not str
+        or type(values.get("execution_route_policy_id")) is not str
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection bounds are invalid"
+        )
+    for name in (
+        "provider_phase_committed",
+        "provider_invocation_receipt_present",
+        "attempt_budget_exhausted",
+    ):
+        if type(values.get(name)) is not bool:
+            raise TaskSourceIntegrityError(
+                f"typed strict-resume rejection {name} is invalid"
+            )
+    exhausted = bool(
+        max_task_attempts > 0
+        and values["attempt_number"] >= max_task_attempts
+    )
+    if values["attempt_budget_exhausted"] is not exhausted:
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection budget evidence is inconsistent"
+        )
+    provider_started = bool(
+        values["provider_phase_committed"]
+        or values["provider_invocation_receipt_present"]
+    )
+    if operation == TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION:
+        if exhausted or provider_started:
+            raise TaskSourceIntegrityError(
+                "typed strict-resume requeue is not pre-provider and under budget"
+            )
+    elif not exhausted and not provider_started:
+        raise TaskSourceIntegrityError(
+            "typed strict-resume quarantine has no terminal authority"
+        )
+    reasons = values.get("reasons")
+    if (
+        not isinstance(reasons, list)
+        or not reasons
+        or len(reasons) > 64
+        or any(
+            type(reason) is not str
+            or not reason.strip()
+            or len(reason.encode("utf-8")) > 256
+            for reason in reasons
+        )
+        or reasons != sorted(set(reasons))
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection reasons are invalid"
+        )
+    shared = values.get("shared_claim_binding")
+    shared_fields = {*identity_names, "operation", "claim_phase_schema"}
+    if not isinstance(shared, Mapping) or set(shared) != shared_fields:
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection shared binding is invalid"
+        )
+    if any(
+        not _strict_scalar_equal(shared.get(name), values[name])
+        for name in identity_names
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection shared identity differs"
+        )
+    shared_operation = shared.get("operation")
+    shared_schema = shared.get("claim_phase_schema")
+    if not (
+        (
+            shared_operation == "database_claim"
+            and shared_schema == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+        )
+        or (
+            shared_operation == "database_attempt_admitted"
+            and shared_schema == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        )
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection shared phase is invalid"
+        )
+    route_raw = values.get("execution_route_binding")
+    if not isinstance(route_raw, Mapping) or not route_raw:
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection route is absent"
+        )
+    try:
+        route = TaskExecutionRouteBinding.from_dict(route_raw).to_dict()
+    except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection route is invalid"
+        ) from exc
+    if (
+        dict(route_raw) != route
+        or route["task_cid"] != values["task_cid"]
+        or values["execution_route_policy_id"] != route["policy_id"]
+        or values["execution_route_origin_revision"]
+        != route["task_revision"]
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection route lineage differs"
+        )
+    if values.get("receipt_id") != (
+        typed_database_strict_resume_rejection_receipt_id(values)
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection receipt identity differs"
+        )
+    return values
+
+
+def _require_database_claim_process_attestation(
+    receipt: Mapping[str, Any],
+    *,
+    grant: OwnerClientGrant,
+) -> dict[str, Any]:
+    """Require the receipt to reproduce the active owner-derived birth tuple."""
+
+    observed = receipt.get("claim_process_attestation")
+    expected = _claim_process_attestation(grant)
+    if (
+        not isinstance(observed, Mapping)
+        or set(observed) != set(expected)
+        or any(
+            not _strict_scalar_equal(observed.get(name), value)
+            for name, value in expected.items()
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "database claim receipt process attestation differs from its active grant"
+        )
+    return expected
+
+
+def _validated_database_claim_process_attestation(
+    receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate a previously owner-attested claim process without reviving it."""
+
+    observed = receipt.get("claim_process_attestation")
+    required = {
+        "schema",
+        "grant_id",
+        "client_id",
+        "process_birth_id",
+        "pid",
+        "uid",
+        "start_time_ticks",
+        "boot_id",
+        "parent_pid",
+    }
+    if not isinstance(observed, Mapping) or set(observed) != required:
+        raise TypedStateOwnerAuthorizationError(
+            "database claim receipt process attestation is malformed"
+        )
+    attestation = dict(observed)
+    text_fields = (
+        "grant_id",
+        "client_id",
+        "process_birth_id",
+        "boot_id",
+    )
+    if (
+        attestation.get("schema") != TYPED_DATABASE_CLAIM_PROCESS_SCHEMA
+        or any(
+            type(attestation.get(name)) is not str
+            or not attestation[name].strip()
+            or len(attestation[name].encode("utf-8")) > 1_024
+            or any(
+                marker in attestation[name]
+                for marker in ("\x00", "\n", "\r")
+            )
+            for name in text_fields
+        )
+        or type(attestation.get("pid")) is not int
+        or attestation["pid"] < 1
+        or type(attestation.get("uid")) is not int
+        or attestation["uid"] < 0
+        or type(attestation.get("start_time_ticks")) is not int
+        or attestation["start_time_ticks"] < 1
+        or type(attestation.get("parent_pid")) is not int
+        or attestation["parent_pid"] < 0
+        or attestation["process_birth_id"]
+        != _process_birth_content_id(
+            attestation["pid"],
+            attestation["start_time_ticks"],
+            attestation["boot_id"],
+            attestation["parent_pid"],
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "database claim receipt process attestation is malformed"
+        )
+    return attestation
+
+
+def _validated_retry_cooldown_parameters(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the complete semantic payload for one typed cooldown."""
+
+    parameters = dict(value)
+    required = {
+        "schema",
+        "operation",
+        "task_cid",
+        "expected_task_revision",
+        "expected_task_status",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "delay_ms",
+        "started_at_ms",
+        "retry_not_before_ms",
+        "selection_penalty",
+        "consecutive_failures",
+        "reason",
+        "resolution_cid",
+        "expected_queue_revision",
+        "expected_queue_attempt",
+        "extension_schema",
+        "extension_json",
+    }
+    if set(parameters) != required:
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown command differs from its closed schema"
+        )
+    if (
+        parameters.get("schema") != TYPED_RETRY_COOLDOWN_SCHEMA
+        or parameters.get("operation") != "task.retry.cooldown.record"
+        or parameters.get("extension_schema") != TYPED_RETRY_COOLDOWN_SCHEMA
+        or parameters.get("expected_task_status")
+        not in {"blocked", "in_progress", "retrying"}
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown command schema or control status is invalid"
+        )
+    text_bounds = {
+        "task_cid": 1_024,
+        "attempt_id": 1_024,
+        "claim_id": 1_024,
+        "lease_id": 1_024,
+        "owner_session_id": 1_024,
+        "reason": 2_048,
+        "resolution_cid": 1_024,
+    }
+    for name, maximum in text_bounds.items():
+        member = parameters.get(name)
+        if (
+            not isinstance(member, str)
+            or not member.strip()
+            or member != member.strip()
+            or len(member.encode("utf-8")) > maximum
+            or any(marker in member for marker in ("\x00", "\n", "\r"))
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                f"retry cooldown {name} is invalid"
+            )
+    positive = (
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+    )
+    if any(
+        isinstance(parameters.get(name), bool)
+        or not isinstance(parameters.get(name), int)
+        or int(parameters[name]) < 1
+        for name in positive
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown positive revision/fence identity is invalid"
+        )
+    bounded_nonnegative = {
+        # A materialized retrying task at revision 1 canonically binds the
+        # transition's predecessor revision 0.  The owner separately proves
+        # the current durable task revision is exactly predecessor + 1.
+        "expected_task_revision": 9_223_372_036_854_775_807,
+        "delay_ms": 86_400_000,
+        "started_at_ms": 9_223_372_036_854_775_807,
+        "retry_not_before_ms": 9_223_372_036_854_775_807,
+        "selection_penalty": 1_000_000,
+        "consecutive_failures": 10_000,
+        "expected_queue_attempt": 10_000,
+    }
+    if any(
+        isinstance(parameters.get(name), bool)
+        or not isinstance(parameters.get(name), int)
+        or not 0 <= int(parameters[name]) <= maximum
+        for name, maximum in bounded_nonnegative.items()
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown bounded counter or deadline is invalid"
+        )
+    queue_revision = parameters.get("expected_queue_revision")
+    if (
+        isinstance(queue_revision, bool)
+        or not isinstance(queue_revision, int)
+        or queue_revision < -1
+        or (queue_revision == -1) != (parameters["expected_queue_attempt"] == 0)
+        or (
+            queue_revision >= 0
+            and (
+                queue_revision < 1
+                or parameters["expected_queue_attempt"] < 1
+                or parameters["expected_queue_attempt"]
+                >= parameters["attempt_number"]
+            )
+        )
+        or parameters["consecutive_failures"] != parameters["attempt_number"]
+        or parameters["retry_not_before_ms"] - parameters["started_at_ms"]
+        != parameters["delay_ms"]
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown absence/revision binding is invalid"
+        )
+    expected_extension = {
+        "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+        "task_cid": parameters["task_cid"],
+        "expected_task_revision": parameters["expected_task_revision"],
+        "attempt_id": parameters["attempt_id"],
+        "claim_id": parameters["claim_id"],
+        "lease_id": parameters["lease_id"],
+        "owner_session_id": parameters["owner_session_id"],
+        "attempt_number": parameters["attempt_number"],
+        "fencing_token": parameters["fencing_token"],
+        "fence_epoch": parameters["fence_epoch"],
+        "delay_ms": parameters["delay_ms"],
+        "started_at_ms": parameters["started_at_ms"],
+        "retry_not_before_ms": parameters["retry_not_before_ms"],
+        "selection_penalty": parameters["selection_penalty"],
+        "consecutive_failures": parameters["consecutive_failures"],
+        "reason": parameters["reason"],
+        "expected_queue_revision": parameters["expected_queue_revision"],
+        "expected_queue_attempt": parameters["expected_queue_attempt"],
+    }
+    try:
+        extension = json.loads(str(parameters["extension_json"]))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown extension is malformed"
+        ) from exc
+    expected_resolution = content_identity(
+        {
+            "typed_retry_cooldown": expected_extension,
+            "started_at_ms": parameters["started_at_ms"],
+        }
+    )
+    if extension != expected_extension or parameters["resolution_cid"] != (
+        expected_resolution
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown extension or resolution identity differs"
+        )
+    return parameters
+
+
+def _retry_cooldown_command_digest(parameters: Mapping[str, Any]) -> str:
+    """Return the identity a cooldown command must bind for replay safety."""
+
+    validated = _validated_retry_cooldown_parameters(parameters)
+    material = {
+        name: member
+        for name, member in validated.items()
+        if name not in {"extension_schema", "extension_json"}
+    }
+    return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+
+
+def _validated_dead_claim_recovery_parameters(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed atomic lost-sidecar recovery command."""
+
+    parameters = dict(value)
+    if set(parameters) != {
+        "schema",
+        "operation",
+        "task_cid",
+        "expected_task_revision",
+        "expected_task_status",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "delay_ms",
+        "started_at_ms",
+        "retry_not_before_ms",
+        "selection_penalty",
+        "consecutive_failures",
+        "reason",
+        "resolution_cid",
+        "expected_queue_revision",
+        "expected_queue_attempt",
+        "extension_schema",
+        "extension_json",
+        "status",
+        "body_json",
+    }:
+        raise TypedStateOwnerAuthorizationError(
+            "dead claim recovery command differs from its closed schema"
+        )
+    if (
+        parameters.get("operation") != TYPED_DATABASE_CLAIM_RECOVERY_COMMAND
+        or parameters.get("status") != "retrying"
+        or parameters.get("expected_task_status") != "in_progress"
+        or parameters.get("delay_ms") != 0
+        or parameters.get("selection_penalty") != 0
+        or parameters.get("reason") != TYPED_DATABASE_CLAIM_RECOVERY_REASON
+        or parameters.get("expected_queue_revision") != -1
+        or parameters.get("expected_queue_attempt") != 0
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "dead claim recovery command is outside its closed transition"
+        )
+    body_json = parameters.get("body_json")
+    if (
+        type(body_json) is not str
+        or not body_json
+        or len(body_json.encode("utf-8")) > 1024 * 1024
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "dead claim recovery task body is invalid"
+        )
+    try:
+        body = json.loads(body_json)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "dead claim recovery task body is malformed"
+        ) from exc
+    if not isinstance(body, Mapping):
+        raise TypedStateOwnerAuthorizationError(
+            "dead claim recovery task body is malformed"
+        )
+    cooldown_parameters = {
+        name: member
+        for name, member in parameters.items()
+        if name not in {"status", "body_json"}
+    }
+    cooldown_parameters["operation"] = "task.retry.cooldown.record"
+    _validated_retry_cooldown_parameters(cooldown_parameters)
+    return {
+        **parameters,
+        "body": dict(body),
+        "cooldown_parameters": cooldown_parameters,
+    }
+
+
+def _validated_retry_mutation_parameters(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the common cooldown mutation payload for either typed command."""
+
+    if value.get("operation") == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
+        return dict(
+            _validated_dead_claim_recovery_parameters(value)[
+                "cooldown_parameters"
+            ]
+        )
+    return _validated_retry_cooldown_parameters(value)
+
+
+def _dead_claim_recovery_command_digest(
+    parameters: Mapping[str, Any],
+) -> str:
+    """Bind deterministic replay to the complete atomic recovery payload."""
+
+    validated = _validated_dead_claim_recovery_parameters(parameters)
+    material = {
+        name: member
+        for name, member in validated.items()
+        if name not in {"body", "cooldown_parameters"}
+    }
+    return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+
+
+_RETRY_COOLDOWN_ROW_FIELDS: Final[tuple[str, ...]] = (
+    "task_cid",
+    "claim_cid",
+    "resolution_cid",
+    "claimant_did",
+    "logical_epoch",
+    "fencing_token",
+    "expires_at_ms",
+    "attempt",
+    "state",
+    "started_at_ms",
+    "release_reason",
+    "retry_not_before_ms",
+    "owner_session_id",
+    "fence_epoch",
+    "revision",
+    "extension_schema",
+    "extension_json",
+)
+
+
+def _validated_stored_retry_cooldown(
+    row: Any,
+    *,
+    task_cid: str,
+) -> dict[str, Any]:
+    """Validate every persisted lease field before admitting replacement."""
+
+    if isinstance(row, Mapping):
+        try:
+            values = {name: row[name] for name in _RETRY_COOLDOWN_ROW_FIELDS}
+        except (KeyError, TypeError) as exc:
+            raise TypedStateOwnerAuthorizationError(
+                "retry cooldown prior row is incomplete"
+            ) from exc
+    elif isinstance(row, Sequence) and not isinstance(
+        row, (str, bytes, bytearray)
+    ):
+        if len(row) != len(_RETRY_COOLDOWN_ROW_FIELDS):
+            raise TypedStateOwnerAuthorizationError(
+                "retry cooldown prior row is incomplete"
+            )
+        # ``strict=`` is unavailable on the Python 3.8 compatibility floor;
+        # the exact length check above provides the same closed-row guarantee.
+        values = dict(zip(_RETRY_COOLDOWN_ROW_FIELDS, row))  # noqa: B905
+    else:
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown prior row is malformed"
+        )
+    integer_fields = (
+        "logical_epoch",
+        "fencing_token",
+        "expires_at_ms",
+        "attempt",
+        "started_at_ms",
+        "retry_not_before_ms",
+        "fence_epoch",
+        "revision",
+    )
+    if any(
+        isinstance(values[name], bool)
+        or not isinstance(values[name], int)
+        or values[name] < 0
+        for name in integer_fields
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown prior row has an invalid integer field"
+        )
+    try:
+        extension = json.loads(str(values["extension_json"]))
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown prior row extension is malformed"
+        ) from exc
+    if not isinstance(extension, Mapping):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown prior row extension is malformed"
+        )
+    extension_values = dict(extension)
+    _validated_retry_cooldown_parameters(
+        {
+            **extension_values,
+            "operation": "task.retry.cooldown.record",
+            "expected_task_status": "in_progress",
+            "resolution_cid": values["resolution_cid"],
+            "extension_schema": values["extension_schema"],
+            "extension_json": values["extension_json"],
+        }
+    )
+    revision = int(values["revision"])
+    attempt = int(values["attempt"])
+    expected_prior_revision = -1 if revision == 1 else revision - 1
+    expected_prior_attempt = int(extension_values["expected_queue_attempt"])
+    if (
+        values["task_cid"] != task_cid
+        or values["extension_schema"] != TYPED_RETRY_COOLDOWN_SCHEMA
+        or values["state"] != "released"
+        or values["expires_at_ms"] != 0
+        or attempt < 1
+        or revision < 1
+        or values["logical_epoch"] != values["fence_epoch"]
+        or values["claimant_did"] != values["owner_session_id"]
+        or extension_values["task_cid"] != task_cid
+        or extension_values["claim_id"] != values["claim_cid"]
+        or extension_values["owner_session_id"]
+        != values["owner_session_id"]
+        or extension_values["attempt_number"] != attempt
+        or extension_values["fencing_token"] != values["fencing_token"]
+        or extension_values["fence_epoch"] != values["fence_epoch"]
+        or extension_values["started_at_ms"] != values["started_at_ms"]
+        or extension_values["retry_not_before_ms"]
+        != values["retry_not_before_ms"]
+        or extension_values["reason"] != values["release_reason"]
+        or extension_values["expected_queue_revision"]
+        != expected_prior_revision
+        or (revision == 1 and expected_prior_attempt != 0)
+        or (
+            revision > 1
+            and not 1 <= expected_prior_attempt < attempt
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "retry cooldown prior row differs from its typed receipt"
+        )
+    return {**values, "extension": extension_values}
 
 
 _TRANSACTION_SQL: Final[Mapping[str, OwnerOperation]] = MappingProxyType(
@@ -629,11 +1517,47 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
             }
         ),
         "task.status.cas": frozenset({"txn_cas_task_status"}),
+        "task.status.cas.receipt": frozenset(
+            {"executor_cas_task_status_receipt"}
+        ),
+        "task.retry.cooldown.record": frozenset(
+            {
+                "executor_insert_retry_cooldown",
+                "executor_update_retry_cooldown",
+            }
+        ),
+        TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: frozenset(
+            {
+                "executor_cas_task_status_receipt",
+                "executor_insert_retry_cooldown",
+            }
+        ),
+        "task.validation.record.passed": frozenset(
+            {
+                "executor_insert_validation_run",
+                "executor_insert_validation_result",
+                "executor_insert_validation_evidence",
+            }
+        ),
+        "task.validation.record.nonpassing": frozenset(
+            {
+                "executor_insert_validation_run",
+                "executor_insert_validation_result",
+            }
+        ),
     }
 )
 
 _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
-    set(_COMMAND_MUTATION_CATALOG) - {"task.status.cas"}
+    set(_COMMAND_MUTATION_CATALOG)
+    - {
+        "task.status.cas",
+        "task.status.cas.receipt",
+        "task.retry.cooldown.record",
+        TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+        "task.validation.record.passed",
+        "task.validation.record.nonpassing",
+    }
 )
 _EVENT_EMITTING_COMMANDS: Final[frozenset[str]] = frozenset(
     {
@@ -698,6 +1622,20 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
             ),
             "event.acknowledge": _COMMAND_MUTATION_CATALOG["event.acknowledge"],
             "task.status.cas": frozenset({"txn_cas_task_status"}),
+            "task.status.cas.receipt": _COMMAND_MUTATION_CATALOG[
+                "task.status.cas.receipt"
+            ],
+            TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: (
+                _COMMAND_MUTATION_CATALOG[
+                    TYPED_DATABASE_CLAIM_RECOVERY_COMMAND
+                ]
+            ),
+            "task.validation.record.passed": _COMMAND_MUTATION_CATALOG[
+                "task.validation.record.passed"
+            ],
+            "task.validation.record.nonpassing": _COMMAND_MUTATION_CATALOG[
+                "task.validation.record.nonpassing"
+            ],
         }
     )
 )
@@ -942,6 +1880,7 @@ class TypedStateOwnerGateway:
         store_id: str,
         identity: Mapping[str, Any],
         catalog: Mapping[str, OwnerOperation] | None = None,
+        owner_liveness_probe: Any | None = None,
     ) -> None:
         self._connection = connection
         self.socket_path = Path(socket_path)
@@ -949,6 +1888,11 @@ class TypedStateOwnerGateway:
         self.identity = MappingProxyType(dict(identity))
         self.catalog = catalog or build_control_plane_operation_catalog()
         self.catalog_id = catalog_fingerprint(self.catalog)
+        self._owner_liveness_probe = owner_liveness_probe or owner_liveness
+        if not callable(self._owner_liveness_probe):
+            raise TypedStateOwnerProtocolError(
+                "owner liveness probe must be callable"
+            )
         self._listener: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -1283,7 +2227,16 @@ class TypedStateOwnerGateway:
             )
 
     def start(self) -> None:
-        self.socket_path.parent.mkdir(parents=True, exist_ok=True)
+        self.socket_path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+        parent_metadata = os.lstat(self.socket_path.parent)
+        if not stat.S_ISDIR(parent_metadata.st_mode):
+            raise TypedStateOwnerProtocolError(
+                "gateway socket parent is not a real directory"
+            )
+        if parent_metadata.st_uid != os.geteuid():
+            raise TypedStateOwnerProtocolError(
+                "gateway socket parent is not owned by the current process user"
+            )
         os.chmod(self.socket_path.parent, 0o700)
         try:
             metadata = os.lstat(self.socket_path)
@@ -1860,11 +2813,52 @@ class TypedStateOwnerGateway:
             "subagent.slot.reserve": "claim",
             "subagent.slot.release": "release",
             "task.status.cas": "claim",
+            "task.status.cas.receipt": "claim",
+            TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: "claim",
         }.get(operation, "append")
         if command.command_kind.value != expected_kind:
             raise TypedStateOwnerAuthorizationError(
                 "command kind differs from the server operation policy"
             )
+        if operation == "task.retry.cooldown.record":
+            digest = _retry_cooldown_command_digest(command.parameters)
+            if (
+                command.command_id != f"cmd:retry-cooldown:{digest}"
+                or command.idempotency_key
+                != f"executor-retry-cooldown:{digest}"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown replay identity differs from its parameters"
+                )
+        if operation == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
+            digest = _dead_claim_recovery_command_digest(command.parameters)
+            if (
+                command.command_id != f"cmd:dead-claim-recovery:{digest}"
+                or command.idempotency_key
+                != f"executor-dead-claim-recovery:{digest}"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery replay identity differs from its parameters"
+                )
+        if operation in {"task.status.cas", "task.status.cas.receipt"}:
+            requested_status = command.parameters.get("status")
+            if (
+                not isinstance(requested_status, str)
+                or requested_status not in TYPED_TASK_STATUS_VOCABULARY
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "task status is outside the closed command vocabulary"
+                )
+            if (
+                operation == "task.status.cas"
+                and requested_status == "in_progress"
+                and grant.client_id.startswith(
+                    "database-implementation-daemon:"
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "typed executor in-progress transition requires a claim receipt"
+                )
         if operation in _FEDERATION_COMMANDS:
             for field in ("tenant_id", "federation_id"):
                 value = str(command.parameters.get(field) or "").strip()
@@ -2049,6 +3043,732 @@ class TypedStateOwnerGateway:
         """
 
         operation = str(command.parameters.get("operation") or "")
+        if operation == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
+            recovery = _validated_dead_claim_recovery_parameters(
+                command.parameters
+            )
+            values = dict(recovery["cooldown_parameters"])
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            if len(task_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery task authority is absent or ambiguous"
+                )
+            task_row = task_rows[0]
+            if (
+                str(task_row[0] or "").strip().lower() != "in_progress"
+                or type(task_row[1]) is not int
+                or int(task_row[1]) != values["expected_task_revision"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery task revision is stale"
+                )
+            try:
+                prior_body = json.loads(str(task_row[2] or "{}"))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery prior task body is malformed"
+                ) from exc
+            prior_receipt = (
+                prior_body.get("completion_receipt")
+                if isinstance(prior_body, Mapping)
+                else None
+            )
+            if not isinstance(prior_receipt, Mapping):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery has no typed reservation"
+                )
+            prior_identity = _validated_database_claim_identity(prior_receipt)
+            exact_identity = {
+                "claim_id": values["claim_id"],
+                "attempt_id": values["attempt_id"],
+                "attempt_number": values["attempt_number"],
+                "lease_id": values["lease_id"],
+                "owner_session_id": values["owner_session_id"],
+                "fencing_token": values["fencing_token"],
+                "fence_epoch": values["fence_epoch"],
+            }
+            historic_attestation = (
+                _validated_database_claim_process_attestation(prior_receipt)
+            )
+            try:
+                execution_route = TaskExecutionRouteBinding.from_dict(
+                    prior_receipt.get("execution_route_binding")
+                ).to_dict()
+            except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery reservation has no exact execution route"
+                ) from exc
+            if (
+                prior_receipt.get("operation") != "database_claim"
+                or prior_receipt.get("claim_phase_schema")
+                != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                or any(
+                    not _strict_scalar_equal(
+                        prior_identity.get(name), expected
+                    )
+                    for name, expected in exact_identity.items()
+                )
+                or not _strict_scalar_equal(
+                    prior_receipt.get("claimed_from_revision"),
+                    values["expected_task_revision"] - 1,
+                )
+                or historic_attestation.get("client_id") != grant.client_id
+                or execution_route["task_cid"] != values["task_cid"]
+                or prior_receipt.get("execution_route_policy_id")
+                != execution_route["policy_id"]
+                or not _strict_scalar_equal(
+                    prior_receipt.get("execution_route_origin_revision"),
+                    execution_route["task_revision"],
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery reservation differs from its exact authority"
+                )
+            current_attestation = _claim_process_attestation(grant)
+            if (
+                historic_attestation["process_birth_id"]
+                == current_attestation["process_birth_id"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery cannot replace its current process birth"
+                )
+            historic_birth = ProcessBirthIdentity(
+                pid=int(historic_attestation["pid"]),
+                start_time_ticks=int(
+                    historic_attestation["start_time_ticks"]
+                ),
+                boot_id=str(historic_attestation["boot_id"]),
+                parent_pid=int(historic_attestation["parent_pid"]),
+            )
+            try:
+                liveness = OwnerLiveness(
+                    self._owner_liveness_probe(historic_birth)
+                )
+            except BaseException:
+                liveness = OwnerLiveness.UNKNOWN
+            if liveness is not OwnerLiveness.DEAD:
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery requires a provably dead historic process"
+                )
+            queue_rows = self._connection.execute(
+                "SELECT task_cid FROM leases WHERE task_cid = ? LIMIT 2",
+                [values["task_cid"]],
+            ).fetchall()
+            if queue_rows:
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery requires exact cooldown absence"
+                )
+            reservation_cid = content_identity(
+                {"typed_database_claim_reservation": dict(prior_receipt)}
+            )
+            recovery_receipt = {
+                "schema": TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
+                "operation": TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+                **exact_identity,
+                "recovered_claim_phase_schema": (
+                    TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                ),
+                "recovered_claimed_from_revision": int(
+                    prior_receipt["claimed_from_revision"]
+                ),
+                "recovered_reservation_cid": reservation_cid,
+                "recovered_claim_process_attestation": dict(
+                    historic_attestation
+                ),
+                "recovery_process_attestation": dict(current_attestation),
+                "recovered_from_revision": values["expected_task_revision"],
+                "queue_reason": values["reason"],
+                "backoff_ms": 0,
+                "retry_not_before_ms": values["retry_not_before_ms"],
+                "control_expected_revision": values[
+                    "expected_task_revision"
+                ],
+                "execution_route_binding": execution_route,
+                "execution_route_policy_id": execution_route["policy_id"],
+                "execution_route_origin_revision": int(
+                    execution_route["task_revision"]
+                ),
+            }
+            expected_body = dict(prior_body)
+            expected_body["completion_receipt"] = recovery_receipt
+            expected_body_json = canonical_json_bytes(expected_body).decode(
+                "utf-8"
+            )
+            if (
+                recovery["body"] != expected_body
+                or command.parameters.get("body_json")
+                != expected_body_json
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery receipt differs from owner-derived authority"
+                )
+            return {
+                "operation": operation,
+                "task_cid": values["task_cid"],
+                "expected_revision": values["expected_task_revision"],
+                "body_json": expected_body_json,
+                "cooldown_parameters": values,
+                "recovery_receipt": recovery_receipt,
+                "historic_liveness": liveness.value,
+            }
+        if operation == "task.status.cas.receipt":
+            try:
+                next_body = json.loads(str(command.parameters.get("body_json") or ""))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "task status receipt body is malformed"
+                ) from exc
+            next_receipt = (
+                next_body.get("completion_receipt")
+                if isinstance(next_body, Mapping)
+                else None
+            )
+            phase_schema = (
+                str(next_receipt.get("claim_phase_schema") or "")
+                if isinstance(next_receipt, Mapping)
+                else ""
+            )
+            typed_executor_claim = bool(
+                grant.client_id.startswith("database-implementation-daemon:")
+                and str(command.parameters.get("status") or "").strip()
+                == "in_progress"
+            )
+            strict_rejection_operation = (
+                next_receipt.get("operation")
+                if isinstance(next_receipt, Mapping)
+                else None
+            )
+            typed_strict_rejection = bool(
+                grant.client_id.startswith("database-implementation-daemon:")
+                and (
+                    (
+                        isinstance(next_receipt, Mapping)
+                        and next_receipt.get("schema")
+                        == TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA
+                    )
+                    or strict_rejection_operation
+                    in {
+                        TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
+                        TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION,
+                    }
+                )
+            )
+            if typed_strict_rejection:
+                try:
+                    rejection = (
+                        _validated_database_strict_resume_rejection_receipt(
+                            next_receipt
+                        )
+                    )
+                except TaskSourceIntegrityError as exc:
+                    raise TypedStateOwnerAuthorizationError(str(exc)) from exc
+                task_cid = str(command.parameters.get("task_cid") or "").strip()
+                expected_revision = command.parameters.get(
+                    "expected_task_revision"
+                )
+                requested_status = str(
+                    command.parameters.get("status") or ""
+                ).strip()
+                expected_status = (
+                    "ready"
+                    if strict_rejection_operation
+                    == TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION
+                    else "quarantined"
+                )
+                if (
+                    not task_cid
+                    or type(expected_revision) is not int
+                    or expected_revision < 1
+                    or requested_status != expected_status
+                    or rejection["task_cid"] != task_cid
+                    or rejection["rejected_task_revision"]
+                    != expected_revision
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed strict-resume rejection command is invalid"
+                    )
+                task_rows = self._connection.execute(
+                    """
+                    SELECT status, revision, task_alias, body_json FROM tasks
+                    WHERE task_cid = ? LIMIT 2
+                    """,
+                    [task_cid],
+                ).fetchall()
+                if len(task_rows) != 1:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed strict-resume rejection task is absent or ambiguous"
+                    )
+                task_row = task_rows[0]
+                try:
+                    prior_body = json.loads(str(task_row[3] or "{}"))
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed strict-resume rejection prior body is malformed"
+                    ) from exc
+                prior_receipt = (
+                    prior_body.get("completion_receipt")
+                    if isinstance(prior_body, Mapping)
+                    else None
+                )
+                if not isinstance(prior_receipt, Mapping):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed strict-resume rejection has no prior claim"
+                    )
+                prior_identity = _validated_database_claim_identity(
+                    prior_receipt
+                )
+                _require_database_claim_process_attestation(
+                    prior_receipt,
+                    grant=grant,
+                )
+                prior_operation = prior_receipt.get("operation")
+                prior_schema = prior_receipt.get("claim_phase_schema")
+                if prior_operation == "database_claim":
+                    prior_revision_bound = bool(
+                        prior_schema
+                        == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                        and _strict_scalar_equal(
+                            prior_receipt.get("claimed_from_revision"),
+                            expected_revision - 1,
+                        )
+                    )
+                else:
+                    prior_revision_bound = bool(
+                        prior_operation == "database_attempt_admitted"
+                        and prior_schema
+                        == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                        and _strict_scalar_equal(
+                            prior_receipt.get("admitted_from_revision"),
+                            expected_revision - 1,
+                        )
+                        and _strict_scalar_equal(
+                            prior_receipt.get("claimed_from_revision"),
+                            expected_revision - 2,
+                        )
+                        and prior_receipt.get("attempt_execution_phase")
+                        == "claimed"
+                        and _strict_scalar_equal(
+                            prior_receipt.get("attempt_execution_revision"),
+                            1,
+                        )
+                    )
+                expected_shared_binding = {
+                    **prior_identity,
+                    "operation": prior_operation,
+                    "claim_phase_schema": prior_schema,
+                }
+                try:
+                    prior_route = TaskExecutionRouteBinding.from_dict(
+                        prior_receipt.get("execution_route_binding")
+                    ).to_dict()
+                except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed strict-resume rejection prior route is invalid"
+                    ) from exc
+                if (
+                    str(task_row[0] or "").strip().lower() != "in_progress"
+                    or int(task_row[1]) != expected_revision
+                    or str(task_row[2] or "")
+                    != rejection["rejected_task_alias"]
+                    or not prior_revision_bound
+                    or any(
+                        not _strict_scalar_equal(
+                            rejection.get(name), value
+                        )
+                        for name, value in prior_identity.items()
+                    )
+                    or rejection["shared_claim_binding"]
+                    != expected_shared_binding
+                    or rejection["execution_route_binding"] != prior_route
+                    or rejection["execution_route_policy_id"]
+                    != prior_route["policy_id"]
+                    or rejection["execution_route_origin_revision"]
+                    != prior_route["task_revision"]
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed strict-resume rejection differs from prior authority"
+                    )
+                return {
+                    "operation": "task.database.strict_resume_rejection",
+                    "task_cid": task_cid,
+                    "status": expected_status,
+                    "expected_revision": expected_revision,
+                    "body_json": str(command.parameters["body_json"]),
+                    "receipt": rejection,
+                }
+            if typed_executor_claim and phase_schema not in {
+                TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+                TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+            }:
+                raise TypedStateOwnerAuthorizationError(
+                    "typed executor in-progress receipt omits its closed claim phase"
+                )
+            if typed_executor_claim:
+                if not isinstance(next_receipt, Mapping):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim receipt is unavailable"
+                    )
+                task_cid = str(command.parameters.get("task_cid") or "").strip()
+                expected_revision = command.parameters.get(
+                    "expected_task_revision"
+                )
+                next_status = str(command.parameters.get("status") or "").strip()
+                if (
+                    not task_cid
+                    or type(expected_revision) is not int
+                    or expected_revision < 0
+                    or next_status != "in_progress"
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim command is invalid"
+                    )
+                task_rows = self._connection.execute(
+                    """
+                    SELECT status, revision, body_json FROM tasks
+                    WHERE task_cid = ? LIMIT 2
+                    """,
+                    [task_cid],
+                ).fetchall()
+                if len(task_rows) != 1:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim task authority is absent or ambiguous"
+                    )
+                task_row = task_rows[0]
+                if int(task_row[1]) != expected_revision:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim task revision is stale"
+                    )
+                try:
+                    prior_body = json.loads(str(task_row[2] or "{}"))
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim prior task body is malformed"
+                    ) from exc
+                prior_receipt = (
+                    prior_body.get("completion_receipt")
+                    if isinstance(prior_body, Mapping)
+                    else None
+                )
+                next_identity = _validated_database_claim_identity(next_receipt)
+                next_attestation = _require_database_claim_process_attestation(
+                    next_receipt,
+                    grant=grant,
+                )
+                if phase_schema == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA:
+                    if (
+                        next_receipt.get("operation") != "database_claim"
+                        or not _strict_scalar_equal(
+                            next_receipt.get("claimed_from_revision"),
+                            expected_revision,
+                        )
+                        or str(task_row[0] or "").strip().lower()
+                        not in {
+                            "proposed",
+                            "admitted",
+                            "pending",
+                            "ready",
+                            "todo",
+                            "queued",
+                            "retrying",
+                            "in_progress",
+                        }
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "typed database claim reservation authority is stale"
+                        )
+                    if str(task_row[0] or "").strip().lower() == "in_progress":
+                        if not isinstance(prior_receipt, Mapping):
+                            raise TypedStateOwnerAuthorizationError(
+                                "typed fenced reservation has no prior admission"
+                            )
+                        prior_identity = _validated_database_claim_identity(
+                            prior_receipt
+                        )
+                        prior_attestation = prior_receipt.get(
+                            "claim_process_attestation"
+                        )
+                        if (
+                            prior_receipt.get("operation")
+                            != "database_attempt_admitted"
+                            or prior_receipt.get("claim_phase_schema")
+                            != TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                            or not isinstance(prior_attestation, Mapping)
+                            or set(prior_attestation) != set(next_attestation)
+                            or any(
+                                not _strict_scalar_equal(
+                                    prior_attestation.get(name), value
+                                )
+                                for name, value in next_attestation.items()
+                            )
+                            or prior_identity["owner_session_id"]
+                            != next_identity["owner_session_id"]
+                            or prior_identity["attempt_number"]
+                            >= next_identity["attempt_number"]
+                            or prior_identity["fencing_token"]
+                            >= next_identity["fencing_token"]
+                            or prior_identity["fence_epoch"]
+                            > next_identity["fence_epoch"]
+                        ):
+                            raise TypedStateOwnerAuthorizationError(
+                                "typed fenced reservation is not a newer live claim"
+                            )
+                else:
+                    if not isinstance(prior_receipt, Mapping):
+                        raise TypedStateOwnerAuthorizationError(
+                            "typed database attempt admission has no reservation"
+                        )
+                    prior_identity = _validated_database_claim_identity(
+                        prior_receipt
+                    )
+                    prior_attestation = prior_receipt.get(
+                        "claim_process_attestation"
+                    )
+                    if (
+                        str(task_row[0] or "").strip().lower()
+                        != "in_progress"
+                        or next_receipt.get("operation")
+                        != "database_attempt_admitted"
+                        or prior_receipt.get("operation") != "database_claim"
+                        or prior_receipt.get("claim_phase_schema")
+                        != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                        or any(
+                            not _strict_scalar_equal(
+                                next_identity.get(name), value
+                            )
+                            for name, value in prior_identity.items()
+                        )
+                        or not isinstance(prior_attestation, Mapping)
+                        or set(prior_attestation) != set(next_attestation)
+                        or any(
+                            not _strict_scalar_equal(
+                                prior_attestation.get(name), value
+                            )
+                            for name, value in next_attestation.items()
+                        )
+                        or not _strict_scalar_equal(
+                            next_receipt.get("claimed_from_revision"),
+                            prior_receipt.get("claimed_from_revision"),
+                        )
+                        or not _strict_scalar_equal(
+                            next_receipt.get("admitted_from_revision"),
+                            expected_revision,
+                        )
+                        or not _strict_scalar_equal(
+                            next_receipt.get("attempt_execution_revision"),
+                            1,
+                        )
+                        or next_receipt.get("attempt_execution_phase")
+                        != "claimed"
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "typed database attempt admission differs from its reservation"
+                        )
+                return {
+                    "operation": "task.database.claim.phase",
+                    "task_cid": task_cid,
+                    "status": next_status,
+                    "expected_revision": expected_revision,
+                    "body_json": str(command.parameters["body_json"]),
+                    "claim_phase_schema": phase_schema,
+                    "claim_identity": next_identity,
+                    "claim_process_attestation": next_attestation,
+                }
+        if operation == "task.retry.cooldown.record":
+            parameters = _validated_retry_cooldown_parameters(command.parameters)
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [parameters["task_cid"]],
+            ).fetchall()
+            if len(task_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown task authority is absent or ambiguous"
+                )
+            task_row = task_rows[0]
+            try:
+                task_body = json.loads(str(task_row[2] or "{}"))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown task receipt is malformed"
+                ) from exc
+            receipt = (
+                task_body.get("completion_receipt")
+                if isinstance(task_body, Mapping)
+                else None
+            )
+            receipt_values = dict(receipt) if isinstance(receipt, Mapping) else {}
+            exact_receipt = {
+                "claim_id": parameters["claim_id"],
+                "attempt_id": parameters["attempt_id"],
+                "attempt_number": parameters["attempt_number"],
+                "lease_id": parameters["lease_id"],
+                "owner_session_id": parameters["owner_session_id"],
+                "fencing_token": parameters["fencing_token"],
+                "fence_epoch": parameters["fence_epoch"],
+            }
+            receipt_operation = str(receipt_values.get("operation") or "")
+            if parameters["expected_task_status"] == "in_progress":
+                reservation_matches = False
+                if receipt_operation == "database_claim":
+                    _validated_database_claim_process_attestation(
+                        receipt_values
+                    )
+                    reservation_matches = bool(
+                        receipt_values.get("claim_phase_schema")
+                        == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                        and _strict_scalar_equal(
+                            receipt_values.get("claimed_from_revision"),
+                            parameters["expected_task_revision"] - 1,
+                        )
+                    )
+                admission_matches = False
+                if receipt_operation == "database_attempt_admitted":
+                    _validated_database_claim_process_attestation(
+                        receipt_values
+                    )
+                    admission_matches = bool(
+                        receipt_values.get("claim_phase_schema")
+                        == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                        and _strict_scalar_equal(
+                            receipt_values.get("admitted_from_revision"),
+                            parameters["expected_task_revision"] - 1,
+                        )
+                    )
+                receipt_state_matches = bool(
+                    reservation_matches
+                    or admission_matches
+                )
+            elif parameters["expected_task_status"] == "retrying":
+                receipt_state_matches = bool(
+                    receipt_operation in TYPED_RETRYING_RECEIPT_OPERATIONS
+                    and _strict_scalar_equal(
+                        receipt_values.get("control_expected_revision"),
+                        parameters["expected_task_revision"],
+                    )
+                    and _strict_scalar_equal(
+                        receipt_values.get("queue_reason"),
+                        parameters["reason"],
+                    )
+                    and _strict_scalar_equal(
+                        receipt_values.get("backoff_ms"),
+                        parameters["delay_ms"],
+                    )
+                    and _strict_scalar_equal(
+                        receipt_values.get("retry_not_before_ms"),
+                        parameters["retry_not_before_ms"],
+                    )
+                )
+            else:
+                receipt_state_matches = bool(
+                    receipt_operation
+                    in {
+                        "database_portal_terminal_failure",
+                        "database_portal_typed_deferral_budget_exhausted",
+                    }
+                    and receipt_values.get("retryable") is False
+                    and type(receipt_values.get("control_expected_status"))
+                    is str
+                    and receipt_values["control_expected_status"]
+                    in {"in_progress", "retrying"}
+                    and _strict_scalar_equal(
+                        receipt_values.get("control_expected_revision"),
+                        parameters["expected_task_revision"] - 1,
+                    )
+                )
+            if (
+                str(task_row[0] or "").strip().lower()
+                != parameters["expected_task_status"]
+                or int(task_row[1])
+                != (
+                    parameters["expected_task_revision"] + 1
+                    if parameters["expected_task_status"] == "retrying"
+                    else parameters["expected_task_revision"]
+                )
+                or not isinstance(receipt, Mapping)
+                or not receipt_state_matches
+                or any(
+                    not _strict_scalar_equal(receipt_values.get(name), expected)
+                    for name, expected in exact_receipt.items()
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown claim or task revision authority is stale"
+                )
+            queue_rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [parameters["task_cid"]],
+            ).fetchall()
+            if len(queue_rows) > 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown queue authority is ambiguous"
+            )
+            prior_queue: dict[str, Any] = {}
+            if queue_rows:
+                validated_prior = _validated_stored_retry_cooldown(
+                    queue_rows[0],
+                    task_cid=parameters["task_cid"],
+                )
+                prior_queue = {
+                    **validated_prior,
+                    "claim_id": validated_prior["claim_cid"],
+                    "attempt_number": validated_prior["attempt"],
+                }
+            expected_queue_revision = parameters["expected_queue_revision"]
+            expected_queue_attempt = parameters["expected_queue_attempt"]
+            if (
+                (expected_queue_revision == -1 and prior_queue)
+                or (expected_queue_revision >= 0 and not prior_queue)
+                or (
+                    prior_queue
+                    and (
+                        prior_queue["task_cid"] != parameters["task_cid"]
+                        or prior_queue["revision"] != expected_queue_revision
+                        or prior_queue["attempt_number"]
+                        != expected_queue_attempt
+                        or prior_queue["attempt_number"]
+                        >= parameters["attempt_number"]
+                        or prior_queue["extension_schema"]
+                        != TYPED_RETRY_COOLDOWN_SCHEMA
+                        or not isinstance(prior_queue["extension"], Mapping)
+                        or prior_queue["extension"].get("schema")
+                        != TYPED_RETRY_COOLDOWN_SCHEMA
+                        or prior_queue["extension"].get("task_cid")
+                        != parameters["task_cid"]
+                        or prior_queue["extension"].get("claim_id")
+                        != prior_queue["claim_id"]
+                        or prior_queue["extension"].get("attempt_number")
+                        != prior_queue["attempt_number"]
+                    )
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown expected queue absence/revision is stale"
+                )
+            return {
+                "operation": operation,
+                "task": {
+                    "task_cid": parameters["task_cid"],
+                    "status": str(task_row[0]),
+                    "revision": int(task_row[1]),
+                    "receipt": receipt_values,
+                },
+                "prior_queue": prior_queue,
+            }
         if operation not in {
             "supervisor.runtime.attest",
             "supervisor.transition",
@@ -2700,6 +4420,125 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "task status mutation differs from the admitted command"
                 )
+        elif name == "executor_cas_task_status_receipt":
+            expected_task_revision = command.parameters.get(
+                "expected_task_revision"
+            )
+            expected = {
+                "task_cid": command.parameters.get("task_cid"),
+                "expected_task_revision": expected_task_revision,
+                "new_revision": (
+                    expected_task_revision + 1
+                    if isinstance(expected_task_revision, int)
+                    and not isinstance(expected_task_revision, bool)
+                    else None
+                ),
+                "status": command.parameters.get("status"),
+                "body_json": command.parameters.get("body_json"),
+            }
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "task status receipt mutation differs from the admitted command"
+                )
+        elif name == "executor_insert_validation_run":
+            expected = {
+                "run_id": command.parameters.get("run_id"),
+                "task_cid": command.parameters.get("task_cid"),
+                "attempt_id": command.parameters.get("attempt_id"),
+                "started_at": command.parameters.get("started_at"),
+                "finished_at": command.parameters.get("finished_at"),
+                "status": command.parameters.get("outcome"),
+                "command_digest": command.parameters.get("command_digest"),
+                "body_json": command.parameters.get("run_body_json"),
+            }
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "validation run mutation differs from the admitted command"
+                )
+        elif name == "executor_insert_validation_result":
+            expected = {
+                "result_id": command.parameters.get("result_id"),
+                "run_id": command.parameters.get("run_id"),
+                "task_cid": command.parameters.get("task_cid"),
+                "ordinal": 0,
+                "outcome": command.parameters.get("outcome"),
+                "evidence_digest": command.parameters.get("evidence_digest"),
+                "body_json": command.parameters.get("result_body_json"),
+            }
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "validation result mutation differs from the admitted command"
+                )
+        elif name == "executor_insert_validation_evidence":
+            expected = {
+                "evidence_id": command.parameters.get("evidence_id"),
+                "parent_evidence_id": "",
+                "task_cid": command.parameters.get("task_cid"),
+                "evidence_kind": "validation",
+                "digest": command.parameters.get("evidence_digest"),
+                "created_at": command.parameters.get("finished_at"),
+                "body_json": command.parameters.get("evidence_body_json"),
+            }
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "validation evidence mutation differs from the admitted command"
+                )
+        elif name in {
+            "executor_insert_retry_cooldown",
+            "executor_update_retry_cooldown",
+        }:
+            values = _validated_retry_mutation_parameters(command.parameters)
+            expected_queue_revision = values["expected_queue_revision"]
+            common = {
+                "task_cid": values["task_cid"],
+                "claim_id": values["claim_id"],
+                "resolution_cid": values["resolution_cid"],
+                "claimant_did": values["owner_session_id"],
+                "logical_epoch": values["fence_epoch"],
+                "fencing_token": values["fencing_token"],
+                "expires_at_ms": 0,
+                "attempt_number": values["attempt_number"],
+                "state": "released",
+                "started_at_ms": values["started_at_ms"],
+                "reason": values["reason"],
+                "retry_not_before_ms": values["retry_not_before_ms"],
+                "owner_session_id": values["owner_session_id"],
+                "fence_epoch": values["fence_epoch"],
+                "new_queue_revision": (
+                    1
+                    if expected_queue_revision == -1
+                    else expected_queue_revision + 1
+                ),
+                "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+                "extension_json": values["extension_json"],
+            }
+            expected = (
+                {
+                    **common,
+                    "expected_queue_revision_for_insert": -1,
+                }
+                if name == "executor_insert_retry_cooldown"
+                else {
+                    **common,
+                    "expected_queue_revision": expected_queue_revision,
+                    "expected_queue_attempt": values["expected_queue_attempt"],
+                    "new_attempt_guard": values["attempt_number"],
+                    "expected_existing_extension_schema": (
+                        TYPED_RETRY_COOLDOWN_SCHEMA
+                    ),
+                }
+            )
+            if (
+                (name == "executor_insert_retry_cooldown")
+                != (expected_queue_revision == -1)
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown mutation kind differs from queue presence"
+                )
+            if any(bound.get(field) != value for field, value in expected.items()):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown mutation differs from the admitted command"
+                )
         manifest.append((name, bound))
 
     def _validate_transaction_manifest(
@@ -2809,6 +4648,271 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "semantic mutation differs from owner-resolved authority"
                 )
+
+        if operation == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
+            values = dict(authority["cooldown_parameters"])
+            expected_revision = int(authority["expected_revision"])
+            cooldown_mutation = one("executor_insert_retry_cooldown")
+            if by_name.get("executor_update_retry_cooldown"):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery cannot replace a cooldown row"
+                )
+            exact(
+                one("executor_cas_task_status_receipt"),
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": expected_revision + 1,
+                    "status": "retrying",
+                    "body_json": authority["body_json"],
+                },
+            )
+            exact(
+                cooldown_mutation,
+                {
+                    "task_cid": values["task_cid"],
+                    "claim_id": values["claim_id"],
+                    "resolution_cid": values["resolution_cid"],
+                    "claimant_did": values["owner_session_id"],
+                    "logical_epoch": values["fence_epoch"],
+                    "fencing_token": values["fencing_token"],
+                    "expires_at_ms": 0,
+                    "attempt_number": values["attempt_number"],
+                    "state": "released",
+                    "started_at_ms": values["started_at_ms"],
+                    "reason": values["reason"],
+                    "retry_not_before_ms": values[
+                        "retry_not_before_ms"
+                    ],
+                    "owner_session_id": values["owner_session_id"],
+                    "fence_epoch": values["fence_epoch"],
+                    "new_queue_revision": 1,
+                    "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+                    "extension_json": values["extension_json"],
+                    "expected_queue_revision_for_insert": -1,
+                },
+            )
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            observed_task = (
+                tuple(task_rows[0][index] for index in range(3))
+                if len(task_rows) == 1
+                else ()
+            )
+            if observed_task != (
+                "retrying",
+                expected_revision + 1,
+                authority["body_json"],
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery task post-state differs"
+                )
+            queue_rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            expected_queue = (
+                values["task_cid"],
+                values["claim_id"],
+                values["resolution_cid"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                values["fencing_token"],
+                0,
+                values["attempt_number"],
+                "released",
+                values["started_at_ms"],
+                values["reason"],
+                values["retry_not_before_ms"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                1,
+                TYPED_RETRY_COOLDOWN_SCHEMA,
+                values["extension_json"],
+            )
+            observed_queue = (
+                tuple(
+                    queue_rows[0][index]
+                    for index in range(len(expected_queue))
+                )
+                if len(queue_rows) == 1
+                else ()
+            )
+            if observed_queue != expected_queue:
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery cooldown post-state differs"
+                )
+            return
+
+        if operation == "task.database.claim.phase":
+            mutation = one("executor_cas_task_status_receipt")
+            expected_revision = int(authority["expected_revision"])
+            exact(
+                mutation,
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": expected_revision + 1,
+                    "status": "in_progress",
+                    "body_json": authority["body_json"],
+                },
+            )
+            rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            observed_row = (
+                tuple(rows[0][index] for index in range(3))
+                if len(rows) == 1
+                else ()
+            )
+            if observed_row != (
+                "in_progress",
+                expected_revision + 1,
+                authority["body_json"],
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "typed database claim phase post-state differs"
+                )
+            return
+
+        if operation == "task.database.strict_resume_rejection":
+            mutation = one("executor_cas_task_status_receipt")
+            expected_revision = int(authority["expected_revision"])
+            exact(
+                mutation,
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": expected_revision + 1,
+                    "status": authority["status"],
+                    "body_json": authority["body_json"],
+                },
+            )
+            rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            observed_row = (
+                tuple(rows[0][index] for index in range(3))
+                if len(rows) == 1
+                else ()
+            )
+            if observed_row != (
+                authority["status"],
+                expected_revision + 1,
+                authority["body_json"],
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "typed strict-resume rejection post-state differs"
+                )
+            return
+
+        if operation == "task.retry.cooldown.record":
+            values = _validated_retry_cooldown_parameters(command.parameters)
+            prior_queue = dict(authority.get("prior_queue") or {})
+            expected_mutation = (
+                "executor_update_retry_cooldown"
+                if prior_queue
+                else "executor_insert_retry_cooldown"
+            )
+            alternate = (
+                "executor_insert_retry_cooldown"
+                if prior_queue
+                else "executor_update_retry_cooldown"
+            )
+            mutation = one(expected_mutation)
+            if by_name.get(alternate):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown transaction contains both mutation roles"
+                )
+            task = dict(authority.get("task") or {})
+            authoritative_task_revision = (
+                values["expected_task_revision"] + 1
+                if values["expected_task_status"] == "retrying"
+                else values["expected_task_revision"]
+            )
+            if (
+                task.get("task_cid") != values["task_cid"]
+                or task.get("status") != values["expected_task_status"]
+                or task.get("revision") != authoritative_task_revision
+                or values["expected_queue_revision"]
+                != (prior_queue.get("revision") if prior_queue else -1)
+                or values["expected_queue_attempt"]
+                != (prior_queue.get("attempt_number") if prior_queue else 0)
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown semantic authority changed before commit"
+                )
+            # The per-operation manifest checks every bound parameter.  The
+            # semantic pass additionally proves that exactly that mutation is
+            # now the one authoritative queue row before commit.
+            if mutation.get("task_cid") != values["task_cid"]:
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown mutation task differs from authority"
+                )
+            rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            expected_revision = (
+                1 if not prior_queue else int(prior_queue["revision"]) + 1
+            )
+            if len(rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown post-state is absent or ambiguous"
+                )
+            row = rows[0]
+            expected_row = (
+                values["task_cid"],
+                values["claim_id"],
+                values["resolution_cid"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                values["fencing_token"],
+                0,
+                values["attempt_number"],
+                "released",
+                values["started_at_ms"],
+                values["reason"],
+                values["retry_not_before_ms"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                expected_revision,
+                TYPED_RETRY_COOLDOWN_SCHEMA,
+                values["extension_json"],
+            )
+            observed_row = tuple(row[index] for index in range(len(expected_row)))
+            if observed_row != expected_row:
+                raise TypedStateOwnerAuthorizationError(
+                    "retry cooldown post-state differs from its admitted receipt"
+                )
+            return
 
         scope = dict(authority.get("scope") or {})
         if operation == "supervisor.transition":
@@ -3436,7 +5540,9 @@ class TypedStateOwnerConnection:
 
     def commit(self) -> None:
         if not self._active:
-            return
+            raise TypedStateOwnerProtocolError(
+                "typed owner commit requires an active transaction"
+            )
         self._request("commit")
         self._active = False
         self._prepared_command = None
@@ -3515,6 +5621,25 @@ class TypedStateOwnerConnection:
             return response
 
 
+def compact_default_owner_socket_path(
+    candidate: Path | str,
+    *,
+    identity: Path | str,
+) -> Path:
+    """Keep an owner-selected default within portable ``AF_UNIX`` limits."""
+
+    path = Path(candidate).expanduser().resolve(strict=False)
+    if len(os.fsencode(path)) <= _SAFE_UNIX_SOCKET_PATH_BYTES:
+        return path
+    identity_path = Path(identity).expanduser().resolve(strict=False)
+    store_digest = hashlib.sha256(os.fsencode(identity_path)).hexdigest()[:32]
+    return (
+        Path("/tmp")
+        / f"{_COMPACT_SOCKET_ROOT_PREFIX}-{os.geteuid()}"
+        / f"{store_digest}.sock"
+    )
+
+
 def typed_owner_socket_path(store_id: str, explicit: str = "") -> Path:
     """Resolve the launcher-controlled socket; never accept a database path payload."""
 
@@ -3524,6 +5649,7 @@ def typed_owner_socket_path(store_id: str, explicit: str = "") -> Path:
     else:
         store = Path(str(store_id or "")).expanduser().resolve(strict=False)
         path = store.parent / "quack-owner" / TYPED_STATE_OWNER_SOCKET_FILENAME
+        path = compact_default_owner_socket_path(path, identity=store)
     return path
 
 
@@ -3559,6 +5685,9 @@ __all__ = [
     "TYPED_STATE_OWNER_SOCKET_FILENAME",
     "TYPED_STATE_OWNER_TOKEN_ENV",
     "TYPED_STATE_OWNER_TOKEN_FILENAME",
+    "TYPED_RETRY_COOLDOWN_SCHEMA",
+    "compact_default_owner_socket_path",
+    "TYPED_TASK_STATUS_VOCABULARY",
     "TypedOwnerResult",
     "TypedStateOwnerAuthorizationError",
     "TypedStateOwnerConnection",

@@ -3840,6 +3840,32 @@ class DatabasePortalExecutionBridge:
     ) -> tuple[str, int] | None:
         """Return exact Portal deferral data without parsing reason text."""
 
+        implementation = result.get("implementation_result")
+        if (
+            isinstance(implementation, Mapping)
+            and implementation.get("deferred") is True
+            and str(implementation.get("reason") or "")
+            == "external_protected_recovery_owner_active"
+        ):
+            # A verified-live paired supervisor is a closed pre-provider
+            # wait.  Do not collapse it into the outer unchanged
+            # ``external_protected_checkout_recovery_required`` shortcut.
+            raw_backoff = implementation.get("backoff_seconds")
+            if (
+                isinstance(raw_backoff, bool)
+                or not isinstance(raw_backoff, int)
+                or raw_backoff < 0
+                or raw_backoff > _MAX_DATABASE_PORTAL_BACKOFF_SECONDS
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal verified-live recovery deferral returned an "
+                    "invalid backoff_seconds value"
+                )
+            return (
+                "external_protected_recovery_owner_active",
+                int(raw_backoff),
+            )
+
         blocked_reason = str(result.get("reason") or "").strip()
         if (
             result.get("blocked") is True
@@ -3871,7 +3897,6 @@ class DatabasePortalExecutionBridge:
                     reason or "external_protected_checkout_recovery_required",
                     int(raw_backoff),
                 )
-        implementation = result.get("implementation_result")
         if not isinstance(implementation, Mapping):
             return None
         if (
@@ -6295,7 +6320,8 @@ class DatabasePortalExecutionBridge:
         if seed is None:
             return None
         if (
-            status_receipt.get("operation") != "database_claim"
+            status_receipt.get("operation")
+            not in {"database_claim", "database_attempt_admitted"}
             or status_receipt.get("attempt_id") != str(attempt.attempt_id)
             or status_receipt.get("claim_id") != str(attempt.claim_id)
             or status_receipt.get("attempt_number")
@@ -6536,10 +6562,56 @@ class DatabasePortalExecutionBridge:
         receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
         return receipt
 
+    def _execution_route_binding(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+    ) -> dict[str, Any]:
+        """Recover and validate the route fixed before the shared claim CAS."""
+
+        body = getattr(attempt, "body", None)
+        raw = (
+            body.get("execution_route_binding")
+            if isinstance(body, Mapping)
+            else None
+        )
+        policy = getattr(self.task_source, "execution_route_policy", None)
+        validate = getattr(
+            self.task_source,
+            "validate_execution_route_binding",
+            None,
+        )
+        if raw is None and policy is None:
+            return {}
+        if not isinstance(raw, Mapping) or not callable(validate):
+            raise DatabasePortalBridgeError(
+                "database attempt has no valid launch execution-route binding"
+            )
+        try:
+            validated = validate(
+                raw,
+                task=record,
+                allow_claim_revision=True,
+            )
+        except Exception as exc:
+            raise DatabasePortalBridgeError(
+                "database attempt execution-route binding is no longer authoritative"
+            ) from exc
+        if not isinstance(validated, Mapping) or not validated:
+            raise DatabasePortalBridgeError(
+                "database attempt execution-route validation returned no binding"
+            )
+        return dict(validated)
+
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
         record = self._record_for_attempt(self.task_source, attempt)
+        execution_route_binding = self._execution_route_binding(
+            attempt=attempt,
+            record=record,
+        )
         paths, binding = self._ensure_attempt_projection(attempt, record)
         self._initialize_validation_retry_seed(
             attempt=attempt,
@@ -6556,6 +6628,17 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "portal_factory did not return a Portal-compatible daemon"
             )
+        if execution_route_binding:
+            bind_route = getattr(
+                daemon,
+                "bind_launch_task_execution_route",
+                None,
+            )
+            if not callable(bind_route):
+                raise DatabasePortalBridgeError(
+                    "Portal daemon cannot bind the admitted task execution route"
+                )
+            bind_route(execution_route_binding)
         try:
             for _pass_index in range(self.max_passes):
                 projection = self._verify_projection(paths, binding)

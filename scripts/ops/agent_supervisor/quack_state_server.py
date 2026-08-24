@@ -271,7 +271,7 @@ def _serve_until_stop(server: Any) -> dict[str, Any]:
             # The exclusive owner is also the sole executor for authenticated,
             # closed mutation bundles.  Keep each pass bounded so stop and
             # readiness control remain responsive.
-            server.process_mutation_inbox(max_requests=32)
+            server.service_mutation_inbox(max_requests=32)
             time.sleep(0.25)
         return server.stop()
     finally:

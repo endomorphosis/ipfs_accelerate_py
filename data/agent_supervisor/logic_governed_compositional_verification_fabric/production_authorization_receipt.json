@@ -1,0 +1,35 @@
+{
+  "depends_on_lgcvf_121": true,
+  "depends_on_lgcvf_122": true,
+  "expires_at": "2027-08-23T00:00:00+00:00",
+  "external_qualification_receipt_cid": "baguqeerac4pga2vegbcgfnr6pbjjvff52sn6hfewkssmsuync5mmqetwpeuq",
+  "issued_at": "2026-08-23T21:36:51+00:00",
+  "lgswf_006_reused": false,
+  "limitations": [
+    "production remains unauthorized",
+    "release remains not qualified",
+    "live docker isolation TCB is not admitted",
+    "Quack multi-writer is not qualified"
+  ],
+  "operator": {
+    "identity": "barberb-operator",
+    "role": "sole-rd-engineer"
+  },
+  "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
+  "production_authorized": false,
+  "receipt_cid": "baguqeeraxvlfmmof4nbhesvrn3nhzy4n2dibk75pdkhi5gv4umw23zz6akca",
+  "release_report_sha256": "sha256:ab1edfa3fc46fad6318b6ea66c428bd542d552a1a1d8e3a715f9232fdb0e9bb9",
+  "schema": "lgcvf-production-authorization-receipt@1",
+  "scope": "Authorize this merged checkout as the R&D working tree only.",
+  "source_revisions": {
+    "ipfs_accelerate_py": {
+      "head": "b32c7968fbd8e78f6c25cb65490aaa337348dfd7",
+      "tree": "d13edb6095659e40340570691d070ce1ab03b93f"
+    },
+    "ipfs_datasets_py": {
+      "gitlink": "66a02063496fd200f2372b3083e376f1978c6be1",
+      "head": "66a02063496fd200f2372b3083e376f1978c6be1",
+      "tree": "11d9c74504512e45c3ccc78d55e0e2f25d2a9a92"
+    }
+  }
+}

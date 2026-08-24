@@ -36,6 +36,11 @@ from ..planning.deterministic_doctor_transaction import (
     DoctorTransactionReport,
 )
 from ..proof.formal_verification_contracts import content_identity
+from ..planning.obligation_graph_compiler import (
+    PlannerDoctorSemanticDecision,
+    SemanticDischargeEvidence,
+    apply_semantic_discharge,
+)
 from ..proof.security_contract_analysis import (
     FixedPointSecurityReceipt,
     FlowEdge,
@@ -1691,6 +1696,7 @@ __all__ = [
     "default_reprove",
     "default_security",
     "default_static_checks",
+    "evaluate_live_semantic_discharge",
     "load_live_candidate_snapshot",
     "reject_prebuilt_completion",
     "run_live_doctor_fixed_point",

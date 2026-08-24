@@ -1136,6 +1136,7 @@ class MergeTrain:
                 "max merge lock deferrals must fit the durable deferral history"
             )
         self.merge_callback = merge_callback
+        self._allow_post_merge_declared_output_callback = False
         self.decision_runtime = decision_runtime
         self.decision_runtime_cancellation = decision_runtime_cancellation
         self._last_merge_runtime_decision: Any = None
@@ -3415,131 +3416,142 @@ class MergeTrain:
         allow_declared_output_recovery = bool(
             allow_post_merge_declared_output_recovery and exact_request_id
         )
-        with self._consumer_lease() as acquired:
-            if not acquired:
-                return None
-            self._recover_abandoned_claims()
-            self._cleanup_abandoned_worktrees()
-
-            selected: MergeRequest | None = None
-            if exact_request_id:
-                request = get_request(exact_request_id)
-                if (
-                    not isinstance(request, MergeRequest)
-                    or request.request_id != exact_request_id
-                    or not predicate(request)
-                ):
+        previous_declared_output_callback = (
+            self._allow_post_merge_declared_output_callback
+        )
+        self._allow_post_merge_declared_output_callback = (
+            allow_declared_output_recovery
+        )
+        try:
+            with self._consumer_lease() as acquired:
+                if not acquired:
                     return None
-                if request.status == "pending":
+                self._recover_abandoned_claims()
+                self._cleanup_abandoned_worktrees()
+
+                selected: MergeRequest | None = None
+                if exact_request_id:
+                    request = get_request(exact_request_id)
                     if (
-                        self._pending_request_is_integrated_quarantine_revival(
-                            request,
-                            allow_post_merge_declared_output_recovery=(
-                                allow_declared_output_recovery
-                            ),
-                        )
-                        and self._quarantine_may_auto_recover(
-                            request,
-                            allow_post_merge_declared_output_recovery=(
-                                allow_declared_output_recovery
-                            ),
-                        )
+                        not isinstance(request, MergeRequest)
+                        or request.request_id != exact_request_id
+                        or not predicate(request)
                     ):
-                        selected = request
-                elif request.status == "quarantined":
-                    if self._quarantine_may_auto_recover(
-                        request,
-                        allow_post_merge_declared_output_recovery=(
-                            allow_declared_output_recovery
-                        ),
-                    ):
-                        revived = revive(
-                            request.request_id,
-                            reason=(
-                                "merge train proved quarantined candidate already "
-                                "integrated into exact target"
-                            ),
-                            reset_failures=True,
-                        )
+                        return None
+                    if request.status == "pending":
                         if (
-                            isinstance(revived, MergeRequest)
-                            and revived.status == "pending"
+                            self._pending_request_is_integrated_quarantine_revival(
+                                request,
+                                allow_post_merge_declared_output_recovery=(
+                                    allow_declared_output_recovery
+                                ),
+                            )
+                            and self._quarantine_may_auto_recover(
+                                request,
+                                allow_post_merge_declared_output_recovery=(
+                                    allow_declared_output_recovery
+                                ),
+                            )
                         ):
-                            selected = revived
-            else:
-                for request in pending_snapshot(
-                    limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT
-                ):
-                    if (
-                        self._pending_request_is_integrated_quarantine_revival(
-                            request
-                        )
-                        and predicate(request)
-                        and self._quarantine_may_auto_recover(request)
-                    ):
-                        selected = request
-                        break
-                if selected is None:
-                    for request in snapshot(
+                            selected = request
+                    elif request.status == "quarantined":
+                        if self._quarantine_may_auto_recover(
+                            request,
+                            allow_post_merge_declared_output_recovery=(
+                                allow_declared_output_recovery
+                            ),
+                        ):
+                            revived = revive(
+                                request.request_id,
+                                reason=(
+                                    "merge train proved quarantined candidate already "
+                                    "integrated into exact target"
+                                ),
+                                reset_failures=True,
+                            )
+                            if (
+                                isinstance(revived, MergeRequest)
+                                and revived.status == "pending"
+                            ):
+                                selected = revived
+                else:
+                    for request in pending_snapshot(
                         limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT
                     ):
                         if (
-                            not self._quarantine_may_auto_recover(request)
-                            or not predicate(request)
+                            self._pending_request_is_integrated_quarantine_revival(
+                                request
+                            )
+                            and predicate(request)
+                            and self._quarantine_may_auto_recover(request)
                         ):
-                            continue
-                        revived = revive(
-                            request.request_id,
-                            reason=(
-                                "merge train proved quarantined candidate already "
-                                "integrated into exact target"
-                            ),
-                            reset_failures=True,
+                            selected = request
+                            break
+                    if selected is None:
+                        for request in snapshot(
+                            limit=INTEGRATED_QUARANTINE_RECOVERY_LIMIT
+                        ):
+                            if (
+                                not self._quarantine_may_auto_recover(request)
+                                or not predicate(request)
+                            ):
+                                continue
+                            revived = revive(
+                                request.request_id,
+                                reason=(
+                                    "merge train proved quarantined candidate already "
+                                    "integrated into exact target"
+                                ),
+                                reset_failures=True,
+                            )
+                            if (
+                                isinstance(revived, MergeRequest)
+                                and revived.status == "pending"
+                            ):
+                                selected = revived
+                            break
+                if selected is None:
+                    return None
+                claimed = exact_claim(
+                    selected.request_id,
+                    consumer_id=self.owner_id,
+                )
+                if not isinstance(claimed, MergeRequest):
+                    return None
+
+                def process_claimed() -> dict[str, Any]:
+                    if (
+                        self.preflight_callback is not None
+                        or self.post_merge_validation is not None
+                        or self.post_merge_evidence is not None
+                    ):
+                        target = self._target_commit()
+                        preflight = self._run_preflight(
+                            claimed,
+                            target_commit=target,
                         )
-                        if (
-                            isinstance(revived, MergeRequest)
-                            and revived.status == "pending"
-                        ):
-                            selected = revived
-                        break
-            if selected is None:
-                return None
-            claimed = exact_claim(
-                selected.request_id,
-                consumer_id=self.owner_id,
-            )
-            if not isinstance(claimed, MergeRequest):
-                return None
+                        return self._process_after_preflight(claimed, preflight)
+                    return self._process_claimed(claimed)
 
-            def process_claimed() -> dict[str, Any]:
-                if (
-                    self.preflight_callback is not None
-                    or self.post_merge_validation is not None
-                    or self.post_merge_evidence is not None
-                ):
-                    target = self._target_commit()
-                    preflight = self._run_preflight(
-                        claimed,
-                        target_commit=target,
-                    )
-                    return self._process_after_preflight(claimed, preflight)
-                return self._process_claimed(claimed)
-
-            if processor_context is None:
-                result = process_claimed()
-            else:
-                # The context is entered only after this train owns the
-                # consumer lease and exact queue claim.  This lets callers
-                # construct stateful Portal adapters without a second daemon
-                # touching attempt state while the original train is live.
-                with processor_context(self):
+                if processor_context is None:
                     result = process_claimed()
-            if after_process is not None:
-                # Queue settlement, exact target requalification, and any
-                # external retry CAS can now be joined while no other merge
-                # train is able to advance the target.
-                after_process(claimed, result)
-            return result
+                else:
+                    # The context is entered only after this train owns the
+                    # consumer lease and exact queue claim.  This lets callers
+                    # construct stateful Portal adapters without a second daemon
+                    # touching attempt state while the original train is live.
+                    with processor_context(self):
+                        result = process_claimed()
+                if after_process is not None:
+                    # Queue settlement, exact target requalification, and any
+                    # external retry CAS can now be joined while no other merge
+                    # train is able to advance the target.
+                    after_process(claimed, result)
+                return result
+        finally:
+            self._allow_post_merge_declared_output_callback = (
+                previous_declared_output_callback
+            )
 
     def _worktree_disk_usage(self) -> tuple[int, int]:
         """Return allocated bytes and child count beneath the train root."""
@@ -3754,8 +3766,11 @@ class MergeTrain:
                 details={"target_branch": self.target_branch},
                 started_at=started_at,
             )
-        if self._portal_projection_invalid_metadata_already_on_target(
-            request
+        if (
+            not self._allow_post_merge_declared_output_callback
+            and self._portal_projection_invalid_metadata_already_on_target(
+                request
+            )
         ):
             # Empty cross-board authority metadata cannot complete a foreign
             # board, but the declared outputs are already on this target.

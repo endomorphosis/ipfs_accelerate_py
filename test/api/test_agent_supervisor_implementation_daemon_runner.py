@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import subprocess
 import sys
 from pathlib import Path
 
@@ -946,6 +947,113 @@ def test_build_portal_implementation_daemon_from_args_applies_defaults(tmp_path:
     assert context.state_path == tmp_path / "state" / "example_task_state.json"
     assert context.strategy_path == tmp_path / "state" / "example_strategy.json"
     assert context.events_path == tmp_path / "state" / "example_events.jsonl"
+
+
+def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_target(
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
+        bind_database_portal_execution_from_args,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "runner-recovery@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Runner Recovery Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "add", "base.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, check=True)
+
+    callbacks: dict[str, object] = {}
+
+    class BindingDaemon:
+        task_source = object()
+
+        @staticmethod
+        def bind_execution_callbacks(**values: object) -> None:
+            callbacks.update(values)
+
+        @staticmethod
+        def bind_post_merge_recovery(callback: object) -> None:
+            callbacks["post_merge_recovery"] = callback
+
+        @staticmethod
+        def bind_merge_train_recovery(**values: object) -> None:
+            callbacks["merge_train_recovery"] = values
+
+        @staticmethod
+        def _database_portal_evidence_digest(_value: object) -> str:
+            return "sha256:" + ("0" * 64)
+
+        @staticmethod
+        def recover_blocked_post_merge_declared_outputs(
+            _evidence: object,
+        ) -> dict[str, object]:
+            pytest.fail("empty recovery queue invoked database recovery")
+
+    class CapturingPortal:
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+
+    parsed = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded_exclusive",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--todo-path",
+            str(tmp_path / "board.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "lane-0",
+            "--merge-queue-dir",
+            str(tmp_path / "merge-queue"),
+            "--merge-target-branch",
+            "main",
+            "--implement",
+            "--once",
+        ]
+    )
+
+    daemon = BindingDaemon()
+    bridge = bind_database_portal_execution_from_args(
+        daemon,
+        parsed,
+        repo_root=repo,
+        portal_daemon_class=CapturingPortal,
+    )
+
+    assert bridge is not None
+    assert bridge.merge_queue is not None
+    assert bridge.merge_queue.require_target_binding is True
+    assert bridge.merge_queue.target_branch == "main"
+    assert callable(callbacks["post_merge_recovery"])
+    assert callbacks["merge_train_recovery"]["merge_target_branch"] == "main"
+    assert callbacks["merge_train_recovery"]["repo_root"] == repo
+    portal = bridge.portal_factory(
+        argparse.Namespace(
+            task_projection=tmp_path / "attempt" / "task-projection.md",
+            state=tmp_path / "attempt" / "portal-task-state.json",
+            strategy=tmp_path / "attempt" / "portal-strategy.json",
+            events=tmp_path / "attempt" / "portal-events.jsonl",
+            implementation_logs=tmp_path / "attempt" / "implementation-logs",
+        ),
+        "VRIF-010",
+    )
+    assert portal.kwargs["merge_queue"] is bridge.merge_queue
+    assert portal.kwargs["merge_target_branch"] == "main"
 
 
 def test_run_portal_implementation_daemon_loop_runs_hooks_once(caplog):

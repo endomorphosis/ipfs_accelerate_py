@@ -1,0 +1,47 @@
+{
+  "benchmark_report_cid": "baguqeerayonwmoq5jsor5lychqotjn343jkcb4vjp3fk6olrf5muwhyxd3ra",
+  "cohorts": {
+    "live_local_model_execution": "unavailable",
+    "live_remote_model_execution": "unavailable",
+    "production_authoritative_evidence": "unavailable"
+  },
+  "expires_at": "2027-08-23T00:00:00+00:00",
+  "issued_at": "2026-08-23T21:36:51+00:00",
+  "issuer": {
+    "identity": "barberb-operator",
+    "independence_statement": "Sole R&D engineer issuing current-root live observation, not a third-party audit.",
+    "not_candidate_author": true,
+    "not_model": true,
+    "not_supervisor": true
+  },
+  "limitations": [
+    "hermetic 113 is the admitted test cohort",
+    "docker CLI hash drifted from the sealed pin",
+    "no remote provider cohort was exercised",
+    "this is operator observation, not a production TCB admit"
+  ],
+  "multi_writer": {
+    "disposition": "unavailable",
+    "notes": "Embedded DuckDB remains the single writer; Quack is not qualified on this host.",
+    "quack_qualified": false
+  },
+  "passed": false,
+  "plan_cid": "baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq",
+  "production_authorized": false,
+  "provider_disclosure_policy": "local_cli_paths_and_hashes_only",
+  "qualification_result_cid": "baguqeera7hxs6osc7or4lflqrsc36jk3r5qsyh3sdroomqtqvdkm3csqassa",
+  "receipt_cid": "baguqeerac4pga2vegbcgfnr6pbjjvff52sn6hfewkssmsuync5mmqetwpeuq",
+  "release_qualified": false,
+  "schema": "lgcvf-external-qualification-receipt@1",
+  "source_revisions": {
+    "ipfs_accelerate_py": {
+      "head": "b32c7968fbd8e78f6c25cb65490aaa337348dfd7",
+      "tree": "d13edb6095659e40340570691d070ce1ab03b93f"
+    },
+    "ipfs_datasets_py": {
+      "gitlink": "66a02063496fd200f2372b3083e376f1978c6be1",
+      "head": "66a02063496fd200f2372b3083e376f1978c6be1",
+      "tree": "11d9c74504512e45c3ccc78d55e0e2f25d2a9a92"
+    }
+  }
+}

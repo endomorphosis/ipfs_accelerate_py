@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
-import threading
 from pathlib import Path
+import threading
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
@@ -14,9 +15,11 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBConnectionPolicyError,
     QuackTransportContentionError,
+    _qualify_quack_statement,
     is_quack_transport_target,
     open_quack_transport_connection,
     persist_quack_attach_token_vault,
+    quack_attach_lock_path,
     quack_token_vault_path,
     quack_transport_uri,
     reset_quack_transport_cache,
@@ -30,6 +33,24 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
 )
+
+
+def test_qualify_quack_statement_prefixes_unqualified_tables() -> None:
+    assert _qualify_quack_statement(
+        "SELECT task_cid FROM tasks WHERE task_cid = ?",
+        "control_plane",
+    ) == "SELECT task_cid FROM control_plane.tasks WHERE task_cid = ?"
+    assert _qualify_quack_statement(
+        "SELECT count(*) FROM control_plane.tasks",
+        "control_plane",
+    ) == "SELECT count(*) FROM control_plane.tasks"
+    assert _qualify_quack_statement(
+        "SELECT d.task_cid FROM task_dependencies d JOIN tasks t ON t.task_cid = d.task_cid",
+        "control_plane",
+    ) == (
+        "SELECT d.task_cid FROM control_plane.task_dependencies d "
+        "JOIN control_plane.tasks t ON t.task_cid = d.task_cid"
+    )
 
 
 def test_loopback_quack_uri_is_accepted() -> None:
@@ -51,6 +72,15 @@ def test_absolutized_quack_path_is_still_transport() -> None:
 def test_quack_transport_rejects_non_loopback() -> None:
     with pytest.raises(DuckDBConnectionPolicyError, match="non-loopback"):
         open_quack_transport_connection("quack:10.0.0.1:45123")
+
+
+def test_quack_attach_lock_path_follows_store_id(tmp_path: Path, monkeypatch) -> None:
+    store = tmp_path / "control.duckdb"
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(store))
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", raising=False)
+    assert quack_attach_lock_path("quack:127.0.0.1:41327") == (
+        store.resolve().parent / "quack-owner" / "attach.lock"
+    )
 
 
 def test_file_adapter_refuses_to_create_quack_named_database(tmp_path, monkeypatch) -> None:
@@ -276,6 +306,159 @@ def test_resolve_quack_attach_token_persists_missing_vault(
     assert vault.read_text(encoding="utf-8").strip() == "liveTok_value1234567890"
 
 
+def test_intent_repository_reuses_quack_read_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opens: list[object] = []
+
+    class _FakeConnection:
+        def execute(self, *_args: object, **_kwargs: object) -> object:
+            return type("R", (), {"fetchall": lambda self: []})()
+
+        def close(self) -> None:
+            return None
+
+        description = None
+
+        def fetchall(self) -> list[object]:
+            return []
+
+    def _fake_open(path: object, **_kwargs: object) -> _FakeConnection:
+        opens.append(path)
+        return _FakeConnection()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.open_duckdb_connection",
+        _fake_open,
+    )
+    repo = IntentRepository("quack:127.0.0.1:45123", install_schema=False)
+    with repo._connection():
+        pass
+    with repo._connection():
+        pass
+    assert opens == ["quack:127.0.0.1:45123"]
+    repo.close()
+
+
+def test_intent_repository_keeps_quack_session_after_authorization_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opens: list[object] = []
+    closed: list[int] = []
+
+    class _FakeConnection:
+        def execute(self, sql: str, *_args: object, **_kwargs: object) -> object:
+            if "boom" in str(sql).lower():
+                raise RuntimeError("Invalid Input Error: Authorization failed")
+            return type("R", (), {"fetchall": lambda self: []})()
+
+        def close(self) -> None:
+            closed.append(1)
+
+        description = None
+
+        def fetchall(self) -> list[object]:
+            return []
+
+    def _fake_open(path: object, **_kwargs: object) -> _FakeConnection:
+        opens.append(path)
+        return _FakeConnection()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.open_duckdb_connection",
+        _fake_open,
+    )
+    repo = IntentRepository("quack:127.0.0.1:45123", install_schema=False)
+    with repo._connection() as connection:
+        connection.execute("SELECT 1")
+    try:
+        with repo._connection() as connection:
+            connection.execute("SELECT boom FROM tasks")
+    except RuntimeError:
+        pass
+    with repo._connection() as connection:
+        connection.execute("SELECT 1")
+    assert opens == ["quack:127.0.0.1:45123"]
+    assert closed == []
+    repo.close()
+
+
+def test_intent_repository_reconnects_quack_after_authentication_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    opens: list[object] = []
+
+    class _FakeConnection:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def execute(self, sql: str, *_args: object, **_kwargs: object) -> object:
+            self.calls += 1
+            if self.calls > 1 and "count(*)" not in str(sql).lower():
+                raise RuntimeError("Invalid Input Error: Authentication failed")
+            return type("R", (), {"fetchall": lambda self: []})()
+
+        def close(self) -> None:
+            return None
+
+        description = None
+
+        def fetchall(self) -> list[object]:
+            return []
+
+    def _fake_open(path: object, **_kwargs: object) -> _FakeConnection:
+        opens.append(path)
+        return _FakeConnection()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository.open_duckdb_connection",
+        _fake_open,
+    )
+    repo = IntentRepository("quack:127.0.0.1:45123", install_schema=False)
+    with repo._connection() as connection:
+        connection.execute("SELECT 1")
+    try:
+        with repo._connection() as connection:
+            connection.execute("SELECT task_cid FROM tasks")
+    except RuntimeError:
+        pass
+    with repo._connection() as connection:
+        connection.execute("SELECT 1")
+    assert opens == ["quack:127.0.0.1:45123", "quack:127.0.0.1:45123"]
+    repo.close()
+
+
+def test_resolve_quack_attach_token_follows_env_secret_handle() -> None:
+    assert (
+        resolve_quack_attach_token(
+            "",
+            environment={
+                "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE": (
+                    "env://QUACK_TOKEN"
+                ),
+                "QUACK_TOKEN": "handle-target-token",
+            },
+        )
+        == "handle-target-token"
+    )
+    assert (
+        resolve_quack_attach_token(
+            "",
+            environment={
+                "IPFS_ACCELERATE_AGENT_QUACK_TOKEN": "direct-token",
+                "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE": (
+                    "env://QUACK_TOKEN"
+                ),
+                "QUACK_TOKEN": "handle-target-token",
+            },
+        )
+        == "direct-token"
+    )
+    assert resolve_quack_attach_token("explicit-token", environment={}) == (
+        "explicit-token"
+    )
+
+
 def test_persist_quack_attach_token_vault_does_not_overwrite(
     tmp_path, monkeypatch
 ) -> None:
@@ -308,6 +491,73 @@ def test_quack_attach_retries_authentication_failed_contention(monkeypatch) -> N
         connection = open_quack_transport_connection("quack:127.0.0.1:41347")
         assert attempts["n"] == 3
         assert connection._pooled is True
+    finally:
+        reset_quack_transport_cache()
+
+
+def test_quack_attach_releases_lock_before_retry_sleep(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    reset_quack_transport_cache()
+    lock_held = {"value": False}
+    held_during_sleep: list[bool] = []
+    attempts = {"n": 0}
+
+    @contextmanager
+    def fake_lock(*_args, **_kwargs):
+        lock_held["value"] = True
+        try:
+            yield
+        finally:
+            lock_held["value"] = False
+
+    def fake_sleep(_seconds: float) -> None:
+        held_during_sleep.append(lock_held["value"])
+
+    def fake_attach(uri: str, secret: str):
+        del uri, secret
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise RuntimeError("Invalid Input Error: Authentication failed")
+        return _FakeQuackRaw()
+
+    monkeypatch.setattr(ds, "exclusive_file_lock", fake_lock)
+    monkeypatch.setattr(ds.time, "sleep", fake_sleep)
+    monkeypatch.setattr(ds, "_attach_quack_once", fake_attach)
+    monkeypatch.setattr(ds, "resolve_quack_attach_token", lambda token="": "tok")
+    try:
+        connection = open_quack_transport_connection("quack:127.0.0.1:41347")
+        assert attempts["n"] == 3
+        assert held_during_sleep == [False, False]
+        assert connection._pooled is True
+    finally:
+        reset_quack_transport_cache()
+
+
+def test_quack_attach_lock_timeout_becomes_policy_error(monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as ds
+
+    reset_quack_transport_cache()
+    attaches = {"n": 0}
+
+    @contextmanager
+    def timeout_lock(*_args, **_kwargs):
+        raise TimeoutError("timed out acquiring DuckDB process lock: attach.lock")
+        yield
+
+    def fake_attach(uri: str, secret: str):
+        del uri, secret
+        attaches["n"] += 1
+        return _FakeQuackRaw()
+
+    monkeypatch.setattr(ds, "exclusive_file_lock", timeout_lock)
+    monkeypatch.setattr(ds, "_attach_quack_once", fake_attach)
+    monkeypatch.setattr(ds.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(ds, "resolve_quack_attach_token", lambda token="": "tok")
+    try:
+        with pytest.raises(DuckDBConnectionPolicyError, match="attach lock"):
+            open_quack_transport_connection("quack:127.0.0.1:41347")
+        assert attaches["n"] == 0
     finally:
         reset_quack_transport_cache()
 
@@ -781,6 +1031,7 @@ def test_apply_owner_command_payload_unstalls_without_client_sql(tmp_path) -> No
     reply = apply_owner_command_payload(
         connection,
         {"op": "board_unstall", "stale_seconds": 16_200},
+        environment={},
     )
     assert reply["ok"] is True
     assert reply["rowcount"] == 1
@@ -789,6 +1040,56 @@ def test_apply_owner_command_payload_unstalls_without_client_sql(tmp_path) -> No
         "SELECT status, revision FROM tasks WHERE task_alias = 'PCCE-021'"
     ).fetchone()
     assert tuple(status) == ("retrying", 10)
+
+
+def test_typed_policy_rejects_legacy_board_unstall_before_any_mutation(
+    tmp_path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        LEGACY_BOARD_UNSTALL_DISABLED,
+        LEGACY_BOARD_UNSTALL_POLICY_ENV,
+        apply_owner_command_payload,
+        owner_should_recycle_for_board_unstall,
+        request_owner_board_unstall,
+    )
+
+    class _NoMutationConnection:
+        def execute(self, *_args, **_kwargs):
+            raise AssertionError("typed policy reached raw owner SQL")
+
+    environment = {
+        LEGACY_BOARD_UNSTALL_POLICY_ENV: LEGACY_BOARD_UNSTALL_DISABLED,
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR": str(tmp_path / "mutations"),
+    }
+    with pytest.raises(
+        DuckDBConnectionPolicyError,
+        match="disabled for typed task authority",
+    ):
+        apply_owner_command_payload(
+            _NoMutationConnection(),
+            {"op": "board_unstall", "stale_seconds": 16_200},
+            environment=environment,
+        )
+
+    result = request_owner_board_unstall(
+        wait=False,
+        environment=environment,
+    )
+    assert result == {
+        "ok": False,
+        "requested": False,
+        "error": "legacy_board_unstall_disabled",
+    }
+    assert not (tmp_path / "mutations").exists()
+
+    bounce_dir = tmp_path / "old-owner-inbox"
+    bounce_dir.mkdir()
+    (bounce_dir / "board-unstall.bounce").write_text("{}\n", encoding="utf-8")
+    assert owner_should_recycle_for_board_unstall(
+        bounce_dir,
+        min_age_seconds=0,
+        environment=environment,
+    ) is False
 
 
 def test_request_owner_board_unstall_writes_inbox_without_waiting(

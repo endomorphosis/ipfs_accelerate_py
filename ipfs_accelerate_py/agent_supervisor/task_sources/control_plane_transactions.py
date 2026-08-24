@@ -673,16 +673,24 @@ class StateTransaction:
         try:
             self._connection.commit()
         except Exception as exc:
-            # Adapters without a working commit() can still accept SQL COMMIT.
+            # A failed commit may already mean that an exclusive typed owner
+            # rejected and rolled back the transaction.  Issuing a second SQL
+            # COMMIT can be a no-op on the now-inactive adapter and must never
+            # turn that rejection into an apparent successful commit.
             try:
-                self._connection.execute("COMMIT")
-            except Exception as sql_exc:
-                self._active = False
-                self._rolled_back = True
-                raise TransientTransactionError(
-                    f"failed to commit transaction: {exc}; {sql_exc}",
-                    details={"error": str(exc), "sql_error": str(sql_exc)},
-                ) from sql_exc
+                self._connection.rollback()
+            except Exception:
+                pass
+            self._active = False
+            self._rolled_back = True
+            if isinstance(exc, TransactionError):
+                raise
+            raise TransactionError(
+                f"failed to commit transaction: {exc}",
+                kind=classify_exception(exc),
+                retryable=is_retryable_exception(exc),
+                details={"error": str(exc)},
+            ) from exc
         self._active = False
         self._committed = True
 
@@ -1387,6 +1395,33 @@ class StateTransaction:
                 },
             )
         return new_revision
+
+    def execute_named_operation(
+        self,
+        operation: str,
+        parameters: Sequence[Any] | None = None,
+    ) -> Any:
+        """Execute one server-catalog operation inside the active transaction.
+
+        This surface is deliberately narrower than ``execute``: only a
+        connection that exposes the typed owner's immutable named-operation
+        catalog can service it.  Callers cannot contribute SQL or identifiers.
+        """
+
+        if not self.active:
+            raise TransactionError(
+                "named operation requires an active transaction",
+                kind=TransactionConflictKind.UNKNOWN,
+                retryable=False,
+            )
+        execute = getattr(self._connection, "execute_operation", None)
+        if not callable(execute):
+            raise TransactionError(
+                "connection has no typed named-operation surface",
+                kind=TransactionConflictKind.IDENTITY_MISMATCH,
+                retryable=False,
+            )
+        return execute(str(operation or ""), parameters)
 
     def execute_command(
         self,

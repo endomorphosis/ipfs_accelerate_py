@@ -484,3 +484,54 @@ def test_unrelated_terms_remain_unproved() -> None:
     receipt = prove_equality_under_theory(theory, "unrelated", "other")
     assert not receipt.proved
     assert receipt.status.value in {"unproved", "budget_exhausted"}
+
+
+def test_duplicate_redexes_replay_after_congruence() -> None:
+    theory = arith_theory()
+    proved = prove_equality_under_theory(
+        theory, "(* (+ x 0) (+ x 0))", "(* x x)"
+    )
+    assert proved.proved
+    assert proved.congruence_merges >= 1
+    replayed = replay_equality_rewrites(
+        proved.source_term, proved.replay_steps, theory
+    )
+    assert replayed == "(* x x)"
+    assert proved.independent_equivalence.startswith("passed")
+    _assert_available(proved, "congruence_rebuild", "extraction_replay")
+
+
+def test_all_enodes_in_eclass_are_ematched() -> None:
+    theory = DeclaredEqualityTheory(
+        theory_id="theory:two-enode@1",
+        review_refs=("review:equality_theory@1", "review:equality_rewrite@1"),
+        rules=(
+            EqualityRule(
+                rule_id="rule:plus-eq",
+                lhs="(+ y 0)",
+                rhs="(+ z 0)",
+                review_ref="review:equality_rewrite@1",
+                theory_id="theory:two-enode@1",
+            ),
+            EqualityRule(
+                rule_id="rule:add-zero-var",
+                lhs="(+ ?x 0)",
+                rhs="?x",
+                review_ref="review:equality_rewrite@1",
+                theory_id="theory:two-enode@1",
+            ),
+        ),
+        operator_costs={"+": 2, "y": 1, "z": 1, "0": 1},
+    )
+    # Target `z` is not present as a plus-redex until plus-eq inserts `(+ z 0)`
+    # into the same e-class as `(+ y 0)`. Proving `(+ y 0) ≡ z` therefore
+    # requires ematching every plus-node in that class, not just the first.
+    proved = prove_equality_under_theory(theory, "(+ y 0)", "z")
+    assert proved.proved
+    assert "rule:add-zero-var" in proved.applied_rule_ids
+    assert "rule:plus-eq" in proved.applied_rule_ids
+    replayed = replay_equality_rewrites(
+        proved.source_term, proved.replay_steps, theory
+    )
+    assert replayed == "z"
+    _assert_available(proved, "typed_eclasses", "congruence_rebuild", "extraction_replay")

@@ -2381,10 +2381,10 @@ def build_database_implementation_daemon_from_args(
         execution_slice_task_cids=getattr(
             parsed, "execution_slice_task_cid", ()
         ),
-        task_shard_count=int(getattr(parsed, "task_shard_count", 1)),
-        task_shard_index=int(getattr(parsed, "task_shard_index", 0)),
-        strict_task_sharding=bool(
-            getattr(parsed, "strict_task_sharding", False)
+        task_shard_count=getattr(parsed, "task_shard_count", 1),
+        task_shard_index=getattr(parsed, "task_shard_index", 0),
+        strict_task_sharding=getattr(
+            parsed, "strict_task_sharding", False
         ),
         idle_lane_work_stealing=str(
             getattr(parsed, "idle_lane_work_stealing", "") or ""

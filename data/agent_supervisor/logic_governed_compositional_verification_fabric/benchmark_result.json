@@ -7,10 +7,10 @@
     "production_authoritative_evidence"
   ],
   "execution_evidence": {
-    "artifact_cid": "baguqeerasmtc3hj7nedt4h34z4l2nuwgw6llhbmzgu7yupkjpy3zpwhlgcwq",
-    "artifact_verification_receipt_cid": "baguqeeravn26gcrrhhwhjcfmwlvguo3evt6dzzmuu454rnptkwkxnq7cfjnq",
+    "artifact_cid": "baguqeerargsvp5fu26sule2auysdnvqswg4yurz4vmwhep5owypqmslb5dca",
+    "artifact_verification_receipt_cid": "baguqeera2gtm2e4efmm4ucltjwfas57zwn6wm5qskozy733dnpaly56des6q",
     "fresh_execution_receipts_reproducible": false,
-    "vertical_result_cid": "baguqeeragyjdt3me6sw46t7pevkmke3i7xqvzdpuk4ggrg3r6fb2fnueolqa"
+    "vertical_result_cid": "baguqeerayjyzs2yvfmd56nlomg223y2csm5unulmzqqrgfurslc5avobq2va"
   },
   "interface": "LgcvfSymbolicDisplacementBenchmark@1",
   "limitations": [
@@ -21,16 +21,16 @@
   "overall_disposition": "partial",
   "paired_result": {
     "baseline": {
-      "context_tokens": 1205,
+      "context_tokens": 1408,
       "model_calls": 0,
-      "raw_source_bytes": 4819,
+      "raw_source_bytes": 5632,
       "tests_selected": 3,
       "verification_strategy": "raw-source-full-fixture"
     },
     "challenger": {
       "abstract_state_reused": 1,
       "capsule_reuse_count": 34,
-      "context_tokens": 548,
+      "context_tokens": 549,
       "deterministic_closures": 1,
       "model_calls": 0,
       "proof_test_reuse_bps": 10000,
@@ -41,7 +41,7 @@
     "cohort": "hermetic_local_execution",
     "comparison": {
       "accepted_patch_quality_equal": true,
-      "context_reduction_bps": 5452,
+      "context_reduction_bps": 6100,
       "critical_omissions_accepted": 0,
       "model_call_reduction_bps": 0,
       "safety_floor_violations": 0
@@ -59,15 +59,15 @@
     "model_invocation_count": 0,
     "note": "the raw-source baseline is a context/test-selection projection; separate baseline wall-time and resource execution is not measured",
     "policy_root": "policy:lgcvf-hermetic-deny-network@1",
-    "repository_base_commit": "5dc7a7b6712923303828438ba0b74381bccd8c66",
-    "repository_base_tree": "833882ebc9364e1da532bcf3f3794e724ff67207",
+    "repository_base_commit": "70c07f428ccaaa3c12ad6a9b6fe1e652793cdbc0",
+    "repository_base_tree": "77d38d8c7953868a676840d68c8e8145640740e8",
     "scope": "single_vertical_run_same_fixture_and_acceptance_oracle"
   },
   "production_authoritative": false,
   "production_authorized": false,
   "release_qualified": false,
-  "report_cid": "baguqeerah5rlyxahovwggpfv6hvukmleca5c3qrpukmswys6u63hvjpjghza",
-  "reproducible_projection_cid": "baguqeerafmcvv3yszair43dgqn4shvo2odjzziuqyyuxapsn77esp3qqouia",
+  "report_cid": "baguqeerayonwmoq5jsor5lychqotjn343jkcb4vjp3fk6olrf5muwhyxd3ra",
+  "reproducible_projection_cid": "baguqeeravl7vjs4wl77t2ytmml4nfq2iwudp5z6oi64newxmtv2exr7aiipa",
   "schema": "lgcvf-symbolic-displacement-benchmark@1",
   "task_class_coverage": {
     "missing": [],
@@ -120,7 +120,7 @@
     {
       "comparison": "at_least",
       "disposition": "met",
-      "observed": 5452,
+      "observed": 6100,
       "reason": "",
       "target": 5000,
       "threshold_id": "median_context_reduction_bps"
