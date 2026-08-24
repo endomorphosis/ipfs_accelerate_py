@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,6 +17,9 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     conflict_fingerprint,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DatabasePortalExecutionBridge,
 )
@@ -1213,6 +1217,7 @@ def test_portal_projection_cross_board_quarantine_revives_when_outputs_landed(
     assert quarantined is not None
     assert train._quarantined_candidate_is_integrated(quarantined) is False
     assert train._quarantine_auto_recovery_allowed(quarantined) is True
+    assert train.portal_declared_outputs_match_target(quarantined) is True
     assert train._quarantine_may_auto_recover(quarantined) is True
 
     processed: list[str] = []
@@ -1310,6 +1315,256 @@ def test_invalid_authority_metadata_quarantine_settles_when_outputs_on_target(
     completed = queue.get(request.request_id)
     assert completed is not None
     assert completed.status == "completed"
+
+
+def test_existing_declared_output_with_different_candidate_content_is_merged(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    _git(repo, "switch", "-c", "implementation/replace-output")
+    (repo / "base.txt").write_text("candidate output\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "replace declared output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    target_before = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/replace-output",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            "todo_path": str(
+                tmp_path / "attempts" / "replace" / "task-projection.md"
+            ),
+            "completion_task_cids": {"REF-040": "task:cid:ref-040"},
+            "manual_completion_authority_task_ids": [],
+            "manual_completion_authority_required_task_ids": [],
+            "manual_completion_authority_epoch_id": "",
+            "manual_completion_authority_revocation_generation": 0,
+            "manual_completion_authority_context_id": "baguqeera-invalid",
+            "task": {
+                "task_id": "REF-040",
+                "outputs": ["base.txt"],
+            },
+            "changed_submodule_paths": [],
+        },
+    )
+    train = MergeTrain(repo, queue)
+
+    assert train.portal_declared_outputs_match_target(request) is False
+    result = train.run_once()
+
+    assert result is not None
+    assert result.get("status") == "merged"
+    assert result.get("merged") is True
+    assert result.get("reason") != "declared_outputs_already_on_target"
+    assert result.get("mutation_short_circuited") is not True
+    assert _git(repo, "rev-parse", "HEAD") != target_before
+    assert (repo / "base.txt").read_text(encoding="utf-8") == (
+        "candidate output\n"
+    )
+    completed = queue.get(request.request_id)
+    assert completed is not None
+    assert completed.status == "completed"
+
+
+@pytest.mark.parametrize("mutation", ("mode", "deletion"))
+def test_declared_output_mode_and_deletion_differences_are_merged(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    repo = _repo(tmp_path)
+    branch = f"implementation/{mutation}-output"
+    _git(repo, "switch", "-c", branch)
+    if mutation == "mode":
+        (repo / "base.txt").chmod(0o755)
+        _git(repo, "add", "base.txt")
+    else:
+        (repo / "base.txt").unlink()
+        _git(repo, "add", "-u", "base.txt")
+    _git(repo, "commit", "-m", f"{mutation} declared output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name=branch,
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            "todo_path": str(
+                tmp_path / "attempts" / mutation / "task-projection.md"
+            ),
+            "completion_task_cids": {"REF-040": "task:cid:ref-040"},
+            "manual_completion_authority_task_ids": [],
+            "manual_completion_authority_required_task_ids": [],
+            "manual_completion_authority_epoch_id": "",
+            "manual_completion_authority_revocation_generation": 0,
+            "manual_completion_authority_context_id": "baguqeera-invalid",
+            "task": {
+                "task_id": "REF-040",
+                "outputs": ["base.txt"],
+            },
+            "changed_submodule_paths": [],
+        },
+    )
+    train = MergeTrain(repo, queue)
+
+    assert train.portal_declared_outputs_match_target(request) is False
+    result = train.run_once()
+
+    assert result is not None
+    assert result.get("status") == "merged"
+    assert result.get("reason") != "declared_outputs_already_on_target"
+    if mutation == "mode":
+        assert _git(repo, "ls-tree", "HEAD", "--", "base.txt").startswith(
+            "100755 blob "
+        )
+    else:
+        assert not (repo / "base.txt").exists()
+    completed = queue.get(request.request_id)
+    assert completed is not None
+    assert completed.status == "completed"
+
+
+def test_declared_output_comparison_is_config_independent_for_gitlinks(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    first_gitlink = _git(repo, "rev-parse", "HEAD")
+    second_gitlink = _git(
+        repo,
+        "commit-tree",
+        "HEAD^{tree}",
+        "-p",
+        "HEAD",
+        "-m",
+        "alternate gitlink object",
+    )
+    _git(
+        repo,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        f"160000,{first_gitlink},nested",
+    )
+    _git(repo, "commit", "-m", "target gitlink")
+    _git(repo, "switch", "-c", "implementation/gitlink-output")
+    _git(
+        repo,
+        "update-index",
+        "--cacheinfo",
+        f"160000,{second_gitlink},nested",
+    )
+    _git(repo, "commit", "-m", "candidate gitlink")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    _git(repo, "config", "diff.ignoreSubmodules", "all")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/gitlink-output",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={"task": {"outputs": ["nested"]}},
+    )
+    train = MergeTrain(repo, queue)
+
+    assert (
+        train.portal_declared_outputs_match_commit_state(
+            request,
+            _git(repo, "rev-parse", "main"),
+        )
+        is False
+    )
+
+
+@pytest.mark.parametrize(
+    "output",
+    ("missing.txt", "../escape.txt", "./base.txt", "base\\path.txt"),
+)
+def test_declared_output_comparison_rejects_unproved_or_noncanonical_paths(
+    tmp_path: Path,
+    output: str,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="main",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={"task": {"outputs": [output]}},
+    )
+    train = MergeTrain(repo, queue)
+
+    assert (
+        train.portal_declared_outputs_match_commit_state(request, candidate)
+        is None
+    )
+    assert train.portal_declared_outputs_match_target(request) is False
+
+
+def test_declared_output_and_ancestry_git_errors_remain_indeterminate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="main",
+        task_id="REF-040",
+        canonical_task_id="task:cid:ref-040",
+        commit_sha=candidate,
+        metadata={"task": {"outputs": ["base.txt"]}},
+    )
+    train = MergeTrain(repo, queue)
+    original_git = train._git
+
+    def fail_tree_read(*args: str, **kwargs: object) -> object:
+        if args and args[0] == "ls-tree":
+            return subprocess.CompletedProcess(
+                ["git", *args],
+                128,
+                stdout="",
+                stderr="fixture tree failure",
+            )
+        return original_git(*args, **kwargs)
+
+    monkeypatch.setattr(train, "_git", fail_tree_read)
+    assert (
+        train.portal_declared_outputs_match_commit_state(request, candidate)
+        is None
+    )
+
+    monkeypatch.setattr(
+        train,
+        "_git",
+        lambda *args, **_kwargs: subprocess.CompletedProcess(
+            ["git", *args],
+            128,
+            stdout="",
+            stderr="fixture ancestry failure",
+        ),
+    )
+    assert train._is_ancestor_state(candidate, candidate) is None
+    assert train._is_ancestor(candidate, candidate) is False
 
 
 def test_database_portal_retry_continues_merge_into_current_projection(
@@ -1563,6 +1818,221 @@ def test_same_projection_skips_stale_candidate_when_outputs_on_head(
         check=False,
     )
     assert side_probe.returncode != 0
+    assert "- Status: completed" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_false_completion_reopen_merges_and_seals_qualification_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    merge_queue_dir = tmp_path / "merge-queue"
+    task_cid = "task:cid:ref-040"
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:false-reopen",
+        claim_id="claim:false-reopen",
+        task_cid=task_cid,
+        attempt_number=1,
+    )
+    daemon, paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=merge_queue_dir,
+        attempt=attempt,
+        record=_database_projection_record(revision=2),
+    )
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/false-reopen")
+    (repo / "base.txt").write_text("candidate output\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "candidate declared output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    (repo / "target.txt").write_text("target advance\n", encoding="utf-8")
+    _git(repo, "add", "target.txt")
+    _git(repo, "commit", "-m", "advance target")
+    task = daemon._load_tasks()[0]
+    request, _queued = daemon._enqueue_merge_candidate(
+        branch_name="implementation/false-reopen",
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+    )
+    claimed = daemon.merge_queue.claim_pending_request(
+        request.request_id,
+        consumer_id="merge-train:false-shortcut-fixture",
+    )
+    assert claimed is not None
+    original_identity_check = daemon._declared_outputs_match_commits
+    monkeypatch.setattr(
+        daemon,
+        "_declared_outputs_match_commits",
+        lambda *_args, **_kwargs: True,
+    )
+    false_callback = daemon._merge_train_callback(claimed)
+    monkeypatch.setattr(
+        daemon,
+        "_declared_outputs_match_commits",
+        original_identity_check,
+    )
+    assert false_callback["reason"] == "declared_outputs_already_on_target"
+    assert false_callback["already_merged"] is True
+    assert "- Status: completed" in paths.task_projection.read_text(
+        encoding="utf-8"
+    )
+    false_target = _git(repo, "rev-parse", "HEAD")
+    daemon.merge_queue.complete(claimed)
+    completed = daemon.merge_queue.get(request.request_id)
+    assert completed is not None and completed.status == "completed"
+    false_receipt = {
+        "already_merged": True,
+        "canonical_task_id": completed.canonical_identity,
+        "commit_sha": candidate,
+        "distributed_publication_admission": {
+            "admitted": True,
+            "distributed": False,
+            "request_id": request.request_id,
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "distributed-lane-admission@1"
+            ),
+            "status": "local",
+        },
+        "finished_at": 2.0,
+        "integrated": True,
+        "merge_commit": false_target,
+        "merged": False,
+        "mutation_short_circuited": True,
+        "reason": "declared_outputs_already_on_target",
+        "request_id": request.request_id,
+        "started_at": 1.0,
+        "status": "already_merged",
+        "target_branch": "main",
+        "target_commit": false_target,
+        "task_id": "REF-040",
+    }
+    reopened = daemon.merge_queue.reopen_false_positive_completion(
+        completed,
+        completion_receipt=false_receipt,
+    )
+    assert reopened is not None and reopened.status == "pending"
+
+    validation_count = 0
+
+    def validation(
+        _workspace: Path,
+        validation_task: object,
+        log_path: Path,
+        *,
+        force_uncached: bool = False,
+    ) -> dict[str, object]:
+        nonlocal validation_count
+        validation_count += 1
+        assert validation_task.task_id == "REF-040"
+        assert force_uncached is True
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("false reopen qualification passed\n")
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [
+                {
+                    "validation_result_digest": "sha256:" + "a" * 64,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(daemon, "_run_validation_commands", validation)
+    crashed_train = MergeTrain(
+        repo,
+        daemon.merge_queue,
+        target_branch="main",
+        merge_callback=daemon._merge_train_callback,
+    )
+    crashed_claim = daemon.merge_queue.claim_pending_request(
+        reopened.request_id,
+        consumer_id=crashed_train.owner_id,
+    )
+    assert crashed_claim is not None
+    lost_result = daemon._merge_train_callback(crashed_claim)
+    assert lost_result["merged"] is True
+    assert lost_result.get("already_merged") is not True
+    assert lost_result["reason"] == "post_merge_declared_outputs_repaired"
+    integration_commit = str(lost_result["merge_commit"])
+    crashed_row = daemon.merge_queue.get(request.request_id)
+    assert crashed_row is not None and crashed_row.status == "processing"
+
+    (repo / "after-crash.txt").write_text(
+        "descendant target advance\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "after-crash.txt")
+    _git(repo, "commit", "-m", "advance target after crashed merge")
+    descendant_target = _git(repo, "rev-parse", "HEAD")
+
+    recovery_train = MergeTrain(
+        repo,
+        daemon.merge_queue,
+        target_branch="main",
+        merge_callback=daemon._merge_train_callback,
+    )
+
+    @contextmanager
+    def route_exact_recovery(train: MergeTrain) -> object:
+        shortcut = train._portal_projection_invalid_metadata_already_on_target
+        train._portal_projection_invalid_metadata_already_on_target = (
+            lambda _request: False
+        )
+        try:
+            yield
+        finally:
+            train._portal_projection_invalid_metadata_already_on_target = (
+                shortcut
+            )
+
+    result = recovery_train.recover_one_integrated_quarantine(
+        request_id=request.request_id,
+        processor_context=route_exact_recovery,
+        allow_post_merge_declared_output_recovery=True,
+    )
+
+    assert result is not None
+    assert result["status"] == "already_merged", result
+    assert "merge_result" in result, result
+    merge_result = result["merge_result"]
+    assert merge_result["reason"] == "post_merge_declared_outputs_repaired"
+    qualification = merge_result["post_merge_declared_output_repair"]
+    assert qualification["passed"] is True
+    assert qualification["qualification_kind"] == (
+        "false_positive_completion_reopen"
+    )
+    receipt = qualification["receipt"]
+    receipt_id = receipt.pop("receipt_id")
+    assert receipt_id == content_identity(receipt)
+    receipt["receipt_id"] = receipt_id
+    assert receipt["candidate_commit"] == candidate
+    assert receipt["failed_integration_commit"] == false_target
+    assert receipt["repair_parent_commit"] == false_target
+    assert receipt["repair_commit"] == descendant_target
+    assert qualification["integration_lineage"]["integration_commit"] == (
+        integration_commit
+    )
+    assert receipt["entries"][0]["path"] == "base.txt"
+    settled = daemon.merge_queue.get(request.request_id)
+    assert settled is not None and settled.status == "completed"
+    completion = settled.metadata["completion"]
+    assert completion["reason"] == "post_merge_declared_outputs_repaired"
+    assert completion["target_commit"] == receipt["repair_commit"]
+    assert completion["repair_receipt"] == receipt
+    assert validation_count == 2
+    assert (repo / "base.txt").read_text(encoding="utf-8") == (
+        "candidate output\n"
+    )
     assert "- Status: completed" in paths.task_projection.read_text(
         encoding="utf-8"
     )

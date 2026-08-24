@@ -12,6 +12,7 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.merge import merge_queue as merge_queue_module
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     _LEGACY_JSON_IMPORT_MARKER,
+    FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA,
     MergeQueue,
     MergeQueueFenceError,
     MergeQueueFullError,
@@ -773,6 +774,410 @@ def test_completion_requires_the_exact_current_claim_fence(tmp_path: Path, stale
     assert stored.claim_token == claimed.claim_token
     queue.complete(claimed, metadata={"validated": True})
     assert queue.get(pending.request_id).status == "completed"  # type: ignore[union-attr]
+
+
+def _false_positive_completion_receipt(request: MergeRequest) -> dict[str, object]:
+    target_commit = "f" * 40
+    started_at = float(request.enqueued_at) + 0.001
+    return {
+        "already_merged": True,
+        "canonical_task_id": request.canonical_identity,
+        "commit_sha": request.commit_sha,
+        "distributed_publication_admission": {
+            "admitted": True,
+            "distributed": False,
+            "request_id": request.request_id,
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "distributed-lane-admission@1"
+            ),
+            "status": "local",
+        },
+        "integrated": True,
+        "merge_commit": target_commit,
+        "merged": False,
+        "mutation_short_circuited": True,
+        "reason": "declared_outputs_already_on_target",
+        "request_id": request.request_id,
+        "started_at": started_at,
+        "status": "already_merged",
+        "target_branch": request.target_branch,
+        "target_commit": target_commit,
+        "task_id": request.task_id,
+        "finished_at": started_at + 0.001,
+    }
+
+
+def test_exact_false_positive_completion_can_be_reopened_once(
+    tmp_path: Path,
+) -> None:
+    queue = _bound_queue(tmp_path / "queue")
+    pending = _enqueue(queue, 0)
+    claimed = queue.dequeue(consumer_id="merge-train:false-positive")
+    assert claimed is not None
+    queue.complete(claimed)
+    completed = queue.get(pending.request_id)
+    assert completed is not None and completed.status == "completed"
+    receipt = _false_positive_completion_receipt(completed)
+
+    reopened = queue.reopen_false_positive_completion(
+        completed,
+        completion_receipt=receipt,
+    )
+
+    assert reopened is not None and reopened.status == "pending"
+    assert reopened.claim_generation == completed.claim_generation + 1
+    recovery = reopened.metadata["false_positive_completion_reopen"]
+    assert recovery["schema"] == FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA
+    assert recovery["reason"] == "declared_outputs_not_on_target"
+    assert recovery["previous_claim_generation"] == completed.claim_generation
+    assert recovery["train_receipt_id"].startswith("sha256:")
+    assert reopened.file_path is not None and reopened.file_path.exists()
+    assert completed.file_path is not None and not completed.file_path.exists()
+
+    replay = queue.reopen_false_positive_completion(
+        completed,
+        completion_receipt=receipt,
+    )
+    assert replay == reopened
+
+    replacement = queue.claim_pending_request(
+        reopened.request_id,
+        consumer_id="merge-train:replacement",
+    )
+    assert replacement is not None
+    queue.complete(replacement, metadata={"schema": "callback-completion@1"})
+    settled = queue.reopen_false_positive_completion(
+        completed,
+        completion_receipt=receipt,
+    )
+    assert settled is not None and settled.status == "completed"
+    assert settled.claim_generation == replacement.claim_generation + 1
+
+
+def test_false_positive_completion_reopen_verifies_optional_content_id(
+    tmp_path: Path,
+) -> None:
+    queue = _bound_queue(tmp_path / "queue")
+    pending = _enqueue(queue, 0)
+    claimed = queue.dequeue(consumer_id="merge-train:false-positive")
+    assert claimed is not None
+    queue.complete(claimed)
+    completed = queue.get(pending.request_id)
+    assert completed is not None
+    receipt = _false_positive_completion_receipt(completed)
+    receipt["receipt_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            receipt,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    reopened = queue.reopen_false_positive_completion(
+        completed,
+        completion_receipt=receipt,
+    )
+
+    assert reopened is not None and reopened.status == "pending"
+    forged = dict(receipt)
+    forged["receipt_id"] = "sha256:" + "0" * 64
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="content identity changed",
+    ):
+        queue.reopen_false_positive_completion(
+            completed,
+            completion_receipt=forged,
+        )
+    assert queue.get(pending.request_id) == reopened
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "extra_top_level",
+        "missing_started_at",
+        "extra_admission_field",
+        "foreign_admission_schema",
+        "nonlocal_admission_status",
+        "distributed_admission",
+        "nonfinite_started_at",
+        "reversed_timestamps",
+    ),
+)
+def test_false_positive_completion_reopen_rejects_nonexact_receipt_contract(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    queue = _bound_queue(tmp_path / "queue")
+    pending = _enqueue(queue, 0)
+    claimed = queue.dequeue(consumer_id="merge-train:false-positive")
+    assert claimed is not None
+    queue.complete(claimed)
+    completed = queue.get(pending.request_id)
+    assert completed is not None
+    receipt = _false_positive_completion_receipt(completed)
+    admission = receipt["distributed_publication_admission"]
+    assert isinstance(admission, dict)
+    if mutation == "extra_top_level":
+        receipt["unexpected"] = True
+    elif mutation == "missing_started_at":
+        del receipt["started_at"]
+    elif mutation == "extra_admission_field":
+        admission["duplicate"] = False
+    elif mutation == "foreign_admission_schema":
+        admission["schema"] = "distributed-lane-admission@forged"
+    elif mutation == "nonlocal_admission_status":
+        admission["status"] = "admitted"
+    elif mutation == "distributed_admission":
+        admission["distributed"] = True
+    elif mutation == "nonfinite_started_at":
+        receipt["started_at"] = float("nan")
+    elif mutation == "reversed_timestamps":
+        receipt["finished_at"] = float(receipt["started_at"]) - 1.0
+    else:  # pragma: no cover - the parameter list is closed above.
+        raise AssertionError(mutation)
+
+    with pytest.raises(MergeQueueIntegrityError):
+        queue.reopen_false_positive_completion(
+            completed,
+            completion_receipt=receipt,
+        )
+
+    assert queue.get(pending.request_id).status == "completed"  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("reason", "merged"),
+        ("mutation_short_circuited", False),
+        ("commit_sha", "e" * 40),
+        ("target_branch", "foreign"),
+        ("target_commit", "not-a-commit"),
+    ),
+)
+def test_false_positive_completion_reopen_rejects_forged_receipt(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    queue = _bound_queue(tmp_path / "queue")
+    pending = _enqueue(queue, 0)
+    claimed = queue.dequeue(consumer_id="merge-train:false-positive")
+    assert claimed is not None
+    queue.complete(claimed)
+    completed = queue.get(pending.request_id)
+    assert completed is not None
+    receipt = _false_positive_completion_receipt(completed)
+    receipt[field] = value
+
+    with pytest.raises(
+        MergeQueueIntegrityError,
+        match="receipt does not match",
+    ):
+        queue.reopen_false_positive_completion(
+            completed,
+            completion_receipt=receipt,
+        )
+
+    assert queue.get(pending.request_id).status == "completed"  # type: ignore[union-attr]
+
+
+def test_false_positive_reopen_metadata_is_queue_reserved(
+    tmp_path: Path,
+) -> None:
+    queue = _bound_queue(tmp_path / "queue")
+
+    with pytest.raises(ValueError, match="queue-reserved"):
+        queue.enqueue(
+            branch_name="candidate/forged-reopen",
+            task_id="FORGED-REOPEN",
+            canonical_task_id="canonical-forged-reopen",
+            commit_sha="1" * 40,
+            metadata={"false_positive_completion_reopen": {}},
+        )
+
+    assert queue.status()["total"] == 0
+
+
+def test_legacy_import_rejects_forged_false_positive_reopen_metadata(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "queue"
+    pending_dir = queue_path / "pending"
+    pending_dir.mkdir(parents=True)
+    forged = MergeRequest(
+        request_id="0000000000000000001-fixture-forged",
+        branch_name="candidate/forged-reopen",
+        task_id="FORGED-REOPEN",
+        priority="P2",
+        lane_id="fixture",
+        enqueued_at=1.0,
+        metadata={"false_positive_completion_reopen": {}},
+        commit_sha="1" * 40,
+        canonical_task_id="canonical-forged-reopen",
+    )
+    (pending_dir / f"{forged.request_id}.json").write_text(
+        json.dumps(forged.to_dict()),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(MergeQueueIntegrityError, match="queue-reserved"):
+        MergeQueue(queue_path)
+
+
+def test_generic_dequeue_skips_false_positive_recovery_lineage(
+    tmp_path: Path,
+) -> None:
+    queue = _bound_queue(tmp_path / "queue")
+    false_pending = _enqueue(queue, 0)
+    false_claim = queue.dequeue(consumer_id="merge-train:false-positive")
+    assert false_claim is not None
+    queue.complete(false_claim)
+    false_completed = queue.get(false_pending.request_id)
+    assert false_completed is not None
+    reopened = queue.reopen_false_positive_completion(
+        false_completed,
+        completion_receipt=_false_positive_completion_receipt(false_completed),
+    )
+    assert reopened is not None and reopened.status == "pending"
+    ordinary_one = _enqueue(queue, 1)
+    ordinary_two = _enqueue(queue, 2)
+
+    first = queue.dequeue(consumer_id="merge-train:generic-one")
+    assert first is not None and first.request_id == ordinary_one.request_id
+    queue.complete(first)
+    batch = queue.dequeue_many(10, consumer_id="merge-train:generic-batch")
+    assert [request.request_id for request in batch] == [ordinary_two.request_id]
+    queue.complete(batch[0])
+    assert queue.dequeue(consumer_id="merge-train:generic-empty") is None
+
+    explicit = queue.claim_pending_request(
+        reopened.request_id,
+        consumer_id="merge-train:portal-recovery",
+    )
+    assert explicit is not None
+    assert explicit.request_id == reopened.request_id
+    assert explicit.claim_generation == reopened.claim_generation + 1
+
+
+def test_false_positive_reopen_replay_rejects_generation_rollback(
+    tmp_path: Path,
+) -> None:
+    queue = _bound_queue(tmp_path / "queue")
+    pending = _enqueue(queue, 0)
+    claimed = queue.dequeue(consumer_id="merge-train:false-positive")
+    assert claimed is not None
+    queue.complete(claimed)
+    completed = queue.get(pending.request_id)
+    assert completed is not None
+    receipt = _false_positive_completion_receipt(completed)
+    reopened = queue.reopen_false_positive_completion(
+        completed,
+        completion_receipt=receipt,
+    )
+    assert reopened is not None
+    with queue._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            "UPDATE merge_requests SET claim_generation=? WHERE request_id=?",
+            (completed.claim_generation, completed.request_id),
+        )
+        connection.commit()
+
+    with pytest.raises(MergeQueueIntegrityError, match="lineage is malformed"):
+        queue.reopen_false_positive_completion(
+            completed,
+            completion_receipt=receipt,
+        )
+
+
+def test_false_positive_reopen_replay_rejects_nonexact_marker(
+    tmp_path: Path,
+) -> None:
+    queue = _bound_queue(tmp_path / "queue")
+    pending = _enqueue(queue, 0)
+    claimed = queue.dequeue(consumer_id="merge-train:false-positive")
+    assert claimed is not None
+    queue.complete(claimed)
+    completed = queue.get(pending.request_id)
+    assert completed is not None
+    receipt = _false_positive_completion_receipt(completed)
+    reopened = queue.reopen_false_positive_completion(
+        completed,
+        completion_receipt=receipt,
+    )
+    assert reopened is not None
+    forged_metadata = dict(reopened.metadata)
+    forged_marker = dict(forged_metadata["false_positive_completion_reopen"])
+    forged_marker["forged"] = True
+    forged_metadata["false_positive_completion_reopen"] = forged_marker
+    with queue._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            "UPDATE merge_requests SET metadata_json=? WHERE request_id=?",
+            (
+                json.dumps(forged_metadata, sort_keys=True, separators=(",", ":")),
+                completed.request_id,
+            ),
+        )
+        connection.commit()
+
+    with pytest.raises(MergeQueueIntegrityError, match="lineage is malformed"):
+        queue.reopen_false_positive_completion(
+            completed,
+            completion_receipt=receipt,
+        )
+
+
+def test_completed_requests_uses_one_keyset_order_across_all_pages(
+    tmp_path: Path,
+) -> None:
+    queue = _bound_queue(tmp_path / "queue")
+    completed: list[MergeRequest] = []
+    for ordinal in range(5):
+        pending = _enqueue(queue, ordinal)
+        claimed = queue.claim_pending_request(
+            pending.request_id,
+            consumer_id="merge-train:completed-pagination",
+        )
+        assert claimed is not None
+        queue.complete(claimed)
+        stored = queue.get(pending.request_id)
+        assert stored is not None
+        completed.append(stored)
+    request_ids = [request.request_id for request in completed]
+    assert request_ids == sorted(request_ids)
+
+    # Make completion times run opposite to immutable request-id order.  A
+    # finished_at-ordered first page followed by a request-id cursor would
+    # repeat old rows and permanently starve the newer request ids.
+    with queue._connect() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        for index, request in enumerate(completed):
+            connection.execute(
+                "UPDATE merge_requests SET finished_at=? WHERE request_id=?",
+                (1000.0 - index, request.request_id),
+            )
+        connection.commit()
+
+    observed: list[str] = []
+    cursor = ""
+    for _ in range(4):
+        page = queue.completed_requests(
+            limit=2,
+            before_request_id=cursor,
+        )
+        if not page:
+            break
+        observed.extend(request.request_id for request in page)
+        cursor = page[-1].request_id
+
+    assert observed == sorted(request_ids, reverse=True)
 
 
 def test_recovered_claim_increments_generation_and_fences_crashed_worker(

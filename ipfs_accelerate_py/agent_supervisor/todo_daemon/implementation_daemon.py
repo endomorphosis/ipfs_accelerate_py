@@ -242,7 +242,11 @@ from ..validation.project_dependency_preflight import (
 from ..merge.git_gc import GitGarbageCollector
 from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
 from ..merge.merge_checkpoint import MergeCheckpoint
-from ..merge.merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
+from ..merge.merge_queue import (
+    FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA,
+    MERGE_TARGET_BINDING_SCHEMA,
+    MergeQueue,
+)
 from ..validation.validation_ast_companions import (
     format_relocation_hints_for_prompt,
     validation_ast_companion_paths,
@@ -26784,20 +26788,829 @@ class PortalImplementationDaemon:
             ),
         }
 
-    def _declared_outputs_present_on_head(self, task: PortalTask) -> bool:
-        """Return whether every declared output blob exists on HEAD."""
+    @staticmethod
+    def _false_positive_completion_reopen_lineage(
+        metadata: Mapping[str, Any],
+        *,
+        request: Any | None = None,
+    ) -> dict[str, Any] | None:
+        """Return one exact queue-authored false-completion reopen marker."""
+
+        raw = metadata.get("false_positive_completion_reopen")
+        if not isinstance(raw, Mapping):
+            return None
+        marker = dict(raw)
+        previous_generation = marker.get("previous_claim_generation")
+        reopened_at = marker.get("reopened_at")
+        if (
+            set(marker)
+            != {
+                "schema",
+                "reason",
+                "train_receipt_id",
+                "previous_target_commit",
+                "previous_claim_generation",
+                "reopened_at",
+            }
+            or marker.get("schema")
+            != FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA
+            or marker.get("reason") != "declared_outputs_not_on_target"
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(marker.get("train_receipt_id") or ""),
+            )
+            is None
+            or re.fullmatch(
+                r"[0-9a-f]{40}(?:[0-9a-f]{24})?",
+                str(marker.get("previous_target_commit") or ""),
+            )
+            is None
+            or isinstance(previous_generation, bool)
+            or not isinstance(previous_generation, int)
+            or previous_generation < 0
+            or isinstance(reopened_at, bool)
+            or not isinstance(reopened_at, (int, float))
+            or not math.isfinite(float(reopened_at))
+            or float(reopened_at) < 0
+        ):
+            return None
+        if request is not None:
+            claim_generation = getattr(request, "claim_generation", None)
+            if (
+                isinstance(claim_generation, bool)
+                or not isinstance(claim_generation, int)
+                or claim_generation <= previous_generation
+            ):
+                return None
+        return marker
+
+    @staticmethod
+    def _declared_output_tree_entry(
+        repository: Path,
+        commit: str,
+        path: str,
+    ) -> tuple[bytes | None, bool]:
+        """Read one literal top-level tree entry and distinguish Git errors."""
+
+        try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "ls-tree",
+                    "-z",
+                    commit,
+                    "--",
+                    f":(top,literal){path}",
+                ],
+                cwd=repository,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return None, False
+        if result.returncode != 0:
+            return None, False
+        records = [record for record in result.stdout.split(b"\0") if record]
+        if len(records) > 1:
+            return None, False
+        return (records[0] if records else b""), True
+
+    def _declared_outputs_match_commits(
+        self,
+        task: PortalTask,
+        *,
+        candidate_commit: str,
+        target_commit: str,
+        baseline_ref: str = "",
+    ) -> bool | None:
+        """Compare exact candidate/target tree state for declared outputs.
+
+        ``None`` means Git identity was unavailable or malformed, while
+        ``False`` is a proved difference.  Matching absence is accepted only
+        for a candidate deletion proved against its sealed baseline; an
+        output absent from every tree is never completion evidence.
+        """
 
         paths = task_declared_output_paths(task)
         if not paths:
             return False
-        for path in paths:
+        resolved: dict[str, str] = {}
+        commit_refs = [
+            ("candidate", candidate_commit),
+            ("target", target_commit),
+        ]
+        if baseline_ref:
+            commit_refs.append(("baseline", baseline_ref))
+        for label, value in commit_refs:
+            commit = str(value or "").strip().casefold()
+            if (
+                re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", commit)
+                is None
+            ):
+                return None
             probe = self._run_git(
-                ["cat-file", "-e", f"HEAD:{path}"],
+                ["rev-parse", "--verify", f"{commit}^{{commit}}"],
                 cwd=self.repo_root,
             )
-            if probe.returncode != 0:
+            if (
+                probe.returncode != 0
+                or probe.stdout.strip().casefold() != commit
+            ):
+                return None
+            resolved[label] = commit
+        for raw_path in paths:
+            path = str(raw_path or "").strip().rstrip("/")
+            if (
+                path == "."
+                or path != str(raw_path or "").strip()
+                or not self._repo_relative_path_safe(path)
+                or any(ord(character) < 32 for character in path)
+            ):
+                return None
+            candidate_entry, candidate_ok = self._declared_output_tree_entry(
+                self.repo_root,
+                resolved["candidate"],
+                path,
+            )
+            target_entry, target_ok = self._declared_output_tree_entry(
+                self.repo_root,
+                resolved["target"],
+                path,
+            )
+            if not candidate_ok or not target_ok:
+                return None
+            if candidate_entry != target_entry:
                 return False
+            if candidate_entry == b"":
+                if "baseline" not in resolved:
+                    return False
+                baseline_entry, baseline_ok = (
+                    self._declared_output_tree_entry(
+                        self.repo_root,
+                        resolved["baseline"],
+                        path,
+                    )
+                )
+                if not baseline_ok:
+                    return None
+                if baseline_entry in {None, b""}:
+                    return False
         return True
+
+    def _declared_outputs_match_current_target(
+        self,
+        request: Any,
+        task: PortalTask,
+    ) -> bool | None:
+        """Compare a queued candidate with the exact configured target tip."""
+
+        metadata = (
+            request.metadata
+            if isinstance(getattr(request, "metadata", None), Mapping)
+            else {}
+        )
+        candidate = str(
+            getattr(request, "commit_sha", "")
+            or metadata.get("implementation_commit")
+            or ""
+        )
+        target = self._resolved_commit_ref(
+            self.repo_root,
+            self._main_branch_name(),
+        )
+        if not target:
+            return None
+        return self._declared_outputs_match_commits(
+            task,
+            candidate_commit=candidate,
+            target_commit=target,
+            baseline_ref=str(metadata.get("baseline_ref") or ""),
+        )
+
+    def _false_positive_completion_integration_lineage(
+        self,
+        task: PortalTask,
+        *,
+        candidate_commit: str,
+        baseline_ref: str,
+        previous_target_commit: str,
+        target_commit: str,
+    ) -> dict[str, Any]:
+        """Prove the unique queue-reopened merge on target first-parent history.
+
+        A process can die after advancing the target but before settling its
+        queue claim.  On replay the candidate is already an ancestor, so the
+        live tip is not the pre-mutation target.  Recover that parent only
+        from a bounded, exact Git shape: the queue-recorded false target must
+        precede one unique two-parent merge whose second parent is the sealed
+        candidate, and the candidate outputs must differ at the false target
+        but match at the current target.
+        """
+
+        proof: dict[str, Any] = {
+            "passed": False,
+            "reason": "false_completion_integration_lineage_unproven",
+            "candidate_commit": candidate_commit,
+            "baseline_commit": baseline_ref,
+            "previous_target_commit": previous_target_commit,
+            "target_commit": target_commit,
+        }
+
+        resolved: dict[str, str] = {}
+        for label, value in (
+            ("candidate_commit", candidate_commit),
+            ("baseline_commit", baseline_ref),
+            ("previous_target_commit", previous_target_commit),
+            ("target_commit", target_commit),
+        ):
+            commit = str(value or "").strip().casefold()
+            if re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", commit) is None:
+                proof["reason"] = "false_completion_lineage_commit_invalid"
+                return proof
+            probe = self._run_git(
+                ["rev-parse", "--verify", f"{commit}^{{commit}}"],
+                cwd=self.repo_root,
+            )
+            if probe.returncode != 0 or probe.stdout.strip().casefold() != commit:
+                proof["reason"] = "false_completion_lineage_commit_unavailable"
+                return proof
+            resolved[label] = commit
+
+        candidate_parents, _candidate_tree = self._post_merge_repair_commit_shape(
+            self.repo_root,
+            resolved["candidate_commit"],
+        )
+        if candidate_parents != [resolved["baseline_commit"]]:
+            proof["reason"] = "false_completion_lineage_candidate_baseline_mismatch"
+            return proof
+
+        ancestry_returncodes: dict[str, int] = {}
+        for label, ancestor, descendant, expected in (
+            (
+                "candidate_to_previous_target",
+                resolved["candidate_commit"],
+                resolved["previous_target_commit"],
+                1,
+            ),
+            (
+                "baseline_to_previous_target",
+                resolved["baseline_commit"],
+                resolved["previous_target_commit"],
+                0,
+            ),
+            (
+                "previous_target_to_target",
+                resolved["previous_target_commit"],
+                resolved["target_commit"],
+                0,
+            ),
+            (
+                "candidate_to_target",
+                resolved["candidate_commit"],
+                resolved["target_commit"],
+                0,
+            ),
+        ):
+            try:
+                ancestry = subprocess.run(
+                    [
+                        "git",
+                        "merge-base",
+                        "--is-ancestor",
+                        ancestor,
+                        descendant,
+                    ],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            except OSError:
+                proof.update(
+                    reason="false_completion_lineage_ancestry_unavailable",
+                    ancestry=ancestry_returncodes,
+                )
+                return proof
+            ancestry_returncodes[label] = ancestry.returncode
+            if ancestry.returncode != expected:
+                proof.update(
+                    reason="false_completion_lineage_ancestry_invalid",
+                    ancestry=ancestry_returncodes,
+                )
+                return proof
+        proof["ancestry"] = ancestry_returncodes
+
+        previous_identity = self._declared_outputs_match_commits(
+            task,
+            candidate_commit=resolved["candidate_commit"],
+            target_commit=resolved["previous_target_commit"],
+            baseline_ref=resolved["baseline_commit"],
+        )
+        current_identity = self._declared_outputs_match_commits(
+            task,
+            candidate_commit=resolved["candidate_commit"],
+            target_commit=resolved["target_commit"],
+            baseline_ref=resolved["baseline_commit"],
+        )
+        proof["previous_declared_output_identity"] = previous_identity
+        proof["current_declared_output_identity"] = current_identity
+        if previous_identity is not False or current_identity is not True:
+            proof["reason"] = "false_completion_lineage_output_identity_invalid"
+            return proof
+
+        history = self._run_git(
+            [
+                "rev-list",
+                "--first-parent",
+                "--max-count=513",
+                resolved["target_commit"],
+            ],
+            cwd=self.repo_root,
+        )
+        if history.returncode != 0:
+            proof["reason"] = "false_completion_lineage_history_unavailable"
+            return proof
+        commits = [line.strip().casefold() for line in history.stdout.splitlines()]
+        if (
+            len(commits) > 512
+            or resolved["previous_target_commit"] not in commits
+            or any(
+                re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", commit) is None
+                for commit in commits
+            )
+        ):
+            proof["reason"] = "false_completion_lineage_history_unbounded"
+            return proof
+        previous_index = commits.index(resolved["previous_target_commit"])
+        if previous_index == 0:
+            proof["reason"] = "false_completion_lineage_merge_missing"
+            return proof
+
+        matches: list[dict[str, str]] = []
+        for merge_commit in commits[:previous_index]:
+            parents, _tree = self._post_merge_repair_commit_shape(
+                self.repo_root,
+                merge_commit,
+            )
+            if (
+                len(parents) == 2
+                and parents[1].casefold() == resolved["candidate_commit"]
+            ):
+                matches.append(
+                    {
+                        "integration_commit": merge_commit,
+                        "integration_parent_commit": parents[0].casefold(),
+                    }
+                )
+        proof["matching_integrations"] = matches
+        if len(matches) != 1:
+            proof["reason"] = (
+                "false_completion_lineage_merge_missing"
+                if not matches
+                else "false_completion_lineage_merge_ambiguous"
+            )
+            return proof
+
+        match = matches[0]
+        parent_ancestry = self._run_git(
+            [
+                "merge-base",
+                "--is-ancestor",
+                resolved["previous_target_commit"],
+                match["integration_parent_commit"],
+            ],
+            cwd=self.repo_root,
+        )
+        integration_ancestry = self._run_git(
+            [
+                "merge-base",
+                "--is-ancestor",
+                match["integration_commit"],
+                resolved["target_commit"],
+            ],
+            cwd=self.repo_root,
+        )
+        if parent_ancestry.returncode != 0 or integration_ancestry.returncode != 0:
+            proof["reason"] = "false_completion_lineage_merge_ancestry_invalid"
+            return proof
+        proof.update(
+            passed=True,
+            reason="false_positive_completion_merge_lineage_proved",
+            integration_commit=match["integration_commit"],
+            integration_parent_commit=match["integration_parent_commit"],
+        )
+        return proof
+
+    def _qualify_false_positive_completion_merge(
+        self,
+        tasks: Sequence[PortalTask],
+        *,
+        primary_task: PortalTask,
+        attempt: int,
+        candidate_commit: str,
+        candidate_tree: str,
+        baseline_ref: str,
+        false_reopen_lineage: Mapping[str, Any],
+        pre_merge_target_commit: str,
+        target_branch: str,
+        target_commit: str,
+        changed_submodule_paths: Sequence[str] = (),
+    ) -> dict[str, Any]:
+        """Seal current-tree evidence after repairing a false shortcut.
+
+        The target mutation is the ordinary candidate merge.  This follow-up
+        performs no content mutation: under the same checkout lease protocol,
+        it proves the exact candidate entries now exist on the immutable
+        target, reruns the sealed declared validations, and emits the existing
+        verifier-compatible repair receipt consumed by MergeTrain and the
+        database bridge.
+        """
+
+        return self._run_checkout_mutation_transaction(
+            task_id=primary_task.task_id,
+            attempt=attempt,
+            branch=target_branch,
+            operation="qualify_false_positive_completion_merge",
+            callback=lambda: (
+                self._qualify_false_positive_completion_merge_locked(
+                    tasks,
+                    primary_task=primary_task,
+                    attempt=attempt,
+                    candidate_commit=candidate_commit,
+                    candidate_tree=candidate_tree,
+                    baseline_ref=baseline_ref,
+                    false_reopen_lineage=false_reopen_lineage,
+                    pre_merge_target_commit=pre_merge_target_commit,
+                    target_branch=target_branch,
+                    target_commit=target_commit,
+                    changed_submodule_paths=changed_submodule_paths,
+                )
+            ),
+            failure_fields={
+                "schema": POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+                "attempted": False,
+                "passed": False,
+                "candidate_commit": candidate_commit,
+                "target_commit": target_commit,
+                "qualification_kind": "false_positive_completion_reopen",
+            },
+            extra={
+                "candidate_commit": candidate_commit,
+                "target_commit": target_commit,
+            },
+        )
+
+    def _qualify_false_positive_completion_merge_locked(
+        self,
+        tasks: Sequence[PortalTask],
+        *,
+        primary_task: PortalTask,
+        attempt: int,
+        candidate_commit: str,
+        candidate_tree: str,
+        baseline_ref: str,
+        false_reopen_lineage: Mapping[str, Any],
+        pre_merge_target_commit: str,
+        target_branch: str,
+        target_commit: str,
+        changed_submodule_paths: Sequence[str] = (),
+    ) -> dict[str, Any]:
+        """Verify a repaired false shortcut without mutating target content."""
+
+        result: dict[str, Any] = {
+            "schema": POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+            "attempted": False,
+            "passed": False,
+            "reason": "false_completion_qualification_unproven",
+            "qualification_kind": "false_positive_completion_reopen",
+            "task_id": primary_task.task_id,
+            "candidate_commit": candidate_commit,
+            "candidate_tree": candidate_tree,
+            "baseline_ref": baseline_ref,
+            "pre_merge_target_commit": pre_merge_target_commit,
+            "target_branch": target_branch,
+            "target_commit": target_commit,
+        }
+
+        def reject(reason: str, **extra: Any) -> dict[str, Any]:
+            result.update(reason=reason, **extra)
+            return result
+
+        marker = self._false_positive_completion_reopen_lineage(
+            {"false_positive_completion_reopen": false_reopen_lineage}
+        )
+        if marker is None:
+            return reject("false_completion_reopen_lineage_invalid")
+        if changed_submodule_paths:
+            return reject("false_completion_changed_submodule_scope_forbidden")
+        task_ids = [str(task.task_id or "").strip() for task in tasks]
+        if (
+            not task_ids
+            or any(not task_id for task_id in task_ids)
+            or len(task_ids) != len(set(task_ids))
+            or primary_task.task_id not in task_ids
+        ):
+            return reject("false_completion_task_scope_invalid")
+        declared_outputs = sorted(
+            dict.fromkeys(
+                str(path or "").strip().rstrip("/")
+                for task in tasks
+                for path in task_declared_output_paths(task)
+            )
+        )
+        if not declared_outputs or any(
+            output == "."
+            or not self._repo_relative_path_safe(output)
+            or any(ord(character) < 32 for character in output)
+            for output in declared_outputs
+        ):
+            return reject("false_completion_declared_output_paths_invalid")
+
+        commit_values = {
+            "candidate_commit": candidate_commit,
+            "baseline_ref": baseline_ref,
+            "previous_target_commit": str(
+                marker.get("previous_target_commit") or ""
+            ),
+            "pre_merge_target_commit": pre_merge_target_commit,
+            "target_commit": target_commit,
+        }
+        resolved: dict[str, str] = {}
+        for label, value in commit_values.items():
+            commit = str(value or "").strip().casefold()
+            if (
+                re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", commit)
+                is None
+            ):
+                return reject("false_completion_commit_identity_invalid")
+            probe = self._run_git(
+                ["rev-parse", "--verify", f"{commit}^{{commit}}"],
+                cwd=self.repo_root,
+            )
+            if probe.returncode != 0 or probe.stdout.strip() != commit:
+                return reject("false_completion_commit_identity_unavailable")
+            resolved[label] = commit
+        live_target = self._resolved_commit_ref(
+            self.repo_root,
+            target_branch,
+        )
+        if live_target != resolved["target_commit"]:
+            return reject(
+                "false_completion_qualification_target_advanced",
+                live_target_commit=live_target,
+            )
+        actual_candidate_tree = self._candidate_repository_tree(
+            resolved["candidate_commit"]
+        )
+        target_tree = self._candidate_repository_tree(
+            resolved["target_commit"]
+        )
+        if (
+            not candidate_tree
+            or actual_candidate_tree != candidate_tree
+            or not target_tree
+        ):
+            return reject("false_completion_tree_identity_invalid")
+        candidate_parents, _ = self._post_merge_repair_commit_shape(
+            self.repo_root,
+            resolved["candidate_commit"],
+        )
+        _target_parents, observed_target_tree = (
+            self._post_merge_repair_commit_shape(
+                self.repo_root,
+                resolved["target_commit"],
+            )
+        )
+        if candidate_parents != [resolved["baseline_ref"]]:
+            return reject("false_completion_candidate_baseline_mismatch")
+        if observed_target_tree != target_tree:
+            return reject("false_completion_target_tree_mismatch")
+        integration_lineage = (
+            self._false_positive_completion_integration_lineage(
+                primary_task,
+                candidate_commit=resolved["candidate_commit"],
+                baseline_ref=resolved["baseline_ref"],
+                previous_target_commit=resolved["previous_target_commit"],
+                target_commit=resolved["target_commit"],
+            )
+        )
+        result["integration_lineage"] = integration_lineage
+        if (
+            integration_lineage.get("passed") is not True
+            or integration_lineage.get("integration_parent_commit")
+            != resolved["pre_merge_target_commit"]
+        ):
+            return reject("false_completion_qualification_lineage_invalid")
+        output_identity = self._declared_outputs_match_commits(
+            primary_task,
+            candidate_commit=resolved["candidate_commit"],
+            target_commit=resolved["target_commit"],
+            baseline_ref=resolved["baseline_ref"],
+        )
+        if output_identity is not True:
+            return reject(
+                "false_completion_declared_output_identity_mismatch",
+                output_identity=output_identity,
+            )
+        candidate_entries, candidate_entries_error = (
+            self._post_merge_repair_tree_entries(
+                self.repo_root,
+                resolved["candidate_commit"],
+                declared_outputs,
+            )
+        )
+        target_entries, target_entries_error = (
+            self._post_merge_repair_tree_entries(
+                self.repo_root,
+                resolved["target_commit"],
+                declared_outputs,
+            )
+        )
+        if (
+            candidate_entries_error
+            or target_entries_error
+            or not candidate_entries
+            or target_entries != candidate_entries
+        ):
+            return reject(
+                "false_completion_declared_output_entries_unproven",
+                candidate_entries_error=candidate_entries_error,
+                target_entries_error=target_entries_error,
+            )
+
+        validation_root = self._main_merge_worktree_root()
+        validation_root.mkdir(parents=True, exist_ok=True)
+        workspace = validation_root / (
+            "false-completion-qualification-"
+            f"{self._safe_ref_path_fragment(primary_task.task_id)}-"
+            f"{os.getpid()}-{time.time_ns()}"
+        )
+        added = self._run_git(
+            [
+                "worktree",
+                "add",
+                "--detach",
+                str(workspace),
+                resolved["target_commit"],
+            ],
+            cwd=self.repo_root,
+        )
+        if added.returncode != 0:
+            return reject(
+                "false_completion_validation_worktree_unavailable",
+                validation_worktree_stderr=added.stderr[-2000:],
+            )
+        result["attempted"] = True
+        result["validation_workspace"] = str(workspace)
+        summaries: list[dict[str, Any]] = []
+        try:
+            log_root = (
+                self.state_path.parent
+                / "post-merge-declared-output-repair"
+            )
+            log_root.mkdir(parents=True, exist_ok=True)
+            for validation_task in tasks:
+                log_path = log_root / (
+                    f"{validation_task.task_id}-false-reopen-attempt-"
+                    f"{attempt}.log"
+                )
+                validation = self._run_validation_commands(
+                    workspace,
+                    validation_task,
+                    log_path,
+                    force_uncached=True,
+                )
+                command_results = (
+                    validation.get("results")
+                    if isinstance(validation, Mapping)
+                    else None
+                )
+                if (
+                    not isinstance(validation, Mapping)
+                    or validation.get("passed") is not True
+                    or validation.get("returncode") != 0
+                    or not isinstance(command_results, list)
+                    or not log_path.is_file()
+                ):
+                    return reject(
+                        "false_completion_declared_validation_failed",
+                        validation_task_id=validation_task.task_id,
+                    )
+                result_digests = [
+                    str(item.get("validation_result_digest") or "")
+                    for item in command_results
+                    if isinstance(item, Mapping)
+                ]
+                if (
+                    len(result_digests) != len(command_results)
+                    or any(
+                        re.fullmatch(
+                            r"(?:sha256:)?[0-9a-f]{64}",
+                            digest,
+                        )
+                        is None
+                        for digest in result_digests
+                    )
+                ):
+                    return reject(
+                        "false_completion_validation_evidence_invalid",
+                        validation_task_id=validation_task.task_id,
+                    )
+                summaries.append(
+                    {
+                        "task_id": validation_task.task_id,
+                        "passed": True,
+                        "returncode": 0,
+                        "validation_result_digests": result_digests,
+                        "command_count": len(command_results),
+                        "log_sha256": hashlib.sha256(
+                            log_path.read_bytes()
+                        ).hexdigest(),
+                    }
+                )
+            workspace_head = self._resolved_commit_ref(workspace, "HEAD")
+            workspace_tree_result = self._run_git(
+                [
+                    "rev-parse",
+                    "--verify",
+                    f"{workspace_head}^{{tree}}",
+                ],
+                cwd=workspace,
+            )
+            workspace_tree = (
+                workspace_tree_result.stdout.strip()
+                if workspace_tree_result.returncode == 0
+                else ""
+            )
+            workspace_status = self._run_git(
+                [
+                    "status",
+                    "--porcelain=v1",
+                    "-z",
+                    "--untracked-files=all",
+                ],
+                cwd=workspace,
+            )
+            live_after = self._resolved_commit_ref(
+                self.repo_root,
+                target_branch,
+            )
+            if (
+                workspace_head != resolved["target_commit"]
+                or workspace_tree != target_tree
+                or workspace_status.returncode != 0
+                or workspace_status.stdout
+                or live_after != resolved["target_commit"]
+            ):
+                return reject(
+                    "false_completion_validation_tree_changed",
+                    live_target_commit=live_after,
+                )
+        finally:
+            cleanup = self._cleanup_main_merge_workspace(
+                workspace,
+                ephemeral=True,
+            )
+            result["validation_workspace_cleanup"] = cleanup
+        if result["validation_workspace_cleanup"].get("cleaned") is not True:
+            return reject("false_completion_validation_workspace_cleanup_failed")
+
+        receipt: dict[str, Any] = {
+            "schema": POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+            "task_ids": task_ids,
+            "candidate_commit": resolved["candidate_commit"],
+            "candidate_tree": candidate_tree,
+            "baseline_commit": resolved["baseline_ref"],
+            "failed_integration_commit": resolved[
+                "previous_target_commit"
+            ],
+            "repair_parent_commit": resolved[
+                "pre_merge_target_commit"
+            ],
+            "repair_commit": resolved["target_commit"],
+            "repair_tree": target_tree,
+            "entries": [
+                {"path": path, **identity}
+                for path, identity in sorted(candidate_entries.items())
+            ],
+            "validation": summaries,
+            "rollback_target": resolved["pre_merge_target_commit"],
+        }
+        receipt["receipt_id"] = content_identity(receipt)
+        result.update(
+            {
+                "passed": True,
+                "reason": "post_merge_declared_outputs_repaired",
+                "repair_commit": resolved["target_commit"],
+                "repair_tree": target_tree,
+                "receipt": receipt,
+            }
+        )
+        self._record_event(
+            "false_positive_completion_merge_qualified",
+            result,
+        )
+        return result
 
     def _completed_task_binding_error(
         self,
@@ -29154,6 +29967,22 @@ class PortalImplementationDaemon:
 
         metadata = request.metadata if isinstance(request.metadata, dict) else {}
         candidate_schema = str(metadata.get("schema") or "").strip()
+        false_reopen_lineage = (
+            self._false_positive_completion_reopen_lineage(
+                metadata,
+                request=request,
+            )
+        )
+        if (
+            "false_positive_completion_reopen" in metadata
+            and false_reopen_lineage is None
+        ):
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "false_positive_completion_reopen_invalid",
+            }
         if (
             candidate_schema
             and candidate_schema
@@ -29222,7 +30051,18 @@ class PortalImplementationDaemon:
             )
         ):
             queued_task = self._portal_task_from_merge_request(request)
-            if self._declared_outputs_present_on_head(queued_task):
+            output_identity = self._declared_outputs_match_current_target(
+                request,
+                queued_task,
+            )
+            if output_identity is None:
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "declared_output_identity_unavailable",
+                }
+            if output_identity is True and false_reopen_lineage is None:
                 return {
                     "attempted": True,
                     "merged": False,
@@ -29245,6 +30085,21 @@ class PortalImplementationDaemon:
                 queued_task = self._portal_task_from_merge_request(request)
             except Exception:
                 queued_task = None
+            output_identity = (
+                self._declared_outputs_match_current_target(
+                    request,
+                    queued_task,
+                )
+                if queued_task is not None
+                else False
+            )
+            if output_identity is None:
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "declared_output_identity_unavailable",
+                }
             if (
                 queued_task is not None
                 and MergeTrain._request_is_database_portal_projection_candidate(
@@ -29253,7 +30108,8 @@ class PortalImplementationDaemon:
                 and MergeTrain._request_has_invalid_completion_authority_metadata(
                     request
                 )
-                and self._declared_outputs_present_on_head(queued_task)
+                and output_identity is True
+                and false_reopen_lineage is None
             ):
                 return {
                     "attempted": True,
@@ -29653,6 +30509,7 @@ class PortalImplementationDaemon:
                 "target_stderr": target_resolution.stderr[-2000:],
             }
         implementation_commit = exact_candidate
+        pre_merge_target_commit = target_commit
         parent_ancestry = subprocess.run(
             [
                 "git",
@@ -29680,14 +30537,64 @@ class PortalImplementationDaemon:
                 "ancestry_stderr": parent_ancestry.stderr[-2000:],
             }
         initially_integrated = parent_ancestry.returncode == 0
+        declared_output_identity = self._declared_outputs_match_commits(
+            task,
+            candidate_commit=implementation_commit,
+            target_commit=target_commit,
+            baseline_ref=str(metadata.get("baseline_ref") or ""),
+        )
+        if declared_output_identity is None:
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "declared_output_identity_unavailable",
+                "branch": branch_name,
+                "implementation_commit": implementation_commit,
+                "target_branch": target_branch,
+                "target_commit": target_commit,
+            }
         outputs_already_on_target = (
             not initially_integrated
             and candidate_schema
             == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
             and not (changed_submodule_paths or ())
             and not foreign_cross_board_request
-            and self._declared_outputs_present_on_head(task)
+            and declared_output_identity is True
+            and false_reopen_lineage is None
         )
+        false_reopen_integration_lineage: dict[str, Any] = {}
+        if initially_integrated and false_reopen_lineage is not None:
+            false_reopen_integration_lineage = (
+                self._false_positive_completion_integration_lineage(
+                    task,
+                    candidate_commit=implementation_commit,
+                    baseline_ref=str(metadata.get("baseline_ref") or ""),
+                    previous_target_commit=str(
+                        false_reopen_lineage.get("previous_target_commit")
+                        or ""
+                    ),
+                    target_commit=target_commit,
+                )
+            )
+            if false_reopen_integration_lineage.get("passed") is not True:
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": (
+                        "false_positive_completion_integration_lineage_unproven"
+                    ),
+                    "false_positive_completion_integration_lineage": (
+                        false_reopen_integration_lineage
+                    ),
+                }
+            pre_merge_target_commit = str(
+                false_reopen_integration_lineage.get(
+                    "integration_parent_commit"
+                )
+                or ""
+            )
         integrated_short_circuit = initially_integrated and (
             candidate_schema
             == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
@@ -29701,7 +30608,9 @@ class PortalImplementationDaemon:
                 completion_daemon._completion_task_revision_binding_error(
                     metadata,
                     require_pending=not (
-                        initially_integrated or outputs_already_on_target
+                        initially_integrated
+                        or outputs_already_on_target
+                        or false_reopen_lineage is not None
                     ),
                 )
             )
@@ -29716,25 +30625,32 @@ class PortalImplementationDaemon:
 
         integrated_handoff_proof: dict[str, Any] = {}
         if integrated_short_circuit:
-            integrated_handoff_proof = (
-                self._integrated_changed_submodule_proof(
-                    candidate_commit=implementation_commit,
-                    target_commit=target_commit,
-                    changed_submodule_paths=raw_changed_submodule_paths,
-                )
-                if isinstance(raw_changed_submodule_paths, Sequence)
-                and not isinstance(
-                    raw_changed_submodule_paths,
-                    (str, bytes, bytearray),
-                )
-                else {
-                    "passed": False,
-                    "reason": "changed_submodule_scope_missing",
-                    "candidate_commit": implementation_commit,
-                    "target_commit": target_commit,
+            if false_reopen_integration_lineage.get("passed") is True:
+                integrated_handoff_proof = {
+                    **false_reopen_integration_lineage,
                     "paths": [],
+                    "false_positive_completion_reopen": True,
                 }
-            )
+            else:
+                integrated_handoff_proof = (
+                    self._integrated_changed_submodule_proof(
+                        candidate_commit=implementation_commit,
+                        target_commit=target_commit,
+                        changed_submodule_paths=raw_changed_submodule_paths,
+                    )
+                    if isinstance(raw_changed_submodule_paths, Sequence)
+                    and not isinstance(
+                        raw_changed_submodule_paths,
+                        (str, bytes, bytearray),
+                    )
+                    else {
+                        "passed": False,
+                        "reason": "changed_submodule_scope_missing",
+                        "candidate_commit": implementation_commit,
+                        "target_commit": target_commit,
+                        "paths": [],
+                    }
+                )
             if integrated_handoff_proof.get("passed") is not True:
                 return {
                     "attempted": False,
@@ -30262,6 +31178,62 @@ class PortalImplementationDaemon:
                         if key in declared_output_repair:
                             result[key] = declared_output_repair[key]
                     return result
+            elif false_reopen_lineage is not None:
+                declared_output_qualification = (
+                    completion_daemon._qualify_false_positive_completion_merge(
+                        completion_tasks,
+                        primary_task=task,
+                        attempt=int(request.attempt or 0),
+                        candidate_commit=implementation_commit,
+                        candidate_tree=str(
+                            metadata.get("candidate_tree") or ""
+                        ),
+                        baseline_ref=str(
+                            metadata.get("baseline_ref") or ""
+                        ),
+                        false_reopen_lineage=false_reopen_lineage,
+                        pre_merge_target_commit=pre_merge_target_commit,
+                        target_branch=target_branch,
+                        target_commit=target_commit,
+                        changed_submodule_paths=sorted(
+                            changed_submodule_paths or ()
+                        ),
+                    )
+                )
+                result["post_merge_declared_output_repair"] = (
+                    declared_output_qualification
+                )
+                if declared_output_qualification.get("passed") is not True:
+                    result.update(
+                        {
+                            "merged": False,
+                            "already_merged": False,
+                            "returncode": 2,
+                            "reason": "post_merge_declared_outputs_missing",
+                            "repair_failure_reason": str(
+                                declared_output_qualification.get("reason")
+                                or "false_completion_qualification_failed"
+                            ),
+                            "automatic_repair_attempted": bool(
+                                declared_output_qualification.get("attempted")
+                            ),
+                            "automatic_repair_terminal": False,
+                            "integration_occurred": True,
+                            "completion_skipped": True,
+                            "target_commit": target_commit,
+                        }
+                    )
+                    return result
+                result.update(
+                    {
+                        "reason": "post_merge_declared_outputs_repaired",
+                        "target_commit": target_commit,
+                        "merge_commit": target_commit,
+                        "integration_occurred": True,
+                        "completion_skipped": False,
+                        "false_positive_completion_qualified": True,
+                    }
+                )
         if (
             (
                 result.get("merged")
@@ -30275,7 +31247,8 @@ class PortalImplementationDaemon:
                     metadata,
                     require_pending=not bool(
                         result.get("already_merged")
-                    ),
+                    )
+                    and false_reopen_lineage is None,
                 )
             )
             if completion_binding_error:
@@ -30537,6 +31510,135 @@ class PortalImplementationDaemon:
                     )
                     result["completion_pending_durability"] = True
                 result["todo_update_result"] = todo_update_result
+                if (
+                    false_reopen_lineage is not None
+                    and (
+                        result.get("merged")
+                        or result.get("already_merged")
+                    )
+                ):
+                    final_target_commit = self._resolved_commit_ref(
+                        self.repo_root,
+                        target_branch,
+                    )
+                    qualification = result.get(
+                        "post_merge_declared_output_repair"
+                    )
+                    receipt = (
+                        qualification.get("receipt")
+                        if isinstance(qualification, Mapping)
+                        else None
+                    )
+                    if (
+                        not final_target_commit
+                        or not isinstance(receipt, Mapping)
+                    ):
+                        result.update(
+                            {
+                                "merged": False,
+                                "already_merged": False,
+                                "returncode": 2,
+                                "reason": (
+                                    "post_merge_declared_outputs_missing"
+                                ),
+                                "repair_failure_reason": (
+                                    "false_completion_final_target_unavailable"
+                                ),
+                                "integration_occurred": True,
+                                "completion_skipped": True,
+                            }
+                        )
+                        return result
+                    if (
+                        receipt.get("repair_commit")
+                        != final_target_commit
+                    ):
+                        final_qualification = (
+                            completion_daemon._qualify_false_positive_completion_merge(
+                                completion_tasks,
+                                primary_task=task,
+                                attempt=int(request.attempt or 0),
+                                candidate_commit=implementation_commit,
+                                candidate_tree=str(
+                                    metadata.get("candidate_tree") or ""
+                                ),
+                                baseline_ref=str(
+                                    metadata.get("baseline_ref") or ""
+                                ),
+                                false_reopen_lineage=false_reopen_lineage,
+                                pre_merge_target_commit=(
+                                    pre_merge_target_commit
+                                ),
+                                target_branch=target_branch,
+                                target_commit=final_target_commit,
+                                changed_submodule_paths=sorted(
+                                    changed_submodule_paths or ()
+                                ),
+                            )
+                        )
+                        result["post_merge_declared_output_repair"] = (
+                            final_qualification
+                        )
+                        if final_qualification.get("passed") is not True:
+                            result.update(
+                                {
+                                    "merged": False,
+                                    "already_merged": False,
+                                    "returncode": 2,
+                                    "reason": (
+                                        "post_merge_declared_outputs_missing"
+                                    ),
+                                    "repair_failure_reason": str(
+                                        final_qualification.get("reason")
+                                        or "false_completion_final_qualification_failed"
+                                    ),
+                                    "automatic_repair_attempted": bool(
+                                        final_qualification.get("attempted")
+                                    ),
+                                    "automatic_repair_terminal": False,
+                                    "integration_occurred": True,
+                                    "completion_skipped": True,
+                                    "target_commit": final_target_commit,
+                                }
+                            )
+                            return result
+                    final_integration_proof = (
+                        completion_daemon._immutable_integration_commit(
+                            {"merge_commit": final_target_commit},
+                            implementation_commit=implementation_commit,
+                            target_branch=target_branch,
+                        )
+                    )
+                    if final_integration_proof.get("passed") is not True:
+                        result.update(
+                            {
+                                "merged": False,
+                                "already_merged": False,
+                                "returncode": 2,
+                                "reason": (
+                                    "post_merge_integration_commit_unproven"
+                                ),
+                                "integration_occurred": True,
+                                "completion_skipped": True,
+                                "target_commit": final_target_commit,
+                            }
+                        )
+                        return result
+                    result.update(
+                        {
+                            "reason": (
+                                "post_merge_declared_outputs_repaired"
+                            ),
+                            "merge_commit": final_target_commit,
+                            "target_commit": final_target_commit,
+                            "integration_commit_proof": (
+                                final_integration_proof
+                            ),
+                            "integration_occurred": True,
+                            "completion_skipped": False,
+                            "false_positive_completion_qualified": True,
+                        }
+                    )
         if database_portal_merge_continuation is not None:
             result["database_portal_merge_continuation"] = (
                 database_portal_merge_continuation
@@ -70660,6 +71762,9 @@ DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA = (
 DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON = (
     "post_merge_declared_outputs_missing"
 )
+DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON = (
+    "protected preservation merged result is not on the exact target branch"
+)
 DATABASE_DECLARED_OUTPUT_REARM_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-declared-output-rearm@1"
@@ -71529,11 +72634,28 @@ class DatabaseImplementationDaemon:
             )
             settled = 0
             results: list[dict[str, Any]] = []
+
+            def generic_settlement_candidate(request: Any) -> bool:
+                metadata = getattr(request, "metadata", None)
+                # An exact false-completion reopen is owned by the bridge's
+                # preauthorized Portal callback and database rearm.  A generic
+                # train has no qualification callback; consuming this marker
+                # after an integration/crash would complete the row without
+                # the sealed receipt needed by the blocked database attempt.
+                if (
+                    isinstance(metadata, Mapping)
+                    and "false_positive_completion_reopen" in metadata
+                ):
+                    return False
+                return bool(
+                    train._portal_projection_invalid_metadata_already_on_target(
+                        request
+                    )
+                )
+
             while settled < 8:
                 result = train.recover_one_integrated_quarantine(
-                    request_filter=(
-                        train._portal_projection_invalid_metadata_already_on_target
-                    ),
+                    request_filter=generic_settlement_candidate,
                 )
                 if not isinstance(result, Mapping):
                     break
@@ -71991,6 +73113,7 @@ class DatabaseImplementationDaemon:
         results: list[dict[str, Any]] = []
         rearmed = 0
         seen: set[str] = set()
+        bridge_owned: set[str] = set()
         # Prefer merge-queue repair receipts and the typed owner command.
         # Listing blocked rows requires Quack ATTACH and can wedge the
         # exclusive owner before the attach-free unstall runs.
@@ -72000,6 +73123,16 @@ class DatabaseImplementationDaemon:
         for snapshot in snapshots:
                 metadata = getattr(snapshot, "metadata", None)
                 if not isinstance(metadata, Mapping):
+                    continue
+                if "false_positive_completion_reopen" in metadata:
+                    alias = str(getattr(snapshot, "task_id", "") or "")
+                    cid = str(
+                        getattr(snapshot, "canonical_task_id", "") or ""
+                    )
+                    if alias:
+                        bridge_owned.add(alias)
+                    if cid:
+                        bridge_owned.add(cid)
                     continue
                 completion = metadata.get("completion")
                 if (
@@ -72106,7 +73239,13 @@ class DatabaseImplementationDaemon:
             for task in tasks:
                 alias = str(getattr(task, "task_alias", "") or "")
                 task_cid = str(getattr(task, "task_cid", "") or "")
-                if not task_cid or task_cid in seen or (alias and alias in seen):
+                if (
+                    not task_cid
+                    or task_cid in seen
+                    or task_cid in bridge_owned
+                    or (alias and alias in seen)
+                    or (alias and alias in bridge_owned)
+                ):
                     continue
                 paths = self._database_task_declared_output_paths(task)
                 if not paths or not self._head_contains_declared_outputs(paths):
@@ -74380,6 +75519,13 @@ class DatabaseImplementationDaemon:
             or DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON in reason
         ):
             return DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON
+        if (
+            reason
+            == DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON
+        ):
+            return (
+                DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON
+            )
         for token in DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS:
             if reason == token or token in reason:
                 return token
@@ -74391,6 +75537,11 @@ class DatabaseImplementationDaemon:
 
         reason = cls._canonical_portal_failure_reason(value)
         if reason == DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON:
+            return reason
+        if (
+            reason
+            == DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON
+        ):
             return reason
         if reason in DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS:
             return reason
@@ -81922,6 +83073,21 @@ class DatabaseImplementationDaemon:
             status = str(task.status or "").strip().lower()
             if status == "blocked":
                 if reason == "not_attempted":
+                    # Execution journals are lane-local.  A failed attempt may
+                    # therefore remain that lane's latest row after another
+                    # lane has installed a complete newer blocked attempt in
+                    # shared control.  Observe that exact foreign identity
+                    # before replaying the historical self-lock context: the
+                    # latter is deliberately one-shot and must not be
+                    # reinterpreted for a successor attempt.
+                    superseded = (
+                        self._fresh_failed_attempt_control_supersession(
+                            attempt
+                        )
+                    )
+                    if superseded is not None:
+                        outcomes.append(superseded)
+                        continue
                     history_context = (
                         self._protected_reconciliation_self_lock_context(
                             attempt,
@@ -82027,12 +83193,73 @@ class DatabaseImplementationDaemon:
                             task
                         )
                     )
+                    failed_target = verified_recovery[
+                        "failed_target_attempt"
+                    ]
+                    if failed_target.attempt_id != attempt.attempt_id:
+                        # The wrapper was verified in full above.  A different
+                        # lane can still be scanning an older local failure;
+                        # require the same complete foreign shared identity
+                        # used by other reconciliation paths before returning
+                        # an observation-only supersession.
+                        superseded = (
+                            self._fresh_failed_attempt_control_supersession(
+                                attempt
+                            )
+                        )
+                        target_identity = self._control_attempt_identity(
+                            failed_target
+                        )
+                        if (
+                            superseded is None
+                            or superseded.get("control_status") != "retrying"
+                            or superseded.get("control_operation")
+                            != (
+                                "database_portal_protected_preservation_"
+                                "reconciliation_retry_recovery"
+                            )
+                            or superseded.get("control_revision")
+                            != int(getattr(task, "revision"))
+                            or any(
+                                superseded.get(outcome_field)
+                                != target_identity[identity_field]
+                                for outcome_field, identity_field in (
+                                    ("successor_attempt_id", "attempt_id"),
+                                    ("successor_claim_id", "claim_id"),
+                                    ("successor_lease_id", "lease_id"),
+                                    (
+                                        "successor_owner_session_id",
+                                        "owner_session_id",
+                                    ),
+                                    (
+                                        "successor_fencing_token",
+                                        "fencing_token",
+                                    ),
+                                    (
+                                        "successor_fence_epoch",
+                                        "fence_epoch",
+                                    ),
+                                )
+                            )
+                        ):
+                            raise DatabaseImplementationConflictError(
+                                "protected reconciliation retry belongs to "
+                                "another target"
+                            )
+                        outcomes.append(superseded)
+                        continue
                     if (
-                        verified_recovery["failed_target_attempt"].attempt_id
-                        != attempt.attempt_id
+                        self._control_attempt_identity(failed_target)
+                        != self._control_attempt_identity(attempt)
+                        or int(failed_target.attempt_number)
+                        != int(attempt.attempt_number)
+                        or int(failed_target.revision)
+                        != int(attempt.revision)
+                        or failed_target.finished_at_ms
+                        != attempt.finished_at_ms
                     ):
                         raise DatabaseImplementationConflictError(
-                            "protected reconciliation retry belongs to another target"
+                            "protected reconciliation retry target binding changed"
                         )
                 elif operation in {
                     "database_portal_protected_preservation_retry",

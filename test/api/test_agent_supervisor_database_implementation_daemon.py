@@ -88,6 +88,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA,
     DATABASE_POST_MERGE_RECOVERY_SCHEMA,
     DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA,
+    DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS,
+    DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON,
     DATABASE_TASK_ATTEMPT_INTERFACE,
     POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
     POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA,
@@ -2235,6 +2237,119 @@ def test_protected_reconciliation_self_lock_rearms_original_seed_once(
         assert daemon.reconcile_terminal_portal_failures() == []
         assert len(observed_recovery_calls) == 1
 
+        # The source lane retains only its own older failed attempt.  It must
+        # verify the exact shared recovery wrapper, reject a forged wrapper,
+        # and then recognize the wrapper's real target as foreign authority
+        # instead of crashing while scanning its historical local row.
+        historical_lane = _open_daemon(
+            tmp_path,
+            session="session:protected-reconciliation-self-lock",
+            provider_fn=provider,
+            max_task_attempts=3,
+            lease_ms=5_000,
+            clock_ms=lambda: now["ms"],
+        )
+        try:
+            assert historical_lane.get_attempt(source.attempt_id) is not None
+            historical_get = historical_lane.task_source.get
+            forged_control = dict(recovery_control)
+            forged_control["attempt_id"] = "attempt:forged-target"
+
+            def get_with_forged_recovery(task_cid: str) -> object:
+                task = historical_get(task_cid)
+                if task_cid != source.task_cid or task is None:
+                    return task
+                return SimpleNamespace(
+                    status=task.status,
+                    revision=task.revision,
+                    body={
+                        **dict(task.body),
+                        "completion_receipt": forged_control,
+                    },
+                )
+
+            monkeypatch.setattr(
+                historical_lane.task_source,
+                "get",
+                get_with_forged_recovery,
+            )
+            with pytest.raises(
+                DatabaseImplementationConflictError,
+                match="recovery wrapper does not reproduce",
+            ):
+                historical_lane.reconcile_terminal_portal_failures()
+            monkeypatch.setattr(
+                historical_lane.task_source,
+                "get",
+                historical_get,
+            )
+
+            raced_control = dict(recovery_control)
+            raced_control.update(
+                {
+                    "attempt_id": "attempt:raced-target",
+                    "claim_id": "claim:raced-target",
+                    "lease_id": "lease:raced-target",
+                    "owner_session_id": "session:raced-target",
+                    "fencing_token": int(
+                        recovery_control["fencing_token"]
+                    )
+                    + 1,
+                    "fence_epoch": int(recovery_control["fence_epoch"]) + 1,
+                }
+            )
+            raced_reads = {"count": 0}
+
+            def get_with_raced_recovery(task_cid: str) -> object:
+                task = historical_get(task_cid)
+                if task_cid != source.task_cid or task is None:
+                    return task
+                raced_reads["count"] += 1
+                if raced_reads["count"] == 1:
+                    return task
+                return SimpleNamespace(
+                    status=task.status,
+                    revision=task.revision,
+                    body={
+                        **dict(task.body),
+                        "completion_receipt": raced_control,
+                    },
+                )
+
+            monkeypatch.setattr(
+                historical_lane.task_source,
+                "get",
+                get_with_raced_recovery,
+            )
+            with pytest.raises(
+                DatabaseImplementationConflictError,
+                match="retry belongs to another target",
+            ):
+                historical_lane.reconcile_terminal_portal_failures()
+            monkeypatch.setattr(
+                historical_lane.task_source,
+                "get",
+                historical_get,
+            )
+
+            historical_replay = (
+                historical_lane.reconcile_terminal_portal_failures()
+            )
+            assert len(historical_replay) == 1
+            assert historical_replay[0]["changed"] is False
+            assert historical_replay[0]["reason"] == (
+                "failed_attempt_control_superseded"
+            )
+            assert historical_replay[0]["successor_attempt_id"] == (
+                target.attempt_id
+            )
+            assert historical_replay[0]["control_operation"] == (
+                "database_portal_protected_preservation_"
+                "reconciliation_retry_recovery"
+            )
+        finally:
+            historical_lane.close()
+
         successor = daemon.claim_next()
         assert successor is not None
         assert successor.attempt_id not in {
@@ -2253,6 +2368,103 @@ def test_protected_reconciliation_self_lock_rearms_original_seed_once(
             "protected_preservation_source_attempt_id"
         ] == source.attempt_id
         assert len(provider_calls) == 3
+    finally:
+        daemon.close()
+
+
+def test_blocked_self_lock_replay_observes_complete_foreign_control_first(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A newer shared blocked attempt supersedes stale lane-local history."""
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("not_attempted")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:blocked-self-lock-history-replay",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        blocked = daemon.task_source.get(attempt.task_cid)
+        assert blocked is not None
+        assert blocked.status == "blocked"
+        original_receipt = dict(blocked.body["completion_receipt"])
+        projected_receipt = {"value": dict(original_receipt)}
+        original_get = daemon.task_source.get
+
+        def projected_get(task_cid: str) -> object:
+            task = original_get(task_cid)
+            if task_cid != attempt.task_cid or task is None:
+                return task
+            return SimpleNamespace(
+                status=task.status,
+                revision=task.revision,
+                body={
+                    **dict(task.body),
+                    "completion_receipt": projected_receipt["value"],
+                },
+            )
+
+        monkeypatch.setattr(daemon.task_source, "get", projected_get)
+
+        def stale_history_replay(
+            _attempt: DatabaseTaskAttempt,
+            _task: object,
+        ) -> dict[str, object]:
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation self-lock recovery is one-shot"
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_protected_reconciliation_self_lock_context",
+            stale_history_replay,
+        )
+
+        # A partial identity mismatch is not a successor proof and must still
+        # reach the fail-closed historical verifier.
+        projected_receipt["value"] = {
+            **original_receipt,
+            "attempt_id": "attempt:partial-foreign",
+        }
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="self-lock recovery is one-shot",
+        ):
+            daemon.reconcile_terminal_portal_failures()
+
+        # A complete foreign attempt/claim/lease identity is the shared
+        # owner's newer blocked target, so the stale lane observes a no-op and
+        # never tries to replay the one-shot history chain.
+        projected_receipt["value"] = {
+            **original_receipt,
+            "attempt_id": "attempt:newer-blocked",
+            "claim_id": "claim:newer-blocked",
+            "lease_id": "lease:newer-blocked",
+            "owner_session_id": "session:newer-blocked",
+            "fencing_token": int(original_receipt["fencing_token"]) + 1,
+            "fence_epoch": int(original_receipt["fence_epoch"]) + 1,
+        }
+        reconciled = daemon.reconcile_terminal_portal_failures()
+        assert len(reconciled) == 1
+        assert reconciled[0]["changed"] is False
+        assert reconciled[0]["reason"] == (
+            "failed_attempt_control_superseded"
+        )
+        assert reconciled[0]["successor_attempt_id"] == (
+            "attempt:newer-blocked"
+        )
+        assert reconciled[0]["control_status"] == "blocked"
+        assert reconciled[0]["control_operation"] == (
+            "database_portal_terminal_failure"
+        )
     finally:
         daemon.close()
 
@@ -5192,6 +5404,54 @@ def test_idle_run_once_rearms_blocked_task_when_outputs_are_on_head(
         daemon.close()
 
 
+def test_false_completion_reopen_is_not_consumed_by_generic_output_rearm(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    snapshot = SimpleNamespace(
+        task_id="VRIF-029",
+        canonical_task_id="task:cid:vrif-029",
+        metadata={
+            "false_positive_completion_reopen": {
+                "schema": "queue-owned-marker"
+            },
+            "completion": {
+                "reason": "post_merge_declared_outputs_repaired",
+                "repair_receipt": {
+                    "entries": [{"path": "already-present.py"}]
+                },
+            },
+        },
+    )
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-reopen-generic-rearm",
+    )
+    try:
+        daemon.open()
+        daemon._merge_repo_root = repo
+        daemon._merge_queue = SimpleNamespace(
+            completed_requests=lambda **_kwargs: (snapshot,),
+        )
+        monkeypatch.setattr(
+            daemon.task_source,
+            "rearm_blocked_task",
+            lambda *_args, **_kwargs: pytest.fail(
+                "generic rearm consumed Bridge-owned false reopen"
+            ),
+        )
+
+        result = daemon._rearm_blocked_tasks_with_outputs_on_head()
+
+        assert result["attempted"] is True
+        assert result["rearmed"] == 0
+        assert result["write_count"] == 0
+    finally:
+        daemon.close()
+
+
 def test_idle_run_once_rearms_from_older_repair_receipt_json(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -6091,8 +6351,16 @@ def test_preauthorize_rejects_when_receipt_is_not_post_merge_terminal(
         daemon.close()
 
 
-def test_preauthorize_accepts_cross_board_completion_terminal(
+@pytest.mark.parametrize(
+    "terminal_reason",
+    (
+        "cross_board_manual_completion_authority_metadata_invalid",
+        DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON,
+    ),
+)
+def test_preauthorize_accepts_recoverable_completion_terminal(
     tmp_path: Path,
+    terminal_reason: str,
 ) -> None:
     daemon = _open_daemon(
         tmp_path,
@@ -6107,18 +6375,14 @@ def test_preauthorize_accepts_cross_board_completion_terminal(
             failed,
             "failed",
             body={
-                "reason": (
-                    "cross_board_manual_completion_authority_metadata_invalid"
-                ),
+                "reason": terminal_reason,
                 "portal_retryable_failure": False,
                 "portal_terminal_failure": True,
             },
         )
         terminal = daemon._persist_terminal_portal_failure(
             failed,
-            reason=(
-                "cross_board_manual_completion_authority_metadata_invalid"
-            ),
+            reason=terminal_reason,
             coordination_evidence=(
                 daemon._reconcile_failed_attempt_coordination(failed)
             ),
@@ -6131,12 +6395,38 @@ def test_preauthorize_accepts_cross_board_completion_terminal(
         assert authorized["task_status"] == "blocked"
         stale = _post_merge_preauthorization(daemon, failed)
         stale["source_attempt_id"] = "attempt:prior-repair"
-        authorized_prior = daemon.preauthorize_post_merge_declared_output_recovery(
-            stale
-        )
-        assert authorized_prior["authorized"] is True
+        if terminal_reason in DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS:
+            authorized_prior = (
+                daemon.preauthorize_post_merge_declared_output_recovery(stale)
+            )
+            assert authorized_prior["authorized"] is True
+        else:
+            with pytest.raises(
+                DatabaseImplementationConflictError,
+                match="superseded source attempt",
+            ):
+                daemon.preauthorize_post_merge_declared_output_recovery(stale)
     finally:
         daemon.close()
+
+
+def test_protected_preservation_ancestry_reason_requires_exact_token() -> None:
+    forged = (
+        "prefix:"
+        f"{DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON}"
+        ":suffix"
+    )
+
+    assert (
+        DatabaseImplementationDaemon._canonical_portal_failure_reason(forged)
+        == forged
+    )
+    assert (
+        DatabaseImplementationDaemon._recoverable_post_merge_terminal_reason(
+            forged
+        )
+        == ""
+    )
 
 
 def test_preauthorize_accepts_binding_changed_resume_receipt_from_later_attempt(

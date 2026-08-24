@@ -59,6 +59,49 @@ MERGE_TARGET_BINDING_SCHEMA = (
 MERGE_QUEUE_SETTLEMENT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/merge-queue-settlement@1"
 )
+FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "merge-queue-false-positive-completion-reopen@1"
+)
+_FALSE_POSITIVE_COMPLETION_RECEIPT_FIELDS = frozenset(
+    {
+        "already_merged",
+        "canonical_task_id",
+        "commit_sha",
+        "distributed_publication_admission",
+        "finished_at",
+        "integrated",
+        "merge_commit",
+        "merged",
+        "mutation_short_circuited",
+        "reason",
+        "request_id",
+        "started_at",
+        "status",
+        "target_branch",
+        "target_commit",
+        "task_id",
+    }
+)
+_FALSE_POSITIVE_COMPLETION_ADMISSION_FIELDS = frozenset(
+    {"admitted", "distributed", "request_id", "schema", "status"}
+)
+_DISTRIBUTED_LANE_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/distributed-lane-admission@1"
+)
+_FALSE_POSITIVE_COMPLETION_REOPEN_FIELDS = frozenset(
+    {
+        "schema",
+        "reason",
+        "train_receipt_id",
+        "previous_target_commit",
+        "previous_claim_generation",
+        "reopened_at",
+    }
+)
+_FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY = (
+    "false_positive_completion_reopen"
+)
 MAX_MERGE_QUEUE_DEFERRAL_SECONDS = 3600.0
 MAX_MERGE_QUEUE_RECORDED_DEFERRALS = 32
 # A healthy index of a few dozen receipts is well under 1 MiB. Larger files
@@ -201,6 +244,16 @@ def _settlement_canonical_bytes(value: Mapping[str, Any] | list[Any]) -> bytes:
 
 def _settlement_content_id(value: Mapping[str, Any] | list[Any]) -> str:
     return "sha256:" + hashlib.sha256(_settlement_canonical_bytes(value)).hexdigest()
+
+
+def _finite_nonnegative_timestamp(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        timestamp = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    return timestamp if math.isfinite(timestamp) and timestamp >= 0 else None
 
 
 def _settlement_regular_file_identity(path: Path, *, label: str) -> dict[str, int]:
@@ -1396,6 +1449,10 @@ class MergeQueue:
         *,
         ignore: bool,
     ) -> None:
+        if _FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY in request.metadata:
+            raise MergeQueueIntegrityError(
+                "false-positive completion reopen metadata is queue-reserved"
+            )
         if ignore:
             # INSERT OR IGNORE still appends then reverts on unique conflict.
             # DuckDB treats that revert as FATAL and abort-kills the process.
@@ -1493,6 +1550,10 @@ class MergeQueue:
         if not str(task_id).strip():
             raise ValueError("task_id must not be empty")
         metadata_dict = dict(metadata or {})
+        if _FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY in metadata_dict:
+            raise ValueError(
+                "false-positive completion reopen metadata is queue-reserved"
+            )
         declared_repository_id = str(
             target_repository_id
             or metadata_dict.get("target_repository_id")
@@ -1674,6 +1735,23 @@ class MergeQueue:
                 "request target differs from the queue binding"
             )
 
+    @staticmethod
+    def _requires_explicit_false_positive_recovery(value: Any) -> bool:
+        """Keep queue-authored recovery rows out of generic dequeue paths."""
+
+        try:
+            metadata = (
+                json.loads(value or "{}")
+                if not isinstance(value, Mapping)
+                else value
+            )
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return False
+        return bool(
+            isinstance(metadata, Mapping)
+            and _FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY in metadata
+        )
+
     def dequeue(self, consumer_id: str = "") -> Optional[MergeRequest]:
         """Atomically claim the fairest pending request for one consumer."""
 
@@ -1849,6 +1927,13 @@ class MergeQueue:
                         for row in rows
                         if self._metadata_matches_target(row["metadata_json"])
                     ]
+                rows = [
+                    row
+                    for row in rows
+                    if not self._requires_explicit_false_positive_recovery(
+                        row["metadata_json"]
+                    )
+                ]
                 if not rows:
                     connection.commit()
                     return ()
@@ -2067,6 +2152,228 @@ class MergeQueue:
         assert row is not None
         self._write_stage_receipt(self._request_from_row(row))
         self._prune_receipts(self.completed_dir, keep=50)
+
+    def reopen_false_positive_completion(
+        self,
+        request: MergeRequest,
+        *,
+        completion_receipt: Mapping[str, Any],
+    ) -> MergeRequest | None:
+        """Reopen one exactly proved false ``already_merged`` completion.
+
+        This is deliberately narrower than an operator retry.  It accepts only
+        the train receipt emitted by the metadata-only declared-output
+        shortcut, only for a target-bound completed row with no callback
+        completion contract, and records the receipt digest before returning
+        the row to ``pending``.  The caller must separately prove from Git that
+        the candidate's declared outputs are not actually present on target.
+
+        Replaying the same receipt after this transition is observation-only;
+        it never regresses a later pending, processing, quarantined, or
+        completed generation.
+        """
+
+        if not isinstance(completion_receipt, Mapping):
+            raise MergeQueueIntegrityError(
+                "false-positive completion receipt must be a mapping"
+            )
+        receipt = dict(completion_receipt)
+        receipt_fields = set(receipt)
+        content_addressed = receipt_fields == (
+            _FALSE_POSITIVE_COMPLETION_RECEIPT_FIELDS | {"receipt_id"}
+        )
+        if (
+            receipt_fields != _FALSE_POSITIVE_COMPLETION_RECEIPT_FIELDS
+            and not content_addressed
+        ):
+            raise MergeQueueIntegrityError(
+                "false-positive completion receipt has an unknown shape"
+            )
+        receipt_content = (
+            {key: value for key, value in receipt.items() if key != "receipt_id"}
+            if content_addressed
+            else receipt
+        )
+        try:
+            receipt_id = _settlement_content_id(receipt_content)
+        except (TypeError, ValueError) as exc:
+            raise MergeQueueIntegrityError(
+                "false-positive completion receipt is not canonical JSON"
+            ) from exc
+        if content_addressed and receipt.get("receipt_id") != receipt_id:
+            raise MergeQueueIntegrityError(
+                "false-positive completion receipt content identity changed"
+            )
+        admission = receipt.get("distributed_publication_admission")
+        target_commit = str(receipt.get("target_commit") or "")
+        merge_commit = str(receipt.get("merge_commit") or "")
+        started_at = receipt.get("started_at")
+        finished_at = receipt.get("finished_at")
+        started_timestamp = _finite_nonnegative_timestamp(started_at)
+        finished_timestamp = _finite_nonnegative_timestamp(finished_at)
+        timestamps_valid = bool(
+            started_timestamp is not None
+            and finished_timestamp is not None
+            and finished_timestamp >= started_timestamp
+        )
+        if (
+            receipt.get("request_id") != request.request_id
+            or receipt.get("status") != "already_merged"
+            or receipt.get("reason") != "declared_outputs_already_on_target"
+            or receipt.get("mutation_short_circuited") is not True
+            or receipt.get("already_merged") is not True
+            or receipt.get("integrated") is not True
+            or receipt.get("merged") is not False
+            or receipt.get("commit_sha") != request.commit_sha
+            or receipt.get("canonical_task_id") != request.canonical_identity
+            or receipt.get("task_id") != request.task_id
+            or receipt.get("target_branch") != request.target_branch
+            or len(target_commit) != 40
+            or any(character not in "0123456789abcdef" for character in target_commit)
+            or merge_commit != target_commit
+            or not timestamps_valid
+            or not isinstance(admission, Mapping)
+            or set(admission) != _FALSE_POSITIVE_COMPLETION_ADMISSION_FIELDS
+            or admission.get("schema") != _DISTRIBUTED_LANE_ADMISSION_SCHEMA
+            or admission.get("status") != "local"
+            or admission.get("admitted") is not True
+            or admission.get("distributed") is not False
+            or admission.get("request_id") != request.request_id
+        ):
+            raise MergeQueueIntegrityError(
+                "false-positive completion receipt does not match its request"
+            )
+        if (
+            self.require_target_binding is not True
+            or not request.has_target_binding
+            or request.target_repository_id != self.target_repository_id
+            or request.target_branch != self.target_branch
+        ):
+            raise MergeQueueIntegrityError(
+                "false-positive completion reopen requires the exact queue target"
+            )
+
+        now = self._clock()
+        if _finite_nonnegative_timestamp(now) is None:
+            raise MergeQueueIntegrityError(
+                "false-positive completion reopen clock is invalid"
+            )
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?",
+                (request.request_id,),
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                return None
+            self._require_row_target(
+                row,
+                operation="reopen false-positive completion",
+                request_id=request.request_id,
+            )
+            current = self._request_from_row(row)
+            prior_reopen = current.metadata.get(
+                _FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY
+            )
+            if (
+                isinstance(prior_reopen, Mapping)
+                and prior_reopen.get("train_receipt_id") == receipt_id
+            ):
+                prior_generation = prior_reopen.get("previous_claim_generation")
+                reopened_at = prior_reopen.get("reopened_at")
+                reopened_timestamp = _finite_nonnegative_timestamp(reopened_at)
+                exact_prior_reopen = bool(
+                    set(prior_reopen) == _FALSE_POSITIVE_COMPLETION_REOPEN_FIELDS
+                    and prior_reopen.get("schema")
+                    == FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA
+                    and prior_reopen.get("reason")
+                    == "declared_outputs_not_on_target"
+                    and prior_reopen.get("previous_target_commit")
+                    == target_commit
+                    and not isinstance(prior_generation, bool)
+                    and isinstance(prior_generation, int)
+                    and prior_generation == request.claim_generation
+                    and reopened_timestamp is not None
+                    and current.claim_generation >= prior_generation + 1
+                    and (
+                        current.claim_generation == prior_generation + 1
+                        or current.status
+                        in {"processing", "quarantined", "completed", "cancelled"}
+                    )
+                    and (
+                        current.claim_generation != prior_generation + 1
+                        or current.status == "pending"
+                    )
+                )
+                if not exact_prior_reopen:
+                    connection.rollback()
+                    raise MergeQueueIntegrityError(
+                        "false-positive completion reopen lineage is malformed"
+                    )
+                connection.commit()
+                return current
+            immutable_snapshot_matches = bool(
+                current.status == "completed"
+                and request.status == "completed"
+                and current.request_id == request.request_id
+                and current.branch_name == request.branch_name
+                and current.task_id == request.task_id
+                and current.commit_sha == request.commit_sha
+                and current.canonical_task_id == request.canonical_task_id
+                and current.canonical_task_key == request.canonical_task_key
+                and current.claim_generation == request.claim_generation
+                and current.metadata == request.metadata
+            )
+            if not immutable_snapshot_matches:
+                connection.rollback()
+                raise MergeQueueFenceError(
+                    "false-positive completion reopen rejected a stale row snapshot"
+                )
+            if "completion" in current.metadata:
+                connection.rollback()
+                raise MergeQueueIntegrityError(
+                    "false-positive completion reopen rejected a callback completion"
+                )
+            metadata = dict(current.metadata)
+            metadata[_FALSE_POSITIVE_COMPLETION_REOPEN_METADATA_KEY] = {
+                "schema": FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA,
+                "reason": "declared_outputs_not_on_target",
+                "train_receipt_id": receipt_id,
+                "previous_target_commit": target_commit,
+                "previous_claim_generation": int(current.claim_generation),
+                "reopened_at": now,
+            }
+            connection.execute(
+                """UPDATE merge_requests SET status='pending', metadata_json=?,
+                   claimed_at=0, consumer_id='', claim_token='',
+                   claim_generation=claim_generation + 1,
+                   retry_not_before=0, finished_at=0, updated_at=?
+                   WHERE request_id=? AND status='completed'
+                     AND claim_generation=?""",
+                (
+                    json.dumps(metadata, sort_keys=True, separators=(",", ":")),
+                    now,
+                    request.request_id,
+                    int(current.claim_generation),
+                ),
+            )
+            row = connection.execute(
+                "SELECT * FROM merge_requests WHERE request_id=?",
+                (request.request_id,),
+            ).fetchone()
+            connection.commit()
+        assert row is not None
+        reopened = self._request_from_row(row)
+        if (
+            reopened.status != "pending"
+            or reopened.claim_generation != current.claim_generation + 1
+        ):
+            raise MergeQueueFenceError(
+                "false-positive completion reopen lost its completed-row fence"
+            )
+        self._write_stage_receipt(reopened)
+        return reopened
 
     def fail(
         self,
@@ -2501,8 +2808,9 @@ class MergeQueue:
         """Return a bounded target-bound completion snapshot.
 
         Recovery consumers may filter the nested completion contract before
-        ``LIMIT`` and paginate by the immutable time-prefixed request id.  An
-        unfiltered call preserves the historical finished-time ordering.
+        ``LIMIT`` and paginate by the immutable time-prefixed request id.  All
+        pages use that same keyset order; mutable or out-of-order completion
+        timestamps therefore cannot hide rows after the first page.
         """
 
         requested = max(0, min(int(limit), 256))
@@ -2528,7 +2836,6 @@ class MergeQueue:
             completion_parameters += (reason,)
         cursor_sql = " AND request_id < ?" if cursor else ""
         cursor_parameters = (cursor,) if cursor else ()
-        ordered_for_recovery = bool(schema or reason or cursor)
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT * FROM merge_requests "
@@ -2536,11 +2843,7 @@ class MergeQueue:
                 + target_sql
                 + completion_sql
                 + cursor_sql
-                + (
-                    " ORDER BY request_id DESC LIMIT ?"
-                    if ordered_for_recovery
-                    else " ORDER BY finished_at DESC, request_id DESC LIMIT ?"
-                ),
+                + " ORDER BY request_id DESC LIMIT ?",
                 (
                     *target_parameters,
                     *completion_parameters,
@@ -3105,6 +3408,7 @@ class MergeQueue:
 
 
 __all__ = [
+    "FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA",
     "MergeQueue",
     "MergeQueueFullError",
     "MergeQueueFenceError",

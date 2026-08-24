@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Final
 
+from ..merge.merge_queue import FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA
 from ..runtime.event_log import append_jsonl_event
 from ..validation.validation_commands import validation_command_repository_root
 
@@ -1729,6 +1730,51 @@ class DatabasePortalExecutionBridge:
             return True
         if status not in {"pending", "processing", "quarantined", "completed"}:
             return False
+        if status == "completed" and "completion" not in metadata:
+            # Pre-fix metadata-only shortcuts completed without a callback
+            # completion contract or quarantine/revival lineage.  Admission
+            # here remains read-only; the recovery path later requires the
+            # exact train receipt, blocked database attempt, target identity,
+            # non-ancestry, and candidate-vs-target output mismatch.
+            return True
+        false_reopen = metadata.get("false_positive_completion_reopen")
+        false_reopen_lineage = bool(
+            isinstance(false_reopen, Mapping)
+            and false_reopen.get("schema")
+            == FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA
+            and false_reopen.get("reason")
+            == "declared_outputs_not_on_target"
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(false_reopen.get("train_receipt_id") or ""),
+            )
+            is not None
+        )
+        if false_reopen_lineage:
+            if status == "pending":
+                return True
+            if status == "processing":
+                return bool(
+                    str(getattr(request, "consumer_id", "") or "").startswith(
+                        "merge-train:"
+                    )
+                    and str(getattr(request, "claim_token", "") or "")
+                )
+            if status == "quarantined":
+                return failure_reason in {
+                    _POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON,
+                    "merge train consumer exited on final attempt",
+                    "processing request exceeded max age",
+                }
+            completion = metadata.get("completion")
+            return bool(
+                status == "completed"
+                and isinstance(completion, Mapping)
+                and completion.get("schema")
+                == _POST_MERGE_DECLARED_OUTPUT_COMPLETION_SCHEMA
+                and completion.get("reason")
+                == "post_merge_declared_outputs_repaired"
+            )
         revivals = metadata.get("revivals")
         if (
             not isinstance(revivals, Sequence)
@@ -1760,11 +1806,14 @@ class DatabasePortalExecutionBridge:
         if status == "completed":
             completion = metadata.get("completion")
             return bool(
-                isinstance(completion, Mapping)
-                and completion.get("schema")
-                == _POST_MERGE_DECLARED_OUTPUT_COMPLETION_SCHEMA
-                and completion.get("reason")
-                == "post_merge_declared_outputs_repaired"
+                "completion" not in metadata
+                or (
+                    isinstance(completion, Mapping)
+                    and completion.get("schema")
+                    == _POST_MERGE_DECLARED_OUTPUT_COMPLETION_SCHEMA
+                    and completion.get("reason")
+                    == "post_merge_declared_outputs_repaired"
+                )
             )
         return True
 
@@ -2102,6 +2151,135 @@ class DatabasePortalExecutionBridge:
             return None
         evidence["evidence_id"] = str(evidence_id)
         return evidence
+
+    def _reopen_false_positive_completed_request(
+        self,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+        *,
+        train: Any,
+        target_commit: str,
+    ) -> dict[str, Any] | None:
+        """Reopen one receipt-proved declared-output shortcut mistake.
+
+        The historical shortcut completed some Portal rows after checking only
+        that declared paths existed.  Recovery is closed over the exact train
+        receipt, current target commit, sealed database-attempt projection, and
+        a literal candidate-vs-target Git comparison.  It performs only the
+        queue CAS here; the ordinary pending recovery stage subsequently routes
+        the same row through the Portal repair callback and database rearm.
+        """
+
+        metadata = getattr(request, "metadata", None)
+        if (
+            projection.task_status != "blocked"
+            or str(getattr(request, "status", "") or "") != "completed"
+            or not isinstance(metadata, Mapping)
+            or "completion" in metadata
+        ):
+            return None
+        canonical = str(
+            getattr(request, "canonical_identity", "") or ""
+        )
+        candidate = str(getattr(request, "commit_sha", "") or "")
+        dedupe_key = str(getattr(request, "dedupe_key", "") or "")
+        make_key = getattr(train, "_dedupe_key", None)
+        read_receipt = getattr(train, "_read_receipt", None)
+        outputs_match_state = getattr(
+            train,
+            "portal_declared_outputs_match_commit_state",
+            None,
+        )
+        ancestor_state = getattr(train, "_is_ancestor_state", None)
+        if not all(
+            callable(operation)
+            for operation in (
+                make_key,
+                read_receipt,
+                outputs_match_state,
+                ancestor_state,
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "merge train lacks false-completion recovery verification"
+            )
+        receipt_key = str(make_key(canonical, candidate) or "")
+        if not receipt_key or receipt_key != dedupe_key:
+            return None
+        receipt = read_receipt(receipt_key)
+        if not isinstance(receipt, Mapping):
+            return None
+        receipt = dict(receipt)
+        if (
+            receipt.get("status") != "already_merged"
+            or receipt.get("reason")
+            != "declared_outputs_already_on_target"
+            or receipt.get("mutation_short_circuited") is not True
+        ):
+            return None
+        target = str(target_commit or "").strip().casefold()
+        receipt_target = str(receipt.get("target_commit") or "")
+        receipt_target_ancestry = ancestor_state(receipt_target, target)
+        receipt_target_outputs = outputs_match_state(
+            request,
+            receipt_target,
+        )
+        current_target_outputs = outputs_match_state(request, target)
+        candidate_ancestry = ancestor_state(candidate, target)
+        if (
+            not target
+            or not receipt_target
+            or receipt.get("merge_commit") != receipt_target
+            or receipt_target_ancestry is not True
+            or receipt_target_outputs is not False
+            or current_target_outputs is not False
+            or candidate_ancestry is not False
+        ):
+            return None
+        reopen = getattr(
+            self.merge_queue,
+            "reopen_false_positive_completion",
+            None,
+        )
+        if not callable(reopen):
+            raise DatabasePortalBridgeError(
+                "merge queue lacks false-completion recovery authority"
+            )
+        reopened = reopen(request, completion_receipt=receipt)
+        if reopened is None:
+            raise DatabasePortalBridgeError(
+                "false completed merge request disappeared during recovery"
+            )
+        reopened_metadata = getattr(reopened, "metadata", None)
+        reopen_receipt = (
+            reopened_metadata.get("false_positive_completion_reopen")
+            if isinstance(reopened_metadata, Mapping)
+            else None
+        )
+        if (
+            str(getattr(reopened, "request_id", "") or "")
+            != str(getattr(request, "request_id", "") or "")
+            or str(getattr(reopened, "status", "") or "") != "pending"
+            or not isinstance(reopen_receipt, Mapping)
+            or reopen_receipt.get("reason") != "declared_outputs_not_on_target"
+        ):
+            raise DatabasePortalBridgeError(
+                "false completed merge request did not reopen exactly"
+            )
+        return {
+            "schema": _DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+            "attempted": True,
+            "recovered": False,
+            "reason": "false_positive_completion_reopened",
+            "request_id": str(getattr(request, "request_id", "") or ""),
+            "task_cid": str(
+                getattr(request, "canonical_task_id", "") or ""
+            ),
+            "task_alias": str(getattr(request, "task_id", "") or ""),
+            "candidate_commit": candidate,
+            "target_commit": target,
+            "write_count": 1,
+        }
 
     def _repair_receipt_current_target_identity(
         self,
@@ -7919,6 +8097,11 @@ class DatabasePortalExecutionBridge:
             "preauthorize_post_merge_declared_output_recovery",
             None,
         )
+        run_checkout_mutation = getattr(
+            database_daemon,
+            "_run_checkout_mutation_transaction",
+            None,
+        )
         if (
             not callable(digest)
             or not callable(recover)
@@ -7950,18 +8133,152 @@ class DatabasePortalExecutionBridge:
         def completion_recovery_page(cursor: str) -> Sequence[Any]:
             return self.merge_queue.completed_requests(
                 limit=_POST_MERGE_RECOVERY_SCAN_LIMIT,
-                completion_schema=(
-                    _POST_MERGE_DECLARED_OUTPUT_COMPLETION_SCHEMA
-                ),
-                completion_reason=(
-                    "post_merge_declared_outputs_repaired"
-                ),
                 before_request_id=cursor,
             )
 
         completion_page = completion_recovery_page(
             cursors["completed_requests"]
         )
+
+        def reopen_under_checkout_transaction(
+            completed: Any,
+            projection: _DatabasePortalRecoveryProjection,
+        ) -> dict[str, Any] | None:
+            """Fence target identity through the terminal queue CAS."""
+
+            # Most completed rows are ordinary repair completions.  Prove the
+            # immutable historical-shortcut envelope before requiring the
+            # additional checkout-mutation authority; the complete Git and
+            # queue proof is deliberately repeated under that authority below.
+            metadata = getattr(completed, "metadata", None)
+            if (
+                projection.task_status != "blocked"
+                or str(getattr(completed, "status", "") or "")
+                != "completed"
+                or not isinstance(metadata, Mapping)
+                or "completion" in metadata
+            ):
+                return None
+            canonical = str(
+                getattr(completed, "canonical_identity", "") or ""
+            )
+            candidate = str(
+                getattr(completed, "commit_sha", "") or ""
+            )
+            dedupe_key = str(
+                getattr(completed, "dedupe_key", "") or ""
+            )
+            make_key = getattr(train, "_dedupe_key", None)
+            read_receipt = getattr(train, "_read_receipt", None)
+            if not callable(make_key) or not callable(read_receipt):
+                raise DatabasePortalBridgeError(
+                    "merge train lacks false-completion recovery verification"
+                )
+            receipt_key = str(make_key(canonical, candidate) or "")
+            receipt = read_receipt(receipt_key) if receipt_key else None
+            if (
+                receipt_key != dedupe_key
+                or not isinstance(receipt, Mapping)
+                or receipt.get("status") != "already_merged"
+                or receipt.get("reason")
+                != "declared_outputs_already_on_target"
+                or receipt.get("mutation_short_circuited") is not True
+            ):
+                return None
+            if not callable(run_checkout_mutation):
+                raise DatabasePortalBridgeError(
+                    "database daemon lacks checkout mutation authority for "
+                    "false-completion recovery"
+                )
+            request_id = str(
+                getattr(completed, "request_id", "") or ""
+            )
+            no_authority_reason = (
+                "false_positive_completion_reopen_not_authorized"
+            )
+
+            def verify_and_reopen() -> dict[str, Any]:
+                # Acquiring the checkout lease may wait behind another
+                # mutation.  Re-read both authorities inside it, then keep the
+                # exact captured target stable through the queue CAS.
+                current = self.merge_queue.get(request_id)
+                current_projection = (
+                    self._owned_post_merge_recovery_projection(current)
+                    if current is not None
+                    else None
+                )
+                if current_projection is None:
+                    return {
+                        "schema": _DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                        "attempted": False,
+                        "recovered": False,
+                        "reason": no_authority_reason,
+                        "request_id": request_id,
+                        "write_count": 0,
+                    }
+                self._preauthorize_post_merge_recovery(
+                    current,
+                    current_projection,
+                    preauthorize=preauthorize,
+                    evidence_digest=digest,
+                )
+                target = str(train._target_commit() or "")
+                reopened = self._reopen_false_positive_completed_request(
+                    current,
+                    current_projection,
+                    train=train,
+                    target_commit=target,
+                )
+                if reopened is not None:
+                    return reopened
+                return {
+                    "schema": _DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                    "attempted": False,
+                    "recovered": False,
+                    "reason": no_authority_reason,
+                    "request_id": request_id,
+                    "write_count": 0,
+                }
+
+            try:
+                guarded = run_checkout_mutation(
+                    task_id=str(getattr(completed, "task_id", "") or ""),
+                    attempt=int(getattr(completed, "attempt", 0) or 0),
+                    branch=str(
+                        getattr(completed, "branch_name", "") or ""
+                    ),
+                    operation="reopen_false_positive_merge_completion",
+                    callback=verify_and_reopen,
+                    failure_fields={
+                        "schema": _DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                        "attempted": False,
+                        "recovered": False,
+                        "request_id": request_id,
+                        "write_count": 0,
+                    },
+                )
+            except Exception as exc:
+                if _is_implementation_conflict(exc):
+                    return None
+                raise
+            if not isinstance(guarded, Mapping):
+                raise DatabasePortalBridgeError(
+                    "checkout mutation returned invalid false-completion "
+                    "recovery evidence"
+                )
+            result = dict(guarded)
+            if str(result.get("reason") or "") == no_authority_reason:
+                return None
+            if (
+                result.get("schema") == _DATABASE_POST_MERGE_RECOVERY_SCHEMA
+                and result.get("request_id") == request_id
+                and result.get("write_count") == 1
+            ):
+                # A release-pending suffix may replace the callback reason
+                # after the queue CAS.  The exact write still occurred and
+                # must keep the daemon awake for idempotent reconciliation.
+                return result
+            return None
 
         def replay_completed_page() -> Mapping[str, Any] | None:
             for snapshot in completion_page:
@@ -7996,19 +8313,24 @@ class DatabasePortalExecutionBridge:
                     projection,
                     evidence_digest=digest,
                 )
-                if evidence is None:
-                    continue
-                try:
-                    result = recover(evidence)
-                except Exception as exc:
-                    if not _is_implementation_conflict(exc):
-                        raise
-                    continue
-                if not isinstance(result, Mapping):
-                    raise DatabasePortalBridgeError(
-                        "database post-merge recovery returned a non-object"
-                    )
-                return dict(result)
+                if evidence is not None:
+                    try:
+                        result = recover(evidence)
+                    except Exception as exc:
+                        if not _is_implementation_conflict(exc):
+                            raise
+                        continue
+                    if not isinstance(result, Mapping):
+                        raise DatabasePortalBridgeError(
+                            "database post-merge recovery returned a non-object"
+                        )
+                    return dict(result)
+                reopened = reopen_under_checkout_transaction(
+                    completed,
+                    projection,
+                )
+                if reopened is not None:
+                    return reopened
             return None
 
         if completion_page:
@@ -8023,6 +8345,26 @@ class DatabasePortalExecutionBridge:
                 completion_page,
             )
             if replay_result is not None:
+                if (
+                    str(replay_result.get("reason") or "")
+                    == "false_positive_completion_reopened"
+                ):
+                    # The completed row may have an older immutable request
+                    # id than this lane's existing pending/processing scan
+                    # cursors.  Reset every stage it can traverse before the
+                    # next tick; otherwise a continuously non-empty tail can
+                    # starve the exact queue-authored recovery indefinitely.
+                    reset_changed = False
+                    for stage in (
+                        "pending_requests",
+                        "processing_requests",
+                        "quarantined_requests",
+                    ):
+                        if cursors.get(stage):
+                            cursors[stage] = ""
+                            reset_changed = True
+                    if reset_changed:
+                        self._save_post_merge_recovery_cursors(cursors)
                 return dict(replay_result)
         else:
             self._advance_post_merge_recovery_cursor(
@@ -8043,7 +8385,6 @@ class DatabasePortalExecutionBridge:
                 limit=_POST_MERGE_RECOVERY_SCAN_LIMIT,
                 after_request_id=cursors[snapshot_name],
             )
-            owned_conflict = False
             for request in page:
                 projection = self._owned_post_merge_recovery_projection(
                     request
@@ -8060,7 +8401,6 @@ class DatabasePortalExecutionBridge:
                 except Exception as exc:
                     if not _is_implementation_conflict(exc):
                         raise
-                    owned_conflict = True
                     _LOG.warning(
                         "post-merge recovery preauthorization conflict "
                         "request_id=%s task_id=%s: %s",
@@ -8072,7 +8412,11 @@ class DatabasePortalExecutionBridge:
                 selected = request
                 selected_projection = projection
                 break
-            if selected is None and not owned_conflict:
+            if selected is None:
+                # A stale owned row must not pin the first bounded page
+                # forever.  Advance past every inspected conflict and retry it
+                # after the durable cursor wraps, preserving both fairness and
+                # eventual re-evaluation when database authority changes.
                 self._advance_post_merge_recovery_cursor(
                     cursors,
                     snapshot_name,
