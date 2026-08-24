@@ -40,6 +40,7 @@ from .duckdb_state import (
     QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
     QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
     QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
     QuackOwnerCommandRemoteError,
@@ -1447,6 +1448,9 @@ def execute_quack_owner_command(
                 args["expected_revision"],
                 args["status"],
                 args.get("receipt"),
+                expected_control_receipt=args.get(
+                    "expected_control_receipt"
+                ),
                 evidence_digests=args.get("evidence_digests"),
             )
             return result.to_dict()
@@ -1528,6 +1532,25 @@ def execute_quack_owner_command(
             )
             result = source.rearm_blocked_task(task.task_cid, receipt=request)
             return result.to_dict()
+        if command == QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS:
+            result = source.record_queue_backoff_and_cas_status(
+                task_cid=args["task_cid"],
+                expected_revision=args["expected_revision"],
+                expected_control_receipt=args["expected_control_receipt"],
+                status=args["status"],
+                receipt=args["receipt"],
+                delay_ms=args["delay_ms"],
+                reason=args["reason"],
+                selection_penalty=args.get("selection_penalty", 0),
+            )
+            return {
+                **{
+                    key: value
+                    for key, value in result.items()
+                    if key != "cas_result"
+                },
+                "cas_result": result["cas_result"].to_dict(),
+            }
         if command == QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF:
             receipt = source.record_queue_backoff(
                 task_cid=args["task_cid"],
@@ -2474,6 +2497,7 @@ class DatabaseTaskSource:
         status: str,
         receipt: Mapping[str, Any] | None = None,
         *,
+        expected_control_receipt: Mapping[str, Any] | None = None,
         evidence_digests: Sequence[str] | None = None,
     ) -> CASResult:
         key = _task_key(task_cid_or_alias)
@@ -2486,6 +2510,11 @@ class DatabaseTaskSource:
                         "expected_revision": expected_revision,
                         "status": status,
                         "receipt": dict(receipt) if receipt is not None else None,
+                        "expected_control_receipt": (
+                            dict(expected_control_receipt)
+                            if expected_control_receipt is not None
+                            else None
+                        ),
                         "evidence_digests": (
                             list(evidence_digests) if evidence_digests is not None else None
                         ),
@@ -2533,6 +2562,7 @@ class DatabaseTaskSource:
                 expected_revision=int(expected_revision),
                 new_status=status,
                 receipt=transition_receipt,
+                expected_control_receipt=expected_control_receipt,
                 evidence_digests=evidence_digests,
             )
         except IntentCompletionError as exc:
@@ -2746,6 +2776,136 @@ class DatabaseTaskSource:
             delay_ms=delay_ms,
             reason=reason,
             selection_penalty=selection_penalty,
+        )
+
+    @staticmethod
+    def _guarded_queue_status_result(
+        payload: Mapping[str, Any],
+        *,
+        cas_result: CASResult,
+    ) -> Mapping[str, Any]:
+        expected = {
+            "previous_status",
+            "queue_receipt",
+            "queue_reused",
+            "retry_not_before_ms",
+            "transition_receipt",
+        }
+        if set(payload) != expected:
+            raise TaskSourceIntegrityError(
+                "guarded queue/status result fields are malformed"
+            )
+        queue_receipt = payload.get("queue_receipt")
+        transition_receipt = payload.get("transition_receipt")
+        if (
+            not isinstance(queue_receipt, Mapping)
+            or not isinstance(transition_receipt, Mapping)
+            or type(payload.get("queue_reused")) is not bool
+            or type(payload.get("retry_not_before_ms")) is not int
+            or int(payload["retry_not_before_ms"]) < 0
+        ):
+            raise TaskSourceIntegrityError(
+                "guarded queue/status result values are malformed"
+            )
+        return MappingProxyType(
+            {
+                "previous_status": str(payload["previous_status"]),
+                "queue_receipt": dict(queue_receipt),
+                "queue_reused": bool(payload["queue_reused"]),
+                "retry_not_before_ms": int(payload["retry_not_before_ms"]),
+                "transition_receipt": dict(transition_receipt),
+                "cas_result": cas_result,
+            }
+        )
+
+    def record_queue_backoff_and_cas_status(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+        status: str,
+        receipt: Mapping[str, Any],
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+    ) -> Mapping[str, Any]:
+        """Atomically guard, cool, and transition one shared control row."""
+
+        if self._intent.uses_quack_transport:
+            try:
+                result = submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
+                    {
+                        "task_cid": task_cid,
+                        "expected_revision": expected_revision,
+                        "expected_control_receipt": dict(
+                            expected_control_receipt
+                        ),
+                        "status": status,
+                        "receipt": dict(receipt),
+                        "delay_ms": delay_ms,
+                        "reason": reason,
+                        "selection_penalty": selection_penalty,
+                    },
+                )
+            except QuackOwnerCommandRemoteError as exc:
+                _raise_typed_owner_error(exc)
+            if not isinstance(result, Mapping) or "cas_result" not in result:
+                raise TaskSourceIntegrityError(
+                    "guarded queue/status owner response is malformed"
+                )
+            result_map = dict(result)
+            cas_payload = result_map.pop("cas_result")
+            if not isinstance(cas_payload, Mapping):
+                raise TaskSourceIntegrityError(
+                    "guarded queue/status owner CAS response is malformed"
+                )
+            return self._guarded_queue_status_result(
+                result_map,
+                cas_result=_cas_result_from_dict(cas_payload),
+            )
+
+        prior = self._intent.get_task(task_cid)
+        if prior is None:
+            raise KeyError(task_cid)
+        try:
+            result = self._intent.record_queue_backoff_and_cas_task_status(
+                task_cid=task_cid,
+                expected_revision=expected_revision,
+                expected_control_receipt=expected_control_receipt,
+                new_status=status,
+                receipt=receipt,
+                delay_ms=delay_ms,
+                reason=reason,
+                selection_penalty=selection_penalty,
+            )
+        except IntentRepositoryConflictError as exc:
+            raise TaskSourceConflictError(str(exc)) from exc
+        result_map = dict(result)
+        status_payload = result_map.pop("status_receipt", None)
+        if not isinstance(status_payload, Mapping):
+            raise TaskSourceIntegrityError(
+                "guarded queue/status repository receipt is malformed"
+            )
+        status_receipt = _intent_receipt_from_dict(status_payload)
+        updated = self._intent.get_task(str(prior["task_cid"]))
+        if updated is None:
+            raise TaskSourceIntegrityError(
+                "task disappeared after guarded queue/status transition"
+            )
+        task = _as_task_record(updated)
+        receipt_cid = status_receipt.event_id if status_receipt.changed else ""
+        return self._guarded_queue_status_result(
+            result_map,
+            cas_result=CASResult(
+                task=task,
+                previous_status=str(result_map.get("previous_status") or ""),
+                revision=int(status_receipt.revision or task.revision),
+                event_cursor=int(status_receipt.global_sequence),
+                changed=bool(status_receipt.changed),
+                receipt_cid=receipt_cid,
+            ),
         )
 
     def record_queue_retry(self, *, task_cid: str) -> IntentReceipt:
