@@ -57,6 +57,10 @@ CONFIG_RELATIVE = "config/agent_supervisor_proof_carrying_procedure_compiler_sch
 CONTROL_DATABASE_RELATIVE = (
     "state/agent_supervisor_proof_carrying_procedure_compiler/control/control.duckdb"
 )
+READ_REPLICA_DATABASE_RELATIVE = (
+    "state/agent_supervisor_proof_carrying_procedure_compiler/control/"
+    "control.read-replica.duckdb"
+)
 QUACK_OWNER_STATE_RELATIVE = (
     "state/agent_supervisor_proof_carrying_procedure_compiler/control/quack-owner"
 )
@@ -70,6 +74,7 @@ DUCKLAKE_CATALOG_RELATIVE = (
 DUCKLAKE_DATA_RELATIVE = (
     "state/agent_supervisor_proof_carrying_procedure_compiler/history/data"
 )
+DUCKLAKE_HISTORY_RECEIPT_NAME = "ducklake-history-projection.json"
 DUCKLAKE_EXTENSION_HASHES = {
     "ducklake.duckdb_extension": (
         "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
@@ -540,6 +545,168 @@ def _disposable_control_database_copy(database_path: Path) -> Iterator[Path]:
         if lock_connection is not None:
             lock_connection.close()
         os.close(lock_descriptor)
+
+
+def _validated_projection_owner_status(
+    launcher_module: Any, program_config: Any
+) -> tuple[dict[str, Any], str, str]:
+    """Read and validate the exact owner-published replica observation."""
+
+    expected_status_path = (
+        REPO_ROOT.resolve()
+        / QUACK_OWNER_STATE_RELATIVE
+        / "quack-state-server.status.json"
+    )
+    if program_config.state_dir / expected_status_path.name != expected_status_path:
+        raise MaterializationError("Quack owner status path is not exact")
+    status = _read_owner_evidence(expected_status_path)
+    identity = status.get("identity") if isinstance(status, Mapping) else None
+    repository_id = (
+        str(identity.get("repository_id") or "")
+        if isinstance(identity, Mapping)
+        else ""
+    )
+    repository_match = re.fullmatch(
+        re.escape(f"{program_config.repository_id_prefix}:commit:")
+        + r"([0-9a-f]{40}):tree:([0-9a-f]{40})",
+        repository_id,
+    )
+    if not isinstance(status, Mapping) or repository_match is None:
+        raise MaterializationError("Quack owner status lacks an exact repository binding")
+    head, tree = repository_match.groups()
+    try:
+        launcher_module.validate_owner_status_payload(
+            status,
+            config=program_config,
+            head=head,
+            tree=tree,
+        )
+    except Exception as exc:  # noqa: BLE001 - typed cross-script validation adapter
+        raise MaterializationError("Quack read-replica observation is invalid") from exc
+    return dict(status), head, tree
+
+
+@contextmanager
+def _validated_read_replica_snapshot() -> Iterator[tuple[Path, dict[str, Any]]]:
+    """Yield a private, digest-bound copy of Quack's read-only replica.
+
+    The authoritative ``control.duckdb`` is never opened.  Quack publishes the
+    replica atomically and binds its digest in the closed owner-status payload;
+    this helper copies that file through a no-follow descriptor, verifies the
+    published digest and size, and re-observes the same publication before the
+    private snapshot is admitted.
+    """
+
+    launcher = _load_program_launcher_module()
+    try:
+        program_config = launcher.load_program_config(REPO_ROOT)
+    except Exception as exc:  # noqa: BLE001 - typed cross-script validation adapter
+        raise MaterializationError("PCPC program configuration is invalid") from exc
+    status, head, tree = _validated_projection_owner_status(launcher, program_config)
+    replica = status.get("read_replica")
+    if not isinstance(replica, Mapping):  # already closed by launcher; keep local typing exact
+        raise MaterializationError("Quack read-replica observation is absent")
+    replica_path = REPO_ROOT.resolve() / READ_REPLICA_DATABASE_RELATIVE
+    if (
+        replica_path != program_config.database_path.with_name(replica_path.name)
+        or replica.get("path") != str(replica_path)
+    ):
+        raise MaterializationError("Quack read-replica path is not exact")
+    expected_sha256 = str(replica.get("sha256") or "")
+    expected_size = replica.get("size_bytes")
+    try:
+        observed = os.lstat(replica_path)
+        source_descriptor = os.open(
+            replica_path,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError as exc:
+        raise MaterializationError("Quack read replica cannot be opened safely") from exc
+    try:
+        opened = os.fstat(source_descriptor)
+        if (
+            not stat.S_ISREG(observed.st_mode)
+            or stat.S_ISLNK(observed.st_mode)
+            or observed.st_uid != os.geteuid()
+            or observed.st_nlink != 1
+            or stat.S_IMODE(observed.st_mode) & 0o077
+            or type(expected_size) is not int
+            or not 0 < expected_size <= MAX_CONTROL_DATABASE_BYTES
+            or observed.st_size != expected_size
+            or _database_file_identity(observed) != _database_file_identity(opened)
+            or replica_path.resolve(strict=True) != replica_path
+        ):
+            raise MaterializationError("Quack read-replica identity is unsafe or out of bounds")
+        with tempfile.TemporaryDirectory(prefix="pcpc-history-snapshot-") as raw_directory:
+            directory = Path(raw_directory)
+            directory.chmod(0o700)
+            snapshot_path = directory / "control.read-replica.duckdb"
+            destination_descriptor = os.open(
+                snapshot_path,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_CLOEXEC", 0),
+                0o600,
+            )
+            digest = hashlib.sha256()
+            total = 0
+            try:
+                while True:
+                    chunk = os.read(source_descriptor, CONTROL_DATABASE_COPY_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > MAX_CONTROL_DATABASE_BYTES:
+                        raise MaterializationError("Quack read replica exceeded its copy bound")
+                    digest.update(chunk)
+                    pending = memoryview(chunk)
+                    while pending:
+                        written = os.write(destination_descriptor, pending)
+                        if written < 1:
+                            raise MaterializationError("Quack read-replica copy made no progress")
+                        pending = pending[written:]
+                os.fsync(destination_descriptor)
+            finally:
+                os.close(destination_descriptor)
+            closed_over = os.fstat(source_descriptor)
+            if (
+                total != opened.st_size
+                or _database_file_identity(opened) != _database_file_identity(closed_over)
+                or digest.hexdigest() != expected_sha256.removeprefix("sha256:")
+                or snapshot_path.stat().st_size != total
+            ):
+                raise MaterializationError("Quack read replica changed or failed its digest binding")
+            status_after, head_after, tree_after = _validated_projection_owner_status(
+                launcher, program_config
+            )
+            if (
+                status_after.get("identity") != status.get("identity")
+                or status_after.get("read_replica") != replica
+                or head_after != head
+                or tree_after != tree
+            ):
+                raise MaterializationError("Quack read-replica publication changed during copy")
+            observation = {
+                "schema": "ipfs_accelerate_py/agent-supervisor/pcpc-history-source@1",
+                "authority": False,
+                "source": "quack_read_replica",
+                "repository_commit": head,
+                "repository_tree": tree,
+                "server_id": str(replica.get("server_id") or ""),
+                "database_uuid": str(replica.get("database_uuid") or ""),
+                "generation": int(replica.get("generation") or 0),
+                "schema_revision": int(replica.get("schema_revision") or 0),
+                "refresh_sequence": int(replica.get("refresh_sequence") or 0),
+                "refreshed_at_ms": int(replica.get("refreshed_at_ms") or 0),
+                "sha256": expected_sha256,
+                "size_bytes": expected_size,
+            }
+            yield snapshot_path, observation
+    finally:
+        os.close(source_descriptor)
 
 
 def _projection_matches_events_on_disposable_copy(
@@ -2107,6 +2274,12 @@ def _project_ducklake(
     tasks: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     catalog, data = _validated_ducklake_projection_paths(config)
+    if len(tasks) > 4096:
+        return {
+            "projected": False,
+            "authority": False,
+            "reason": "MaterializationError: DuckLake projection row bound exceeded",
+        }
     try:
         catalog.parent.mkdir(parents=True, exist_ok=True)
         data.mkdir(parents=True, exist_ok=True)
@@ -2118,7 +2291,14 @@ def _project_ducklake(
             connection.execute("LOAD httpfs")
             _seal_external_access(
                 connection,
-                allowed_paths=(catalog, Path(f"{catalog}.wal")),
+                # DuckLake's SQLite metadata backend may use both the normal
+                # WAL and its transient checkpoint sidecar while attaching.
+                # Admit those exact files, not the containing directory.
+                allowed_paths=(
+                    catalog,
+                    Path(f"{catalog}.wal"),
+                    Path(f"{catalog}.wal.checkpoint"),
+                ),
                 allowed_directories=(data,),
             )
             connection.execute(f"ATTACH 'ducklake:{catalog}' AS pcpc_history (DATA_PATH '{data}')")
@@ -2162,53 +2342,77 @@ def _project_ducklake(
                 """
             )
             run_id = str(run["run_id"])
-            connection.execute("DELETE FROM pcpc_history.program_runs WHERE run_id = ?", [run_id])
-            connection.execute("DELETE FROM pcpc_history.task_history WHERE run_id = ?", [run_id])
-            connection.execute("DELETE FROM pcpc_history.qualification WHERE run_id = ?", [run_id])
-            connection.execute(
-                "INSERT INTO pcpc_history.program_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    run_id,
-                    run["repository_commit"],
-                    run["repository_tree"],
-                    run["plan_root_cid"],
-                    run["qualification_cid"],
-                    int(run["task_count"]),
-                    int(run["ready_count"]),
-                    int(time.time() * 1000),
-                ],
-            )
-            for task in tasks[:4096]:
+            connection.execute("BEGIN TRANSACTION")
+            try:
                 connection.execute(
-                    "INSERT INTO pcpc_history.task_history VALUES (?, ?, ?, ?, ?, ?)",
+                    "DELETE FROM pcpc_history.program_runs WHERE run_id = ?", [run_id]
+                )
+                connection.execute(
+                    "DELETE FROM pcpc_history.task_history WHERE run_id = ?", [run_id]
+                )
+                connection.execute(
+                    "DELETE FROM pcpc_history.qualification WHERE run_id = ?", [run_id]
+                )
+                connection.execute(
+                    "INSERT INTO pcpc_history.program_runs "
+                    "(run_id, repository_commit, repository_tree, plan_root_cid, "
+                    "qualification_cid, task_count, ready_count, projected_at_epoch_ms) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     [
                         run_id,
-                        task["task_cid"],
-                        task["task_alias"],
-                        task["status"],
-                        int(task["revision"]),
-                        task["goal_cid"],
+                        run["repository_commit"],
+                        run["repository_tree"],
+                        run["plan_root_cid"],
+                        run["qualification_cid"],
+                        int(run["task_count"]),
+                        int(run["ready_count"]),
+                        int(time.time() * 1000),
                     ],
                 )
-            connection.execute(
-                "INSERT INTO pcpc_history.qualification VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [
-                    run_id,
-                    qualification["qualification_cid"],
-                    qualification["repository_commit"],
-                    qualification["repository_tree"],
-                    qualification["test_evidence_class"],
-                    bool(qualification["simulated"]),
-                    int(time.time() * 1000),
-                ],
-            )
-            observed = connection.execute(
-                "SELECT COUNT(*) FROM pcpc_history.task_history WHERE run_id = ?", [run_id]
-            ).fetchone()
-            qualification_rows = connection.execute(
-                "SELECT COUNT(*) FROM pcpc_history.qualification WHERE run_id = ?",
-                [run_id],
-            ).fetchone()
+                for task in tasks:
+                    connection.execute(
+                        "INSERT INTO pcpc_history.task_history "
+                        "(run_id, task_cid, task_alias, status, revision, goal_cid) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        [
+                            run_id,
+                            task["task_cid"],
+                            task["task_alias"],
+                            task["status"],
+                            int(task["revision"]),
+                            task["goal_cid"],
+                        ],
+                    )
+                connection.execute(
+                    "INSERT INTO pcpc_history.qualification "
+                    "(run_id, qualification_cid, repository_commit, repository_tree, "
+                    "test_evidence_class, simulated, projected_at_epoch_ms) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        run_id,
+                        qualification["qualification_cid"],
+                        qualification["repository_commit"],
+                        qualification["repository_tree"],
+                        qualification["test_evidence_class"],
+                        bool(qualification["simulated"]),
+                        int(time.time() * 1000),
+                    ],
+                )
+                observed = connection.execute(
+                    "SELECT COUNT(*) FROM pcpc_history.task_history WHERE run_id = ?",
+                    [run_id],
+                ).fetchone()
+                qualification_rows = connection.execute(
+                    "SELECT COUNT(*) FROM pcpc_history.qualification WHERE run_id = ?",
+                    [run_id],
+                ).fetchone()
+                connection.execute("COMMIT")
+            except BaseException:
+                try:
+                    connection.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise
             return {
                 "projected": True,
                 "authority": False,
@@ -2222,6 +2426,145 @@ def _project_ducklake(
             connection.close()
     except Exception as exc:  # noqa: BLE001 - non-authoritative projection receipt
         return {"projected": False, "authority": False, "reason": f"{type(exc).__name__}: {exc}"}
+
+
+def _live_history_projection_source(
+    *, config: Mapping[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
+    """Build a bounded history payload solely from a sealed Quack replica."""
+
+    projection = config.get("ducklake_projection_program")
+    maximum_rows = (
+        projection.get("maximum_rows_per_projection")
+        if isinstance(projection, Mapping)
+        else None
+    )
+    if type(maximum_rows) is not int or maximum_rows != 4096:
+        raise MaterializationError("DuckLake history row bound is invalid")
+    with _validated_read_replica_snapshot() as (snapshot_path, observation):
+        try:
+            import duckdb
+
+            connection = connect_duckdb_with_policy(
+                duckdb,
+                snapshot_path,
+                read_only=True,
+                configuration={"threads": 1, "memory_limit": "256MB"},
+            )
+        except Exception as exc:  # noqa: BLE001 - typed sealed-snapshot refusal
+            raise MaterializationError("sealed Quack read replica cannot be queried") from exc
+        try:
+            task_rows = connection.execute(
+                "SELECT task_cid, task_alias, status, revision, goal_cid "
+                "FROM tasks ORDER BY ordinal, task_cid LIMIT ?",
+                [maximum_rows + 1],
+            ).fetchall()
+            plan_rows = connection.execute(
+                "SELECT plan_cid, plan_alias, status, body_json "
+                "FROM plans ORDER BY plan_cid LIMIT 2"
+            ).fetchall()
+        except Exception as exc:  # noqa: BLE001 - typed schema/source refusal
+            raise MaterializationError("sealed Quack read replica lacks the PCPC projection") from exc
+        finally:
+            connection.close()
+    if len(task_rows) > maximum_rows:
+        raise MaterializationError("Quack read replica exceeds the DuckLake history row bound")
+    expected_aliases = [f"PCPC-{index:03d}" for index in range(32)]
+    if [str(row[1]) for row in task_rows] != expected_aliases or len(plan_rows) != 1:
+        raise MaterializationError("Quack read replica is not the exact PCPC board")
+    plan_cid, plan_alias, plan_status, body_json = plan_rows[0]
+    try:
+        plan_body = json.loads(str(body_json))
+    except json.JSONDecodeError as exc:
+        raise MaterializationError("PCPC plan binding is not valid JSON") from exc
+    repository_commit = str(plan_body.get("repository_commit") or "") if isinstance(plan_body, Mapping) else ""
+    repository_tree = str(plan_body.get("repository_tree") or "") if isinstance(plan_body, Mapping) else ""
+    if (
+        str(plan_alias) != PROGRAM
+        or str(plan_status) != "active"
+        or not str(plan_cid)
+        or repository_commit != observation["repository_commit"]
+        or repository_tree != observation["repository_tree"]
+    ):
+        raise MaterializationError("PCPC plan and Quack owner repository bindings disagree")
+    evidence_root = REPO_ROOT / str(config.get("runtime_paths", {}).get("evidence") or "")
+    qualification = _read_json(evidence_root / "p0-qualification.json")
+    if not _stored_qualification_receipt_is_intact(
+        qualification,
+        head=repository_commit,
+        tree=repository_tree,
+        require_prerequisite_probe=True,
+    ):
+        raise MaterializationError("stored PCPC qualification is not intact")
+    tasks: list[dict[str, Any]] = []
+    for task_cid, task_alias, status, revision, goal_cid in task_rows:
+        if (
+            not str(task_cid)
+            or not str(goal_cid)
+            or not str(status)
+            or type(revision) is not int
+            or revision < 1
+        ):
+            raise MaterializationError("Quack task history row is malformed")
+        tasks.append(
+            {
+                "task_cid": str(task_cid),
+                "task_alias": str(task_alias),
+                "status": str(status),
+                "revision": revision,
+                "goal_cid": str(goal_cid),
+            }
+        )
+    run_binding = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/pcpc-history-run@1",
+        "program": PROGRAM,
+        "plan_root_cid": str(plan_cid),
+        "qualification_cid": str(qualification["qualification_cid"]),
+        "source": observation,
+    }
+    run = {
+        "run_id": content_identity(run_binding),
+        "repository_commit": repository_commit,
+        "repository_tree": repository_tree,
+        "plan_root_cid": str(plan_cid),
+        "qualification_cid": str(qualification["qualification_cid"]),
+        "task_count": len(tasks),
+        "ready_count": sum(item["status"] == "ready" for item in tasks),
+    }
+    return run, qualification, tasks, observation
+
+
+def project_live_history() -> dict[str, Any]:
+    """Project live PCPC history without opening or mutating its authority."""
+
+    _require_trusted_duckdb_home()
+    config = _read_json(REPO_ROOT / CONFIG_RELATIVE)
+    _validated_ducklake_projection_paths(config)
+    run, qualification, tasks, source = _live_history_projection_source(config=config)
+    projected = _project_ducklake(
+        config=config,
+        run=run,
+        qualification=qualification,
+        tasks=tasks,
+    )
+    unsigned = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/pcpc-ducklake-history-projection@1",
+        "program": PROGRAM,
+        "valid": projected.get("projected") is True,
+        "authority": False,
+        "control_database_opened": False,
+        "source": source,
+        "run": run,
+        "status_counts": {
+            status: sum(item["status"] == status for item in tasks)
+            for status in sorted({item["status"] for item in tasks})
+        },
+        "ducklake_projection": projected,
+    }
+    receipt = {**unsigned, "receipt_cid": content_identity(unsigned)}
+    evidence_root = REPO_ROOT / str(config.get("runtime_paths", {}).get("evidence") or "")
+    _atomic_json(evidence_root / DUCKLAKE_HISTORY_RECEIPT_NAME, receipt)
+    return receipt
 
 
 def materialize() -> dict[str, Any]:
@@ -2481,9 +2824,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--materialize", action="store_true")
     mode.add_argument("--verify", action="store_true")
+    mode.add_argument("--project-history", action="store_true")
     args = parser.parse_args(argv)
     try:
-        result = materialize() if args.materialize else verify_existing()
+        if args.materialize:
+            result = materialize()
+        elif args.project_history:
+            result = project_live_history()
+        else:
+            result = verify_existing()
         valid = result.get("valid", True) is True
     except Exception as exc:  # noqa: BLE001 - CLI must return typed failure
         result = {

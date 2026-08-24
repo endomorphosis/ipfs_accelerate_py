@@ -298,6 +298,129 @@ def test_ducklake_projection_filesystem_outage_is_typed_and_non_authoritative(
     assert "FileExistsError" in result["reason"]
 
 
+def test_ducklake_projection_admits_only_required_checkpoint_sidecar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_materializer()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    result = module._project_ducklake(
+        config=_scheduler_config(),
+        run={
+            "run_id": "run-checkpoint",
+            "repository_commit": "a" * 40,
+            "repository_tree": "b" * 40,
+            "plan_root_cid": "plan-root",
+            "qualification_cid": "qualification",
+            "task_count": 1,
+            "ready_count": 1,
+        },
+        qualification={
+            "qualification_cid": "qualification",
+            "repository_commit": "a" * 40,
+            "repository_tree": "b" * 40,
+            "test_evidence_class": "current_tree_hermetic",
+            "simulated": False,
+        },
+        tasks=(
+            {
+                "task_cid": "task-cid",
+                "task_alias": "PCPC-000",
+                "status": "ready",
+                "revision": 1,
+                "goal_cid": "goal-cid",
+            },
+        ),
+    )
+
+    assert result == {
+        "projected": True,
+        "authority": False,
+        "catalog_path": module.DUCKLAKE_CATALOG_RELATIVE,
+        "data_path": module.DUCKLAKE_DATA_RELATIVE,
+        "run_id": "run-checkpoint",
+        "task_rows": 1,
+        "qualification_rows": 1,
+    }
+    assert not (tmp_path / module.CONTROL_DATABASE_RELATIVE).exists()
+
+
+def test_live_history_snapshot_is_hash_bound_and_never_opens_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_materializer()
+    replica_path = tmp_path / module.READ_REPLICA_DATABASE_RELATIVE
+    replica_path.parent.mkdir(parents=True)
+    replica_bytes = b"sealed non-authoritative read replica"
+    replica_path.write_bytes(replica_bytes)
+    replica_path.chmod(0o600)
+    database_path = tmp_path / module.CONTROL_DATABASE_RELATIVE
+    state_dir = tmp_path / module.QUACK_OWNER_STATE_RELATIVE
+    state_dir.mkdir(parents=True)
+    repository_prefix = f"git:{module.PROGRAM}"
+    status = {
+        "identity": {
+            "repository_id": (
+                f"{repository_prefix}:commit:{'a' * 40}:tree:{'b' * 40}"
+            )
+        },
+        "read_replica": {
+            "path": str(replica_path),
+            "sha256": f"sha256:{hashlib.sha256(replica_bytes).hexdigest()}",
+            "size_bytes": len(replica_bytes),
+            "server_id": "server:test",
+            "database_uuid": "database:test",
+            "generation": 1,
+            "schema_revision": 1,
+            "refresh_sequence": 7,
+            "refreshed_at_ms": 8,
+        },
+    }
+    status_path = state_dir / "quack-state-server.status.json"
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+    config = SimpleNamespace(
+        database_path=database_path,
+        state_dir=state_dir,
+        repository_id_prefix=repository_prefix,
+    )
+
+    class FakeLauncher:
+        @staticmethod
+        def load_program_config(repo_root: Path) -> SimpleNamespace:
+            assert repo_root == tmp_path
+            return config
+
+        @staticmethod
+        def validate_owner_status_payload(
+            payload: object, *, config: object, head: str, tree: str
+        ) -> dict[str, object]:
+            assert payload == status
+            assert config is not None
+            assert head == "a" * 40
+            assert tree == "b" * 40
+            return {}
+
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(module, "_load_program_launcher_module", lambda: FakeLauncher)
+    monkeypatch.setattr(
+        module,
+        "_open_stable_control_database",
+        lambda _path: (_ for _ in ()).throw(AssertionError("authority opened")),
+    )
+
+    with module._validated_read_replica_snapshot() as (snapshot, observation):
+        assert snapshot != replica_path
+        assert snapshot.read_bytes() == replica_bytes
+        assert observation["sha256"] == status["read_replica"]["sha256"]
+        assert observation["refresh_sequence"] == 7
+    assert not database_path.exists()
+
+    status["read_replica"]["sha256"] = "sha256:" + "0" * 64
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+    with pytest.raises(module.MaterializationError, match="digest binding"):
+        with module._validated_read_replica_snapshot():
+            raise AssertionError("invalid replica was admitted")
+
+
 def test_unsafe_projection_config_is_rejected_before_qualification_or_control_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
