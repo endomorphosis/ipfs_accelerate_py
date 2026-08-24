@@ -103,8 +103,12 @@ EXECUTOR_BOOTSTRAP_SCHEMA: Final = (
 )
 MAX_EXECUTOR_HISTORY: Final = 128
 CASF_TASK_ALIASES: Final = tuple(f"CASF-{ordinal:03d}" for ordinal in range(44))
+# CASF-000/001 own the already-committed, sealed inventory and run its
+# read-only validator.  CASF-002..032 likewise have committed outputs and
+# declared validators.  CASF-033..043 remain model-routed because their
+# declared outputs are not part of the sealed landed tranche.
 CASF_DETERMINISTIC_TASK_ALIASES: Final = frozenset(
-    f"CASF-{ordinal:03d}" for ordinal in range(2, 33)
+    f"CASF-{ordinal:03d}" for ordinal in range(33)
 )
 EXECUTOR_OWNER_READ_OPERATIONS: Final = frozenset(
     {
