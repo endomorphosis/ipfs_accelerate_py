@@ -2530,7 +2530,14 @@ class IPFSAccelerateCLI:
             raise
 
 
-def main(argv=None, *, agent_control_service=None, agent_service_factory=None):
+def main(
+    argv=None,
+    *,
+    agent_control_service=None,
+    agent_service_factory=None,
+    federation_control_service=None,
+    federation_gateway=None,
+):
     """Main entry point for the CLI"""
     # When running from a repo checkout, a top-level folder can shadow PyPI
     # dependencies via the implicit CWD entry in sys.path (e.g., ./mcp vs PyPI
@@ -2885,6 +2892,8 @@ Examples:
                 args,
                 service=agent_control_service,
                 service_factory=agent_service_factory,
+                federation_control_service=federation_control_service,
+                federation_gateway=federation_gateway,
             )
 
         if args.command == 'supervisor':

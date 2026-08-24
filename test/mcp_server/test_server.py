@@ -6,6 +6,9 @@ import sys
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.control.control_contracts import Operation
+from ipfs_accelerate_py.mcp.tools.agent_supervisor import (
+    FEDERATION_CONTROL_OPERATION_TOOLS,
+)
 from ipfs_accelerate_py.mcp_server.hierarchical_tool_manager import (
     HierarchicalToolManager,
 )
@@ -13,6 +16,7 @@ from ipfs_accelerate_py.mcp_server.server import (
     configure_agent_supervisor_tools,
 )
 from ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools import (
+    PROMPT_LIFECYCLE_TOOLS,
     agent_supervisor_service_resolution_count,
 )
 
@@ -25,9 +29,11 @@ def test_server_registers_agent_supervisor_as_lazy_category() -> None:
 
     assert "agent_supervisor" in manager.list_categories()
     assert agent_supervisor_service_resolution_count() == resolutions_before
-    assert {item["name"] for item in manager.list_tools("agent_supervisor")} == {
-        operation.value for operation in Operation
-    }
+    assert {item["name"] for item in manager.list_tools("agent_supervisor")} == (
+        {operation.value for operation in Operation}
+        | set(PROMPT_LIFECYCLE_TOOLS)
+        | {tool.__name__ for tool in FEDERATION_CONTROL_OPERATION_TOOLS.values()}
+    )
     schema = manager.get_tool_schema("agent_supervisor", "pause")
     assert (
         schema["input_schema"]["properties"]["request"]["properties"]["operation"]["const"]
@@ -70,7 +76,12 @@ subprocess.Popen = forbidden_popen
 tools = manager.list_tools("agent_supervisor")
 subprocess.Popen = original_popen
 from ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools import (
+    PROMPT_LIFECYCLE_TOOLS,
     agent_supervisor_service_resolution_count,
+)
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import Operation
+from ipfs_accelerate_py.mcp.tools.agent_supervisor import (
+    FEDERATION_CONTROL_OPERATION_TOOLS,
 )
 after_tools = sorted(
     name for name in sys.modules
@@ -89,6 +100,11 @@ print(json.dumps({
     "process_starts": process_starts,
     "service_resolutions": agent_supervisor_service_resolution_count(),
     "tool_count": len(tools),
+    "expected_tool_count": (
+        len(Operation)
+        + len(PROMPT_LIFECYCLE_TOOLS)
+        + len(FEDERATION_CONTROL_OPERATION_TOOLS)
+    ),
 }))
 """.strip(),
         encoding="utf-8",
@@ -103,12 +119,18 @@ print(json.dumps({
         timeout=30,
     )
     observation = json.loads(completed.stdout.splitlines()[-1])
+    expected_tool_count = (
+        len(Operation)
+        + len(PROMPT_LIFECYCLE_TOOLS)
+        + len(FEDERATION_CONTROL_OPERATION_TOOLS)
+    )
 
     assert observation == {
         "category": True,
         "before_tools": [],
+        "expected_tool_count": expected_tool_count,
         "provider_modules": [],
         "process_starts": 0,
         "service_resolutions": 0,
-        "tool_count": len(Operation),
+        "tool_count": expected_tool_count,
     }

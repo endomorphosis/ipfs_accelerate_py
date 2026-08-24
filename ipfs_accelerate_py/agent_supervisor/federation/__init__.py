@@ -21,6 +21,7 @@ FEDERATION_OWNED_MODULES: Final[tuple[str, ...]] = (
     "causal_evidence",
     "causal_frontier",
     "causal_graph",
+    "cli",
     "contracts",
     "control_service",
     "deduplication",
