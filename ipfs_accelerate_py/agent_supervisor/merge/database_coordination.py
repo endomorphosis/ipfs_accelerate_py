@@ -1017,9 +1017,9 @@ CREATE TABLE IF NOT EXISTS fenced_leases (
     body_json VARCHAR NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS fenced_leases_scope_state_idx
-    ON fenced_leases(scope_key, state, expires_at_ms);
+    ON fenced_leases(scope_key);
 CREATE INDEX IF NOT EXISTS fenced_leases_owner_idx
-    ON fenced_leases(owner_session_id, state);
+    ON fenced_leases(owner_session_id);
 CREATE INDEX IF NOT EXISTS fenced_leases_idempotency_idx
     ON fenced_leases(idempotency_key);
 
@@ -1263,6 +1263,55 @@ _COORDINATION_REQUIRED_INDEXES: Final[frozenset[str]] = frozenset(
         "maintenance_leases_scope_idx",
     }
 )
+
+
+_FENCED_LEASE_IMMUTABLE_INDEXES: Final[Mapping[str, str]] = {
+    "fenced_leases_scope_state_idx": "[scope_key]",
+    "fenced_leases_owner_idx": "[owner_session_id]",
+}
+
+
+def _ensure_immutable_fenced_lease_indexes(connection: Any) -> None:
+    """Replace legacy lease indexes that cover mutable lifecycle columns.
+
+    DuckDB 1.5 can invalidate a database while committing an UPDATE to a
+    ``fenced_leases`` row when a secondary ART index covers ``state`` or
+    ``expires_at_ms``.  Lease expiry changes the former and renewal changes
+    the latter.  Scope and owner are immutable for a lease, so retain the
+    lookup indexes under their existing contract names while narrowing them
+    to immutable columns.  Existing authorities are migrated once on open;
+    fresh authorities already have these definitions from the schema above.
+    """
+
+    rows = connection.execute(
+        """
+        SELECT index_name, expressions
+        FROM duckdb_indexes()
+        WHERE schema_name = 'main' AND table_name = 'fenced_leases'
+          AND index_name IN (
+              'fenced_leases_scope_state_idx',
+              'fenced_leases_owner_idx'
+          )
+        ORDER BY index_name
+        """
+    ).fetchall()
+    actual = {
+        str(_coordination_row_value(row, 0, "index_name")): "".join(
+            str(_coordination_row_value(row, 1, "expressions"))
+            .replace('"', "")
+            .lower()
+            .split()
+        )
+        for row in rows
+    }
+    for name, expected in _FENCED_LEASE_IMMUTABLE_INDEXES.items():
+        if actual.get(name) == expected:
+            continue
+        connection.execute(f'DROP INDEX IF EXISTS "{name}"')
+        columns = expected.removeprefix("[").removesuffix("]")
+        connection.execute(
+            f'CREATE INDEX "{name}" ON fenced_leases({columns})'
+        )
 
 
 def _coordination_row_value(row: Any, index: int, name: str) -> Any:
@@ -1698,6 +1747,7 @@ class DatabaseCoordinator:
                 if not self._quack_transport:
                     for statement in _split_sql_statements(_BOOKKEEPING_SQL):
                         connection.execute(statement)
+                    _ensure_immutable_fenced_lease_indexes(connection)
                     for key, value in (
                         ("interface", DATABASE_COORDINATOR_INTERFACE),
                         ("schema", DATABASE_COORDINATION_SCHEMA),
@@ -1775,22 +1825,19 @@ class DatabaseCoordinator:
             pass
 
     def _commit_if_idle(self, connection: Any) -> None:
-        try:
-            if getattr(connection, "in_transaction", False):
-                commit = getattr(connection, "commit", None)
-                if callable(commit):
-                    commit()
-                    return
-            raw = getattr(connection, "_connection", None)
-            raw_commit = getattr(raw, "commit", None) if raw is not None else None
-            if callable(raw_commit):
-                raw_commit()
-                return
+        if getattr(connection, "in_transaction", False):
             commit = getattr(connection, "commit", None)
             if callable(commit):
                 commit()
-        except Exception:
-            pass
+                return
+        raw = getattr(connection, "_connection", None)
+        raw_commit = getattr(raw, "commit", None) if raw is not None else None
+        if callable(raw_commit):
+            raw_commit()
+            return
+        commit = getattr(connection, "commit", None)
+        if callable(commit):
+            commit()
 
     def _now_ms(self) -> int:
         return int(self._clock_ms())

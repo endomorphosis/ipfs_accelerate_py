@@ -201,6 +201,84 @@ def test_acquire_renew_release_round_trip(tmp_path: Path) -> None:
         coordinator.close()
 
 
+def test_legacy_mutable_lease_indexes_migrate_before_renew_and_expiry(
+    tmp_path: Path,
+) -> None:
+    coordinator, clock = _open(tmp_path)
+    database_path = coordinator.database_path
+    lease = coordinator.acquire(
+        lease_kind=LeaseKind.MERGE,
+        scope="merge:legacy-index",
+        owner_session_id="session:old",
+        lease_ms=30_000,
+    )
+    coordinator.close()
+
+    import duckdb  # type: ignore
+
+    connection = duckdb.connect(str(database_path))
+    try:
+        connection.execute("DROP INDEX fenced_leases_scope_state_idx")
+        connection.execute("DROP INDEX fenced_leases_owner_idx")
+        connection.execute(
+            "CREATE INDEX fenced_leases_scope_state_idx "
+            "ON fenced_leases(scope_key, state, expires_at_ms)"
+        )
+        connection.execute(
+            "CREATE INDEX fenced_leases_owner_idx "
+            "ON fenced_leases(owner_session_id, state)"
+        )
+    finally:
+        connection.close()
+
+    coordinator = open_database_coordinator(database_path, clock_ms=clock)
+    try:
+        rows = coordinator._require().execute(  # noqa: SLF001
+            "SELECT index_name, expressions FROM duckdb_indexes() "
+            "WHERE index_name IN (?, ?) ORDER BY index_name",
+            [
+                "fenced_leases_owner_idx",
+                "fenced_leases_scope_state_idx",
+            ],
+        ).fetchall()
+        expressions = {
+            str(row["index_name"]): "".join(
+                str(row["expressions"]).replace('"', "").lower().split()
+            )
+            for row in rows
+        }
+        assert expressions == {
+            "fenced_leases_owner_idx": "[owner_session_id]",
+            "fenced_leases_scope_state_idx": "[scope_key]",
+        }
+
+        renewed = coordinator.renew(lease, lease_ms=30_000)
+        clock.advance(30_001)
+        takeover = coordinator.takeover(
+            lease_kind=LeaseKind.MERGE,
+            scope="merge:legacy-index",
+            owner_session_id="session:new",
+            lease_ms=30_000,
+        )
+        assert renewed.expires_at_ms < takeover.expires_at_ms
+        assert takeover.fencing_token > lease.fencing_token
+    finally:
+        coordinator.close()
+
+
+def test_explicit_commit_failure_is_not_silently_swallowed(tmp_path: Path) -> None:
+    class FailingCommitConnection:
+        in_transaction = True
+
+        @staticmethod
+        def commit() -> None:
+            raise RuntimeError("injected commit failure")
+
+    coordinator = DatabaseCoordinator(tmp_path / "unused.duckdb")
+    with pytest.raises(RuntimeError, match="injected commit failure"):
+        coordinator._commit_if_idle(FailingCommitConnection())  # noqa: SLF001
+
+
 def test_four_processes_never_own_same_exclusive_scope(tmp_path: Path) -> None:
     coordinator, _clock = _open(tmp_path)
     try:
