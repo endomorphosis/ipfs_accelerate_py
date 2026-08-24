@@ -349,18 +349,22 @@ def _event_timestamp(value: Any, *, noun: str) -> str:
     if not isinstance(value, str) or not value or value != value.strip():
         raise IntentRepositoryIntegrityError(f"{noun} is not a canonical UTC timestamp")
     try:
-        parsed = datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+        parsed = datetime.fromisoformat(
+            value[:-1] + "+00:00" if value.endswith("Z") else value
+        )
     except ValueError as exc:
         raise IntentRepositoryIntegrityError(
             f"{noun} is not a canonical UTC timestamp"
         ) from exc
+    if parsed.tzinfo is None:
+        raise IntentRepositoryIntegrityError(f"{noun} is not a canonical UTC timestamp")
     canonical = (
         parsed.astimezone(timezone.utc)
         .replace(microsecond=0)
         .isoformat()
         .replace("+00:00", "Z")
     )
-    if parsed.tzinfo is None or value != canonical:
+    if value != canonical:
         raise IntentRepositoryIntegrityError(f"{noun} is not a canonical UTC timestamp")
     return value
 

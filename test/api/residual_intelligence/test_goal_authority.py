@@ -1817,7 +1817,8 @@ def test_timestamped_settlement_projections_replay_exactly_under_changed_clock(
 
         def observed_evidence() -> tuple[object, ...] | None:
             row = connection.execute(
-                "SELECT evidence_id, created_at FROM evidence_nodes WHERE evidence_id = ?",
+                "SELECT evidence_id, created_at FROM evidence_nodes "
+                "WHERE evidence_id = ?",
                 [evidence.subject_id],
             ).fetchone()
             return None if row is None else tuple(row[index] for index in range(2))
@@ -1862,9 +1863,15 @@ def test_timestamped_settlement_projections_replay_exactly_under_changed_clock(
             for row in blocks_before
         )
 
-        import ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository as intent
+        from ipfs_accelerate_py.agent_supervisor.task_sources import (
+            intent_repository as intent,
+        )
 
-        monkeypatch.setattr(intent, "_utc_iso", lambda *_args, **_kwargs: "2099-01-01T00:00:00Z")
+        monkeypatch.setattr(
+            intent,
+            "_utc_iso",
+            lambda *_args, **_kwargs: "2099-01-01T00:00:00Z",
+        )
         repository.rebuild_projections_from_events()
         assert observed_rows() == before
         assert observed_evidence() == evidence_before
@@ -1924,7 +1931,10 @@ def test_timestamped_projection_replay_rejects_noncanonical_event_timestamp(
             ],
         )
 
-        with pytest.raises(IntentRepositoryIntegrityError, match="canonical UTC timestamp"):
+        with pytest.raises(
+            IntentRepositoryIntegrityError,
+            match="canonical UTC timestamp",
+        ):
             repository.rebuild_projections_from_events()
     finally:
         repository.close()
