@@ -4879,6 +4879,7 @@ class QuackStateServer:
                     socket_path=self.typed_command_socket_path(),
                     store_id=identity.store_id,
                     identity=identity.to_dict(),
+                    owner_liveness_probe=self.owner_liveness_probe,
                 )
                 status_bootstrap_token = gateway.configure_status_bootstrap()
                 gateway.start()

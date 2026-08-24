@@ -33,7 +33,14 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
 
+from ..merge.worktree_lifecycle import (
+    OwnerLiveness,
+    ProcessBirthIdentity,
+    owner_liveness,
+)
 from .control_plane_contracts import StateCommand, canonical_json_bytes, content_identity
+from .database_task_source import TaskSourceIntegrityError
+from .task_execution_route_policy import TaskExecutionRouteBinding
 
 TYPED_STATE_OWNER_INTERFACE: Final = "TypedStateOwnerCommandGateway@1"
 _UTC: Final = timezone.utc  # noqa: UP017 - Python 3.8 compatibility.
@@ -56,6 +63,18 @@ TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA: Final = (
 TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/typed-database-attempt-admission@1"
 )
+TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-database-claim-recovery@1"
+)
+TYPED_DATABASE_CLAIM_RECOVERY_OPERATION: Final = (
+    "database_claim_lost_sidecar_recovery"
+)
+TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: Final = (
+    "task.claim.reservation.recover"
+)
+TYPED_DATABASE_CLAIM_RECOVERY_REASON: Final = (
+    "database_claim_lost_sidecar_dead_process"
+)
 TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
         "database_portal_retry",
@@ -70,6 +89,7 @@ TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
         "database_post_merge_declared_outputs_repair_recovery",
         "database_post_merge_declared_outputs_requalification_recovery",
         "database_portal_inflight_deferral_unstall",
+        TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     }
 )
 # Linux permits 107 pathname bytes in ``sockaddr_un.sun_path`` while other
@@ -824,6 +844,116 @@ def _retry_cooldown_command_digest(parameters: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
 
 
+def _validated_dead_claim_recovery_parameters(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed atomic lost-sidecar recovery command."""
+
+    parameters = dict(value)
+    if set(parameters) != {
+        "schema",
+        "operation",
+        "task_cid",
+        "expected_task_revision",
+        "expected_task_status",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "delay_ms",
+        "started_at_ms",
+        "retry_not_before_ms",
+        "selection_penalty",
+        "consecutive_failures",
+        "reason",
+        "resolution_cid",
+        "expected_queue_revision",
+        "expected_queue_attempt",
+        "extension_schema",
+        "extension_json",
+        "status",
+        "body_json",
+    }:
+        raise TypedStateOwnerAuthorizationError(
+            "dead claim recovery command differs from its closed schema"
+        )
+    if (
+        parameters.get("operation") != TYPED_DATABASE_CLAIM_RECOVERY_COMMAND
+        or parameters.get("status") != "retrying"
+        or parameters.get("expected_task_status") != "in_progress"
+        or parameters.get("delay_ms") != 0
+        or parameters.get("selection_penalty") != 0
+        or parameters.get("reason") != TYPED_DATABASE_CLAIM_RECOVERY_REASON
+        or parameters.get("expected_queue_revision") != -1
+        or parameters.get("expected_queue_attempt") != 0
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "dead claim recovery command is outside its closed transition"
+        )
+    body_json = parameters.get("body_json")
+    if (
+        type(body_json) is not str
+        or not body_json
+        or len(body_json.encode("utf-8")) > 1024 * 1024
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "dead claim recovery task body is invalid"
+        )
+    try:
+        body = json.loads(body_json)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise TypedStateOwnerAuthorizationError(
+            "dead claim recovery task body is malformed"
+        ) from exc
+    if not isinstance(body, Mapping):
+        raise TypedStateOwnerAuthorizationError(
+            "dead claim recovery task body is malformed"
+        )
+    cooldown_parameters = {
+        name: member
+        for name, member in parameters.items()
+        if name not in {"status", "body_json"}
+    }
+    cooldown_parameters["operation"] = "task.retry.cooldown.record"
+    _validated_retry_cooldown_parameters(cooldown_parameters)
+    return {
+        **parameters,
+        "body": dict(body),
+        "cooldown_parameters": cooldown_parameters,
+    }
+
+
+def _validated_retry_mutation_parameters(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the common cooldown mutation payload for either typed command."""
+
+    if value.get("operation") == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
+        return dict(
+            _validated_dead_claim_recovery_parameters(value)[
+                "cooldown_parameters"
+            ]
+        )
+    return _validated_retry_cooldown_parameters(value)
+
+
+def _dead_claim_recovery_command_digest(
+    parameters: Mapping[str, Any],
+) -> str:
+    """Bind deterministic replay to the complete atomic recovery payload."""
+
+    validated = _validated_dead_claim_recovery_parameters(parameters)
+    material = {
+        name: member
+        for name, member in validated.items()
+        if name not in {"body", "cooldown_parameters"}
+    }
+    return hashlib.sha256(canonical_json_bytes(material)).hexdigest()
+
+
 _RETRY_COOLDOWN_ROW_FIELDS: Final[tuple[str, ...]] = (
     "task_cid",
     "claim_cid",
@@ -1175,6 +1305,12 @@ _COMMAND_MUTATION_CATALOG: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
                 "executor_update_retry_cooldown",
             }
         ),
+        TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: frozenset(
+            {
+                "executor_cas_task_status_receipt",
+                "executor_insert_retry_cooldown",
+            }
+        ),
         "task.validation.record.passed": frozenset(
             {
                 "executor_insert_validation_run",
@@ -1197,6 +1333,7 @@ _FEDERATION_COMMANDS: Final[frozenset[str]] = frozenset(
         "task.status.cas",
         "task.status.cas.receipt",
         "task.retry.cooldown.record",
+        TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
         "task.validation.record.passed",
         "task.validation.record.nonpassing",
     }
@@ -1267,6 +1404,11 @@ _COMMAND_REQUIRED_DOMAIN_MUTATIONS: Final[Mapping[str, frozenset[str]]] = (
             "task.status.cas.receipt": _COMMAND_MUTATION_CATALOG[
                 "task.status.cas.receipt"
             ],
+            TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: (
+                _COMMAND_MUTATION_CATALOG[
+                    TYPED_DATABASE_CLAIM_RECOVERY_COMMAND
+                ]
+            ),
             "task.validation.record.passed": _COMMAND_MUTATION_CATALOG[
                 "task.validation.record.passed"
             ],
@@ -1517,6 +1659,7 @@ class TypedStateOwnerGateway:
         store_id: str,
         identity: Mapping[str, Any],
         catalog: Mapping[str, OwnerOperation] | None = None,
+        owner_liveness_probe: Any | None = None,
     ) -> None:
         self._connection = connection
         self.socket_path = Path(socket_path)
@@ -1524,6 +1667,11 @@ class TypedStateOwnerGateway:
         self.identity = MappingProxyType(dict(identity))
         self.catalog = catalog or build_control_plane_operation_catalog()
         self.catalog_id = catalog_fingerprint(self.catalog)
+        self._owner_liveness_probe = owner_liveness_probe or owner_liveness
+        if not callable(self._owner_liveness_probe):
+            raise TypedStateOwnerProtocolError(
+                "owner liveness probe must be callable"
+            )
         self._listener: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -2445,6 +2593,7 @@ class TypedStateOwnerGateway:
             "subagent.slot.release": "release",
             "task.status.cas": "claim",
             "task.status.cas.receipt": "claim",
+            TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: "claim",
         }.get(operation, "append")
         if command.command_kind.value != expected_kind:
             raise TypedStateOwnerAuthorizationError(
@@ -2459,6 +2608,16 @@ class TypedStateOwnerGateway:
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "retry cooldown replay identity differs from its parameters"
+                )
+        if operation == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
+            digest = _dead_claim_recovery_command_digest(command.parameters)
+            if (
+                command.command_id != f"cmd:dead-claim-recovery:{digest}"
+                or command.idempotency_key
+                != f"executor-dead-claim-recovery:{digest}"
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery replay identity differs from its parameters"
                 )
         if operation in {"task.status.cas", "task.status.cas.receipt"}:
             requested_status = command.parameters.get("status")
@@ -2663,6 +2822,180 @@ class TypedStateOwnerGateway:
         """
 
         operation = str(command.parameters.get("operation") or "")
+        if operation == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
+            recovery = _validated_dead_claim_recovery_parameters(
+                command.parameters
+            )
+            values = dict(recovery["cooldown_parameters"])
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [values["task_cid"]],
+            ).fetchall()
+            if len(task_rows) != 1:
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery task authority is absent or ambiguous"
+                )
+            task_row = task_rows[0]
+            if (
+                str(task_row[0] or "").strip().lower() != "in_progress"
+                or type(task_row[1]) is not int
+                or int(task_row[1]) != values["expected_task_revision"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery task revision is stale"
+                )
+            try:
+                prior_body = json.loads(str(task_row[2] or "{}"))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery prior task body is malformed"
+                ) from exc
+            prior_receipt = (
+                prior_body.get("completion_receipt")
+                if isinstance(prior_body, Mapping)
+                else None
+            )
+            if not isinstance(prior_receipt, Mapping):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery has no typed reservation"
+                )
+            prior_identity = _validated_database_claim_identity(prior_receipt)
+            exact_identity = {
+                "claim_id": values["claim_id"],
+                "attempt_id": values["attempt_id"],
+                "attempt_number": values["attempt_number"],
+                "lease_id": values["lease_id"],
+                "owner_session_id": values["owner_session_id"],
+                "fencing_token": values["fencing_token"],
+                "fence_epoch": values["fence_epoch"],
+            }
+            historic_attestation = (
+                _validated_database_claim_process_attestation(prior_receipt)
+            )
+            try:
+                execution_route = TaskExecutionRouteBinding.from_dict(
+                    prior_receipt.get("execution_route_binding")
+                ).to_dict()
+            except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery reservation has no exact execution route"
+                ) from exc
+            if (
+                prior_receipt.get("operation") != "database_claim"
+                or prior_receipt.get("claim_phase_schema")
+                != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                or any(
+                    not _strict_scalar_equal(
+                        prior_identity.get(name), expected
+                    )
+                    for name, expected in exact_identity.items()
+                )
+                or not _strict_scalar_equal(
+                    prior_receipt.get("claimed_from_revision"),
+                    values["expected_task_revision"] - 1,
+                )
+                or historic_attestation.get("client_id") != grant.client_id
+                or execution_route["task_cid"] != values["task_cid"]
+                or prior_receipt.get("execution_route_policy_id")
+                != execution_route["policy_id"]
+                or not _strict_scalar_equal(
+                    prior_receipt.get("execution_route_origin_revision"),
+                    execution_route["task_revision"],
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery reservation differs from its exact authority"
+                )
+            current_attestation = _claim_process_attestation(grant)
+            if (
+                historic_attestation["process_birth_id"]
+                == current_attestation["process_birth_id"]
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery cannot replace its current process birth"
+                )
+            historic_birth = ProcessBirthIdentity(
+                pid=int(historic_attestation["pid"]),
+                start_time_ticks=int(
+                    historic_attestation["start_time_ticks"]
+                ),
+                boot_id=str(historic_attestation["boot_id"]),
+                parent_pid=int(historic_attestation["parent_pid"]),
+            )
+            try:
+                liveness = OwnerLiveness(
+                    self._owner_liveness_probe(historic_birth)
+                )
+            except BaseException:
+                liveness = OwnerLiveness.UNKNOWN
+            if liveness is not OwnerLiveness.DEAD:
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery requires a provably dead historic process"
+                )
+            queue_rows = self._connection.execute(
+                "SELECT task_cid FROM leases WHERE task_cid = ? LIMIT 2",
+                [values["task_cid"]],
+            ).fetchall()
+            if queue_rows:
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery requires exact cooldown absence"
+                )
+            reservation_cid = content_identity(
+                {"typed_database_claim_reservation": dict(prior_receipt)}
+            )
+            recovery_receipt = {
+                "schema": TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
+                "operation": TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+                **exact_identity,
+                "recovered_claim_phase_schema": (
+                    TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                ),
+                "recovered_claimed_from_revision": int(
+                    prior_receipt["claimed_from_revision"]
+                ),
+                "recovered_reservation_cid": reservation_cid,
+                "recovered_claim_process_attestation": dict(
+                    historic_attestation
+                ),
+                "recovery_process_attestation": dict(current_attestation),
+                "recovered_from_revision": values["expected_task_revision"],
+                "queue_reason": values["reason"],
+                "backoff_ms": 0,
+                "retry_not_before_ms": values["retry_not_before_ms"],
+                "control_expected_revision": values[
+                    "expected_task_revision"
+                ],
+                "execution_route_binding": execution_route,
+                "execution_route_policy_id": execution_route["policy_id"],
+                "execution_route_origin_revision": int(
+                    execution_route["task_revision"]
+                ),
+            }
+            expected_body = dict(prior_body)
+            expected_body["completion_receipt"] = recovery_receipt
+            expected_body_json = canonical_json_bytes(expected_body).decode(
+                "utf-8"
+            )
+            if (
+                recovery["body"] != expected_body
+                or command.parameters.get("body_json")
+                != expected_body_json
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery receipt differs from owner-derived authority"
+                )
+            return {
+                "operation": operation,
+                "task_cid": values["task_cid"],
+                "expected_revision": values["expected_task_revision"],
+                "body_json": expected_body_json,
+                "cooldown_parameters": values,
+                "recovery_receipt": recovery_receipt,
+                "historic_liveness": liveness.value,
+            }
         if operation == "task.status.cas.receipt":
             try:
                 next_body = json.loads(str(command.parameters.get("body_json") or ""))
@@ -3770,7 +4103,7 @@ class TypedStateOwnerGateway:
             "executor_insert_retry_cooldown",
             "executor_update_retry_cooldown",
         }:
-            values = _validated_retry_cooldown_parameters(command.parameters)
+            values = _validated_retry_mutation_parameters(command.parameters)
             expected_queue_revision = values["expected_queue_revision"]
             common = {
                 "task_cid": values["task_cid"],
@@ -3931,6 +4264,113 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "semantic mutation differs from owner-resolved authority"
                 )
+
+        if operation == TYPED_DATABASE_CLAIM_RECOVERY_COMMAND:
+            values = dict(authority["cooldown_parameters"])
+            expected_revision = int(authority["expected_revision"])
+            cooldown_mutation = one("executor_insert_retry_cooldown")
+            if by_name.get("executor_update_retry_cooldown"):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery cannot replace a cooldown row"
+                )
+            exact(
+                one("executor_cas_task_status_receipt"),
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": expected_revision + 1,
+                    "status": "retrying",
+                    "body_json": authority["body_json"],
+                },
+            )
+            exact(
+                cooldown_mutation,
+                {
+                    "task_cid": values["task_cid"],
+                    "claim_id": values["claim_id"],
+                    "resolution_cid": values["resolution_cid"],
+                    "claimant_did": values["owner_session_id"],
+                    "logical_epoch": values["fence_epoch"],
+                    "fencing_token": values["fencing_token"],
+                    "expires_at_ms": 0,
+                    "attempt_number": values["attempt_number"],
+                    "state": "released",
+                    "started_at_ms": values["started_at_ms"],
+                    "reason": values["reason"],
+                    "retry_not_before_ms": values[
+                        "retry_not_before_ms"
+                    ],
+                    "owner_session_id": values["owner_session_id"],
+                    "fence_epoch": values["fence_epoch"],
+                    "new_queue_revision": 1,
+                    "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+                    "extension_json": values["extension_json"],
+                    "expected_queue_revision_for_insert": -1,
+                },
+            )
+            task_rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            observed_task = (
+                tuple(task_rows[0][index] for index in range(3))
+                if len(task_rows) == 1
+                else ()
+            )
+            if observed_task != (
+                "retrying",
+                expected_revision + 1,
+                authority["body_json"],
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery task post-state differs"
+                )
+            queue_rows = self._connection.execute(
+                """
+                SELECT task_cid, claim_cid, resolution_cid, claimant_did,
+                       logical_epoch, fencing_token, expires_at_ms, attempt,
+                       state, started_at_ms, release_reason,
+                       retry_not_before_ms, owner_session_id, fence_epoch,
+                       revision, extension_schema, extension_json
+                FROM leases WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            expected_queue = (
+                values["task_cid"],
+                values["claim_id"],
+                values["resolution_cid"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                values["fencing_token"],
+                0,
+                values["attempt_number"],
+                "released",
+                values["started_at_ms"],
+                values["reason"],
+                values["retry_not_before_ms"],
+                values["owner_session_id"],
+                values["fence_epoch"],
+                1,
+                TYPED_RETRY_COOLDOWN_SCHEMA,
+                values["extension_json"],
+            )
+            observed_queue = (
+                tuple(
+                    queue_rows[0][index]
+                    for index in range(len(expected_queue))
+                )
+                if len(queue_rows) == 1
+                else ()
+            )
+            if observed_queue != expected_queue:
+                raise TypedStateOwnerAuthorizationError(
+                    "dead claim recovery cooldown post-state differs"
+                )
+            return
 
         if operation == "task.database.claim.phase":
             mutation = one("executor_cas_task_status_receipt")

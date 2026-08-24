@@ -72467,21 +72467,64 @@ class DatabaseImplementationDaemon:
             # coordination metadata stay in lane-private sidecars because the
             # landed coordinator schema is not the control schema's task-claim
             # shape and DuckDB sidecars permit only one external writer.
-            control_path = Path(str(database_path))
+            control_path = Path(str(database_path)).expanduser().absolute()
             self.database_path = control_path
-            self.coordination_path = Path(
-                str(coordination_path)
-                if coordination_path is not None
-                else str(database_path)
-            )
+            if coordination_path is not None:
+                self.coordination_path = Path(
+                    coordination_path
+                ).expanduser().absolute()
+            elif control_path.suffix.lower() in {".duckdb", ".ddb"}:
+                self.coordination_path = control_path.with_name(
+                    f"{control_path.stem}.coordination.duckdb"
+                )
+            else:
+                self.coordination_path = control_path.with_name(
+                    f"{control_path.name or 'control'}.coordination.duckdb"
+                )
             if execution_path is not None:
-                self.execution_path = Path(execution_path)
+                self.execution_path = Path(
+                    execution_path
+                ).expanduser().absolute()
             elif control_path.suffix.lower() in {".duckdb", ".ddb"}:
                 self.execution_path = control_path.with_name(
                     f"{control_path.stem}.execution.duckdb"
-                ).absolute()
+                )
             else:
-                self.execution_path = Path("control.execution.duckdb").absolute()
+                self.execution_path = control_path.with_name(
+                    f"{control_path.name or 'control'}.execution.duckdb"
+                )
+            def storage_targets_alias(left: Path, right: Path) -> bool:
+                if left.resolve(strict=False) == right.resolve(strict=False):
+                    return True
+                if not left.exists() or not right.exists():
+                    return False
+                try:
+                    return os.path.samefile(left, right)
+                except OSError as exc:
+                    raise DatabaseImplementationAuthorityError(
+                        "quack sidecar inode separation could not be verified"
+                    ) from exc
+
+            if storage_targets_alias(
+                self.coordination_path,
+                control_path,
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "quack coordination sidecar must not alias the canonical "
+                    "control database"
+                )
+            if storage_targets_alias(self.execution_path, control_path):
+                raise DatabaseImplementationAuthorityError(
+                    "quack execution sidecar must not alias the canonical "
+                    "control database"
+                )
+            if storage_targets_alias(
+                self.coordination_path,
+                self.execution_path,
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "quack coordination and execution sidecars must be distinct"
+                )
         else:
             self._quack_uri = ""
             self.database_path = Path(database_path).absolute()
@@ -75289,6 +75332,11 @@ class DatabaseImplementationDaemon:
         can fence or retire an attempt after a shard or prefix change.
         """
 
+        # Fresh sidecars cannot safely project an unpromoted reservation: its
+        # exact local claim may never have been inserted.  Resolve only a
+        # different, owner-proven-DEAD process birth before reading the
+        # projection that coordination will consume.
+        self._recover_lost_typed_claim_reservations()
         tasks, ready_cids = self._stable_authoritative_task_projection()
         synchronize = getattr(
             self.coordinator,
@@ -75370,6 +75418,9 @@ class DatabaseImplementationDaemon:
                 and dependencies_satisfied
                 and restart_recovery_binding is not None
             )
+            authoritative_attempt_floor = (
+                self._typed_authoritative_attempt_floor(task)
+            )
             synchronize(
                 task_cid=task_cid,
                 task_id=task.task_alias or task_cid,
@@ -75398,6 +75449,7 @@ class DatabaseImplementationDaemon:
                     if restart_recovery_ready
                     else None
                 ),
+                authoritative_attempt_floor=authoritative_attempt_floor,
                 now_ms=self._now_ms(),
             )
         ready_task_cids = [
@@ -75621,6 +75673,151 @@ class DatabaseImplementationDaemon:
         """Return whether the task binds an exact claim tuple to this lane."""
 
         return self._shared_claim_binding_for_this_owner(task) is not None
+
+    def _typed_authoritative_attempt_floor(self, task: Any) -> int:
+        """Return an owner-validated shared floor without rebuilding sidecars."""
+
+        if not callable(
+            getattr(self.task_source, "claim_process_attestation", None)
+        ):
+            return 0
+        status = str(getattr(task, "status", "") or "").strip().lower()
+        body = getattr(task, "body", None)
+        receipt = (
+            body.get("completion_receipt")
+            if isinstance(body, Mapping)
+            else None
+        )
+        if not isinstance(receipt, Mapping):
+            return 0
+        identity_names = (
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+        )
+        identity = {name: receipt.get(name) for name in identity_names}
+        if (
+            any(
+                type(identity[name]) is not str or not identity[name].strip()
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                )
+            )
+            or any(
+                type(identity[name]) is not int or identity[name] < 1
+                for name in (
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            )
+        ):
+            return 0
+        if status == "in_progress":
+            binding = self._shared_claim_binding_for_this_owner(task)
+            return (
+                int(identity["attempt_number"])
+                if binding is not None
+                else 0
+            )
+        if status != "retrying":
+            return 0
+        validate = getattr(
+            self.task_source,
+            "validate_retrying_task_cooldown",
+            None,
+        )
+        if not callable(validate):
+            raise DatabaseImplementationAuthorityError(
+                "typed retry attempt floor has no exact cooldown validator"
+            )
+        validate(
+            str(task.task_cid),
+            expected_attempt_identity=identity,
+            expected_reason=str(receipt.get("queue_reason") or ""),
+            expected_delay_ms=receipt.get("backoff_ms"),
+        )
+        return int(identity["attempt_number"])
+
+    def _recover_lost_typed_claim_reservations(
+        self,
+    ) -> list[Mapping[str, Any]]:
+        """Atomically reopen an unpromoted reservation from a DEAD process.
+
+        A preserved local claimed row is not admission authority and does not
+        suppress recovery: after process rotation its historic grant cannot
+        promote the reservation.  The owner proves the old birth DEAD; the
+        resulting shared retry receipt fences every stale local attempt.
+        """
+
+        recover = getattr(
+            self.task_source,
+            "recover_dead_claim_reservation",
+            None,
+        )
+        if not callable(recover):
+            return []
+        current_attestation = self._typed_claim_process_attestation()
+        if current_attestation is None:
+            return []
+        current_birth_id = current_attestation.get("process_birth_id")
+        if type(current_birth_id) is not str or not current_birth_id:
+            raise DatabaseImplementationAuthorityError(
+                "typed claim process attestation has no process birth"
+            )
+        page = self.task_source.list_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
+        recovered: list[Mapping[str, Any]] = []
+        for task in page.tasks:
+            if str(task.status or "").strip().lower() != "in_progress":
+                continue
+            binding = self._shared_claim_binding_for_this_owner(task)
+            if (
+                binding is None
+                or binding.get("operation") != "database_claim"
+                or binding.get("claim_phase_schema")
+                != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            ):
+                continue
+            body = getattr(task, "body", None)
+            reservation = (
+                body.get("completion_receipt")
+                if isinstance(body, Mapping)
+                else None
+            )
+            historic_attestation = (
+                reservation.get("claim_process_attestation")
+                if isinstance(reservation, Mapping)
+                else None
+            )
+            # The current process may still finish the local insert and
+            # promote this reservation.  Recovery is only for a rotated
+            # process; the owner independently proves that historic birth
+            # DEAD before authorizing either mutation.
+            if (
+                isinstance(historic_attestation, Mapping)
+                and historic_attestation.get("process_birth_id")
+                == current_birth_id
+            ):
+                continue
+            receipt = recover(
+                str(task.task_cid),
+                expected_task_revision=int(task.revision),
+                now_ms=self._now_ms(),
+            )
+            details = getattr(receipt, "details", None)
+            recovered.append(
+                MappingProxyType(
+                    dict(details) if isinstance(details, Mapping) else {}
+                )
+            )
+        return recovered
 
     def _typed_claim_process_attestation(self) -> Mapping[str, Any] | None:
         """Return owner-derived claim birth evidence when using the typed source."""
@@ -76162,6 +76359,11 @@ class DatabaseImplementationDaemon:
         """Claim one task, resolving lane-local races through shared-board CAS."""
 
         self._require_execution_authority("task claim")
+        # A crash between the shared reservation and the lane-local claimed
+        # insert leaves no sidecar that projection synchronization can safely
+        # reconstruct.  Ask the exclusive owner to prove the historic process
+        # DEAD and atomically reopen that exact reservation first.
+        self._recover_lost_typed_claim_reservations()
         _ready_task_cids, authoritative_task_cids = (
             self._synchronize_authoritative_task_projection()
         )
@@ -86112,6 +86314,9 @@ class DatabaseImplementationDaemon:
 
         if not self.require_real_execution:
             return self._execution_disabled_observation()
+        dead_claim_reservation_recoveries = (
+            self._recover_lost_typed_claim_reservations()
+        )
         output_rearm = self._rearm_blocked_tasks_with_outputs_on_head()
         merge_quarantine_settlement = (
             self._settle_invalid_metadata_portal_quarantines()
@@ -86160,7 +86365,8 @@ class DatabaseImplementationDaemon:
             self.reconcile_inflight_deferral_blocks
         )
         reconciliation_write_count = (
-            int(merge_quarantine_settlement.get("write_count") or 0)
+            len(dead_claim_reservation_recoveries)
+            + int(merge_quarantine_settlement.get("write_count") or 0)
             + int(post_merge_recovery_reconciliation.get("write_count") or 0)
             + len(completion_reconciliations)
             + len(expired_attempt_reconciliations)
@@ -86300,6 +86506,9 @@ class DatabaseImplementationDaemon:
                     "declared_output_rearm": output_rearm,
                     "merge_quarantine_settlement": merge_quarantine_settlement,
                     "post_merge_recovery": post_merge_recovery_reconciliation,
+                    "dead_claim_reservation_recoveries": (
+                        dead_claim_reservation_recoveries
+                    ),
                 }
 
         attempt = self.claim_next()
@@ -86352,6 +86561,9 @@ class DatabaseImplementationDaemon:
                 "declared_output_rearm": output_rearm,
                 "merge_quarantine_settlement": merge_quarantine_settlement,
                 "post_merge_recovery": post_merge_recovery_reconciliation,
+                "dead_claim_reservation_recoveries": (
+                    dead_claim_reservation_recoveries
+                ),
             }
 
         result = self._resume_attempt_without_process_crash(attempt)
@@ -86394,6 +86606,9 @@ class DatabaseImplementationDaemon:
             "declared_output_rearm": output_rearm,
             "merge_quarantine_settlement": merge_quarantine_settlement,
             "post_merge_recovery": post_merge_recovery_reconciliation,
+            "dead_claim_reservation_recoveries": (
+                dead_claim_reservation_recoveries
+            ),
             "claimed_task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,

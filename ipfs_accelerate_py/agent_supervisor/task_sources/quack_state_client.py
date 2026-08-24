@@ -74,6 +74,11 @@ from .control_plane_transactions import (
 from .duckdb_state import open_duckdb_connection
 from .typed_state_owner import (
     TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+    TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+    TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+    TYPED_DATABASE_CLAIM_RECOVERY_REASON,
+    TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
+    TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TypedStateOwnerError,
     _process_birth_content_id,
@@ -1978,6 +1983,246 @@ class QuackStateClient:
                 "parent_pid": parent_pid,
             }
         )
+
+    def recover_dead_claim_reservation(
+        self,
+        *,
+        task_cid: str,
+        expected_task_revision: int,
+        task_body: Mapping[str, Any],
+        reservation_receipt: Mapping[str, Any],
+        now_ms: int | None = None,
+    ) -> CASResult:
+        """Atomically reopen one reservation whose attested process is dead."""
+
+        task = str(task_cid or "").strip()
+        if (
+            not task
+            or isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or expected_task_revision < 1
+        ):
+            raise QuackClientError(
+                "dead claim recovery task revision is invalid"
+            )
+        body = dict(task_body)
+        prior = dict(reservation_receipt)
+        if (
+            body.get("completion_receipt") != prior
+            or prior.get("operation") != "database_claim"
+            or prior.get("claim_phase_schema")
+            != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+        ):
+            raise QuackClientError(
+                "dead claim recovery requires an exact typed reservation"
+            )
+        text_identity: dict[str, str] = {}
+        for name in (
+            "claim_id",
+            "attempt_id",
+            "lease_id",
+            "owner_session_id",
+        ):
+            value = prior.get(name)
+            if (
+                type(value) is not str
+                or not value.strip()
+                or value != value.strip()
+                or len(value.encode("utf-8")) > 1_024
+                or any(marker in value for marker in ("\x00", "\n", "\r"))
+            ):
+                raise QuackClientError(
+                    f"dead claim recovery {name} is invalid"
+                )
+            text_identity[name] = value
+        integer_identity: dict[str, int] = {}
+        for name in ("attempt_number", "fencing_token", "fence_epoch"):
+            value = prior.get(name)
+            if type(value) is not int or value < 1:
+                raise QuackClientError(
+                    f"dead claim recovery {name} is invalid"
+                )
+            integer_identity[name] = value
+        claimed_from_revision = prior.get("claimed_from_revision")
+        historic_attestation = prior.get("claim_process_attestation")
+        execution_route = prior.get("execution_route_binding")
+        if (
+            type(claimed_from_revision) is not int
+            or claimed_from_revision != expected_task_revision - 1
+            or not isinstance(historic_attestation, Mapping)
+            or not isinstance(execution_route, Mapping)
+            or prior.get("execution_route_policy_id")
+            != execution_route.get("policy_id")
+            or prior.get("execution_route_origin_revision")
+            != execution_route.get("task_revision")
+            or execution_route.get("task_cid") != task
+        ):
+            raise QuackClientError(
+                "dead claim recovery reservation lineage is invalid"
+            )
+        current_attestation = dict(self.claim_process_attestation())
+        exact_identity = {**text_identity, **integer_identity}
+        reason = TYPED_DATABASE_CLAIM_RECOVERY_REASON
+        started_at_ms = int(time.time() * 1_000) if now_ms is None else now_ms
+        if (
+            isinstance(started_at_ms, bool)
+            or not isinstance(started_at_ms, int)
+            or started_at_ms < 0
+        ):
+            raise QuackClientError("dead claim recovery now_ms is invalid")
+        reservation_cid = content_identity(
+            {"typed_database_claim_reservation": prior}
+        )
+        recovery_receipt = {
+            "schema": TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
+            "operation": TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+            **exact_identity,
+            "recovered_claim_phase_schema": (
+                TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            ),
+            "recovered_claimed_from_revision": claimed_from_revision,
+            "recovered_reservation_cid": reservation_cid,
+            "recovered_claim_process_attestation": dict(
+                historic_attestation
+            ),
+            "recovery_process_attestation": current_attestation,
+            "recovered_from_revision": expected_task_revision,
+            "queue_reason": reason,
+            "backoff_ms": 0,
+            "retry_not_before_ms": started_at_ms,
+            "control_expected_revision": expected_task_revision,
+            "execution_route_binding": dict(execution_route),
+            "execution_route_policy_id": execution_route["policy_id"],
+            "execution_route_origin_revision": int(
+                execution_route["task_revision"]
+            ),
+        }
+        body["completion_receipt"] = recovery_receipt
+        body_json = canonical_json_bytes(body).decode("utf-8")
+        extension = {
+            "schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "task_cid": task,
+            "expected_task_revision": expected_task_revision,
+            **exact_identity,
+            "delay_ms": 0,
+            "started_at_ms": started_at_ms,
+            "retry_not_before_ms": started_at_ms,
+            "selection_penalty": 0,
+            "consecutive_failures": integer_identity["attempt_number"],
+            "reason": reason,
+            "expected_queue_revision": -1,
+            "expected_queue_attempt": 0,
+        }
+        extension_json = canonical_json_bytes(extension).decode("utf-8")
+        resolution_cid = content_identity(
+            {
+                "typed_retry_cooldown": extension,
+                "started_at_ms": started_at_ms,
+            }
+        )
+        parameters = {
+            **extension,
+            "operation": TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+            "expected_task_status": "in_progress",
+            "resolution_cid": resolution_cid,
+            "extension_schema": TYPED_RETRY_COOLDOWN_SCHEMA,
+            "extension_json": extension_json,
+            "status": "retrying",
+            "body_json": body_json,
+        }
+        command_digest = hashlib.sha256(
+            canonical_json_bytes(parameters)
+        ).hexdigest()
+        session = self._require_session()
+        live = self.load_generation()
+        command = StateCommand(
+            command_id=f"cmd:dead-claim-recovery:{command_digest}",
+            command_kind=CommandKind.CLAIM,
+            store_id=self.store_id,
+            session_id=session.session_id,
+            expected_generation=live.generation,
+            expected_revision=live.revision,
+            fence_epoch=live.fence_epoch,
+            idempotency_key=(
+                f"executor-dead-claim-recovery:{command_digest}"
+            ),
+            authority_class=StateAuthorityClass.AUTHORITATIVE,
+            parameters=parameters,
+        )
+
+        def apply_recovery(
+            txn: StateTransaction,
+            active: StateCommand,
+            generation: StoreGeneration,
+        ) -> Mapping[str, Any]:
+            values = dict(active.parameters)
+            observed = _fetch_all(
+                txn.execute_named_operation(
+                    "executor_retry_cooldown_by_task",
+                    (values["task_cid"],),
+                )
+            )
+            if observed:
+                raise OptimisticConflictError(
+                    "dead claim recovery cooldown absence became stale"
+                )
+            queue_result = txn.execute_named_operation(
+                "executor_insert_retry_cooldown",
+                (
+                    values["task_cid"],
+                    values["claim_id"],
+                    values["resolution_cid"],
+                    values["owner_session_id"],
+                    values["fence_epoch"],
+                    values["fencing_token"],
+                    0,
+                    values["attempt_number"],
+                    "released",
+                    values["started_at_ms"],
+                    values["reason"],
+                    values["retry_not_before_ms"],
+                    values["owner_session_id"],
+                    values["fence_epoch"],
+                    1,
+                    values["extension_schema"],
+                    values["extension_json"],
+                    -1,
+                ),
+            )
+            if _fetch_one(queue_result) is None:
+                raise OptimisticConflictError(
+                    "dead claim recovery cooldown absence CAS failed"
+                )
+            expected = int(values["expected_task_revision"])
+            task_result = txn.execute_named_operation(
+                "executor_cas_task_status_receipt",
+                (
+                    "retrying",
+                    expected + 1,
+                    self._clock(),
+                    values["body_json"],
+                    values["task_cid"],
+                    expected,
+                ),
+            )
+            if _fetch_one(task_result) is None:
+                raise OptimisticConflictError(
+                    "dead claim recovery task CAS failed"
+                )
+            return {
+                "schema": TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
+                "operation": TYPED_DATABASE_CLAIM_RECOVERY_COMMAND,
+                "task_cid": values["task_cid"],
+                "attempt_id": values["attempt_id"],
+                "attempt_number": values["attempt_number"],
+                "task_revision": expected + 1,
+                "queue_revision": 1,
+                "retry_not_before_ms": values["retry_not_before_ms"],
+                "historic_liveness": "dead",
+                "store_revision_before": generation.revision,
+            }
+
+        return self.submit_command(command, apply=apply_recovery)
 
     def record_task_retry_cooldown(
         self,

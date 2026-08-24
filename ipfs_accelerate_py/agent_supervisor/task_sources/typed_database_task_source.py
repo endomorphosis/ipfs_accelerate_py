@@ -42,6 +42,8 @@ from .task_execution_route_policy import (
     task_execution_contract_cid,
 )
 from .typed_state_owner import (
+    TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
+    TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_RETRYING_RECEIPT_OPERATIONS,
     TYPED_TASK_STATUS_VOCABULARY,
@@ -912,6 +914,86 @@ class TypedDatabaseTaskSource:
 
         attestation = self._client.claim_process_attestation()
         return MappingProxyType(dict(attestation))
+
+    def recover_dead_claim_reservation(
+        self,
+        task_cid_or_alias: str,
+        *,
+        expected_task_revision: int,
+        now_ms: int | None = None,
+    ) -> IntentReceipt:
+        """Atomically reopen one unpromoted claim owned by a dead process."""
+
+        prior = self.get(task_cid_or_alias)
+        if prior is None:
+            raise KeyError(str(task_cid_or_alias))
+        if (
+            prior.status != "in_progress"
+            or isinstance(expected_task_revision, bool)
+            or not isinstance(expected_task_revision, int)
+            or prior.revision != expected_task_revision
+        ):
+            raise TaskSourceConflictError(
+                "dead claim recovery task revision is stale"
+            )
+        prior_body = prior.body if isinstance(prior.body, Mapping) else {}
+        reservation = prior_body.get("completion_receipt")
+        if not isinstance(reservation, Mapping):
+            raise TaskSourceIntegrityError(
+                "dead claim recovery task has no reservation receipt"
+            )
+        selected_now = self._clock_ms() if now_ms is None else now_ms
+        if (
+            isinstance(selected_now, bool)
+            or not isinstance(selected_now, int)
+            or selected_now < 0
+        ):
+            raise TaskSourceIntegrityError("typed task-source clock is invalid")
+        result = self._client.recover_dead_claim_reservation(
+            task_cid=prior.task_cid,
+            expected_task_revision=expected_task_revision,
+            task_body=prior_body,
+            reservation_receipt=reservation,
+            now_ms=selected_now,
+        )
+        if not result.accepted:
+            raise TaskSourceConflictError(
+                str(
+                    result.result.get("error")
+                    or "dead claim recovery was not accepted"
+                )
+            )
+        updated = self.get(prior.task_cid)
+        row = self._retry_cooldown_row(prior.task_cid)
+        if updated is None or updated.status != "retrying" or row is None:
+            raise TaskSourceIntegrityError(
+                "dead claim recovery post-state is incomplete"
+            )
+        self._validate_retrying_cooldown_binding(updated, row)
+        receipt = updated.body.get("completion_receipt")
+        if (
+            not isinstance(receipt, Mapping)
+            or receipt.get("operation")
+            != TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+            or receipt.get("schema")
+            != TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA
+            or receipt.get("attempt_number")
+            != reservation.get("attempt_number")
+        ):
+            raise TaskSourceIntegrityError(
+                "dead claim recovery receipt is inconsistent"
+            )
+        details = MappingProxyType(dict(result.result))
+        return IntentReceipt(
+            event_id=str(result.result_digest or content_identity(dict(details))),
+            event_type="TASK_DEAD_CLAIM_RESERVATION_RECOVERED",
+            global_sequence=0,
+            recorded_at="typed-state-owner",
+            subject_id=prior.task_cid,
+            revision=int(updated.revision),
+            changed=bool(result.changed),
+            details=details,
+        )
 
     def record_validation_result(
         self,
