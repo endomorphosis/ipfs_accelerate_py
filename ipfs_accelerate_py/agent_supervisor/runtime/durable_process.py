@@ -19,6 +19,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -28,6 +29,8 @@ from typing import Callable, Mapping, Optional, Sequence
 
 _ENVIRONMENT_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _UNIT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.@-]{0,127}\Z")
+_STRICT_PID = re.compile(r"[1-9][0-9]*\n\Z")
+_QUACK_TOKEN_ENVIRONMENT_NAME = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
 _Runner = Callable[..., subprocess.CompletedProcess]
 
 
@@ -95,6 +98,86 @@ def _validated_environment(
     return tuple(items)
 
 
+def _validated_absolute_path(value: Path, *, label: str) -> Path:
+    """Return one normalized absolute path without following its final leaf."""
+
+    path = Path(value).expanduser()
+    if "\x00" in os.fspath(path):
+        raise DurableProcessError(f"{label} contains a NUL byte")
+    if not path.is_absolute():
+        raise DurableProcessError(f"{label} must be an absolute path")
+    # ``abspath`` removes redundant path components without resolving a
+    # possibly preplaced symlink at the authority-bearing final leaf.
+    return Path(os.path.abspath(os.fspath(path)))
+
+
+def _strict_pid_file_value(path: Path) -> int:
+    """Read a small, owner-only, single-link regular PID file safely."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if nofollow:
+        flags |= nofollow
+    elif path.is_symlink():
+        raise DurableProcessError(
+            "forking PID file must not be a symbolic link"
+        )
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise DurableProcessError(
+            "forking PID file could not be read safely"
+        ) from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+            raise DurableProcessError(
+                "forking PID file is not a single-link regular file"
+            )
+        if metadata.st_uid != os.geteuid():
+            raise DurableProcessError(
+                "forking PID file is not owned by the launching user"
+            )
+        if stat.S_IMODE(metadata.st_mode) != 0o600:
+            raise DurableProcessError(
+                "forking PID file is not owner-only mode 0600"
+            )
+        content = os.read(descriptor, 64)
+        if os.read(descriptor, 1):
+            raise DurableProcessError("forking PID file is too large")
+        try:
+            observed = os.lstat(path)
+        except OSError as exc:
+            raise DurableProcessError(
+                "forking PID file changed while it was read"
+            ) from exc
+        if (
+            (metadata.st_dev, metadata.st_ino)
+            != (observed.st_dev, observed.st_ino)
+            or stat.S_ISLNK(observed.st_mode)
+            or not stat.S_ISREG(observed.st_mode)
+            or observed.st_nlink != 1
+            or observed.st_uid != os.geteuid()
+            or stat.S_IMODE(observed.st_mode) != 0o600
+        ):
+            raise DurableProcessError(
+                "forking PID file changed while it was read"
+            )
+    finally:
+        os.close(descriptor)
+    try:
+        text = content.decode("ascii")
+    except UnicodeDecodeError as exc:
+        raise DurableProcessError(
+            "forking PID file is not strict ASCII"
+        ) from exc
+    if not _STRICT_PID.fullmatch(text):
+        raise DurableProcessError(
+            "forking PID file does not contain one strict positive PID"
+        )
+    return int(text)
+
+
 def _resolve_tool(name: str, explicit_path: Optional[str]) -> str:
     if explicit_path:
         return str(explicit_path)
@@ -145,6 +228,25 @@ def _service_properties(output: str) -> dict:
     return properties
 
 
+def _best_effort_stop(
+    runner: _Runner,
+    systemctl: str,
+    service_unit: str,
+    *,
+    timeout_seconds: float,
+) -> None:
+    """Try to stop one exact unit without hiding the launch failure."""
+
+    try:
+        _run(
+            runner,
+            [systemctl, "--user", "stop", service_unit],
+            timeout_seconds=timeout_seconds,
+        )
+    except DurableProcessError:
+        pass
+
+
 def launch_systemd_user_service(
     command: Sequence[str],
     *,
@@ -152,6 +254,7 @@ def launch_systemd_user_service(
     working_directory: Path,
     log_path: Path,
     environment: Optional[Mapping[str, str]] = None,
+    forking_pid_file: Optional[Path] = None,
     startup_timeout_seconds: float = 15.0,
     systemd_run_path: Optional[str] = None,
     systemctl_path: Optional[str] = None,
@@ -159,8 +262,13 @@ def launch_systemd_user_service(
 ) -> DurableProcessLaunch:
     """Launch and verify one transient systemd user service.
 
-    The returned receipt is created only after ``systemd-run`` reports that
-    the command reached ``exec`` and ``systemctl`` proves a live main PID.
+    By default, the returned receipt is created only after ``systemd-run``
+    reports that the command reached ``exec`` and ``systemctl`` proves a live
+    main PID.  Supplying ``forking_pid_file`` opts into ``Type=forking`` for a
+    command that launches its durable child and then exits.  That path also
+    configures ``PIDFile=`` with ``GuessMainPID=no`` and requires the service
+    manager's main PID to equal a strict read of the absolute PID file.
+
     Failure after service creation triggers a best-effort stop of that exact
     unit so an untracked process is not left behind.
     """
@@ -175,18 +283,63 @@ def launch_systemd_user_service(
         raise DurableProcessError(
             f"working directory does not exist or is not a directory: {cwd}"
         )
+    pid_file_path = (
+        _validated_absolute_path(
+            forking_pid_file,
+            label="forking PID file",
+        )
+        if forking_pid_file is not None
+        else None
+    )
+    if pid_file_path is not None and any(
+        name == _QUACK_TOKEN_ENVIRONMENT_NAME
+        for name, _value in environment_items
+    ):
+        raise DurableProcessError(
+            "forking service must obtain its Quack token from the one-use vault"
+        )
     output_path = Path(log_path).expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     systemd_run = _resolve_tool("systemd-run", systemd_run_path)
     systemctl = _resolve_tool("systemctl", systemctl_path)
+    if pid_file_path is not None:
+        preflight = _run(
+            runner,
+            [
+                systemctl,
+                "--user",
+                "show",
+                "--no-pager",
+                "--property=LoadState",
+                "--property=ActiveState",
+                service_unit,
+            ],
+            timeout_seconds=startup_timeout_seconds,
+        )
+        preflight_properties = (
+            _service_properties(preflight.stdout)
+            if preflight.returncode == 0
+            else {}
+        )
+        if not (
+            preflight_properties.get("LoadState") == "not-found"
+            and preflight_properties.get("ActiveState") == "inactive"
+        ):
+            raise DurableProcessError(
+                "forking service unit must be absent before launch"
+            )
     launch_command = [
         systemd_run,
         "--user",
         "--quiet",
         f"--unit={service_unit}",
         "--collect",
-        "--service-type=exec",
+        (
+            "--service-type=forking"
+            if pid_file_path is not None
+            else "--service-type=exec"
+        ),
         f"--working-directory={cwd}",
         "--property=StandardInput=null",
         f"--property=StandardOutput=append:{output_path}",
@@ -196,15 +349,34 @@ def launch_systemd_user_service(
         "--property=TimeoutStopSec=90s",
         "--property=SuccessExitStatus=143 SIGTERM",
     ]
+    if pid_file_path is not None:
+        launch_command.extend(
+            (
+                f"--property=PIDFile={pid_file_path}",
+                "--property=GuessMainPID=no",
+            )
+        )
     for name, value in environment_items:
         launch_command.append(f"--setenv={name}={value}")
     launch_command.extend(("--", *command_argv))
 
-    launched = _run(
-        runner,
-        launch_command,
-        timeout_seconds=startup_timeout_seconds,
-    )
+    try:
+        launched = _run(
+            runner,
+            launch_command,
+            timeout_seconds=startup_timeout_seconds,
+        )
+    except DurableProcessError:
+        if pid_file_path is not None:
+            # A timed-out Type=forking start can have created the unit even
+            # though ``systemd-run`` did not return its outcome.
+            _best_effort_stop(
+                runner,
+                systemctl,
+                service_unit,
+                timeout_seconds=startup_timeout_seconds,
+            )
+        raise
     if launched.returncode != 0:
         detail = (launched.stderr or launched.stdout or "").strip()
         raise DurableProcessError(
@@ -221,13 +393,25 @@ def launch_systemd_user_service(
         "--property=SubState",
         "--property=MainPID",
         "--property=Result",
+        "--property=Type",
+        "--property=PIDFile",
+        "--property=GuessMainPID",
         service_unit,
     ]
-    inspected = _run(
-        runner,
-        inspect_command,
-        timeout_seconds=startup_timeout_seconds,
-    )
+    try:
+        inspected = _run(
+            runner,
+            inspect_command,
+            timeout_seconds=startup_timeout_seconds,
+        )
+    except DurableProcessError:
+        _best_effort_stop(
+            runner,
+            systemctl,
+            service_unit,
+            timeout_seconds=startup_timeout_seconds,
+        )
+        raise
     properties = (
         _service_properties(inspected.stdout)
         if inspected.returncode == 0
@@ -239,17 +423,58 @@ def launch_systemd_user_service(
         pid = int(properties.get("MainPID", "0"))
     except ValueError:
         pid = 0
-    if active_state != "active" or pid <= 0:
-        _run(
+    inspection_valid = active_state == "active" and pid > 0
+    if pid_file_path is not None:
+        inspection_valid = inspection_valid and pid > 1 and (
+            properties.get("Type") == "forking"
+            and properties.get("PIDFile") == str(pid_file_path)
+            and properties.get("GuessMainPID") == "no"
+        )
+        if inspection_valid:
+            try:
+                inspection_valid = _strict_pid_file_value(pid_file_path) == pid
+            except DurableProcessError:
+                inspection_valid = False
+        if inspection_valid:
+            try:
+                reinspected = _run(
+                    runner,
+                    inspect_command,
+                    timeout_seconds=startup_timeout_seconds,
+                )
+            except DurableProcessError:
+                inspection_valid = False
+            else:
+                reobserved = (
+                    _service_properties(reinspected.stdout)
+                    if reinspected.returncode == 0
+                    else {}
+                )
+                inspection_valid = (
+                    reobserved.get("ActiveState") == "active"
+                    and reobserved.get("MainPID") == str(pid)
+                    and reobserved.get("Type") == "forking"
+                    and reobserved.get("PIDFile") == str(pid_file_path)
+                    and reobserved.get("GuessMainPID") == "no"
+                )
+                if inspection_valid:
+                    active_state = reobserved.get("ActiveState", active_state)
+                    sub_state = reobserved.get("SubState", sub_state)
+    if not inspection_valid:
+        _best_effort_stop(
             runner,
-            [systemctl, "--user", "stop", service_unit],
+            systemctl,
+            service_unit,
             timeout_seconds=startup_timeout_seconds,
         )
         detail = (inspected.stderr or inspected.stdout or "").strip()
-        raise DurableProcessError(
-            "systemd user service did not expose a live main process"
-            + (f": {detail}" if detail else "")
-        )
+        message = "systemd user service did not expose a live main process"
+        if pid_file_path is not None:
+            message = (
+                "systemd forking service did not expose the exact PID-file "
+                "main process"
+            )
+        raise DurableProcessError(message + (f": {detail}" if detail else ""))
 
     return DurableProcessLaunch(
         backend="systemd-user",
@@ -277,6 +502,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=Path.cwd(),
     )
     parser.add_argument("--log-path", type=Path, required=True)
+    parser.add_argument(
+        "--forking-pid-file",
+        type=Path,
+        default=None,
+        help=(
+            "Opt into a Type=forking service and require systemd's MainPID "
+            "to match this absolute PID file."
+        ),
+    )
     parser.add_argument(
         "--pass-env",
         action="append",
@@ -325,6 +559,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             working_directory=args.working_directory,
             log_path=args.log_path,
             environment=_passed_environment(args.pass_env),
+            forking_pid_file=args.forking_pid_file,
             startup_timeout_seconds=args.startup_timeout_seconds,
         )
     except DurableProcessError as exc:
