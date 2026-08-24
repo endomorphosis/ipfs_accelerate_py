@@ -49,6 +49,7 @@ from .verifier import (
     VerificationStatus,
     _self_identities,
 )
+from .metrics import PromotionGateResult
 
 
 ISSUER_REVISION: Final[str] = "ProcedureCertificateIssuer@1"
@@ -126,6 +127,47 @@ class CertificateReasonCode(str, Enum):
 class CertificateVerificationStatus(str, Enum):
     ACCEPTED = "accepted"
     REJECTED = "rejected"
+
+
+@dataclass(frozen=True)
+class PromotionRequest:
+    """A non-authoritative, exact request for the registry promotion operation.
+
+    The request intentionally carries an expected-old head and a concrete
+    rollback target.  It is only an input to the independently authorized
+    registry CAS; constructing it neither authorizes nor performs promotion.
+    """
+
+    procedure_id: str
+    procedure_cid: str
+    certificate_cid: str
+    expected_old_revision_id: str
+    rollback_target_revision_id: str
+    gate_result: PromotionGateResult
+
+    def __post_init__(self) -> None:
+        for name in (
+            "procedure_id", "procedure_cid", "certificate_cid",
+            "expected_old_revision_id", "rollback_target_revision_id",
+        ):
+            # The empty expected-old value is the exact CAS value for a head
+            # known to be absent.  Rollback may never be unspecified.
+            try:
+                value = _identifier(
+                    getattr(self, name), name,
+                    required=name != "expected_old_revision_id",
+                )
+            except ProcedureContractError as exc:
+                raise ProcedureCertificateError(str(exc)) from exc
+            object.__setattr__(self, name, value)
+        if not isinstance(self.gate_result, PromotionGateResult):
+            raise ProcedureCertificateError("gate_result must be a PromotionGateResult")
+        if not self.gate_result.eligible or self.gate_result.grants_promotion:
+            raise ProcedureCertificateError("only a passing non-authoritative gate may request promotion")
+
+    @property
+    def grants_promotion(self) -> bool:
+        return False
 
 
 def _bool(value: Any, field_name: str) -> bool:
@@ -946,6 +988,7 @@ __all__ = [
     "CERTIFICATE_VERIFIER_REVISION",
     "ISSUER_REVISION",
     "PENDING_SIGNATURE",
+    "PromotionRequest",
     "REQUIRED_CERTIFICATE_BINDINGS",
     "SIGNATURE_ALGORITHM",
     "CertificateAdmission",
