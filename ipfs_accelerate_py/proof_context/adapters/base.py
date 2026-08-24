@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import inspect
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -31,9 +32,9 @@ from ipfs_accelerate_py.proof_context.adapters.models import (
     MAX_PROVIDER_OUTPUT_BYTES,
     MODEL_ROUTE_DECISION_SCHEMA,
     MODEL_ROUTE_DECISION_SCHEMA_DIGEST,
-    PCCE_006_CONTENT_ID,
     PATCH_PROPOSAL_SCHEMA,
     PATCH_PROPOSAL_SCHEMA_DIGEST,
+    PCCE_006_CONTENT_ID,
     PROVENANCES,
     SCHEMA,
     TASK_SPECIFICATION_SCHEMA,
@@ -46,6 +47,7 @@ from ipfs_accelerate_py.proof_context.adapters.models import (
     TaskSpecification,
     admit_bounded_log,
     admit_bounded_patch,
+    admit_relative_path,
     assert_declared_scope,
     wire_canonical_utf8,
 )
@@ -60,9 +62,7 @@ from ipfs_accelerate_py.proof_context.errors import (
 
 INTERFACE: Final[str] = "CodingAgentAdapter@0.1"
 ADAPTER_SCHEMA: Final[str] = "ipfs-accelerate.proof-context.v0.1/coding-agent-adapter"
-ADAPTER_RESULT_SCHEMA: Final[str] = (
-    "ipfs-accelerate.proof-context.v0.1/coding-agent-adapter-result"
-)
+ADAPTER_RESULT_SCHEMA: Final[str] = "ipfs-accelerate.proof-context.v0.1/coding-agent-adapter-result"
 SIBLING_LAYOUT_REQUIRED: Final[bool] = False
 PROVIDER_BOUND: Final[bool] = False
 APPROVAL_AUTHORITY: Final[bool] = False
@@ -70,6 +70,295 @@ CANONICAL_BRANCH_AUTHORITY: Final[bool] = False
 COMPATIBILITY_MATRIX_CONTENT_ID: Final[str] = FROZEN_MATRIX["content_id"]
 
 PROTOCOL_METHODS: Final[tuple[str, ...]] = ("propose", "cancel")
+_HUNK_HEADER: Final[re.Pattern[str]] = re.compile(
+    r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@(?: .*)?$"
+)
+_EXTENDED_PATH_HEADERS: Final[tuple[tuple[str, str, str], ...]] = (
+    ("rename from ", "rename", "from"),
+    ("rename to ", "rename", "to"),
+    ("copy from ", "copy", "from"),
+    ("copy to ", "copy", "to"),
+)
+_EXTENDED_PATH_STEMS: Final[tuple[str, ...]] = (
+    "rename from",
+    "rename to",
+    "copy from",
+    "copy to",
+)
+
+
+def _unquoted_patch_path(raw: str) -> str:
+    """Admit one unquoted Git path under the repository-relative grammar."""
+
+    if (
+        '"' in raw
+        or "\\" in raw
+        or any(ord(character) < 32 or ord(character) == 127 for character in raw)
+    ):
+        raise MalformedError("adapter patch uses unsupported path syntax")
+    return admit_relative_path(raw, field="patch_path")
+
+
+def _diff_header_paths(line: str) -> tuple[str, str]:
+    """Admit both repository paths from one unquoted ``diff --git`` header."""
+
+    prefix = "diff --git a/"
+    if not line.startswith(prefix):
+        raise MalformedError("adapter patch has a malformed diff header")
+    body = line[len(prefix) :]
+    # An unquoted path containing the separator is ambiguous. Git's quoted
+    # pathname grammar is deliberately outside this frozen, fail-closed parser.
+    if body.count(" b/") != 1:
+        raise MalformedError("adapter patch has an ambiguous diff header")
+    old_raw, new_raw = body.split(" b/", 1)
+    old_path = _unquoted_patch_path(old_raw)
+    new_path = _unquoted_patch_path(new_raw)
+    return old_path, new_path
+
+
+def _file_marker_path(raw: str, *, side: str) -> str | None:
+    """Admit one ``---``/``+++`` path without exposing it in diagnostics."""
+
+    # A tab introduces the optional unified-diff timestamp. Literal tabs in a
+    # Git pathname are represented by Git's quoted form, which is not admitted.
+    value = raw.split("\t", 1)[0]
+    if value == "/dev/null":
+        return None
+    prefix = "a/" if side == "old" else "b/"
+    if not value.startswith(prefix):
+        raise MalformedError("adapter patch has a malformed file marker")
+    return _unquoted_patch_path(value[len(prefix) :])
+
+
+def _extended_header_path(raw: str) -> str:
+    if raw == "/dev/null":
+        raise MalformedError("adapter patch extended headers cannot use a null path")
+    return _unquoted_patch_path(raw)
+
+
+def _binary_summary_path(raw: str, *, side: str) -> str | None:
+    """Admit one path from Git's ``Binary files ... differ`` summary."""
+
+    if raw == "/dev/null":
+        return None
+    prefix = "a/" if side == "old" else "b/"
+    if not raw.startswith(prefix):
+        raise MalformedError("adapter patch has a malformed binary summary")
+    return _unquoted_patch_path(raw[len(prefix) :])
+
+
+def _parse_unified_diff_paths(patch_bytes: Any) -> tuple[str, ...]:
+    """Return every path named by a bounded, textual Git unified diff.
+
+    This is a pure scope-binding parser, not an apply or correctness oracle.
+    It admits header-only replay evidence, while tracking hunk lengths so
+    marker-looking source lines cannot be confused with file markers.
+    """
+
+    patch = admit_bounded_patch(patch_bytes)
+    if not patch:
+        raise MalformedError("adapter patch must not be empty")
+    text: str | None
+    try:
+        text = patch.decode("utf-8", "strict")
+    except UnicodeDecodeError:
+        text = None
+    if text is None:
+        # Raise outside the handler: UnicodeDecodeError.object retains the raw
+        # provider bytes even when an exception is raised ``from None``.
+        raise MalformedError("adapter patch must be valid UTF-8 text")
+    if "\x00" in text:
+        raise MalformedError("adapter patch must not contain NUL bytes")
+
+    lines = text.splitlines()
+    paths: list[str] = []
+    seen: set[str] = set()
+    current: tuple[str, str] | None = None
+    file_markers_seen = False
+    binary_summary_seen = False
+    extended_kind: str | None = None
+    extended_pending: str | None = None
+    hunk_remaining: tuple[int, int] | None = None
+    header_count = 0
+    index = 0
+
+    def record(path: str) -> None:
+        if path not in seen:
+            seen.add(path)
+            paths.append(path)
+
+    while index < len(lines):
+        line = lines[index]
+        if hunk_remaining is not None:
+            old_remaining, new_remaining = hunk_remaining
+            if old_remaining == 0 and new_remaining == 0:
+                if line == r"\ No newline at end of file":
+                    index += 1
+                hunk_remaining = None
+                continue
+            if line == r"\ No newline at end of file":
+                index += 1
+                continue
+            if line.startswith(" "):
+                old_remaining -= 1
+                new_remaining -= 1
+            elif line.startswith("-"):
+                old_remaining -= 1
+            elif line.startswith("+"):
+                new_remaining -= 1
+            else:
+                raise MalformedError("adapter patch has a malformed hunk body")
+            if old_remaining < 0 or new_remaining < 0:
+                raise MalformedError("adapter patch hunk exceeds its declared length")
+            hunk_remaining = (old_remaining, new_remaining)
+            index += 1
+            continue
+
+        if line.startswith("diff --git "):
+            if extended_pending is not None:
+                raise MalformedError("adapter patch has an unpaired extended path header")
+            current = _diff_header_paths(line)
+            record(current[0])
+            record(current[1])
+            header_count += 1
+            file_markers_seen = False
+            binary_summary_seen = False
+            extended_kind = None
+            extended_pending = None
+            index += 1
+            continue
+        if line.startswith("diff --git"):
+            raise MalformedError("adapter patch has a malformed diff header")
+        if line.startswith(("diff --cc ", "diff --combined ")):
+            raise MalformedError("adapter patch uses an unsupported combined diff header")
+
+        if line.startswith("--- "):
+            if current is None or file_markers_seen:
+                raise MalformedError("adapter patch has a foreign file marker")
+            if index + 1 >= len(lines) or not lines[index + 1].startswith("+++ "):
+                raise MalformedError("adapter patch has an unpaired file marker")
+            old_marker = _file_marker_path(line[4:], side="old")
+            new_marker = _file_marker_path(lines[index + 1][4:], side="new")
+            if old_marker is None and new_marker is None:
+                raise MalformedError("adapter patch file markers cannot both be null")
+            if (old_marker is not None and old_marker != current[0]) or (
+                new_marker is not None and new_marker != current[1]
+            ):
+                raise BoundaryViolationError(
+                    "adapter patch file markers disagree with its diff header",
+                    details={"field": "declared_files", "reason": "scope"},
+                )
+            file_markers_seen = True
+            index += 2
+            continue
+        if line.startswith("+++ "):
+            raise MalformedError("adapter patch has an unpaired file marker")
+
+        if line.startswith("Binary files "):
+            if current is None or file_markers_seen or binary_summary_seen:
+                raise MalformedError("adapter patch has a foreign binary summary")
+            body = line[len("Binary files ") :]
+            suffix = " differ"
+            if not body.endswith(suffix) or body[: -len(suffix)].count(" and ") != 1:
+                raise MalformedError("adapter patch has a malformed binary summary")
+            old_raw, new_raw = body[: -len(suffix)].split(" and ", 1)
+            old_summary = _binary_summary_path(old_raw, side="old")
+            new_summary = _binary_summary_path(new_raw, side="new")
+            if old_summary is None and new_summary is None:
+                raise MalformedError("adapter patch binary paths cannot both be null")
+            if (old_summary is not None and old_summary != current[0]) or (
+                new_summary is not None and new_summary != current[1]
+            ):
+                raise BoundaryViolationError(
+                    "adapter patch binary summary disagrees with its diff header",
+                    details={"field": "declared_files", "reason": "scope"},
+                )
+            binary_summary_seen = True
+            index += 1
+            continue
+        if line.startswith("Binary files"):
+            raise MalformedError("adapter patch has a malformed binary summary")
+
+        matched_extended = False
+        for prefix, kind, direction in _EXTENDED_PATH_HEADERS:
+            if not line.startswith(prefix):
+                continue
+            matched_extended = True
+            if current is None:
+                raise MalformedError("adapter patch has a foreign extended path header")
+            path = _extended_header_path(line[len(prefix) :])
+            if direction == "from":
+                if extended_kind is not None or extended_pending is not None:
+                    raise MalformedError("adapter patch repeats an extended path header")
+                if path != current[0]:
+                    raise BoundaryViolationError(
+                        "adapter patch extended headers disagree with its diff header",
+                        details={"field": "declared_files", "reason": "scope"},
+                    )
+                extended_pending = kind
+            else:
+                if extended_pending != kind or extended_kind is not None:
+                    raise MalformedError("adapter patch has an unpaired extended path header")
+                if path != current[1]:
+                    raise BoundaryViolationError(
+                        "adapter patch extended headers disagree with its diff header",
+                        details={"field": "declared_files", "reason": "scope"},
+                    )
+                extended_pending = None
+                extended_kind = kind
+            index += 1
+            break
+        if matched_extended:
+            continue
+        if line.startswith(_EXTENDED_PATH_STEMS):
+            raise MalformedError("adapter patch has a malformed extended path header")
+
+        if line.startswith("@@"):
+            if current is None:
+                raise MalformedError("adapter patch has a hunk without a diff header")
+            match = _HUNK_HEADER.fullmatch(line)
+            if match is None:
+                raise MalformedError("adapter patch has a malformed hunk header")
+            old_raw, new_raw = match.groups()
+            if any(raw is not None and len(raw) > 7 for raw in (old_raw, new_raw)):
+                raise MalformedError("adapter patch has an invalid hunk length")
+            old_count = int(old_raw) if old_raw is not None else 1
+            new_count = int(new_raw) if new_raw is not None else 1
+            hunk_remaining = (old_count, new_count)
+            index += 1
+            continue
+
+        index += 1
+
+    if hunk_remaining not in {None, (0, 0)}:
+        raise MalformedError("adapter patch hunk is shorter than its declared length")
+    if extended_pending is not None:
+        raise MalformedError("adapter patch has an unpaired extended path header")
+    if header_count == 0 or not paths:
+        raise MalformedError("adapter patch must contain a diff header")
+    return tuple(paths)
+
+
+def _assert_patch_paths_match_declared(
+    patch_bytes: Any,
+    declared_files: tuple[str, ...],
+) -> None:
+    """Require exact equality between parsed patch paths and the wire claim."""
+
+    if not declared_files:
+        raise BoundaryViolationError(
+            "adapter patch requires at least one declared file",
+            details={"field": "declared_files", "reason": "scope"},
+        )
+    admitted_declared = tuple(
+        admit_relative_path(path, field="declared_files") for path in declared_files
+    )
+    parsed = _parse_unified_diff_paths(patch_bytes)
+    if set(parsed) != set(admitted_declared):
+        raise BoundaryViolationError(
+            "adapter patch paths do not match declared files",
+            details={"field": "declared_files", "reason": "scope"},
+        )
 
 
 class CancellationToken:
@@ -223,6 +512,7 @@ def admit_adapter_result(
         raise BoundaryViolationError("single-file patch exceeds the frozen byte bound")
     if len(result.patch_bytes) + len(result.log_bytes) > MAX_PROVIDER_OUTPUT_BYTES:
         raise BoundaryViolationError("provider output exceeds the frozen byte bound")
+    _assert_patch_paths_match_declared(result.patch_bytes, proposal.declared_files)
     return result
 
 
