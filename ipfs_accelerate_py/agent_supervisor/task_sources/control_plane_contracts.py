@@ -22,7 +22,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, ClassVar, Final, Iterable, Mapping as TypingMapping
+from typing import Any, ClassVar, Final, Iterable
+from typing import Mapping as TypingMapping
 
 # ---------------------------------------------------------------------------
 # Version / schema identities
@@ -56,6 +57,7 @@ STATE_EXPORT_RECEIPT_INTERFACE: Final[str] = "StateExportReceipt@1"
 # Hard bounds (integer-only; non-finite values are rejected).
 MAX_RECORD_BYTES: Final[int] = 262_144
 MAX_TEXT_BYTES: Final[int] = 8_192
+MAX_COMMAND_BYTES: Final[int] = 65_536
 MAX_ID_BYTES: Final[int] = 512
 MAX_REFERENCE_COUNT: Final[int] = 1_024
 MAX_DEPTH: Final[int] = 16
@@ -70,6 +72,34 @@ SECRET_HANDLE_PREFIXES: Final[tuple[str, ...]] = (
     "vault://",
     "handle:",
     "secret-handle:",
+)
+
+# These closed command operations intentionally transport canonical JSON
+# records whose aggregate size may exceed the ordinary single-text bound.
+# The operation-specific owner validators still impose their exact schemas;
+# this exception only lets their top-level serialized record fields reach
+# that validation boundary.  Arbitrary parameters retain MAX_TEXT_BYTES.
+_LARGE_STATE_COMMAND_TEXT_FIELDS: Final[TypingMapping[str, frozenset[str]]] = (
+    MappingProxyType(
+        {
+            "task.status.cas.receipt": frozenset({"body_json"}),
+            "task.claim.reservation.recover": frozenset({"body_json"}),
+            "task.validation.record.passed": frozenset(
+                {
+                    "run_body_json",
+                    "result_body_json",
+                    "evidence_body_json",
+                }
+            ),
+            "task.validation.record.nonpassing": frozenset(
+                {
+                    "run_body_json",
+                    "result_body_json",
+                    "evidence_body_json",
+                }
+            ),
+        }
+    )
 )
 
 _CID_PREFIX = b"\x01\xa9\x02\x12\x20"
@@ -430,7 +460,12 @@ def _mutable_alias_key(key: str) -> bool:
     return normalized in _MUTABLE_ALIAS_KEYS
 
 
-def _assert_no_secrets(value: Any, field_name: str = "record") -> None:
+def _assert_no_secrets(
+    value: Any,
+    field_name: str = "record",
+    *,
+    text_limit: int = MAX_TEXT_BYTES,
+) -> None:
     if isinstance(value, float):
         raise ControlPlaneBoundsError(
             f"{field_name} may not contain floating-point values"
@@ -445,18 +480,18 @@ def _assert_no_secrets(value: Any, field_name: str = "record") -> None:
                 raise ControlPlaneSecretError(
                     f"{field_name} may not contain secret-bearing fields"
                 )
-            _assert_no_secrets(item, field_name)
+            _assert_no_secrets(item, field_name, text_limit=text_limit)
     elif isinstance(value, Sequence) and not isinstance(
         value, (str, bytes, bytearray)
     ):
         for item in value:
-            _assert_no_secrets(item, field_name)
+            _assert_no_secrets(item, field_name, text_limit=text_limit)
     elif isinstance(value, (bytes, bytearray)):
         raise ControlPlaneContractError(
             f"{field_name} may not contain binary bodies"
         )
     elif isinstance(value, str):
-        _text(value, field_name, required=False)
+        _text(value, field_name, required=False, limit=text_limit)
 
 
 def _freeze_mapping(
@@ -466,10 +501,16 @@ def _freeze_mapping(
     max_items: int = MAX_REFERENCE_COUNT,
     max_depth: int = MAX_DEPTH,
     reject_aliases: bool = False,
+    top_level_text_limits: Mapping[str, int] | None = None,
 ) -> TypingMapping[str, Any]:
     seen = 0
 
-    def visit(item: Any, depth: int) -> Any:
+    def visit(
+        item: Any,
+        depth: int,
+        *,
+        text_limit: int = MAX_TEXT_BYTES,
+    ) -> Any:
         nonlocal seen
         seen += 1
         if seen > max_items:
@@ -493,7 +534,12 @@ def _freeze_mapping(
         if isinstance(item, Enum):
             return item.value
         if isinstance(item, str):
-            return _text(item, field_name, required=False)
+            return _text(
+                item,
+                field_name,
+                required=False,
+                limit=text_limit,
+            )
         if isinstance(item, Mapping):
             result: dict[str, Any] = {}
             for key in sorted(item):
@@ -506,7 +552,19 @@ def _freeze_mapping(
                     raise ControlPlaneIdentityError(
                         f"{field_name} cannot use mutable aliases as identity"
                     )
-                result[normalized] = visit(item[key], depth + 1)
+                child_limit = MAX_TEXT_BYTES
+                if depth == 0 and top_level_text_limits is not None:
+                    child_limit = int(
+                        top_level_text_limits.get(
+                            normalized,
+                            MAX_TEXT_BYTES,
+                        )
+                    )
+                result[normalized] = visit(
+                    item[key],
+                    depth + 1,
+                    text_limit=child_limit,
+                )
             return MappingProxyType(result)
         if isinstance(item, Sequence) and not isinstance(
             item, (str, bytes, bytearray, memoryview)
@@ -602,7 +660,7 @@ class ControlPlaneBounds:
     max_id_bytes: int = MAX_ID_BYTES
     max_reference_count: int = MAX_REFERENCE_COUNT
     max_depth: int = MAX_DEPTH
-    max_command_bytes: int = 65_536
+    max_command_bytes: int = MAX_COMMAND_BYTES
     max_export_bytes: int = 8 * 1024 * 1024
     max_conflict_retries: int = 16
 
@@ -1124,7 +1182,20 @@ class StateCommand:
             self,
             "parameters",
             _freeze_mapping(
-                self.parameters, "parameters", reject_aliases=False
+                self.parameters,
+                "parameters",
+                reject_aliases=False,
+                top_level_text_limits={
+                    name: MAX_COMMAND_BYTES
+                    for name in _LARGE_STATE_COMMAND_TEXT_FIELDS.get(
+                        str(
+                            self.parameters.get("operation", "")
+                            if isinstance(self.parameters, Mapping)
+                            else ""
+                        ),
+                        (),
+                    )
+                },
             ),
         )
         handle = _text(self.secret_handle, "secret_handle", required=False)
@@ -1133,7 +1204,15 @@ class StateCommand:
                 "secret_handle must be an opaque handle reference"
             )
         object.__setattr__(self, "secret_handle", handle)
-        _assert_no_secrets(self.parameters, "parameters")
+        # ``_freeze_mapping`` already applied the operation-specific limits;
+        # this second walk is for secret-bearing keys and values.  Its broad
+        # limit must accommodate the closed serialized JSON fields that were
+        # admitted above without relaxing any ordinary parameter.
+        _assert_no_secrets(
+            self.parameters,
+            "parameters",
+            text_limit=MAX_COMMAND_BYTES,
+        )
 
     def matches_generation(self, generation: StoreGeneration) -> bool:
         return (

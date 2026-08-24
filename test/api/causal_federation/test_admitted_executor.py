@@ -554,7 +554,14 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
                     "task_id": "CASF-TYPED",
                     "goal_cid": "goal:typed-executor",
                     "status": "ready",
-                    "body": {"No-change completion": "allowed"},
+                    "body": {
+                        "No-change completion": "allowed",
+                        # A sealed task plus a durable receipt legitimately
+                        # exceeds the generic 8 KiB text field bound.  The
+                        # exact task-status command has its own bounded JSON
+                        # transport and must not crash before owner validation.
+                        "large_legal_context": "x" * 8_192,
+                    },
                     "outputs": [{"path": "pyproject.toml", "effect": {}}],
                     "validations": [{"argv": ["/usr/bin/true"], "policy": {}}],
                 }
