@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ipfs_accelerate_py.agent_supervisor.analysis.deterministic_doctor_contracts import (
+    DoctorAuthorityRoots,
+)
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import ContextBudget
 from ipfs_accelerate_py.agent_supervisor.context.planner_doctor_context import (
     PlannerDoctorContextRequest,
     ProofCarryingCapsuleClass,
@@ -27,15 +31,14 @@ from ipfs_accelerate_py.agent_supervisor.planning.program_repair_synthesis impor
 from ipfs_accelerate_py.agent_supervisor.planning.repair_operator_registry import (
     RepairOperatorKind,
 )
-from ipfs_accelerate_py.agent_supervisor.analysis.deterministic_doctor_contracts import (
-    DoctorAuthorityRoots,
-)
 from ipfs_accelerate_py.agent_supervisor.proof.formal_counterexamples import (
     CounterexampleKind,
     RepairClass,
     normalize_counterexample,
 )
-from ipfs_accelerate_py.agent_supervisor.context.context_contracts import ContextBudget
+from scripts import (
+    validate_logic_governed_compositional_verification_fabric_closeout as closeout_validator,
+)
 
 
 @dataclass(frozen=True)
@@ -259,3 +262,7 @@ def test_supervisor_requirement_is_executable() -> None:
     )
     assert decision.plan_ancestry == ("plan:parent",)
     assert decision.complete
+
+
+def test_closeout_replay_budget_covers_fixed_worker_and_outer_overhead() -> None:
+    assert closeout_validator.PROTECTED_REPLAY_TIMEOUT_SECONDS > 900
