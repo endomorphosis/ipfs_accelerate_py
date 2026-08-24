@@ -21,6 +21,15 @@ source-distribution build-system metadata, and observed runner. Raw reports are
 operational evidence and are intentionally not committed because package
 descriptions make them large; their SHA-256 identities are retained.
 
+The generated outer evidence preserves every SHA-256 and also derives its
+canonical raw CIDv1 (`raw` multicodec plus `sha2-256` multihash). CIDs for the
+seven available package archives, every lock, every resolver receipt, and each
+environment document are labeled `bytes-verified`. The unavailable admitted
+kit sdist CID is derived from its frozen digest and is explicitly labeled
+`identity-derived-bytes-unavailable`; it is never described as byte-verified.
+The builder decodes every emitted CID and compares its multihash digest before
+writing or checking evidence.
+
 A lock can be resolved through pip's hash gate without installing it by
 materializing the exact selected archive named for every receipt entry. The
 direct-package subset needs the four available exact admitted wheels; the

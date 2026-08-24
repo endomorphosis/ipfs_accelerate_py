@@ -11,6 +11,8 @@ contacts an index or changes the checkout.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import hashlib
 import json
 import re
@@ -53,6 +55,36 @@ def _sha256_path(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _raw_cid_v1_from_sha256(sha256: str) -> str:
+    """Return canonical CIDv1(raw, sha2-256) for an admitted digest."""
+    if not re.fullmatch(r"[0-9a-f]{64}", sha256):
+        raise EvidenceError(f"cannot derive raw CID from invalid SHA-256: {sha256!r}")
+    # CIDv1 varint, raw multicodec, sha2-256 multihash code/length, digest.
+    payload = b"\x01\x55\x12\x20" + bytes.fromhex(sha256)
+    cid = "b" + base64.b32encode(payload).decode("ascii").lower().rstrip("=")
+    _verify_raw_cid_v1(cid, sha256)
+    return cid
+
+
+def _verify_raw_cid_v1(cid: str, sha256: str) -> None:
+    """Fail closed unless a CID decodes to raw + sha2-256 + the expected digest."""
+    if not cid.startswith("b") or cid != cid.lower():
+        raise EvidenceError(f"raw CIDv1 is not canonical base32-lower: {cid!r}")
+    encoded = cid[1:].upper()
+    encoded += "=" * ((8 - len(encoded) % 8) % 8)
+    try:
+        payload = base64.b32decode(encoded, casefold=False)
+    except (ValueError, binascii.Error) as exc:
+        raise EvidenceError(f"raw CIDv1 cannot be decoded: {cid!r}") from exc
+    expected = b"\x01\x55\x12\x20" + bytes.fromhex(sha256)
+    if payload != expected:
+        raise EvidenceError(f"raw CIDv1 does not bind expected SHA-256: {cid!r}")
+
+
+def _raw_cid_v1_from_bytes(value: bytes) -> str:
+    return _raw_cid_v1_from_sha256(_sha256_bytes(value))
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -579,6 +611,8 @@ def _outer_documents(
         lock_path = LOCK_ROOT / ENVIRONMENT_SLUG / f"{profile}.txt"
         receipt_path = LOCK_ROOT / ENVIRONMENT_SLUG / f"{profile}.resolver.json"
         receipt = receipts[profile]
+        lock_sha256 = _sha256_path(lock_path)
+        receipt_sha256 = _sha256_path(receipt_path)
         source_distributions = sorted(
             package["filename"]
             for package in receipt["packages"]
@@ -588,9 +622,13 @@ def _outer_documents(
             {
                 "profile": profile,
                 "path": str(lock_path.relative_to(ACCELERATOR_ROOT)),
-                "sha256": _sha256_path(lock_path),
+                "sha256": lock_sha256,
+                "cid_v1_raw": _raw_cid_v1_from_sha256(lock_sha256),
+                "cid_binding_status": "bytes-verified",
                 "resolver_receipt_path": str(receipt_path.relative_to(ACCELERATOR_ROOT)),
-                "resolver_receipt_sha256": _sha256_path(receipt_path),
+                "resolver_receipt_sha256": receipt_sha256,
+                "resolver_receipt_cid_v1_raw": _raw_cid_v1_from_sha256(receipt_sha256),
+                "resolver_receipt_cid_binding_status": "bytes-verified",
                 "raw_pip_report_sha256": receipt["resolver"]["raw_report_sha256"],
                 "distribution_count": len(receipt["packages"]),
                 "selected_source_distributions": source_distributions,
@@ -605,6 +643,7 @@ def _outer_documents(
     dependency_locks = {
         "schema": f"{SCHEMA_PREFIX}.dependency-locks@1",
         "environment_id": ENVIRONMENT_SLUG,
+        "cid_policy": "CIDv1 with raw multicodec and sha2-256 multihash",
         "resolution_status": inputs["resolution_status"],
         "artifact_byte_availability_status": inputs["artifact_byte_availability_status"],
         "artifact_clean_install_status": inputs["artifact_clean_install_status"],
@@ -617,11 +656,24 @@ def _outer_documents(
     artifact_hashes = {
         "schema": f"{SCHEMA_PREFIX}.artifact-hashes@1",
         "identity_policy": "SHA-256 over the exact admitted archive bytes",
+        "cid_policy": "CIDv1 with raw multicodec and sha2-256 multihash",
         "resolution_status": inputs["resolution_status"],
         "artifact_byte_availability_status": inputs["artifact_byte_availability_status"],
         "artifact_clean_install_status": inputs["artifact_clean_install_status"],
         "source_commits": inputs["source_commits"],
-        "artifacts": inputs["artifacts"],
+        "artifacts": [
+            {
+                **artifact,
+                "cid_v1_raw": _raw_cid_v1_from_sha256(artifact["sha256"]),
+                "cid_binding_status": (
+                    "bytes-verified"
+                    if artifact.get("bytes_available", True)
+                    else "identity-derived-bytes-unavailable"
+                ),
+                "bytes_verified": artifact.get("bytes_available", True),
+            }
+            for artifact in inputs["artifacts"]
+        ],
         "semantic_surrogates": inputs["semantic_surrogates"],
     }
     union = _union_packages(receipts)
@@ -696,10 +748,13 @@ def _outer_documents(
     dependency_bytes = _json_bytes(dependency_locks)
     artifact_bytes = _json_bytes(artifact_hashes)
     sbom_bytes = _json_bytes(sbom)
-    environment_refs = {
+    environment_sha256 = {
         "dependency_locks.json": _sha256_bytes(dependency_bytes),
         "artifact_hashes.json": _sha256_bytes(artifact_bytes),
         "sbom.spdx.json": _sha256_bytes(sbom_bytes),
+    }
+    environment_cid_v1_raw = {
+        name: _raw_cid_v1_from_sha256(sha256) for name, sha256 in environment_sha256.items()
     }
     manifest = {
         "schema": f"{SCHEMA_PREFIX}.environment-manifest@1",
@@ -749,17 +804,20 @@ def _outer_documents(
         "hash_gate_validation": inputs["hash_gate_validation"],
         # Deliberately exclude the manifest's own digest; the task receipt
         # binds it after these bytes exist.
-        "evidence": dict(environment_refs),
+        "evidence": dict(environment_sha256),
+        "evidence_cid_v1_raw": dict(environment_cid_v1_raw),
     }
     manifest_bytes = _json_bytes(manifest)
-    environment_refs["manifest.json"] = _sha256_bytes(manifest_bytes)
+    environment_sha256["manifest.json"] = _sha256_bytes(manifest_bytes)
+    environment_cid_v1_raw["manifest.json"] = _raw_cid_v1_from_bytes(manifest_bytes)
     receipt = {
         "schema": f"{SCHEMA_PREFIX}.task-receipt@1",
         "task_id": "PCCE-053",
         "objective_id": "PCCE-G500",
         "status": "completed",
         "completion_mode": "supervised-reproducibility-implementation",
-        "artifact_identity": f"urn:pcce:environment:{ENVIRONMENT_SLUG}:{environment_refs['manifest.json']}",
+        "artifact_identity": environment_cid_v1_raw["manifest.json"],
+        "artifact_identity_kind": "CIDv1(raw,sha2-256)",
         "board_namespace": "proof-carrying-context-engine-v0.1",
         "evidence": {
             "nested_source": {
@@ -795,7 +853,8 @@ def _outer_documents(
             },
             "hash_gate_validation": inputs["hash_gate_validation"],
             "deterministic_generation": {"runs_compared": 2, "byte_identical": True},
-            "output_sha256": environment_refs,
+            "output_sha256": environment_sha256,
+            "output_cid_v1_raw": environment_cid_v1_raw,
             "validation": inputs["validation"],
         },
         "rollback": "Revert only the PCCE-053 lock/builder changes, accelerator gitlink, generated environment evidence, and this receipt; invalidate unpromoted environment identities.",

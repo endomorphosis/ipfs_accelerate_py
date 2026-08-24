@@ -101,7 +101,7 @@
   "hash_gate_validation": {
     "archive_set": "fully materialized exact selected archives with no index access",
     "command": [
-      "/usr/bin/python3.12",
+      "<hash-gate-frontend-venv>/bin/python",
       "-m",
       "pip",
       "install",
@@ -118,6 +118,17 @@
     ],
     "frontend_environment": {
       "python": "CPython 3.12.3",
+      "pip": "24.0",
+      "provisioned_from_wheels": [
+        {
+          "filename": "setuptools-82.0.1-py3-none-any.whl",
+          "sha256": "a59e362652f08dcd477c78bb6e7bd9d80a7995bc73ce773050228a348ce2e5bb"
+        },
+        {
+          "filename": "wheel-0.42.0-py3-none-any.whl",
+          "sha256": "177f9c9b0d45c47873b619f5b650346d632cdc35fb5e4d25058e09c9e581433d"
+        }
+      ],
       "scikit_build_core": "absent",
       "setuptools": "82.0.1",
       "wheel": "0.42.0"
@@ -125,29 +136,29 @@
     "profiles": {
       "codex": {
         "exit_code": 0,
-        "log_sha256": "965937acae75480b72e350c855f9885f3fa2de2c13e43782f7cbb47173e4060f",
+        "log_sha256": "76ab3b813adc6ea2359e9c7aecc903046dcd09a8efa6db441c3f85e622b44555",
         "outcome": "hash-gate-resolution-passed"
       },
       "core": {
         "exit_code": 0,
-        "log_sha256": "b3430ebd6bec41d906f8cc4aa1ca5824f2f08e6710659e00200a3dbca4b95d31",
+        "log_sha256": "cb2fd33659bc9c14b083f0373a5e585463483b4cff2c47cf13d9d1a4f69905c7",
         "outcome": "hash-gate-resolution-passed"
       },
       "evaluation": {
         "exit_code": 2,
         "failure": "ModuleNotFoundError: No module named 'scikit_build_core' while preparing selected llama-cpp-python sdist metadata",
-        "log_sha256": "13e6a5e829667fa811f561079a12137129778c18e910de232f85c6e58e9ea046",
+        "log_sha256": "94f5e2d9aabcf3fc57aeab5eb8002f213bb61a3de176985b9fa63d203c13811b",
         "outcome": "no-go-native-sdist-build-backend-unavailable"
       },
       "local-model": {
         "exit_code": 2,
         "failure": "ModuleNotFoundError: No module named 'scikit_build_core' while preparing selected llama-cpp-python sdist metadata",
-        "log_sha256": "154875372a9de1ed8c88e51c24b0d98d5367b53710f65fc259439759c47da54c",
+        "log_sha256": "eea4e7a2297b71438f9ada0e967b0d17ff3a695a41ca3d41b3b5031af614f211",
         "outcome": "no-go-native-sdist-build-backend-unavailable"
       },
       "verification": {
         "exit_code": 0,
-        "log_sha256": "35463ee2ab958f1993e1b738819406e9518c2525d11ddffb2efa5c9a08543ed1",
+        "log_sha256": "1e8b470ec41b5acb78985ed0c20dee8d3e829ddfa23fe34f0363daa9d2900dda",
         "outcome": "hash-gate-resolution-passed"
       }
     },
@@ -325,6 +336,7 @@
     "all five clean installs remain no-go because selected source-distribution builds were inspected but not qualified by PCCE-053",
     "offline no-index pip --require-hashes dry-run resolution passed for core, verification, and codex and failed closed at the unprovided native build backend for local-model and evaluation",
     "selected source-distribution hashes and build-system metadata inspected for all five profiles",
+    "every emitted raw CIDv1 is decoded and checked for raw multicodec, sha2-256 multihash, and exact SHA-256 binding",
     "two independent environment-evidence generations compared byte-for-byte"
   ]
 }
