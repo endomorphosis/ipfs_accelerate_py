@@ -176,7 +176,7 @@ def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(
         "evidence",
     }
     assert {item.name for item in provenance.parent.iterdir()} == {provenance.name}
-    assert not tuple(tmp_path.glob(".run-v18.*.stage"))
+    assert not tuple(tmp_path.glob("run-v18.stage-*"))
     for path, expected_mode in (
         (target.parent, 0o700),
         (provenance.parent, 0o700),
@@ -274,7 +274,68 @@ def test_successor_receipt_failure_never_publishes_database_only_generation(
         )
 
     assert not os.path.lexists(target.parent)
-    assert not tuple(tmp_path.glob(".run-v18.*.stage"))
+    assert not tuple(tmp_path.glob("run-v18.stage-*"))
+
+
+def test_successor_stage_remains_clean_during_reverification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    operator = _operator()
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    (repository / ".gitignore").write_text("run-v*/\n", encoding="utf-8")
+    for arguments in (
+        ("init", "-q"),
+        ("config", "user.email", "lgcvf-test@example.invalid"),
+        ("config", "user.name", "LGCVF Test"),
+        ("add", ".gitignore"),
+        ("commit", "-qm", "stage ignore boundary"),
+    ):
+        subprocess.run(
+            ["/usr/bin/git", *arguments],
+            cwd=repository,
+            check=True,
+            env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
+        )
+    source = repository / "run-v17" / "control.duckdb"
+    target = repository / "run-v18" / "control.duckdb"
+    provenance = repository / "run-v18" / "evidence" / "provenance.json"
+    source.parent.mkdir()
+    _seed_datasets_profile(source)
+    operator._require_ignored_successor(repository)
+    original_atomic_json = operator._atomic_json
+    observed_status: list[str] = []
+
+    def inspect_stage(path: Path, value: object, *, replace: bool) -> None:
+        observed_status.append(
+            operator._git_text(
+                repository,
+                (
+                    "status",
+                    "--porcelain=v1",
+                    "--untracked-files=all",
+                    "--ignore-submodules=none",
+                ),
+                noun="staged successor test inventory",
+            )
+        )
+        original_atomic_json(path, value, replace=replace)
+
+    monkeypatch.setattr(operator, "_atomic_json", inspect_stage)
+    operator.clone_verified_successor(
+        source,
+        target,
+        provenance,
+        recovery_verification={
+            "valid": True,
+            "target_generation": "lgcvf-run-v17",
+            "stores_unchanged": True,
+            "source_database_statuses_read": False,
+        },
+    )
+
+    assert observed_status == [""]
+    assert not tuple(repository.glob("run-v18.stage-*"))
 
 
 @pytest.mark.parametrize(

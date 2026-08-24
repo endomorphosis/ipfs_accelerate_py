@@ -2315,7 +2315,11 @@ def clone_verified_successor(
     publish_parent = final_run.parent
     publish_parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     _privatize_owned_directory(publish_parent, noun="successor publication parent")
-    stage = publish_parent / f".{final_run.name}.{uuid.uuid4().hex}.stage"
+    # Keep the unpublished generation under the same reviewed run-v* ignore
+    # boundary as the final generation.  Sealed admission is repeated after
+    # cloning; a hidden .run-v18.* stage would otherwise appear as untracked
+    # worktree dirt and make every real bootstrap fail closed on itself.
+    stage = publish_parent / f"{final_run.name}.stage-{uuid.uuid4().hex}"
     os.mkdir(stage, mode=0o700)
     staged_database = stage / target.name
     staged_provenance = stage / provenance_relative
@@ -2624,16 +2628,19 @@ def clone_verified_successor(
 
 
 def _require_ignored_successor(root: Path) -> None:
-    _git_quiet(
-        root,
-        (
-            "check-ignore",
-            "-q",
-            "--no-index",
-            str(SUCCESSOR_DATABASE_RELATIVE),
-        ),
-        noun="run-v18 successor Git-ignore policy",
+    stage_lock = (
+        SUCCESSOR_RUN_RELATIVE.with_name(SUCCESSOR_RUN_RELATIVE.name + ".stage-probe")
+        / ".control.duckdb.lock"
     )
+    for relative, noun in (
+        (SUCCESSOR_DATABASE_RELATIVE, "run-v18 successor Git-ignore policy"),
+        (stage_lock, "run-v18 staging Git-ignore policy"),
+    ):
+        _git_quiet(
+            root,
+            ("check-ignore", "-q", "--no-index", str(relative)),
+            noun=noun,
+        )
 
 
 def bootstrap_successor(root: Path = ROOT) -> dict[str, Any]:
