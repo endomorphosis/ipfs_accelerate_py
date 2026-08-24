@@ -42,12 +42,16 @@ from .task_execution_route_policy import (
     task_execution_contract_cid,
 )
 from .typed_state_owner import (
+    TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
     TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RECOVERY_SCHEMA,
+    TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+    TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_RETRYING_RECEIPT_OPERATIONS,
     TYPED_TASK_STATUS_VOCABULARY,
     TypedStateOwnerError,
+    _validated_database_strict_resume_rejection_receipt,
     _validated_stored_retry_cooldown,
 )
 
@@ -1287,6 +1291,51 @@ class TypedDatabaseTaskSource:
             return self._queue_entry_from_cooldown_row(row)
         raise TaskSourceConflictError(
             "typed retrying task/cooldown changed during bounded validation"
+        )
+
+    def validate_strict_resume_requeue_attempt_floor(
+        self,
+        task_cid_or_alias: str,
+    ) -> int:
+        """Return only the owner-validated scheduling floor of a strict requeue."""
+
+        for _attempt in range(4):
+            before = self._client.load_generation()
+            task = self.get(task_cid_or_alias)
+            if task is None or task.status != "ready":
+                raise TaskSourceIntegrityError(
+                    "typed strict-resume floor requires a ready task"
+                )
+            task_body = task.body if isinstance(task.body, Mapping) else {}
+            receipt = task_body.get("completion_receipt")
+            validated = _validated_database_strict_resume_rejection_receipt(
+                receipt
+            )
+            after = self._client.load_generation()
+            if before.content_id != after.content_id:
+                continue
+            shared = validated["shared_claim_binding"]
+            if (
+                validated["operation"]
+                != TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION
+                or validated["task_cid"] != task.task_cid
+                or validated["rejected_task_alias"] != task.task_alias
+                or validated["rejected_task_revision"] + 1
+                != int(task.revision)
+                or validated["attempt_budget_exhausted"] is not False
+                or shared.get("claim_phase_schema")
+                not in {
+                    TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+                    TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+                }
+                or not validated["execution_route_binding"]
+            ):
+                raise TaskSourceIntegrityError(
+                    "typed strict-resume ready floor differs from control truth"
+                )
+            return int(validated["attempt_number"])
+        raise TaskSourceConflictError(
+            "typed strict-resume ready floor changed during bounded validation"
         )
 
     def get_queue_entry(self, task_cid: str) -> QueueEntry | None:

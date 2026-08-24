@@ -72,7 +72,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TypedStateOwnerConnection,
     TypedStateOwnerError,
     _process_birth_content_id,
+    _validated_database_strict_resume_rejection_receipt,
     build_control_plane_operation_catalog,
+    typed_database_strict_resume_rejection_receipt_id,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_CLAIMED,
@@ -832,27 +834,42 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             client,
             execution_route_policy=route_policy,
         )
-        daemon = DatabaseImplementationDaemon(
-            database_path=database,
-            coordination_path=tmp_path / "typed-claim-barrier-coordination.duckdb",
-            execution_path=tmp_path / "typed-claim-barrier-execution.duckdb",
-            owner_session_id="session:typed-claim-barrier",
-            authority_mode="quack",
-            task_source_kind="duckdb",
-            quack_uri=identity.listen_uri,
-            task_source=adapter,
-            close_task_source=False,
-            lease_ms=5_000,
-            clock_ms=lambda: clock["now_ms"],
-            provider_fn=lambda _attempt: {"status": "ok", "accepted": True},
-            effect_fn=lambda _attempt, _provider: {"status": "applied"},
-            validation_fn=lambda _attempt, _effect: {
-                "outcome": "passed",
-                "evidence_digest": "sha256:" + "a" * 64,
-            },
-            strict_task_sharding=True,
-            require_real_execution=True,
-        ).open()
+        def open_lane(
+            lane: str,
+            *,
+            max_task_attempts: int = 4,
+        ) -> DatabaseImplementationDaemon:
+            return DatabaseImplementationDaemon(
+                database_path=database,
+                coordination_path=(
+                    tmp_path / f"typed-claim-barrier-{lane}-coordination.duckdb"
+                ),
+                execution_path=(
+                    tmp_path / f"typed-claim-barrier-{lane}-execution.duckdb"
+                ),
+                owner_session_id="session:typed-claim-barrier",
+                authority_mode="quack",
+                task_source_kind="duckdb",
+                quack_uri=identity.listen_uri,
+                task_source=adapter,
+                close_task_source=False,
+                lease_ms=5_000,
+                max_task_attempts=max_task_attempts,
+                clock_ms=lambda: clock["now_ms"],
+                provider_fn=lambda _attempt: {
+                    "status": "ok",
+                    "accepted": True,
+                },
+                effect_fn=lambda _attempt, _provider: {"status": "applied"},
+                validation_fn=lambda _attempt, _effect: {
+                    "outcome": "passed",
+                    "evidence_digest": "sha256:" + "a" * 64,
+                },
+                strict_task_sharding=True,
+                require_real_execution=True,
+            ).open()
+
+        daemon = open_lane("initial")
         promote = daemon._promote_typed_attempt_admission
 
         def fail_before_admission(*_args: Any, **_kwargs: Any) -> None:
@@ -964,16 +981,125 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             local_projection=projection,
         ) is True
         assert daemon._strict_resume_admission_result(retry_attempt) is None
-        retry_context = daemon.commit_phase(retry_attempt, "context")
-        _updated, _result, duplicated = daemon.run_provider(
-            retry_context,
-            provider_fn=lambda attempt: provider_calls.append(
-                attempt.attempt_id
+        rotated_route = dict(rotated_receipt["execution_route_binding"])
+
+        def reject_from_wrong_shard(
+            current: DatabaseTaskAttempt,
+        ) -> Mapping[str, Any]:
+            assert daemon is not None
+            daemon.task_shard_count = 2
+            daemon.task_shard_index = 1 - daemon._task_home_shard_index(
+                current.task_alias
             )
-            or {"status": "ok", "accepted": True},
+            rejection = daemon._strict_resume_admission_result(current)
+            assert rejection is not None
+            assert rejection["reason"] == "strict_resume_not_admitted"
+            assert provider_calls == []
+            return rejection
+
+        retry_rejection = reject_from_wrong_shard(retry_attempt)
+        assert retry_rejection["task_requeued"] is True
+        assert retry_rejection["task_quarantined"] is False
+        requeued = adapter.get(retry_attempt.task_cid)
+        assert requeued is not None and requeued.status == "ready"
+        requeue_receipt = requeued.body["completion_receipt"]
+        assert requeue_receipt["schema"] == (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "typed-database-strict-resume-rejection@1"
         )
-        assert duplicated is False
-        assert provider_calls == [retry_attempt.attempt_id]
+        assert requeue_receipt["operation"] == (
+            "database_strict_resume_requeue"
+        )
+        assert requeue_receipt["attempt_number"] == 2
+        assert requeue_receipt["execution_route_binding"] == rotated_route
+        assert adapter.validate_strict_resume_requeue_attempt_floor(
+            requeued.task_cid
+        ) == 2
+        assert daemon._typed_authoritative_attempt_floor(requeued) == 2
+        assert daemon._shared_claim_binding_for_this_owner(requeued) is None
+        intended_quarantine = {
+            **requeue_receipt,
+            "operation": "database_strict_resume_quarantine",
+            "max_task_attempts": 2,
+            "attempt_budget_exhausted": True,
+        }
+        intended_quarantine["receipt_id"] = (
+            typed_database_strict_resume_rejection_receipt_id(
+                intended_quarantine
+            )
+        )
+        _validated_database_strict_resume_rejection_receipt(
+            intended_quarantine
+        )
+        assert daemon._strict_resume_rejection_receipt_matches(
+            requeued,
+            retry_attempt,
+            expected_receipt=intended_quarantine,
+            expected_control_status="quarantined",
+        ) is False
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="exact promoted typed attempt",
+        ):
+            daemon.run_provider(
+                retry_attempt,
+                provider_fn=lambda attempt: provider_calls.append(
+                    attempt.attempt_id
+                )
+                or {"status": "ok", "accepted": True},
+            )
+        assert provider_calls == []
+
+        # Losing each raw lane sidecar cannot reset the durable attempt budget.
+        daemon.close()
+        daemon = open_lane("fresh-lowered-cap", max_task_attempts=2)
+        assert daemon.claim_next() is None
+        assert (
+            daemon.coordinator.coordination_registry_projection()[
+                "task_attempts"
+            ]
+            == []
+        )
+        assert provider_calls == []
+
+        daemon.close()
+        daemon = open_lane("fresh-attempt-three")
+        third = daemon.claim_next()
+        assert third is not None and third.attempt_number == 3
+        assert daemon._strict_resume_admission_result(third) is None
+        third_rejection = reject_from_wrong_shard(third)
+        assert third_rejection["task_requeued"] is True
+        third_ready = adapter.get(third.task_cid)
+        assert third_ready is not None and third_ready.status == "ready"
+        assert adapter.validate_strict_resume_requeue_attempt_floor(
+            third_ready.task_cid
+        ) == 3
+        assert provider_calls == []
+
+        daemon.close()
+        daemon = open_lane("fresh-attempt-four")
+        fourth = daemon.claim_next()
+        assert fourth is not None and fourth.attempt_number == 4
+        assert daemon._strict_resume_admission_result(fourth) is None
+        fourth_rejection = reject_from_wrong_shard(fourth)
+        assert fourth_rejection["task_requeued"] is False
+        assert fourth_rejection["task_quarantined"] is True
+        quarantined = adapter.get(fourth.task_cid)
+        assert quarantined is not None and quarantined.status == "quarantined"
+        quarantine_receipt = quarantined.body["completion_receipt"]
+        assert quarantine_receipt["operation"] == (
+            "database_strict_resume_quarantine"
+        )
+        assert quarantine_receipt["attempt_number"] == 4
+        assert quarantine_receipt["max_task_attempts"] == 4
+        assert quarantine_receipt["attempt_budget_exhausted"] is True
+        assert quarantine_receipt["execution_route_binding"] == rotated_route
+        assert provider_calls == []
+
+        daemon.close()
+        daemon = open_lane("fresh-after-cap")
+        assert daemon.claim_next() is None
+        assert provider_calls == []
         assert admitted_receipt["operation"] == "database_attempt_admitted"
         assert admitted_receipt["claim_phase_schema"] == (
             TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
@@ -982,18 +1108,18 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
         assert admitted_receipt["attempt_execution_phase"] == ATTEMPT_PHASE_CLAIMED
         assert admitted_receipt["attempt_execution_revision"] == 1
         assert context_attempt.revision > running[0].revision
-        admitted_revision = rotated.revision
+        admitted_revision = quarantined.revision
         with pytest.raises(
-            QuackClientError,
-            match="exact typed reservation",
+            TaskSourceConflictError,
+            match="revision is stale",
         ):
             adapter.recover_dead_claim_reservation(
-                rotated.task_cid,
+                quarantined.task_cid,
                 expected_task_revision=admitted_revision,
                 now_ms=clock["now_ms"],
             )
         admitted_after_rejection = adapter.get(rotated.task_cid)
-        assert admitted_after_rejection == rotated
+        assert admitted_after_rejection == quarantined
         assert adapter._retry_cooldown_row(rotated.task_cid) is None
     finally:
         if daemon is not None:

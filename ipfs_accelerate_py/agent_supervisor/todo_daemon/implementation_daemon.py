@@ -71815,14 +71815,24 @@ class PortalImplementationDaemon:
 # Markdown taskboards and JSON queue/status/events/PID projections are optional
 # non-authoritative projections only.
 
-from .database_execution_schema import (
-    DAEMON_EXECUTION_SQL as _DAEMON_EXECUTION_SQL,
-    DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
-    DATABASE_IMPLEMENTATION_DAEMON_SCHEMA,
+from ..merge.database_coordination import (
+    TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE,
 )
 from ..task_sources.typed_state_owner import (
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+    TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION,
+    TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA,
+    TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
+    _validated_database_strict_resume_rejection_receipt,
+    typed_database_strict_resume_rejection_receipt_id,
+)
+from .database_execution_schema import (
+    DAEMON_EXECUTION_SQL as _DAEMON_EXECUTION_SQL,
+)
+from .database_execution_schema import (
+    DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
+    DATABASE_IMPLEMENTATION_DAEMON_SCHEMA,
 )
 
 DATABASE_TASK_ATTEMPT_INTERFACE = "DatabaseTaskAttempt@1"
@@ -75421,6 +75431,11 @@ class DatabaseImplementationDaemon:
             authoritative_attempt_floor = (
                 self._typed_authoritative_attempt_floor(task)
             )
+            projected_attempt_floor = (
+                authoritative_attempt_floor
+                if status != "ready" or task_cid in eligible_ready_cids
+                else 0
+            )
             synchronize(
                 task_cid=task_cid,
                 task_id=task.task_alias or task_cid,
@@ -75449,7 +75464,12 @@ class DatabaseImplementationDaemon:
                     if restart_recovery_ready
                     else None
                 ),
-                authoritative_attempt_floor=authoritative_attempt_floor,
+                authoritative_attempt_floor=projected_attempt_floor,
+                authoritative_attempt_floor_source=(
+                    TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE
+                    if status == "ready" and projected_attempt_floor
+                    else ""
+                ),
                 now_ms=self._now_ms(),
             )
         ready_task_cids = [
@@ -75690,6 +75710,34 @@ class DatabaseImplementationDaemon:
         )
         if not isinstance(receipt, Mapping):
             return 0
+        strict_requeue = bool(
+            receipt.get("operation")
+            == TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION
+        )
+        if strict_requeue and status != "ready":
+            raise DatabaseImplementationAuthorityError(
+                "typed strict-resume requeue receipt is not ready"
+            )
+        if status == "ready" and (
+            strict_requeue
+            or receipt.get("schema")
+            == TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA
+        ):
+            validate_floor = getattr(
+                self.task_source,
+                "validate_strict_resume_requeue_attempt_floor",
+                None,
+            )
+            if not callable(validate_floor):
+                raise DatabaseImplementationAuthorityError(
+                    "typed strict-resume attempt floor has no exact validator"
+                )
+            validated_floor = validate_floor(str(task.task_cid))
+            if type(validated_floor) is not int or validated_floor < 1:
+                raise DatabaseImplementationAuthorityError(
+                    "typed strict-resume validator returned an invalid floor"
+                )
+            return validated_floor
         identity_names = (
             "attempt_id",
             "claim_id",
@@ -76507,6 +76555,8 @@ class DatabaseImplementationDaemon:
         attempt: DatabaseTaskAttempt,
         *,
         expected_failure_evidence: Mapping[str, Any] | None = None,
+        expected_receipt: Mapping[str, Any] | None = None,
+        expected_control_status: str = "",
     ) -> bool:
         """Return whether control truth records this exact rejection."""
 
@@ -76519,21 +76569,41 @@ class DatabaseImplementationDaemon:
             return False
         operation = str(receipt.get("operation") or "")
         if operation == "database_portal_neutral_failure_quarantine":
+            if expected_receipt is not None or expected_control_status:
+                return False
             return self._neutral_portal_rejection_receipt_matches(
                 task,
                 attempt,
                 expected_failure_evidence=expected_failure_evidence,
             )
-        expected_status = {
-            "database_strict_resume_requeue": "ready",
-            "database_strict_resume_quarantine": "quarantined",
+        operation_status = {
+            TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION: "ready",
+            TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION: "quarantined",
         }.get(operation)
         if (
             expected_failure_evidence is not None
-            or expected_status is None
-            or task_status != expected_status
+            or operation_status is None
+            or task_status != operation_status
+            or (
+                expected_control_status
+                and expected_control_status != operation_status
+            )
+            or (
+                expected_receipt is not None
+                and dict(receipt) != dict(expected_receipt)
+            )
         ):
             return False
+        typed_source = callable(
+            getattr(self.task_source, "claim_process_attestation", None)
+        )
+        if typed_source:
+            try:
+                receipt = _validated_database_strict_resume_rejection_receipt(
+                    receipt
+                )
+            except (TaskSourceIntegrityError, ValueError, TypeError):
+                return False
         expected_identity = {
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,
@@ -76542,6 +76612,13 @@ class DatabaseImplementationDaemon:
             "fencing_token": int(attempt.fencing_token),
             "fence_epoch": int(attempt.fence_epoch),
         }
+        if typed_source:
+            expected_identity.update(
+                {
+                    "task_cid": attempt.task_cid,
+                    "attempt_number": int(attempt.attempt_number),
+                }
+            )
         return all(
             receipt.get(name) == value
             for name, value in expected_identity.items()
@@ -76591,6 +76668,16 @@ class DatabaseImplementationDaemon:
         }
         excluded.update(self._automatic_claim_exclusions())
         excluded.update(self._current_control_claim_rejections())
+        if self.max_task_attempts > 0:
+            for task_cid in canonical_ready_task_cids:
+                candidate = self.task_source.get(task_cid)
+                if (
+                    candidate is not None
+                    and str(candidate.status or "").strip().lower() == "ready"
+                    and self._typed_authoritative_attempt_floor(candidate)
+                    >= self.max_task_attempts
+                ):
+                    excluded.add(task_cid)
         local_projection = self.coordinator.coordination_registry_projection()
         excluded.update(
             str(row.get("task_cid") or "")
@@ -83561,14 +83648,16 @@ class DatabaseImplementationDaemon:
         )
         disposition = "requeued" if requeue_safe else "quarantined"
         operation = (
-            "database_strict_resume_requeue"
+            TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION
             if requeue_safe
-            else "database_strict_resume_quarantine"
+            else TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION
         )
         receipt = {
             "operation": operation,
+            "task_cid": attempt.task_cid,
             "claim_id": attempt.claim_id,
             "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
             "lease_id": attempt.lease_id,
             "owner_session_id": attempt.owner_session_id,
             "fencing_token": int(attempt.fencing_token),
@@ -83588,11 +83677,58 @@ class DatabaseImplementationDaemon:
                 self._shared_claim_binding_for_this_owner(task) or {}
             ),
         }
+        typed_source = callable(
+            getattr(self.task_source, "claim_process_attestation", None)
+        )
+        if typed_source:
+            task_body = task.body if isinstance(task.body, Mapping) else {}
+            prior_receipt = task_body.get("completion_receipt")
+            if not isinstance(prior_receipt, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "typed strict resume rejection has no prior claim receipt"
+                )
+            route = prior_receipt.get("execution_route_binding")
+            policy_id = (
+                route.get("policy_id")
+                if isinstance(route, Mapping)
+                else ""
+            )
+            origin_revision = (
+                route.get("task_revision")
+                if isinstance(route, Mapping)
+                else 0
+            )
+            receipt.update(
+                {
+                    "schema": TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA,
+                    "execution_route_binding": (
+                        dict(route) if isinstance(route, Mapping) else {}
+                    ),
+                    "execution_route_policy_id": str(policy_id or ""),
+                    "execution_route_origin_revision": (
+                        origin_revision
+                        if type(origin_revision) is int
+                        else 0
+                    ),
+                }
+            )
+            receipt["receipt_id"] = (
+                typed_database_strict_resume_rejection_receipt_id(receipt)
+            )
+            try:
+                _validated_database_strict_resume_rejection_receipt(receipt)
+            except (TaskSourceIntegrityError, ValueError, TypeError) as exc:
+                raise DatabaseImplementationAuthorityError(
+                    "typed strict resume rejection receipt is invalid"
+                ) from exc
+        expected_control_status = (
+            "ready" if requeue_safe else "quarantined"
+        )
         try:
             self._cas_task_status_database(
                 attempt.task_cid,
                 expected_revision=int(task.revision),
-                new_status="ready" if requeue_safe else "quarantined",
+                new_status=expected_control_status,
                 receipt=receipt,
             )
         except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
@@ -83600,8 +83736,24 @@ class DatabaseImplementationDaemon:
             if refreshed is None or not self._strict_resume_rejection_receipt_matches(
                 refreshed,
                 attempt,
+                expected_receipt=receipt,
+                expected_control_status=expected_control_status,
             ):
                 raise
+        else:
+            persisted = self.task_source.get(attempt.task_cid)
+            if (
+                persisted is None
+                or not self._strict_resume_rejection_receipt_matches(
+                    persisted,
+                    attempt,
+                    expected_receipt=receipt,
+                    expected_control_status=expected_control_status,
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "strict resume rejection did not persist its exact intent"
+                )
         return self._settle_strict_resume_rejection(attempt), disposition
 
     def _strict_resume_admission_result(
