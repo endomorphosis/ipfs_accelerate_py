@@ -80495,6 +80495,7 @@ class DatabaseImplementationDaemon:
                     "task_alias": str(task.task_alias or ""),
                     "previous_status": "blocked",
                     "status": "retrying",
+                    "changed": True,
                     "reason": "inflight_process_deferral_budget_unstall",
                     "queue_receipt": dict(outcome.get("queue_receipt") or {}),
                 }
@@ -88757,7 +88758,11 @@ class DatabaseImplementationDaemon:
                 if item.get("changed") is True
             )
             + len(stale_in_progress_unstalls)
-            + len(inflight_deferral_unstalls)
+            + sum(
+                1
+                for item in inflight_deferral_unstalls
+                if item.get("changed") is True
+            )
             + int(output_rearm.get("write_count") or 0)
         )
         # Prefer resume of this session's running attempts (crash recovery).
