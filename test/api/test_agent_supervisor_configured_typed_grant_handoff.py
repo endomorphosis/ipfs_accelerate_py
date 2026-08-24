@@ -1430,8 +1430,11 @@ def _aseh_health_fixture(
     lane_mtime_ns: int,
     lane_stalled: bool = False,
     delayed_retry_not_before_ms: int = 0,
+    parallel_blocked: bool = False,
 ) -> tuple[SimpleNamespace, dict[str, Path], dict[str, object]]:
     task_cid = "task:aseh-health"
+    blocked_task_cid = "task:aseh-health-blocked"
+    task_count = 2 if parallel_blocked else 1
     goal_record = {
         "goal_cid": "goal:aseh-health",
         "goal_alias": "ASEH-G000",
@@ -1466,7 +1469,7 @@ def _aseh_health_fixture(
         "source_identity": "",
         "projection_cid": "projection:aseh-health",
         "event_cursor": 10,
-        "task_count": 1,
+        "task_count": task_count,
         "goal_count": 1,
         "dependency_count": 0,
         "objective_count": 1,
@@ -1479,32 +1482,49 @@ def _aseh_health_fixture(
             "projection_cid": bootstrap_snapshot["projection_cid"],
         }
     )
+    sealed_task_statuses = {"ASEH-000": "todo"}
+    sealed_task_revisions = {"ASEH-000": 1}
+    sealed_task_cids = {"ASEH-000": task_cid}
+    sealed_owner_bindings = {
+        "ASEH-000": {
+            "owning_repository": "ipfs_accelerate_py",
+            "base_revision": "commit:aseh-health",
+            "base_repository_tree_id": "tree:aseh-health",
+            "source_forest_cid": "forest:aseh-health",
+            "owner_source_identity": "source-owner:aseh-health",
+        }
+    }
+    sealed_task_dependencies = {"ASEH-000": []}
+    sealed_task_authority_spec_cids = {
+        "ASEH-000": "sha256:aseh-health-authority-spec"
+    }
+    if parallel_blocked:
+        sealed_task_statuses["ASEH-001"] = "todo"
+        sealed_task_revisions["ASEH-001"] = 1
+        sealed_task_cids["ASEH-001"] = blocked_task_cid
+        sealed_owner_bindings["ASEH-001"] = dict(
+            sealed_owner_bindings["ASEH-000"]
+        )
+        sealed_task_dependencies["ASEH-001"] = []
+        sealed_task_authority_spec_cids["ASEH-001"] = (
+            "sha256:aseh-health-blocked-authority-spec"
+        )
     integrity = {
         "schema": "ipfs_accelerate_py/agent-supervisor/aseh-integrity@1",
         "projection_matches_events": True,
         "projection_cid": "projection:aseh-health",
         "event_cursor": 10,
-        "task_statuses": {"ASEH-000": "todo"},
-        "task_revisions": {"ASEH-000": 1},
-        "task_cids": {"ASEH-000": task_cid},
-        "task_owner_bindings": {
-            "ASEH-000": {
-                "owning_repository": "ipfs_accelerate_py",
-                "base_revision": "commit:aseh-health",
-                "base_repository_tree_id": "tree:aseh-health",
-                "source_forest_cid": "forest:aseh-health",
-                "owner_source_identity": "source-owner:aseh-health",
-            }
-        },
-        "task_dependencies": {"ASEH-000": []},
-        "task_authority_spec_cids": {
-            "ASEH-000": "sha256:aseh-health-authority-spec"
-        },
+        "task_statuses": sealed_task_statuses,
+        "task_revisions": sealed_task_revisions,
+        "task_cids": sealed_task_cids,
+        "task_owner_bindings": sealed_owner_bindings,
+        "task_dependencies": sealed_task_dependencies,
+        "task_authority_spec_cids": sealed_task_authority_spec_cids,
         "goal_records": {"ASEH-G000": goal_record},
         "goal_edges": [],
         "plan_record": plan_record,
         "objective_record": objective_record,
-        "task_count": 1,
+        "task_count": task_count,
         "goal_count": 1,
         "dependency_count": 0,
         "objective_count": 1,
@@ -1586,6 +1606,11 @@ def _aseh_health_fixture(
     }
     replay_witness["witness_cid"] = aseh_operator._identity(replay_witness)
     ready_task_ids = ["ASEH-000"] if ready else []
+    live_task_statuses = {"ASEH-000": status}
+    live_task_revisions = {"ASEH-000": revision}
+    if parallel_blocked:
+        live_task_statuses["ASEH-001"] = "blocked"
+        live_task_revisions["ASEH-001"] = 2
     authority = {
         "available": True,
         "transport": "quack",
@@ -1594,9 +1619,9 @@ def _aseh_health_fixture(
         "projection_reconciliation": replay_witness,
         "owner_binding": binding,
         "snapshot": current_snapshot,
-        "task_statuses": {"ASEH-000": status},
-        "task_revisions": {"ASEH-000": revision},
-        "task_cids": {"ASEH-000": task_cid},
+        "task_statuses": live_task_statuses,
+        "task_revisions": live_task_revisions,
+        "task_cids": integrity["task_cids"],
         "task_owner_bindings": integrity["task_owner_bindings"],
         "task_dependencies": integrity["task_dependencies"],
         "task_authority_spec_cids": integrity["task_authority_spec_cids"],
@@ -1617,7 +1642,7 @@ def _aseh_health_fixture(
             ["ASEH-000"] if delayed_retry_not_before_ms else []
         ),
         "active_count": int(active),
-        "blocked_count": 0,
+        "blocked_count": int(parallel_blocked),
         "terminal_count": int(status in aseh_operator.TERMINAL_STATUSES),
         "event_cursor": event_cursor,
     }
@@ -1684,7 +1709,7 @@ def _aseh_health_fixture(
             "stale_seconds": 2.0,
             "watchdog_startup_grace_seconds": 1.0,
             "initial_projection": {
-                "task_count": 1,
+                "task_count": task_count,
                 "goal_count": 1,
                 "task_dependency_count": 0,
             },
@@ -2991,6 +3016,58 @@ def test_aseh_health_blocked_reconciliation_allows_startup_lane_refresh(
     assert after_startup["blocked_recovery_admitted"] is False
 
 
+def test_aseh_health_admits_parallel_blocked_recovery_only_during_startup(
+    tmp_path: Path,
+) -> None:
+    now = time.time()
+    board, paths, before = _aseh_health_fixture(
+        tmp_path,
+        status="todo",
+        revision=1,
+        event_cursor=10,
+        ready=True,
+        observed_at=now - 0.25,
+        lane_mtime_ns=int((now - 0.25) * 1_000_000_000),
+        parallel_blocked=True,
+    )
+    _board, _paths, current = _aseh_health_fixture(
+        tmp_path,
+        status="todo",
+        revision=1,
+        event_cursor=10,
+        ready=True,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+        parallel_blocked=True,
+    )
+
+    startup = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 0.5,
+        last_progress_at=now - 0.25,
+        failure={},
+    )
+    assert startup["blocked"] is True
+    assert startup["dependency_deadlock"] is False
+    assert startup["blocked_recovery_scope"] == "parallel_startup"
+    assert startup["blocked_recovery_admitted"] is True
+    assert startup["healthy"] is False
+
+    expired = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 2.0,
+        last_progress_at=now - 0.25,
+        failure={},
+    )
+    assert expired["startup_grace_active"] is False
+    assert expired["blocked_recovery_scope"] == ""
+    assert expired["blocked_recovery_admitted"] is False
+
+
 def test_aseh_health_admits_exact_delayed_retry_frontier(
     tmp_path: Path,
 ) -> None:
@@ -3970,6 +4047,64 @@ def test_aseh_repair_quack_recovery_transition_is_closed_and_chained(
         aseh_operator._repair_quack_recovery_transition_receipt_id(receipt)
 
 
+def test_aseh_repair_parallel_blocked_startup_transition_is_closed_and_chained(
+) -> None:
+    receipt = {
+        "schema": (
+            aseh_operator.REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_SCHEMA
+        ),
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R6"
+        ),
+        "program_id": aseh_operator.PROGRAM,
+        "transition_revision": 6,
+        "bootstrap_receipt_id": "sha256:" + ("a" * 64),
+        "previous_receipt_cid": "sha256:" + ("b" * 64),
+        "plan_root_cid": "plan:sealed",
+        "repository_tree_id": "tree:sealed",
+        "base_head": "1" * 40,
+        "base_tree": "2" * 40,
+        "repair_head": "3" * 40,
+        "repair_tree": "4" * 40,
+        "changed_paths": list(
+            aseh_operator.REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": "sha256:" + ("5" * 64),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R5"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": "explicit parallel startup authority",
+        "validation_results": [],
+        "terminal_success_criteria": "bounded automatic recovery",
+        "terminal_non_success_criteria": "all drift rejected",
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    assert (
+        aseh_operator._repair_parallel_blocked_startup_transition_receipt_id(
+            receipt
+        )
+        == receipt["receipt_cid"]
+    )
+
+    receipt["transition_revision"] = 5
+    receipt["receipt_cid"] = aseh_operator._identity(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_cid"
+        }
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="schema"):
+        aseh_operator._repair_parallel_blocked_startup_transition_receipt_id(
+            receipt
+        )
+
+
 def test_aseh_repair_runtime_hardening_transition_rejects_wrong_parent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4112,7 +4247,7 @@ def test_aseh_repair_clean_launch_transition_publication_is_create_only(
     ) == first
 
 
-def test_aseh_repair_runtime_hardening_transition_chains_repair_quack_recovery_transition_as_active_admission_base(
+def test_aseh_repair_parallel_blocked_startup_transition_is_active_admission_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4122,6 +4257,7 @@ def test_aseh_repair_runtime_hardening_transition_chains_repair_quack_recovery_t
     clean_launch_path = tmp_path / "repair-r3.json"
     runtime_hardening_path = tmp_path / "repair-r4.json"
     quack_recovery_path = tmp_path / "repair-r5.json"
+    parallel_startup_path = tmp_path / "repair-r6.json"
     database_path = tmp_path / "control.duckdb"
     for path in (
         bootstrap_path,
@@ -4130,6 +4266,7 @@ def test_aseh_repair_runtime_hardening_transition_chains_repair_quack_recovery_t
         clean_launch_path,
         runtime_hardening_path,
         quack_recovery_path,
+        parallel_startup_path,
         database_path,
     ):
         path.touch()
@@ -4142,6 +4279,9 @@ def test_aseh_repair_runtime_hardening_transition_chains_repair_quack_recovery_t
             runtime_hardening_path
         ),
         "repair_quack_recovery_transition_receipt": quack_recovery_path,
+        "repair_parallel_blocked_startup_transition_receipt": (
+            parallel_startup_path
+        ),
         "database": database_path,
     }
     bootstrap = {
@@ -4157,11 +4297,13 @@ def test_aseh_repair_runtime_hardening_transition_chains_repair_quack_recovery_t
     r3_receipt = {"revision": 3}
     r4_receipt = {"revision": 4}
     r5_receipt = {"revision": 5}
+    r6_receipt = {"revision": 6}
     r3_head = aseh_operator.REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD
     r4_head = "4" * 40
     r5_head = "5" * 40
+    r6_head = "6" * 40
     population = {
-        "source_head": r5_head,
+        "source_head": r6_head,
         "repository_tree_id": "tree:runtime",
         "plan_root_cid": "plan:sealed",
         "source_forest": {"forest_cid": "forest:runtime"},
@@ -4195,6 +4337,12 @@ def test_aseh_repair_runtime_hardening_transition_chains_repair_quack_recovery_t
         "transition_revision": 5,
         "receipt_cid": "receipt:r5",
     }
+    r6 = {
+        "base_head": r5_head,
+        "repair_head": r6_head,
+        "transition_revision": 6,
+        "receipt_cid": "receipt:r6",
+    }
     payloads = {
         bootstrap_path: bootstrap,
         repair_path: r1_receipt,
@@ -4202,6 +4350,7 @@ def test_aseh_repair_runtime_hardening_transition_chains_repair_quack_recovery_t
         clean_launch_path: r3_receipt,
         runtime_hardening_path: r4_receipt,
         quack_recovery_path: r5_receipt,
+        parallel_startup_path: r6_receipt,
     }
     suffix_calls: list[tuple[str, str]] = []
 
@@ -4245,6 +4394,11 @@ def test_aseh_repair_runtime_hardening_transition_chains_repair_quack_recovery_t
     )
     monkeypatch.setattr(
         aseh_operator,
+        "_validate_repair_parallel_blocked_startup_transition",
+        lambda *_args, **_kwargs: r6,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
         "_read_continuity_state",
         lambda *_args, **_kwargs: (
             {"projection_cid": "projection:current", "event_cursor": 79},
@@ -4283,12 +4437,12 @@ def test_aseh_repair_runtime_hardening_transition_chains_repair_quack_recovery_t
         object(), {}, paths
     )
 
-    assert admission["repair_transition"] == r5
+    assert admission["repair_transition"] == r6
     assert [
         item.get("transition_revision", 1)
         for item in admission["repair_transition_chain"]
-    ] == [1, 2, 3, 4, 5]
-    assert suffix_calls[-1] == (r5_head, r5_head)
+    ] == [1, 2, 3, 4, 5, 6]
+    assert suffix_calls[-1] == (r6_head, r6_head)
     assert admission["canonical_continuity"][
         "followup_to_clean_launch"
     ] == r3
@@ -4298,6 +4452,9 @@ def test_aseh_repair_runtime_hardening_transition_chains_repair_quack_recovery_t
     assert admission["canonical_continuity"][
         "runtime_hardening_to_quack_recovery"
     ] == r5
+    assert admission["canonical_continuity"][
+        "quack_recovery_to_parallel_blocked_startup"
+    ] == r6
 
 
 def test_aseh_repair_authorization_replay_rejects_head_regression(

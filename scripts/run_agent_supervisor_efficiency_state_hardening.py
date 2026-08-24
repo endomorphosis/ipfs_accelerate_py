@@ -362,6 +362,38 @@ REPAIR_QUACK_RECOVERY_TRANSITION_VALIDATIONS: Final = (
         "test/api/test_agent_supervisor_quack_transport_defaults.py",
     ),
 )
+REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-parallel-blocked-startup-transition@1"
+)
+REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_BASE_HEAD: Final = (
+    "c742ae30ca72440ac3598eb07a677ff0e124e611"
+)
+REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_CHANGED_PATHS: Final = (
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+)
+REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_VALIDATIONS: Final = (
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k", (
+            "repair_parallel_blocked_startup_transition "
+            "or health_admits_parallel_blocked_recovery_only_during_startup "
+            "or startup_fails_when_blocked_recovery_admission_is_lost"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_database_portal_bridge.py",
+        "-k", "bridge_seals_historical_quack_preprojection_absence",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_database_implementation_daemon.py",
+        "-k", "reconcile_recovers_exact_quack_preprojection_transport_failure",
+    ),
+)
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
         "schema", "source_head", "repository_tree_id", "plan_root_cid",
@@ -415,6 +447,9 @@ REPAIR_RUNTIME_HARDENING_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS
 )
 REPAIR_QUACK_RECOVERY_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS
+)
+REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
@@ -774,6 +809,34 @@ def _repair_quack_recovery_transition_receipt_id(
     return receipt_id
 
 
+def _repair_parallel_blocked_startup_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-6 startup recovery receipt."""
+
+    if (
+        payload.get("schema")
+        != REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 6
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+    ):
+        raise OperatorError(
+            "bootstrap repair parallel-blocked-startup schema is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair parallel-blocked-startup CID is invalid"
+        )
+    return receipt_id
+
+
 def _run(
     argv: Sequence[str],
     *,
@@ -969,6 +1032,36 @@ def _run_repair_quack_recovery_transition_validations(
     return results
 
 
+def _run_repair_parallel_blocked_startup_transition_validations(
+) -> list[dict[str, Any]]:
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError(
+            "bootstrap repair parallel-blocked-startup validation requires "
+            "a clean checkout"
+        )
+    results: list[dict[str, Any]] = []
+    for command in REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_VALIDATIONS:
+        completed = _run(command, timeout=900)
+        result = {
+            "argv": list(command),
+            "returncode": int(completed.returncode),
+            "stdout_digest": _identity(completed.stdout.encode("utf-8")),
+            "stderr_digest": _identity(completed.stderr.encode("utf-8")),
+        }
+        results.append(result)
+        if completed.returncode != 0:
+            raise OperatorError(
+                "bootstrap repair parallel-blocked-startup validation failed: "
+                + " ".join(command)
+            )
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError(
+            "bootstrap repair parallel-blocked-startup validation dirtied "
+            "the checkout"
+        )
+    return results
+
+
 def _safe_path(value: str, *, field: str) -> Path:
     candidate = (ROOT / value).resolve()
     try:
@@ -1066,6 +1159,11 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-quack-recovery-transition.json"
+    )
+    result["repair_parallel_blocked_startup_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-parallel-blocked-startup-transition.json"
     )
     result["status_receipt"] = (
         result["evidence"] / "control-plane" / "live-status.json"
@@ -3692,6 +3790,159 @@ def _validate_repair_quack_recovery_transition(
     }
 
 
+def _validate_repair_parallel_blocked_startup_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 6 chained to immutable Quack recovery."""
+
+    receipt_id = _repair_parallel_blocked_startup_transition_receipt_id(
+        receipt
+    )
+    previous_receipt_id = _repair_quack_recovery_transition_receipt_id(
+        previous_receipt
+    )
+    expected_authority = (
+        "the operator explicitly directed the bootstrap engineering agent "
+        "to fix the existing supervisor so exact recoverable blocked tasks "
+        "can rearm while a parallel ready frontier exists, without weakening "
+        "single-writer, freshness, validation, or bounded startup gates"
+    )
+    if (
+        receipt.get("stable_identity")
+        != f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R6"
+        or receipt.get("previous_receipt_cid") != previous_receipt_id
+        or receipt.get("bootstrap_receipt_id")
+        != bootstrap.get("bootstrap_receipt_id")
+        or receipt.get("plan_root_cid") != bootstrap.get("plan_root_cid")
+        or receipt.get("repository_tree_id")
+        != bootstrap.get("repository_tree_id")
+        or receipt.get("base_head")
+        != REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_BASE_HEAD
+        or receipt.get("changed_paths")
+        != list(REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_CHANGED_PATHS)
+        or receipt.get("dependencies")
+        != ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R5"]
+        or receipt.get("owning_repository") != "ipfs_accelerate_py"
+        or receipt.get("risk_class")
+        != "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+        or receipt.get("authority_requirement") != expected_authority
+        or type(receipt.get("authorized_at")) not in {int, float}
+        or float(receipt["authorized_at"]) <= 0.0
+    ):
+        raise OperatorError(
+            "bootstrap repair parallel-blocked-startup authority differs"
+        )
+    repair = str(receipt.get("repair_head") or "").strip().casefold()
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", repair) is None
+        or _git("show", "-s", "--format=%P", repair).split()
+        != [REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_BASE_HEAD]
+    ):
+        raise OperatorError(
+            "bootstrap repair parallel-blocked-startup must be one exact child"
+        )
+    base_tree = _git(
+        "rev-parse",
+        f"{REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_BASE_HEAD}^{{tree}}",
+    )
+    repair_tree = _git("rev-parse", f"{repair}^{{tree}}")
+    if (
+        receipt.get("base_tree") != base_tree
+        or receipt.get("repair_tree") != repair_tree
+        or _git_changed_paths(
+            REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_BASE_HEAD,
+            repair,
+        )
+        != REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_CHANGED_PATHS
+        or receipt.get("patch_digest")
+        != _git_patch_digest(
+            REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_BASE_HEAD,
+            repair,
+        )
+    ):
+        raise OperatorError(
+            "bootstrap repair parallel-blocked-startup Git proof differs"
+        )
+    forest = bootstrap.get("source_forest")
+    by_owner = forest.get("by_owner") if isinstance(forest, Mapping) else None
+    if not isinstance(by_owner, Mapping):
+        raise OperatorError("bootstrap source forest owner binding is absent")
+    for owner, path in (
+        ("ipfs_datasets_py", "ipfs_datasets_py"),
+        ("ipfs_kit_py", "ipfs_kit_py"),
+    ):
+        expected = by_owner.get(owner)
+        if (
+            not isinstance(expected, Mapping)
+            or _git("rev-parse", f"{repair}:{path}")
+            != expected.get("commit")
+        ):
+            raise OperatorError(
+                "bootstrap repair parallel-blocked-startup changed a sibling"
+            )
+    stored_results = receipt.get("validation_results")
+    if (
+        not isinstance(stored_results, list)
+        or len(stored_results)
+        != len(REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_VALIDATIONS)
+    ):
+        raise OperatorError(
+            "bootstrap repair parallel-blocked-startup validation differs"
+        )
+    for stored, command in zip(
+        stored_results,
+        REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_VALIDATIONS,
+        strict=True,
+    ):
+        if (
+            not isinstance(stored, Mapping)
+            or set(stored)
+            != {"argv", "returncode", "stdout_digest", "stderr_digest"}
+            or stored.get("argv") != list(command)
+            or stored.get("returncode") != 0
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(stored.get("stdout_digest") or ""),
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(stored.get("stderr_digest") or ""),
+            )
+            is None
+        ):
+            raise OperatorError(
+                "bootstrap repair parallel-blocked-startup validation differs"
+            )
+    if rerun_validations:
+        rerun = _run_repair_parallel_blocked_startup_transition_validations()
+        if [item["argv"] for item in rerun] != [
+            item.get("argv") for item in stored_results
+        ]:
+            raise OperatorError(
+                "bootstrap repair parallel-blocked-startup commands differ"
+            )
+    return {
+        "schema": REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 6,
+        "base_head": REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_BASE_HEAD,
+        "base_tree": base_tree,
+        "repair_head": repair,
+        "repair_tree": repair_tree,
+        "changed_paths": list(
+            REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": str(receipt.get("patch_digest") or ""),
+        "previous_receipt_cid": previous_receipt_id,
+        "receipt_cid": receipt_id,
+    }
+
+
 def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
     """Replay projections on a private clone, never on authoritative bytes."""
 
@@ -4021,6 +4272,206 @@ def authorize_repair_transition(config_path: Path) -> dict[str, Any]:
                             str(quack_recovery_transition["repair_head"]),
                             head,
                         )
+                        parallel_startup_path = paths.get(
+                            "repair_parallel_blocked_startup_transition_receipt"
+                        )
+                        if (
+                            isinstance(parallel_startup_path, Path)
+                            and parallel_startup_path.is_file()
+                        ):
+                            parallel_startup = _secure_runtime_json(
+                                parallel_startup_path,
+                                max_bytes=STATUS_RECEIPT_MAX_BYTES,
+                            )
+                            parallel_startup_transition = (
+                                _validate_repair_parallel_blocked_startup_transition(
+                                    parallel_startup,
+                                    bootstrap=bootstrap,
+                                    previous_receipt=quack_recovery,
+                                    rerun_validations=(
+                                        parallel_startup.get("repair_head")
+                                        == head
+                                    ),
+                                )
+                            )
+                            _git(
+                                "merge-base",
+                                "--is-ancestor",
+                                str(
+                                    parallel_startup_transition["repair_head"]
+                                ),
+                                head,
+                            )
+                            current_admission = _admit_materialized_launch(
+                                board, _config, paths
+                            )
+                            admitted_repair = current_admission.get(
+                                "repair_transition"
+                            )
+                            admitted_continuity = current_admission.get(
+                                "canonical_continuity"
+                            )
+                            if (
+                                not isinstance(admitted_repair, Mapping)
+                                or admitted_repair.get("repair_head")
+                                != parallel_startup_transition["repair_head"]
+                                or not isinstance(admitted_continuity, Mapping)
+                                or "repair_to_current" not in admitted_continuity
+                            ):
+                                raise OperatorError(
+                                    "current admission does not retain the "
+                                    "parallel-blocked-startup repair transition"
+                                )
+                            return {
+                                "schema": OPERATOR_SCHEMA,
+                                "command": "authorize-repair-transition",
+                                "ok": True,
+                                "idempotent_replay": True,
+                                "repair_transition_receipt": parallel_startup,
+                                "repair_transition_chain": [
+                                    prior,
+                                    followup,
+                                    clean_launch,
+                                    runtime_hardening,
+                                    quack_recovery,
+                                    parallel_startup,
+                                ],
+                                "current_admission_cid": current_admission[
+                                    "admission_cid"
+                                ],
+                                "runtime_source_head": current_admission[
+                                    "runtime_source_head"
+                                ],
+                            }
+                        if quack_recovery.get("repair_head") != head:
+                            parents = _git(
+                                "show", "-s", "--format=%P", head
+                            ).split()
+                            if parents != [
+                                REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_BASE_HEAD
+                            ]:
+                                raise OperatorError(
+                                    "bootstrap repair parallel-blocked-startup "
+                                    "must be one child of the exact revision-5 "
+                                    "repair"
+                                )
+                            if _git_changed_paths(
+                                REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_BASE_HEAD,
+                                head,
+                            ) != (
+                                REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_CHANGED_PATHS
+                            ):
+                                raise OperatorError(
+                                    "bootstrap repair parallel-blocked-startup "
+                                    "changed-path set differs"
+                                )
+                            validation_results = (
+                                _run_repair_parallel_blocked_startup_transition_validations()
+                            )
+                            receipt = {
+                                "schema": (
+                                    REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_SCHEMA
+                                ),
+                                "task_id": REPAIR_TRANSITION_TASK_ID,
+                                "stable_identity": (
+                                    f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}"
+                                    "@ASEH-PLAN-R6"
+                                ),
+                                "program_id": PROGRAM,
+                                "transition_revision": 6,
+                                "bootstrap_receipt_id": bootstrap_id,
+                                "previous_receipt_cid": (
+                                    quack_recovery_transition["receipt_cid"]
+                                ),
+                                "plan_root_cid": bootstrap["plan_root_cid"],
+                                "repository_tree_id": bootstrap[
+                                    "repository_tree_id"
+                                ],
+                                "base_head": (
+                                    REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_BASE_HEAD
+                                ),
+                                "base_tree": _git(
+                                    "rev-parse",
+                                    REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_BASE_HEAD
+                                    + "^{tree}",
+                                ),
+                                "repair_head": head,
+                                "repair_tree": _git(
+                                    "rev-parse", f"{head}^{{tree}}"
+                                ),
+                                "changed_paths": list(
+                                    REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_CHANGED_PATHS
+                                ),
+                                "patch_digest": _git_patch_digest(
+                                    REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_BASE_HEAD,
+                                    head,
+                                ),
+                                "dependencies": [
+                                    "ASEH-BOOTSTRAP-002@ASEH-PLAN-R5"
+                                ],
+                                "owning_repository": "ipfs_accelerate_py",
+                                "risk_class": (
+                                    "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+                                ),
+                                "authority_requirement": (
+                                    "the operator explicitly directed the "
+                                    "bootstrap engineering agent to fix the "
+                                    "existing supervisor so exact recoverable "
+                                    "blocked tasks can rearm while a parallel "
+                                    "ready frontier exists, without weakening "
+                                    "single-writer, freshness, validation, or "
+                                    "bounded startup gates"
+                                ),
+                                "validation_results": validation_results,
+                                "terminal_success_criteria": (
+                                    "A blocked board with an admitted parallel "
+                                    "ready, active, or delayed frontier keeps "
+                                    "the canonical lanes alive only during the "
+                                    "configured startup grace; it remains "
+                                    "unhealthy until blocked_count reaches zero; "
+                                    "and the exact R5 Quack recoveries can rearm "
+                                    "through canonical CAS."
+                                ),
+                                "terminal_non_success_criteria": (
+                                    "Any healthy claim while blocked, recovery "
+                                    "past startup grace, missing ready frontier, "
+                                    "owner/broker/identity/corpus loss, stale "
+                                    "lane outside grace, second writer, sibling "
+                                    "change, database mutation during validation, "
+                                    "or validation failure is rejected."
+                                ),
+                                "semantic_corpus_changed": False,
+                                "database_mutated": False,
+                                "authorized_at": time.time(),
+                            }
+                            receipt["receipt_cid"] = _identity(receipt)
+                            _validate_repair_parallel_blocked_startup_transition(
+                                receipt,
+                                bootstrap=bootstrap,
+                                previous_receipt=quack_recovery,
+                                rerun_validations=False,
+                            )
+                            if not isinstance(parallel_startup_path, Path):
+                                raise OperatorError(
+                                    "bootstrap repair parallel-blocked-startup "
+                                    "path is absent"
+                                )
+                            _atomic_json_create(parallel_startup_path, receipt)
+                            return {
+                                "schema": OPERATOR_SCHEMA,
+                                "command": "authorize-repair-transition",
+                                "ok": True,
+                                "idempotent_replay": False,
+                                "repair_transition_receipt": receipt,
+                                "repair_transition_chain": [
+                                    prior,
+                                    followup,
+                                    clean_launch,
+                                    runtime_hardening,
+                                    quack_recovery,
+                                    receipt,
+                                ],
+                            }
                         current_admission = _admit_materialized_launch(
                             board, _config, paths
                         )
@@ -4784,6 +5235,7 @@ def _admit_materialized_launch(
             clean_launch_transition: dict[str, Any] | None = None
             runtime_hardening_transition: dict[str, Any] | None = None
             quack_recovery_transition: dict[str, Any] | None = None
+            parallel_blocked_startup_transition: dict[str, Any] | None = None
             clean_launch_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
@@ -4867,6 +5319,36 @@ def _admit_materialized_launch(
                                 "revision 4"
                             )
                         active_transition = quack_recovery_transition
+                        parallel_startup_path = paths.get(
+                            "repair_parallel_blocked_startup_transition_receipt"
+                        )
+                        if (
+                            isinstance(parallel_startup_path, Path)
+                            and parallel_startup_path.is_file()
+                        ):
+                            parallel_startup_receipt = _secure_runtime_json(
+                                parallel_startup_path,
+                                max_bytes=STATUS_RECEIPT_MAX_BYTES,
+                            )
+                            parallel_blocked_startup_transition = (
+                                _validate_repair_parallel_blocked_startup_transition(
+                                    parallel_startup_receipt,
+                                    bootstrap=bootstrap,
+                                    previous_receipt=quack_recovery_receipt,
+                                    rerun_validations=True,
+                                )
+                            )
+                            if (
+                                parallel_blocked_startup_transition["base_head"]
+                                != quack_recovery_transition["repair_head"]
+                            ):
+                                raise OperatorError(
+                                    "parallel-blocked-startup repair does not "
+                                    "extend revision 5"
+                                )
+                            active_transition = (
+                                parallel_blocked_startup_transition
+                            )
             current_proof = _admit_canonical_merge_suffix(
                 board,
                 base_head=str(active_transition["repair_head"]),
@@ -4886,6 +5368,10 @@ def _admit_materialized_launch(
                 )
             if quack_recovery_transition is not None:
                 repair_transition_chain.append(quack_recovery_transition)
+            if parallel_blocked_startup_transition is not None:
+                repair_transition_chain.append(
+                    parallel_blocked_startup_transition
+                )
             continuity = {
                 "bootstrap_to_repair_base": base_proof,
                 "initial_repair_to_followup_base": followup_base,
@@ -4902,6 +5388,10 @@ def _admit_materialized_launch(
             if quack_recovery_transition is not None:
                 continuity["runtime_hardening_to_quack_recovery"] = (
                     quack_recovery_transition
+                )
+            if parallel_blocked_startup_transition is not None:
+                continuity["quack_recovery_to_parallel_blocked_startup"] = (
+                    parallel_blocked_startup_transition
                 )
         else:
             current_proof = _admit_canonical_merge_suffix(
@@ -6731,13 +7221,31 @@ def _health_receipt(
         stale_seconds,
         max(30.0, startup_grace),
     )
+    blocked_recovery_scope = (
+        "dependency_deadlock"
+        if (
+            blocked_count > 0
+            and dependency_deadlock
+            and now - last_progress_at <= blocked_recovery_window_seconds
+        )
+        else "parallel_startup"
+        if (
+            blocked_count > 0
+            and startup_active
+            and (
+                ready_count > 0
+                or active_count > 0
+                or delayed_frontier_admitted
+            )
+        )
+        else ""
+    )
     blocked_recovery_admitted = bool(
         blocked_count > 0
-        and dependency_deadlock
+        and blocked_recovery_scope
         and not terminal
         and not lane_stalled
         and not failure
-        and now - last_progress_at <= blocked_recovery_window_seconds
         and owner_ready
         and scheduler_alive
         and broker_ready
@@ -6784,6 +7292,7 @@ def _health_receipt(
         "lane_heartbeat_fresh": lane_fresh,
         "health_without_lane_admitted": health_without_lane_admitted,
         "blocked_recovery_admitted": blocked_recovery_admitted,
+        "blocked_recovery_scope": blocked_recovery_scope,
         "blocked_recovery_window_seconds": (
             blocked_recovery_window_seconds
         ),
