@@ -15,18 +15,17 @@ from typing import Any, Final
 
 from ...agent_supervisor.control.service import execute_federation_command
 from ...agent_supervisor.federation.cli import federation_control_response_record
-from ...agent_supervisor.federation.control_service import (
-    FederationControlResponse,
-    FederationControlService,
-    FederationControlServiceError,
-    POST_ADMISSION_OPERATIONS,
-)
 from ...agent_supervisor.federation.contracts import (
     FederationCommand,
     FederationContractError,
     FederationOperation,
 )
-
+from ...agent_supervisor.federation.control_service import (
+    POST_ADMISSION_OPERATIONS,
+    FederationControlResponse,
+    FederationControlService,
+    FederationControlServiceError,
+)
 
 FEDERATION_CONTROL_MCP_CATEGORY: Final[str] = "agent_supervisor"
 FEDERATION_CONTROL_MCP_INTERFACE: Final[str] = "FederationControlMCP@1"
@@ -80,11 +79,14 @@ def _resolve_service(command: FederationCommand) -> FederationControlService:
 
 
 def _decode_command(
-    request: Mapping[str, Any], operation: FederationOperation | str,
+    request: Mapping[str, Any],
+    operation: FederationOperation | str,
 ) -> FederationCommand:
     if not isinstance(request, Mapping):
         raise FederationContractError("MCP command request must be an object")
-    selected = operation if isinstance(operation, FederationOperation) else FederationOperation(operation)
+    selected = (
+        operation if isinstance(operation, FederationOperation) else FederationOperation(operation)
+    )
     if selected not in POST_ADMISSION_OPERATIONS:
         raise FederationControlMCPConfigurationError(
             "federation.create is accepted only by the authenticated trigger gateway"
@@ -98,7 +100,8 @@ def _decode_command(
 
 
 def execute_federation_control(
-    request: Mapping[str, Any], operation: FederationOperation | str,
+    request: Mapping[str, Any],
+    operation: FederationOperation | str,
 ) -> dict[str, Any]:
     """Decode and dispatch one bounded command without transport adaptation."""
 
@@ -123,7 +126,9 @@ def _tool_name(operation: FederationOperation) -> str:
     return "federation_" + operation.value.removeprefix("federation.")
 
 
-def _operation_tool(operation: FederationOperation) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
+def _operation_tool(
+    operation: FederationOperation,
+) -> Callable[[Mapping[str, Any]], dict[str, Any]]:
     def tool(request: Mapping[str, Any]) -> dict[str, Any]:
         return execute_federation_control(request, operation)
 
@@ -136,8 +141,13 @@ def _operation_tool(operation: FederationOperation) -> Callable[[Mapping[str, An
     return tool
 
 
-FEDERATION_CONTROL_OPERATION_TOOLS: Mapping[FederationOperation, Callable[[Mapping[str, Any]], dict[str, Any]]] = MappingProxyType(
-    {operation: _operation_tool(operation) for operation in sorted(POST_ADMISSION_OPERATIONS, key=lambda item: item.value)}
+FEDERATION_CONTROL_OPERATION_TOOLS: Mapping[
+    FederationOperation, Callable[[Mapping[str, Any]], dict[str, Any]]
+] = MappingProxyType(
+    {
+        operation: _operation_tool(operation)
+        for operation in sorted(POST_ADMISSION_OPERATIONS, key=lambda item: item.value)
+    }
 )
 for _operation, _tool in FEDERATION_CONTROL_OPERATION_TOOLS.items():
     globals()[_tool.__name__] = _tool

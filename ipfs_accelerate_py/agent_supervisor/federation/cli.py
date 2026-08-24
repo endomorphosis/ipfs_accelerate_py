@@ -13,18 +13,21 @@ import argparse
 import json
 import sys
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any, Final, TextIO
 
 from ..control.service import execute_federation_command
+from ..task_sources.control_plane_contracts import (
+    MAX_COMMAND_BYTES,
+    ControlPlaneContractError,
+    canonical_json_bytes,
+)
+from .contracts import FederationCommand, FederationContractError, FederationOperation
 from .control_service import (
+    POST_ADMISSION_OPERATIONS,
     FederationControlResponse,
     FederationControlService,
     FederationControlServiceError,
-    POST_ADMISSION_OPERATIONS,
 )
-from .contracts import FederationCommand, FederationContractError, FederationOperation
-
 
 FEDERATION_CLI_INTERFACE: Final[str] = "FederationControlCLI@1"
 FEDERATION_CLI_RESULT_SCHEMA: Final[str] = (
@@ -36,6 +39,7 @@ FEDERATION_CLI_ERROR_SCHEMA: Final[str] = (
 FEDERATION_CLI_EXIT_SUCCESS = 0
 FEDERATION_CLI_EXIT_FAILED = 1
 FEDERATION_CLI_EXIT_INVALID = 2
+FEDERATION_CLI_MAX_COMMAND_JSON_BYTES: Final[int] = MAX_COMMAND_BYTES
 
 
 class FederationCLIError(ValueError):
@@ -59,9 +63,7 @@ def federation_cli_discovery_manifest() -> dict[str, Any]:
         "schema": "ipfs_accelerate_py/agent-supervisor/causal-federation/cli-discovery@1",
         "interface": FEDERATION_CLI_INTERFACE,
         "group": "federation",
-        "commands": {
-            name: operation.value for name, operation in FEDERATION_CLI_COMMANDS.items()
-        },
+        "commands": {name: operation.value for name, operation in FEDERATION_CLI_COMMANDS.items()},
         "request_schema": FederationCommand.SCHEMA,
         "result_schema": FEDERATION_CLI_RESULT_SCHEMA,
         "dispatch": "direct_typed_service",
@@ -83,12 +85,13 @@ def register_federation_cli(
     commands = group.add_subparsers(dest="federation_cli_command", metavar="COMMAND")
     for name, operation in FEDERATION_CLI_COMMANDS.items():
         parser = commands.add_parser(name, help=f"Execute {operation.value}.")
-        source = parser.add_mutually_exclusive_group(required=True)
-        source.add_argument("--command-json", help="Complete canonical FederationCommand JSON.")
-        source.add_argument(
-            "--command-file",
-            type=Path,
-            help="UTF-8 file containing one complete canonical FederationCommand JSON object.",
+        parser.add_argument(
+            "--command-json",
+            required=True,
+            help=(
+                "Complete byte-canonical FederationCommand JSON, supplied inline "
+                f"(maximum {FEDERATION_CLI_MAX_COMMAND_JSON_BYTES} UTF-8 bytes)."
+            ),
         )
         parser.add_argument(
             "--output-json",
@@ -100,6 +103,16 @@ def register_federation_cli(
 
 
 def _load_json(text: str, *, source: str) -> Mapping[str, Any]:
+    if not isinstance(text, str):
+        raise FederationCLIError(f"{source} must be inline JSON text")
+    try:
+        raw = text.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise FederationCLIError(f"{source} is not valid UTF-8 JSON text") from exc
+    if len(raw) > FEDERATION_CLI_MAX_COMMAND_JSON_BYTES:
+        raise FederationCLIError(
+            f"{source} exceeds {FEDERATION_CLI_MAX_COMMAND_JSON_BYTES} UTF-8 bytes"
+        )
     try:
         decoded = json.loads(text)
     except (TypeError, json.JSONDecodeError) as exc:
@@ -123,19 +136,13 @@ def build_federation_command(args: argparse.Namespace) -> FederationCommand:
         raise FederationCLIError("federation.create is accepted only by the trigger gateway")
 
     raw = getattr(args, "command_json", None)
-    file_path = getattr(args, "command_file", None)
-    if raw is not None and file_path is not None:
-        raise FederationCLIError("supply only one command source")
-    if file_path is not None:
-        try:
-            raw = Path(file_path).read_text(encoding="utf-8")
-        except OSError as exc:
-            raise FederationCLIError("command file is not readable") from exc
     if not isinstance(raw, str):
-        raise FederationCLIError("a complete canonical command is required")
+        raise FederationCLIError("a complete inline canonical command is required")
     try:
         command = FederationCommand.from_dict(_load_json(raw, source="command"))
-    except FederationContractError as exc:
+        if raw.encode("utf-8") != canonical_json_bytes(command.to_dict()):
+            raise FederationCLIError("command must use canonical JSON encoding")
+    except (ControlPlaneContractError, FederationContractError) as exc:
         raise FederationCLIError(str(exc)) from exc
     if command.operation not in POST_ADMISSION_OPERATIONS:
         raise FederationCLIError("federation.create is accepted only by the trigger gateway")
@@ -240,6 +247,7 @@ __all__ = [
     "FEDERATION_CLI_EXIT_INVALID",
     "FEDERATION_CLI_EXIT_SUCCESS",
     "FEDERATION_CLI_INTERFACE",
+    "FEDERATION_CLI_MAX_COMMAND_JSON_BYTES",
     "FEDERATION_CLI_RESULT_SCHEMA",
     "FederationCLIError",
     "build_federation_command",
