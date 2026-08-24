@@ -85365,6 +85365,7 @@ class DatabaseImplementationDaemon:
         *,
         reason: str,
         reconciliation: Mapping[str, Any],
+        expected_attempt_identity: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         """Move an exactly reconciled abandoned control task back to ready."""
 
@@ -85381,6 +85382,66 @@ class DatabaseImplementationDaemon:
                     "task_cid": task_cid,
                     "status": status,
                     "revision": int(task.revision),
+                }
+            )
+        if status == "retrying":
+            # Dead-reservation recovery can establish the owner-issued
+            # cooldown before this lane retires its expired local attempt.
+            # Preserve only that exact attempt-bound state.
+            validate_cooldown = getattr(
+                self.task_source,
+                "validate_retrying_task_cooldown",
+                None,
+            )
+            if not callable(validate_cooldown):
+                raise DatabaseImplementationAuthorityError(
+                    "reconciled retrying task has no exact cooldown validator"
+                )
+            identity_fields = (
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+            )
+            attempt_identity = {
+                name: expected_attempt_identity.get(name)
+                for name in identity_fields
+            }
+            if any(
+                type(attempt_identity[name]) is not str
+                or not str(attempt_identity[name]).strip()
+                for name in (
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                )
+            ) or any(
+                type(attempt_identity[name]) is not int
+                or int(attempt_identity[name]) < 1
+                for name in (
+                    "attempt_number",
+                    "fencing_token",
+                    "fence_epoch",
+                )
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "reconciled retrying task has an invalid expected attempt identity"
+                )
+            validate_cooldown(
+                task_cid,
+                expected_attempt_identity=attempt_identity,
+            )
+            return MappingProxyType(
+                {
+                    "changed": False,
+                    "task_cid": task_cid,
+                    "status": status,
+                    "revision": int(task.revision),
+                    "cooldown_preserved": True,
                 }
             )
         if status != "in_progress":
@@ -85545,6 +85606,7 @@ class DatabaseImplementationDaemon:
                         str(prepared["task_cid"]),
                         reason="expired_prepared_completion_aborted",
                         reconciliation=outcome,
+                        expected_attempt_identity=prepared,
                     )
                 )
             outcomes.append(outcome)
@@ -86657,6 +86719,7 @@ class DatabaseImplementationDaemon:
                     attempt.task_cid,
                     reason="coordination_lease_expired_before_completion",
                     reconciliation=outcome,
+                    expected_attempt_identity=identity,
                 )
             )
             outcomes.append(outcome)

@@ -79,7 +79,7 @@ EXPECTED_TITLES = (
 )
 EXPECTED_TASK_IDS = tuple(f"CASF-{index:03d}" for index in range(44))
 EXPECTED_LANDED_NO_CHANGE_TASK_IDS = frozenset(
-    f"CASF-{index:03d}" for index in range(39)
+    f"CASF-{index:03d}" for index in range(41)
 )
 if len(EXPECTED_TASK_IDS) != len(EXPECTED_TITLES):
     raise RuntimeError("sealed CASF task identities and titles differ in length")

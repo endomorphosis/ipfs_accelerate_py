@@ -120,11 +120,11 @@ def test_production_parsers_preserve_goal_and_task_dags() -> None:
     by_id = {task.task_id: task for task in tasks}
     assert all(
         by_id[f"CASF-{index:03d}"].metadata.get("no-change completion") == "allowed"
-        for index in range(39)
+        for index in range(41)
     )
     assert all(
         by_id[f"CASF-{index:03d}"].metadata.get("no-change completion") is None
-        for index in range(39, 44)
+        for index in range(41, 44)
     )
 
 
@@ -281,7 +281,7 @@ def test_validator_rejects_no_change_population_drift(tmp_path, monkeypatch) -> 
     )
 
     broadened = tmp_path / "broadened-no-change.todo.md"
-    heading = "## CASF-039 Build twelve-supervisor parallel benchmark"
+    heading = "## CASF-041 Build cross-supervisor token-efficiency benchmark"
     prefix, suffix = original.split(heading, 1)
     suffix = suffix.replace(
         "- Completion: auto\n",
@@ -293,7 +293,7 @@ def test_validator_rejects_no_change_population_drift(tmp_path, monkeypatch) -> 
     report = validator.validate_program()
     assert report["valid"] is False
     assert any(
-        "CASF-039: unlanded task must remain outside no-change completion" in error
+        "CASF-041: unlanded task must remain outside no-change completion" in error
         for error in report["errors"]
     )
 

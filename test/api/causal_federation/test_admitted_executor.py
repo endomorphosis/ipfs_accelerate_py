@@ -199,8 +199,8 @@ def test_admitted_plan_uses_configured_builder_and_env_only_handle() -> None:
     assert operator.STATE_OWNER_SOCKET_ENV not in environment
     assert plan["execution_route_expected_counts"] == {
         "task_count": 44,
-        "deterministic_task_count": 39,
-        "model_task_count": 5,
+        "deterministic_task_count": 41,
+        "model_task_count": 3,
     }
     modes = operator._casf_mixed_execution_modes()
     assert set(modes) == {f"CASF-{index:03d}" for index in range(44)}
@@ -208,10 +208,10 @@ def test_admitted_plan_uses_configured_builder_and_env_only_handle() -> None:
         alias
         for alias, mode in modes.items()
         if mode == DETERMINISTIC_ONLY_EXECUTION_MODE
-    } == {f"CASF-{index:03d}" for index in range(39)}
+    } == {f"CASF-{index:03d}" for index in range(41)}
     assert {
         alias for alias, mode in modes.items() if mode == GROK_CODEX_EXECUTION_MODE
-    } == {f"CASF-{index:03d}" for index in range(39, 44)}
+    } == {f"CASF-{index:03d}" for index in range(41, 44)}
 
 
 def test_quack_daemon_defaults_to_distinct_sidecars_and_rejects_aliases(
@@ -2266,9 +2266,15 @@ def test_dead_typed_reservation_recovers_atomically_to_fresh_attempt_two(
         server.stop()
 
 
+@pytest.mark.parametrize(
+    "replacement_now_ms",
+    (2_000, 7_000),
+    ids=("live-lane-lease", "expired-lane-lease"),
+)
 def test_run_once_recovers_preserved_dead_reservation_before_stale_resume(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    replacement_now_ms: int,
 ) -> None:
     database = tmp_path / "typed-preserved-dead-claim.duckdb"
     coordination_path = tmp_path / "preserved-coordination.duckdb"
@@ -2434,8 +2440,26 @@ def test_run_once_recovers_preserved_dead_reservation_before_stale_resume(
         adapter = TypedDatabaseTaskSource(
             client,
             execution_route_policy=route_policy,
-            clock_ms=lambda: 2_000,
+            clock_ms=lambda: replacement_now_ms,
         )
+        validated_cooldown_identities: list[dict[str, Any]] = []
+        validate_cooldown = adapter.validate_retrying_task_cooldown
+
+        def observe_cooldown_validation(
+            task_identity: str,
+            **kwargs: Any,
+        ) -> Any:
+            expected_identity = kwargs.get("expected_attempt_identity")
+            if isinstance(expected_identity, Mapping):
+                validated_cooldown_identities.append(dict(expected_identity))
+            return validate_cooldown(task_identity, **kwargs)
+
+        monkeypatch.setattr(
+            adapter,
+            "validate_retrying_task_cooldown",
+            observe_cooldown_validation,
+        )
+        effect_calls: list[str] = []
         daemon = DatabaseImplementationDaemon(
             database_path=database,
             coordination_path=coordination_path,
@@ -2447,12 +2471,15 @@ def test_run_once_recovers_preserved_dead_reservation_before_stale_resume(
             task_source=adapter,
             close_task_source=False,
             lease_ms=5_000,
-            clock_ms=lambda: 2_000,
+            clock_ms=lambda: replacement_now_ms,
             provider_fn=lambda candidate: provider_calls.append(
                 candidate.attempt_id
             )
             or {"status": "ok", "accepted": True},
-            effect_fn=lambda _attempt, _provider: {"status": "applied"},
+            effect_fn=lambda candidate, _provider: effect_calls.append(
+                candidate.attempt_id
+            )
+            or {"status": "applied"},
             validation_fn=lambda _attempt, _effect: {
                 "outcome": "passed",
                 "evidence_digest": "sha256:" + "c" * 64,
@@ -2470,10 +2497,47 @@ def test_run_once_recovers_preserved_dead_reservation_before_stale_resume(
         assert fresh_attempt is not None
         assert fresh_attempt.attempt_number == 2
         assert provider_calls == [fresh_attempt.attempt_id]
+        assert effect_calls == [fresh_attempt.attempt_id]
         retired = daemon.get_attempt(stale_attempt.attempt_id)
-        assert retired is not None and retired.status != "running"
+        assert retired is not None and retired.status == "failed"
         cooldown = adapter._retry_cooldown_row(task.task_cid)
         assert cooldown is not None and cooldown["attempt"] == 1
+        assert cooldown["extension"]["attempt_id"] == stale_attempt.attempt_id
+        assert cooldown["extension"]["claim_id"] == stale_attempt.claim_id
+        assert cooldown["extension"]["lease_id"] == stale_attempt.lease_id
+        assert cooldown["extension"]["owner_session_id"] == (
+            stale_attempt.owner_session_id
+        )
+        assert cooldown["extension"]["attempt_number"] == 1
+        assert cooldown["extension"]["fencing_token"] == 1
+        assert cooldown["extension"]["fence_epoch"] == 1
+        assert len(result["expired_attempt_reconciliations"]) == 1
+        expired = result["expired_attempt_reconciliations"][0]
+        assert expired["attempt_id"] == stale_attempt.attempt_id
+        if replacement_now_ms > stale_claim.expires_at_ms:
+            assert {
+                "attempt_id": stale_attempt.attempt_id,
+                "claim_id": stale_attempt.claim_id,
+                "lease_id": stale_attempt.lease_id,
+                "owner_session_id": stale_attempt.owner_session_id,
+                "attempt_number": stale_attempt.attempt_number,
+                "fencing_token": stale_attempt.fencing_token,
+                "fence_epoch": stale_attempt.fence_epoch,
+            } in validated_cooldown_identities
+            assert expired["control_requeue"] == {
+                "changed": False,
+                "task_cid": stale_attempt.task_cid,
+                "status": "retrying",
+                "revision": 3,
+                "cooldown_preserved": True,
+            }
+        else:
+            assert "control_requeue" not in expired
+
+        repeated = daemon.run_once()
+        assert repeated["implementation_result"] is None
+        assert provider_calls == [fresh_attempt.attempt_id]
+        assert effect_calls == [fresh_attempt.attempt_id]
     finally:
         if daemon is not None:
             daemon.close()
