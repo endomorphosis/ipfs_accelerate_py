@@ -2936,6 +2936,7 @@ class IntentRepository:
         expected_revision: int,
         new_status: str,
         receipt: Mapping[str, Any] | None = None,
+        expected_control_receipt: Mapping[str, Any] | None = None,
         evidence_digests: Sequence[str] | None = None,
         allow_completion_without_evidence: bool = False,
     ) -> IntentReceipt:
@@ -2943,6 +2944,14 @@ class IntentRepository:
         expected = _positive_int(expected_revision, noun="expected_revision")
         status_text = _status(new_status, allowed=_TASK_STATUSES, noun="task")
         receipt_map = _mapping(receipt, noun="status receipt")
+        expected_receipt_map = (
+            None
+            if expected_control_receipt is None
+            else _mapping(
+                expected_control_receipt,
+                noun="expected control receipt",
+            )
+        )
         now = _utc_iso()
 
         with self._connection(write=True) as connection:
@@ -2964,6 +2973,18 @@ class IntentRepository:
             current_revision = int(task_row[4])
             if current_revision != expected:
                 raise IntentRepositoryConflictError("task revision CAS is stale")
+            body_map = _decode_json(task_row[5], noun="task body")
+            if not isinstance(body_map, dict):
+                body_map = {}
+            current_control_receipt = body_map.get("completion_receipt")
+            if expected_receipt_map is not None and (
+                not isinstance(current_control_receipt, Mapping)
+                or dict(current_control_receipt)
+                != dict(expected_receipt_map)
+            ):
+                raise IntentRepositoryConflictError(
+                    "task control receipt CAS is stale"
+                )
             if previous_status == status_text:
                 return IntentReceipt(
                     event_id="",
@@ -2998,9 +3019,6 @@ class IntentRepository:
                     )
 
             revision = current_revision + 1
-            body_map = _decode_json(task_row[5], noun="task body")
-            if not isinstance(body_map, dict):
-                body_map = {}
             body_map = dict(body_map)
             if receipt_map:
                 body_map["completion_receipt"] = receipt_map
@@ -3183,6 +3201,105 @@ class IntentRepository:
 
     # -- queue / attempts / blocks -------------------------------------------
 
+    def _record_queue_backoff_on(
+        self,
+        connection: Any,
+        *,
+        task_cid: str,
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int,
+        now_ms: int,
+    ) -> IntentReceipt:
+        """Write one queue cooldown on an already-owned transaction."""
+
+        retry_not_before = now_ms + delay_ms
+        lease = connection.execute(
+            "SELECT attempt, fencing_token FROM leases WHERE task_cid = ?",
+            [task_cid],
+        ).fetchone()
+        if lease is None:
+            attempt = 1
+            connection.execute(
+                """
+                INSERT INTO leases (
+                    task_cid, claim_cid, resolution_cid, claimant_did,
+                    logical_epoch, fencing_token, expires_at_ms, attempt,
+                    state, started_at_ms, release_reason, retry_not_before_ms,
+                    owner_session_id, fence_epoch, revision, extension_schema,
+                    extension_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    task_cid,
+                    f"claim:queue:{task_cid}",
+                    f"resolution:queue:{task_cid}",
+                    self.owner_id,
+                    1,
+                    1,
+                    0,
+                    attempt,
+                    "released",
+                    now_ms,
+                    reason,
+                    retry_not_before,
+                    self.session_id,
+                    1,
+                    1,
+                    QUEUE_ENTRY_SCHEMA,
+                    _canonical(
+                        {
+                            "selection_penalty": selection_penalty,
+                            "consecutive_failures": 1,
+                            "reason": reason,
+                        },
+                        noun="queue extension",
+                    ),
+                ],
+            )
+        else:
+            attempt = int(lease[0]) + 1
+            connection.execute(
+                """
+                UPDATE leases SET
+                    attempt = ?, retry_not_before_ms = ?,
+                    release_reason = ?, state = 'released',
+                    extension_schema = ?, extension_json = ?,
+                    revision = revision + 1
+                WHERE task_cid = ?
+                """,
+                [
+                    attempt,
+                    retry_not_before,
+                    reason,
+                    QUEUE_ENTRY_SCHEMA,
+                    _canonical(
+                        {
+                            "selection_penalty": selection_penalty,
+                            "consecutive_failures": attempt,
+                            "reason": reason,
+                        },
+                        noun="queue extension",
+                    ),
+                    task_cid,
+                ],
+            )
+        return self._append_event(
+            connection,
+            event_type=IntentEventType.QUEUE_BACKOFF,
+            subject_id=task_cid,
+            task_cid=task_cid,
+            body={
+                "task_cid": task_cid,
+                "attempt": attempt,
+                "retry_not_before_ms": retry_not_before,
+                "delay_ms": delay_ms,
+                "selection_penalty": selection_penalty,
+                "reason": reason,
+                "revision": attempt,
+            },
+        )
+
     def record_queue_backoff(
         self,
         *,
@@ -3196,97 +3313,219 @@ class IntentRepository:
         reason_text = str(reason or "backoff").strip() or "backoff"
         penalty = _nonneg_int(selection_penalty, noun="selection_penalty")
         now_ms = int(self._clock_ms())
-        retry_not_before = now_ms + delay
         with self._connection(write=True) as connection:
             task_row = connection.execute(
                 "SELECT 1 FROM tasks WHERE task_cid = ?", [tcid]
             ).fetchone()
             if task_row is None:
                 raise KeyError(tcid)
+            return self._record_queue_backoff_on(
+                connection,
+                task_cid=tcid,
+                delay_ms=delay,
+                reason=reason_text,
+                selection_penalty=penalty,
+                now_ms=now_ms,
+            )
+
+    def record_queue_backoff_and_cas_task_status(
+        self,
+        *,
+        task_cid: str,
+        expected_revision: int,
+        expected_control_receipt: Mapping[str, Any],
+        new_status: str,
+        receipt: Mapping[str, Any],
+        delay_ms: int,
+        reason: str,
+        selection_penalty: int = 0,
+    ) -> Mapping[str, Any]:
+        """Atomically persist one guarded cooldown and retry status.
+
+        The prior task receipt, task revision, queue mutation, and status
+        mutation share one owner transaction.  A foreign lane therefore
+        cannot leave a stale cooldown behind by winning between queue-first
+        and status-CAS operations.
+        """
+
+        tcid = _identifier(task_cid, noun="task_cid")
+        expected = _positive_int(expected_revision, noun="expected_revision")
+        expected_receipt = _mapping(
+            expected_control_receipt,
+            noun="expected control receipt",
+        )
+        status_text = _status(new_status, allowed=_TASK_STATUSES, noun="task")
+        if status_text != "retrying":
+            raise ValueError("guarded queue/status transition must target retrying")
+        receipt_map = _mapping(receipt, noun="status receipt")
+        delay = _nonneg_int(delay_ms, noun="delay_ms")
+        reason_text = str(reason or "backoff").strip() or "backoff"
+        penalty = _nonneg_int(selection_penalty, noun="selection_penalty")
+        now_ms = int(self._clock_ms())
+        now = _utc_iso()
+
+        with self._connection(write=True) as connection:
+            rows = connection.execute(
+                """
+                SELECT task_cid, task_alias, goal_cid, status, revision, body_json
+                FROM tasks WHERE task_cid = ? OR task_alias = ?
+                ORDER BY task_cid LIMIT 2
+                """,
+                [tcid, tcid],
+            ).fetchall()
+            if not rows:
+                raise KeyError(tcid)
+            if len(rows) > 1:
+                raise IntentRepositoryIntegrityError(
+                    "task CID/alias lookup is ambiguous"
+                )
+            task_row = rows[0]
+            resolved_cid = str(task_row[0])
+            previous_status = str(task_row[3])
+            current_revision = int(task_row[4])
+            body_map = _decode_json(task_row[5], noun="task body")
+            if not isinstance(body_map, dict):
+                body_map = {}
+            current_receipt = body_map.get("completion_receipt")
+            if current_revision != expected:
+                raise IntentRepositoryConflictError("task revision CAS is stale")
+            if (
+                not isinstance(current_receipt, Mapping)
+                or dict(current_receipt) != dict(expected_receipt)
+            ):
+                raise IntentRepositoryConflictError(
+                    "task control receipt CAS is stale"
+                )
+
             lease = connection.execute(
-                "SELECT attempt, fencing_token FROM leases WHERE task_cid = ?",
-                [tcid],
+                """
+                SELECT retry_not_before_ms, release_reason, extension_json
+                FROM leases WHERE task_cid = ?
+                """,
+                [resolved_cid],
             ).fetchone()
-            if lease is None:
-                attempt = 1
-                connection.execute(
-                    """
-                    INSERT INTO leases (
-                        task_cid, claim_cid, resolution_cid, claimant_did,
-                        logical_epoch, fencing_token, expires_at_ms, attempt,
-                        state, started_at_ms, release_reason, retry_not_before_ms,
-                        owner_session_id, fence_epoch, revision, extension_schema,
-                        extension_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        tcid,
-                        f"claim:queue:{tcid}",
-                        f"resolution:queue:{tcid}",
-                        self.owner_id,
-                        1,
-                        1,
-                        0,
-                        attempt,
-                        "released",
-                        now_ms,
-                        reason_text,
-                        retry_not_before,
-                        self.session_id,
-                        1,
-                        1,
-                        QUEUE_ENTRY_SCHEMA,
-                        _canonical(
-                            {
-                                "selection_penalty": penalty,
-                                "consecutive_failures": 1,
-                                "reason": reason_text,
-                            },
-                            noun="queue extension",
-                        ),
-                    ],
+            extension = (
+                _decode_json(lease[2], noun="queue extension")
+                if lease is not None
+                else {}
+            )
+            existing_reason = str(
+                (extension.get("reason") if isinstance(extension, Mapping) else "")
+                or (lease[1] if lease is not None else "")
+                or ""
+            )
+            if previous_status == status_text:
+                expected_queue_reason = expected_receipt.get("queue_reason")
+                if (
+                    not isinstance(expected_queue_reason, str)
+                    or expected_queue_reason != reason_text
+                ):
+                    raise IntentRepositoryConflictError(
+                        "retrying control receipt does not authorize this queue"
+                    )
+                if lease is not None and existing_reason != reason_text:
+                    raise IntentRepositoryConflictError(
+                        "retrying control queue belongs to another transition"
+                    )
+            queue_reused = bool(lease is not None and existing_reason == reason_text)
+            if queue_reused:
+                queue_receipt: IntentReceipt | None = None
+                retry_not_before_ms = int(lease[0] or 0)
+            else:
+                queue_receipt = self._record_queue_backoff_on(
+                    connection,
+                    task_cid=resolved_cid,
+                    delay_ms=delay,
+                    reason=reason_text,
+                    selection_penalty=penalty,
+                    now_ms=now_ms,
+                )
+                retry_not_before_ms = now_ms + delay
+
+            queue_receipt_dict = (
+                queue_receipt.to_dict() if queue_receipt is not None else {}
+            )
+            transition_receipt = dict(receipt_map)
+            if transition_receipt.get("queue_reason") != reason_text:
+                raise IntentRepositoryConflictError(
+                    "retry receipt does not bind the guarded queue reason"
+                )
+            transition_receipt["queue_receipt"] = queue_receipt_dict
+            if "queue_reused" in transition_receipt:
+                transition_receipt["queue_reused"] = queue_reused
+            if "retry_not_before_ms" in transition_receipt:
+                transition_receipt["retry_not_before_ms"] = retry_not_before_ms
+            if previous_status == status_text and queue_receipt is None:
+                transition_receipt = dict(expected_receipt)
+                status_receipt = IntentReceipt(
+                    event_id="",
+                    event_type=IntentEventType.TASK_STATUS_CHANGED.value,
+                    global_sequence=self._next_global_sequence(connection) - 1,
+                    recorded_at=now,
+                    subject_id=resolved_cid,
+                    revision=current_revision,
+                    changed=False,
+                    details=MappingProxyType(
+                        {
+                            "task_cid": resolved_cid,
+                            "status": status_text,
+                            "previous_status": previous_status,
+                        }
+                    ),
                 )
             else:
-                attempt = int(lease[0]) + 1
+                revision = current_revision + 1
+                body_map = dict(body_map)
+                body_map["completion_receipt"] = transition_receipt
+                encoded_body = _canonical(body_map, noun="task body")
                 connection.execute(
                     """
-                    UPDATE leases SET
-                        attempt = ?, retry_not_before_ms = ?,
-                        release_reason = ?, state = 'released',
-                        extension_schema = ?, extension_json = ?,
-                        revision = revision + 1
-                    WHERE task_cid = ?
+                    UPDATE tasks SET status = ?, revision = ?, updated_at = ?,
+                        body_json = ?
+                    WHERE task_cid = ? AND revision = ?
                     """,
                     [
-                        attempt,
-                        retry_not_before,
-                        reason_text,
-                        QUEUE_ENTRY_SCHEMA,
-                        _canonical(
-                            {
-                                "selection_penalty": penalty,
-                                "consecutive_failures": attempt,
-                                "reason": reason_text,
-                            },
-                            noun="queue extension",
-                        ),
-                        tcid,
+                        status_text,
+                        revision,
+                        now,
+                        encoded_body,
+                        resolved_cid,
+                        current_revision,
                     ],
                 )
-            return self._append_event(
-                connection,
-                event_type=IntentEventType.QUEUE_BACKOFF,
-                subject_id=tcid,
-                task_cid=tcid,
-                body={
-                    "task_cid": tcid,
-                    "attempt": attempt,
-                    "retry_not_before_ms": retry_not_before,
-                    "delay_ms": delay,
-                    "selection_penalty": penalty,
-                    "reason": reason_text,
-                    "revision": attempt,
-                },
+                connection.execute(
+                    """
+                    INSERT INTO task_revisions (
+                        task_cid, revision, status, body_json, recorded_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    [resolved_cid, revision, status_text, encoded_body, now],
+                )
+                status_receipt = self._append_event(
+                    connection,
+                    event_type=IntentEventType.TASK_STATUS_CHANGED,
+                    subject_id=resolved_cid,
+                    task_cid=resolved_cid,
+                    body={
+                        "task_cid": resolved_cid,
+                        "task_alias": str(task_row[1]),
+                        "goal_cid": str(task_row[2]),
+                        "previous_status": previous_status,
+                        "status": status_text,
+                        "revision": revision,
+                        "receipt": transition_receipt,
+                        "recorded_at": now,
+                    },
+                )
+            return MappingProxyType(
+                {
+                    "previous_status": previous_status,
+                    "queue_receipt": queue_receipt_dict,
+                    "queue_reused": queue_reused,
+                    "retry_not_before_ms": retry_not_before_ms,
+                    "status_receipt": status_receipt.to_dict(),
+                    "transition_receipt": transition_receipt,
+                }
             )
 
     def record_queue_retry(self, *, task_cid: str) -> IntentReceipt:

@@ -2485,11 +2485,37 @@ def test_retry_reconciliation_repairs_retrying_without_queue(
         )
         control = daemon.task_source.get(failed_attempt.task_cid)
         assert control is not None
+        queue_reason = (
+            f"database_portal_retry:{failed_attempt.attempt_id}:typed_deferral"
+        )
         daemon._cas_task_status_database(
             failed_attempt.task_cid,
             expected_revision=int(control.revision),
             new_status="retrying",
-            receipt={"operation": "simulated_cas_before_queue_crash"},
+            receipt={
+                "operation": "database_portal_retry",
+                "attempt_id": failed_attempt.attempt_id,
+                "claim_id": failed_attempt.claim_id,
+                "lease_id": failed_attempt.lease_id,
+                "owner_session_id": failed_attempt.owner_session_id,
+                "fencing_token": int(failed_attempt.fencing_token),
+                "fence_epoch": int(failed_attempt.fence_epoch),
+                "attempt_number": int(failed_attempt.attempt_number),
+                "execution_phase": failed_attempt.committed_phase,
+                "execution_revision": int(failed_attempt.revision),
+                "execution_finished_at_ms": failed_attempt.finished_at_ms,
+                "reason": "typed_deferral",
+                "backoff_seconds": 300,
+                "backoff_ms": 300_000,
+                "retry_not_before_ms": 0,
+                "evidence_source": "portal_retryable_failure",
+                "queue_reason": queue_reason,
+                "queue_reused": False,
+                "queue_receipt": {},
+                "coordination": {},
+                "control_expected_status": "in_progress",
+                "control_expected_revision": int(control.revision),
+            },
         )
         assert daemon.task_source.get_queue_entry(failed_attempt.task_cid) is None
 
@@ -2692,11 +2718,38 @@ def test_failed_attempt_persistence_race_proves_successor_without_mutation(
         if reconciliation_kind == "retrying_without_queue":
             control = daemon.task_source.get(failed_attempt.task_cid)
             assert control is not None
+            queue_reason = (
+                "database_portal_retry:"
+                f"{failed_attempt.attempt_id}:typed_deferral"
+            )
             daemon._cas_task_status_database(
                 failed_attempt.task_cid,
                 expected_revision=int(control.revision),
                 new_status="retrying",
-                receipt={"operation": "simulated_cas_before_queue_crash"},
+                receipt={
+                    "operation": "database_portal_retry",
+                    "attempt_id": failed_attempt.attempt_id,
+                    "claim_id": failed_attempt.claim_id,
+                    "lease_id": failed_attempt.lease_id,
+                    "owner_session_id": failed_attempt.owner_session_id,
+                    "fencing_token": int(failed_attempt.fencing_token),
+                    "fence_epoch": int(failed_attempt.fence_epoch),
+                    "attempt_number": int(failed_attempt.attempt_number),
+                    "execution_phase": failed_attempt.committed_phase,
+                    "execution_revision": int(failed_attempt.revision),
+                    "execution_finished_at_ms": failed_attempt.finished_at_ms,
+                    "reason": "typed_deferral",
+                    "backoff_seconds": 300,
+                    "backoff_ms": 300_000,
+                    "retry_not_before_ms": 0,
+                    "evidence_source": "portal_retryable_failure",
+                    "queue_reason": queue_reason,
+                    "queue_reused": False,
+                    "queue_receipt": {},
+                    "coordination": {},
+                    "control_expected_status": "in_progress",
+                    "control_expected_revision": int(control.revision),
+                },
             )
 
         before = daemon.task_source.get(failed_attempt.task_cid)
@@ -2755,6 +2808,279 @@ def test_failed_attempt_persistence_race_proves_successor_without_mutation(
         assert after.status == before.status
         assert after.revision == before.revision
         assert daemon.task_source.get_queue_entry(failed_attempt.task_cid) is None
+    finally:
+        daemon.close()
+
+
+def test_two_lane_shared_control_receipt_supersedes_token_two_with_token_six(
+    tmp_path: Path,
+) -> None:
+    """A lane-local token 2 cannot overwrite another lane's shared token 6."""
+
+    now = {"ms": 1_000}
+
+    def open_lane(lane: str) -> DatabaseImplementationDaemon:
+        return DatabaseImplementationDaemon(
+            database_path=tmp_path / "control.duckdb",
+            coordination_path=tmp_path / f"coordination-{lane}.duckdb",
+            execution_path=tmp_path / f"execution-{lane}.duckdb",
+            owner_session_id=f"session:{lane}",
+            authority_mode="embedded",
+            task_source_kind="duckdb",
+            lease_ms=5_000,
+            require_real_execution=True,
+            clock_ms=lambda: now["ms"],
+        )
+
+    def consume_local_fences(
+        daemon: DatabaseImplementationDaemon,
+        count: int,
+    ) -> None:
+        for _ in range(count):
+            claim = daemon.coordinator.claim_ready_task(
+                owner_session_id=daemon.owner_session_id,
+                lease_ms=5_000,
+                now_ms=now["ms"],
+            )
+            assert claim is not None
+            lease = daemon.coordinator.get_lease(claim.lease_id)
+            assert lease is not None
+            daemon.coordinator.release(
+                lease,
+                reason="test_fence_warmup",
+                now_ms=now["ms"],
+            )
+
+    lane_two = open_lane("lane-2")
+    lane_three = open_lane("lane-3")
+    try:
+        lane_two.materialize_population(_population(1))
+        assert lane_two.sync_ready_tasks_into_coordination()
+        assert lane_three.sync_ready_tasks_into_coordination()
+        consume_local_fences(lane_two, 1)
+        consume_local_fences(lane_three, 5)
+
+        old_attempt = lane_two.claim_next()
+        assert old_attempt is not None
+        assert old_attempt.fencing_token == 2
+        assert old_attempt.fence_epoch == 2
+        old_attempt = lane_two.commit_phase(old_attempt, "context")
+        old_attempt = lane_two.commit_phase(
+            old_attempt,
+            "failed",
+            body={
+                "reason": "portal_provider_failed",
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+
+        now["ms"] = 7_000
+        shared = lane_two.task_source.get(old_attempt.task_cid)
+        assert shared is not None
+        lane_two._cas_task_status_database(
+            old_attempt.task_cid,
+            expected_revision=int(shared.revision),
+            new_status="retrying",
+            receipt={"operation": "test_operator_rearm"},
+        )
+        successor = lane_three.claim_next()
+        assert successor is not None
+        assert successor.fencing_token == 6
+        assert successor.fence_epoch == 6
+
+        before = lane_two.task_source.get(old_attempt.task_cid)
+        assert before is not None
+        assert before.status == "in_progress"
+        before_receipt = dict(before.body["completion_receipt"])
+        assert before_receipt["attempt_id"] == successor.attempt_id
+
+        with pytest.raises(DatabaseImplementationConflictError):
+            lane_two._persist_terminal_portal_failure(
+                old_attempt,
+                reason="portal_provider_failed",
+            )
+        direct_after = lane_two.task_source.get(old_attempt.task_cid)
+        assert direct_after is not None
+        assert direct_after.revision == before.revision
+        assert dict(direct_after.body["completion_receipt"]) == before_receipt
+
+        outcomes = lane_two.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["changed"] is False
+        assert outcomes[0]["reason"] == "failed_attempt_control_superseded"
+        assert outcomes[0]["successor_attempt_id"] == successor.attempt_id
+        assert outcomes[0]["successor_claim_id"] == successor.claim_id
+        assert outcomes[0]["successor_fencing_token"] == 6
+        assert outcomes[0]["successor_fence_epoch"] == 6
+
+        after = lane_two.task_source.get(old_attempt.task_cid)
+        assert after is not None
+        assert after.revision == before.revision
+        assert dict(after.body["completion_receipt"]) == before_receipt
+        assert lane_two.task_source.get_queue_entry(old_attempt.task_cid) is None
+    finally:
+        lane_three.close()
+        lane_two.close()
+
+
+def test_foreign_control_injected_before_atomic_retry_leaves_no_queue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The owner guard rejects a foreign receipt before its queue mutation."""
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:atomic-control-race",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_attempt = daemon.claim_next()
+        assert failed_attempt is not None
+        failed_attempt = daemon.commit_phase(failed_attempt, "context")
+        failed_attempt = daemon.commit_phase(
+            failed_attempt,
+            "failed",
+            body={
+                "reason": "typed_deferral",
+                "portal_retryable_failure": True,
+                "backoff_seconds": 300,
+            },
+        )
+        original = daemon.task_source.record_queue_backoff_and_cas_status
+        injected: dict[str, Any] = {}
+
+        def inject_foreign_control(**kwargs: Any) -> Any:
+            if not injected:
+                current = daemon.task_source.get(failed_attempt.task_cid)
+                assert current is not None
+                foreign_reason = "database_portal_retry:attempt:foreign:capacity"
+                daemon._cas_task_status_database(
+                    failed_attempt.task_cid,
+                    expected_revision=int(current.revision),
+                    new_status="retrying",
+                    receipt={
+                        "operation": "database_portal_retry",
+                        "attempt_id": "attempt:foreign",
+                        "claim_id": "claim:foreign",
+                        "lease_id": "lease:foreign",
+                        "owner_session_id": "session:foreign-lane",
+                        "fencing_token": 6,
+                        "fence_epoch": 6,
+                        "queue_reason": foreign_reason,
+                    },
+                )
+                injected["revision"] = int(current.revision) + 1
+            return original(**kwargs)
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "record_queue_backoff_and_cas_status",
+            inject_foreign_control,
+        )
+        outcomes = daemon.reconcile_terminal_retry_states()
+
+        assert len(outcomes) == 1
+        assert outcomes[0]["changed"] is False
+        assert outcomes[0]["reason"] == "failed_attempt_control_superseded"
+        assert outcomes[0]["successor_attempt_id"] == "attempt:foreign"
+        assert outcomes[0]["successor_fencing_token"] == 6
+        assert daemon.task_source.get_queue_entry(failed_attempt.task_cid) is None
+        current = daemon.task_source.get(failed_attempt.task_cid)
+        assert current is not None
+        assert current.revision == injected["revision"]
+        assert current.body["completion_receipt"]["attempt_id"] == (
+            "attempt:foreign"
+        )
+    finally:
+        daemon.close()
+
+
+def test_completion_owner_cas_rejects_foreign_shared_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:completion-control-race",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        attempt = daemon.commit_phase(attempt, "context")
+        attempt = daemon.commit_phase(attempt, "provider")
+        attempt = daemon.commit_phase(attempt, "effect")
+        validation = {
+            "outcome": "passed",
+            "evidence_digest": "sha256:" + "d" * 64,
+            "argv": ["completion-control-race"],
+        }
+        attempt = daemon.commit_phase(
+            attempt,
+            "validation",
+            body=validation,
+        )
+        original_cas = daemon._cas_task_status_database
+        injected = {"done": False}
+
+        def inject_before_completion_cas(*args: Any, **kwargs: Any) -> Any:
+            if kwargs.get("new_status") == "completed" and not injected["done"]:
+                injected["done"] = True
+                current = daemon.task_source.get(attempt.task_cid)
+                assert current is not None
+                original_cas(
+                    attempt.task_cid,
+                    expected_revision=int(current.revision),
+                    new_status="retrying",
+                    receipt={
+                        "operation": "database_portal_retry",
+                        "attempt_id": "attempt:foreign-completion",
+                        "claim_id": "claim:foreign-completion",
+                        "lease_id": "lease:foreign-completion",
+                        "owner_session_id": "session:foreign-completion",
+                        "fencing_token": 6,
+                        "fence_epoch": 6,
+                        "queue_reason": "test:foreign-completion",
+                    },
+                )
+                retrying = daemon.task_source.get(attempt.task_cid)
+                assert retrying is not None
+                original_cas(
+                    attempt.task_cid,
+                    expected_revision=int(retrying.revision),
+                    new_status="in_progress",
+                    receipt={
+                        "operation": "database_claim",
+                        "attempt_id": "attempt:foreign-completion",
+                        "claim_id": "claim:foreign-completion",
+                        "lease_id": "lease:foreign-completion",
+                        "owner_session_id": "session:foreign-completion",
+                        "fencing_token": 6,
+                        "fence_epoch": 6,
+                    },
+                )
+            return original_cas(*args, **kwargs)
+
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            inject_before_completion_cas,
+        )
+        with pytest.raises(database_task_source_module.TaskSourceConflictError):
+            daemon.complete_attempt(attempt, validation_result=validation)
+
+        shared = daemon.task_source.get(attempt.task_cid)
+        assert shared is not None
+        assert shared.status == "in_progress"
+        assert shared.body["completion_receipt"]["attempt_id"] == (
+            "attempt:foreign-completion"
+        )
+        execution = daemon.get_attempt(attempt.attempt_id)
+        assert execution is not None
+        assert execution.status == "running"
+        assert not execution.phase_committed(ATTEMPT_PHASE_COMPLETE)
     finally:
         daemon.close()
 
@@ -4106,13 +4432,16 @@ def test_exact_repair_evidence_rearms_only_matching_blocked_task(
             )
         assert daemon.task_source.get(failed.task_cid).status == "blocked"
 
-        # Simulate a process failure after the queue authority commits but
-        # before the blocked-to-retrying CAS.  Replay must reuse that exact
-        # queue projection rather than incrementing its attempt counters.
+        # Simulate loss of the response after the atomic queue/control
+        # transaction commits.  Replay must observe the committed transition
+        # without incrementing either authority again.
         recovery_started_ms = daemon._now_ms()
+        original_guarded_recovery = (
+            daemon.task_source.record_queue_backoff_and_cas_status
+        )
 
         def lose_cas_response(*args: object, **kwargs: object) -> None:
-            del args, kwargs
+            original_guarded_recovery(*args, **kwargs)
             with pytest.raises(
                 DatabaseCoordinationConflictError,
                 match="must not re-enter",
@@ -4123,8 +4452,8 @@ def test_exact_repair_evidence_rearms_only_matching_blocked_task(
             raise RuntimeError("fixture crash between queue and control CAS")
 
         monkeypatch.setattr(
-            daemon,
-            "_cas_task_status_database",
+            daemon.task_source,
+            "record_queue_backoff_and_cas_status",
             lose_cas_response,
         )
         with pytest.raises(
@@ -4137,7 +4466,7 @@ def test_exact_repair_evidence_rearms_only_matching_blocked_task(
         )
         assert queue_after_partial_write is not None
         queue_attempt_after_partial_write = queue_after_partial_write.attempt
-        assert daemon.task_source.get(failed.task_cid).status == "blocked"
+        assert daemon.task_source.get(failed.task_cid).status == "retrying"
         assert (
             daemon.coordinator.get_task_claim_successor_projection(
                 task_cid=failed.task_cid,
@@ -4159,10 +4488,9 @@ def test_exact_repair_evidence_rearms_only_matching_blocked_task(
         )
         assert recovered["schema"] == DATABASE_POST_MERGE_RECOVERY_SCHEMA
         assert recovered["recovered"] is True
-        assert recovered["changed"] is True
+        assert recovered["changed"] is False
         assert recovered["status"] == "retrying"
-        assert recovered["write_count"] == 1
-        assert recovered["queue_reused"] is True
+        assert recovered["write_count"] == 0
         assert recovered["task_cid"] == failed.task_cid
         assert recovered["request_id"] == evidence["request_id"]
         assert recovered["repair_commit"] == repair_commit
@@ -4668,13 +4996,17 @@ def test_descendant_requalification_recovery_replays_one_queue_write(
             evidence
         )
 
+        original_guarded_recovery = (
+            daemon.task_source.record_queue_backoff_and_cas_status
+        )
+
         def lose_cas_response(*args: object, **kwargs: object) -> None:
-            del args, kwargs
+            original_guarded_recovery(*args, **kwargs)
             raise RuntimeError("requalification CAS response lost")
 
         monkeypatch.setattr(
-            daemon,
-            "_cas_task_status_database",
+            daemon.task_source,
+            "record_queue_backoff_and_cas_status",
             lose_cas_response,
         )
         with pytest.raises(RuntimeError, match="CAS response lost"):
@@ -4691,8 +5023,8 @@ def test_descendant_requalification_recovery_replays_one_queue_write(
             evidence
         )
         assert recovered["recovered"] is True
-        assert recovered["queue_reused"] is True
-        assert recovered["write_count"] == 1
+        assert recovered["changed"] is False
+        assert recovered["write_count"] == 0
         assert recovered["qualification_kind"] == "requalification"
         second_queue = daemon.task_source.get_queue_entry(failed.task_cid)
         assert second_queue is not None
