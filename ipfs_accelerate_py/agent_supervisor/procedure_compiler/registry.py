@@ -110,7 +110,30 @@ class RegistryOperation(str, Enum):  # noqa: UP042 - package supports Python 3.8
     ROLLBACK = "rollback"
     REVOKE = "revoke"
     DEMOTE = "demote"
+    SUPERSEDE = "supersede"
     RECOVER = "recover"
+
+
+class RegistryDriftCause(str, Enum):  # noqa: UP042 - package supports Python 3.8
+    """Closed execution-relevant observations which invalidate a procedure."""
+
+    CONTRACT = "contract"
+    SCHEMA = "schema"
+    POLICY = "policy"
+    AUTHORITY = "authority"
+    EFFECT = "effect"
+    DEPENDENCY = "dependency"
+    EVIDENCE = "evidence"
+    ENVIRONMENT = "environment"
+    BOUNDARY = "boundary"
+    OBSERVED_FAILURE = "observed_failure"
+
+
+class RegistryDriftDisposition(str, Enum):  # noqa: UP042 - package supports Python 3.8
+    """Only less-usable registry outcomes may be selected by drift."""
+
+    STALE = "stale"
+    REVOKED = "revoked"
 
 
 class RegistryCASOutcome(str, Enum):  # noqa: UP042 - package supports Python 3.8
@@ -119,6 +142,31 @@ class RegistryCASOutcome(str, Enum):  # noqa: UP042 - package supports Python 3.
     CONFLICT = "conflict"
     NOOP = "noop"
     QUARANTINED = "quarantined"
+
+
+_DRIFT_DISPOSITION_BY_CAUSE: Final[
+    Mapping[RegistryDriftCause, RegistryDriftDisposition]
+] = MappingProxyType(
+    {
+        RegistryDriftCause.CONTRACT: RegistryDriftDisposition.STALE,
+        RegistryDriftCause.SCHEMA: RegistryDriftDisposition.STALE,
+        RegistryDriftCause.POLICY: RegistryDriftDisposition.STALE,
+        RegistryDriftCause.AUTHORITY: RegistryDriftDisposition.REVOKED,
+        RegistryDriftCause.EFFECT: RegistryDriftDisposition.REVOKED,
+        RegistryDriftCause.DEPENDENCY: RegistryDriftDisposition.STALE,
+        RegistryDriftCause.EVIDENCE: RegistryDriftDisposition.STALE,
+        RegistryDriftCause.ENVIRONMENT: RegistryDriftDisposition.STALE,
+        RegistryDriftCause.BOUNDARY: RegistryDriftDisposition.REVOKED,
+        RegistryDriftCause.OBSERVED_FAILURE: RegistryDriftDisposition.REVOKED,
+    }
+)
+
+
+def drift_disposition_for(cause: RegistryDriftCause) -> RegistryDriftDisposition:
+    """Return the reviewed fail-closed disposition for one closed drift cause."""
+
+    normalized = _enum(cause, RegistryDriftCause, "drift_cause")
+    return _DRIFT_DISPOSITION_BY_CAUSE[normalized]
 
 
 class ProcedureRegistryError(ProcedureContractError):
@@ -659,11 +707,17 @@ class RegistryCAS:
             artifact_state = (
                 ArtifactState.PROMOTED if self.accepted else ArtifactState.REJECTED
             )
-        elif self.operation is RegistryOperation.REVOKE:
+        elif self.operation in {
+            RegistryOperation.REVOKE,
+            RegistryOperation.SUPERSEDE,
+        }:
             artifact_cls = DeprecationReceiptArtifact
-            artifact_state = (
-                ArtifactState.REVOKED if self.accepted else ArtifactState.REJECTED
-            )
+            if not self.accepted:
+                artifact_state = ArtifactState.REJECTED
+            elif self.operation is RegistryOperation.SUPERSEDE:
+                artifact_state = ArtifactState.SUPERSEDED
+            else:
+                artifact_state = ArtifactState.REVOKED
         else:
             artifact_cls = RegistryRevisionArtifact
             artifact_state = ArtifactState.CANDIDATE if self.accepted else ArtifactState.REJECTED
@@ -1217,6 +1271,8 @@ class ProcedureRegistry:
         next_state = _state(next_state)
         if next_state is RegistryLifecycleState.PROMOTED:
             raise ProcedureRegistryError("advance cannot promote; use promote()")
+        if next_state is RegistryLifecycleState.SUPERSEDED:
+            raise ProcedureRegistryError("advance cannot supersede; use supersede()")
         created_at = _nonnegative_int(
             self._clock_ms() if now_ms is None else now_ms, "now_ms"
         )
@@ -1507,6 +1563,207 @@ class ProcedureRegistry:
                 created_at_ms=created_at,
             )
 
+    def supersede(
+        self,
+        *,
+        procedure_id: str,
+        authorization: RegistryAuthorization,
+        expected_old_revision_id: str,
+        now_ms: int | None = None,
+    ) -> RegistryMutation:
+        """Append an independently authorized supersession successor.
+
+        The prior revision is never rewritten.  A replacement remains a
+        separately registered candidate and requires its own promotion CAS.
+        """
+
+        procedure_id = _identifier(procedure_id, "procedure_id")
+        expected_old_revision_id = _identifier(
+            expected_old_revision_id, "expected_old_revision_id"
+        )
+        created_at = _nonnegative_int(
+            self._clock_ms() if now_ms is None else now_ms, "now_ms"
+        )
+        with self._store.exclusive():
+            head = self._require_head(procedure_id)
+            self._raise_if_stale(
+                operation=RegistryOperation.SUPERSEDE,
+                procedure_id=procedure_id,
+                expected_old=expected_old_revision_id,
+                observed=head.revision_id,
+                target_procedure_cid=head.procedure_cid,
+                authorization=authorization,
+                generation=head.generation,
+                target_revision_id=head.revision_id,
+                rollback_target=head.rollback_target_revision_id,
+            )
+            certificate = self._require_stored_certificate(head.certificate_cid)
+            self._require_authorization(
+                authorization,
+                operation=RegistryOperation.SUPERSEDE,
+                procedure_id=procedure_id,
+                procedure_cid=head.procedure_cid,
+                certificate=certificate,
+                expected_old_revision_id=expected_old_revision_id,
+                target_revision_id=head.revision_id,
+            )
+            self._require_transition(head.state, RegistryLifecycleState.SUPERSEDED)
+            revision = self._successor(
+                head,
+                state=RegistryLifecycleState.SUPERSEDED,
+                authorization=authorization,
+                operation=RegistryOperation.SUPERSEDE,
+                created_at_ms=created_at,
+                expected_old_revision_id=expected_old_revision_id,
+                rollback_target_revision_id=head.rollback_target_revision_id,
+                generation=self._next_generation(procedure_id),
+            )
+            cas = self._commit(
+                procedure_id=procedure_id,
+                expected_old=expected_old_revision_id,
+                revision=revision,
+                authorization=authorization,
+                move_head=True,
+                observed=head.revision_id,
+                event_details={
+                    "superseded_revision_id": head.revision_id,
+                    "superseding_revision_id": revision.revision_id,
+                },
+            )
+            return RegistryMutation(revision=revision, cas=cas, previous=head)
+
+    def apply_drift(
+        self,
+        *,
+        procedure_id: str,
+        expected_old_revision_id: str,
+        cause: RegistryDriftCause,
+        drift_report_cid: str,
+        now_ms: int | None = None,
+    ) -> RegistryMutation:
+        """Apply one independently admitted drift observation fail closed.
+
+        The report CID is the decision root for a narrowly privileged drift
+        actor.  That actor can only make a revision less usable.  A report for
+        an obsolete head is rejected by the same expected-old CAS used by all
+        other registry mutations.
+        """
+
+        procedure_id = _identifier(procedure_id, "procedure_id")
+        expected_old_revision_id = _identifier(
+            expected_old_revision_id, "expected_old_revision_id"
+        )
+        cause = _enum(cause, RegistryDriftCause, "drift_cause")
+        drift_report_cid = _identifier(drift_report_cid, "drift_report_cid")
+        disposition = drift_disposition_for(cause)
+        operation = (
+            RegistryOperation.REVOKE
+            if disposition is RegistryDriftDisposition.REVOKED
+            else RegistryOperation.DEMOTE
+        )
+        target_state = (
+            RegistryLifecycleState.REVOKED
+            if disposition is RegistryDriftDisposition.REVOKED
+            else RegistryLifecycleState.STALE
+        )
+        created_at = _nonnegative_int(
+            self._clock_ms() if now_ms is None else now_ms, "now_ms"
+        )
+        with self._store.exclusive():
+            head = self._require_head(procedure_id)
+            authorization = RegistryAuthorization(
+                actor_id=DRIFT_ACTOR_ID,
+                decision_cid=drift_report_cid,
+                operation=operation,
+                target_procedure_cid=head.procedure_cid,
+                expected_old_revision_id=expected_old_revision_id,
+                target_revision_id=head.revision_id,
+                granted=True,
+                issued_at_ms=created_at,
+            )
+            self._raise_if_stale(
+                operation=operation,
+                procedure_id=procedure_id,
+                expected_old=expected_old_revision_id,
+                observed=head.revision_id,
+                target_procedure_cid=head.procedure_cid,
+                authorization=authorization,
+                generation=head.generation,
+                target_revision_id=head.revision_id,
+                rollback_target=head.rollback_target_revision_id,
+            )
+            if target_state not in _ADVANCE_ORDER.get(head.state, frozenset()):
+                if head.lifecycle_usable:
+                    raise ProcedureRegistryError(
+                        "usable registry state cannot ignore admitted drift"
+                    )
+                cas = self._cas_record(
+                    accepted=True,
+                    stale=False,
+                    outcome=RegistryCASOutcome.NOOP,
+                    operation=operation,
+                    procedure_id=procedure_id,
+                    expected_old=expected_old_revision_id,
+                    observed=head.revision_id,
+                    target_procedure_cid=head.procedure_cid,
+                    target_revision_id=head.revision_id,
+                    new_revision_id=head.revision_id,
+                    rollback_target=head.rollback_target_revision_id,
+                    authorization=authorization,
+                    generation=head.generation,
+                    reason_code="already_unusable",
+                )
+                self._emit_event(
+                    {
+                        "schema": REGISTRY_EVENT_SCHEMA,
+                        "cas": cas.to_dict(),
+                        "operation": "drift_noop",
+                        "procedure_id": procedure_id,
+                        "revision_id": head.revision_id,
+                        "drift_cause": cause.value,
+                        "drift_disposition": disposition.value,
+                        "drift_report_cid": drift_report_cid,
+                    }
+                )
+                return RegistryMutation(revision=head, cas=cas, previous=head)
+
+            certificate = self._require_stored_certificate(head.certificate_cid)
+            self._require_authorization(
+                authorization,
+                operation=operation,
+                procedure_id=procedure_id,
+                procedure_cid=head.procedure_cid,
+                certificate=certificate,
+                expected_old_revision_id=expected_old_revision_id,
+                target_revision_id=head.revision_id,
+                allow_drift_actor=True,
+            )
+            revision = self._successor(
+                head,
+                state=target_state,
+                authorization=authorization,
+                operation=operation,
+                created_at_ms=created_at,
+                expected_old_revision_id=expected_old_revision_id,
+                rollback_target_revision_id=head.rollback_target_revision_id,
+                generation=self._next_generation(procedure_id),
+            )
+            cas = self._commit(
+                procedure_id=procedure_id,
+                expected_old=expected_old_revision_id,
+                revision=revision,
+                authorization=authorization,
+                move_head=True,
+                observed=head.revision_id,
+                event_details={
+                    "drift_cause": cause.value,
+                    "drift_disposition": disposition.value,
+                    "drift_report_cid": drift_report_cid,
+                    "drifted_revision_id": head.revision_id,
+                },
+            )
+            return RegistryMutation(revision=revision, cas=cas, previous=head)
+
     def recover(self, procedure_id: str) -> ProcedureRegistryRevision:
         procedure_id = _identifier(procedure_id, "procedure_id")
         with self._store.exclusive():
@@ -1722,9 +1979,8 @@ class ProcedureRegistry:
         if reason_state not in {
             RegistryLifecycleState.STALE,
             RegistryLifecycleState.DEGRADED,
-            RegistryLifecycleState.SUPERSEDED,
         }:
-            raise ProcedureRegistryError("demote must use stale, degraded, or superseded")
+            raise ProcedureRegistryError("demote must use stale or degraded")
         head = self._require_head(procedure_id)
         certificate = self._require_stored_certificate(head.certificate_cid)
         if authorization is None:
@@ -1815,6 +2071,7 @@ class ProcedureRegistry:
             RegistryOperation.REVOKE,
             RegistryOperation.ADVANCE,
             RegistryOperation.DEMOTE,
+            RegistryOperation.SUPERSEDE,
         }:
             if not authorization.target_revision_id:
                 raise RegistryAuthorizationError(
@@ -1830,12 +2087,15 @@ class ProcedureRegistry:
         forbidden = _self_actors(procedure_id, procedure_cid, certificate)
         if actor in forbidden:
             raise RegistryAuthorizationError("a procedure cannot promote or mutate itself")
-        if allow_drift_actor and authorization.actor_id == DRIFT_ACTOR_ID:
-            if operation is RegistryOperation.PROMOTE:
-                raise RegistryAuthorizationError("drift actor cannot promote")
-            return
-        if authorization.actor_id == DRIFT_ACTOR_ID and operation is RegistryOperation.PROMOTE:
-            raise RegistryAuthorizationError("drift actor cannot promote")
+        if actor == DRIFT_ACTOR_ID:
+            if allow_drift_actor and operation in {
+                RegistryOperation.DEMOTE,
+                RegistryOperation.REVOKE,
+            }:
+                return
+            raise RegistryAuthorizationError(
+                "drift actor may only demote or revoke admitted drift"
+            )
 
     def _require_transition(
         self,
@@ -1935,6 +2195,7 @@ class ProcedureRegistry:
         authorization: RegistryAuthorization,
         move_head: bool,
         observed: str,
+        event_details: Mapping[str, Any] | None = None,
     ) -> RegistryCAS:
         if move_head:
             self._raise_if_stale(
@@ -1967,17 +2228,20 @@ class ProcedureRegistry:
             generation=revision.generation,
             reason_code="committed",
         )
-        self._emit_event(
-            {
-                "schema": REGISTRY_EVENT_SCHEMA,
-                "cas": cas.to_dict(),
-                "revision_id": revision.revision_id,
-                "artifact": revision.to_artifact().to_dict(),
-                "receipt": cas.to_artifact(
-                    revision.bindings, created_at_ms=revision.created_at_ms
-                ).to_dict(),
-            }
-        )
+        event = {
+            "schema": REGISTRY_EVENT_SCHEMA,
+            "cas": cas.to_dict(),
+            "revision_id": revision.revision_id,
+            "artifact": revision.to_artifact().to_dict(),
+            "receipt": cas.to_artifact(
+                revision.bindings, created_at_ms=revision.created_at_ms
+            ).to_dict(),
+        }
+        for key, value in (event_details or {}).items():
+            if key in event:
+                raise ProcedureRegistryError("registry event details cannot replace core fields")
+            event[key] = value
+        self._emit_event(event)
         return cas
 
     def _cas_record(
@@ -2166,6 +2430,8 @@ __all__ = [
     "RegistryCASError",
     "RegistryCASOutcome",
     "RegistryCorruptionError",
+    "RegistryDriftCause",
+    "RegistryDriftDisposition",
     "RegistryFilter",
     "RegistryLifecycleState",
     "RegistryMutation",
@@ -2173,4 +2439,5 @@ __all__ = [
     "RegistryOperation",
     "TERMINAL_STATES",
     "USABLE_STATES",
+    "drift_disposition_for",
 ]
