@@ -169,6 +169,14 @@ from ..merge.merge_conflict_repair import (
 )
 from ..core.submodule_degradation import DegradationState
 from ..task_sources.persistent_task_queue import PersistentTaskQueue
+from ..task_sources.control_plane_contracts import (
+    canonical_json_bytes as _task_body_canonical_json_bytes,
+)
+from ..task_sources.intent_repository import (
+    INTENT_EVENT_SCHEMA as _INTENT_EVENT_SCHEMA,
+    MAX_BODY_BYTES as _MAX_TASK_BODY_BYTES,
+    IntentEventType as _IntentEventType,
+)
 from ..task_sources.task_identity import (
     TaskIdentity,
     canonical_content_cid,
@@ -70124,6 +70132,7 @@ _DATABASE_PORTAL_VALIDATION_RETRY_ORDER_REPAIR_SCHEMA = (
 _DATABASE_PORTAL_VALIDATION_RETRY_SEED_FAILURE_REASON = (
     "database claim validation retry seed failed verification"
 )
+_MAX_TASK_RETRY_NOT_BEFORE_MS = (1 << 63) - 1
 _TASK_REVISION_HISTORY_PROJECTION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-revision-history-projection@1"
 )
@@ -73609,6 +73618,7 @@ class DatabaseImplementationDaemon:
         ).encode("utf-8")
         scoped_outputs = order_repair.get("scoped_outputs")
         changed_paths = order_repair.get("changed_paths")
+        seed_changed_paths = seed.get("changed_paths")
         if (
             order_repair.get("schema")
             != _DATABASE_PORTAL_VALIDATION_RETRY_ORDER_REPAIR_SCHEMA
@@ -73640,6 +73650,7 @@ class DatabaseImplementationDaemon:
             or not isinstance(changed_paths, list)
             or not changed_paths
             or len(set(changed_paths)) != len(changed_paths)
+            or changed_paths != seed_changed_paths
             or len(changed_paths) != len(scoped_outputs)
             or set(changed_paths) != set(scoped_outputs)
             or changed_paths == scoped_outputs
@@ -73662,6 +73673,38 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "validation retry successor Portal replay proof failed verification"
             )
+
+        # The bridge proof is checked in full above, including both ordered
+        # path lists and their exact relationship to the verified retry seed.
+        # Persist only a deterministic commitment to those potentially large
+        # lists.  ``proof_id`` remains the identity of the original full
+        # bridge proof, while the three SHA-256 commitments make its order and
+        # exact set independently visible without duplicating task outputs in
+        # the bounded control body.
+        def path_list_digest(paths: Sequence[str]) -> str:
+            return "sha256:" + hashlib.sha256(
+                _task_body_canonical_json_bytes(list(paths))
+            ).hexdigest()
+
+        compact_order_repair = {
+            key: value
+            for key, value in order_repair.items()
+            if key not in {"scoped_outputs", "changed_paths"}
+        }
+        compact_order_repair.update(
+            {
+                "path_count": len(scoped_outputs),
+                "scoped_outputs_ordered_digest": path_list_digest(
+                    scoped_outputs
+                ),
+                "changed_paths_ordered_digest": path_list_digest(
+                    changed_paths
+                ),
+                "exact_output_set_digest": path_list_digest(
+                    sorted(scoped_outputs)
+                ),
+            }
+        )
 
         evidence = {
             "schema": (
@@ -73715,7 +73758,7 @@ class DatabaseImplementationDaemon:
             "target_phase_history_digest": self._database_portal_evidence_digest(
                 {"phases": target_history}
             ),
-            "bridge_order_repair_proof": order_repair,
+            "bridge_order_repair_proof": compact_order_repair,
         }
         evidence["receipt_id"] = self._database_portal_evidence_digest(evidence)
         if (
@@ -74239,7 +74282,7 @@ class DatabaseImplementationDaemon:
             )
             or receipt.get("queue_reason") != queue_reason
             or not isinstance(receipt.get("queue_reused"), bool)
-            or not isinstance(receipt.get("queue_receipt"), Mapping)
+            or receipt.get("queue_receipt") != {}
             or not isinstance(coordination, Mapping)
             or coordination.get("attempt_id") != attempt.attempt_id
             or coordination.get("claim_id") != attempt.claim_id
@@ -74551,6 +74594,152 @@ class DatabaseImplementationDaemon:
                 "task source cannot persist typed retry cooldown state"
             )
 
+        blocked_recovery = task_status == "blocked" and (
+            validation_retry_evidence is not None
+            or validation_retry_successor_evidence is not None
+            or leftover_wait_deferral_budget_recovery_evidence is not None
+            or landed_completion_recovery_evidence is not None
+            or allow_blocked_recovery
+        )
+        retry_operation = (
+            "database_portal_landed_completion_revalidation"
+            if landed_completion_recovery_evidence is not None
+            else "database_portal_leftover_wait_deferral_budget_retry_recovery"
+            if leftover_wait_deferral_budget_recovery_evidence is not None
+            else "database_portal_validation_retry_successor_recovery"
+            if validation_retry_successor_evidence is not None
+            else "database_portal_validation_retry_recovery"
+            if blocked_recovery
+            else "database_portal_validation_retry"
+            if validation_retry_evidence is not None
+            else "database_portal_retry"
+        )
+
+        def retry_control_receipt(
+            *,
+            retry_not_before_ms: int,
+            queue_reused: bool,
+            queue_receipt: Mapping[str, Any],
+        ) -> dict[str, Any]:
+            # The canonical queue row, reason, and deadline are independently
+            # rechecked.  For successor repair the variable event receipt adds
+            # no authority and would defeat a before-write body-size proof, so
+            # its durable projection is deliberately the closed empty mapping.
+            durable_queue_receipt = (
+                {}
+                if validation_retry_successor_evidence is not None
+                else dict(queue_receipt)
+            )
+            return {
+                "operation": retry_operation,
+                "attempt_id": attempt.attempt_id,
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "owner_session_id": attempt.owner_session_id,
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
+                "attempt_number": int(attempt.attempt_number),
+                "execution_phase": attempt.committed_phase,
+                "execution_revision": int(attempt.revision),
+                "execution_finished_at_ms": attempt.finished_at_ms,
+                "reason": reason_text,
+                "backoff_seconds": delay_seconds,
+                "backoff_ms": delay_ms,
+                "retry_not_before_ms": int(retry_not_before_ms),
+                "evidence_source": evidence_source,
+                "queue_reason": queue_reason,
+                "queue_reused": bool(queue_reused),
+                "queue_receipt": durable_queue_receipt,
+                "coordination": dict(coordination_evidence or {}),
+                **(
+                    {
+                        "validation_retry_seed": dict(
+                            validation_retry_evidence
+                        )
+                    }
+                    if validation_retry_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "validation_retry_seed": dict(
+                            validation_retry_successor_evidence[
+                                "validation_retry_evidence"
+                            ]
+                        ),
+                        "validation_retry_successor_recovery": dict(
+                            validation_retry_successor_evidence[
+                                "recovery_receipt"
+                            ]
+                        ),
+                    }
+                    if validation_retry_successor_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "landed_completion_recovery_seed": dict(
+                            landed_completion_recovery_evidence
+                        )
+                    }
+                    if landed_completion_recovery_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "leftover_wait_deferral_budget_recovery_seed": dict(
+                            leftover_wait_deferral_budget_recovery_evidence
+                        )
+                    }
+                    if leftover_wait_deferral_budget_recovery_evidence is not None
+                    else {}
+                ),
+                "control_expected_status": task_status,
+                "control_expected_revision": int(task.revision),
+            }
+
+        def preflight_task_body(receipt: Mapping[str, Any]) -> tuple[int, int]:
+            prospective_body = dict(getattr(task, "body", {}) or {})
+            prospective_body["completion_receipt"] = dict(receipt)
+            encoded = _task_body_canonical_json_bytes(prospective_body)
+            if len(encoded) > _MAX_TASK_BODY_BYTES:
+                raise DatabaseImplementationAuthorityError(
+                    "retry control task body exceeds the canonical "
+                    f"{_MAX_TASK_BODY_BYTES}-byte bound"
+                )
+            # IntentRepository.cas_task_status separately appends a
+            # TASK_STATUS_CHANGED event whose nested body carries the same
+            # receipt.  Its two UTC timestamps are fixed-width and owner_id is
+            # a safe identifier bounded to 512 bytes, so these placeholders
+            # conservatively cover the exact owner-side envelope without an
+            # authority read or mutation.
+            recorded_at = "9999-12-31T23:59:59Z"
+            status_event_body = {
+                "task_cid": attempt.task_cid,
+                "task_alias": str(getattr(task, "task_alias", "") or ""),
+                "goal_cid": str(getattr(task, "goal_cid", "") or ""),
+                "previous_status": task_status,
+                "status": "retrying",
+                "revision": int(task.revision) + 1,
+                "receipt": dict(receipt),
+                "recorded_at": recorded_at,
+            }
+            event_envelope = {
+                "schema": _INTENT_EVENT_SCHEMA,
+                "event_type": _IntentEventType.TASK_STATUS_CHANGED.value,
+                "subject_id": attempt.task_cid,
+                "body": status_event_body,
+                "recorded_at": recorded_at,
+                "owner_id": "x" * 512,
+            }
+            event_encoding = _task_body_canonical_json_bytes(event_envelope)
+            if len(event_encoding) > _MAX_TASK_BODY_BYTES:
+                raise DatabaseImplementationAuthorityError(
+                    "retry control status event exceeds the canonical "
+                    f"{_MAX_TASK_BODY_BYTES}-byte bound"
+                )
+            return len(encoded), len(event_encoding)
+
         if task_status == "retrying":
             if validation_retry_successor_evidence is not None:
                 self._verified_validation_retry_successor_recovery_state(
@@ -74629,13 +74818,6 @@ class DatabaseImplementationDaemon:
                 "evidence_source": evidence_source,
                 "queue_receipt": queue_receipt_dict,
             }
-        blocked_recovery = task_status == "blocked" and (
-            validation_retry_evidence is not None
-            or validation_retry_successor_evidence is not None
-            or leftover_wait_deferral_budget_recovery_evidence is not None
-            or landed_completion_recovery_evidence is not None
-            or allow_blocked_recovery
-        )
         if task_status != "in_progress" and not blocked_recovery:
             raise DatabaseImplementationConflictError(
                 f"retryable attempt {attempt.attempt_id} cannot move control "
@@ -74653,6 +74835,22 @@ class DatabaseImplementationDaemon:
         if queue_reused:
             queue_receipt_dict: dict[str, Any] = {}
         else:
+            if validation_retry_successor_evidence is not None:
+                # The queue owner persists a non-negative DuckDB BIGINT
+                # deadline.  Preflighting its maximum-width representation is
+                # conservative for every deadline the subsequent write can
+                # produce.  The successor receipt builder also projects the
+                # variable queue event receipt as {}, so no post-write field
+                # can grow beyond this canonical prospective body.
+                preflight_task_body(
+                    retry_control_receipt(
+                        retry_not_before_ms=(
+                            _MAX_TASK_RETRY_NOT_BEFORE_MS
+                        ),
+                        queue_reused=False,
+                        queue_receipt={},
+                    )
+                )
             self._protect_retry_transition_authority(
                 attempt,
                 coordination_evidence,
@@ -74672,89 +74870,22 @@ class DatabaseImplementationDaemon:
             attempt,
             coordination_evidence,
         )
+        control_receipt = retry_control_receipt(
+            retry_not_before_ms=int(queue_entry.retry_not_before_ms),
+            queue_reused=queue_reused,
+            queue_receipt=queue_receipt_dict,
+        )
+        if queue_reused or validation_retry_successor_evidence is None:
+            # With no prospective successor queue mutation, this is the exact
+            # body sent to the owner CAS.  Other retry modes retain their
+            # historical queue-event projection and are checked here before
+            # the status mutation.
+            preflight_task_body(control_receipt)
         cas_result = self._cas_task_status_database(
             attempt.task_cid,
             expected_revision=int(task.revision),
             new_status="retrying",
-            receipt={
-                "operation": (
-                    "database_portal_landed_completion_revalidation"
-                    if landed_completion_recovery_evidence is not None
-                    else "database_portal_leftover_wait_deferral_budget_retry_recovery"
-                    if leftover_wait_deferral_budget_recovery_evidence is not None
-                    else "database_portal_validation_retry_successor_recovery"
-                    if validation_retry_successor_evidence is not None
-                    else "database_portal_validation_retry_recovery"
-                    if blocked_recovery
-                    else "database_portal_validation_retry"
-                    if validation_retry_evidence is not None
-                    else "database_portal_retry"
-                ),
-                "attempt_id": attempt.attempt_id,
-                "claim_id": attempt.claim_id,
-                "lease_id": attempt.lease_id,
-                "owner_session_id": attempt.owner_session_id,
-                "fencing_token": int(attempt.fencing_token),
-                "fence_epoch": int(attempt.fence_epoch),
-                "attempt_number": int(attempt.attempt_number),
-                "execution_phase": attempt.committed_phase,
-                "execution_revision": int(attempt.revision),
-                "execution_finished_at_ms": attempt.finished_at_ms,
-                "reason": reason_text,
-                "backoff_seconds": delay_seconds,
-                "backoff_ms": delay_ms,
-                "retry_not_before_ms": int(queue_entry.retry_not_before_ms),
-                "evidence_source": evidence_source,
-                "queue_reason": queue_reason,
-                "queue_reused": queue_reused,
-                "queue_receipt": queue_receipt_dict,
-                "coordination": dict(coordination_evidence or {}),
-                **(
-                    {
-                        "validation_retry_seed": dict(
-                            validation_retry_evidence
-                        )
-                    }
-                    if validation_retry_evidence is not None
-                    else {}
-                ),
-                **(
-                    {
-                        "validation_retry_seed": dict(
-                            validation_retry_successor_evidence[
-                                "validation_retry_evidence"
-                            ]
-                        ),
-                        "validation_retry_successor_recovery": dict(
-                            validation_retry_successor_evidence[
-                                "recovery_receipt"
-                            ]
-                        ),
-                    }
-                    if validation_retry_successor_evidence is not None
-                    else {}
-                ),
-                **(
-                    {
-                        "landed_completion_recovery_seed": dict(
-                            landed_completion_recovery_evidence
-                        )
-                    }
-                    if landed_completion_recovery_evidence is not None
-                    else {}
-                ),
-                **(
-                    {
-                        "leftover_wait_deferral_budget_recovery_seed": dict(
-                            leftover_wait_deferral_budget_recovery_evidence
-                        )
-                    }
-                    if leftover_wait_deferral_budget_recovery_evidence is not None
-                    else {}
-                ),
-                "control_expected_status": task_status,
-                "control_expected_revision": int(task.revision),
-            },
+            receipt=control_receipt,
             evidence_digests=(
                 [str(validation_retry_evidence["events_digest"])]
                 if validation_retry_evidence is not None

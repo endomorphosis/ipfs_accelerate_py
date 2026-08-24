@@ -33,6 +33,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+    canonical_json_bytes as task_body_canonical_json_bytes,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
     install_control_plane_schema,
     install_datasets_authoritative_operational_schema,
@@ -49,6 +52,12 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
     COMPLETED_STATUSES as TASK_SOURCE_COMPLETED_STATUSES,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    MAX_BODY_BYTES as MAX_TASK_BODY_BYTES,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon_runner as daemon_runner,
@@ -1440,8 +1449,15 @@ def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
         daemon.close()
 
 
+@pytest.mark.parametrize(
+    "path_count",
+    (2, 192),
+    ids=("ordinary", "bounded-large-receipt"),
+)
 def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_count: int,
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -1457,12 +1473,31 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
         check=True,
     )
     (repo / "inventory").mkdir()
-    (repo / "inventory" / "result.json").write_text(
-        '{"result":true}\n', encoding="utf-8"
-    )
-    (repo / "inventory" / "summary.json").write_text(
-        '{"summary":true}\n', encoding="utf-8"
-    )
+    if path_count == 2:
+        changed_paths = [
+            "inventory/result.json",
+            "inventory/summary.json",
+        ]
+    else:
+        long_directory = "a" * 240
+        changed_paths = [
+            (
+                f"inventory/{long_directory}/{index:03d}-"
+                + "b" * 238
+                + ".json"
+            )
+            for index in range(path_count)
+        ]
+        assert all(
+            490 <= len(path.encode("utf-8")) <= 500
+            for path in changed_paths
+        )
+    changed_paths = sorted(changed_paths)
+    declared_paths = list(reversed(changed_paths))
+    for relative in changed_paths:
+        output_path = repo / relative
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text('{"result":true}\n', encoding="utf-8")
     subprocess.run(["git", "add", "--", "inventory"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-qm", "candidate"], cwd=repo, check=True)
     candidate_commit = subprocess.run(
@@ -1503,10 +1538,7 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
                 {
                     "implementation_commit": candidate_commit,
                     "rescue_branch": rescue_branch,
-                    "changed_paths": [
-                        "inventory/result.json",
-                        "inventory/summary.json",
-                    ],
+                    "changed_paths": changed_paths,
                 }
             )
             receipt.pop("receipt_id")
@@ -1550,8 +1582,8 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
     try:
         population = _population(1)
         population["tasks"][0]["outputs"] = [
-            {"path": "inventory/summary.json"},
-            {"path": "inventory/result.json"},
+            {"path": path}
+            for path in declared_paths
         ]
         daemon.materialize_population(population)
         holder["bridge"] = DatabasePortalExecutionBridge(
@@ -1591,23 +1623,114 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
             check=True,
         )
 
+        if path_count == 192:
+            # A rejected size admission must happen before the predecessor
+            # queue is rewritten.  Use a deliberately tiny bound to exercise
+            # that ordering, then restore the production bound for recovery.
+            task_before_preflight = daemon.task_source.get(target.task_cid)
+            queue_before_preflight = daemon.task_source.get_queue_entry(
+                target.task_cid
+            )
+            assert task_before_preflight is not None
+            assert queue_before_preflight is not None
+            monkeypatch.setattr(
+                implementation_daemon_module,
+                "_MAX_TASK_BODY_BYTES",
+                1,
+            )
+            assert daemon.reconcile_terminal_portal_failures() == []
+            task_after_preflight = daemon.task_source.get(target.task_cid)
+            queue_after_preflight = daemon.task_source.get_queue_entry(
+                target.task_cid
+            )
+            assert task_after_preflight is not None
+            assert queue_after_preflight is not None
+            assert task_after_preflight.revision == task_before_preflight.revision
+            assert task_body_canonical_json_bytes(
+                dict(task_after_preflight.body)
+            ) == task_body_canonical_json_bytes(
+                dict(task_before_preflight.body)
+            )
+            assert queue_after_preflight.to_dict() == (
+                queue_before_preflight.to_dict()
+            )
+            monkeypatch.setattr(
+                implementation_daemon_module,
+                "_MAX_TASK_BODY_BYTES",
+                MAX_TASK_BODY_BYTES,
+            )
+
         outcomes = daemon.reconcile_terminal_portal_failures()
         assert len(outcomes) == 1
         recovered = daemon.task_source.get(target.task_cid)
         assert recovered is not None and recovered.status == "retrying"
         recovery_receipt = recovered.body["completion_receipt"]
-        assert len(json.dumps(recovery_receipt).encode("utf-8")) < 262_144
+        assert (
+            len(task_body_canonical_json_bytes(dict(recovered.body)))
+            < MAX_TASK_BODY_BYTES
+        )
         assert recovery_receipt["operation"] == (
             "database_portal_validation_retry_successor_recovery"
         )
+        assert recovery_receipt["queue_receipt"] == {}
         recovery = recovery_receipt[
             "validation_retry_successor_recovery"
         ]
         assert recovery["source_attempt_id"] == source.attempt_id
         assert recovery["target_attempt_id"] == target.attempt_id
-        assert recovery["bridge_order_repair_proof"][
-            "preserved_commit_verified"
-        ] is True
+        compact_proof = recovery["bridge_order_repair_proof"]
+        assert compact_proof["preserved_commit_verified"] is True
+        assert "scoped_outputs" not in compact_proof
+        assert "changed_paths" not in compact_proof
+        assert compact_proof["path_count"] == path_count
+
+        def ordered_path_digest(paths: list[str]) -> str:
+            return "sha256:" + hashlib.sha256(
+                task_body_canonical_json_bytes(paths)
+            ).hexdigest()
+
+        assert compact_proof["scoped_outputs_ordered_digest"] == (
+            ordered_path_digest(declared_paths)
+        )
+        assert compact_proof["changed_paths_ordered_digest"] == (
+            ordered_path_digest(changed_paths)
+        )
+        assert compact_proof["exact_output_set_digest"] == (
+            ordered_path_digest(sorted(changed_paths))
+        )
+
+        # Reconstruct the former full proof exactly: its retained proof_id
+        # still commits to both ordered arrays even though persistence now
+        # carries only bounded digest/count evidence.
+        legacy_proof = {
+            key: value
+            for key, value in compact_proof.items()
+            if key
+            not in {
+                "path_count",
+                "scoped_outputs_ordered_digest",
+                "changed_paths_ordered_digest",
+                "exact_output_set_digest",
+            }
+        }
+        legacy_proof["scoped_outputs"] = declared_paths
+        legacy_proof["changed_paths"] = changed_paths
+        legacy_proof_body = dict(legacy_proof)
+        legacy_proof_id = legacy_proof_body.pop("proof_id")
+        assert legacy_proof_id == "sha256:" + hashlib.sha256(
+            task_body_canonical_json_bytes(legacy_proof_body)
+        ).hexdigest()
+        if path_count == 192:
+            legacy_receipt = json.loads(json.dumps(recovery_receipt))
+            legacy_receipt[
+                "validation_retry_successor_recovery"
+            ]["bridge_order_repair_proof"] = legacy_proof
+            legacy_task_body = dict(recovered.body)
+            legacy_task_body["completion_receipt"] = legacy_receipt
+            assert (
+                len(task_body_canonical_json_bytes(legacy_task_body))
+                > MAX_TASK_BODY_BYTES
+            )
         assert daemon.reconcile_terminal_portal_failures() == []
 
         now["ms"] = 13_000
