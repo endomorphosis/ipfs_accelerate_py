@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -116,6 +117,15 @@ def test_production_parsers_preserve_goal_and_task_dags() -> None:
     assert graph.invalid_task_cids == []
     assert len(graph.nodes) == 44
     assert len(graph.edges) == 191
+    by_id = {task.task_id: task for task in tasks}
+    assert all(
+        by_id[task_id].metadata.get("no-change completion") == "allowed"
+        for task_id in ("CASF-000", "CASF-001")
+    )
+    assert all(
+        by_id[f"CASF-{index:03d}"].metadata.get("no-change completion") is None
+        for index in range(33, 44)
+    )
 
 
 def test_generic_scheduler_accepts_one_lane_quack_program() -> None:
@@ -288,6 +298,42 @@ def test_validator_rejects_completed_task_with_pending_result_identity(
     )
 
 
+def test_validator_rejects_no_change_population_drift(tmp_path, monkeypatch) -> None:
+    validator = _validator_module()
+    original = TODO.read_text(encoding="utf-8")
+
+    missing = tmp_path / "missing-no-change.todo.md"
+    missing.write_text(
+        original.replace("- No-change completion: allowed\n", "", 1),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(validator, "BOARD", missing)
+    report = validator.validate_program()
+    assert report["valid"] is False
+    assert any(
+        "CASF-000: sealed inventory must allow exact validated no-change completion"
+        in error
+        for error in report["errors"]
+    )
+
+    broadened = tmp_path / "broadened-no-change.todo.md"
+    heading = "## CASF-033 Implement architecture and event drift monitoring"
+    prefix, suffix = original.split(heading, 1)
+    suffix = suffix.replace(
+        "- Completion: auto\n",
+        "- Completion: auto\n- No-change completion: allowed\n",
+        1,
+    )
+    broadened.write_text(prefix + heading + suffix, encoding="utf-8")
+    monkeypatch.setattr(validator, "BOARD", broadened)
+    report = validator.validate_program()
+    assert report["valid"] is False
+    assert any(
+        "CASF-033: unlanded task must remain outside no-change completion" in error
+        for error in report["errors"]
+    )
+
+
 def test_validator_rejects_ducklake_authority(tmp_path, monkeypatch) -> None:
     validator = _validator_module()
     payload = json.loads(CONFIG.read_text(encoding="utf-8"))
@@ -323,3 +369,41 @@ def test_required_inventory_artifacts_fail_if_they_disappear(tmp_path, monkeypat
     assert report["valid"] is False
     assert report["completed_task_ids"] == []
     assert any("starting_tree.json" in error for error in report["errors"])
+
+
+def test_inventory_only_rejects_baseline_drift_and_symlink_substitution(
+    tmp_path, monkeypatch
+) -> None:
+    source = REPO_ROOT / "docs/architecture/causal_event_federation_inventory"
+
+    drift_root = tmp_path / "drift-root"
+    drift_inventory = drift_root / "inventory"
+    shutil.copytree(source, drift_inventory)
+    authorities = drift_inventory / "authorities.json"
+    payload = json.loads(authorities.read_text(encoding="utf-8"))
+    payload["starting_commit"] = "0" * 40
+    authorities.write_text(json.dumps(payload), encoding="utf-8")
+
+    validator = _validator_module()
+    monkeypatch.setattr(validator, "ROOT", drift_root)
+    monkeypatch.setattr(validator, "INVENTORY", drift_inventory)
+    report = validator.validate_program(inventory_only=True)
+    assert report["valid"] is False
+    assert "authorities.json: sealed repository baseline mismatch" in report["errors"]
+
+    symlink_root = tmp_path / "symlink-root"
+    symlink_inventory = symlink_root / "inventory"
+    shutil.copytree(source, symlink_inventory)
+    capability = symlink_inventory / "capability_snapshot.json"
+    capability.unlink()
+    capability.symlink_to(source / "capability_snapshot.json")
+
+    validator = _validator_module()
+    monkeypatch.setattr(validator, "ROOT", symlink_root)
+    monkeypatch.setattr(validator, "INVENTORY", symlink_inventory)
+    report = validator.validate_program(inventory_only=True)
+    assert report["valid"] is False
+    assert (
+        "capability_snapshot.json: inventory artifact must be a regular file"
+        in report["errors"]
+    )

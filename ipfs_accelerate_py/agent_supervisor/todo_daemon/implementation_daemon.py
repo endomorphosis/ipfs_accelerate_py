@@ -48472,11 +48472,17 @@ class PortalImplementationDaemon:
         so only the exact trimmed value ``allowed`` is accepted.
         """
 
+        # Preserve only the three exact representations at the Markdown,
+        # database, and generated task-projection boundaries.
+        accepted_keys = {
+            "no-change completion",
+            "no change completion",
+            "no_change_completion",
+        }
         values = [
             str(value).strip()
             for key, value in task.metadata.items()
-            if str(key).strip().lower().replace("_", " ")
-            == "no-change completion"
+            if str(key).strip().lower() in accepted_keys
         ]
         if len(values) != 1:
             return ""

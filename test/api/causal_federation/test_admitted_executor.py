@@ -200,9 +200,19 @@ def test_admitted_plan_uses_configured_builder_and_env_only_handle() -> None:
     assert operator.STATE_OWNER_SOCKET_ENV not in environment
     assert plan["execution_route_expected_counts"] == {
         "task_count": 44,
-        "deterministic_task_count": 31,
-        "model_task_count": 13,
+        "deterministic_task_count": 33,
+        "model_task_count": 11,
     }
+    modes = operator._casf_mixed_execution_modes()
+    assert set(modes) == {f"CASF-{index:03d}" for index in range(44)}
+    assert {
+        alias
+        for alias, mode in modes.items()
+        if mode == DETERMINISTIC_ONLY_EXECUTION_MODE
+    } == {f"CASF-{index:03d}" for index in range(33)}
+    assert {
+        alias for alias, mode in modes.items() if mode == GROK_CODEX_EXECUTION_MODE
+    } == {f"CASF-{index:03d}" for index in range(33, 44)}
 
 
 def test_quack_daemon_defaults_to_distinct_sidecars_and_rejects_aliases(
@@ -554,7 +564,14 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
                     "task_id": "CASF-TYPED",
                     "goal_cid": "goal:typed-executor",
                     "status": "ready",
-                    "body": {"No-change completion": "allowed"},
+                    "body": {
+                        "No-change completion": "allowed",
+                        # A sealed task plus a durable receipt legitimately
+                        # exceeds the generic 8 KiB text field bound.  The
+                        # exact task-status command has its own bounded JSON
+                        # transport and must not crash before owner validation.
+                        "large_legal_context": "x" * 8_192,
+                    },
                     "outputs": [{"path": "pyproject.toml", "effect": {}}],
                     "validations": [{"argv": ["/usr/bin/true"], "policy": {}}],
                 }
@@ -3374,7 +3391,9 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
                     "status": "ready",
                     "ordinal": 0,
                     "description": "Revalidate an output already present on target",
-                    "No-change completion": "allowed",
+                    # Database population normalizes Markdown metadata keys.
+                    # Exercise the exact representation used by live CASF.
+                    "no_change_completion": "allowed",
                     "outputs": [{"path": "pyproject.toml", "effect": {}}],
                     "validations": [{"argv": ["/usr/bin/true"], "policy": {}}],
                 },
