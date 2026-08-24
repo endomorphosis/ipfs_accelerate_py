@@ -675,7 +675,12 @@ _QUACK_OWNER_COMMAND_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = 
                 "reason",
             }
         ),
-        frozenset({"selection_penalty"}),
+        frozenset(
+            {
+                "selection_penalty",
+                "exact_retry_not_before_ms",
+            }
+        ),
     ),
     QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY: (
         frozenset({"task_cid"}),
@@ -755,7 +760,12 @@ def validate_quack_owner_command(
             raise DuckDBConnectionPolicyError(
                 "quack owner command field 'attempt_id' must be a string"
             )
-    for field in {"expected_revision", "delay_ms", "selection_penalty"} & fields:
+    for field in {
+        "expected_revision",
+        "delay_ms",
+        "selection_penalty",
+        "exact_retry_not_before_ms",
+    } & fields:
         value = copied[field]
         if type(value) is not int or value < 0:
             raise DuckDBConnectionPolicyError(

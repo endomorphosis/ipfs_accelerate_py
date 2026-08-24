@@ -275,6 +275,12 @@ def test_database_portal_attempts_share_dependency_preflight_artifact_store(
         def bind_execution_callbacks(**callbacks: object) -> None:
             captured_callbacks.update(callbacks)
 
+        @staticmethod
+        def bind_superseded_consumed_attempt_recovery(
+            callback: object,
+        ) -> None:
+            captured_callbacks["consumed_attempt_recovery_fn"] = callback
+
     class CapturingPortal:
         def __init__(self, **kwargs: object) -> None:
             self.kwargs = kwargs
@@ -326,4 +332,6 @@ def test_database_portal_attempts_share_dependency_preflight_artifact_store(
         "provider_fn",
         "effect_fn",
         "validation_fn",
+        "consumed_attempt_recovery_fn",
     }
+    assert callable(captured_callbacks["consumed_attempt_recovery_fn"])

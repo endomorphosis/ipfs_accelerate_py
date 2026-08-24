@@ -944,6 +944,16 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             callbacks["post_merge_recovery"] = callback
 
         @staticmethod
+        def bind_superseded_consumed_attempt_recovery(
+            callback: object,
+        ) -> None:
+            callbacks["consumed_attempt_recovery"] = callback
+
+        @staticmethod
+        def bind_merge_train_recovery(**values: object) -> None:
+            callbacks["merge_train_recovery"] = values
+
+        @staticmethod
         def _database_portal_evidence_digest(_value: object) -> str:
             return "sha256:" + ("0" * 64)
 
@@ -952,6 +962,12 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             _evidence: object,
         ) -> dict[str, object]:
             pytest.fail("empty recovery queue invoked database recovery")
+
+        @staticmethod
+        def preauthorize_post_merge_declared_output_recovery(
+            _evidence: object,
+        ) -> dict[str, object]:
+            pytest.fail("empty recovery queue invoked database preauthorization")
 
     class CapturingPortal:
         def __init__(self, **kwargs: object) -> None:
@@ -994,6 +1010,12 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
     assert bridge.merge_queue.target_branch == "main"
     assert callable(callbacks["post_merge_recovery"])
     assert callbacks["post_merge_recovery"]() is None
+    assert callable(callbacks["consumed_attempt_recovery"])
+    assert callbacks["merge_train_recovery"] == {
+        "merge_queue": bridge.merge_queue,
+        "repo_root": repo,
+        "merge_target_branch": "main",
+    }
     portal = bridge.portal_factory(
         argparse.Namespace(
             task_projection=tmp_path / "attempt" / "task-projection.md",

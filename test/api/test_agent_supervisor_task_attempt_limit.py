@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
+from ipfs_accelerate_py import llm_router
 from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     LeaseCoordinator,
     adapt_goal_bundle,
@@ -19,7 +21,9 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
     content_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    ImplementationRetryDeferred,
     PortalImplementationDaemon,
+    PortalTask,
     PortalTaskState,
     parse_task_file,
 )
@@ -1275,3 +1279,223 @@ def test_semantic_key_revision_resets_projection_without_inheriting_backpressure
         daemon.task_queue.is_cooled_down(new_identity.canonical_task_cid)
         is False
     )
+
+
+def _unbound_quota_high_start_command(workspace) -> list[str]:
+    route = llm_router.resolve_agent_implementation_route(
+        primary_provider_id="grok_cli",
+        primary_model_id="grok-4.6",
+        fallback_provider_id="codex",
+        fallback_model_id="gpt-5.6-terra",
+        fallback_trigger="primary_quota_exhausted",
+        fallback_reasoning_effort="high",
+    )
+    fallback = [
+        "/usr/local/bin/codex",
+        "exec",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--ephemeral",
+        "-s",
+        "workspace-write",
+        "-C",
+        str(workspace),
+        "-m",
+        "gpt-5.6-terra",
+        "-c",
+        'model_reasoning_effort="high"',
+        "-",
+    ]
+    return [
+        "/usr/bin/python3",
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        "--workspace",
+        str(workspace),
+        "--model",
+        "grok-4.6",
+        "--max-turns",
+        "100000",
+        "--mode",
+        "agent",
+        "--codex-fallback-reasoning-effort",
+        "high",
+        "--codex-fallback-command-json",
+        json.dumps(fallback, separators=(",", ":")),
+        "--grok-bin",
+        "/usr/local/bin/grok",
+        "--grok-failure-receipt-nonce",
+        "a" * 64,
+        "--agent-implementation-route-json",
+        json.dumps(
+            route.as_binding_dict(),
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+    ]
+
+
+def _unbound_attempt_fixture(tmp_path, *, task_id: str):
+    daemon = PortalImplementationDaemon.__new__(PortalImplementationDaemon)
+    workspace = tmp_path / "workspace"
+    revision = f"task-revision:{task_id}"
+    task = PortalTask(
+        task_id=task_id,
+        title=task_id,
+        status="ready",
+        completion="merged",
+        priority="high",
+        track="implementation",
+        canonical_task_key=f"task-key:{task_id}",
+        canonical_task_cid=revision,
+        board_namespace="board:one",
+    )
+    daemon.repo_root = tmp_path
+    daemon.todo_path = tmp_path / "board:one"
+    daemon._scoped_recovery_attempts = {}
+    daemon._identity_for_task = lambda _task: SimpleNamespace(
+        canonical_task_cid=revision,
+        canonical_task_key=f"task-key:{task_id}",
+    )
+    identity = {
+        "task_id": task.task_id,
+        "attempt": 3,
+        "canonical_task_cid": revision,
+        "board_namespace": task.board_namespace,
+    }
+    start = {
+        "type": "implementation_started",
+        **identity,
+        "command": _unbound_quota_high_start_command(workspace),
+        "event_id": "sha256:" + "b" * 64,
+        "sequence": 1,
+    }
+    state = PortalTaskState(
+        implementation_attempts={task.task_id: 3},
+        implementation_attempts_by_cid={revision: 3},
+        active_task_cid=revision,
+        last_implementation_task_cid=revision,
+        last_implementation_worktree_path=str(workspace),
+    )
+    return daemon, workspace, revision, task, identity, start, state
+
+
+def test_unfinished_unbound_quota_fallback_is_never_refunded_or_replayed(
+    tmp_path,
+) -> None:
+    daemon, workspace, revision, task, _, start, state = (
+        _unbound_attempt_fixture(tmp_path, task_id="TASK-UNBOUND")
+    )
+    daemon._iter_events = lambda: iter((start,))
+
+    daemon._restore_task_attempt(state, task, 0)
+    assert state.implementation_attempts[task.task_id] == 3
+    assert state.implementation_attempts_by_cid[revision] == 3
+    released = daemon._release_unfinished_active_attempt(
+        state,
+        task_id=task.task_id,
+        attempt=3,
+    )
+    assert released["unbound_quota_effect_ambiguous"] is True
+    assert released["automatic_replay_forbidden"] is True
+    assert released["released"] is False
+    assert daemon._task_attempt(state, task) == 3
+    with pytest.raises(
+        ImplementationRetryDeferred,
+        match="automatic replay is forbidden",
+    ):
+        daemon._protected_effect_recovery_command(
+            workspace_path=workspace,
+            task=task,
+            prompt="repair",
+            attempt=3,
+            state=state,
+        )
+
+
+def test_matching_finish_clears_unbound_quota_fallback_ambiguity(
+    tmp_path,
+) -> None:
+    daemon, workspace, revision, task, identity, start, state = (
+        _unbound_attempt_fixture(tmp_path, task_id="TASK-FINISHED")
+    )
+    finish = {
+        "type": "implementation_finished",
+        **identity,
+        "returncode": 1,
+        "provider_dispatched": True,
+        "attempt_consumed": True,
+        "sequence": 2,
+    }
+    daemon._iter_events = lambda: iter((start, finish))
+
+    assert daemon._protected_effect_recovery_command(
+        workspace_path=workspace,
+        task=task,
+        prompt="repair",
+        attempt=3,
+        state=state,
+    ) is None
+    released = daemon._release_unfinished_active_attempt(
+        state,
+        task_id=task.task_id,
+        attempt=3,
+    )
+    assert released["released"] is True
+    assert state.implementation_attempts[task.task_id] == 2
+    assert state.implementation_attempts_by_cid[revision] == 2
+
+
+@pytest.mark.parametrize(
+    "route_shape",
+    ["malformed", "invocation_bound", "other_canonical_route"],
+)
+def test_noncanonical_route_shapes_do_not_acquire_unbound_ambiguity_fence(
+    tmp_path,
+    route_shape: str,
+) -> None:
+    daemon, _, revision, task, _, start, state = _unbound_attempt_fixture(
+        tmp_path,
+        task_id=f"TASK-{route_shape.upper()}",
+    )
+    command = list(start["command"])
+    if route_shape == "malformed":
+        command[20] = "{"
+    elif route_shape == "invocation_bound":
+        binding = json.loads(command[20])
+        binding["invocation_binding"] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "provider-fallback-invocation@2"
+            )
+        }
+        command[20] = json.dumps(
+            binding,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    else:
+        other = llm_router.resolve_agent_implementation_route(
+            default_route="legacy",
+        )
+        command[20] = json.dumps(
+            other.as_binding_dict(),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    start["command"] = command
+    daemon._iter_events = lambda: iter((start,))
+
+    assert daemon._unfinished_unbound_quota_fallback_attempt(
+        task_id=task.task_id,
+        attempt=3,
+        task_revision_cid=revision,
+        board_namespace=task.board_namespace,
+    ) is None
+    released = daemon._release_unfinished_active_attempt(
+        state,
+        task_id=task.task_id,
+        attempt=3,
+    )
+    assert released["released"] is True
+    assert released["consumed"] is False

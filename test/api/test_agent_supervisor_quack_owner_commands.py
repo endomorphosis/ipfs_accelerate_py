@@ -20,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
     QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+    QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
     QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
     QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
@@ -328,6 +329,83 @@ def test_bound_repository_command_is_atomic_and_restart_idempotent(
         second_repo.close()
         # Repository lifecycle never closes the owner's injected connection.
         assert owner_connection.execute("SELECT 1").fetchone()[0] == 1
+    finally:
+        owner_connection.close()
+
+
+def test_owner_guarded_retry_preserves_exact_absolute_deadline(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "control.duckdb"
+    _materialize_one_task(path)
+    owner_connection = open_duckdb_connection(path)
+    try:
+        repository = IntentRepository(
+            path,
+            bound_connection=owner_connection,
+            install_schema=False,
+            owner_id="owner:typed-test",
+            session_id="session:absolute-deadline",
+        )
+        repository._clock_ms = lambda: 1_000_123  # type: ignore[method-assign]
+        task = repository.get_task("task:typed-owner-test")
+        assert task is not None
+        claim_receipt = {
+            "operation": "database_claim",
+            "attempt_id": "attempt:absolute-deadline",
+        }
+        repository.cas_task_status(
+            task_cid="task:typed-owner-test",
+            expected_revision=int(task["revision"]),
+            new_status="in_progress",
+            receipt=claim_receipt,
+        )
+        claimed = repository.get_task("task:typed-owner-test")
+        assert claimed is not None
+        reason = "database_portal_retry:attempt:absolute-deadline:capacity"
+        transition = {
+            "operation": "database_portal_capacity_retry",
+            "queue_reason": reason,
+            "queue_reused": False,
+            "queue_receipt": {},
+            "retry_not_before_ms": 0,
+        }
+        payload = {
+            "task_cid": "task:typed-owner-test",
+            "expected_revision": int(claimed["revision"]),
+            "expected_control_receipt": claim_receipt,
+            "status": "retrying",
+            "receipt": transition,
+            "delay_ms": 999_877,
+            "reason": reason,
+            "exact_retry_not_before_ms": 2_000_000,
+        }
+        assert validate_quack_owner_command(
+            QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
+            payload,
+        )["exact_retry_not_before_ms"] == 2_000_000
+        result = execute_quack_owner_command(
+            repository,
+            QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
+            payload,
+            request_id="d" * 32,
+            store_id="data/control.duckdb",
+            store_generation="generation-1",
+        )
+        assert result["retry_not_before_ms"] == 2_000_000
+        assert result["transition_receipt"]["retry_not_before_ms"] == 2_000_000
+        assert result["cas_result"]["task"]["body"]["completion_receipt"][
+            "retry_not_before_ms"
+        ] == 2_000_000
+        with pytest.raises(
+            DuckDBConnectionPolicyError,
+            match="non-negative integer",
+        ):
+            validate_quack_owner_command(
+                QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
+                {**payload, "exact_retry_not_before_ms": -1},
+            )
+        repository.close()
     finally:
         owner_connection.close()
 

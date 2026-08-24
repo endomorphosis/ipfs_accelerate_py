@@ -2953,6 +2953,14 @@ def _run_codex_quota_fallback_in_docker(
 ) -> int:
     """Run Codex only inside the available pinned external sandbox."""
 
+    if (effect_claim is None) != (effect_terminal is None):
+        raise ValueError(
+            "Codex effect claim/terminal callbacks must be paired"
+        )
+    if capacity_evidence is not None and effect_claim is None:
+        raise ValueError(
+            "Codex capacity evidence requires a claimed effect lifecycle"
+        )
     trusted_codex = resolve_codex_quota_fallback_executable(
         workspace=workspace,
         configured=str(codex_command[0] if codex_command else ""),
@@ -6351,7 +6359,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 prompt_path=prompt_file,
                 base_env=os.environ.copy(),
                 pre_effect_validator=validate_effect_boundary,
-                effect_claim=claim_provider_effect,
+                effect_claim=(
+                    claim_provider_effect
+                    if invocation_binding is not None
+                    else None
+                ),
                 capacity_evidence=(
                     capture_codex_capacity_evidence
                     if invocation_binding is not None

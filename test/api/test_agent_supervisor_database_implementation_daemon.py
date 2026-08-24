@@ -58,6 +58,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema impor
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnectionPolicyError,
+    QUACK_OWNER_COMMAND_MAX_BYTES,
     connect_duckdb_with_policy,
     open_duckdb_connection,
 )
@@ -66,10 +67,12 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA,
+    DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalCapacityRetry,
+    DatabasePortalConsumedAttemptTerminal,
     DatabasePortalValidationRetry,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -431,6 +434,8 @@ def _validation_retry_receipt(
 def _capacity_retry_receipt(
     daemon: DatabaseImplementationDaemon,
     attempt: DatabaseTaskAttempt,
+    *,
+    retry_not_before_ms: int = 2_000_000,
 ) -> dict[str, object]:
     digest = daemon._database_portal_evidence_digest
     primary: dict[str, object] = {
@@ -443,7 +448,6 @@ def _capacity_retry_receipt(
     logical_id = "sha256:" + "1" * 64
     decision_id = "sha256:" + "3" * 64
     observed_at_ms = 1_000_000
-    retry_not_before_ms = 2_000_000
     returncode = 17
     capacity: dict[str, object] = {
         "schema": (
@@ -571,6 +575,50 @@ def _rehash_capacity_retry_receipt(
     value.pop("receipt_id", None)
     value["receipt_id"] = digest(value)
     return value
+
+
+def _consumed_attempt_retry_receipt(
+    daemon: DatabaseImplementationDaemon,
+    attempt: DatabaseTaskAttempt,
+    *,
+    source_task_revision: int,
+) -> dict[str, object]:
+    receipt: dict[str, object] = {
+        "schema": DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA,
+        "disposition": "retry",
+        "reason": "unclassified_post_dispatch_failure",
+        "failure_class": "unclassified_post_dispatch_failure",
+        "provider_capacity_classification": "unproven",
+        "capacity_retry_proven": False,
+        "task_cid": attempt.task_cid,
+        "task_alias": attempt.task_alias,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "attempt_number": attempt.attempt_number,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "source_task_revision": source_task_revision,
+        "portal_attempt": 1,
+        "ordinary_retry_generation": 1,
+        "retry_budget_basis": "portal_attempt",
+        "legacy_database_attempts_excluded": True,
+        "max_task_attempts": daemon.max_task_attempts,
+        "remaining_task_attempts": daemon.max_task_attempts - 1,
+        "attempt_consumed": True,
+        "provider_dispatched": True,
+        "backoff_seconds": 0,
+        "retry_not_before_ms": 0,
+        "binding_id": "sha256:" + "1" * 64,
+        "events_digest": "sha256:" + "2" * 64,
+        "event_stream_id": "event-log:consumed-attempt",
+        "implementation_started_event_id": "sha256:" + "3" * 64,
+        "implementation_finished_event_id": "sha256:" + "4" * 64,
+        "baseline_commit": "5" * 40,
+        "implementation_returncode": 1,
+    }
+    receipt["receipt_id"] = daemon._database_portal_evidence_digest(receipt)
+    return receipt
 
 
 def test_interface_identities() -> None:
@@ -1386,6 +1434,99 @@ def test_portal_failure_terminal_cas_refetches_advanced_attempt(
         daemon.close()
 
 
+def test_consumed_attempt_terminal_replay_preserves_exact_legacy_failed_phase(
+    tmp_path: Path,
+) -> None:
+    holder: dict[str, DatabaseImplementationDaemon] = {}
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        daemon = holder["daemon"]
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        receipt = _consumed_attempt_retry_receipt(
+            daemon,
+            attempt,
+            source_task_revision=task.revision,
+        )
+        raise DatabasePortalConsumedAttemptTerminal(receipt)
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:consumed-terminal-replay",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    holder["daemon"] = daemon
+    try:
+        daemon.materialize_population(_population(1))
+        result = daemon.run_once()
+        attempt = daemon.get_attempt(result["attempt_id"])
+        assert attempt is not None
+        assert daemon.phase_history(attempt.attempt_id)[-1]["body"] == {
+            "attempt_consumed": "unknown",
+            "backoff_seconds": 0,
+            "deferred": False,
+            "portal_retryable_failure": False,
+            "portal_terminal_failure": True,
+            "provider_dispatched": "unknown",
+            "reason": "portal_provider_failed",
+            "typed_deferral_slot_consumed": "unknown",
+        }
+        assert result["implementation_result"]["portal_terminal_failure"] is True
+        assert result["implementation_result"]["reason"] == "portal_provider_failed"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("implementation_returncode", 17),
+        ("baseline_commit", "5" * 64),
+    ),
+)
+def test_consumed_attempt_evidence_mirrors_bridge_exact_predicates(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:consumed-evidence-{field}",
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        receipt = _consumed_attempt_retry_receipt(
+            daemon,
+            attempt,
+            source_task_revision=task.revision,
+        )
+        assert daemon._verified_consumed_attempt_retry_receipt(
+            attempt,
+            receipt,
+        ) == receipt
+        receipt[field] = value
+        receipt.pop("receipt_id")
+        receipt["receipt_id"] = daemon._database_portal_evidence_digest(
+            receipt
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="consumed-attempt retry evidence failed verification",
+        ):
+            daemon._verified_consumed_attempt_retry_receipt(
+                attempt,
+                receipt,
+            )
+    finally:
+        daemon.close()
+
+
 def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
     tmp_path: Path,
 ) -> None:
@@ -1457,13 +1598,19 @@ def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
         daemon.close()
 
 
+@pytest.mark.parametrize("provider_reset_ms", [2_000_000, 0])
 def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
     tmp_path: Path,
+    provider_reset_ms: int,
 ) -> None:
     holder: dict[str, DatabaseImplementationDaemon] = {}
 
     def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
-        receipt = _capacity_retry_receipt(holder["daemon"], attempt)
+        receipt = _capacity_retry_receipt(
+            holder["daemon"],
+            attempt,
+            retry_not_before_ms=provider_reset_ms,
+        )
         raise DatabasePortalCapacityRetry(receipt)
 
     first = _open_daemon(
@@ -1476,6 +1623,9 @@ def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
     )
     holder["daemon"] = first
     try:
+        first.task_source._intent._clock_ms = (  # type: ignore[attr-defined]
+            lambda: 1_000_123
+        )
         first.materialize_population(_population(1))
         result = first.run_once()
         implementation = result["implementation_result"]
@@ -1494,11 +1644,22 @@ def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
         assert evidence["typed_deferral_budget"] is None
         seed = evidence["typed_capacity_retry"]
         assert seed["portal_attempt"] == 1
+        assert seed["retry_not_before_ms"] == provider_reset_ms
         assert seed["remaining_task_attempts"] == 2
         task = first.task_source.get(source.task_cid)
         assert task is not None
         assert task.status == "retrying"
         assert task.body["completion_receipt"]["capacity_retry_seed"] == seed
+        assert task.body["completion_receipt"]["retry_not_before_ms"] == 2_000_000
+        queue_entry = first.task_source.get_queue_entry(source.task_cid)
+        assert queue_entry is not None
+        assert queue_entry.retry_not_before_ms == 2_000_000
+        encoded_control_receipt = json.dumps(
+            task.body["completion_receipt"],
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        assert len(encoded_control_receipt) < QUACK_OWNER_COMMAND_MAX_BYTES
 
         # Recomputed nested and top-level tampering must fail semantic
         # verification even when every content identity is internally valid.
@@ -1508,13 +1669,20 @@ def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
         with pytest.raises(DatabaseImplementationAuthorityError):
             first._verified_capacity_retry_receipt(source, forged)
         shortened = json.loads(json.dumps(seed))
-        shortened["retry_not_before_ms"] = 0
+        shortened["retry_not_before_ms"] = 0 if provider_reset_ms else 1
         shortened.pop("receipt_id")
         shortened["receipt_id"] = first._database_portal_evidence_digest(
             shortened
         )
         with pytest.raises(DatabaseImplementationAuthorityError):
             first._verified_capacity_retry_receipt(source, shortened)
+        replayed = first.reconcile_terminal_retry_states()
+        assert len(replayed) == 1
+        assert replayed[0]["status"] == "retrying"
+        assert replayed[0]["changed"] is False
+        assert first.task_source.get_queue_entry(
+            source.task_cid
+        ).retry_not_before_ms == 2_000_000
     finally:
         first.close()
 
@@ -1543,6 +1711,193 @@ def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
         assert claim_receipt["capacity_retry_seed"] == seed
     finally:
         second.close()
+
+
+def test_superseded_consumed_attempt_recovers_and_crosses_lanes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [1_000_000]
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("portal_provider_failed")
+
+    first = _open_daemon(
+        tmp_path,
+        session="session:consumed-lane-a",
+        provider_fn=provider,
+        max_task_attempts=3,
+        clock_ms=lambda: clock[0],
+        lane="consumed-a",
+    )
+    try:
+        first.task_source._intent._clock_ms = (  # type: ignore[attr-defined]
+            lambda: clock[0]
+        )
+        first.materialize_population(_population(1))
+        monkeypatch.setattr(
+            first,
+            "_persist_terminal_portal_failure",
+            lambda attempt, **_kwargs: {
+                "task_cid": attempt.task_cid,
+                "attempt_id": attempt.attempt_id,
+                "status": "blocked",
+                "changed": False,
+            },
+        )
+        failed_result = first.run_once()
+        source = first.get_attempt(failed_result["attempt_id"])
+        assert source is not None
+        assert source.status == "failed"
+        shared_source = first.task_source.get(source.task_cid)
+        assert shared_source is not None
+        assert shared_source.status == "in_progress"
+        source_task_revision = shared_source.revision
+
+        stale_receipt = {
+            "operation": "database_portal_terminal_failure",
+            "attempt_id": "attempt:foreign-stale",
+            "attempt_number": 1,
+            "claim_id": "claim:foreign-stale",
+            "lease_id": "lease:foreign-stale",
+            "owner_session_id": "session:foreign-stale",
+            "fencing_token": 1,
+            "fence_epoch": 1,
+            "execution_phase": "failed",
+            "execution_revision": 1,
+            "execution_finished_at_ms": source.started_at_ms - 1,
+            "reason": "portal_provider_failed",
+            "retryable": False,
+            "coordination": {},
+            "control_expected_status": "in_progress",
+            "control_expected_revision": source_task_revision,
+        }
+        assert first._is_exact_foreign_terminal_failure_receipt(
+            source,
+            stale_receipt,
+            source_revision=source_task_revision,
+        )
+        malformed_receipts = []
+        missing_claim = dict(stale_receipt)
+        missing_claim.pop("claim_id")
+        malformed_receipts.append(missing_claim)
+        malformed_receipts.append(
+            {**stale_receipt, "execution_phase": "running"}
+        )
+        malformed_receipts.append({**stale_receipt, "lease_id": ""})
+        malformed_receipts.append(
+            {
+                **stale_receipt,
+                "owner_session_id": source.owner_session_id,
+            }
+        )
+        assert all(
+            not first._is_exact_foreign_terminal_failure_receipt(
+                source,
+                malformed,
+                source_revision=source_task_revision,
+            )
+            for malformed in malformed_receipts
+        )
+        first.task_source.compare_and_set_status(
+            source.task_cid,
+            expected_revision=source_task_revision,
+            status="blocked",
+            receipt=stale_receipt,
+        )
+        blocked = first.task_source.get(source.task_cid)
+        assert blocked is not None
+        assert blocked.revision == source_task_revision + 1
+        seed = _consumed_attempt_retry_receipt(
+            first,
+            source,
+            source_task_revision=source_task_revision,
+        )
+        first.bind_superseded_consumed_attempt_recovery(
+            lambda _attempt: seed
+        )
+        clock[0] += 60_001
+        recovered = first.reconcile_terminal_portal_failures()
+        assert len(recovered) == 1
+        assert recovered[0]["changed"] is True
+        assert recovered[0]["consumed_attempt_retry_evidence"] == seed
+        retrying = first.task_source.get(source.task_cid)
+        assert retrying is not None
+        assert retrying.status == "retrying"
+        recovery_receipt = retrying.body["completion_receipt"]
+        assert recovery_receipt["operation"] == (
+            "database_portal_superseded_consumed_attempt_recovery"
+        )
+        assert recovery_receipt["consumed_attempt_retry_seed"] == seed
+        assert recovery_receipt["supersession_context"][
+            "superseded_control_receipt"
+        ] == stale_receipt
+        assert len(
+            json.dumps(
+                recovery_receipt,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ) < QUACK_OWNER_COMMAND_MAX_BYTES
+        assert first.reconcile_terminal_portal_failures() == []
+    finally:
+        first.close()
+
+    clock[0] += 1
+    second = _open_daemon(
+        tmp_path,
+        session="session:consumed-lane-b",
+        max_task_attempts=3,
+        clock_ms=lambda: clock[0],
+        lane="consumed-b",
+    )
+    try:
+        second.task_source._intent._clock_ms = (  # type: ignore[attr-defined]
+            lambda: clock[0]
+        )
+        assert second.get_attempt(source.attempt_id) is None
+        successor = second.claim_next()
+        assert successor is not None
+        assert successor.attempt_number == 1
+        claimed = second.task_source.get(source.task_cid)
+        assert claimed is not None
+        claim_receipt = claimed.body["completion_receipt"]
+        assert claim_receipt["operation"] == "database_claim"
+        assert claim_receipt[
+            "consumed_attempt_retry_source_attempt_id"
+        ] == source.attempt_id
+        assert claim_receipt["consumed_attempt_retry_seed"] == seed
+    finally:
+        second.close()
+
+
+def test_consumed_attempt_recovery_rejects_nonlegacy_failed_phase(
+    tmp_path: Path,
+) -> None:
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeError("provider_authentication_denied")
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:consumed-phase-rejection",
+        provider_fn=provider,
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        result = daemon.run_once()
+        attempt = daemon.get_attempt(result["attempt_id"])
+        assert attempt is not None
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="exact legacy generic portal_provider_failed phase",
+        ):
+            daemon.recover_superseded_consumed_portal_attempt(
+                attempt,
+                retry_evidence={},
+            )
+    finally:
+        daemon.close()
 
 
 def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(

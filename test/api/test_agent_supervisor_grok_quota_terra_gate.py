@@ -1275,6 +1275,9 @@ def test_merge_resolver_marker_mints_fresh_legacy_preflight_route(
 
     def fake_fallback(command, **kwargs) -> int:
         fallback_calls.append(list(command))
+        assert kwargs["effect_claim"] is None
+        assert kwargs["effect_terminal"] is None
+        assert kwargs["capacity_evidence"] is None
         kwargs["pre_effect_validator"]()
         return 0
 
@@ -2560,6 +2563,33 @@ def test_docker_codex_boundary_rejects_unpinned_or_mismatched_authority(
             cidfile=tmp_path / "container.cid",
             docker_bin="/usr/bin/docker",
             isolation_image=image,
+        )
+
+
+@pytest.mark.parametrize(
+    ("effect_claim", "capacity_evidence", "effect_terminal"),
+    (
+        (lambda _context: None, None, None),
+        (None, None, lambda _returncode: None),
+        (None, lambda _returncode, _record: None, None),
+    ),
+)
+def test_docker_codex_fallback_rejects_partial_effect_lifecycle(
+    tmp_path: Path,
+    effect_claim,
+    capacity_evidence,
+    effect_terminal,
+) -> None:
+    with pytest.raises(ValueError):
+        grok_cli_runner._run_codex_quota_fallback_in_docker(
+            ["codex"],
+            workspace=tmp_path,
+            prompt="repair",
+            prompt_path=tmp_path / "prompt.txt",
+            base_env={},
+            effect_claim=effect_claim,
+            capacity_evidence=capacity_evidence,
+            effect_terminal=effect_terminal,
         )
 
 

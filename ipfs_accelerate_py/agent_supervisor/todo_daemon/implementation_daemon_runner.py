@@ -1357,6 +1357,17 @@ def bind_database_portal_execution_from_args(
         effect_fn=bridge.apply_effect,
         validation_fn=bridge.validate_effect,
     )
+    consumed_recovery_binder = getattr(
+        daemon,
+        "bind_superseded_consumed_attempt_recovery",
+        None,
+    )
+    if not callable(consumed_recovery_binder):
+        raise RuntimeError(
+            "production database daemon does not expose consumed-attempt "
+            "recovery binding"
+        )
+    consumed_recovery_binder(bridge.recover_consumed_attempt_retry)
     if recovery_queue is not None:
         recovery_binder = getattr(daemon, "bind_post_merge_recovery", None)
         if not callable(recovery_binder):

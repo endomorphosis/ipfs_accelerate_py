@@ -24,11 +24,14 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA,
+    DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA,
+    DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SEED_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalCapacityRetry,
+    DatabasePortalConsumedAttemptTerminal,
     DatabasePortalExecutionBridge,
     DatabasePortalValidationRetry,
     _is_implementation_conflict,
@@ -577,6 +580,254 @@ class _CapacityFailurePortal:
         return {"implementation_result": implementation}
 
 
+def _write_consumed_attempt_failure(
+    paths: object,
+    task_alias: str,
+    *,
+    portal_attempt: int = 1,
+    max_task_attempts: int = 4,
+    finish_updates: dict[str, object] | None = None,
+    before_finish_event: str = "",
+) -> tuple[dict[str, object], dict[str, object]]:
+    baseline_commit = "b" * 40
+    branch = f"implementation/lgswf-004-attempt-{portal_attempt}"
+    canonical_task_key = "task/v1/closed-consumed-attempt"
+    board_namespace = "task-projection.md"
+    workspace_path = "/tmp/closed-consumed-attempt-worktree"
+    log_path = "/tmp/closed-consumed-attempt.log"
+    workspace_setup = {
+        "base_commit": baseline_commit,
+        "branch": branch,
+        "worktree_path": workspace_path,
+    }
+    append_jsonl_event(
+        paths.events,
+        "task_selected",
+        {
+            "board_namespace": board_namespace,
+            "canonical_task_cid": "task:cid:004",
+            "canonical_task_key": canonical_task_key,
+            "task_id": task_alias,
+            "title": "Closed consumed-attempt replay fixture",
+            "track": "implementation",
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_protected_path_snapshot_recorded",
+        {
+            "attempt": portal_attempt,
+            "board_namespace": board_namespace,
+            "canonical_task_cid": "task:cid:004",
+            "canonical_task_key": canonical_task_key,
+            "protected_paths": [],
+            "task_id": task_alias,
+            "workspace_path": workspace_path,
+        },
+    )
+    started = append_jsonl_event(
+        paths.events,
+        "implementation_started",
+        {
+            "task_id": task_alias,
+            "canonical_task_cid": "task:cid:004",
+            "canonical_task_key": canonical_task_key,
+            "board_namespace": board_namespace,
+            "attempt": portal_attempt,
+            "branch": branch,
+            "baseline_ref": baseline_commit,
+            "provider_dispatched": False,
+            "cache_hit": False,
+            "checkpoint_directory": "/tmp/closed-consumed-checkpoint",
+            "command": ["provider"],
+            "execution_mode": "model-assisted",
+            "log_path": log_path,
+            "outputs": ["inventory/result.json"],
+            "saved_duration_seconds": 0.0,
+            "setup_duration_seconds": 1.0,
+            "timeout_policy": {"source": "test"},
+            "workspace_setup": workspace_setup,
+            "worktree_lifecycle": {"state": "active"},
+            "worktree_path": workspace_path,
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "pre_implementation_kernel_evaluated",
+        {
+            "analytical_candidate_count": 0,
+            "attempt": portal_attempt,
+            "board_namespace": board_namespace,
+            "canonical_task_cid": "task:cid:004",
+            "canonical_task_key": canonical_task_key,
+            "disposition": "abstain_review",
+            "event": "pre_implementation_kernel_evaluated",
+            "interface": "ImplementationDaemon@pre_implementation_kernel",
+            "kernel_receipt": {"schema": "closed-test-kernel@1"},
+            "provider_authorized": False,
+            "provider_hook_count": 0,
+            "reason_code": "no_analytical_close",
+            "receipt_cid": "bagu-test-kernel-receipt",
+            "residual_packet_cid": "",
+            "skip_provider": True,
+            "task_id": task_alias,
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_protected_path_snapshot_cleared",
+        {
+            "attempt": portal_attempt,
+            "board_namespace": board_namespace,
+            "canonical_task_cid": "task:cid:004",
+            "canonical_task_key": canonical_task_key,
+            "reason": "failed_agent_terminal_check_unchanged",
+            "task_id": task_alias,
+        },
+    )
+    pool_release = {
+        "attempted": True,
+        "base_commit": baseline_commit,
+        "base_ref": "test-branch",
+        "branch": branch,
+        "cache_hit": False,
+        "cache_key": "closed-cache-key",
+        "dependency_paths": [],
+        "entry_id": "closed-entry",
+        "estimated_seconds_saved": 0.0,
+        "handoff_reason": "implementation_command_failed",
+        "invalidation_reason": "",
+        "invalidation_reasons": [],
+        "lifecycle_finalize": {
+            "fence": 1,
+            "finalized": True,
+            "reason": "pool_release_implementation_command_failed",
+            "state": "terminal",
+        },
+        "pooled": True,
+        "reason": "clean_prepared_workspace",
+        "released": True,
+        "reused": False,
+        "setup_seconds": 1.0,
+        "setup_time_saved_seconds": 0.0,
+        "worktree_path": workspace_path,
+    }
+    append_jsonl_event(
+        paths.events,
+        "worktree_pool_lease_released",
+        pool_release,
+    )
+    if before_finish_event:
+        append_jsonl_event(
+            paths.events,
+            before_finish_event,
+            {"task_id": task_alias},
+        )
+    finished_payload: dict[str, object] = {
+        "task_id": task_alias,
+        "task_cid": "task:cid:004",
+        "canonical_task_cid": "task:cid:004",
+        "canonical_task_key": canonical_task_key,
+        "board_namespace": board_namespace,
+        "attempt": portal_attempt,
+        "branch": branch,
+        "baseline_ref": baseline_commit,
+        "returncode": 1,
+        "attempt_consumed": True,
+        "provider_dispatched": True,
+        "validation_result": {
+            "attempted": False,
+            "passed": True,
+            "reason": "not_run",
+            "results": [],
+            "returncode": 0,
+        },
+        "implementation_commit": "",
+        "commit_result": {"committed": False},
+        "merge_result": {"merged": False, "reason": "not_attempted"},
+        "board_completion": {
+            "complete": False,
+            "pending_merge": False,
+            "reason": "implementation_or_validation_failed",
+        },
+        "failed_preservation_result": {},
+        "cache_hit": False,
+        "cleanup_result": {
+            "cleaned": True,
+            "lifecycle_finalize": {
+                "finalized": False,
+                "reason": "no_lifecycle_record",
+            },
+            "pool_release": pool_release,
+            "pooled": True,
+            "reason": "failed_implementation_pool_lease_released",
+        },
+        "diagnostic_receipt_id": "bagu-test-diagnostic",
+        "lifecycle_finalize": {
+            "finalized": False,
+            "reason": "no_lifecycle_record",
+        },
+        "log_path": log_path,
+        "saved_duration_seconds": 0.0,
+        "setup_duration_seconds": 1.0,
+        "workspace_setup": workspace_setup,
+        "worktree_path": workspace_path,
+    }
+    finished_payload.update(finish_updates or {})
+    finished = append_jsonl_event(
+        paths.events,
+        "implementation_finished",
+        finished_payload,
+    )
+    append_jsonl_event(
+        paths.events,
+        "daemon_pass",
+        {
+            "active_task_id": "",
+            "attempt_limited_task_ids": [],
+            "blocked_count": 0,
+            "completed_count": 0,
+            "completion_receipt_task_ids": [],
+            "eligible_ready_count": 1,
+            "execution_slice_task_cids_by_id": {
+                task_alias: "task:cid:004"
+            },
+            "execution_slice_task_statuses": {task_alias: "ready"},
+            "manual_completion_authority_affected_goal_ids": [],
+            "manual_completion_authority_dependency_task_ids": [],
+            "manual_completion_authority_required_task_ids": [],
+            "manual_completion_authority_revalidation_only": False,
+            "manual_completion_authority_task_ids": [],
+            "manual_completion_renewal_quarantined_task_ids": [],
+            "manual_completion_revalidation_only_task_ids": [],
+            "manual_completion_revalidation_task_ids": [],
+            "max_task_attempts": max_task_attempts,
+            "ordinary_provider_dispatch_allowed": True,
+            "projection_delta_keys": [],
+            "protected_path_conflicts": {},
+            "quarantined_manual_completion_status_task_ids": [],
+            "ready_count": 1,
+            "released_retry_budget_strategy_block_task_ids": [],
+            "retry_budget_rearmed_task_ids": [],
+            "retry_budget_reset_deferred_task_ids": [],
+            "retry_budget_reset_task_ids": [],
+            "selectable_ready_count": 1,
+            "selection_idle_reason": "",
+            "shared_active_merge_task_ids": [],
+            "shared_completed_task_ids": [],
+            "strict_deprioritized_ready_count": 0,
+            "virgin_task_transfer": {
+                "granted_away_task_ids": [],
+                "granted_to_lane_task_ids": [],
+                "mode": "",
+                "request_task_id": "",
+            },
+            "waiting_count": 0,
+        },
+    )
+    return started, finished
+
+
 def test_bridge_propagates_typed_pre_dispatch_cooldown(tmp_path: Path) -> None:
     class DeferredPortal:
         def __init__(self) -> None:
@@ -900,7 +1151,6 @@ def test_bridge_classifies_only_preserved_authoritative_validation_failure(
     projected_task = portal._load_tasks()[0]
     projected_state = PortalTaskState.load(successor_paths.state)
     assert portal._task_attempt(projected_state, projected_task) == 2
-
     # A successor process can die after Portal charges attempt 2 and records
     # its start.  The sealed seed plus exact in-flight state must remain
     # adoptable instead of being mistaken for seed corruption.
@@ -1098,6 +1348,414 @@ def test_bridge_capacity_retry_replays_without_dispatch_and_seeds_successor(
     projected_task = portal._load_tasks()[0]
     projected_state = PortalTaskState.load(successor_paths.state)
     assert portal._task_attempt(projected_state, projected_task) == 2
+
+
+def test_bridge_recovers_consumed_attempt_and_seeds_lane_local_successor(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    source = _attempt(attempt_number=189)
+    source_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "source-attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "consumed-attempt recovery dispatched a provider"
+        ),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    source_paths, _binding = source_bridge._ensure_attempt_projection(
+        source,
+        record,
+    )
+    started, finished = _write_consumed_attempt_failure(
+        source_paths,
+        source.task_alias,
+    )
+    # A later control-status CAS may advance the record revision without
+    # changing the semantic task projection sealed by the source attempt.
+    record.revision += 1
+
+    retry = source_bridge.recover_consumed_attempt_retry(source)
+    expected_fields = {
+        "schema",
+        "disposition",
+        "reason",
+        "failure_class",
+        "provider_capacity_classification",
+        "capacity_retry_proven",
+        "task_cid",
+        "task_alias",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "source_task_revision",
+        "portal_attempt",
+        "ordinary_retry_generation",
+        "retry_budget_basis",
+        "legacy_database_attempts_excluded",
+        "max_task_attempts",
+        "remaining_task_attempts",
+        "attempt_consumed",
+        "provider_dispatched",
+        "backoff_seconds",
+        "retry_not_before_ms",
+        "binding_id",
+        "events_digest",
+        "event_stream_id",
+        "implementation_started_event_id",
+        "implementation_finished_event_id",
+        "baseline_commit",
+        "implementation_returncode",
+        "receipt_id",
+    }
+    assert set(retry) == expected_fields
+    assert retry["schema"] == DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA
+    assert retry["reason"] == "unclassified_post_dispatch_failure"
+    assert retry["provider_capacity_classification"] == "unproven"
+    assert retry["capacity_retry_proven"] is False
+    assert retry["attempt_number"] == 189
+    assert retry["source_task_revision"] == 11
+    assert retry["portal_attempt"] == 1
+    assert retry["ordinary_retry_generation"] == 1
+    assert retry["remaining_task_attempts"] == 3
+    assert retry["backoff_seconds"] == 0
+    assert retry["retry_not_before_ms"] == 0
+    assert retry["implementation_started_event_id"] == started["event_id"]
+    assert retry["implementation_finished_event_id"] == finished["event_id"]
+    assert retry["receipt_id"] == _capacity_record_id(
+        dict(retry),
+        "receipt_id",
+    )
+
+    successor = DatabaseTaskAttempt(
+        attempt_id="attempt:successor",
+        claim_id="claim:successor",
+        task_cid=source.task_cid,
+        task_alias=source.task_alias,
+        # Attempt numbers are lane-local.  The exact claim CAS receipt orders
+        # this successor even though its local number restarts at one.
+        attempt_number=1,
+        owner_session_id="session:successor-lane",
+        fencing_token=1,
+        fence_epoch=1,
+        lease_id="lease:successor",
+        committed_phase="claimed",
+        status="running",
+        started_at_ms=2,
+    )
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            "operation": "database_claim",
+            "attempt_id": successor.attempt_id,
+            "claim_id": successor.claim_id,
+            "attempt_number": successor.attempt_number,
+            "fencing_token": successor.fencing_token,
+            "fence_epoch": successor.fence_epoch,
+            "lease_id": successor.lease_id,
+            "consumed_attempt_retry_source_attempt_id": source.attempt_id,
+            "consumed_attempt_retry_seed": retry,
+        },
+    }
+    record.revision += 1
+    valid_claim_receipt = dict(record.body["completion_receipt"])
+    tampered_retry = dict(retry)
+    tampered_retry["capacity_retry_proven"] = True
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            **valid_claim_receipt,
+            "consumed_attempt_retry_seed": tampered_retry,
+        },
+    }
+    tampered_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "tampered-successor-attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "tampered consumed-attempt seed dispatched a provider"
+        ),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="consumed-attempt retry seed failed verification",
+    ):
+        tampered_bridge.run_provider(successor)
+    record.body = {
+        **record.body,
+        "completion_receipt": valid_claim_receipt,
+    }
+    observed: dict[str, object] = {}
+
+    class InspectConsumedSeedPortal:
+        def __init__(self, paths: object) -> None:
+            self.paths = paths
+
+        def run_once(self) -> dict[str, object]:
+            observed["paths"] = self.paths
+            observed["state"] = json.loads(
+                self.paths.state.read_text(encoding="utf-8")
+            )
+            observed["events"] = [
+                json.loads(line)
+                for line in self.paths.events.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "reason": "stop_after_consumed_seed_inspection",
+                }
+            }
+
+    successor_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "successor-attempts",
+        portal_factory=lambda paths, _alias: InspectConsumedSeedPortal(paths),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="stop_after_consumed_seed_inspection",
+    ):
+        successor_bridge.run_provider(successor)
+    state = observed["state"]
+    assert isinstance(state, dict)
+    assert state["implementation_attempts"][source.task_alias] == 1
+    assert state["implementation_attempts_by_cid"][source.task_cid] == 1
+    events = observed["events"]
+    assert isinstance(events, list)
+    assert events[0]["type"] == "database_portal_consumed_attempt_retry_seeded"
+    assert events[0]["schema"] == DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SEED_SCHEMA
+    assert events[0]["source_retry_receipt_id"] == retry["receipt_id"]
+    successor_paths = observed["paths"]
+    portal = PortalImplementationDaemon(
+        todo_path=successor_paths.task_projection,
+        state_path=successor_paths.state,
+        strategy_path=successor_paths.strategy,
+        events_path=successor_paths.events,
+        repo_root=tmp_path,
+        task_header_prefix="LGSWF-",
+        max_task_attempts=4,
+    )
+    projected_task = portal._load_tasks()[0]
+    projected_state = PortalTaskState.load(successor_paths.state)
+    assert portal._task_attempt(projected_state, projected_task) == 2
+    _write_consumed_attempt_failure(
+        successor_paths,
+        successor.task_alias,
+        portal_attempt=2,
+        max_task_attempts=4,
+    )
+    seeded_replay = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "successor-attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "seeded consumed-attempt terminal replay dispatched N+1"
+        ),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    with pytest.raises(DatabasePortalConsumedAttemptTerminal) as replayed:
+        seeded_replay.run_provider(successor)
+    assert replayed.value.retry_receipt["portal_attempt"] == 2
+    assert replayed.value.retry_receipt["remaining_task_attempts"] == 2
+
+
+def test_bridge_replays_consumed_attempt_terminal_without_dispatch(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    source = _attempt(attempt_number=189)
+    attempt_root = tmp_path / "attempts"
+    first = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "fixture should be written before provider construction"
+        ),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    paths, binding = first._ensure_attempt_projection(source, record)
+    _write_consumed_attempt_failure(
+        paths,
+        source.task_alias,
+        max_task_attempts=4,
+    )
+    expected = first._consumed_attempt_retry_receipt(
+        attempt=source,
+        paths=paths,
+        binding=binding,
+    )
+    assert expected is not None
+
+    replay = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "consumed-attempt terminal replay dispatched N+1"
+        ),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    with pytest.raises(DatabasePortalConsumedAttemptTerminal) as caught:
+        replay.run_provider(source)
+
+    assert str(caught.value) == "portal_provider_failed"
+    assert caught.value.retry_receipt == expected
+
+
+@pytest.mark.parametrize(
+    ("portal_attempt", "max_task_attempts", "finish_updates", "later_event"),
+    (
+        (1, 4, {"attempt_consumed": False}, ""),
+        (1, 4, {"provider_dispatched": False}, ""),
+        (
+            1,
+            4,
+            {
+                "validation_result": {
+                    "attempted": True,
+                    "passed": False,
+                    "reason": "declared_validation_failed",
+                    "results": [],
+                    "returncode": 1,
+                }
+            },
+            "",
+        ),
+        (1, 4, {"implementation_commit": "c" * 40}, ""),
+        (
+            1,
+            4,
+            {
+                "reason": "provider_authentication_denied",
+                "retryable": False,
+                "failure_class": "terminal_provider_failure",
+            },
+            "",
+        ),
+        (1, 4, {"exception_result": {"type": "RuntimeError"}}, ""),
+        (1, 4, {"timeout_result": {"timed_out": True}}, ""),
+        (1, 4, {"termination_result": {"signal": 9}}, ""),
+        (1, 4, {"returncode": 2}, ""),
+        (1, 4, {"error": "unknown_new_failure_shape"}, ""),
+        (4, 4, {}, ""),
+        (1, 4, {}, "task_completed"),
+    ),
+)
+def test_bridge_consumed_attempt_recovery_requires_exact_terminal_chain(
+    tmp_path: Path,
+    portal_attempt: int,
+    max_task_attempts: int,
+    finish_updates: dict[str, object],
+    later_event: str,
+) -> None:
+    record = _record()
+    source = _attempt(attempt_number=189)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "ineligible recovery dispatched a provider"
+        ),
+        max_passes=1,
+        max_task_attempts=max_task_attempts,
+    )
+    paths, _binding = bridge._ensure_attempt_projection(source, record)
+    _write_consumed_attempt_failure(
+        paths,
+        source.task_alias,
+        portal_attempt=portal_attempt,
+        max_task_attempts=max_task_attempts,
+        finish_updates=finish_updates,
+    )
+    if later_event:
+        append_jsonl_event(
+            paths.events,
+            later_event,
+            {
+                "task_id": source.task_alias,
+                "canonical_task_cid": source.task_cid,
+            },
+        )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="not eligible for consumed-attempt retry recovery",
+    ):
+        bridge.recover_consumed_attempt_retry(source)
+
+
+def test_bridge_consumed_attempt_recovery_rejects_arbitrary_prefinish_event(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    source = _attempt(attempt_number=189)
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "ineligible recovery dispatched a provider"
+        ),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    paths, _binding = bridge._ensure_attempt_projection(source, record)
+    _write_consumed_attempt_failure(
+        paths,
+        source.task_alias,
+        max_task_attempts=4,
+        before_finish_event="implementation_unknown_failure_detail",
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="not eligible for consumed-attempt retry recovery",
+    ):
+        bridge.recover_consumed_attempt_retry(source)
+
+
+def test_bridge_rejects_mutually_exclusive_retry_seeds_before_projection(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    attempt = _attempt()
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            "operation": "database_claim",
+            "attempt_id": attempt.attempt_id,
+            "claim_id": attempt.claim_id,
+            "attempt_number": attempt.attempt_number,
+            "fencing_token": attempt.fencing_token,
+            "fence_epoch": attempt.fence_epoch,
+            "lease_id": attempt.lease_id,
+            "validation_retry_seed": {},
+            "capacity_retry_seed": {},
+            "consumed_attempt_retry_seed": {},
+        },
+    }
+    called: list[str] = []
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: called.append("provider"),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError, match="conflicting retry seeds"):
+        bridge.run_provider(attempt)
+    assert called == []
+    assert not (tmp_path / "attempts").exists()
 
 
 def test_bridge_capacity_at_attempt_cap_is_terminal_and_replay_safe(

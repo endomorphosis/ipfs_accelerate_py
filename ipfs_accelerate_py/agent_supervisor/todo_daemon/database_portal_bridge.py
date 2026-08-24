@@ -54,6 +54,275 @@ DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA: Final[str] = (
 DATABASE_PORTAL_CAPACITY_RETRY_SEED_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-capacity-retry-seed@1"
 )
+DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/database-portal-consumed-attempt-retry@1"
+)
+DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SEED_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-consumed-attempt-retry-seed@1"
+)
+_CONSUMED_ATTEMPT_TERMINAL_EVENT_CHAIN: Final[tuple[str, ...]] = (
+    "task_selected",
+    "implementation_protected_path_snapshot_recorded",
+    "implementation_started",
+    "pre_implementation_kernel_evaluated",
+    "implementation_protected_path_snapshot_cleared",
+    "worktree_pool_lease_released",
+    "implementation_finished",
+    "daemon_pass",
+)
+_PORTAL_EVENT_ENVELOPE_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "event_id",
+        "previous_event_id",
+        "sequence",
+        "snapshot_id",
+        "stream_id",
+        "timestamp",
+        "type",
+    }
+)
+_CONSUMED_ATTEMPT_TERMINAL_EVENT_FIELDS: Final[
+    Mapping[str, frozenset[str]]
+] = {
+    "task_selected": _PORTAL_EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "board_namespace",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "task_id",
+            "title",
+            "track",
+        }
+    ),
+    "implementation_protected_path_snapshot_recorded": (
+        _PORTAL_EVENT_ENVELOPE_FIELDS
+        | frozenset(
+            {
+                "attempt",
+                "board_namespace",
+                "canonical_task_cid",
+                "canonical_task_key",
+                "protected_paths",
+                "task_id",
+                "workspace_path",
+            }
+        )
+    ),
+    "implementation_started": _PORTAL_EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "attempt",
+            "baseline_ref",
+            "board_namespace",
+            "branch",
+            "cache_hit",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "checkpoint_directory",
+            "command",
+            "execution_mode",
+            "log_path",
+            "outputs",
+            "provider_dispatched",
+            "saved_duration_seconds",
+            "setup_duration_seconds",
+            "task_id",
+            "timeout_policy",
+            "workspace_setup",
+            "worktree_lifecycle",
+            "worktree_path",
+        }
+    ),
+    "pre_implementation_kernel_evaluated": _PORTAL_EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "analytical_candidate_count",
+            "attempt",
+            "board_namespace",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "disposition",
+            "event",
+            "interface",
+            "kernel_receipt",
+            "provider_authorized",
+            "provider_hook_count",
+            "reason_code",
+            "receipt_cid",
+            "residual_packet_cid",
+            "skip_provider",
+            "task_id",
+        }
+    ),
+    "implementation_protected_path_snapshot_cleared": (
+        _PORTAL_EVENT_ENVELOPE_FIELDS
+        | frozenset(
+            {
+                "attempt",
+                "board_namespace",
+                "canonical_task_cid",
+                "canonical_task_key",
+                "reason",
+                "task_id",
+            }
+        )
+    ),
+    "worktree_pool_lease_released": _PORTAL_EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "attempted",
+            "base_commit",
+            "base_ref",
+            "branch",
+            "cache_hit",
+            "cache_key",
+            "dependency_paths",
+            "entry_id",
+            "estimated_seconds_saved",
+            "handoff_reason",
+            "invalidation_reason",
+            "invalidation_reasons",
+            "lifecycle_finalize",
+            "pooled",
+            "reason",
+            "released",
+            "reused",
+            "setup_seconds",
+            "setup_time_saved_seconds",
+            "worktree_path",
+        }
+    ),
+    "implementation_finished": _PORTAL_EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "attempt",
+            "attempt_consumed",
+            "baseline_ref",
+            "board_completion",
+            "board_namespace",
+            "branch",
+            "cache_hit",
+            "canonical_task_cid",
+            "canonical_task_key",
+            "cleanup_result",
+            "commit_result",
+            "diagnostic_receipt_id",
+            "failed_preservation_result",
+            "implementation_commit",
+            "lifecycle_finalize",
+            "log_path",
+            "merge_result",
+            "provider_dispatched",
+            "returncode",
+            "saved_duration_seconds",
+            "setup_duration_seconds",
+            "task_cid",
+            "task_id",
+            "validation_result",
+            "workspace_setup",
+            "worktree_path",
+        }
+    ),
+    "daemon_pass": _PORTAL_EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "active_task_id",
+            "attempt_limited_task_ids",
+            "blocked_count",
+            "completed_count",
+            "completion_receipt_task_ids",
+            "eligible_ready_count",
+            "execution_slice_task_cids_by_id",
+            "execution_slice_task_statuses",
+            "manual_completion_authority_affected_goal_ids",
+            "manual_completion_authority_dependency_task_ids",
+            "manual_completion_authority_required_task_ids",
+            "manual_completion_authority_revalidation_only",
+            "manual_completion_authority_task_ids",
+            "manual_completion_renewal_quarantined_task_ids",
+            "manual_completion_revalidation_only_task_ids",
+            "manual_completion_revalidation_task_ids",
+            "max_task_attempts",
+            "ordinary_provider_dispatch_allowed",
+            "projection_delta_keys",
+            "protected_path_conflicts",
+            "quarantined_manual_completion_status_task_ids",
+            "ready_count",
+            "released_retry_budget_strategy_block_task_ids",
+            "retry_budget_rearmed_task_ids",
+            "retry_budget_reset_deferred_task_ids",
+            "retry_budget_reset_task_ids",
+            "selectable_ready_count",
+            "selection_idle_reason",
+            "shared_active_merge_task_ids",
+            "shared_completed_task_ids",
+            "strict_deprioritized_ready_count",
+            "virgin_task_transfer",
+            "waiting_count",
+        }
+    ),
+}
+_CONSUMED_ATTEMPT_SEED_EVENT_FIELDS: Final[
+    Mapping[str, frozenset[str]]
+] = {
+    "database_portal_validation_retry_seeded": (
+        _PORTAL_EVENT_ENVELOPE_FIELDS
+        | frozenset(
+            {
+                "schema",
+                "task_id",
+                "canonical_task_key",
+                "canonical_task_cid",
+                "source_database_attempt_id",
+                "target_database_attempt_id",
+                "target_claim_id",
+                "source_retry_receipt_id",
+                "implementation_commit",
+                "rescue_branch",
+                "changed_paths",
+                "validation_retry_receipt",
+                "completion_authoritative",
+                "seed_id",
+            }
+        )
+    ),
+    "database_portal_capacity_retry_seeded": _PORTAL_EVENT_ENVELOPE_FIELDS
+    | frozenset(
+        {
+            "schema",
+            "task_id",
+            "canonical_task_cid",
+            "source_database_attempt_id",
+            "target_database_attempt_id",
+            "target_claim_id",
+            "source_retry_receipt_id",
+            "portal_attempt",
+            "capacity_retry_receipt",
+            "completion_authoritative",
+            "seed_id",
+        }
+    ),
+    "database_portal_consumed_attempt_retry_seeded": (
+        _PORTAL_EVENT_ENVELOPE_FIELDS
+        | frozenset(
+            {
+                "schema",
+                "task_id",
+                "canonical_task_cid",
+                "source_database_attempt_id",
+                "target_database_attempt_id",
+                "target_claim_id",
+                "source_retry_receipt_id",
+                "portal_attempt",
+                "consumed_attempt_retry_receipt",
+                "completion_authoritative",
+                "seed_id",
+            }
+        )
+    ),
+}
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
     {"completed", "complete", "done"}
 )
@@ -286,6 +555,36 @@ class DatabasePortalCapacityRetry(DatabasePortalBridgeError):
         self.retry_not_before_ms = int(
             value.get("retry_not_before_ms") or 0
         )
+        self.attempt_consumed = True
+        self.provider_dispatched = True
+        self.retry_receipt = value
+
+
+class DatabasePortalConsumedAttemptTerminal(DatabasePortalBridgeError):
+    """Replay one exact legacy consumed-attempt terminal disposition.
+
+    The receipt is preserved for independent recovery, but this exception is
+    intentionally *not* a retry subtype.  The outer database daemon therefore
+    reproduces the historical generic ``portal_provider_failed`` failed phase
+    before its guarded supersession recovery runs.
+    """
+
+    def __init__(self, receipt: Mapping[str, Any]) -> None:
+        value = dict(receipt)
+        if (
+            value.get("schema")
+            != DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA
+            or value.get("disposition") != "retry"
+            or value.get("reason") != "unclassified_post_dispatch_failure"
+            or value.get("attempt_consumed") is not True
+            or value.get("provider_dispatched") is not True
+            or value.get("implementation_returncode") != 1
+        ):
+            raise ValueError(
+                "consumed-attempt receipt has an invalid terminal disposition"
+            )
+        super().__init__("portal_provider_failed")
+        self.reason = "portal_provider_failed"
         self.attempt_consumed = True
         self.provider_dispatched = True
         self.retry_receipt = value
@@ -3301,12 +3600,327 @@ class DatabasePortalExecutionBridge:
         receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
         return receipt
 
-    def recover_validation_retry(self, attempt: Any) -> Mapping[str, Any]:
-        """Reproduce retry evidence for a previously terminalized attempt.
+    def _consumed_attempt_retry_receipt(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Bind one legacy, unclassified post-dispatch failure to its evidence.
 
-        This reads only the attempt-local projection and immutable event
-        evidence.  It does not update a task, claim, queue, or execution row.
+        This recovery deliberately makes no provider-capacity claim.  It is
+        eligible only for the closed historical event shape where Portal
+        charged an ordinary attempt, dispatched the provider, produced no
+        candidate, skipped validation, and recorded no later disposition.
         """
+
+        attempt_number = getattr(attempt, "attempt_number", 0)
+        source_revision = binding.get("task_revision")
+        if (
+            self.max_task_attempts <= 1
+            or isinstance(attempt_number, bool)
+            or not isinstance(attempt_number, int)
+            or attempt_number < 1
+            or isinstance(source_revision, bool)
+            or not isinstance(source_revision, int)
+            or source_revision < 1
+        ):
+            return None
+
+        events = self._verified_event_chain(paths)
+        seed_event: Mapping[str, Any] | None = None
+        terminal_events = events
+        first_type = str(events[0].get("type") or "") if events else ""
+        if first_type in _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS:
+            seed_event = events[0]
+            terminal_events = events[1:]
+            seed_receipt_field = {
+                "database_portal_validation_retry_seeded": (
+                    "validation_retry_receipt"
+                ),
+                "database_portal_capacity_retry_seeded": (
+                    "capacity_retry_receipt"
+                ),
+                "database_portal_consumed_attempt_retry_seeded": (
+                    "consumed_attempt_retry_receipt"
+                ),
+            }[first_type]
+            seed_schema = {
+                "database_portal_validation_retry_seeded": (
+                    DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA
+                ),
+                "database_portal_capacity_retry_seeded": (
+                    DATABASE_PORTAL_CAPACITY_RETRY_SEED_SCHEMA
+                ),
+                "database_portal_consumed_attempt_retry_seeded": (
+                    DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SEED_SCHEMA
+                ),
+            }[first_type]
+            nested_schema = {
+                "database_portal_validation_retry_seeded": (
+                    DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA
+                ),
+                "database_portal_capacity_retry_seeded": (
+                    DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA
+                ),
+                "database_portal_consumed_attempt_retry_seeded": (
+                    DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA
+                ),
+            }[first_type]
+            seed_receipt = seed_event.get(seed_receipt_field)
+            seed_identity_body = {
+                key: value
+                for key, value in seed_event.items()
+                if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+                and key != "seed_id"
+            }
+            if (
+                set(seed_event)
+                != _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS[first_type]
+                or seed_event.get("schema") != seed_schema
+                or seed_event.get("task_id")
+                != str(binding.get("task_alias") or "")
+                or seed_event.get("canonical_task_cid")
+                != str(attempt.task_cid)
+                or seed_event.get("target_database_attempt_id")
+                != str(attempt.attempt_id)
+                or seed_event.get("target_claim_id") != str(attempt.claim_id)
+                or not str(seed_event.get("source_database_attempt_id") or "")
+                or seed_event.get("source_database_attempt_id")
+                == str(attempt.attempt_id)
+                or seed_event.get("completion_authoritative") is not False
+                or not isinstance(seed_receipt, Mapping)
+                or seed_receipt.get("schema") != nested_schema
+                or seed_receipt.get("receipt_id")
+                != seed_event.get("source_retry_receipt_id")
+                or seed_receipt.get("attempt_id")
+                != seed_event.get("source_database_attempt_id")
+                or seed_receipt.get("task_cid") != str(attempt.task_cid)
+                or seed_receipt.get("task_alias")
+                != str(binding.get("task_alias") or "")
+                or seed_receipt.get("attempt_consumed") is not True
+                or seed_receipt.get("provider_dispatched") is not True
+                or seed_event.get("seed_id")
+                != _sha256_bytes(_canonical_json(seed_identity_body))
+            ):
+                return None
+
+        if (
+            tuple(
+                str(event.get("type") or "") for event in terminal_events
+            )
+            != _CONSUMED_ATTEMPT_TERMINAL_EVENT_CHAIN
+            or any(
+                set(event)
+                != _CONSUMED_ATTEMPT_TERMINAL_EVENT_FIELDS[event_type]
+                for event_type, event in zip(
+                    _CONSUMED_ATTEMPT_TERMINAL_EVENT_CHAIN,
+                    terminal_events,
+                    strict=True,
+                )
+            )
+        ):
+            return None
+        (
+            selected,
+            protected_snapshot,
+            started,
+            kernel,
+            protected_clear,
+            pool_release,
+            finished,
+            daemon_pass,
+        ) = terminal_events
+        alias = str(binding.get("task_alias") or "")
+        task_cid = str(attempt.task_cid)
+        portal_attempt = finished.get("attempt")
+        returncode = finished.get("returncode")
+        baseline_commit = str(started.get("baseline_ref") or "")
+        branch = str(started.get("branch") or "")
+        canonical_task_key = str(selected.get("canonical_task_key") or "")
+        board_namespace = str(selected.get("board_namespace") or "")
+        workspace_path = str(started.get("worktree_path") or "")
+        expected_validation = {
+            "attempted": False,
+            "passed": True,
+            "reason": "not_run",
+            "results": [],
+            "returncode": 0,
+        }
+        expected_board_completion = {
+            "complete": False,
+            "pending_merge": False,
+            "reason": "implementation_or_validation_failed",
+        }
+        if (
+            selected.get("task_id") != alias
+            or selected.get("canonical_task_cid") != task_cid
+            or selected.get("track") != "implementation"
+            or not str(selected.get("title") or "")
+            or not canonical_task_key
+            or not board_namespace
+            or any(
+                event.get("task_id") != alias
+                or event.get("canonical_task_cid") != task_cid
+                or event.get("canonical_task_key") != canonical_task_key
+                or event.get("board_namespace") != board_namespace
+                for event in (
+                    protected_snapshot,
+                    started,
+                    kernel,
+                    protected_clear,
+                    finished,
+                )
+            )
+            or any(
+                event.get("attempt") != portal_attempt
+                for event in (
+                    protected_snapshot,
+                    started,
+                    kernel,
+                    protected_clear,
+                    finished,
+                )
+            )
+            or not isinstance(
+                protected_snapshot.get("protected_paths"), list
+            )
+            or protected_snapshot.get("workspace_path") != workspace_path
+            or started.get("task_id") != alias
+            or started.get("canonical_task_cid") != task_cid
+            or started.get("attempt") != portal_attempt
+            or started.get("provider_dispatched") is not False
+            or not branch
+            or not workspace_path
+            or not re.fullmatch(r"[0-9a-f]{40}", baseline_commit)
+            or kernel.get("event") != "pre_implementation_kernel_evaluated"
+            or kernel.get("interface")
+            != "ImplementationDaemon@pre_implementation_kernel"
+            or kernel.get("disposition") != "abstain_review"
+            or kernel.get("reason_code") != "no_analytical_close"
+            or kernel.get("provider_authorized") is not False
+            or kernel.get("skip_provider") is not True
+            or kernel.get("analytical_candidate_count") != 0
+            or kernel.get("provider_hook_count") != 0
+            or not isinstance(kernel.get("kernel_receipt"), Mapping)
+            or protected_clear.get("reason")
+            != "failed_agent_terminal_check_unchanged"
+            or pool_release.get("attempted") is not True
+            or pool_release.get("released") is not True
+            or pool_release.get("pooled") is not True
+            or pool_release.get("handoff_reason")
+            != "implementation_command_failed"
+            or pool_release.get("reason") != "clean_prepared_workspace"
+            or pool_release.get("branch") != branch
+            or pool_release.get("base_commit") != baseline_commit
+            or pool_release.get("worktree_path") != workspace_path
+            or finished.get("task_id") != alias
+            or finished.get("task_cid") != task_cid
+            or finished.get("canonical_task_cid") != task_cid
+            or finished.get("branch") != branch
+            or finished.get("baseline_ref") != baseline_commit
+            or isinstance(portal_attempt, bool)
+            or not isinstance(portal_attempt, int)
+            or not 1 <= portal_attempt < self.max_task_attempts
+            or isinstance(returncode, bool)
+            or not isinstance(returncode, int)
+            or returncode != 1
+            or finished.get("attempt_consumed") is not True
+            or finished.get("provider_dispatched") is not True
+            or finished.get("validation_result") != expected_validation
+            or finished.get("implementation_commit") != ""
+            or finished.get("commit_result") != {"committed": False}
+            or finished.get("merge_result")
+            != {"merged": False, "reason": "not_attempted"}
+            or finished.get("board_completion") != expected_board_completion
+            or finished.get("failed_preservation_result") != {}
+            or finished.get("worktree_path") != workspace_path
+            or finished.get("log_path") != started.get("log_path")
+            or finished.get("workspace_setup") != started.get("workspace_setup")
+            or daemon_pass.get("active_task_id") != ""
+            or daemon_pass.get("max_task_attempts") != self.max_task_attempts
+            or daemon_pass.get("ordinary_provider_dispatch_allowed") is not True
+        ):
+            return None
+
+        if seed_event is not None:
+            seed_receipt_field = {
+                "database_portal_validation_retry_seeded": (
+                    "validation_retry_receipt"
+                ),
+                "database_portal_capacity_retry_seeded": (
+                    "capacity_retry_receipt"
+                ),
+                "database_portal_consumed_attempt_retry_seeded": (
+                    "consumed_attempt_retry_receipt"
+                ),
+            }[str(seed_event.get("type") or "")]
+            seed_receipt = seed_event[seed_receipt_field]
+            seed_portal_attempt = seed_receipt.get("portal_attempt")
+            if (
+                isinstance(seed_portal_attempt, bool)
+                or not isinstance(seed_portal_attempt, int)
+                or seed_portal_attempt != portal_attempt - 1
+                or seed_receipt.get("max_task_attempts")
+                != self.max_task_attempts
+            ):
+                return None
+
+        started_event_id = str(started.get("event_id") or "")
+        finished_event_id = str(finished.get("event_id") or "")
+        binding_id = str(binding.get("binding_id") or "")
+        if any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None
+            for value in (started_event_id, finished_event_id, binding_id)
+        ):
+            return None
+        receipt: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA,
+            "disposition": "retry",
+            "reason": "unclassified_post_dispatch_failure",
+            "failure_class": "unclassified_post_dispatch_failure",
+            "provider_capacity_classification": "unproven",
+            "capacity_retry_proven": False,
+            "task_cid": task_cid,
+            "task_alias": alias,
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "source_task_revision": int(source_revision),
+            "portal_attempt": int(portal_attempt),
+            "ordinary_retry_generation": int(portal_attempt),
+            "retry_budget_basis": "portal_attempt",
+            "legacy_database_attempts_excluded": True,
+            "max_task_attempts": int(self.max_task_attempts),
+            "remaining_task_attempts": int(
+                self.max_task_attempts - portal_attempt
+            ),
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "backoff_seconds": 0,
+            "retry_not_before_ms": 0,
+            "binding_id": binding_id,
+            "events_digest": _sha256_file(paths.events),
+            "event_stream_id": str(finished.get("stream_id") or ""),
+            "implementation_started_event_id": started_event_id,
+            "implementation_finished_event_id": finished_event_id,
+            "baseline_commit": baseline_commit,
+            "implementation_returncode": int(returncode),
+        }
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        return receipt
+
+    def _recovery_attempt_binding(
+        self,
+        attempt: Any,
+        *,
+        recovery_name: str,
+    ) -> tuple[DatabasePortalAttemptPaths, Mapping[str, Any]]:
+        """Verify immutable attempt artifacts against the current control row."""
 
         record = self._record_for_attempt(self.task_source, attempt)
         paths = self._paths(attempt)
@@ -3316,7 +3930,7 @@ class DatabasePortalExecutionBridge:
             and paths.events.is_file()
         ):
             raise DatabasePortalBridgeError(
-                "validation retry recovery artifacts are incomplete"
+                f"{recovery_name} artifacts are incomplete"
             )
         seed = self._render_projection(attempt, record)
         expected_binding = self._binding(attempt, record, seed)
@@ -3366,8 +3980,21 @@ class DatabasePortalExecutionBridge:
             != _projection_recovery_digest(seed)
         ):
             raise DatabasePortalBridgeError(
-                "validation retry recovery binding does not match the claim"
+                f"{recovery_name} binding does not match the claim"
             )
+        return paths, observed_binding
+
+    def recover_validation_retry(self, attempt: Any) -> Mapping[str, Any]:
+        """Reproduce retry evidence for a previously terminalized attempt.
+
+        This reads only the attempt-local projection and immutable event
+        evidence.  It does not update a task, claim, queue, or execution row.
+        """
+
+        paths, observed_binding = self._recovery_attempt_binding(
+            attempt,
+            recovery_name="validation retry recovery",
+        )
         receipt = self._validation_retry_receipt(
             attempt=attempt,
             paths=paths,
@@ -3376,6 +4003,29 @@ class DatabasePortalExecutionBridge:
         if receipt is None:
             raise DatabasePortalBridgeError(
                 "attempt is not eligible for typed validation retry recovery"
+            )
+        return receipt
+
+    def recover_consumed_attempt_retry(self, attempt: Any) -> Mapping[str, Any]:
+        """Recover one consumed legacy Portal attempt without changing state.
+
+        The resulting receipt explicitly classifies provider capacity as
+        unproven.  A successor claim may use it only to carry forward Portal's
+        independently durable ordinary-attempt counter.
+        """
+
+        paths, observed_binding = self._recovery_attempt_binding(
+            attempt,
+            recovery_name="consumed-attempt retry recovery",
+        )
+        receipt = self._consumed_attempt_retry_receipt(
+            attempt=attempt,
+            paths=paths,
+            binding=observed_binding,
+        )
+        if receipt is None:
+            raise DatabasePortalBridgeError(
+                "attempt is not eligible for consumed-attempt retry recovery"
             )
         return receipt
 
@@ -3873,6 +4523,293 @@ class DatabasePortalExecutionBridge:
             "portal_attempt": source_portal_attempt,
         }
 
+    def _consumed_attempt_retry_seed_from_record(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+    ) -> dict[str, Any] | None:
+        """Verify an exact consumed-attempt receipt on a successor claim."""
+
+        body = dict(getattr(record, "body", {}) or {})
+        status_receipt = body.get("completion_receipt")
+        if not isinstance(status_receipt, Mapping):
+            return None
+        seed = status_receipt.get("consumed_attempt_retry_seed")
+        if seed is None:
+            return None
+        if (
+            status_receipt.get("operation") != "database_claim"
+            or status_receipt.get("attempt_id") != str(attempt.attempt_id)
+            or status_receipt.get("claim_id") != str(attempt.claim_id)
+            or status_receipt.get("attempt_number")
+            != int(attempt.attempt_number)
+            or status_receipt.get("fencing_token")
+            != int(attempt.fencing_token)
+            or status_receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or status_receipt.get("lease_id")
+            != str(getattr(attempt, "lease_id", "") or "")
+            or not isinstance(seed, Mapping)
+        ):
+            raise DatabasePortalBridgeError(
+                "database claim carries a malformed consumed-attempt retry seed"
+            )
+
+        expected_seed_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "failure_class",
+            "provider_capacity_classification",
+            "capacity_retry_proven",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "source_task_revision",
+            "portal_attempt",
+            "ordinary_retry_generation",
+            "retry_budget_basis",
+            "legacy_database_attempts_excluded",
+            "max_task_attempts",
+            "remaining_task_attempts",
+            "attempt_consumed",
+            "provider_dispatched",
+            "backoff_seconds",
+            "retry_not_before_ms",
+            "binding_id",
+            "events_digest",
+            "event_stream_id",
+            "implementation_started_event_id",
+            "implementation_finished_event_id",
+            "baseline_commit",
+            "implementation_returncode",
+            "receipt_id",
+        }
+        value = dict(seed)
+        receipt_id = str(value.pop("receipt_id", "") or "")
+        source_attempt_number = seed.get("attempt_number")
+        target_attempt_number = getattr(attempt, "attempt_number", 0)
+        source_revision = seed.get("source_task_revision")
+        source_portal_attempt = seed.get("portal_attempt")
+        implementation_returncode = seed.get("implementation_returncode")
+        digest_fields = (
+            "binding_id",
+            "events_digest",
+            "implementation_started_event_id",
+            "implementation_finished_event_id",
+        )
+        if (
+            set(seed) != expected_seed_fields
+            or seed.get("schema")
+            != DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA
+            or seed.get("disposition") != "retry"
+            or seed.get("reason") != "unclassified_post_dispatch_failure"
+            or seed.get("failure_class")
+            != "unclassified_post_dispatch_failure"
+            or seed.get("provider_capacity_classification") != "unproven"
+            or seed.get("capacity_retry_proven") is not False
+            or seed.get("task_cid") != str(attempt.task_cid)
+            or seed.get("task_alias")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or seed.get("attempt_consumed") is not True
+            or seed.get("provider_dispatched") is not True
+            or seed.get("backoff_seconds") != 0
+            or seed.get("retry_not_before_ms") != 0
+            or seed.get("retry_budget_basis") != "portal_attempt"
+            or seed.get("legacy_database_attempts_excluded") is not True
+            or seed.get("max_task_attempts") != self.max_task_attempts
+            or isinstance(source_attempt_number, bool)
+            or not isinstance(source_attempt_number, int)
+            or source_attempt_number < 1
+            or isinstance(target_attempt_number, bool)
+            or not isinstance(target_attempt_number, int)
+            or target_attempt_number < 1
+            or str(seed.get("attempt_id") or "") == str(attempt.attempt_id)
+            or str(seed.get("claim_id") or "") == str(attempt.claim_id)
+            or str(seed.get("lease_id") or "")
+            == str(getattr(attempt, "lease_id", "") or "")
+            or status_receipt.get("consumed_attempt_retry_source_attempt_id")
+            != str(seed.get("attempt_id") or "")
+            or isinstance(source_revision, bool)
+            or not isinstance(source_revision, int)
+            or source_revision < 1
+            or isinstance(source_portal_attempt, bool)
+            or not isinstance(source_portal_attempt, int)
+            or not 1 <= source_portal_attempt < self.max_task_attempts
+            or seed.get("ordinary_retry_generation")
+            != source_portal_attempt
+            or seed.get("remaining_task_attempts")
+            != self.max_task_attempts - source_portal_attempt
+            or isinstance(implementation_returncode, bool)
+            or not isinstance(implementation_returncode, int)
+            or implementation_returncode != 1
+            or not str(seed.get("event_stream_id") or "")
+            or re.fullmatch(
+                r"[0-9a-f]{40}", str(seed.get("baseline_commit") or "")
+            )
+            is None
+            or any(
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", str(seed.get(field) or "")
+                )
+                is None
+                for field in digest_fields
+            )
+            or receipt_id != _sha256_bytes(_canonical_json(value))
+        ):
+            raise DatabasePortalBridgeError(
+                "database claim consumed-attempt retry seed failed verification"
+            )
+        return dict(seed)
+
+    def _initialize_consumed_attempt_retry_seed(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        """Seed one verified legacy consumption into the successor lane."""
+
+        seed = self._consumed_attempt_retry_seed_from_record(
+            attempt=attempt,
+            record=record,
+        )
+        if seed is None:
+            return None
+        alias = str(binding.get("task_alias") or "")
+        task_cid = str(attempt.task_cid)
+        source_portal_attempt = int(seed["portal_attempt"])
+        seed_body = {
+            "schema": DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SEED_SCHEMA,
+            "task_id": alias,
+            "canonical_task_cid": task_cid,
+            "source_database_attempt_id": str(seed.get("attempt_id") or ""),
+            "target_database_attempt_id": str(attempt.attempt_id),
+            "target_claim_id": str(attempt.claim_id),
+            "source_retry_receipt_id": str(seed.get("receipt_id") or ""),
+            "portal_attempt": source_portal_attempt,
+            "consumed_attempt_retry_receipt": dict(seed),
+            "completion_authoritative": False,
+        }
+        seed_body["seed_id"] = _sha256_bytes(_canonical_json(seed_body))
+        existing_seed_event: Mapping[str, Any] | None = None
+        existing_events: list[dict[str, Any]] = []
+        seed_event_index = -1
+        if paths.events.exists():
+            existing_events = self._verified_event_chain(paths)
+            for index, event in enumerate(existing_events):
+                if (
+                    event.get("type")
+                    == "database_portal_consumed_attempt_retry_seeded"
+                    and event.get("seed_id") == seed_body["seed_id"]
+                ):
+                    existing_seed_event = event
+                    seed_event_index = index
+                    break
+            if existing_seed_event is None:
+                raise DatabasePortalBridgeError(
+                    "Portal event stream predates its required consumed-attempt seed"
+                )
+            if (
+                sum(
+                    event.get("type")
+                    == "database_portal_consumed_attempt_retry_seeded"
+                    and event.get("target_database_attempt_id")
+                    == str(attempt.attempt_id)
+                    for event in existing_events
+                )
+                != 1
+                or any(
+                    existing_seed_event.get(key) != value
+                    for key, value in seed_body.items()
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal consumed-attempt retry seed event conflicts with its claim"
+                )
+        else:
+            existing_seed_event = append_jsonl_event(
+                paths.events,
+                "database_portal_consumed_attempt_retry_seeded",
+                seed_body,
+            )
+
+        state_seed = {
+            "implementation_attempts": {alias: source_portal_attempt},
+            "implementation_attempts_by_cid": {
+                task_cid: source_portal_attempt,
+            },
+            "last_implementation_task_id": alias,
+            "last_implementation_task_cid": task_cid,
+            "last_implementation_returncode": int(
+                seed["implementation_returncode"]
+            ),
+        }
+        if paths.state.exists():
+            try:
+                current_state = json.loads(paths.state.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise DatabasePortalBridgeError(
+                    "Portal consumed-attempt retry seed state is unreadable"
+                ) from exc
+            exact_seed_state = bool(
+                isinstance(current_state, Mapping)
+                and all(
+                    current_state.get(key) == value
+                    for key, value in state_seed.items()
+                )
+            )
+            target_portal_attempt = source_portal_attempt + 1
+            started = [
+                event
+                for event in existing_events[seed_event_index + 1 :]
+                if event.get("type") == "implementation_started"
+                and event.get("task_id") == alias
+                and event.get("canonical_task_cid") == task_cid
+                and event.get("attempt") == target_portal_attempt
+            ]
+            progressed_adoptable_state = bool(
+                isinstance(current_state, Mapping)
+                and len(started) == 1
+                and current_state.get("implementation_attempts")
+                == {alias: target_portal_attempt}
+                and current_state.get("implementation_attempts_by_cid")
+                == {task_cid: target_portal_attempt}
+                and current_state.get("active_task_id") == alias
+                and current_state.get("active_task_cid") == task_cid
+                and current_state.get("active_attempt")
+                == target_portal_attempt
+                and current_state.get("implementation_in_progress") is True
+                and current_state.get("last_implementation_task_id") == alias
+                and current_state.get("last_implementation_task_cid")
+                == task_cid
+                and current_state.get("last_implementation_returncode") is None
+                and not current_state.get("last_implementation_finished_at")
+            )
+            if not exact_seed_state and not progressed_adoptable_state:
+                raise DatabasePortalBridgeError(
+                    "Portal consumed-attempt retry seed state conflicts with its receipt"
+                )
+        else:
+            _atomic_write(
+                paths.state,
+                json.dumps(state_seed, indent=2, sort_keys=True).encode("utf-8")
+                + b"\n",
+            )
+        return {
+            "seed_id": str(seed_body["seed_id"]),
+            "seed_event_id": str(existing_seed_event.get("event_id") or ""),
+            "source_retry_receipt_id": str(seed.get("receipt_id") or ""),
+            "portal_attempt": source_portal_attempt,
+        }
+
     def _acceptance_receipt(
         self,
         *,
@@ -3923,6 +4860,21 @@ class DatabasePortalExecutionBridge:
         """Run bounded real Portal passes and return only accepted evidence."""
 
         record = self._record_for_attempt(self.task_source, attempt)
+        status_receipt = dict(getattr(record, "body", {}) or {}).get(
+            "completion_receipt"
+        )
+        retry_seed_fields = (
+            "validation_retry_seed",
+            "capacity_retry_seed",
+            "consumed_attempt_retry_seed",
+        )
+        if isinstance(status_receipt, Mapping) and sum(
+            status_receipt.get(field) is not None
+            for field in retry_seed_fields
+        ) > 1:
+            raise DatabasePortalBridgeError(
+                "database claim carries conflicting retry seeds"
+            )
         paths, binding = self._ensure_attempt_projection(attempt, record)
         projection = self._verify_projection(paths, binding)
         if (
@@ -3963,6 +4915,15 @@ class DatabasePortalExecutionBridge:
             )
             if recovered_validation is not None:
                 raise DatabasePortalValidationRetry(recovered_validation)
+            recovered_consumed = self._consumed_attempt_retry_receipt(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+            )
+            if recovered_consumed is not None:
+                raise DatabasePortalConsumedAttemptTerminal(
+                    recovered_consumed
+                )
         validation_seed = self._initialize_validation_retry_seed(
             attempt=attempt,
             record=record,
@@ -3975,7 +4936,20 @@ class DatabasePortalExecutionBridge:
             paths=paths,
             binding=binding,
         )
-        if validation_seed is not None and capacity_seed is not None:
+        consumed_attempt_seed = self._initialize_consumed_attempt_retry_seed(
+            attempt=attempt,
+            record=record,
+            paths=paths,
+            binding=binding,
+        )
+        if sum(
+            seed is not None
+            for seed in (
+                validation_seed,
+                capacity_seed,
+                consumed_attempt_seed,
+            )
+        ) > 1:
             raise DatabasePortalBridgeError(
                 "database claim carries conflicting retry seeds"
             )
@@ -4046,6 +5020,18 @@ class DatabasePortalExecutionBridge:
                     )
                     if retry_receipt is not None:
                         raise DatabasePortalValidationRetry(retry_receipt)
+                if paths.events.is_file():
+                    consumed_attempt_receipt = (
+                        self._consumed_attempt_retry_receipt(
+                            attempt=attempt,
+                            paths=paths,
+                            binding=binding,
+                        )
+                    )
+                    if consumed_attempt_receipt is not None:
+                        raise DatabasePortalConsumedAttemptTerminal(
+                            consumed_attempt_receipt
+                        )
                 failure = self._terminal_failure(raw_result)
                 if failure:
                     raise DatabasePortalBridgeError(failure)
@@ -4555,6 +5541,8 @@ __all__ = (
     "DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA",
     "DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA",
     "DATABASE_PORTAL_CAPACITY_RETRY_SEED_SCHEMA",
+    "DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA",
+    "DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SEED_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA",
@@ -4563,6 +5551,7 @@ __all__ = (
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeError",
     "DatabasePortalCapacityRetry",
+    "DatabasePortalConsumedAttemptTerminal",
     "DatabasePortalExecutionBridge",
     "DatabasePortalValidationRetry",
     "PortalDaemonFactory",

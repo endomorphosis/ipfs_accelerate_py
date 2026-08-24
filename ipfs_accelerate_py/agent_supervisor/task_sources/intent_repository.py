@@ -3210,10 +3210,15 @@ class IntentRepository:
         reason: str,
         selection_penalty: int,
         now_ms: int,
+        exact_retry_not_before_ms: int | None = None,
     ) -> IntentReceipt:
         """Write one queue cooldown on an already-owned transaction."""
 
-        retry_not_before = now_ms + delay_ms
+        retry_not_before = (
+            now_ms + delay_ms
+            if exact_retry_not_before_ms is None
+            else exact_retry_not_before_ms
+        )
         lease = connection.execute(
             "SELECT attempt, fencing_token FROM leases WHERE task_cid = ?",
             [task_cid],
@@ -3339,6 +3344,7 @@ class IntentRepository:
         delay_ms: int,
         reason: str,
         selection_penalty: int = 0,
+        exact_retry_not_before_ms: int | None = None,
     ) -> Mapping[str, Any]:
         """Atomically persist one guarded cooldown and retry status.
 
@@ -3361,6 +3367,14 @@ class IntentRepository:
         delay = _nonneg_int(delay_ms, noun="delay_ms")
         reason_text = str(reason or "backoff").strip() or "backoff"
         penalty = _nonneg_int(selection_penalty, noun="selection_penalty")
+        exact_deadline = (
+            None
+            if exact_retry_not_before_ms is None
+            else _nonneg_int(
+                exact_retry_not_before_ms,
+                noun="exact_retry_not_before_ms",
+            )
+        )
         now_ms = int(self._clock_ms())
         now = _utc_iso()
 
@@ -3416,6 +3430,9 @@ class IntentRepository:
             )
             if previous_status == status_text:
                 expected_queue_reason = expected_receipt.get("queue_reason")
+                expected_queue_deadline = expected_receipt.get(
+                    "retry_not_before_ms"
+                )
                 if (
                     not isinstance(expected_queue_reason, str)
                     or expected_queue_reason != reason_text
@@ -3423,11 +3440,31 @@ class IntentRepository:
                     raise IntentRepositoryConflictError(
                         "retrying control receipt does not authorize this queue"
                     )
-                if lease is not None and existing_reason != reason_text:
+                if (
+                    type(expected_queue_deadline) is not int
+                    or expected_queue_deadline < 0
+                ):
                     raise IntentRepositoryConflictError(
-                        "retrying control queue belongs to another transition"
+                        "retrying control queue does not match its receipt"
                     )
-            queue_reused = bool(lease is not None and existing_reason == reason_text)
+                if lease is not None and (
+                    existing_reason != reason_text
+                    or int(lease[0] or 0) != expected_queue_deadline
+                ):
+                    raise IntentRepositoryConflictError(
+                        "retrying control queue does not match its receipt"
+                    )
+            desired_retry_not_before_ms = (
+                now_ms + delay if exact_deadline is None else exact_deadline
+            )
+            queue_reused = bool(
+                lease is not None
+                and existing_reason == reason_text
+                and (
+                    previous_status == status_text
+                    or int(lease[0] or 0) == desired_retry_not_before_ms
+                )
+            )
             if queue_reused:
                 queue_receipt: IntentReceipt | None = None
                 retry_not_before_ms = int(lease[0] or 0)
@@ -3439,8 +3476,9 @@ class IntentRepository:
                     reason=reason_text,
                     selection_penalty=penalty,
                     now_ms=now_ms,
+                    exact_retry_not_before_ms=exact_deadline,
                 )
-                retry_not_before_ms = now_ms + delay
+                retry_not_before_ms = desired_retry_not_before_ms
 
             queue_receipt_dict = (
                 queue_receipt.to_dict() if queue_receipt is not None else {}

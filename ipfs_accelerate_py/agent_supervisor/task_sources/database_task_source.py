@@ -1542,6 +1542,9 @@ def execute_quack_owner_command(
                 delay_ms=args["delay_ms"],
                 reason=args["reason"],
                 selection_penalty=args.get("selection_penalty", 0),
+                exact_retry_not_before_ms=args.get(
+                    "exact_retry_not_before_ms"
+                ),
             )
             return {
                 **{
@@ -2829,6 +2832,7 @@ class DatabaseTaskSource:
         delay_ms: int,
         reason: str,
         selection_penalty: int = 0,
+        exact_retry_not_before_ms: int | None = None,
     ) -> Mapping[str, Any]:
         """Atomically guard, cool, and transition one shared control row."""
 
@@ -2847,6 +2851,15 @@ class DatabaseTaskSource:
                         "delay_ms": delay_ms,
                         "reason": reason,
                         "selection_penalty": selection_penalty,
+                        **(
+                            {
+                                "exact_retry_not_before_ms": (
+                                    exact_retry_not_before_ms
+                                )
+                            }
+                            if exact_retry_not_before_ms is not None
+                            else {}
+                        ),
                     },
                 )
             except QuackOwnerCommandRemoteError as exc:
@@ -2879,6 +2892,7 @@ class DatabaseTaskSource:
                 delay_ms=delay_ms,
                 reason=reason,
                 selection_penalty=selection_penalty,
+                exact_retry_not_before_ms=exact_retry_not_before_ms,
             )
         except IntentRepositoryConflictError as exc:
             raise TaskSourceConflictError(str(exc)) from exc
