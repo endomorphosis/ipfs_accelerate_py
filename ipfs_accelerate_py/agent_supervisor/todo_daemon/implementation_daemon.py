@@ -80652,7 +80652,7 @@ class DatabaseImplementationDaemon:
         synchronized_projection = (
             self.coordinator.coordination_registry_projection()
         )
-        canonical_ready_task_cid_set.update(
+        restart_recovery_task_cids = {
             str(row.get("task_cid") or "")
             for row in synchronized_projection.get("tasks", ())
             if isinstance(row, Mapping)
@@ -80661,9 +80661,9 @@ class DatabaseImplementationDaemon:
             and row["body"].get("restart_recovery_owner_session_id")
             == self.owner_session_id
             and str(row.get("task_cid") or "")
-        )
-        canonical_claimable_task_cids = tuple(
-            sorted(canonical_ready_task_cid_set)
+        }
+        canonical_claimable_task_cids = canonical_ready_task_cids + tuple(
+            sorted(restart_recovery_task_cids - canonical_ready_task_cid_set)
         )
         excluded = {
             str(task_cid)
