@@ -26,6 +26,7 @@ import os
 import re
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -73,6 +74,12 @@ EAAEF_BOARD_PATH: Final = (
     "docs/architecture/external_agent_autonomous_execution_fabric/task_board.json"
 )
 EAAEF_CONFIG_PATH: Final = "config/external_agent_autonomous_execution_fabric_scheduler.json"
+EAAEF_CASF_IMPORT_MANIFEST_PATH: Final = (
+    "config/external_agent_autonomous_execution_fabric_casf_import.json"
+)
+EAAEF_CASF_IMPORT_MANIFEST_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/eaaef-casf-import-manifest@1"
+)
 EAAEF_ADMISSION_BUNDLE_PATH: Final = (
     "docs/architecture/external_agent_autonomous_execution_fabric/"
     "receipts/host_admission/admission_bundle.json"
@@ -172,6 +179,85 @@ _TASK_STATUS_VOCABULARY: Final = frozenset(
     }
 )
 _PLAN_R2_REMOTE_REQUEST_OVERHEAD_RESERVE: Final = 128 * 1024
+_EAAEF_CASF_IMPORT_BLOB_PATHS: Final = frozenset(
+    {
+        "config/agent_supervisor_causal_event_federation_scheduler.json",
+        "docs/architecture/AGENT_SUPERVISOR_CAUSAL_EVENT_FEDERATION_PLAN.md",
+        "docs/architecture/agent_supervisor_causal_event_federation.objectives.md",
+        "docs/architecture/agent_supervisor_causal_event_federation.todo.md",
+        "docs/architecture/causal_event_federation_inventory/README.md",
+        "docs/architecture/causal_event_federation_inventory/authorities.json",
+        "docs/architecture/causal_event_federation_inventory/capability_snapshot.json",
+        "docs/architecture/causal_event_federation_inventory/starting_tree.json",
+        "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/state_owner_bootstrap.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/task_execution_route_policy.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/typed_database_task_source.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+        "scripts/run_agent_supervisor_causal_event_federation.py",
+        "scripts/validate_agent_supervisor_causal_event_federation_board.py",
+    }
+)
+_EAAEF_CASF_IMPORT_OVERRIDE_PATHS: Final = frozenset(
+    {"ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py"}
+)
+_EAAEF_CASF_IMPORT_MANIFEST_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "canonical_program_id",
+        "canonical_branch",
+        "canonical_tip",
+        "canonical_tree",
+        "sealed_predecessor",
+        "sealed_predecessor_tree",
+        "import_mode",
+        "standalone_operator_source_policy",
+        "standalone_operator_launch_in_eaaef_permitted",
+        "current_eaaef_forest_required",
+        "fresh_signed_plan_r2_authority_required",
+        "structural_validation_report_cid",
+        "selected_blobs",
+        "eaaef_import_overrides",
+        "manifest_cid",
+    }
+)
+_EAAEF_CASF_IMPORT_BINDING_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "manifest_path",
+        "manifest_cid",
+        "import_mode",
+        "canonical_tip",
+        "canonical_tree",
+    }
+)
+_EAAEF_CASF_STRUCTURAL_REPORT_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "valid",
+        "program_identifier",
+        "root_objective_id",
+        "task_prefix",
+        "plan_revision",
+        "task_count",
+        "goal_count",
+        "task_dependency_count",
+        "task_dependency_root_cid",
+        "completed_task_ids",
+        "blocked_task_ids",
+        "initial_ready_task_ids",
+        "terminal_task_id",
+        "task_waves",
+        "inventory_artifact_identities",
+        "source_checks_performed",
+        "database_presence_checked",
+        "quack_authority_required",
+        "ducklake_authoritative",
+        "high_concurrency_gate_open",
+        "errors",
+        "warnings",
+    }
+)
 _SUBMODULES: Final[tuple[tuple[str, str], ...]] = (
     ("ipfs_datasets_py", "ipfs_datasets_py"),
     ("ipfs_kit_py", "ipfs_kit_py"),
@@ -482,11 +568,30 @@ def _private_json_object(path: Path, *, noun: str) -> dict[str, Any]:
     return payload
 
 
+def _sealed_git_environment() -> dict[str, str]:
+    """Neutralize ambient Git redirection and invisible replacement objects."""
+
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
+    environment.update(
+        {
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
+    return environment
+
+
 def _git(repo_root: Path, *args: str, check: bool = True) -> str:
     try:
         result = subprocess.run(
-            ["git", *args],
+            ["git", "--no-replace-objects", *args],
             cwd=repo_root,
+            env=_sealed_git_environment(),
             text=True,
             capture_output=True,
             check=False,
@@ -513,8 +618,9 @@ def _git_blob(repo_root: Path, blob_oid: str, *, maximum_bytes: int) -> bytes:
         raise EAAEFReconciliationIdentityError("Git blob size is outside its bound")
     try:
         result = subprocess.run(
-            ["git", "cat-file", "blob", blob_oid],
+            ["git", "--no-replace-objects", "cat-file", "blob", blob_oid],
             cwd=repo_root,
+            env=_sealed_git_environment(),
             capture_output=True,
             check=False,
             timeout=30,
@@ -525,6 +631,349 @@ def _git_blob(repo_root: Path, blob_oid: str, *, maximum_bytes: int) -> bytes:
         detail = result.stderr.decode("utf-8", errors="replace").strip()
         raise EAAEFReconciliationIdentityError(detail or "Git blob read failed")
     return result.stdout
+
+
+def _git_tree_blob_oid(
+    repo_root: Path,
+    source_tree: str,
+    relative_path: str,
+) -> str:
+    if not _GIT_OID_RE.fullmatch(source_tree):
+        raise EAAEFReconciliationIdentityError("Git source tree identity is malformed")
+    line = _git(repo_root, "ls-tree", source_tree, "--", relative_path)
+    if "\t" not in line:
+        raise EAAEFReconciliationIdentityError(
+            f"sealed Git source omits required blob: {relative_path}"
+        )
+    identity, observed_path = line.split("\t", 1)
+    fields = identity.split()
+    if (
+        len(fields) != 3
+        or fields[0] not in {"100644", "100755"}
+        or fields[1] != "blob"
+        or not _GIT_OID_RE.fullmatch(fields[2])
+        or observed_path != relative_path
+    ):
+        raise EAAEFReconciliationIdentityError(
+            f"sealed Git source path is not one regular blob: {relative_path}"
+        )
+    return fields[2]
+
+
+def _git_tree_json_object(
+    repo_root: Path,
+    source_tree: str,
+    relative_path: str,
+    *,
+    noun: str,
+    maximum_bytes: int = 32 * 1024 * 1024,
+) -> tuple[dict[str, Any], str]:
+    blob_oid = _git_tree_blob_oid(repo_root, source_tree, relative_path)
+    return (
+        _decode_json_object(
+            _git_blob(repo_root, blob_oid, maximum_bytes=maximum_bytes),
+            noun=noun,
+        ),
+        blob_oid,
+    )
+
+
+def _validate_imported_casf_structure(
+    repo_root: Path,
+    *,
+    manifest: Mapping[str, Any],
+    validator_blob_oid: str,
+) -> dict[str, Any]:
+    validator_path = (
+        repo_root / "scripts/validate_agent_supervisor_causal_event_federation_board.py"
+    )
+    validator_source = _git_blob(
+        repo_root,
+        validator_blob_oid,
+        maximum_bytes=2 * 1024 * 1024,
+    )
+    isolated_driver = """
+import json
+import sys
+
+repo_root, validator_path, cache_root = sys.argv[1:]
+sys.path.insert(0, repo_root)
+sys.pycache_prefix = cache_root
+sys.dont_write_bytecode = True
+namespace = {
+    "__name__": "_eaaef_pinned_casf_structural_validator",
+    "__file__": validator_path,
+    "__package__": None,
+}
+source = sys.stdin.buffer.read()
+exec(compile(source, validator_path, "exec", dont_inherit=True, optimize=0), namespace)
+report = namespace["validate_program"](check_source=False)
+sys.stdout.write(json.dumps(report, sort_keys=True, separators=(",", ":")))
+"""
+    try:
+        with tempfile.TemporaryDirectory(prefix="eaaef-casf-validator-cache-") as cache_root:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-I",
+                    "-B",
+                    "-c",
+                    isolated_driver,
+                    str(repo_root),
+                    str(validator_path),
+                    cache_root,
+                ],
+                input=validator_source,
+                capture_output=True,
+                check=False,
+                timeout=60,
+            )
+        if result.returncode != 0:
+            detail = result.stderr.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(detail or "isolated validator exited unsuccessfully")
+        report = _decode_json_object(
+            result.stdout,
+            noun="isolated imported CASF structural validation report",
+        )
+    except (OSError, subprocess.TimeoutExpired, EAAEFReconciliationError, RuntimeError) as exc:
+        raise EAAEFReconciliationIdentityError(
+            f"imported CASF structural validator failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    if not isinstance(report, Mapping) or set(report) != _EAAEF_CASF_STRUCTURAL_REPORT_FIELDS:
+        raise EAAEFReconciliationIdentityError(
+            "imported CASF structural validation report shape differs"
+        )
+    exact_report = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "causal-event-federation-board-validation@1"
+        ),
+        "valid": True,
+        "program_identifier": "agent-supervisor-causal-event-federation-v1",
+        "root_objective_id": "CASF-G000",
+        "task_prefix": "CASF-",
+        "plan_revision": "CASF-PLAN-R1",
+        "task_count": 44,
+        "goal_count": 17,
+        "task_dependency_count": 191,
+        "task_dependency_root_cid": (
+            "sha256:29be8bb6fbc6f37352ee7a312b2ecf87c15d575624ebcfd7bbc971968d688ecb"
+        ),
+        "completed_task_ids": [],
+        "blocked_task_ids": [],
+        "initial_ready_task_ids": ["CASF-000"],
+        "terminal_task_id": "CASF-043",
+        "source_checks_performed": False,
+        "database_presence_checked": False,
+        "quack_authority_required": True,
+        "ducklake_authoritative": False,
+        "high_concurrency_gate_open": False,
+        "errors": [],
+        "warnings": [],
+    }
+    if any(report.get(name) != value for name, value in exact_report.items()):
+        raise EAAEFReconciliationIdentityError(
+            "imported CASF structural validation report differs"
+        )
+    inventory = report.get("inventory_artifact_identities")
+    expected_inventory_paths = {
+        path
+        for path in _EAAEF_CASF_IMPORT_BLOB_PATHS
+        if path.startswith("docs/architecture/causal_event_federation_inventory/")
+    }
+    if not isinstance(inventory, Mapping) or set(inventory) != expected_inventory_paths:
+        raise EAAEFReconciliationIdentityError(
+            "imported CASF structural inventory report differs"
+        )
+    if any(
+        report.get(name) != expected
+        for name, expected in (
+            ("program_identifier", manifest["canonical_program_id"]),
+        )
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "imported CASF validator program identity differs"
+        )
+    report_value = json.loads(_canonical_bytes(dict(report)))
+    if _cid(report_value) != manifest.get("structural_validation_report_cid"):
+        raise EAAEFReconciliationIdentityError(
+            "imported CASF structural validation report CID differs"
+        )
+    return report_value
+
+
+def verify_imported_casf_source(
+    repo_root: str | Path,
+    *,
+    forest: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Verify the exact canonical CASF code imported by one sealed EAAEF forest.
+
+    This is an import assertion, never a CASF launch-policy bypass.  The
+    standalone CASF operator remains bound to its protected branch.  EAAEF
+    admits only typed code and protected program inputs identical to the
+    reviewed canonical tip.  The current forest and fresh signed Plan-R2
+    authority remain separate mandatory launch seals.
+    """
+
+    root = Path(repo_root).resolve(strict=True)
+    sealed = _require_trusted_current_forest(forest, repo_root=root)
+    source_head = str(sealed["source_head"])
+    source_tree = str(sealed["source_tree"])
+    if _git(root, "rev-parse", f"{source_head}^{{tree}}") != source_tree:
+        raise EAAEFReconciliationIdentityError("sealed EAAEF source head/tree differs")
+    config, config_blob_oid = _git_tree_json_object(
+        root,
+        source_tree,
+        EAAEF_CONFIG_PATH,
+        noun="sealed EAAEF scheduler config",
+    )
+    manifest, manifest_blob_oid = _git_tree_json_object(
+        root,
+        source_tree,
+        EAAEF_CASF_IMPORT_MANIFEST_PATH,
+        noun="sealed EAAEF canonical CASF import manifest",
+        maximum_bytes=128 * 1024,
+    )
+    if set(manifest) != _EAAEF_CASF_IMPORT_MANIFEST_FIELDS:
+        raise EAAEFReconciliationIdentityError(
+            "EAAEF canonical CASF import manifest shape differs"
+        )
+    body = dict(manifest)
+    manifest_cid = str(body.pop("manifest_cid", "") or "")
+    if manifest_cid != _cid(body):
+        raise EAAEFReconciliationIdentityError(
+            "EAAEF canonical CASF import manifest CID differs"
+        )
+    raw_import_binding = config.get("casf_import_binding")
+    if (
+        not isinstance(raw_import_binding, Mapping)
+        or set(raw_import_binding) != _EAAEF_CASF_IMPORT_BINDING_FIELDS
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "EAAEF scheduler canonical CASF import binding differs"
+        )
+    import_binding = dict(raw_import_binding)
+    expected_binding = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-casf-import-binding@1",
+        "manifest_path": EAAEF_CASF_IMPORT_MANIFEST_PATH,
+        "manifest_cid": manifest_cid,
+        "import_mode": "typed_code_only",
+        "canonical_tip": manifest.get("canonical_tip"),
+        "canonical_tree": manifest.get("canonical_tree"),
+    }
+    if import_binding != expected_binding:
+        raise EAAEFReconciliationIdentityError(
+            "EAAEF scheduler canonical CASF import binding differs"
+        )
+    exact_policy = {
+        "schema": EAAEF_CASF_IMPORT_MANIFEST_SCHEMA,
+        "canonical_program_id": "agent-supervisor-causal-event-federation-v1",
+        "canonical_branch": "codex/causal-event-supervisor-federation-v1",
+        "import_mode": "typed_code_only",
+        "standalone_operator_source_policy": "protected_branch_strict",
+        "standalone_operator_launch_in_eaaef_permitted": False,
+        "current_eaaef_forest_required": True,
+        "fresh_signed_plan_r2_authority_required": True,
+    }
+    if any(manifest.get(name) != value for name, value in exact_policy.items()):
+        raise EAAEFReconciliationIdentityError(
+            "EAAEF canonical CASF import policy differs"
+        )
+
+    canonical_tip = str(manifest.get("canonical_tip") or "")
+    canonical_tree = str(manifest.get("canonical_tree") or "")
+    predecessor = str(manifest.get("sealed_predecessor") or "")
+    predecessor_tree = str(manifest.get("sealed_predecessor_tree") or "")
+    structural_report_cid = str(manifest.get("structural_validation_report_cid") or "")
+    if any(
+        _GIT_OID_RE.fullmatch(value) is None
+        for value in (canonical_tip, canonical_tree, predecessor, predecessor_tree)
+    ) or not _SHA256_RE.fullmatch(structural_report_cid):
+        raise EAAEFReconciliationIdentityError(
+            "EAAEF canonical CASF import identity is malformed"
+        )
+    if _git(root, "rev-parse", f"{canonical_tip}^{{tree}}") != canonical_tree:
+        raise EAAEFReconciliationIdentityError(
+            "EAAEF imported canonical CASF tip tree differs"
+        )
+    if _git(root, "rev-parse", f"{predecessor}^{{tree}}") != predecessor_tree:
+        raise EAAEFReconciliationIdentityError(
+            "EAAEF imported CASF predecessor tree differs"
+        )
+    try:
+        _git(root, "merge-base", "--is-ancestor", predecessor, canonical_tip)
+        _git(root, "merge-base", "--is-ancestor", canonical_tip, source_head)
+    except EAAEFReconciliationIdentityError as exc:
+        raise EAAEFReconciliationIdentityError(
+            "sealed EAAEF source does not contain the exact canonical CASF import"
+        ) from exc
+
+    raw_blobs = manifest.get("selected_blobs")
+    if not isinstance(raw_blobs, Mapping) or set(raw_blobs) != _EAAEF_CASF_IMPORT_BLOB_PATHS:
+        raise EAAEFReconciliationIdentityError(
+            "EAAEF canonical CASF import blob inventory differs"
+        )
+    canonical_blobs = {str(path): str(oid) for path, oid in raw_blobs.items()}
+    raw_overrides = manifest.get("eaaef_import_overrides")
+    if (
+        not isinstance(raw_overrides, Mapping)
+        or set(raw_overrides) != _EAAEF_CASF_IMPORT_OVERRIDE_PATHS
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "EAAEF canonical CASF import override inventory differs"
+        )
+    overrides = {str(path): str(oid) for path, oid in raw_overrides.items()}
+    selected_blobs = {
+        path: overrides.get(path, canonical_blobs[path])
+        for path in _EAAEF_CASF_IMPORT_BLOB_PATHS
+    }
+    for path in sorted(_EAAEF_CASF_IMPORT_BLOB_PATHS):
+        canonical_blob_oid = canonical_blobs[path]
+        imported_blob_oid = selected_blobs[path]
+        if (
+            not _GIT_OID_RE.fullmatch(canonical_blob_oid)
+            or not _GIT_OID_RE.fullmatch(imported_blob_oid)
+        ):
+            raise EAAEFReconciliationIdentityError(
+                f"EAAEF canonical CASF import blob is malformed: {path}"
+            )
+        if (
+            _git(root, "rev-parse", f"{canonical_tip}:{path}") != canonical_blob_oid
+            or _git_tree_blob_oid(root, source_tree, path) != imported_blob_oid
+            or _git(root, "cat-file", "-t", canonical_blob_oid) != "blob"
+            or _git(root, "cat-file", "-t", imported_blob_oid) != "blob"
+        ):
+            raise EAAEFReconciliationIdentityError(
+                f"EAAEF canonical CASF import blob differs: {path}"
+            )
+    report = _validate_imported_casf_structure(
+        root,
+        manifest=manifest,
+        validator_blob_oid=selected_blobs[
+            "scripts/validate_agent_supervisor_causal_event_federation_board.py"
+        ],
+    )
+    _require_trusted_current_forest(sealed, repo_root=root)
+    evidence = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-casf-import-evidence@1",
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "source_forest_root": sealed["source_forest_root"],
+        "scheduler_config_blob_oid": config_blob_oid,
+        "manifest_blob_oid": manifest_blob_oid,
+        "manifest_cid": manifest_cid,
+        "canonical_tip": canonical_tip,
+        "canonical_tree": canonical_tree,
+        "structural_validation_report_cid": _cid(report),
+        "canonical_blobs": canonical_blobs,
+        "selected_blobs": selected_blobs,
+    }
+    return {
+        **evidence,
+        "import_evidence_cid": _cid(evidence),
+        "standalone_operator_policy_unchanged": True,
+    }
 
 
 def _board_source_binding(
@@ -944,6 +1393,26 @@ def _require_scheduler_source_policy(
         raise EAAEFReconciliationIdentityError(
             "current accelerator source is outside the scheduler minimum ancestry"
         ) from exc
+
+
+def _require_production_source_policy(
+    repo_root: str | Path,
+    *,
+    forest: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Require both EAAEF predecessor policy and its exact CASF code import."""
+
+    root = Path(repo_root).resolve(strict=True)
+    sealed = _require_trusted_current_forest(forest, repo_root=root)
+    import_evidence = verify_imported_casf_source(root, forest=sealed)
+    config, _config_blob_oid = _git_tree_json_object(
+        root,
+        str(sealed["source_tree"]),
+        EAAEF_CONFIG_PATH,
+        noun="sealed EAAEF scheduler config",
+    )
+    _require_scheduler_source_policy(root, config=config, forest=sealed)
+    return import_evidence
 
 
 @dataclass(frozen=True)
@@ -2744,6 +3213,7 @@ def prepare_fresh_generation(
 
     root = Path(repo_root).resolve(strict=True)
     sealed = _require_sealed_forest(inspect_current_repository_forest(root))
+    import_evidence = _require_production_source_policy(root, forest=sealed)
     board = _json_object(root / EAAEF_BOARD_PATH, noun="EAAEF task board")
     population = compile_fresh_eaaef_population(board, forest=sealed, repo_root=root)
     typed_owner = require_typed_reconciliation_owner(
@@ -2768,6 +3238,7 @@ def prepare_fresh_generation(
         "source_head": population.source_head,
         "source_tree": population.source_tree,
         "source_forest_root": population.source_forest_root,
+        "casf_import_evidence_cid": import_evidence["import_evidence_cid"],
         "population": population.public_dict(),
         "offline_population_request_cid": request["request_cid"],
         "supervisor_birth": None,
@@ -2836,6 +3307,7 @@ def materialize_fresh_generation(
     root = Path(repo_root).resolve(strict=True)
     selected_forest = inspect_current_repository_forest(root)
     sealed = _require_sealed_forest(selected_forest)
+    import_evidence = _require_production_source_policy(root, forest=sealed)
     board = _json_object(root / EAAEF_BOARD_PATH, noun="EAAEF task board")
     population = compile_fresh_eaaef_population(board, forest=sealed, repo_root=root)
     admission = verify_fresh_authority_bundle(
@@ -2864,6 +3336,7 @@ def materialize_fresh_generation(
         "source_head": population.source_head,
         "source_tree": population.source_tree,
         "source_forest_root": population.source_forest_root,
+        "casf_import_evidence_cid": import_evidence["import_evidence_cid"],
     }
     state_population = state.get("population")
     if not isinstance(state_population, Mapping):
@@ -2944,6 +3417,7 @@ def materialize_fresh_generation(
 
 def launch_reconciliation_supervisor(
     *,
+    repo_root: str | Path,
     state_root: str | Path,
     owner: EAAEFTypedReconciliationOwner,
     mode: str = "paused",
@@ -2960,6 +3434,23 @@ def launch_reconciliation_supervisor(
     state = store.read_state(generation_id)
     if state.get("phase") != "materialized":
         raise EAAEFReconciliationBlocked("EAAEF generation is not ready for launch")
+    root = Path(repo_root).resolve(strict=True)
+    sealed = _require_sealed_forest(inspect_current_repository_forest(root))
+    import_evidence = _require_production_source_policy(root, forest=sealed)
+    current_source = {
+        "source_head": sealed["source_head"],
+        "source_tree": sealed["source_tree"],
+        "source_forest_root": sealed["source_forest_root"],
+        "casf_import_evidence_cid": import_evidence["import_evidence_cid"],
+    }
+    mismatched_source = sorted(
+        name for name, expected in current_source.items() if state.get(name) != expected
+    )
+    if mismatched_source:
+        raise EAAEFReconciliationIdentityError(
+            "materialized EAAEF generation source is stale: "
+            + ", ".join(mismatched_source)
+        )
     typed_owner = require_typed_reconciliation_owner(
         owner,
         source_forest_root=str(state.get("source_forest_root") or ""),
@@ -3307,6 +3798,7 @@ def preflight_reconciliation(
     blockers = list(selected_forest.get("blockers") or ())
     population: CompiledEAAEFPopulation | None = None
     unsigned_request: dict[str, Any] | None = None
+    import_evidence: dict[str, Any] | None = None
     try:
         sealed = _require_sealed_forest(selected_forest)
         board = _json_object(root / EAAEF_BOARD_PATH, noun="EAAEF task board")
@@ -3320,18 +3812,12 @@ def preflight_reconciliation(
     stale_bindings: list[str] = []
     if population is not None:
         try:
-            config = _json_object(root / EAAEF_CONFIG_PATH, noun="EAAEF scheduler config")
-        except EAAEFReconciliationError as exc:
-            blockers.append(str(exc))
-        else:
-            try:
-                _require_scheduler_source_policy(
-                    root,
-                    config=config,
-                    forest=selected_forest,
-                )
-            except EAAEFReconciliationError:
-                stale_bindings.append("scheduler_source_policy")
+            import_evidence = _require_production_source_policy(
+                root,
+                forest=selected_forest,
+            )
+        except EAAEFReconciliationError:
+            stale_bindings.append("eaaef_casf_import_or_scheduler_source_policy")
         if authority is None:
             blockers.append("fresh_independently_signed_plan_r2_authority_absent")
         elif trust_roots is None:
@@ -3366,6 +3852,7 @@ def preflight_reconciliation(
         "board_namespace": EAAEF_BOARD_NAMESPACE,
         "forest": selected_forest,
         "population": population.public_dict() if population is not None else None,
+        "casf_import_evidence": import_evidence,
         "unsigned_authority_request": unsigned_request,
         "stale_bindings": sorted(stale_bindings),
         "blockers": blockers,
@@ -3535,6 +4022,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "launch":
             _print_json(
                 launch_reconciliation_supervisor(
+                    repo_root=repo_root,
                     state_root=state_root,
                     owner=owner,
                     mode="plan_r2" if args.plan_r2 else "paused",

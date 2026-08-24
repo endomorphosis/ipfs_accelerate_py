@@ -15,6 +15,10 @@ from ipfs_accelerate_py.agent_supervisor.runtime import (
     eaaef_reconciliation_lifecycle as lifecycle,
 )
 
+_REAL_INSPECT_CURRENT_REPOSITORY_FOREST = lifecycle.inspect_current_repository_forest
+_REAL_VERIFY_IMPORTED_CASF_SOURCE = lifecycle.verify_imported_casf_source
+_TEST_IMPORT_EVIDENCE_CID = "sha256:" + "9" * 64
+
 
 @pytest.fixture
 def repo_root() -> Path:
@@ -98,6 +102,16 @@ def _explicit_trusted_forest_inspection(monkeypatch: pytest.MonkeyPatch) -> None
         lifecycle,
         "inspect_current_repository_forest",
         lambda _root: _sealed_forest(),
+    )
+    monkeypatch.setattr(
+        lifecycle,
+        "_require_production_source_policy",
+        lambda _root, *, forest: {
+            "source_head": forest["source_head"],
+            "source_tree": forest["source_tree"],
+            "source_forest_root": forest["source_forest_root"],
+            "import_evidence_cid": _TEST_IMPORT_EVIDENCE_CID,
+        },
     )
 
 
@@ -315,6 +329,7 @@ def _state(
         "source_head": population.source_head,
         "source_tree": population.source_tree,
         "source_forest_root": population.source_forest_root,
+        "casf_import_evidence_cid": _TEST_IMPORT_EVIDENCE_CID,
         "population": population.public_dict(),
         "supervisor_birth": None,
         "provider_process_started": False,
@@ -433,6 +448,193 @@ def test_board_source_binding_is_read_from_exact_git_tree_blob(repo_root: Path) 
     assert binding["byte_count"] == len(board_bytes)
     assert binding["bytes_cid"] == lifecycle._cid(board_bytes)
     assert binding["canonical_json_cid"] == lifecycle._eaaef_source_cid(_board(repo_root))
+
+
+def test_git_identity_reads_disable_replacements_and_ambient_redirection(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hostile = {
+        "GIT_DIR": "/forged/git-dir",
+        "GIT_WORK_TREE": "/forged/work-tree",
+        "GIT_OBJECT_DIRECTORY": "/forged/objects",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES": "/forged/alternates",
+        "GIT_REPLACE_REF_BASE": "refs/forged/replace/",
+    }
+    for name, value in hostile.items():
+        monkeypatch.setenv(name, value)
+    real_run = lifecycle.subprocess.run
+    observed: list[tuple[list[str], dict[str, str]]] = []
+
+    def audited_run(arguments: list[str], **kwargs: Any) -> Any:
+        if arguments and arguments[0] == "git":
+            environment = dict(kwargs.get("env") or {})
+            observed.append((list(arguments), environment))
+            assert arguments[1] == "--no-replace-objects"
+            assert environment["GIT_NO_REPLACE_OBJECTS"] == "1"
+            assert environment["GIT_CONFIG_NOSYSTEM"] == "1"
+            assert environment["GIT_CONFIG_GLOBAL"] == os.devnull
+            assert environment["GIT_CONFIG_SYSTEM"] == os.devnull
+            assert set(environment).isdisjoint(hostile)
+        return real_run(arguments, **kwargs)
+
+    monkeypatch.setattr(lifecycle.subprocess, "run", audited_run)
+    head = lifecycle._git(repo_root, "rev-parse", "HEAD")
+    blob_oid = lifecycle._git(
+        repo_root,
+        "rev-parse",
+        f"{head}:{lifecycle.EAAEF_CASF_IMPORT_MANIFEST_PATH}",
+    )
+    assert lifecycle._git_blob(repo_root, blob_oid, maximum_bytes=128 * 1024)
+    assert len(observed) == 4
+
+
+def test_canonical_casf_import_is_exact_and_structurally_valid(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with monkeypatch.context() as trusted:
+        trusted.setattr(
+            lifecycle,
+            "inspect_current_repository_forest",
+            _REAL_INSPECT_CURRENT_REPOSITORY_FOREST,
+        )
+        forest = _REAL_INSPECT_CURRENT_REPOSITORY_FOREST(repo_root)
+        evidence = _REAL_VERIFY_IMPORTED_CASF_SOURCE(repo_root, forest=forest)
+
+    assert evidence["canonical_tip"] == "e93df4ec6cdabf153218df30151b840fe60fa2b9"
+    assert evidence["canonical_tree"] == "0771702f9a2643903e50be3e056e6c0d84532fcc"
+    assert evidence["structural_validation_report_cid"] == (
+        "sha256:ed81aec7bad2b030325fe998d187f32e757c3514d35eef01a7d1a91ba4d98c67"
+    )
+    assert evidence["standalone_operator_policy_unchanged"] is True
+    assert set(evidence["selected_blobs"]) == lifecycle._EAAEF_CASF_IMPORT_BLOB_PATHS
+
+
+def test_casf_import_rejects_config_binding_and_current_blob_drift(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_git_tree_json_object = lifecycle._git_tree_json_object
+    real_git_tree_blob_oid = lifecycle._git_tree_blob_oid
+    real_git_blob = lifecycle._git_blob
+    with monkeypatch.context() as trusted:
+        trusted.setattr(
+            lifecycle,
+            "inspect_current_repository_forest",
+            _REAL_INSPECT_CURRENT_REPOSITORY_FOREST,
+        )
+        forest = _REAL_INSPECT_CURRENT_REPOSITORY_FOREST(repo_root)
+        source_tree = str(forest["source_tree"])
+        canonical_manifest, manifest_oid = real_git_tree_json_object(
+            repo_root,
+            source_tree,
+            lifecycle.EAAEF_CASF_IMPORT_MANIFEST_PATH,
+            noun="test CASF import manifest",
+        )
+        canonical_config, config_oid = real_git_tree_json_object(
+            repo_root,
+            source_tree,
+            lifecycle.EAAEF_CONFIG_PATH,
+            noun="test EAAEF config",
+        )
+        protected_override_manifest = json.loads(json.dumps(canonical_manifest))
+        protected_override_manifest["eaaef_import_overrides"][
+            "scripts/validate_agent_supervisor_causal_event_federation_board.py"
+        ] = protected_override_manifest["selected_blobs"][
+            "scripts/validate_agent_supervisor_causal_event_federation_board.py"
+        ]
+        protected_override_manifest.pop("manifest_cid")
+        protected_override_manifest["manifest_cid"] = lifecycle._cid(
+            protected_override_manifest
+        )
+        protected_override_config = json.loads(json.dumps(canonical_config))
+        protected_override_config["casf_import_binding"]["manifest_cid"] = (
+            protected_override_manifest["manifest_cid"]
+        )
+
+        def protected_override(
+            root: Path,
+            tree: str,
+            path: str,
+            *,
+            noun: str,
+            maximum_bytes: int = 32 * 1024 * 1024,
+        ) -> tuple[dict[str, Any], str]:
+            del root, tree, noun, maximum_bytes
+            if path == lifecycle.EAAEF_CONFIG_PATH:
+                return json.loads(json.dumps(protected_override_config)), config_oid
+            if path == lifecycle.EAAEF_CASF_IMPORT_MANIFEST_PATH:
+                return json.loads(json.dumps(protected_override_manifest)), manifest_oid
+            raise AssertionError(f"unexpected sealed JSON path: {path}")
+
+        trusted.setattr(lifecycle, "_git_tree_json_object", protected_override)
+        with pytest.raises(
+            lifecycle.EAAEFReconciliationIdentityError,
+            match="override inventory differs",
+        ):
+            _REAL_VERIFY_IMPORTED_CASF_SOURCE(repo_root, forest=forest)
+
+        trusted.setattr(lifecycle, "_git_tree_json_object", real_git_tree_json_object)
+
+        def mismatched_config(
+            root: Path,
+            tree: str,
+            path: str,
+            *,
+            noun: str,
+            maximum_bytes: int = 32 * 1024 * 1024,
+        ) -> tuple[dict[str, Any], str]:
+            value, oid = real_git_tree_json_object(
+                root,
+                tree,
+                path,
+                noun=noun,
+                maximum_bytes=maximum_bytes,
+            )
+            if path == lifecycle.EAAEF_CONFIG_PATH:
+                value["casf_import_binding"]["manifest_cid"] = "sha256:" + "0" * 64
+            return value, oid
+
+        trusted.setattr(lifecycle, "_git_tree_json_object", mismatched_config)
+        with pytest.raises(
+            lifecycle.EAAEFReconciliationIdentityError,
+            match="scheduler canonical CASF import binding differs",
+        ):
+            _REAL_VERIFY_IMPORTED_CASF_SOURCE(repo_root, forest=forest)
+
+        trusted.setattr(lifecycle, "_git_tree_json_object", real_git_tree_json_object)
+
+        def divergent_sealed_validator(
+            root: Path,
+            blob_oid: str,
+            *,
+            maximum_bytes: int,
+        ) -> bytes:
+            if blob_oid == "e85b412939fc93646b01ce4c78696eb7661f8d2b":
+                return b"raise RuntimeError('divergent sealed validator sentinel')\n"
+            return real_git_blob(root, blob_oid, maximum_bytes=maximum_bytes)
+
+        trusted.setattr(lifecycle, "_git_blob", divergent_sealed_validator)
+        with pytest.raises(
+            lifecycle.EAAEFReconciliationIdentityError,
+            match="divergent sealed validator sentinel",
+        ):
+            _REAL_VERIFY_IMPORTED_CASF_SOURCE(repo_root, forest=forest)
+
+        trusted.setattr(lifecycle, "_git_blob", real_git_blob)
+
+        def mismatched_current_blob(root: Path, tree: str, path: str) -> str:
+            if path == "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py":
+                return "0" * 40
+            return real_git_tree_blob_oid(root, tree, path)
+
+        trusted.setattr(lifecycle, "_git_tree_blob_oid", mismatched_current_blob)
+        with pytest.raises(
+            lifecycle.EAAEFReconciliationIdentityError,
+            match="canonical CASF import blob differs",
+        ):
+            _REAL_VERIFY_IMPORTED_CASF_SOURCE(repo_root, forest=forest)
 
 
 def _current_head_forest(repo_root: Path) -> dict[str, Any]:
@@ -603,6 +805,137 @@ def test_prepare_materializes_offline_contracts_and_stops_before_authority(
     )
 
 
+@pytest.mark.parametrize("operation", ["prepare", "materialize"])
+def test_source_policy_failure_precedes_every_owner_materialization_effect(
+    operation: str,
+    repo_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    population = _population(repo_root)
+    owner = _FakeOwner(population.source_forest_root)
+
+    def reject_source_policy(
+        _root: Path,
+        *,
+        forest: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        del forest
+        raise lifecycle.EAAEFReconciliationIdentityError("canonical CASF import differs")
+
+    monkeypatch.setattr(lifecycle, "_require_production_source_policy", reject_source_policy)
+    state_root = tmp_path / "state"
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="canonical CASF import differs",
+    ):
+        if operation == "prepare":
+            lifecycle.prepare_fresh_generation(
+                repo_root=repo_root,
+                state_root=state_root,
+                owner=owner,
+                generation_id="eaaef-policy-failure",
+            )
+        else:
+            lifecycle.materialize_fresh_generation(
+                repo_root=repo_root,
+                state_root=state_root,
+                authority={},
+                trust_roots={},
+                owner=owner,
+                generation_id="eaaef-policy-failure",
+            )
+
+    assert owner.offline_request is None
+    assert not state_root.exists()
+
+
+def test_launch_rejects_changed_forest_before_owner_effect(
+    repo_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    population = _population(repo_root)
+    owner = _FakeOwner(population.source_forest_root)
+    state = _state(population, phase="materialized")
+    store = lifecycle.ReconciliationStateStore(tmp_path / "state")
+    store.create_generation("eaaef-test-generation", state)
+    store.activate("eaaef-test-generation", state_cid=str(state["state_cid"]))
+    changed_forest = _sealed_forest(accelerator_commit="8" * 40)
+    monkeypatch.setattr(
+        lifecycle,
+        "inspect_current_repository_forest",
+        lambda _root: changed_forest,
+    )
+
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="generation source is stale",
+    ):
+        lifecycle.launch_reconciliation_supervisor(
+            repo_root=repo_root,
+            state_root=store.root,
+            owner=owner,
+        )
+
+
+def test_launch_accepts_exact_current_source_and_records_typed_receipt(
+    repo_root: Path,
+    tmp_path: Path,
+) -> None:
+    population = _population(repo_root)
+    owner = _FakeOwner(population.source_forest_root)
+    birth = lifecycle.ProcessBirth(
+        pid=47,
+        start_time_ticks=101,
+        parent_pid=2,
+        boot_id="boot-launch",
+        argv_sha256="sha256:" + "7" * 64,
+    )
+    observed_requests: list[dict[str, Any]] = []
+
+    def launch(request: Mapping[str, Any]) -> Mapping[str, Any]:
+        observed_requests.append(dict(request))
+        value = {
+            "schema": lifecycle.EAAEF_LAUNCH_RECEIPT_SCHEMA,
+            "interface": lifecycle.EAAEF_RECONCILIATION_OWNER_INTERFACE,
+            "request_cid": request["request_cid"],
+            "generation_id": request["generation_id"],
+            "source_forest_root": request["source_forest_root"],
+            "population_cid": request["population_cid"],
+            "launch_mode": "paused",
+            "implementation_enabled": False,
+            "provider_process_started": False,
+            "typed_task_source_interface": lifecycle.EAAEF_TYPED_TASK_SOURCE_INTERFACE,
+            "process_birth": birth.to_dict(),
+        }
+        value["receipt_cid"] = lifecycle._cid(value)
+        return value
+
+    owner.launch_reconciliation_supervisor = launch  # type: ignore[method-assign]
+    state = _state(population, phase="materialized")
+    state["owner_receipt"] = {"receipt_cid": "sha256:" + "8" * 64}
+    state.pop("state_cid")
+    state["state_cid"] = lifecycle._cid(state)
+    store = lifecycle.ReconciliationStateStore(tmp_path / "state")
+    store.create_generation("eaaef-test-generation", state)
+    store.activate("eaaef-test-generation", state_cid=str(state["state_cid"]))
+
+    launched = lifecycle.launch_reconciliation_supervisor(
+        repo_root=repo_root,
+        state_root=store.root,
+        owner=owner,
+        process_probe=lambda pid: birth if pid == birth.pid else None,
+    )
+
+    assert launched["phase"] == "launched_paused"
+    assert launched["supervisor_birth"] == birth.to_dict()
+    assert launched["provider_process_started"] is False
+    assert len(observed_requests) == 1
+    assert observed_requests[0]["source_forest_root"] == population.source_forest_root
+    assert observed_requests[0]["provider_launch_allowed"] is False
+
+
 @pytest.mark.parametrize(
     "forbidden",
     [
@@ -619,7 +952,18 @@ def test_typed_boundary_rejects_database_token_and_sql(forbidden: dict[str, str]
 def test_public_cli_and_source_have_no_raw_authority_or_historical_run_surface() -> None:
     destinations = _parser_destinations(lifecycle._argument_parser())
     assert destinations.isdisjoint(
-        {"database", "database_path", "duckdb_path", "sql", "token", "credential"}
+        {
+            "database",
+            "database_path",
+            "duckdb_path",
+            "sql",
+            "token",
+            "credential",
+            "skip_source_check",
+            "branch",
+            "manifest",
+            "source_policy",
+        }
     )
     parsed = lifecycle._argument_parser().parse_args(["launch", "--plan-r2"])
     assert parsed.plan_r2 is True

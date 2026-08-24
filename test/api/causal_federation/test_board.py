@@ -210,15 +210,24 @@ def test_bootstrap_qualifies_only_exact_typed_wait_without_federation_claim() ->
     }
 
 
-def test_imported_source_binds_sealed_casf_ancestor_and_starting_tree() -> None:
+def test_standalone_source_policy_remains_protected_branch_strict() -> None:
     validator = _validator_module()
-    # CASF's --check-source launch policy intentionally requires its own
-    # protected branch.  An EAAEF integration validates the imported program
-    # structurally, then proves the same sealed predecessor/tree without
-    # pretending this checkout is the CASF launch branch.
-    report = validator.validate_program(check_source=False)
-    assert report["valid"] is True, report["errors"]
-    assert report["source_checks_performed"] is False
+    report = validator.validate_program(check_source=True)
+    branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert report["source_checks_performed"] is True
+    if branch == validator.BRANCH:
+        assert report["valid"] is True, report["errors"]
+    else:
+        assert report["valid"] is False
+        assert report["errors"] == [
+            "current Git source does not descend from the sealed branch/tree baseline"
+        ]
 
     source_binding = json.loads(CONFIG.read_text(encoding="utf-8"))[
         "source_binding"

@@ -71,6 +71,14 @@
     "record_recursive_repository_forest_at_launch": true,
     "changed_revision_requires_fresh_reconciliation_and_plan_revision": true
   },
+  "casf_import_binding": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-casf-import-binding@1",
+    "manifest_path": "config/external_agent_autonomous_execution_fabric_casf_import.json",
+    "manifest_cid": "sha256:ef0d6c7ba006fd458554b26aded38600bc832c115fd7f15c528162fe59a1df54",
+    "import_mode": "typed_code_only",
+    "canonical_tip": "e93df4ec6cdabf153218df30151b840fe60fa2b9",
+    "canonical_tree": "0771702f9a2643903e50be3e056e6c0d84532fcc"
+  },
   "bootstrap_runtime_binding": {
     "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-bootstrap-runtime-binding@1",
     "launcher": {
