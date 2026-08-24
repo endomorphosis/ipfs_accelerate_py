@@ -1511,7 +1511,9 @@ def test_portal_failure_terminal_cas_refetches_advanced_attempt(
             task_cid=attempt.task_cid,
             body={"provider_revision": attempt.revision},
         )
-        raise DatabasePortalBridgeError("portal validation failed")
+        raise DatabasePortalBridgeError(
+            DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON
+        )
 
     daemon = _open_daemon(
         tmp_path,
@@ -1556,6 +1558,15 @@ def test_portal_failure_terminal_cas_refetches_advanced_attempt(
         task = daemon.task_source.get(stored.task_cid)
         assert task is not None
         assert task.status == "blocked"
+        terminal_receipt = task.body["completion_receipt"]
+        coordination = terminal_receipt["coordination"]
+        assert coordination["attempt_id"] == stored.attempt_id
+        assert coordination["claim_id"] == stored.claim_id
+        assert coordination["attempt_number"] == stored.attempt_number
+        assert coordination["claim_state"] == "accepted"
+        assert coordination["lease_state"] == "accepted"
+        assert coordination["coordination_attempt_status"] == "running"
+        assert coordination["expired_now"] is False
         queue_entry = daemon.task_source.get_queue_entry(stored.task_cid)
         assert queue_entry is None
         assert implementation["terminal_state"]["status"] == "blocked"
@@ -3201,6 +3212,14 @@ def test_typed_portal_deferral_budget_blocks_before_fourth_dispatch(
         task = daemon.task_source.get(task_cid)
         assert task is not None
         assert task.status == "blocked"
+        coordination = task.body["completion_receipt"]["coordination"]
+        assert coordination["attempt_id"] == third["attempt_id"]
+        assert coordination["claim_id"] == third["claim_id"]
+        assert coordination["attempt_number"] == 3
+        assert coordination["claim_state"] == "accepted"
+        assert coordination["lease_state"] == "accepted"
+        assert coordination["coordination_attempt_status"] == "running"
+        assert coordination["expired_now"] is False
         assert len(provider_attempts) == 3
 
         # Even after every prior cooldown and lease deadline, the blocked
@@ -6175,6 +6194,175 @@ def _post_merge_preauthorization(
         "source_binding_id": "sha256:" + "c" * 64,
         "source_projection_immutable_digest": "sha256:" + "d" * 64,
     }
+
+
+def _persist_legacy_empty_coordination_terminal(
+    daemon: DatabaseImplementationDaemon,
+    failed: DatabaseTaskAttempt,
+    *,
+    reason: str,
+) -> None:
+    task = daemon.task_source.get(failed.task_cid)
+    assert task is not None
+    assert task.status == "in_progress"
+    claim_receipt = task.body["completion_receipt"]
+    daemon._cas_task_status_database(
+        failed.task_cid,
+        expected_revision=int(task.revision),
+        new_status="blocked",
+        expected_control_receipt=claim_receipt,
+        receipt={
+            "operation": "database_portal_terminal_failure",
+            "attempt_id": failed.attempt_id,
+            "attempt_number": int(failed.attempt_number),
+            "claim_id": failed.claim_id,
+            "lease_id": failed.lease_id,
+            "owner_session_id": failed.owner_session_id,
+            "fencing_token": int(failed.fencing_token),
+            "fence_epoch": int(failed.fence_epoch),
+            "execution_phase": ATTEMPT_PHASE_FAILED,
+            "execution_revision": int(failed.revision),
+            "execution_finished_at_ms": failed.finished_at_ms,
+            "reason": reason,
+            "retryable": False,
+            "coordination": {},
+            "control_expected_status": "in_progress",
+            "control_expected_revision": int(task.revision),
+        },
+    )
+
+
+def test_preauthorize_accepts_legacy_empty_coordination_only_after_exact_expiry(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-merge-legacy-empty-coordination",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": (
+                    DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON
+                ),
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        _persist_legacy_empty_coordination_terminal(
+            daemon,
+            failed,
+            reason=(
+                DATABASE_PROTECTED_PRESERVATION_TARGET_ANCESTRY_MISSING_REASON
+            ),
+        )
+        blocked = daemon.task_source.get(failed.task_cid)
+        assert blocked is not None
+        assert blocked.body["completion_receipt"]["coordination"] == {}
+
+        # Empty coordination is a legacy persistence shape, not evidence.
+        # Preauthorization may recover it only after the coordinator itself
+        # independently reproduces the exact terminal claim/attempt/lease.
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="coordination",
+        ):
+            daemon.preauthorize_post_merge_declared_output_recovery(
+                _post_merge_preauthorization(daemon, failed)
+            )
+
+        now["ms"] = 7_000
+        source_claim = daemon.coordinator.get_task_claim(failed.claim_id)
+        assert source_claim is not None
+        daemon.coordinator.expire_task_claim(
+            source_claim,
+            now_ms=now["ms"],
+        )
+        reproduced = daemon._reconcile_failed_attempt_coordination(failed)
+        assert reproduced["claim_id"] == failed.claim_id
+        assert reproduced["attempt_id"] == failed.attempt_id
+        assert reproduced["attempt_number"] == failed.attempt_number
+        assert reproduced["claim_state"] == "expired"
+        assert reproduced["lease_state"] == "expired"
+        assert reproduced["historical_expired"] is True
+        assert reproduced["expired_now"] is False
+        assert reproduced["superseded_by_newer_fence"] is False
+
+        authorized = daemon.preauthorize_post_merge_declared_output_recovery(
+            _post_merge_preauthorization(daemon, failed)
+        )
+        assert authorized["authorized"] is True
+        assert authorized["task_status"] == "blocked"
+    finally:
+        daemon.close()
+
+
+def test_preauthorize_rejects_legacy_empty_coordination_with_newer_fence(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:post-merge-forged-empty-coordination",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.claim_next()
+        assert failed is not None
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": "post_merge_declared_outputs_missing",
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        _persist_legacy_empty_coordination_terminal(
+            daemon,
+            failed,
+            reason="post_merge_declared_outputs_missing",
+        )
+        blocked = daemon.task_source.get(failed.task_cid)
+        assert blocked is not None
+        assert blocked.body["completion_receipt"]["coordination"] == {}
+
+        now["ms"] = 7_000
+        source_claim = daemon.coordinator.get_task_claim(failed.claim_id)
+        assert source_claim is not None
+        daemon.coordinator.expire_task_claim(
+            source_claim,
+            now_ms=now["ms"],
+        )
+        successor = daemon.coordinator.claim_ready_task(
+            owner_session_id="session:post-merge-newer-fence",
+            lease_ms=5_000,
+            now_ms=now["ms"],
+        )
+        assert successor is not None
+        assert successor.fencing_token > failed.fencing_token
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="coordination|newer|superseded",
+        ):
+            daemon.preauthorize_post_merge_declared_output_recovery(
+                _post_merge_preauthorization(daemon, failed)
+            )
+    finally:
+        daemon.close()
 
 
 def test_preauthorize_accepts_wrapped_post_merge_terminal_reason(

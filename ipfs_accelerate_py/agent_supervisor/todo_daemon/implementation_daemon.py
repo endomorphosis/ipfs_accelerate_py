@@ -80405,6 +80405,44 @@ class DatabaseImplementationDaemon:
             )
         return {**value, "receipt_id": str(receipt_id)}
 
+    def _legacy_empty_terminal_coordination_reproduces(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> bool:
+        """Verify one historical empty coordination receipt without mutation.
+
+        Older immediate terminal paths sealed an empty object even though the
+        surrounding control receipt was bound to the exact failed attempt.
+        Such a receipt is eligible only after that same coordination claim is
+        already durably expired.  Requiring the pre-existing expired state
+        before calling the general reproducer keeps preauthorization read-only;
+        the reproducer then verifies the complete claim/attempt/lease triple
+        and proves that no newer same-task fence superseded it.
+        """
+
+        claim = self.coordinator.get_task_claim(attempt.claim_id)
+        if claim is None:
+            return False
+        claim_state = str(
+            getattr(getattr(claim, "state", ""), "value", claim.state) or ""
+        )
+        if claim_state != "expired":
+            return False
+        coordination = self._reconcile_failed_attempt_coordination(attempt)
+        return bool(
+            coordination.get("claim_id") == attempt.claim_id
+            and coordination.get("attempt_id") == attempt.attempt_id
+            and coordination.get("attempt_number")
+            == int(attempt.attempt_number)
+            and coordination.get("claim_state") == "expired"
+            and coordination.get("lease_state") == "expired"
+            and coordination.get("coordination_attempt_status") == "expired"
+            and coordination.get("historical_expired") is True
+            and coordination.get("expired_now") is False
+            and coordination.get("superseded_by_newer_fence") is False
+            and coordination.get("successor") == {}
+        )
+
     def preauthorize_post_merge_declared_output_recovery(
         self,
         source: Mapping[str, Any],
@@ -80615,11 +80653,6 @@ class DatabaseImplementationDaemon:
                 terminal_receipt.get("reason")
             )
             or terminal_receipt.get("retryable") is not False
-            or not isinstance(coordination, Mapping)
-            or coordination.get("attempt_id") != latest.attempt_id
-            or coordination.get("claim_id") != latest.claim_id
-            or coordination.get("attempt_number")
-            != int(latest.attempt_number)
             or terminal_receipt.get("control_expected_status")
             != "in_progress"
             or isinstance(task_revision, bool)
@@ -80630,6 +80663,27 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationConflictError(
                 "post-merge recovery preauthorization found no exact terminal "
                 "failure control projection"
+            )
+        elif not isinstance(coordination, Mapping):
+            raise DatabaseImplementationConflictError(
+                "post-merge recovery preauthorization found no exact terminal "
+                "failure coordination projection"
+            )
+        elif coordination:
+            if (
+                coordination.get("attempt_id") != latest.attempt_id
+                or coordination.get("claim_id") != latest.claim_id
+                or coordination.get("attempt_number")
+                != int(latest.attempt_number)
+            ):
+                raise DatabaseImplementationConflictError(
+                    "post-merge recovery preauthorization found no exact "
+                    "terminal failure coordination projection"
+                )
+        elif not self._legacy_empty_terminal_coordination_reproduces(latest):
+            raise DatabaseImplementationConflictError(
+                "post-merge recovery preauthorization could not reproduce "
+                "legacy empty terminal coordination"
             )
         result = {
             **raw,
@@ -83666,10 +83720,16 @@ class DatabaseImplementationDaemon:
                         isinstance(budget, Mapping)
                         and budget.get("exhausted") is True
                     ):
+                        coordination = (
+                            self._reconcile_failed_attempt_coordination(
+                                terminal
+                            )
+                        )
                         control_state = (
                             self._persist_typed_deferral_budget_exhausted(
                                 terminal,
                                 budget=budget,
+                                coordination_evidence=coordination,
                             )
                         )
                     else:
@@ -83716,9 +83776,15 @@ class DatabaseImplementationDaemon:
                         capacity_retry_evidence=verified_capacity_retry,
                     )
                 else:
+                    coordination = (
+                        self._reconcile_failed_attempt_coordination(terminal)
+                        if self._recoverable_post_merge_terminal_reason(reason)
+                        else None
+                    )
                     control_state = self._persist_terminal_portal_failure(
                         terminal,
                         reason=reason,
+                        coordination_evidence=coordination,
                     )
             except Exception as fail_exc:
                 return {
