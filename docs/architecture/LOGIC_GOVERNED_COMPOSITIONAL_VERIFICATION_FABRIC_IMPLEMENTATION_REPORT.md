@@ -1,10 +1,10 @@
 # Logic-Governed Compositional Verification Fabric Implementation Report
 - Formal plan CID: baguqeerabxn5kkewz44v4chz6vbt3kcozfj4rvhh4gpdp54645blhemhvloq
-- Qualification result CID: baguqeeravoip63y47dudr2t4bhojnie3xjmkqnt2mfqy3lrjuvv3m6x6rcaq
-- Qualification authority CID: baguqeerah5vircxftbbpeqnlf6s32r5fgjmaqhyimc45xbzmopw2dcxhhwgq
-- Benchmark result CID: baguqeera6irqvzt4nhtoq5r65hfllqe7yt3tzu32ovv64lalttyxh6qwtwxa
+- Qualification result CID: baguqeeralzdd6nbnt6dnywuknkfjijw3e5w7qwd4qsufxyk4drjrcfukvrnq
+- Qualification authority CID: baguqeera23ap65uqkykzbjlpwq5t6qapfp7ljwd223c5arimbivmtc7wc74a
+- Benchmark result CID: baguqeeraac7ykmmtv5hfa3tbw7kzke4dfhe7pcpoxuxnpximwin42vqf4dfq
 - Benchmark authority CID: baguqeeransi7tojrbwsayemzuqrzed66x3bn62xopgrz4egg6q35zooa3rrq
-- Release report SHA256: sha256:6c769ebf5901a8e07fc4a2118cc7f747d72f1342c86fd24e0d012ae1dc7a7c03
+- Release report SHA256: sha256:93631759b9527cfd25d654f1346cdc4b3bed030eb977de28628c07feec3c0f4c
 - Task implementation: incomplete
 - Test success: passed_hermetic
 - Objective completion: incomplete
@@ -12,7 +12,7 @@
 - Production authorization: not_authorized
 
 ## A. Exact source revisions and repository topology
-- Source revisions: {"ipfs_accelerate_py":{"head":"b205b1d7fbb47d07cd81804513182fe723082eaf","tree":"6fa9f0762d0a690ce6e16144ee320cf7f6e5a2a0","protected_input_cid":"baguqeera3eonaevp4iqsu742qxxdc2w3xioaorfdv6vo5jnumnxyyd6ehgda"},"ipfs_datasets_py":{"head":"66a02063496fd200f2372b3083e376f1978c6be1","tree":"11d9c74504512e45c3ccc78d55e0e2f25d2a9a92","gitlink":"66a02063496fd200f2372b3083e376f1978c6be1","protected_input_cid":"baguqeera3eonaevp4iqsu742qxxdc2w3xioaorfdv6vo5jnumnxyyd6ehgda"}}
+- Source revisions: {"ipfs_accelerate_py":{"head":"1e67c9d6000e9e9cde957a5e6cc5b1c87ae18182","tree":"ec84a596993491aaa0f893125efeb95102d413ff","protected_input_cid":"baguqeeranwpvaqpwvhcjlaf34qeryoivbaajoboaxd5em5ejrmgmsfwdum5q"},"ipfs_datasets_py":{"head":"66a02063496fd200f2372b3083e376f1978c6be1","tree":"11d9c74504512e45c3ccc78d55e0e2f25d2a9a92","gitlink":"66a02063496fd200f2372b3083e376f1978c6be1","protected_input_cid":"baguqeeranwpvaqpwvhcjlaf34qeryoivbaajoboaxd5em5ejrmgmsfwdum5q"}}
 - Repository topology: {"ipfs_accelerate_py":{"kind":"repository_root","path":"."},"ipfs_datasets_py":{"kind":"git_submodule","path":"ipfs_datasets_py"}}
 
 ## B. Pre-existing implemented capabilities
@@ -32,10 +32,10 @@
 
 ## G. Tests and exact results
 - Test commands: ["python scripts/qualify_logic_governed_compositional_verification_fabric.py --check","python scripts/benchmark_lgcvf_symbolic_displacement.py --check","python scripts/validate_logic_governed_compositional_verification_fabric_closeout.py release --check"]
-- Exact test results: {"collected":511,"error_count":0,"failed_count":0,"passed_count":511,"skipped_count":0,"xfailed_count":0,"xpassed_count":0}
+- Exact test results: {"collected":512,"error_count":0,"failed_count":0,"passed_count":512,"skipped_count":0,"xfailed_count":0,"xpassed_count":0}
 
 ## H. Vertical-slice trace and receipt identities
-- Vertical receipt identities: {"artifact_cid":"baguqeeraixbgfp4wdv57yj2b5tytbbdnnsgqkc5i4fjlrvpxe3i32w4b7jxq","artifact_verification_receipt_cid":"baguqeeradiiezbfcixvef6c5m7tbv6hergktmph3h4limqfaeppcwgo3hm3a","fresh_execution_receipts_reproducible":false,"vertical_result_cid":"baguqeera5fbbki4nyjb7azxv7fjdutpk7x5vzuxzci5j3ibm772yd3chlrxa"}
+- Vertical receipt identities: {"artifact_cid":"baguqeeraixbgfp4wdv57yj2b5tytbbdnnsgqkc5i4fjlrvpxe3i32w4b7jxq","artifact_verification_receipt_cid":"baguqeeradiiezbfcixvef6c5m7tbv6hergktmph3h4limqfaeppcwgo3hm3a","fresh_execution_receipts_reproducible":false,"vertical_result_cid":"baguqeerakvdp46njbufk4nwj7xp5zewifbkbox5l5uzr2t5c7larq6r6kbda"}
 
 ## I. Benchmark metrics
 - Benchmark disposition: partial
@@ -50,4 +50,4 @@
 
 ## L. Next minimal machine-executable tasks
 - Successor task IDs: ["LGCVF-S001","LGCVF-S002","LGCVF-S003"]
-- Successor tasks CID: baguqeerausaxneixfujdjn4bnbo5xjt3odpk3xycyst4mpcifdkur6kssbeq
+- Successor tasks CID: baguqeeraxm5ubdod5lmwjpv67iyotk2cui5s2icbhqiyszuycj4wwc7hwhgq
