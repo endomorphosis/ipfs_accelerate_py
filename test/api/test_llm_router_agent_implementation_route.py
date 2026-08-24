@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -64,6 +65,10 @@ SPENDING_LIMIT_MESSAGE = (
     "API error (status 403 Forbidden): personal-team-blocked:spending-limit: "
     "You have run out of credits or need a Grok subscription. Add credits at "
     "https://grok.com/?_s=usage or upgrade at https://grok.com/supergrok."
+)
+BALANCE_EXHAUSTED_MESSAGE = (
+    "API error (status 402 Payment Required): "
+    "Grok Build usage balance exhausted"
 )
 
 
@@ -501,10 +506,18 @@ def _native_quota_home(
     repo: Path,
     *,
     receipt: dict[str, object],
+    verifier_workspace: Path | None = None,
 ) -> tuple[Path, str]:
     session_id = "f159e13e-462f-43bc-9da2-01bd0c1f5761"
     home = repo / "native-verifier-home"
-    session = home / "sessions" / session_id
+    session_root = home / "sessions"
+    if verifier_workspace is not None:
+        workspace_namespace = quote(
+            str(verifier_workspace.resolve(strict=True)),
+            safe="!'()*-._~",
+        )
+        session_root /= workspace_namespace
+    session = session_root / session_id
     session.mkdir(parents=True)
 
     def update(value: dict[str, object]) -> dict[str, object]:
@@ -519,14 +532,14 @@ def _native_quota_home(
                 "sessionUpdate": "retry_state",
                 "type": "failed",
                 "error_type": "api",
-                "message": SPENDING_LIMIT_MESSAGE,
+                "message": BALANCE_EXHAUSTED_MESSAGE,
             }
         ),
         update(
             {
                 "sessionUpdate": "turn_completed",
                 "stop_reason": "error",
-                "agent_result": SPENDING_LIMIT_MESSAGE,
+                "agent_result": BALANCE_EXHAUSTED_MESSAGE,
             }
         ),
     ]
@@ -907,10 +920,14 @@ def test_native_quota_evidence_is_opaque_and_bound_to_receipt(
         probe_returncode=41,
         observed_at_ms=invocation.issued_at_ms,
     )
-    home, session_id = _native_quota_home(repo, receipt=receipt)
     verifier_root = tmp_path / "verifier"
     verifier_workspace = verifier_root / "workspace"
     verifier_workspace.mkdir(parents=True, mode=0o700)
+    home, session_id = _native_quota_home(
+        repo,
+        receipt=receipt,
+        verifier_workspace=verifier_workspace,
+    )
     verifier_prompt = verifier_root / "prompt.txt"
     verifier_prompt.write_text(
         "Reply with exactly the single word OK.\n",
@@ -974,7 +991,7 @@ def test_native_quota_evidence_is_opaque_and_bound_to_receipt(
     assert authorized.verifier_status == "confirmed_quota"
 
     forged_mapping = evidence.audit_dict()
-    forged_copy = replace(evidence, verifier_result="usage_pool_exhausted")
+    forged_copy = replace(evidence, verifier_result="spending_limit_exhausted")
     for forged in (forged_mapping, forged_copy):
         denied = llm_router.decide_agent_implementation_fallback(
             plan,
@@ -989,6 +1006,103 @@ def test_native_quota_evidence_is_opaque_and_bound_to_receipt(
             max_age_ms=60_000,
         )
         assert denied.authorized is False
+
+
+def test_native_quota_evidence_accepts_bounded_legacy_direct_layout(
+    tmp_path: Path,
+) -> None:
+    receipt = _receipt("Grok Build usage balance exhausted")
+    home, session_id = _native_quota_home(tmp_path, receipt=receipt)
+
+    evidence = llm_router.validate_agent_implementation_quota_evidence(
+        grok_home=home,
+        expected_session_id=session_id,
+        verifier_returncode=41,
+        failure_receipt=receipt,
+    )
+
+    assert isinstance(evidence, llm_router.AgentImplementationQuotaEvidence)
+    assert evidence.verifier_result == "usage_pool_exhausted"
+
+
+@pytest.mark.parametrize(
+    "invalid_state",
+    (
+        "ambiguous_legacy_layout",
+        "transcript_symlink",
+        "namespace_escape",
+        "workspace_parent_traversal",
+        "wrong_workspace",
+        "wrong_session",
+    ),
+)
+def test_native_quota_workspace_layout_rejects_invalid_identity_or_path(
+    tmp_path: Path,
+    invalid_state: str,
+) -> None:
+    receipt = _receipt("Grok Build usage balance exhausted")
+    verifier_workspace = tmp_path / "verifier workspace"
+    verifier_workspace.mkdir(mode=0o700)
+    home, session_id = _native_quota_home(
+        tmp_path,
+        receipt=receipt,
+        verifier_workspace=verifier_workspace,
+    )
+    namespace = quote(
+        str(verifier_workspace.resolve(strict=True)),
+        safe="!'()*-._~",
+    )
+    session = home / "sessions" / namespace / session_id
+    validation_workspace = verifier_workspace
+
+    if invalid_state == "ambiguous_legacy_layout":
+        _native_quota_home(tmp_path, receipt=receipt)
+    elif invalid_state == "transcript_symlink":
+        transcript = session / "updates.jsonl"
+        saved = transcript.with_suffix(".saved")
+        transcript.rename(saved)
+        transcript.symlink_to(saved.name)
+    elif invalid_state == "namespace_escape":
+        namespace_directory = session.parent
+        escaped = tmp_path / "escaped-session-namespace"
+        namespace_directory.rename(escaped)
+        namespace_directory.symlink_to(escaped, target_is_directory=True)
+    elif invalid_state == "workspace_parent_traversal":
+        validation_workspace = (
+            verifier_workspace.parent
+            / "unused"
+            / ".."
+            / verifier_workspace.name
+        )
+    elif invalid_state == "wrong_workspace":
+        validation_workspace = tmp_path / "other-workspace"
+        validation_workspace.mkdir(mode=0o700)
+    else:
+        wrong_session_id = "7afec563-2424-4fd6-a743-650e86700986"
+        transcript = session / "updates.jsonl"
+        events = [
+            json.loads(line)
+            for line in transcript.read_text(encoding="utf-8").splitlines()
+        ]
+        for event in events:
+            event["params"]["sessionId"] = wrong_session_id
+        transcript.write_text(
+            "".join(
+                json.dumps(event, sort_keys=True) + "\n" for event in events
+            ),
+            encoding="utf-8",
+        )
+
+    assert (
+        llm_router.validate_agent_implementation_quota_evidence(
+            grok_home=home,
+            expected_session_id=session_id,
+            verifier_returncode=41,
+            failure_receipt=receipt,
+            verifier_workspace=validation_workspace,
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize("record_name", ("updates.jsonl", "summary.json"))

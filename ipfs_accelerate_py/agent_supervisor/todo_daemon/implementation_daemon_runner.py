@@ -1531,6 +1531,9 @@ def build_portal_implementation_daemon_from_args(
                 getattr(parsed, "merge_target_branch", "") or "HEAD"
             ),
             task_prefix=str(getattr(parsed, "task_prefix", "") or ""),
+            board_namespace=str(
+                getattr(parsed, "board_namespace", "") or ""
+            ),
         )
         bind_database_portal_execution_from_args(
             daemon,
@@ -1707,6 +1710,9 @@ def build_database_implementation_daemon_from_args(
         repo_root=getattr(parsed, "repo_root", None),
         merge_target_ref=str(
             getattr(parsed, "merge_target_branch", "") or "HEAD"
+        ),
+        board_namespace=str(
+            getattr(parsed, "board_namespace", "") or ""
         ),
     )
 

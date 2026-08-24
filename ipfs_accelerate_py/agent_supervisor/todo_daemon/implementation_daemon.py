@@ -64284,7 +64284,7 @@ class PortalImplementationDaemon:
                 f"invalid sealed implementation route: {exc}",
                 backoff_seconds=300,
             ) from exc
-        if route_plan and route_plan.permits_authentication_unavailable:
+        if route_plan:
             if self.implementation_command:
                 raise ImplementationRetryDeferred(
                     "sealed Grok/Codex route rejects explicit implementation "
@@ -64342,7 +64342,9 @@ class PortalImplementationDaemon:
                 workspace_path=workspace_path,
                 model_override=route_plan.primary_model_id,
                 failure_receipt_nonce=secrets.token_hex(32),
-                allow_auth_unavailable_fallback=True,
+                allow_auth_unavailable_fallback=(
+                    route_plan.permits_authentication_unavailable
+                ),
                 fallback_reasoning_effort=route_plan.fallback_reasoning_effort,
                 route_plan=route_plan,
                 sealed_runner_path=(
@@ -72373,6 +72375,7 @@ class DatabaseImplementationDaemon:
         repo_root: Path | str | None = None,
         merge_target_ref: str = "HEAD",
         task_prefix: str = "",
+        board_namespace: str = "",
         merge_queue: Any = None,
     ) -> None:
         normalized_authority_mode = str(authority_mode or "quack").strip().lower().replace(
@@ -72447,6 +72450,7 @@ class DatabaseImplementationDaemon:
             "",
             str(task_prefix or ""),
         ).strip()
+        self.board_namespace = str(board_namespace or "").strip()
         self.execution_slice_task_ids = frozenset(
             str(item).strip()
             for item in execution_slice_task_ids
@@ -76451,14 +76455,21 @@ class DatabaseImplementationDaemon:
         if repo is None:
             return ""
         from ..merge.checkout_lock import (
+            board_scoped_checkout_mutation_lock_path,
             checkout_mutation_lock_path,
             read_checkout_mutation_lease,
         )
 
         try:
-            existing = read_checkout_mutation_lease(
-                checkout_mutation_lock_path(Path(repo))
+            lock_path = (
+                board_scoped_checkout_mutation_lock_path(
+                    Path(repo),
+                    self.board_namespace,
+                )
+                if self.board_namespace
+                else checkout_mutation_lock_path(Path(repo))
             )
+            existing = read_checkout_mutation_lease(lock_path)
         except (OSError, TypeError, ValueError):
             return ""
         if existing is None:
@@ -86330,6 +86341,9 @@ def main(argv: list[str] | None = None) -> None:
                 getattr(args, "merge_target_branch", "") or "HEAD"
             ),
             task_prefix=str(getattr(args, "task_prefix", "") or ""),
+            board_namespace=str(
+                getattr(args, "board_namespace", "") or ""
+            ),
         )
         bind_database_portal_execution_from_args(
             daemon,

@@ -25,6 +25,7 @@ from types import SimpleNamespace
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    board_scoped_checkout_mutation_lock_path,
     checkout_lock_metadata,
     checkout_mutation_lock_path,
 )
@@ -203,6 +204,7 @@ def _open_daemon(
     repo_root: Path | None = None,
     merge_target_ref: str = "HEAD",
     task_prefix: str = "",
+    board_namespace: str = "",
 ) -> DatabaseImplementationDaemon:
     database_path = control_path or (tmp_path / "control.duckdb")
     coordination_path = tmp_path / "coordination.duckdb"
@@ -265,6 +267,7 @@ def _open_daemon(
         repo_root=repo_root,
         merge_target_ref=merge_target_ref,
         task_prefix=task_prefix,
+        board_namespace=board_namespace,
     )
 
 
@@ -1774,6 +1777,39 @@ def test_supervisor_recovery_journal_defers_before_callback_intent(
         stale = daemon.get_attempt(attempt.attempt_id)
         assert stale is not None
         assert stale.status != "running"
+    finally:
+        daemon.close()
+
+
+def test_scoped_database_daemon_ignores_foreign_global_recovery_journal(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    global_lock = _write_supervisor_protected_recovery_journal(repo)
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        repo_root=repo,
+        board_namespace="agent-supervisor-efficiency-and-state-hardening-v1",
+    )
+    try:
+        assert daemon._external_protected_checkout_setup_block_reason() == ""
+        assert global_lock.is_file()
+
+        sibling_lock = board_scoped_checkout_mutation_lock_path(
+            repo,
+            "proof-carrying-procedure-compiler-v1",
+        )
+        sibling_lock.write_bytes(global_lock.read_bytes())
+        assert daemon._external_protected_checkout_setup_block_reason() == ""
+
+        scoped_lock = board_scoped_checkout_mutation_lock_path(
+            repo,
+            daemon.board_namespace,
+        )
+        scoped_lock.write_bytes(global_lock.read_bytes())
+        assert daemon._external_protected_checkout_setup_block_reason() == (
+            "external_protected_checkout_recovery_required"
+        )
     finally:
         daemon.close()
 
@@ -4279,6 +4315,8 @@ def test_runner_builds_database_daemon_without_json_projections(
             str(tmp_path / "state"),
             "--state-prefix",
             "dqp",
+            "--board-namespace",
+            "agent-supervisor-efficiency-and-state-hardening-v1",
             "--task-shard-count",
             "4",
             "--task-shard-index",
@@ -4302,6 +4340,9 @@ def test_runner_builds_database_daemon_without_json_projections(
         assert daemon.task_shard_count == 4
         assert daemon.task_shard_index == 3
         assert daemon.strict_task_sharding is True
+        assert daemon.board_namespace == (
+            "agent-supervisor-efficiency-and-state-hardening-v1"
+        )
         daemon.materialize_population(_population(1))
         result = daemon.run_once()
         assert result["authority_mode"] == "embedded"

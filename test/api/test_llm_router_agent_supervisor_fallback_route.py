@@ -14,6 +14,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -1597,8 +1598,15 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
     assert initial.requires_independent_quota_verification
 
     session_id = "f159e13e-462f-43bc-9da2-01bd0c1f5761"
+    verifier_root = tmp_path / "verifier"
+    verifier_workspace = verifier_root / "workspace"
+    verifier_workspace.mkdir(parents=True, mode=0o700)
     home = tmp_path / "native-verifier-home"
-    session = home / "sessions" / session_id
+    workspace_namespace = quote(
+        str(verifier_workspace.resolve(strict=True)),
+        safe="!'()*-._~",
+    )
+    session = home / "sessions" / workspace_namespace / session_id
     session.mkdir(parents=True, mode=0o700)
 
     def update(value: dict[str, object]) -> dict[str, object]:
@@ -1646,9 +1654,6 @@ def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(
         encoding="utf-8",
     )
     summary.chmod(0o600)
-    verifier_root = tmp_path / "verifier"
-    verifier_workspace = verifier_root / "workspace"
-    verifier_workspace.mkdir(parents=True, mode=0o700)
     prompt = verifier_root / "prompt.txt"
     prompt.write_text("Reply with exactly the single word OK.\n")
     prompt.chmod(0o600)

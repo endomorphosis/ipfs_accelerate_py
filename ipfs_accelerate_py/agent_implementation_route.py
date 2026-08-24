@@ -27,6 +27,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 _AGENT_IMPLEMENTATION_PROVIDER_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
@@ -2908,6 +2909,7 @@ class AgentImplementationRouteInvocation:
 
 _AGENT_IMPLEMENTATION_MAX_SESSION_BYTES = 16 * 1024 * 1024
 _AGENT_IMPLEMENTATION_MAX_STREAM_EVENT_BYTES = 64 * 1024
+_AGENT_IMPLEMENTATION_MAX_SESSION_NAMESPACE_BYTES = 255
 _AGENT_IMPLEMENTATION_BALANCE_EXHAUSTED_MESSAGE = (
     "API error (status 402 Payment Required): Grok Build usage balance exhausted"
 )
@@ -2936,6 +2938,18 @@ AGENT_IMPLEMENTATION_QUOTA_VERIFIER_DISALLOWED_TOOLS = (
     "use_tool,call_mcp_tool,list_mcp_resources,list_mcp_resource_templates,"
     "read_mcp_resource,fetch_mcp_resource,task,Agent,memory,lsp,spawn_subagent"
 )
+
+
+def _agent_implementation_directory_identity(
+    metadata: os.stat_result,
+) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_nlink,
+        metadata.st_uid,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -3224,6 +3238,92 @@ def _canonical_agent_quota_verifier_command(
     return tuple(command) if command == expected else None
 
 
+def _agent_implementation_quota_session_directory(
+    *,
+    grok_home: Path,
+    expected_session_id: str,
+    verifier_workspace: Path | str | None,
+) -> tuple[Path, tuple[int, ...]] | None:
+    """Select one exact native session layout without searching provider state."""
+
+    sessions = grok_home / "sessions"
+    legacy_session = sessions / expected_session_id
+    conflicting_sessions: tuple[Path, ...] = ()
+    if verifier_workspace is None:
+        # Grok clients before the workspace namespace stored sessions directly
+        # under ``sessions``.  Keep that bounded compatibility path only when
+        # no workspace identity was supplied; it must not weaken a current
+        # workspace-bound verifier invocation.
+        selected = legacy_session
+    else:
+        raw_workspace = Path(verifier_workspace)
+        if not raw_workspace.is_absolute() or ".." in raw_workspace.parts:
+            return None
+        try:
+            workspace = resolve_agent_implementation_private_state_path(
+                raw_workspace
+            )
+            workspace_before = workspace.lstat()
+            workspace_resolved = workspace.resolve(strict=True)
+            workspace_after = workspace.lstat()
+        except (OSError, ValueError):
+            return None
+        if (
+            workspace != workspace_resolved
+            or _agent_implementation_directory_identity(workspace_before)
+            != _agent_implementation_directory_identity(workspace_after)
+            or not stat_module.S_ISDIR(workspace_before.st_mode)
+            or workspace_before.st_uid != os.geteuid()
+        ):
+            return None
+        try:
+            # Grok CLI 1.0.5 uses JavaScript ``encodeURIComponent`` semantics
+            # for the absolute workspace component of its session directory.
+            namespace = quote(
+                os.fspath(workspace_resolved),
+                safe="!'()*-._~",
+            )
+        except UnicodeError:
+            return None
+        if (
+            not namespace
+            or "/" in namespace
+            or len(namespace.encode("ascii"))
+            > _AGENT_IMPLEMENTATION_MAX_SESSION_NAMESPACE_BYTES
+        ):
+            return None
+        selected = sessions / namespace / expected_session_id
+        # The same session identity in the legacy location would make layout
+        # selection ambiguous.  Fail closed rather than prefer either record.
+        conflicting_sessions = (legacy_session,)
+
+    try:
+        for conflict in conflicting_sessions:
+            try:
+                conflict.lstat()
+            except FileNotFoundError:
+                continue
+            return None
+        selected = resolve_agent_implementation_private_state_path(selected)
+        selected_before = selected.lstat()
+        selected_resolved = selected.resolve(strict=True)
+        selected_after = selected.lstat()
+    except (OSError, ValueError):
+        return None
+    selected_identity = _agent_implementation_directory_identity(
+        selected_before
+    )
+    if (
+        selected != selected_resolved
+        or selected_identity
+        != _agent_implementation_directory_identity(selected_after)
+        or not stat_module.S_ISDIR(selected_before.st_mode)
+        or selected_before.st_uid != os.geteuid()
+    ):
+        return None
+    return selected, selected_identity
+
+
 def validate_agent_implementation_quota_evidence(
     *,
     grok_home: Path | str,
@@ -3283,7 +3383,15 @@ def validate_agent_implementation_quota_evidence(
         uuid.UUID(expected_session_id)
     except ValueError:
         return None
-    record = home / "sessions" / expected_session_id / "updates.jsonl"
+    selected_session = _agent_implementation_quota_session_directory(
+        grok_home=home,
+        expected_session_id=expected_session_id,
+        verifier_workspace=verifier_workspace,
+    )
+    if selected_session is None:
+        return None
+    session_directory, session_identity = selected_session
+    record = session_directory / "updates.jsonl"
     try:
         home_resolved = home.resolve(strict=True)
         transcript_read = _read_stable_agent_implementation_evidence_file(
@@ -3432,6 +3540,13 @@ def validate_agent_implementation_quota_evidence(
         or latest_failure not in _AGENT_IMPLEMENTATION_NATIVE_QUOTA_FAILURES
         or terminal_verdict not in _AGENT_IMPLEMENTATION_QUOTA_VERIFIER_RESULTS
     ):
+        return None
+    selected_session_after = _agent_implementation_quota_session_directory(
+        grok_home=home,
+        expected_session_id=expected_session_id,
+        verifier_workspace=verifier_workspace,
+    )
+    if selected_session_after != (session_directory, session_identity):
         return None
     evidence_body: dict[str, object] = {
         "schema": _AGENT_IMPLEMENTATION_QUOTA_EVIDENCE_SCHEMA,
