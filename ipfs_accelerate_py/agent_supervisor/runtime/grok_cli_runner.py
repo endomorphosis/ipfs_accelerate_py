@@ -3051,28 +3051,14 @@ def _docker_codex_fallback_command(
     command.extend(_docker_mount(host_usr, read_only=True))
     try:
         from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-            _host_codex_vendor_binaries,
+            _docker_codex_host_vendor_mounts,
         )
 
-        vendor = _host_codex_vendor_binaries()
+        vendor_mounts = _docker_codex_host_vendor_mounts()
     except Exception:
-        vendor = None
-    if vendor is not None:
-        host_codex, host_companion = vendor
-        command.extend(
-            _docker_mount(
-                host_codex,
-                destination=Path("/usr/local/bin/codex"),
-                read_only=True,
-            )
-        )
-        command.extend(
-            _docker_mount(
-                host_companion,
-                destination=Path("/usr/local/bin/codex-code-mode-host"),
-                read_only=True,
-            )
-        )
+        vendor_mounts = []
+    if vendor_mounts:
+        command.extend(vendor_mounts)
         inner[0] = "/usr/local/bin/codex"
     host_ca_certificates = _existing_path(Path("/etc/ssl/certs"))
     if host_ca_certificates is None:

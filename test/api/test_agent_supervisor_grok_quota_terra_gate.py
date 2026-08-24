@@ -1724,6 +1724,7 @@ def test_docker_cleanup_watchdog_cannot_write_candidate_bytecode(
 
 def test_docker_codex_boundary_transforms_only_validated_sandbox(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace = tmp_path / "workspace"
     provider_bin = tmp_path / "provider-bin"
@@ -1737,6 +1738,23 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     source_auth = tmp_path / "auth.json"
     source_auth.write_text("{}\n", encoding="utf-8")
     source_auth.chmod(0o600)
+    vendor_bin = tmp_path / "vendor-bin"
+    vendor_bin.mkdir()
+    host_codex = vendor_bin / "codex"
+    host_companion = vendor_bin / "codex-code-mode-host"
+    host_codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    host_companion.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    host_codex.chmod(0o755)
+    host_companion.chmod(0o755)
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_daemon,
+    )
+
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_host_codex_vendor_binaries",
+        lambda: (host_codex.resolve(), host_companion.resolve()),
+    )
     fallback = _terra_fallback_command(str(codex), workspace)
     image = grok_cli_runner._CODEX_TASK_TOOLCHAIN_IMAGE_ID
     container_name = "ipfs-accelerate-codex-1-" + "b" * 32
@@ -1796,6 +1814,16 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     assert "type=bind,src=/usr,dst=/usr,readonly" in mounts
     assert (
         "type=bind,src=/etc/ssl/certs,dst=/etc/ssl/certs,readonly" in mounts
+    )
+    assert (
+        f"type=bind,src={vendor_bin.resolve()},"
+        "dst=/usr/local/bin,readonly"
+        in mounts
+    )
+    assert not any("dst=/usr/local/bin/codex," in mount for mount in mounts)
+    assert not any(
+        "dst=/usr/local/bin/codex-code-mode-host," in mount
+        for mount in mounts
     )
     assert (
         f"type=bind,src={grok_cli_runner._HOST_CODEX_TASK_TOOLCHAIN_PYTHON},"

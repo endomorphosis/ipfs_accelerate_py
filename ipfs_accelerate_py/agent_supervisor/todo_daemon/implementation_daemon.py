@@ -4083,31 +4083,29 @@ def _external_validation_authority_roots() -> tuple[Path, Path]:
 
 
 def _docker_codex_host_vendor_mounts() -> list[str]:
-    """Bind-mount the host npm Codex pair over the sealed image binaries."""
+    """Bind-mount the matching host npm Codex pair as one read-only directory.
+
+    Mounting the two files separately cannot create the absent
+    ``codex-code-mode-host`` target after the container root has become
+    read-only.  Their already-common vendor directory is a single immutable
+    mount onto the image's existing ``/usr/local/bin`` directory, which also
+    prevents a mismatched companion from being projected independently.
+    """
 
     vendor = _host_codex_vendor_binaries()
     if vendor is None:
         return []
     host_codex, host_companion = vendor
-    mounts: list[str] = []
+    if host_codex.parent != host_companion.parent:
+        return []
     try:
-        mounts.extend(
-            _external_isolation_mount(
-                host_codex,
-                destination=_CODEX_CONTAINER_EXECUTABLE,
-                read_only=True,
-            )
-        )
-        mounts.extend(
-            _external_isolation_mount(
-                host_companion,
-                destination=_CODEX_CONTAINER_CODE_MODE_HOST,
-                read_only=True,
-            )
+        return _external_isolation_mount(
+            host_codex.parent,
+            destination=_CODEX_CONTAINER_EXECUTABLE.parent,
+            read_only=True,
         )
     except (OSError, ValueError):
         return []
-    return mounts
 
 
 def _docker_codex_implementation_command(
