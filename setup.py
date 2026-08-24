@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import gzip
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 from setuptools import Command, find_packages, setup
@@ -186,6 +189,29 @@ _SEMANTIC_GOVERNOR_CONSOLE = (
     "semantic-governor="
     "ipfs_accelerate_py.agent_supervisor.semantic_governor.cli:main"
 )
+_PROOF_CONTEXT_CONSOLE = (
+    "proof-context=ipfs_accelerate_py.proof_context.cli.__main__:main"
+)
+_PROOF_CONTEXT_CORE_REQUIREMENTS = (
+    "ipfs_datasets_py==0.2.0",
+    "ipfs_kit_py==0.3.0",
+    "mcp-plus-plus-contracts==0.1.0",
+)
+
+
+def _normalize_wheel_staging_modes(root: Path) -> None:
+    """Make wheel member modes independent of checkout/build umask."""
+
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            continue
+        if path.is_dir():
+            path.chmod(0o755)
+        elif path.is_file():
+            source_mode = stat.S_IMODE(path.stat().st_mode)
+            path.chmod(0o755 if source_mode & 0o111 else 0o644)
+
+
 _SEMANTIC_STATE_SCHEMA_REL = Path(
     "ipfs_accelerate_py/agent_supervisor/semantic_state/schemas/"
     "semantic-state-harness.interface.json"
@@ -195,12 +221,10 @@ _SEMANTIC_STATE_SCHEMA_REL = Path(
 def _semantic_state_console_script_paths() -> list[str]:
     """Materialize console scripts for wheel installs.
 
-    ``pyproject.toml`` is a validation-config path and cannot be edited by this
-    task's proposal gate, while setuptools prefers ``[project.scripts]`` over
+    setuptools prefers ``[project.scripts]`` over
     ``setup(entry_points=...)``. Generated ``scripts=`` wrappers still land in
-    the wheel's ``.data/scripts`` payload so ``semantic-state`` and
-    ``semantic-governor`` remain installable without mutating validation
-    configuration.
+    the wheel's ``.data/scripts`` payload so the legacy ``semantic-state`` and
+    ``semantic-governor`` commands remain installable.
 
     setuptools requires script paths to be relative to the setup.py directory.
     """
@@ -246,8 +270,7 @@ def _get_cmdclass():
             """Copy the Profile A interface schema into the wheel build tree.
 
             PEP 621 ``[tool.setuptools.package-data]`` only admits ``*.txt`` /
-            ``*.md`` here; editing ``pyproject.toml`` is blocked as validation
-            configuration. Explicitly copying the closed JSON schema keeps
+            ``*.md`` here. Explicitly copying the closed JSON schema keeps
             ``importlib.resources`` loadable from installed wheels.
             """
 
@@ -261,6 +284,95 @@ def _get_cmdclass():
                 shutil.copy2(source, target)
 
         cmdclass["build_py"] = build_py
+    except Exception:
+        pass
+
+    try:
+        from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+
+        class bdist_wheel(_bdist_wheel):  # type: ignore
+            def write_wheelfile(self, *args, **kwargs):
+                super().write_wheelfile(*args, **kwargs)
+                # WheelFile preserves staging permissions.  Normalize after
+                # dist-info exists and immediately before archive emission.
+                _normalize_wheel_staging_modes(Path(self.bdist_dir))
+
+        cmdclass["bdist_wheel"] = bdist_wheel
+    except Exception:
+        pass
+
+    try:
+        from setuptools.command.sdist import sdist as _sdist
+
+        class sdist(_sdist):  # type: ignore
+            """Create a byte-reproducible PCCE source artifact.
+
+            setuptools' default gztar records staging-tree and gzip creation
+            times even when ``SOURCE_DATE_EPOCH`` is set.  Normalize archive
+            ownership, modes, mtimes, ordering, and the gzip header without
+            changing the selected source manifest.
+            """
+
+            def make_archive(
+                self,
+                base_name,
+                format,
+                root_dir=None,
+                base_dir=None,
+                owner=None,
+                group=None,
+            ):
+                if format != "gztar" or not base_dir:
+                    return super().make_archive(
+                        base_name,
+                        format,
+                        root_dir,
+                        base_dir,
+                        owner,
+                        group,
+                    )
+                try:
+                    epoch = int(os.environ.get("SOURCE_DATE_EPOCH", "0"))
+                except ValueError:
+                    epoch = 0
+                epoch = max(0, epoch)
+                release_root = Path(root_dir or os.curdir) / base_dir
+                archive_path = Path(f"{os.fspath(base_name)}.tar.gz")
+                archive_path.parent.mkdir(parents=True, exist_ok=True)
+                members = [release_root, *sorted(release_root.rglob("*"))]
+                with archive_path.open("wb") as raw:
+                    with gzip.GzipFile(
+                        filename="", mode="wb", fileobj=raw, mtime=epoch
+                    ) as compressed:
+                        with tarfile.open(
+                            fileobj=compressed,
+                            mode="w",
+                            format=tarfile.PAX_FORMAT,
+                        ) as archive:
+                            for path in members:
+                                relative = path.relative_to(release_root)
+                                archive_name = Path(base_dir) / relative
+                                info = archive.gettarinfo(
+                                    str(path), archive_name.as_posix()
+                                )
+                                info.uid = 0
+                                info.gid = 0
+                                info.uname = ""
+                                info.gname = ""
+                                info.mtime = epoch
+                                info.pax_headers = {}
+                                if info.isdir():
+                                    info.mode = 0o755
+                                elif info.isfile():
+                                    info.mode = 0o755 if info.mode & 0o111 else 0o644
+                                if info.isfile():
+                                    with path.open("rb") as stream:
+                                        archive.addfile(info, stream)
+                                else:
+                                    archive.addfile(info)
+                return str(archive_path)
+
+        cmdclass["sdist"] = sdist
     except Exception:
         pass
 
@@ -291,18 +403,6 @@ def _get_cmdclass():
     return cmdclass
 
 
-def _read_requirements(req_path: Path) -> list[str]:
-    if not req_path.exists():
-        return []
-    requirements: list[str] = []
-    for line in req_path.read_text().splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        requirements.append(stripped)
-    return requirements
-
-
 def _read_optional_deps(pyproject_path: Path) -> dict[str, list[str]]:
     if not pyproject_path.exists():
         return {}
@@ -330,25 +430,8 @@ def _read_optional_deps(pyproject_path: Path) -> dict[str, list[str]]:
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text() if (this_directory / "README.md").exists() else ""
 
-install_requires = _read_requirements(this_directory / "requirements.txt")
+install_requires = list(_PROOF_CONTEXT_CORE_REQUIREMENTS)
 extras_require = _read_optional_deps(this_directory / "pyproject.toml")
-proof_reuse_requirements = _read_requirements(
-    this_directory / "requirements-proof-reuse.txt"
-)
-if proof_reuse_requirements:
-    # Keep legacy setup.py metadata aligned with the PEP 621 extra and
-    # requirements-proof-reuse.txt.  Core install_requires carries strict
-    # content-addressing (multiformats/pymultihash), schema validation, and the
-    # NLTK Python distribution.  NLTK corpus/model downloads are deliberately
-    # not setuptools hooks.  Datasets-ZK
-    # (ipfs_datasets_py verifier) remains a first-use exact Git-blob snapshot
-    # materialized by ProofReuseLazyDependencyInstaller in an owner-private
-    # content-addressed cache (no pip/VCS, build hooks, submodules, or global
-    # site-packages mutation) because that distribution depends back on
-    # ipfs_accelerate_py. Groth16 is a reviewed native Cargo build, not a PyPI
-    # requirement; its separate explicit first-use provisioner never runs
-    # trusted setup or generates circuit keys.
-    extras_require["proof-reuse"] = proof_reuse_requirements
 
 setup(
     name="ipfs_accelerate_py",
@@ -363,17 +446,13 @@ setup(
     url="https://github.com/endomorphosis/ipfs_accelerate_py",
     classifiers=[
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
         "Operating System :: POSIX :: Linux",
         "Operating System :: Microsoft :: Windows",
         "Operating System :: MacOS",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.12",
     keywords="machine learning, IPFS, hardware-acceleration, inference, distributed computing, WebGPU, WebNN",
     install_requires=install_requires,
     extras_require=extras_require,
@@ -393,6 +472,7 @@ setup(
             "ipfs-accelerate-agent-llm-merge-resolver-fallback=ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main",
             "ipfs-accelerate-proof-reuse-provision=ipfs_accelerate_py.testing.proof_reuse.provisioning_cli:main",
             "ipfs-accelerate-llama-cpp-serve=ipfs_accelerate_py.utils.llama_cpp:main",
+            _PROOF_CONTEXT_CONSOLE,
             _SEMANTIC_STATE_CONSOLE,
             _SEMANTIC_GOVERNOR_CONSOLE,
         ],
