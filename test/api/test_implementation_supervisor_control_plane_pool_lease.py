@@ -43,7 +43,11 @@ def _write_json(path: Path, payload: Any) -> None:
     )
 
 
-def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
+def _seed_active_database_pool_lease(
+    tmp_path: Path,
+    *,
+    mark_lifecycle_active: bool = True,
+) -> dict[str, Any]:
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(
@@ -83,6 +87,12 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
         state_dir=str(attempt_dir),
         owner=birth,
     )
+    if mark_lifecycle_active:
+        lifecycle = lifecycle_store.mark_active(
+            workspace,
+            lease_id=lifecycle.lease_id,
+            expected_fence=lifecycle.fence,
+        )
 
     lease_token = "vrif-010-lease"
     pool_path = worktree_root / ".pool-state" / f"{lease_token}.json"
@@ -179,6 +189,8 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
         "pool_path": pool_path,
         "lock_path": lock_path,
         "binding_path": binding_path,
+        "attempt_dir": attempt_dir,
+        "binding": binding,
         "nested_state_path": nested_state_path,
         "lifecycle_path": lifecycle_store.workspace_path_for(workspace),
         "workspace": workspace,
@@ -186,6 +198,47 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
         "branch": branch,
         "lifecycle": lifecycle,
     }
+
+
+def _seed_live_unprojected_database_attempt(
+    tmp_path: Path,
+    *,
+    lifecycle_state: str = "preparing",
+) -> dict[str, Any]:
+    fixture = _seed_active_database_pool_lease(
+        tmp_path,
+        mark_lifecycle_active=lifecycle_state != "preparing",
+    )
+    if lifecycle_state == "settling":
+        lifecycle = fixture["lifecycle"]
+        fixture["lifecycle"] = WorktreeLifecycleStore(
+            fixture["repo"]
+        ).mark_settling(
+            fixture["workspace"],
+            lease_id=lifecycle.lease_id,
+            expected_fence=lifecycle.fence,
+        )
+    fixture["pool_path"].unlink()
+    fixture["lock_path"].unlink()
+    fixture["nested_state_path"].unlink()
+    implementation_lock_path = fixture["attempt_dir"] / "implementation.lock"
+    _write_json(
+        implementation_lock_path,
+        {
+            "kind": "implementation",
+            "pid": os.getpid(),
+            "repo_root": str(fixture["repo"].resolve()),
+            "state_dir": str(fixture["attempt_dir"].resolve()),
+            "task_id": "VRIF-010",
+            "canonical_task_cid": "task:vrif-010",
+            "canonical_task_key": fixture["binding"]["canonical_task_key"],
+            "attempt": 1,
+            "lease_id": "implementation-lease-vrif-010",
+            "started_at": "2026-08-24T00:00:00+00:00",
+        },
+    )
+    fixture["implementation_lock_path"] = implementation_lock_path
+    return fixture
 
 
 def test_supervisor_loop_config_binds_managed_child_identity_to_lane(
@@ -300,6 +353,135 @@ def test_control_plane_reload_defers_for_exact_nested_database_pool_lease(
         is False
     )
     assert fixture["state_path"].read_bytes() == original_state
+
+
+@pytest.mark.parametrize("lifecycle_state", ("preparing", "active", "settling"))
+def test_control_plane_reload_defers_for_exact_live_database_nonterminal_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lifecycle_state: str,
+) -> None:
+    fixture = _seed_live_unprojected_database_attempt(
+        tmp_path,
+        lifecycle_state=lifecycle_state,
+    )
+    supervisor = fixture["supervisor"]
+    supervisor._loaded_control_plane_source = {
+        "source_id": "loaded-source",
+        "repository_revision": "loaded-revision",
+    }
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_source_snapshot",
+        lambda: {
+            "source_id": "current-source",
+            "repository_revision": "current-revision",
+        },
+    )
+    monkeypatch.setattr(supervisor, "_active_agent_worker_processes", lambda: [])
+    monkeypatch.setattr(
+        supervisor,
+        "_active_validation_subprocess_exists",
+        lambda: False,
+    )
+    loop = SimpleNamespace(config=SimpleNamespace(status_extra_fields={}))
+    original_state = fixture["state_path"].read_bytes()
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert (
+        loop.config.status_extra_fields["control_plane_reload_deferred_reason"]
+        == "active_managed_database_nonterminal_lifecycle_claim"
+    )
+    assert loop.config.status_extra_fields["control_plane_reload_deferred_task_id"] == "VRIF-010"
+    assert loop.config.status_extra_fields["control_plane_reload_attempt_budget_consumed"] is False
+    assert (
+        loop.config.status_extra_fields["control_plane_reload_provider_invocation_consumed"]
+        is False
+    )
+    assert fixture["state_path"].read_bytes() == original_state
+
+    fixture["implementation_lock_path"].unlink()
+    released = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        fixture["child"],
+        {},
+    )
+
+    assert released.action == "stop"
+    assert released.status == CONTROL_PLANE_RELOAD_STATUS
+    assert released.reason == "control_plane_source_changed"
+    assert fixture["state_path"].read_bytes() == original_state
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing_lock",
+        "foreign_lock_pid",
+        "lock_task_mismatch",
+        "tampered_binding",
+        "mismatched_child_birth",
+        "foreign_repo_root",
+        "terminal_lifecycle",
+    ],
+)
+def test_database_nonterminal_claim_never_defers_without_exact_corroboration(
+    tmp_path: Path,
+    case: str,
+) -> None:
+    fixture = _seed_live_unprojected_database_attempt(tmp_path)
+    if case == "missing_lock":
+        fixture["implementation_lock_path"].unlink()
+    elif case == "foreign_lock_pid":
+        payload = json.loads(
+            fixture["implementation_lock_path"].read_text(encoding="utf-8")
+        )
+        payload["pid"] = os.getppid()
+        _write_json(fixture["implementation_lock_path"], payload)
+    elif case == "lock_task_mismatch":
+        payload = json.loads(
+            fixture["implementation_lock_path"].read_text(encoding="utf-8")
+        )
+        payload["task_id"] = "VRIF-999"
+        _write_json(fixture["implementation_lock_path"], payload)
+    elif case == "tampered_binding":
+        payload = json.loads(fixture["binding_path"].read_text(encoding="utf-8"))
+        payload["task_cid"] = "task:foreign"
+        _write_json(fixture["binding_path"], payload)
+    elif case == "mismatched_child_birth":
+        observed = fixture["child"].identity_process_birth
+        fixture["child"].identity_process_birth = ProcessBirthIdentity(
+            pid=observed.pid,
+            start_time_ticks=observed.start_time_ticks + 1,
+            boot_id=observed.boot_id,
+            parent_pid=observed.parent_pid,
+        )
+    elif case == "foreign_repo_root":
+        payload = json.loads(fixture["lifecycle_path"].read_text(encoding="utf-8"))
+        payload["repo_root"] = str(tmp_path)
+        _write_json(fixture["lifecycle_path"], payload)
+    elif case == "terminal_lifecycle":
+        lifecycle = fixture["lifecycle"]
+        store = WorktreeLifecycleStore(fixture["repo"])
+        store.mark_terminal(
+            fixture["workspace"],
+            lease_id=lifecycle.lease_id,
+            expected_fence=lifecycle.fence,
+            reason="finished",
+        )
+
+    assert (
+        fixture["supervisor"]._active_managed_database_nonterminal_claim(
+            fixture["child"]
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize(

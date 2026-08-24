@@ -88302,8 +88302,10 @@ class DatabaseImplementationDaemon:
 
         paths: list[str] = []
         seen: set[str] = set()
+        invalid_path_declared = False
 
         def add(raw: Any) -> None:
+            nonlocal invalid_path_declared
             if isinstance(raw, Mapping):
                 selected = str(
                     raw.get("path")
@@ -88321,6 +88323,7 @@ class DatabaseImplementationDaemon:
                 or posix.startswith("~")
                 or ".." in Path(posix).parts
             ):
+                invalid_path_declared = True
                 return
             seen.add(posix)
             paths.append(posix)
@@ -88342,7 +88345,13 @@ class DatabaseImplementationDaemon:
                 "effects",
             ):
                 raw = body.get(key)
-                if isinstance(raw, (str, Mapping)):
+                if isinstance(raw, str):
+                    if key in {"predicted_files", "predicted_paths", "outputs"}:
+                        for part in raw.split(","):
+                            add(part.strip())
+                    else:
+                        add(raw)
+                elif isinstance(raw, Mapping):
                     add(raw)
                 elif isinstance(raw, Sequence) and not isinstance(
                     raw, (bytes, bytearray, str)
@@ -88367,7 +88376,10 @@ class DatabaseImplementationDaemon:
                     ):
                         for item in raw:
                             add(item)
-        return tuple(paths)
+        # Landed-output recovery is an authority boundary.  A mixed
+        # declaration must not silently discard an unsafe segment and then
+        # certify only the safe subset as complete.
+        return () if invalid_path_declared else tuple(paths)
 
     def _git_tree_contains_path(self, relative: str) -> bool:
         if self.repo_root is None or not relative:

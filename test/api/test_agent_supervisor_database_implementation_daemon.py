@@ -1396,6 +1396,122 @@ def test_landed_quarantined_task_with_outputs_is_completed(
         daemon.close()
 
 
+def test_declared_output_paths_split_database_body_csv_fields() -> None:
+    task = SimpleNamespace(
+        outputs=(),
+        body={
+            "predicted_files": "first.py, nested/second.py",
+            "outputs": "third.py",
+        },
+    )
+
+    assert DatabaseImplementationDaemon._task_declared_output_paths(task) == (
+        "first.py",
+        "nested/second.py",
+        "third.py",
+    )
+
+
+def test_landed_quarantine_rejects_csv_with_unsafe_segment(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_output(tmp_path)
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["predicted_files"] = "landed.py, ../missing.py"
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=_unknown_callback_quarantine_receipt(),
+        )
+        quarantined = daemon.task_source.get("task:cid:001")
+        assert quarantined is not None
+        assert daemon._task_declared_output_paths(quarantined) == ()
+        assert daemon._task_outputs_landed_on_target(quarantined) is False
+
+        result = daemon.run_once()
+
+        assert result["landed_merge_reconciliations"] == []
+        assert result["unknown_callback_reopens"] == []
+        unchanged = daemon.task_source.get("task:cid:001")
+        assert unchanged is not None
+        assert unchanged.status == "quarantined"
+    finally:
+        daemon.close()
+
+
+def test_landed_quarantine_repairs_comma_separated_predicted_files(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo_with_output(tmp_path, "pkg/a.py")
+    for relative in ("pkg/b.py", "test/test_a.py"):
+        output = repo / relative
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text("landed\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "pkg/b.py", "test/test_a.py"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "land remaining outputs"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    daemon = _open_daemon(tmp_path / "lane", repo_root=repo)
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["predicted_files"] = "pkg/a.py, pkg/b.py, test/test_a.py"
+        daemon.materialize_population(population)
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            "task:cid:001",
+            int(task.revision),
+            "quarantined",
+            receipt=_unknown_callback_quarantine_receipt(),
+        )
+        quarantined = daemon.task_source.get("task:cid:001")
+        assert quarantined is not None
+        assert quarantined.status == "quarantined"
+        assert daemon._task_declared_output_paths(quarantined) == (
+            "pkg/a.py",
+            "pkg/b.py",
+            "test/test_a.py",
+        )
+        assert daemon._task_outputs_landed_on_target(quarantined) is True
+
+        result = daemon.run_once()
+
+        repaired = result["landed_merge_reconciliations"]
+        assert len(repaired) == 1
+        assert repaired[0]["completed"] is True
+        assert repaired[0]["landed_outputs"] == [
+            "pkg/a.py",
+            "pkg/b.py",
+            "test/test_a.py",
+        ]
+        assert result["unknown_callback_reopens"] == []
+        completed = daemon.task_source.get("task:cid:001")
+        assert completed is not None
+        assert completed.status == "completed"
+    finally:
+        daemon.close()
+
+
 def test_consumed_no_progress_completes_when_declared_outputs_already_landed(
     tmp_path: Path,
 ) -> None:
