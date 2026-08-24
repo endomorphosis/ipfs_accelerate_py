@@ -25,6 +25,7 @@ from ..task_sources.control_plane_contracts import (
 from .contracts import (
     ClosedContract,
     FederationCommand,
+    FederationCommandResult,
     FederationContractError,
     FederationIdentity,
     FederationOperation,
@@ -33,6 +34,7 @@ from .contracts import (
 )
 from .control_service import (
     POST_ADMISSION_OPERATIONS,
+    FederationControlAuditReceipt,
     FederationControlResponse,
     FederationControlService,
     FederationControlServiceError,
@@ -87,6 +89,9 @@ FEDERATION_TRANSPORT_UNAVAILABLE_MESSAGE: Final[str] = (
 FEDERATION_CREATE_DISPATCH_MODE: Final[str] = "authenticated_control_gateway"
 FEDERATION_POST_ADMISSION_DISPATCH_MODE: Final[str] = (
     "qualified_control_service"
+)
+_FEDERATION_CREATE_SUCCESS_OUTCOMES: Final[frozenset[str]] = frozenset(
+    {"accepted", "created"}
 )
 
 
@@ -312,10 +317,22 @@ def federation_control_response_record(
         raise FederationControlServiceError("CLI command must be FederationCommand")
     if not isinstance(response, FederationControlResponse):
         raise FederationControlServiceError("control service returned no typed response")
+    if type(response.result) is not FederationCommandResult:
+        raise FederationControlServiceError(
+            "control service result must be an exact FederationCommandResult"
+        )
+    if type(response.audit) is not FederationControlAuditReceipt:
+        raise FederationControlServiceError(
+            "control service audit must be an exact FederationControlAuditReceipt"
+        )
     # Reconstruct records from their transport forms so a malformed custom
     # embedding cannot emit an apparently canonical result.
-    result = type(response.result).from_dict(response.result.to_dict())
-    audit = type(response.audit).from_dict(response.audit.to_dict())
+    result = FederationCommandResult.from_dict(
+        FederationCommandResult.to_dict(response.result)
+    )
+    audit = FederationControlAuditReceipt.from_dict(
+        FederationControlAuditReceipt.to_dict(response.audit)
+    )
     if result.binding != command.binding or command.cid not in result.evidence_refs:
         raise FederationControlServiceError("control response is not bound to the command")
     if audit.command_cid != command.cid or audit.result_ref != result.cid:
@@ -349,7 +366,7 @@ def federation_create_response_record(
         identity.binding != transport.request.binding
         or receipt.binding != transport.request.binding
         or identity.record_id != f"federation:{transport.request.cid}"
-        or receipt.outcome != "created"
+        or receipt.outcome not in _FEDERATION_CREATE_SUCCESS_OUTCOMES
         or not {
             transport.authentication.evidence_id,
             transport.authentication.cid,

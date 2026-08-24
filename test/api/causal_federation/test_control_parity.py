@@ -10,11 +10,15 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import replace
 
 import anyio
 import pytest
 from ipfs_accelerate_py.agent_supervisor.federation import cli, contracts
+from ipfs_accelerate_py.agent_supervisor.federation.control_service import (
+    FederationControlAuditReceipt,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     canonical_json_bytes,
 )
@@ -450,6 +454,127 @@ def test_cli_mcp_and_python_share_authenticated_create_gateway_contract() -> Non
     assert _without_transport_identity(cli_record) == _without_transport_identity(python_record)
     assert "authentication" not in cli_record
     assert cli_record["authentication_evidence_ref"] == transport.authentication.cid
+
+
+@pytest.mark.parametrize("outcome", ("failed", "rejected"))
+def test_create_response_rejects_non_success_receipt_outcomes(outcome: str) -> None:
+    transport, gateway = _create_transport()
+    identity, receipt = gateway.create(
+        transport.request,
+        transport.authentication,
+    )
+
+    with pytest.raises(
+        cli.FederationControlServiceError,
+        match="not bound to its authenticated request",
+    ):
+        cli.federation_create_response_record(
+            transport,
+            (identity, replace(receipt, outcome=outcome)),
+        )
+
+
+@pytest.mark.parametrize("component", ("result", "audit"))
+def test_response_record_rejects_adversarial_typed_subclasses(
+    component: str,
+) -> None:
+    value = command()
+    control, _authorizer, _owner = service()
+    response = control.execute(value)
+    injected_value = "Bearer subclass-controlled-secret"
+
+    class AdversarialResult(contracts.FederationCommandResult):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["unknown_result_field"] = injected_value
+            return payload
+
+        @classmethod
+        def from_dict(
+            cls,
+            payload: Mapping[str, object],
+        ) -> contracts.FederationCommandResult:
+            canonical = contracts.FederationCommandResult.from_dict(
+                {
+                    key: item
+                    for key, item in payload.items()
+                    if key != "unknown_result_field"
+                }
+            )
+            return cls(
+                record_id=canonical.record_id,
+                revision=canonical.revision,
+                binding=canonical.binding,
+                outcome=canonical.outcome,
+                evidence_refs=canonical.evidence_refs,
+                recorded_at=canonical.recorded_at,
+            )
+
+    class AdversarialAudit(FederationControlAuditReceipt):
+        def to_dict(self) -> dict[str, object]:
+            payload = super().to_dict()
+            payload["unknown_audit_field"] = injected_value
+            return payload
+
+        @classmethod
+        def from_dict(
+            cls,
+            payload: Mapping[str, object],
+        ) -> FederationControlAuditReceipt:
+            canonical = FederationControlAuditReceipt.from_dict(
+                {
+                    key: item
+                    for key, item in payload.items()
+                    if key != "unknown_audit_field"
+                }
+            )
+            return cls(
+                audit_id=canonical.audit_id,
+                command_cid=canonical.command_cid,
+                authorization_id=canonical.authorization_id,
+                result_ref=canonical.result_ref,
+                outcome=canonical.outcome,
+                control_plane_generation=canonical.control_plane_generation,
+                fencing_epoch=canonical.fencing_epoch,
+                recorded_at=canonical.recorded_at,
+            )
+
+    if component == "result":
+        adversarial = AdversarialResult(
+            record_id=response.result.record_id,
+            revision=response.result.revision,
+            binding=response.result.binding,
+            outcome=response.result.outcome,
+            evidence_refs=response.result.evidence_refs,
+            recorded_at=response.result.recorded_at,
+        )
+        response = replace(
+            response,
+            result=adversarial,
+            audit=replace(response.audit, result_ref=adversarial.cid),
+        )
+        expected_type = "FederationCommandResult"
+    else:
+        adversarial = AdversarialAudit(
+            audit_id=response.audit.audit_id,
+            command_cid=response.audit.command_cid,
+            authorization_id=response.audit.authorization_id,
+            result_ref=response.audit.result_ref,
+            outcome=response.audit.outcome,
+            control_plane_generation=response.audit.control_plane_generation,
+            fencing_epoch=response.audit.fencing_epoch,
+            recorded_at=response.audit.recorded_at,
+        )
+        response = replace(response, audit=adversarial)
+        expected_type = "FederationControlAuditReceipt"
+
+    with pytest.raises(
+        cli.FederationControlServiceError,
+        match=f"exact {expected_type}",
+    ) as rejected:
+        cli.federation_control_response_record(value, response)
+
+    assert injected_value not in str(rejected.value)
 
 
 def test_real_hierarchical_manager_registers_discovers_and_invokes_tools() -> None:
