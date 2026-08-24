@@ -54,6 +54,10 @@ DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA: Final[str] = (
 DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-validation-retry-seed@1"
 )
+DATABASE_PORTAL_VALIDATION_RETRY_ORDER_REPAIR_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-validation-retry-order-repair@1"
+)
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
     {"completed", "complete", "done"}
 )
@@ -1955,6 +1959,21 @@ class DatabasePortalExecutionBridge:
         """Recover the prior retry receipt carried through the claim CAS."""
 
         body = dict(getattr(record, "body", {}) or {})
+        return self._validation_retry_seed_from_body(
+            attempt=attempt,
+            record=record,
+            body=body,
+        )
+
+    def _validation_retry_seed_from_body(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+        body: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Verify one exact claim body carrying a validation retry seed."""
+
         status_receipt = body.get("completion_receipt")
         if not isinstance(status_receipt, Mapping):
             return None
@@ -1965,6 +1984,8 @@ class DatabasePortalExecutionBridge:
             status_receipt.get("operation") != "database_claim"
             or status_receipt.get("attempt_id") != str(attempt.attempt_id)
             or status_receipt.get("claim_id") != str(attempt.claim_id)
+            or status_receipt.get("owner_session_id")
+            != str(getattr(attempt, "owner_session_id", "") or "")
             or status_receipt.get("attempt_number")
             != int(attempt.attempt_number)
             or status_receipt.get("fencing_token")
@@ -2020,7 +2041,8 @@ class DatabasePortalExecutionBridge:
             or seed.get("remaining_task_attempts")
             != self.max_task_attempts - source_portal_attempt
             or not isinstance(changed_paths, list)
-            or changed_paths != scoped_outputs
+            or len(changed_paths) != len(scoped_outputs)
+            or set(changed_paths) != set(scoped_outputs)
             or receipt_id != _sha256_bytes(_canonical_json(value))
             or not self._preserved_commit_exists(
                 commit=str(seed.get("implementation_commit") or ""),
@@ -2031,6 +2053,111 @@ class DatabasePortalExecutionBridge:
                 "database claim validation retry seed failed verification"
             )
         return dict(seed)
+
+    def verify_validation_retry_successor_recovery(
+        self,
+        attempt: Any,
+        record: Any,
+        historical_claim_body: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Prove that a failed seed handoff hit only the old order predicate.
+
+        This is a read-only admission check for the database coordinator.  It
+        deliberately replays the historical ``database_claim`` body through
+        the same repository-aware seed verifier used before Portal dispatch.
+        Recovery is admitted only when the preserved candidate, nested
+        repository scope, path safety, and exact output population all still
+        verify and the sole legacy mismatch is list order.
+        """
+
+        if not isinstance(historical_claim_body, Mapping):
+            raise DatabasePortalBridgeError(
+                "validation retry successor has no historical claim body"
+            )
+        current_body = dict(getattr(record, "body", {}) or {})
+        claim_body = dict(historical_claim_body)
+        current_semantic_body = dict(current_body)
+        historical_semantic_body = dict(claim_body)
+        current_semantic_body.pop("completion_receipt", None)
+        historical_semantic_body.pop("completion_receipt", None)
+        if (
+            str(getattr(record, "task_cid", "") or "")
+            != str(getattr(attempt, "task_cid", "") or "")
+            or str(
+                getattr(record, "task_alias", "")
+                or getattr(attempt, "task_alias", "")
+                or ""
+            )
+            != str(getattr(attempt, "task_alias", "") or "")
+            or _canonical_json(current_semantic_body)
+            != _canonical_json(historical_semantic_body)
+        ):
+            raise DatabasePortalBridgeError(
+                "validation retry successor task definition changed"
+            )
+
+        seed = self._validation_retry_seed_from_body(
+            attempt=attempt,
+            record=record,
+            body=claim_body,
+        )
+        if seed is None:
+            raise DatabasePortalBridgeError(
+                "validation retry successor claim has no retry seed"
+            )
+        repository_scope = self._validation_repository_scope(claim_body)
+        scoped_outputs = self._scope_outputs(
+            _output_values(record, claim_body),
+            repository_scope,
+        )
+        changed_paths = seed.get("changed_paths")
+        if (
+            not isinstance(changed_paths, list)
+            or not changed_paths
+            or len(set(changed_paths)) != len(changed_paths)
+            or any(_safe_output_path(path) != path for path in changed_paths)
+            or changed_paths == scoped_outputs
+            or len(changed_paths) != len(scoped_outputs)
+            or set(changed_paths) != set(scoped_outputs)
+        ):
+            raise DatabasePortalBridgeError(
+                "validation retry successor was not caused solely by output order"
+            )
+
+        proof = {
+            "schema": DATABASE_PORTAL_VALIDATION_RETRY_ORDER_REPAIR_SCHEMA,
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "target_attempt_id": str(attempt.attempt_id),
+            "target_claim_id": str(attempt.claim_id),
+            "target_lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "target_owner_session_id": str(
+                getattr(attempt, "owner_session_id", "") or ""
+            ),
+            "target_attempt_number": int(attempt.attempt_number),
+            "target_fencing_token": int(attempt.fencing_token),
+            "target_fence_epoch": int(attempt.fence_epoch),
+            "source_attempt_id": str(seed.get("attempt_id") or ""),
+            "source_retry_receipt_id": str(seed.get("receipt_id") or ""),
+            "historical_claim_body_digest": _sha256_bytes(
+                _canonical_json(claim_body)
+            ),
+            "stable_task_body_digest": _sha256_bytes(
+                _canonical_json(current_semantic_body)
+            ),
+            "repository_scope": repository_scope,
+            "scoped_outputs": list(scoped_outputs),
+            "changed_paths": list(changed_paths),
+            "implementation_commit": str(
+                seed.get("implementation_commit") or ""
+            ),
+            "rescue_branch": str(seed.get("rescue_branch") or ""),
+            "preserved_commit_verified": True,
+            "ordered_lists_differ": True,
+            "exact_output_set_verified": True,
+        }
+        proof["proof_id"] = _sha256_bytes(_canonical_json(proof))
+        return proof
 
     def _initialize_validation_retry_seed(
         self,

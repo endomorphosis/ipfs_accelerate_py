@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_SKIP_CONTENTION_REASONS,
+    DATABASE_PORTAL_VALIDATION_RETRY_ORDER_REPAIR_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
@@ -264,15 +265,17 @@ class _ValidationFailurePortal:
         commit: str,
         rescue_branch: str,
         denied_paths: tuple[str, ...] = (),
+        changed_paths: tuple[str, ...] = ("inventory/result.json",),
     ) -> None:
         self.paths = paths
         self.task_alias = task_alias
         self.commit = commit
         self.rescue_branch = rescue_branch
         self.denied_paths = denied_paths
+        self.changed_paths = changed_paths
 
     def run_once(self) -> dict[str, object]:
-        changed_paths = ["inventory/result.json"]
+        changed_paths = list(self.changed_paths)
         proposal_id = "proposal:validation-retry"
         proposal_receipt_id = "proposal-receipt:validation-retry"
         proposal_policy_id = "proposal-policy:validation-retry"
@@ -1240,6 +1243,7 @@ def test_bridge_classifies_only_preserved_authoritative_validation_failure(
             "operation": "database_claim",
             "attempt_id": successor.attempt_id,
             "claim_id": successor.claim_id,
+            "owner_session_id": successor.owner_session_id,
             "attempt_number": successor.attempt_number,
             "fencing_token": successor.fencing_token,
             "fence_epoch": successor.fence_epoch,
@@ -1314,6 +1318,121 @@ def test_bridge_classifies_only_preserved_authoritative_validation_failure(
     assert authority["ok"] is True
     assert authority["database_validation_retry_seed"] is True
     assert authority["authorized_paths"] == ["inventory/result.json"]
+
+
+def test_validation_retry_seed_accepts_declared_outputs_in_different_order(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    commit, rescue_branch = _git_candidate_with_rescue_branch(repo)
+    second_output = repo / "inventory" / "summary.json"
+    second_output.write_text('{"summary":true}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "--", "inventory/summary.json"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "second candidate output"], cwd=repo, check=True)
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(["git", "branch", "-f", rescue_branch, commit], cwd=repo, check=True)
+
+    record = _record()
+    record.outputs = (
+        {"path": "inventory/summary.json"},
+        {"path": "inventory/result.json"},
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _ValidationFailurePortal(
+            paths,
+            alias,
+            commit=commit,
+            rescue_branch=rescue_branch,
+            changed_paths=("inventory/result.json", "inventory/summary.json"),
+        ),
+        repository_root=repo,
+        max_passes=1,
+        max_task_attempts=3,
+    )
+    source = _attempt()
+    with pytest.raises(DatabasePortalValidationRetry) as caught:
+        bridge.run_provider(source)
+
+    successor = DatabaseTaskAttempt(
+        attempt_id="attempt:002",
+        claim_id="claim:002",
+        task_cid=source.task_cid,
+        task_alias=source.task_alias,
+        attempt_number=2,
+        owner_session_id=source.owner_session_id,
+        fencing_token=source.fencing_token + 1,
+        fence_epoch=source.fence_epoch + 1,
+        lease_id="lease:002",
+        committed_phase="claimed",
+        status="running",
+        started_at_ms=2,
+    )
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            "operation": "database_claim",
+            "attempt_id": successor.attempt_id,
+            "claim_id": successor.claim_id,
+            "owner_session_id": successor.owner_session_id,
+            "attempt_number": successor.attempt_number,
+            "fencing_token": successor.fencing_token,
+            "fence_epoch": successor.fence_epoch,
+            "lease_id": successor.lease_id,
+            "validation_retry_source_attempt_id": source.attempt_id,
+            "validation_retry_seed": caught.value.retry_receipt,
+        },
+    }
+    historical_claim_body = dict(record.body)
+    record.revision += 1
+    successor_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "successor-attempts",
+        portal_factory=lambda _paths, _alias: SimpleNamespace(
+            run_once=lambda: {
+                "implementation_result": {
+                    "returncode": 1,
+                    "reason": "stop_after_seed_inspection",
+                }
+            }
+        ),
+        repository_root=repo,
+        max_passes=1,
+        max_task_attempts=3,
+    )
+    with pytest.raises(DatabasePortalBridgeError, match="stop_after_seed_inspection"):
+        successor_bridge.run_provider(successor)
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            "operation": "database_portal_terminal_failure",
+            "attempt_id": successor.attempt_id,
+        },
+    }
+    proof = successor_bridge.verify_validation_retry_successor_recovery(
+        successor,
+        record,
+        historical_claim_body,
+    )
+    assert proof["schema"] == DATABASE_PORTAL_VALIDATION_RETRY_ORDER_REPAIR_SCHEMA
+    assert proof["ordered_lists_differ"] is True
+    assert proof["exact_output_set_verified"] is True
+    assert proof["changed_paths"] == [
+        "inventory/result.json",
+        "inventory/summary.json",
+    ]
+    assert proof["scoped_outputs"] == [
+        "inventory/summary.json",
+        "inventory/result.json",
+    ]
 
 
 @pytest.mark.parametrize(

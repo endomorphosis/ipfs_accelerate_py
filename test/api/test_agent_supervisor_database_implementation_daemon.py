@@ -18,7 +18,7 @@ import json
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -58,6 +58,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalCandidateRetry,
+    DatabasePortalExecutionBridge,
     DatabasePortalValidationRetry,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -216,6 +217,11 @@ def _open_daemon(
     lease_ms: int = 60_000,
     max_task_attempts: int = 0,
     clock_ms: Callable[[], int] | None = None,
+    validation_retry_successor_recovery_fn: Callable[
+        [DatabaseTaskAttempt, object, Mapping[str, object]],
+        Mapping[str, object],
+    ]
+    | None = None,
 ) -> DatabaseImplementationDaemon:
     database_path = tmp_path / "control.duckdb"
     coordination_path = tmp_path / "coordination.duckdb"
@@ -270,6 +276,9 @@ def _open_daemon(
         provider_fn=provider_fn or default_provider,
         effect_fn=effect,
         validation_fn=validation,
+        validation_retry_successor_recovery_fn=(
+            validation_retry_successor_recovery_fn
+        ),
         require_real_execution=True,
         clock_ms=clock_ms,
     )
@@ -1427,6 +1436,193 @@ def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
         assert claim_receipt["fencing_token"] == successor.fencing_token
         assert claim_receipt["fence_epoch"] == successor.fence_epoch
         assert claim_receipt["lease_id"] == successor.lease_id
+    finally:
+        daemon.close()
+
+
+def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "tests@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Tests"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "inventory").mkdir()
+    (repo / "inventory" / "result.json").write_text(
+        '{"result":true}\n', encoding="utf-8"
+    )
+    (repo / "inventory" / "summary.json").write_text(
+        '{"summary":true}\n', encoding="utf-8"
+    )
+    subprocess.run(["git", "add", "--", "inventory"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "candidate"], cwd=repo, check=True)
+    candidate_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    rescue_branch = "rescue/dqp-t001-attempt-1-failed-validation"
+    subprocess.run(
+        ["git", "branch", rescue_branch, candidate_commit],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-qm", "target advances"],
+        cwd=repo,
+        check=True,
+    )
+    target_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    holder: dict[str, object] = {}
+    now = {"ms": 1_000}
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        if attempt.attempt_number == 1:
+            daemon = holder["daemon"]
+            assert isinstance(daemon, DatabaseImplementationDaemon)
+            receipt = _validation_retry_receipt(daemon, attempt)
+            receipt.update(
+                {
+                    "implementation_commit": candidate_commit,
+                    "rescue_branch": rescue_branch,
+                    "changed_paths": [
+                        "inventory/result.json",
+                        "inventory/summary.json",
+                    ],
+                }
+            )
+            receipt.pop("receipt_id")
+            receipt["receipt_id"] = daemon._database_portal_evidence_digest(
+                receipt
+            )
+            raise DatabasePortalValidationRetry(receipt)
+        if attempt.attempt_number == 2:
+            raise DatabasePortalBridgeError(
+                "database claim validation retry seed failed verification"
+            )
+        return {
+            "status": "succeeded",
+            "accepted": True,
+            "task_cid": attempt.task_cid,
+        }
+
+    def replay(
+        attempt: DatabaseTaskAttempt,
+        record: object,
+        historical_claim_body: Mapping[str, object],
+    ) -> Mapping[str, object]:
+        bridge = holder["bridge"]
+        assert isinstance(bridge, DatabasePortalExecutionBridge)
+        return bridge.verify_validation_retry_successor_recovery(
+            attempt,
+            record,
+            historical_claim_body,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:seed-order-successor-recovery",
+        provider_fn=provider,
+        max_task_attempts=4,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+        validation_retry_successor_recovery_fn=replay,
+    )
+    holder["daemon"] = daemon
+    try:
+        population = _population(1)
+        population["tasks"][0]["outputs"] = [
+            {"path": "inventory/summary.json"},
+            {"path": "inventory/result.json"},
+        ]
+        daemon.materialize_population(population)
+        holder["bridge"] = DatabasePortalExecutionBridge(
+            task_source=daemon.task_source,
+            attempt_root=tmp_path / "portal-attempts",
+            portal_factory=lambda _paths, _alias: SimpleNamespace(),
+            repository_root=repo,
+            max_task_attempts=4,
+        )
+
+        source_result = daemon.run_once()
+        source = daemon.get_attempt(source_result["attempt_id"])
+        assert source is not None and source.attempt_number == 1
+        assert daemon.task_source.get(source.task_cid).status == "retrying"
+
+        now["ms"] = 7_000
+        target_result = daemon.run_once()
+        assert "attempt_id" in target_result, target_result
+        target = daemon.get_attempt(target_result["attempt_id"])
+        assert target is not None and target.attempt_number == 2
+        blocked = daemon.task_source.get(target.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+
+        # A moved rescue ref makes the repository replay fail closed without
+        # changing the task or queue.  Restoring the exact preserved ref then
+        # admits the one typed successor recovery.
+        subprocess.run(
+            ["git", "branch", "-f", rescue_branch, target_commit],
+            cwd=repo,
+            check=True,
+        )
+        assert daemon.reconcile_terminal_portal_failures() == []
+        assert daemon.task_source.get(target.task_cid).status == "blocked"
+        subprocess.run(
+            ["git", "branch", "-f", rescue_branch, candidate_commit],
+            cwd=repo,
+            check=True,
+        )
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        recovered = daemon.task_source.get(target.task_cid)
+        assert recovered is not None and recovered.status == "retrying"
+        recovery_receipt = recovered.body["completion_receipt"]
+        assert len(json.dumps(recovery_receipt).encode("utf-8")) < 262_144
+        assert recovery_receipt["operation"] == (
+            "database_portal_validation_retry_successor_recovery"
+        )
+        recovery = recovery_receipt[
+            "validation_retry_successor_recovery"
+        ]
+        assert recovery["source_attempt_id"] == source.attempt_id
+        assert recovery["target_attempt_id"] == target.attempt_id
+        assert recovery["bridge_order_repair_proof"][
+            "preserved_commit_verified"
+        ] is True
+        assert daemon.reconcile_terminal_portal_failures() == []
+
+        now["ms"] = 13_000
+        successor = daemon.claim_next()
+        assert successor is not None and successor.attempt_number == 3
+        claimed = daemon.task_source.get(successor.task_cid)
+        assert claimed is not None and claimed.status == "in_progress"
+        claim_receipt = claimed.body["completion_receipt"]
+        assert claim_receipt["validation_retry_source_attempt_id"] == (
+            source.attempt_id
+        )
+        assert claim_receipt["validation_retry_seed"] == (
+            recovery_receipt["validation_retry_seed"]
+        )
+        assert successor.fencing_token > target.fencing_token
     finally:
         daemon.close()
 

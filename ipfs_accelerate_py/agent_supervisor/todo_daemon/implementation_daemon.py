@@ -70113,6 +70113,20 @@ _MAX_DATABASE_PORTAL_RETRY_BACKOFF_SECONDS = 86_400
 _DATABASE_PORTAL_TYPED_DEFERRAL_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-typed-deferral@1"
 )
+_DATABASE_PORTAL_VALIDATION_RETRY_SUCCESSOR_RECOVERY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-validation-retry-successor-recovery@1"
+)
+_DATABASE_PORTAL_VALIDATION_RETRY_ORDER_REPAIR_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-validation-retry-order-repair@1"
+)
+_DATABASE_PORTAL_VALIDATION_RETRY_SEED_FAILURE_REASON = (
+    "database claim validation retry seed failed verification"
+)
+_TASK_REVISION_HISTORY_PROJECTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/task-revision-history-projection@1"
+)
 _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-typed-deferral-budget@1"
@@ -70335,6 +70349,11 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any] | None
         ]
         | None = None,
+        validation_retry_successor_recovery_fn: Callable[
+            ["DatabaseTaskAttempt", Any, Mapping[str, Any]],
+            Mapping[str, Any],
+        ]
+        | None = None,
         require_real_execution: bool = False,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
@@ -70494,6 +70513,9 @@ class DatabaseImplementationDaemon:
         self._effect_fn = effect_fn
         self._validation_fn = validation_fn
         self._landed_completion_recovery_fn = landed_completion_recovery_fn
+        self._validation_retry_successor_recovery_fn = (
+            validation_retry_successor_recovery_fn
+        )
         self.require_real_execution = bool(require_real_execution)
         self._clock_ms = clock_ms or _database_daemon_now_ms
         self._lock = threading.RLock()
@@ -70759,6 +70781,11 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any] | None
         ]
         | None = None,
+        validation_retry_successor_recovery_fn: Callable[
+            ["DatabaseTaskAttempt", Any, Mapping[str, Any]],
+            Mapping[str, Any],
+        ]
+        | None = None,
     ) -> None:
         """Bind one real executor before a production attempt is dispatched."""
 
@@ -70771,6 +70798,13 @@ class DatabaseImplementationDaemon:
             and not callable(landed_completion_recovery_fn)
         ):
             raise TypeError("landed completion recovery callback must be callable")
+        if (
+            validation_retry_successor_recovery_fn is not None
+            and not callable(validation_retry_successor_recovery_fn)
+        ):
+            raise TypeError(
+                "validation retry successor recovery callback must be callable"
+            )
         with self._lock:
             if any(
                 callback is not None
@@ -70791,6 +70825,9 @@ class DatabaseImplementationDaemon:
             self._validation_fn = validation_fn
             self._landed_completion_recovery_fn = (
                 landed_completion_recovery_fn
+            )
+            self._validation_retry_successor_recovery_fn = (
+                validation_retry_successor_recovery_fn
             )
 
     def _require_execution_authority(self, operation: str) -> None:
@@ -72435,6 +72472,7 @@ class DatabaseImplementationDaemon:
                     not in {
                         "database_portal_validation_retry",
                         "database_portal_validation_retry_recovery",
+                        "database_portal_validation_retry_successor_recovery",
                     }
                     or not isinstance(seed, Mapping)
                 ):
@@ -72467,6 +72505,11 @@ class DatabaseImplementationDaemon:
                         "database claim validation retry target claim is unavailable"
                     )
                 target_claim_identity = coordination_claim.to_dict()
+                target_attempt_number = target_identity.get("attempt_number")
+                target_fencing_token = target_claim_identity.get(
+                    "fencing_token"
+                )
+                target_fence_epoch = target_claim_identity.get("fence_epoch")
                 if (
                     target_identity.get("task_cid") != task_cid
                     or target_identity.get("attempt_id")
@@ -72480,14 +72523,20 @@ class DatabaseImplementationDaemon:
                     != self.owner_session_id
                     or target_claim_identity.get("owner_session_id")
                     != self.owner_session_id
-                    or not isinstance(
-                        target_identity.get("attempt_number"), int
-                    )
-                    or isinstance(
-                        target_identity.get("attempt_number"), bool
-                    )
-                    or int(target_identity["attempt_number"])
+                    or isinstance(target_attempt_number, bool)
+                    or not isinstance(target_attempt_number, int)
+                    or target_attempt_number
                     <= int(source_attempt.attempt_number)
+                    or target_claim_identity.get("attempt_number")
+                    != target_attempt_number
+                    or isinstance(target_fencing_token, bool)
+                    or not isinstance(target_fencing_token, int)
+                    or target_fencing_token
+                    <= int(source_attempt.fencing_token)
+                    or isinstance(target_fence_epoch, bool)
+                    or not isinstance(target_fence_epoch, int)
+                    or target_fence_epoch < int(source_attempt.fence_epoch)
+                    or not str(target_claim_identity.get("lease_id") or "")
                 ):
                     raise DatabaseImplementationConflictError(
                         "database claim validation retry target is not an exact "
@@ -72500,13 +72549,13 @@ class DatabaseImplementationDaemon:
                 receipt_payload.update(
                     {
                         "attempt_number": int(
-                            target_identity["attempt_number"]
+                            target_attempt_number
                         ),
                         "fencing_token": int(
-                            target_claim_identity.get("fencing_token") or 0
+                            target_fencing_token
                         ),
                         "fence_epoch": int(
-                            target_claim_identity.get("fence_epoch") or 0
+                            target_fence_epoch
                         ),
                         "lease_id": str(
                             target_claim_identity.get("lease_id") or ""
@@ -73022,6 +73071,665 @@ class DatabaseImplementationDaemon:
             )
         return dict(raw)
 
+    def _task_revision_history_for_recovery(
+        self,
+        task_cid: str,
+    ) -> list[dict[str, Any]]:
+        """Return one independently checked, bounded control revision history."""
+
+        projection_fn = getattr(
+            self.task_source,
+            "task_revision_history_projection",
+            None,
+        )
+        if not callable(projection_fn):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot prove validation retry successor history"
+            )
+        raw = projection_fn(task_cid)
+        if not isinstance(raw, Mapping) or set(raw) != {
+            "schema",
+            "task_cid",
+            "revisions",
+            "projection_cid",
+        }:
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor history projection is malformed"
+            )
+        projection = dict(raw)
+        projection_cid = projection.pop("projection_cid", None)
+        revisions = raw.get("revisions")
+        if (
+            raw.get("schema") != _TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+            or raw.get("task_cid") != task_cid
+            or projection_cid != content_identity(projection)
+            or not isinstance(revisions, list)
+            or not revisions
+            or len(revisions) > TASK_SOURCE_QUERY_LIMIT
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor history failed identity verification"
+            )
+        checked: list[dict[str, Any]] = []
+        previous_revision = 0
+        for item in revisions:
+            if not isinstance(item, Mapping) or set(item) != {
+                "revision",
+                "status",
+                "body",
+            }:
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor history contains a malformed revision"
+                )
+            revision = item.get("revision")
+            body = item.get("body")
+            if (
+                isinstance(revision, bool)
+                or not isinstance(revision, int)
+                or revision <= previous_revision
+                or not isinstance(item.get("status"), str)
+                or not isinstance(body, Mapping)
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor history revision is invalid"
+                )
+            previous_revision = revision
+            checked.append(
+                {
+                    "revision": revision,
+                    "status": str(item["status"]),
+                    "body": dict(body),
+                }
+            )
+        return checked
+
+    def _verified_validation_retry_successor_authority(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_receipt: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Bind one seed-admission failure to its exact source and successor.
+
+        The retry seed belongs to the earlier validation attempt, while the
+        blocked control receipt belongs to the newer claim which failed before
+        provider dispatch.  The immutable control revision history is the only
+        durable surface which binds those two identities after the terminal CAS
+        replaces the claim receipt.
+        """
+
+        status = str(getattr(task, "status", "") or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "validation retry successor recovery requires blocked or exact "
+                "retrying control state"
+            )
+        history = self._task_revision_history_for_recovery(attempt.task_cid)
+        history_by_revision = {
+            int(item["revision"]): item
+            for item in history
+        }
+        if len(history_by_revision) != len(history):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor history contains duplicate revisions"
+            )
+
+        if status == "blocked":
+            terminal_revision = getattr(task, "revision", None)
+        else:
+            if not isinstance(expected_recovery_receipt, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "retrying successor recovery has no typed authority receipt"
+                )
+            terminal_revision = expected_recovery_receipt.get(
+                "target_terminal_control_revision"
+            )
+        if (
+            isinstance(terminal_revision, bool)
+            or not isinstance(terminal_revision, int)
+            or terminal_revision < 2
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor has no exact terminal control revision"
+            )
+        terminal_record = history_by_revision.get(terminal_revision)
+        if terminal_record is None or terminal_record.get("status") != "blocked":
+            raise DatabaseImplementationConflictError(
+                "validation retry successor terminal revision is unavailable"
+            )
+        terminal_body = terminal_record.get("body")
+        terminal_receipt = (
+            terminal_body.get("completion_receipt")
+            if isinstance(terminal_body, Mapping)
+            else None
+        )
+        terminal_fields = {
+            "operation",
+            "attempt_id",
+            "attempt_number",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "retryable",
+            "coordination",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if not isinstance(terminal_receipt, Mapping) or set(terminal_receipt) != terminal_fields:
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor terminal receipt is malformed"
+            )
+        claim_revision = terminal_receipt.get("control_expected_revision")
+        if (
+            terminal_receipt.get("operation")
+            != "database_portal_terminal_failure"
+            or terminal_receipt.get("attempt_id") != attempt.attempt_id
+            or terminal_receipt.get("attempt_number")
+            != int(attempt.attempt_number)
+            or terminal_receipt.get("claim_id") != attempt.claim_id
+            or terminal_receipt.get("lease_id") != attempt.lease_id
+            or terminal_receipt.get("owner_session_id")
+            != attempt.owner_session_id
+            or terminal_receipt.get("fencing_token")
+            != int(attempt.fencing_token)
+            or terminal_receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or terminal_receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or terminal_receipt.get("execution_revision") != int(attempt.revision)
+            or terminal_receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or terminal_receipt.get("reason")
+            != _DATABASE_PORTAL_VALIDATION_RETRY_SEED_FAILURE_REASON
+            or terminal_receipt.get("retryable") is not False
+            or not isinstance(terminal_receipt.get("coordination"), Mapping)
+            or terminal_receipt.get("control_expected_status") != "in_progress"
+            or isinstance(claim_revision, bool)
+            or not isinstance(claim_revision, int)
+            or claim_revision != terminal_revision - 1
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor terminal receipt changed identity"
+            )
+        if status == "blocked":
+            current_body = getattr(task, "body", None)
+            if (
+                getattr(task, "revision", None) != terminal_revision
+                or not isinstance(current_body, Mapping)
+                or _database_daemon_json(dict(current_body))
+                != _database_daemon_json(dict(terminal_body))
+            ):
+                raise DatabaseImplementationConflictError(
+                    "validation retry successor block is not the current control state"
+                )
+
+        claim_record = history_by_revision.get(claim_revision)
+        claim_body = claim_record.get("body") if claim_record is not None else None
+        claim_receipt = (
+            claim_body.get("completion_receipt")
+            if isinstance(claim_body, Mapping)
+            else None
+        )
+        claim_fields = {
+            "operation",
+            "claim_id",
+            "attempt_id",
+            "owner_session_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "lease_id",
+            "validation_retry_source_attempt_id",
+            "validation_retry_seed",
+        }
+        if (
+            claim_record is None
+            or claim_record.get("status") != "in_progress"
+            or not isinstance(claim_receipt, Mapping)
+            or set(claim_receipt) != claim_fields
+            or claim_receipt.get("operation") != "database_claim"
+            or claim_receipt.get("attempt_id") != attempt.attempt_id
+            or claim_receipt.get("claim_id") != attempt.claim_id
+            or claim_receipt.get("owner_session_id") != attempt.owner_session_id
+            or claim_receipt.get("attempt_number") != int(attempt.attempt_number)
+            or claim_receipt.get("fencing_token") != int(attempt.fencing_token)
+            or claim_receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or claim_receipt.get("lease_id") != attempt.lease_id
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor claim receipt changed identity"
+            )
+        source_attempt_id = str(
+            claim_receipt.get("validation_retry_source_attempt_id") or ""
+        )
+        source_attempt = self.get_attempt(source_attempt_id)
+        if (
+            source_attempt is None
+            or source_attempt.status != "failed"
+            or source_attempt.committed_phase != ATTEMPT_PHASE_FAILED
+            or source_attempt.task_cid != attempt.task_cid
+            or source_attempt.task_alias != attempt.task_alias
+            or int(attempt.attempt_number)
+            != int(source_attempt.attempt_number) + 1
+            or int(attempt.fencing_token) <= int(source_attempt.fencing_token)
+            or int(attempt.fence_epoch) < int(source_attempt.fence_epoch)
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor source attempt was superseded"
+            )
+        seed = self._verified_validation_retry_receipt(
+            source_attempt,
+            claim_receipt.get("validation_retry_seed"),
+        )
+        if source_attempt_id != str(seed.get("attempt_id") or ""):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor claim carries a foreign source seed"
+            )
+        source_failed_phases = [
+            item
+            for item in self.phase_history(source_attempt.attempt_id)
+            if item.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        source_failed_body = (
+            source_failed_phases[-1].get("body")
+            if source_failed_phases
+            else None
+        )
+        if (
+            not isinstance(source_failed_body, Mapping)
+            or source_failed_body.get("reason") != "declared_validation_failed"
+            or source_failed_body.get("portal_retryable_failure") is not True
+            or source_failed_body.get("portal_terminal_failure") is True
+            or dict(
+                self._verified_validation_retry_receipt(
+                    source_attempt,
+                    source_failed_body.get("typed_validation_retry"),
+                )
+            )
+            != seed
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor source phase has no exact retry seed"
+            )
+
+        source_retry_records = []
+        source_retry_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "validation_retry_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        for item in history:
+            if item.get("status") != "retrying":
+                continue
+            item_body = item.get("body")
+            item_receipt = (
+                item_body.get("completion_receipt")
+                if isinstance(item_body, Mapping)
+                else None
+            )
+            if (
+                isinstance(item_receipt, Mapping)
+                and item_receipt.get("attempt_id") == source_attempt.attempt_id
+            ):
+                source_retry_records.append((item, item_receipt))
+        if len(source_retry_records) != 1:
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor has no unique source control receipt"
+            )
+        source_retry_record, source_retry_receipt = source_retry_records[0]
+        source_retry_revision = int(source_retry_record["revision"])
+        source_queue_reason = (
+            f"database_portal_retry:{source_attempt.attempt_id}:"
+            "declared_validation_failed"
+        )[:2048]
+        source_retry_operation = source_retry_receipt.get("operation")
+        expected_evidence_source = (
+            "typed_portal_validation_retry:"
+            if source_retry_operation == "database_portal_validation_retry"
+            else "typed_portal_validation_retry_recovery:"
+        ) + str(seed["receipt_id"])
+        source_retry_not_before_ms = source_retry_receipt.get(
+            "retry_not_before_ms"
+        )
+        if (
+            set(source_retry_receipt) != source_retry_fields
+            or source_retry_operation
+            not in {
+                "database_portal_validation_retry",
+                "database_portal_validation_retry_recovery",
+            }
+            or source_retry_revision != claim_revision - 1
+            or source_retry_receipt.get("attempt_id")
+            != source_attempt.attempt_id
+            or source_retry_receipt.get("claim_id") != source_attempt.claim_id
+            or source_retry_receipt.get("lease_id") != source_attempt.lease_id
+            or source_retry_receipt.get("owner_session_id")
+            != source_attempt.owner_session_id
+            or source_retry_receipt.get("attempt_number")
+            != int(source_attempt.attempt_number)
+            or source_retry_receipt.get("fencing_token")
+            != int(source_attempt.fencing_token)
+            or source_retry_receipt.get("fence_epoch")
+            != int(source_attempt.fence_epoch)
+            or source_retry_receipt.get("execution_phase")
+            != ATTEMPT_PHASE_FAILED
+            or source_retry_receipt.get("execution_revision")
+            != int(source_attempt.revision)
+            or source_retry_receipt.get("execution_finished_at_ms")
+            != source_attempt.finished_at_ms
+            or source_retry_receipt.get("reason")
+            != "declared_validation_failed"
+            or source_retry_receipt.get("backoff_seconds") != 0
+            or source_retry_receipt.get("backoff_ms") != 0
+            or source_retry_receipt.get("evidence_source")
+            != expected_evidence_source
+            or source_retry_receipt.get("queue_reason")
+            != source_queue_reason
+            or not isinstance(source_retry_receipt.get("queue_reused"), bool)
+            or not isinstance(source_retry_receipt.get("queue_receipt"), Mapping)
+            or not isinstance(source_retry_receipt.get("coordination"), Mapping)
+            or dict(source_retry_receipt.get("validation_retry_seed") or {})
+            != seed
+            or source_retry_receipt.get("control_expected_status")
+            not in {"in_progress", "blocked"}
+            or source_retry_receipt.get("control_expected_revision")
+            != source_retry_revision - 1
+            or isinstance(source_retry_not_before_ms, bool)
+            or not isinstance(source_retry_not_before_ms, int)
+            or source_retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor source control receipt changed identity"
+            )
+
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        queue_entry = (
+            get_queue_entry(attempt.task_cid)
+            if callable(get_queue_entry)
+            else None
+        )
+        target_queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:"
+            "declared_validation_failed"
+        )[:2048]
+        queue_reason = str(getattr(queue_entry, "reason", "") or "")
+        queue_retry_not_before_ms = getattr(
+            queue_entry,
+            "retry_not_before_ms",
+            None,
+        )
+        source_queue_is_exact = bool(
+            queue_reason == source_queue_reason
+            and queue_retry_not_before_ms == source_retry_not_before_ms
+        )
+        target_queue_is_exact = bool(
+            queue_reason == target_queue_reason
+            and isinstance(queue_retry_not_before_ms, int)
+            and not isinstance(queue_retry_not_before_ms, bool)
+            and queue_retry_not_before_ms >= 0
+        )
+        if queue_entry is None or not (
+            source_queue_is_exact or target_queue_is_exact
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor found a foreign predecessor queue entry"
+            )
+
+        target_history = self.phase_history(attempt.attempt_id)
+        target_failed_phases = [
+            item
+            for item in target_history
+            if item.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        target_failed_body = (
+            target_failed_phases[-1].get("body")
+            if target_failed_phases
+            else None
+        )
+        committed_provider_phases = {
+            ATTEMPT_PHASE_PROVIDER,
+            ATTEMPT_PHASE_EFFECT,
+            ATTEMPT_PHASE_VALIDATION,
+            ATTEMPT_PHASE_COMPLETE,
+        }
+        if (
+            len(target_failed_phases) != 1
+            or not isinstance(target_failed_body, Mapping)
+            or target_failed_body.get("reason")
+            != _DATABASE_PORTAL_VALIDATION_RETRY_SEED_FAILURE_REASON
+            or target_failed_body.get("portal_terminal_failure") is not True
+            or target_failed_body.get("portal_retryable_failure") is True
+            or any(
+                item.get("phase") in committed_provider_phases
+                for item in target_history
+            )
+            or self.provider_invocation_recorded(
+                attempt.attempt_id,
+                idempotency_key=f"provider:{attempt.attempt_id}",
+            )
+            is not None
+            or self.effect_claim_recorded(
+                attempt.attempt_id,
+                idempotency_key=f"effect:{attempt.attempt_id}",
+            )
+            is not None
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor failure was not pre-dispatch"
+            )
+
+        replay_fn = self._validation_retry_successor_recovery_fn
+        if not callable(replay_fn):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor has no Portal replay authority"
+            )
+        raw_order_repair = replay_fn(attempt, task, claim_body)
+        order_repair_fields = {
+            "schema",
+            "task_cid",
+            "task_alias",
+            "target_attempt_id",
+            "target_claim_id",
+            "target_lease_id",
+            "target_owner_session_id",
+            "target_attempt_number",
+            "target_fencing_token",
+            "target_fence_epoch",
+            "source_attempt_id",
+            "source_retry_receipt_id",
+            "historical_claim_body_digest",
+            "stable_task_body_digest",
+            "repository_scope",
+            "scoped_outputs",
+            "changed_paths",
+            "implementation_commit",
+            "rescue_branch",
+            "preserved_commit_verified",
+            "ordered_lists_differ",
+            "exact_output_set_verified",
+            "proof_id",
+        }
+        if (
+            not isinstance(raw_order_repair, Mapping)
+            or set(raw_order_repair) != order_repair_fields
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor Portal replay proof is malformed"
+            )
+        order_repair = dict(raw_order_repair)
+        proof_body = dict(order_repair)
+        proof_id = proof_body.pop("proof_id", None)
+        proof_encoding = json.dumps(
+            proof_body,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+        current_body = dict(getattr(task, "body", {}) or {})
+        current_body.pop("completion_receipt", None)
+        current_body_encoding = json.dumps(
+            current_body,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+        claim_body_encoding = json.dumps(
+            claim_body,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+        scoped_outputs = order_repair.get("scoped_outputs")
+        changed_paths = order_repair.get("changed_paths")
+        if (
+            order_repair.get("schema")
+            != _DATABASE_PORTAL_VALIDATION_RETRY_ORDER_REPAIR_SCHEMA
+            or order_repair.get("task_cid") != attempt.task_cid
+            or order_repair.get("task_alias") != attempt.task_alias
+            or order_repair.get("target_attempt_id") != attempt.attempt_id
+            or order_repair.get("target_claim_id") != attempt.claim_id
+            or order_repair.get("target_lease_id") != attempt.lease_id
+            or order_repair.get("target_owner_session_id")
+            != attempt.owner_session_id
+            or order_repair.get("target_attempt_number")
+            != int(attempt.attempt_number)
+            or order_repair.get("target_fencing_token")
+            != int(attempt.fencing_token)
+            or order_repair.get("target_fence_epoch")
+            != int(attempt.fence_epoch)
+            or order_repair.get("source_attempt_id")
+            != source_attempt.attempt_id
+            or order_repair.get("source_retry_receipt_id")
+            != seed["receipt_id"]
+            or order_repair.get("historical_claim_body_digest")
+            != "sha256:" + hashlib.sha256(claim_body_encoding).hexdigest()
+            or order_repair.get("stable_task_body_digest")
+            != "sha256:" + hashlib.sha256(current_body_encoding).hexdigest()
+            or not isinstance(order_repair.get("repository_scope"), str)
+            or not isinstance(scoped_outputs, list)
+            or not scoped_outputs
+            or len(set(scoped_outputs)) != len(scoped_outputs)
+            or not isinstance(changed_paths, list)
+            or not changed_paths
+            or len(set(changed_paths)) != len(changed_paths)
+            or len(changed_paths) != len(scoped_outputs)
+            or set(changed_paths) != set(scoped_outputs)
+            or changed_paths == scoped_outputs
+            or any(
+                not isinstance(path, str)
+                or not path
+                or PurePosixPath(path).is_absolute()
+                or ".." in PurePosixPath(path).parts
+                for path in (*scoped_outputs, *changed_paths)
+            )
+            or order_repair.get("implementation_commit")
+            != seed["implementation_commit"]
+            or order_repair.get("rescue_branch") != seed["rescue_branch"]
+            or order_repair.get("preserved_commit_verified") is not True
+            or order_repair.get("ordered_lists_differ") is not True
+            or order_repair.get("exact_output_set_verified") is not True
+            or proof_id
+            != "sha256:" + hashlib.sha256(proof_encoding).hexdigest()
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor Portal replay proof failed verification"
+            )
+
+        evidence = {
+            "schema": (
+                _DATABASE_PORTAL_VALIDATION_RETRY_SUCCESSOR_RECOVERY_SCHEMA
+            ),
+            "task_cid": attempt.task_cid,
+            "task_alias": attempt.task_alias,
+            "source_attempt_id": source_attempt.attempt_id,
+            "source_claim_id": source_attempt.claim_id,
+            "source_lease_id": source_attempt.lease_id,
+            "source_owner_session_id": source_attempt.owner_session_id,
+            "source_attempt_number": int(source_attempt.attempt_number),
+            "source_fencing_token": int(source_attempt.fencing_token),
+            "source_fence_epoch": int(source_attempt.fence_epoch),
+            "source_execution_revision": int(source_attempt.revision),
+            "source_execution_finished_at_ms": source_attempt.finished_at_ms,
+            "source_retry_receipt_id": str(seed["receipt_id"]),
+            "source_events_digest": str(seed["events_digest"]),
+            "source_retry_control_revision": source_retry_revision,
+            "source_retry_control_body_digest": (
+                self._database_portal_evidence_digest(source_retry_record["body"])
+            ),
+            "source_queue_reason": source_queue_reason,
+            "source_retry_not_before_ms": source_retry_not_before_ms,
+            "target_attempt_id": attempt.attempt_id,
+            "target_claim_id": attempt.claim_id,
+            "target_lease_id": attempt.lease_id,
+            "target_owner_session_id": attempt.owner_session_id,
+            "target_attempt_number": int(attempt.attempt_number),
+            "target_fencing_token": int(attempt.fencing_token),
+            "target_fence_epoch": int(attempt.fence_epoch),
+            "target_execution_revision": int(attempt.revision),
+            "target_execution_finished_at_ms": attempt.finished_at_ms,
+            "target_terminal_reason": (
+                _DATABASE_PORTAL_VALIDATION_RETRY_SEED_FAILURE_REASON
+            ),
+            "target_terminal_control_revision": terminal_revision,
+            "target_claim_control_revision": claim_revision,
+            "target_claim_control_body_digest": (
+                self._database_portal_evidence_digest(claim_body)
+            ),
+            "target_terminal_control_body_digest": (
+                self._database_portal_evidence_digest(terminal_body)
+            ),
+            "target_claim_receipt_digest": (
+                self._database_portal_evidence_digest(claim_receipt)
+            ),
+            "target_terminal_receipt_digest": (
+                self._database_portal_evidence_digest(terminal_receipt)
+            ),
+            "target_phase_history_digest": self._database_portal_evidence_digest(
+                {"phases": target_history}
+            ),
+            "bridge_order_repair_proof": order_repair,
+        }
+        evidence["receipt_id"] = self._database_portal_evidence_digest(evidence)
+        if (
+            expected_recovery_receipt is not None
+            and dict(expected_recovery_receipt) != evidence
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor recovery receipt changed identity"
+            )
+        return {
+            "recovery_receipt": evidence,
+            "validation_retry_evidence": seed,
+        }
+
     def _typed_deferral_budget_observation(
         self,
         attempt: DatabaseTaskAttempt,
@@ -73432,6 +74140,145 @@ class DatabaseImplementationDaemon:
             "retry_not_before_ms": retry_not_before_ms,
         }
 
+    def _verified_validation_retry_successor_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify the exact retrying projection for one failed seed handoff."""
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "validation retry successor recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "validation_retry_seed",
+            "validation_retry_successor_recovery",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if not isinstance(receipt, Mapping) or set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor control receipt is malformed"
+            )
+        raw_recovery = receipt.get("validation_retry_successor_recovery")
+        if not isinstance(raw_recovery, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "validation retry successor control receipt has no typed authority"
+            )
+        verified = self._verified_validation_retry_successor_authority(
+            attempt,
+            task,
+            expected_recovery_receipt=raw_recovery,
+        )
+        recovery = verified["recovery_receipt"]
+        retry_seed = verified["validation_retry_evidence"]
+        if (
+            expected_recovery_evidence is not None
+            and dict(expected_recovery_evidence) != verified
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor projection has foreign authority"
+            )
+        task_revision = getattr(task, "revision", None)
+        terminal_revision = recovery["target_terminal_control_revision"]
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:"
+            "declared_validation_failed"
+        )[:2048]
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        coordination = receipt.get("coordination")
+        if (
+            receipt.get("operation")
+            != "database_portal_validation_retry_successor_recovery"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms") != attempt.finished_at_ms
+            or receipt.get("reason") != "declared_validation_failed"
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_validation_retry_successor_recovery:"
+                + str(recovery["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(receipt.get("queue_receipt"), Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number") != int(attempt.attempt_number)
+            or dict(receipt.get("validation_retry_seed") or {}) != retry_seed
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision") != terminal_revision
+            or isinstance(task_revision, bool)
+            or not isinstance(task_revision, int)
+            or task_revision != terminal_revision + 1
+            or isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor control receipt changed identity"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        queue_entry = (
+            get_queue_entry(attempt.task_cid)
+            if callable(get_queue_entry)
+            else None
+        )
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "validation retry successor queue state changed"
+            )
+        return {
+            "receipt": dict(receipt),
+            **verified,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
     def _verified_landed_completion_recovery_receipt(
         self,
         attempt: DatabaseTaskAttempt,
@@ -73658,6 +74505,7 @@ class DatabaseImplementationDaemon:
         evidence_source: str,
         coordination_evidence: Mapping[str, Any] | None = None,
         validation_retry_evidence: Mapping[str, Any] | None = None,
+        validation_retry_successor_evidence: Mapping[str, Any] | None = None,
         leftover_wait_deferral_budget_recovery_evidence: Mapping[str, Any]
         | None = None,
         landed_completion_recovery_evidence: Mapping[str, Any] | None = None,
@@ -73669,6 +74517,7 @@ class DatabaseImplementationDaemon:
             evidence is not None
             for evidence in (
                 validation_retry_evidence,
+                validation_retry_successor_evidence,
                 leftover_wait_deferral_budget_recovery_evidence,
                 landed_completion_recovery_evidence,
             )
@@ -73703,7 +74552,15 @@ class DatabaseImplementationDaemon:
             )
 
         if task_status == "retrying":
-            if validation_retry_evidence is not None:
+            if validation_retry_successor_evidence is not None:
+                self._verified_validation_retry_successor_recovery_state(
+                    attempt,
+                    task,
+                    expected_recovery_evidence=(
+                        validation_retry_successor_evidence
+                    ),
+                )
+            elif validation_retry_evidence is not None:
                 self._verified_validation_retry_recovery_state(
                     attempt,
                     task,
@@ -73729,6 +74586,7 @@ class DatabaseImplementationDaemon:
             if (
                 (
                     validation_retry_evidence is not None
+                    or validation_retry_successor_evidence is not None
                     or leftover_wait_deferral_budget_recovery_evidence
                     is not None
                     or landed_completion_recovery_evidence is not None
@@ -73773,6 +74631,7 @@ class DatabaseImplementationDaemon:
             }
         blocked_recovery = task_status == "blocked" and (
             validation_retry_evidence is not None
+            or validation_retry_successor_evidence is not None
             or leftover_wait_deferral_budget_recovery_evidence is not None
             or landed_completion_recovery_evidence is not None
             or allow_blocked_recovery
@@ -73823,6 +74682,8 @@ class DatabaseImplementationDaemon:
                     if landed_completion_recovery_evidence is not None
                     else "database_portal_leftover_wait_deferral_budget_retry_recovery"
                     if leftover_wait_deferral_budget_recovery_evidence is not None
+                    else "database_portal_validation_retry_successor_recovery"
+                    if validation_retry_successor_evidence is not None
                     else "database_portal_validation_retry_recovery"
                     if blocked_recovery
                     else "database_portal_validation_retry"
@@ -73859,6 +74720,22 @@ class DatabaseImplementationDaemon:
                 ),
                 **(
                     {
+                        "validation_retry_seed": dict(
+                            validation_retry_successor_evidence[
+                                "validation_retry_evidence"
+                            ]
+                        ),
+                        "validation_retry_successor_recovery": dict(
+                            validation_retry_successor_evidence[
+                                "recovery_receipt"
+                            ]
+                        ),
+                    }
+                    if validation_retry_successor_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
                         "landed_completion_recovery_seed": dict(
                             landed_completion_recovery_evidence
                         )
@@ -73881,6 +74758,19 @@ class DatabaseImplementationDaemon:
             evidence_digests=(
                 [str(validation_retry_evidence["events_digest"])]
                 if validation_retry_evidence is not None
+                else [
+                    str(
+                        validation_retry_successor_evidence[
+                            "recovery_receipt"
+                        ]["receipt_id"]
+                    ),
+                    str(
+                        validation_retry_successor_evidence[
+                            "validation_retry_evidence"
+                        ]["events_digest"]
+                    ),
+                ]
+                if validation_retry_successor_evidence is not None
                 else [
                     str(
                         leftover_wait_deferral_budget_recovery_evidence[
@@ -75998,6 +76888,53 @@ class DatabaseImplementationDaemon:
                 )
 
                 if (
+                    reason
+                    == _DATABASE_PORTAL_VALIDATION_RETRY_SEED_FAILURE_REASON
+                ):
+                    if self._automatic_claim_forbidden(task):
+                        continue
+                    try:
+                        verified_successor = (
+                            self._verified_validation_retry_successor_authority(
+                                attempt,
+                                task,
+                            )
+                        )
+                        coordination = (
+                            self._reconcile_failed_attempt_coordination(attempt)
+                        )
+                        recovery = verified_successor["recovery_receipt"]
+                        outcome = self._persist_task_retry_state(
+                            attempt,
+                            reason="declared_validation_failed",
+                            backoff_ms=0,
+                            evidence_source=(
+                                "typed_portal_validation_retry_successor_recovery:"
+                                + str(recovery["receipt_id"])
+                            ),
+                            coordination_evidence=coordination,
+                            validation_retry_successor_evidence=(
+                                verified_successor
+                            ),
+                        )
+                        outcome["coordination"] = coordination
+                        outcome[
+                            "validation_retry_successor_evidence"
+                        ] = verified_successor
+                        outcomes.append(outcome)
+                    except Exception as exc:
+                        logger.warning(
+                            "validation retry successor recovery not admitted "
+                            "for %s: %s: %s",
+                            attempt.attempt_id,
+                            type(exc).__name__,
+                            str(exc)[:512],
+                        )
+                    # This exact pre-dispatch failure has no generic recovery
+                    # path.  A rejected typed proof remains blocked.
+                    continue
+
+                if (
                     reason == "portal_provider_failed"
                     and callable(self._landed_completion_recovery_fn)
                     and not self._automatic_claim_forbidden(task)
@@ -76106,6 +77043,14 @@ class DatabaseImplementationDaemon:
                     == "database_portal_landed_completion_revalidation"
                 ):
                     self._verified_landed_completion_revalidation_state(
+                        attempt,
+                        task,
+                    )
+                elif (
+                    operation
+                    == "database_portal_validation_retry_successor_recovery"
+                ):
+                    self._verified_validation_retry_successor_recovery_state(
                         attempt,
                         task,
                     )
