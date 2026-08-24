@@ -70545,6 +70545,9 @@ _DATABASE_TASK_SOURCE_KINDS = frozenset({"duckdb"})
 _DATABASE_PORTAL_LEGACY_RETRY_BACKOFF_SECONDS = 300
 _MAX_DATABASE_PORTAL_RETRY_BACKOFF_SECONDS = 86_400
 _MAX_DATABASE_PORTAL_CAPACITY_BACKOFF_SECONDS = 31 * 86_400
+_DATABASE_PORTAL_PROTECTED_PRESERVATION_LEGACY_REASON = (
+    "Portal consumed-attempt retry seed state conflicts with its receipt"
+)
 _DATABASE_PORTAL_TYPED_DEFERRAL_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-typed-deferral@1"
 )
@@ -70640,6 +70643,8 @@ _DATABASE_CONTROL_ATTEMPT_OPERATIONS_BY_STATUS = {
             "database_portal_validation_retry",
             "database_portal_validation_retry_recovery",
             "database_portal_capacity_retry",
+            "database_portal_protected_preservation_retry",
+            "database_portal_protected_preservation_retry_recovery",
             "database_portal_superseded_consumed_attempt_recovery",
             "database_portal_post_merge_declared_output_recovery",
             "database_post_merge_declared_outputs_repair_recovery",
@@ -70849,6 +70854,10 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any]
         ]
         | None = None,
+        protected_preservation_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any]
+        ]
+        | None = None,
         require_real_execution: bool = False,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
@@ -70984,6 +70993,9 @@ class DatabaseImplementationDaemon:
         self._post_merge_recovery_fn = post_merge_recovery_fn
         self._superseded_consumed_attempt_recovery_fn = (
             superseded_consumed_attempt_recovery_fn
+        )
+        self._protected_preservation_recovery_fn = (
+            protected_preservation_recovery_fn
         )
         self._merge_queue: Any = None
         self._merge_repo_root: Path | None = None
@@ -71331,6 +71343,26 @@ class DatabaseImplementationDaemon:
                     "superseded consumed-attempt recovery callback is already bound"
                 )
             self._superseded_consumed_attempt_recovery_fn = callback
+
+    def bind_protected_preservation_recovery(
+        self,
+        callback: Callable[["DatabaseTaskAttempt"], Mapping[str, Any]],
+    ) -> None:
+        """Bind immutable Portal evidence recovery for one preserved candidate."""
+
+        self._require_execution_authority(
+            "protected candidate preservation recovery"
+        )
+        if not callable(callback):
+            raise TypeError(
+                "protected preservation recovery callback must be callable"
+            )
+        with self._lock:
+            if self._protected_preservation_recovery_fn is not None:
+                raise DatabaseImplementationAuthorityError(
+                    "protected preservation recovery callback is already bound"
+                )
+            self._protected_preservation_recovery_fn = callback
 
     def bind_merge_train_recovery(
         self,
@@ -73728,12 +73760,20 @@ class DatabaseImplementationDaemon:
             )
             seed = prior_status_receipt.get("validation_retry_seed")
             capacity_seed = prior_status_receipt.get("capacity_retry_seed")
+            protected_seed = prior_status_receipt.get(
+                "protected_preservation_seed"
+            )
             consumed_seed = prior_status_receipt.get(
                 "consumed_attempt_retry_seed"
             )
             if sum(
                 candidate is not None
-                for candidate in (seed, capacity_seed, consumed_seed)
+                for candidate in (
+                    seed,
+                    capacity_seed,
+                    protected_seed,
+                    consumed_seed,
+                )
             ) > 1:
                 raise DatabaseImplementationAuthorityError(
                     "database claim found conflicting retry seeds"
@@ -73918,6 +73958,103 @@ class DatabaseImplementationDaemon:
                             source_attempt.attempt_id
                         ),
                         "capacity_retry_seed": verified_capacity_seed,
+                    }
+                )
+            if protected_seed is not None:
+                if (
+                    str(getattr(task, "status", "") or "").lower()
+                    != "retrying"
+                    or prior_status_receipt.get("operation")
+                    not in {
+                        "database_portal_protected_preservation_retry",
+                        (
+                            "database_portal_protected_preservation_"
+                            "retry_recovery"
+                        ),
+                    }
+                    or not isinstance(protected_seed, Mapping)
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim found malformed protected-preservation seed"
+                    )
+                source_attempt = self._retry_source_attempt_from_shared_seed(
+                    task_cid=task_cid,
+                    task_alias=str(getattr(task, "task_alias", "") or ""),
+                    seed=protected_seed,
+                    control_receipt=prior_status_receipt,
+                )
+                verified_protected_seed = (
+                    self._verified_protected_preservation_receipt(
+                        source_attempt,
+                        protected_seed,
+                    )
+                )
+                self._verified_protected_preservation_control_state(
+                    source_attempt,
+                    task,
+                    expected_retry_evidence=verified_protected_seed,
+                )
+                coordination_attempt = self.coordinator.get_task_attempt(
+                    str(receipt_payload.get("attempt_id") or "")
+                )
+                coordination_claim = self.coordinator.get_task_claim(
+                    str(receipt_payload.get("claim_id") or "")
+                )
+                if coordination_attempt is None or coordination_claim is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim protected-preservation target is unavailable"
+                    )
+                target_identity = coordination_attempt.to_dict()
+                target_claim_identity = coordination_claim.to_dict()
+                if (
+                    target_identity.get("task_cid") != task_cid
+                    or target_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("task_cid") != task_cid
+                    or target_claim_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("claim_id")
+                    != receipt_payload.get("claim_id")
+                    or target_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or target_claim_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or isinstance(
+                        target_identity.get("attempt_number"), bool
+                    )
+                    or not isinstance(
+                        target_identity.get("attempt_number"), int
+                    )
+                    or target_identity.get("attempt_id")
+                    == source_attempt.attempt_id
+                    or target_claim_identity.get("claim_id")
+                    == source_attempt.claim_id
+                    or str(target_claim_identity.get("lease_id") or "")
+                    == source_attempt.lease_id
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "database claim protected-preservation target is not exact"
+                    )
+                receipt_payload.update(
+                    {
+                        "attempt_number": int(
+                            target_identity["attempt_number"]
+                        ),
+                        "fencing_token": int(
+                            target_claim_identity.get("fencing_token") or 0
+                        ),
+                        "fence_epoch": int(
+                            target_claim_identity.get("fence_epoch") or 0
+                        ),
+                        "lease_id": str(
+                            target_claim_identity.get("lease_id") or ""
+                        ),
+                        "protected_preservation_source_attempt_id": (
+                            source_attempt.attempt_id
+                        ),
+                        "protected_preservation_seed": (
+                            verified_protected_seed
+                        ),
                     }
                 )
             if consumed_seed is not None:
@@ -74448,6 +74585,170 @@ class DatabaseImplementationDaemon:
         ):
             raise DatabaseImplementationAuthorityError(
                 "typed validation retry evidence failed independent verification"
+            )
+        return dict(raw)
+
+    def _verified_protected_preservation_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Independently verify one preserved post-dispatch candidate.
+
+        Portal proves the event chain and the Git rescue ref before emitting
+        this receipt.  The outer daemon deliberately repeats the closed
+        identity, path, commit/ref, and content-address checks before it lets
+        the shared control row carry the candidate across lanes.
+        """
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "protected preservation evidence is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "source_task_revision",
+            "portal_attempt",
+            "attempt_consumed",
+            "provider_dispatched",
+            "completion_authoritative",
+            "local_recovery_required",
+            "mutation_scopes",
+            "protected_paths",
+            "baseline_commit",
+            "implementation_commit",
+            "preserved_commit",
+            "rescue_branch",
+            "original_branch",
+            "original_worktree_path",
+            "binding_id",
+            "events_digest",
+            "event_stream_id",
+            "implementation_started_event_id",
+            "protected_mutation_event_id",
+            "preservation_event_id",
+            "implementation_finished_event_id",
+            "protected_path_violation_digest",
+            "preservation_digest",
+            "receipt_id",
+        }
+        body = dict(raw)
+        receipt_id = body.pop("receipt_id", None)
+        source_task_revision = raw.get("source_task_revision")
+        portal_attempt = raw.get("portal_attempt")
+        protected_paths = raw.get("protected_paths")
+        baseline_commit = str(raw.get("baseline_commit") or "")
+        preserved_commit = str(raw.get("preserved_commit") or "")
+        rescue_branch = str(raw.get("rescue_branch") or "")
+        original_branch = str(raw.get("original_branch") or "")
+        expected_rescue_branch = (
+            "rescue/"
+            + (
+                original_branch.removeprefix("implementation/")
+                .strip("/")
+                .replace(" ", "-")
+                or "implementation-attempt"
+            )
+            + "-protected-path-interrupted"
+        )
+        digest_fields = (
+            "binding_id",
+            "events_digest",
+            "implementation_started_event_id",
+            "protected_mutation_event_id",
+            "preservation_event_id",
+            "implementation_finished_event_id",
+            "protected_path_violation_digest",
+            "preservation_digest",
+        )
+        try:
+            protected_receipt_id = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    body,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ).encode("utf-8")
+            ).hexdigest()
+        except (TypeError, ValueError, RecursionError) as exc:
+            raise DatabaseImplementationAuthorityError(
+                "protected preservation evidence is not canonical JSON"
+            ) from exc
+        if (
+            set(raw) != expected_fields
+            or raw.get("schema")
+            != DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA
+            or raw.get("disposition") != "protected_candidate_preserved"
+            or raw.get("reason") != "implementation_protected_path_mutated"
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_alias") != attempt.task_alias
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("lease_id") != attempt.lease_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("fencing_token") != int(attempt.fencing_token)
+            or raw.get("fence_epoch") != int(attempt.fence_epoch)
+            or isinstance(source_task_revision, bool)
+            or not isinstance(source_task_revision, int)
+            or source_task_revision < 1
+            or isinstance(portal_attempt, bool)
+            or not isinstance(portal_attempt, int)
+            or portal_attempt < 1
+            or (
+                self.max_task_attempts > 0
+                and portal_attempt > self.max_task_attempts
+            )
+            or raw.get("attempt_consumed") is not False
+            or raw.get("provider_dispatched") is not True
+            or raw.get("completion_authoritative") is not False
+            or raw.get("local_recovery_required") is not True
+            or raw.get("mutation_scopes") != ["shared_checkout"]
+            or not isinstance(protected_paths, list)
+            or not protected_paths
+            or not all(
+                isinstance(path, str)
+                and bool(path)
+                and not PurePosixPath(path).is_absolute()
+                and ".." not in PurePosixPath(path).parts
+                for path in protected_paths
+            )
+            or protected_paths != sorted(set(protected_paths))
+            or re.fullmatch(r"[0-9a-f]{40}", baseline_commit) is None
+            or re.fullmatch(r"[0-9a-f]{40}", preserved_commit) is None
+            or preserved_commit == baseline_commit
+            or raw.get("implementation_commit") != preserved_commit
+            or rescue_branch != expected_rescue_branch
+            or ".." in rescue_branch
+            or "@{" in rescue_branch
+            or "\\" in rescue_branch
+            or re.fullmatch(r"[A-Za-z0-9._/-]+", rescue_branch) is None
+            or not original_branch.startswith("implementation/")
+            or not str(raw.get("original_worktree_path") or "")
+            or not str(raw.get("event_stream_id") or "")
+            or any(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(raw.get(field) or ""))
+                is None
+                for field in digest_fields
+            )
+            or receipt_id != protected_receipt_id
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected preservation evidence failed independent verification"
             )
         return dict(raw)
 
@@ -75307,6 +75608,162 @@ class DatabaseImplementationDaemon:
         return {
             "receipt": dict(receipt),
             "validation_retry_evidence": retry_seed,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
+    def _verified_protected_preservation_control_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_retry_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify the exact shared wrapper for one preserved candidate seed."""
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "protected preservation control projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "protected_preservation_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if not isinstance(receipt, Mapping) or set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "protected preservation control receipt has unknown or missing fields"
+            )
+        retry_seed = self._verified_protected_preservation_receipt(
+            attempt,
+            receipt.get("protected_preservation_seed"),
+        )
+        if (
+            expected_retry_evidence is not None
+            and dict(expected_retry_evidence) != retry_seed
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected preservation control receipt has a foreign seed"
+            )
+        control_expected_status = receipt.get("control_expected_status")
+        if control_expected_status == "blocked":
+            expected_operation = (
+                "database_portal_protected_preservation_retry_recovery"
+            )
+            expected_evidence_source = (
+                "typed_portal_protected_preservation_recovery:"
+                + str(retry_seed["receipt_id"])
+            )
+            expected_source_revision = int(
+                receipt.get("control_expected_revision") or 0
+            ) - 1
+        elif control_expected_status == "in_progress":
+            expected_operation = "database_portal_protected_preservation_retry"
+            expected_evidence_source = (
+                "typed_portal_protected_preservation:"
+                + str(retry_seed["receipt_id"])
+            )
+            expected_source_revision = int(
+                receipt.get("control_expected_revision") or 0
+            )
+        else:
+            raise DatabaseImplementationConflictError(
+                "protected preservation wrapper has an invalid source status"
+            )
+        task_revision = getattr(task, "revision", None)
+        expected_revision = receipt.get("control_expected_revision")
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:"
+            "implementation_protected_path_mutated"
+        )[:2048]
+        coordination = receipt.get("coordination")
+        queue_receipt = receipt.get("queue_receipt")
+        if (
+            isinstance(task_revision, bool)
+            or not isinstance(task_revision, int)
+            or isinstance(expected_revision, bool)
+            or not isinstance(expected_revision, int)
+            or expected_revision < 1
+            or task_revision != expected_revision + 1
+            or isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+            or receipt.get("operation") != expected_operation
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("reason")
+            != "implementation_protected_path_mutated"
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source") != expected_evidence_source
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or retry_seed.get("source_task_revision")
+            != expected_source_revision
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected preservation control receipt does not match its source attempt"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify protected preservation queue state"
+            )
+        queue_entry = get_queue_entry(attempt.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected preservation queue state does not match its receipt"
+            )
+        return {
+            "receipt": dict(receipt),
+            "protected_preservation_evidence": retry_seed,
             "queue_reason": queue_reason,
             "retry_not_before_ms": retry_not_before_ms,
         }
@@ -76478,8 +76935,21 @@ class DatabaseImplementationDaemon:
         coordination_evidence: Mapping[str, Any] | None = None,
         validation_retry_evidence: Mapping[str, Any] | None = None,
         capacity_retry_evidence: Mapping[str, Any] | None = None,
+        protected_preservation_evidence: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Project one exact failed attempt into canonical retry authority."""
+
+        if sum(
+            evidence is not None
+            for evidence in (
+                validation_retry_evidence,
+                capacity_retry_evidence,
+                protected_preservation_evidence,
+            )
+        ) > 1:
+            raise DatabaseImplementationAuthorityError(
+                "retry transition carries conflicting typed evidence"
+            )
 
         exact_queue_deadline_ms: int | None = None
         if capacity_retry_evidence is not None:
@@ -76538,7 +77008,10 @@ class DatabaseImplementationDaemon:
         task_status = str(task.status or "").strip().lower()
         blocked_recovery = (
             task_status == "blocked"
-            and validation_retry_evidence is not None
+            and (
+                validation_retry_evidence is not None
+                or protected_preservation_evidence is not None
+            )
         )
         if task_status == "retrying":
             control_operations = (
@@ -76583,14 +77056,38 @@ class DatabaseImplementationDaemon:
                     task,
                     expected_retry_evidence=capacity_retry_evidence,
                 )
+            if protected_preservation_evidence is not None:
+                self._verified_protected_preservation_control_state(
+                    attempt,
+                    task,
+                    expected_retry_evidence=protected_preservation_evidence,
+                )
             transition_receipt = dict(control_receipt)
         else:
+            if protected_preservation_evidence is not None:
+                expected_source_revision = int(task.revision) - (
+                    1 if blocked_recovery else 0
+                )
+                if (
+                    protected_preservation_evidence.get(
+                        "source_task_revision"
+                    )
+                    != expected_source_revision
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "protected preservation seed has a foreign source revision"
+                    )
             transition_receipt = {
                 "operation": (
-                    "database_portal_validation_retry_recovery"
+                    "database_portal_protected_preservation_retry_recovery"
+                    if blocked_recovery
+                    and protected_preservation_evidence is not None
+                    else "database_portal_validation_retry_recovery"
                     if blocked_recovery
                     else "database_portal_capacity_retry"
                     if capacity_retry_evidence is not None
+                    else "database_portal_protected_preservation_retry"
+                    if protected_preservation_evidence is not None
                     else "database_portal_validation_retry"
                     if validation_retry_evidence is not None
                     else "database_portal_retry"
@@ -76637,6 +77134,15 @@ class DatabaseImplementationDaemon:
                         )
                     }
                     if capacity_retry_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "protected_preservation_seed": dict(
+                            protected_preservation_evidence
+                        )
+                    }
+                    if protected_preservation_evidence is not None
                     else {}
                 ),
                 "control_expected_status": task_status,
@@ -76787,6 +77293,127 @@ class DatabaseImplementationDaemon:
             "control_new_revision": int(getattr(cas_result, "revision", 0) or 0),
             "control_receipt": dict(to_dict()),
         }
+
+    def _verified_legacy_protected_preservation_failed_phase(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any]:
+        """Verify the one historical misclassification eligible for repair."""
+
+        failed_phases = [
+            phase
+            for phase in self.phase_history(attempt.attempt_id)
+            if phase.get("phase") == ATTEMPT_PHASE_FAILED
+        ]
+        body = failed_phases[-1].get("body") if failed_phases else None
+        expected_fields = {
+            "reason",
+            "portal_retryable_failure",
+            "portal_terminal_failure",
+            "deferred",
+            "attempt_consumed",
+            "provider_dispatched",
+            "typed_deferral_slot_consumed",
+            "backoff_seconds",
+        }
+        reason = body.get("reason") if isinstance(body, Mapping) else None
+        if (
+            not isinstance(body, Mapping)
+            or set(body) != expected_fields
+            or not isinstance(reason, str)
+            or reason.casefold()
+            != _DATABASE_PORTAL_PROTECTED_PRESERVATION_LEGACY_REASON.casefold()
+            or body.get("portal_retryable_failure") is not False
+            or body.get("portal_terminal_failure") is not True
+            or body.get("deferred") is not False
+            or body.get("attempt_consumed") != "unknown"
+            or body.get("provider_dispatched") != "unknown"
+            or body.get("typed_deferral_slot_consumed") != "unknown"
+            or body.get("backoff_seconds") != 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected preservation recovery requires the exact legacy "
+                "consumed-seed conflict failed phase"
+            )
+        return dict(body)
+
+    def recover_blocked_portal_protected_preservation(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        retry_evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm the exact blocked legacy preservation candidate by CAS.
+
+        The preserved candidate did not consume a Portal attempt.  This path
+        carries its exact immutable rescue receipt to a successor claim; it
+        neither refunds a consumed attempt nor spends the pre-dispatch typed
+        deferral budget.
+        """
+
+        self._require_execution_authority(
+            "protected preservation retry recovery"
+        )
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected preservation recovery requires an exact failed attempt"
+            )
+        current = persisted
+        self._verified_legacy_protected_preservation_failed_phase(current)
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(current.task_cid)
+        if latest is None or latest.attempt_id != current.attempt_id:
+            raise DatabaseImplementationConflictError(
+                "protected preservation recovery rejected a superseded attempt"
+            )
+        verified = self._verified_protected_preservation_receipt(
+            current,
+            retry_evidence,
+        )
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "protected preservation recovery task disappeared"
+            )
+        if self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "protected preservation recovery rejected a manual/review-only task"
+            )
+        status = str(task.status or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "protected preservation recovery requires blocked or exact "
+                f"retrying control state, observed {status!r}"
+            )
+        coordination = self._reconcile_failed_attempt_coordination(current)
+        result = self._persist_task_retry_state(
+            current,
+            reason="implementation_protected_path_mutated",
+            backoff_ms=0,
+            evidence_source=(
+                "typed_portal_protected_preservation_recovery:"
+                + str(verified["receipt_id"])
+            ),
+            coordination_evidence=coordination,
+            protected_preservation_evidence=verified,
+        )
+        result["protected_preservation_evidence"] = verified
+        result["coordination"] = coordination
+        return result
 
     def recover_blocked_portal_validation_retry(
         self,
@@ -78840,6 +79467,57 @@ class DatabaseImplementationDaemon:
                 f"failed attempt {attempt.attempt_id} has malformed phase evidence"
         )
         if body.get("portal_retryable_failure") is True:
+            raw_protected_preservation = body.get(
+                "typed_protected_preservation"
+            )
+            if raw_protected_preservation is not None:
+                verified_protected_preservation = (
+                    self._verified_protected_preservation_receipt(
+                        attempt,
+                        raw_protected_preservation,
+                    )
+                )
+                if (
+                    set(body)
+                    != {
+                        "reason",
+                        "portal_retryable_failure",
+                        "portal_terminal_failure",
+                        "deferred",
+                        "protected_candidate_preserved",
+                        "attempt_consumed",
+                        "provider_dispatched",
+                        "typed_deferral_slot_consumed",
+                        "backoff_seconds",
+                        "typed_protected_preservation",
+                    }
+                    or body.get("portal_terminal_failure") is not False
+                    or body.get("deferred") is not False
+                    or body.get("protected_candidate_preserved") is not True
+                    or body.get("attempt_consumed") is not False
+                    or body.get("provider_dispatched") is not True
+                    or body.get("typed_deferral_slot_consumed") is not False
+                    or body.get("reason")
+                    != "implementation_protected_path_mutated"
+                    or body.get("backoff_seconds") != 0
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "protected preservation evidence conflicts with its failed phase"
+                    )
+                return {
+                    "reason": "implementation_protected_path_mutated",
+                    "backoff_ms": 0,
+                    "evidence_source": (
+                        "typed_portal_protected_preservation:"
+                        + str(
+                            verified_protected_preservation["receipt_id"]
+                        )
+                    ),
+                    "typed_deferral_budget": None,
+                    "typed_protected_preservation": (
+                        verified_protected_preservation
+                    ),
+                }
             raw_capacity_retry = body.get("typed_capacity_retry")
             if raw_capacity_retry is not None:
                 verified_capacity_retry = (
@@ -79698,6 +80376,9 @@ class DatabaseImplementationDaemon:
                         capacity_retry_evidence=evidence.get(
                             "typed_capacity_retry"
                         ),
+                        protected_preservation_evidence=evidence.get(
+                            "typed_protected_preservation"
+                        ),
                     ),
                 )
                 if outcome.get("reason") != (
@@ -79732,6 +80413,9 @@ class DatabaseImplementationDaemon:
                     capacity_retry_evidence=evidence.get(
                         "typed_capacity_retry"
                     ),
+                    protected_preservation_evidence=evidence.get(
+                        "typed_protected_preservation"
+                    ),
                 ),
             )
             if outcome.get("reason") != (
@@ -79757,6 +80441,21 @@ class DatabaseImplementationDaemon:
             )
             status = str(task.status or "").strip().lower()
             if status == "blocked":
+                if (
+                    reason.casefold()
+                    == _DATABASE_PORTAL_PROTECTED_PRESERVATION_LEGACY_REASON.casefold()
+                    and callable(self._protected_preservation_recovery_fn)
+                ):
+                    retry_evidence = (
+                        self._protected_preservation_recovery_fn(attempt)
+                    )
+                    outcomes.append(
+                        self.recover_blocked_portal_protected_preservation(
+                            attempt,
+                            retry_evidence=retry_evidence,
+                        )
+                    )
+                    continue
                 recovery_context = (
                     self._superseded_consumed_attempt_recovery_context(
                         attempt,
@@ -79813,6 +80512,14 @@ class DatabaseImplementationDaemon:
                     "database_portal_superseded_consumed_attempt_recovery"
                 ):
                     self._verified_superseded_consumed_attempt_recovery_state(
+                        attempt,
+                        task,
+                    )
+                elif operation in {
+                    "database_portal_protected_preservation_retry",
+                    "database_portal_protected_preservation_retry_recovery",
+                }:
+                    self._verified_protected_preservation_control_state(
                         attempt,
                         task,
                     )
@@ -80030,6 +80737,7 @@ class DatabaseImplementationDaemon:
                 DatabasePortalBridgeDeferred,
                 DatabasePortalBridgeError,
                 DatabasePortalCapacityRetry,
+                DatabasePortalProtectedPathPreserved,
                 DatabasePortalValidationRetry,
             )
 
@@ -80041,8 +80749,20 @@ class DatabaseImplementationDaemon:
                 DatabasePortalValidationRetry,
             )
             capacity_retry = isinstance(exc, DatabasePortalCapacityRetry)
-            retryable = deferred or validation_retry or capacity_retry
+            protected_preservation = isinstance(
+                exc,
+                DatabasePortalProtectedPathPreserved,
+            )
+            retryable = (
+                deferred
+                or validation_retry
+                or capacity_retry
+                or protected_preservation
+            )
             backoff_seconds = (
+                0
+                if protected_preservation
+                else
                 (
                     self._database_portal_capacity_backoff_seconds
                     if capacity_retry
@@ -80093,6 +80813,14 @@ class DatabaseImplementationDaemon:
                         if capacity_retry
                         else None
                     )
+                    typed_protected_preservation = (
+                        self._verified_protected_preservation_receipt(
+                            current,
+                            getattr(exc, "retry_receipt", None),
+                        )
+                        if protected_preservation
+                        else None
+                    )
                     failed = self.commit_phase(
                         current,
                         ATTEMPT_PHASE_FAILED,
@@ -80101,6 +80829,11 @@ class DatabaseImplementationDaemon:
                             "portal_retryable_failure": retryable,
                             "portal_terminal_failure": not retryable,
                             "deferred": deferred,
+                            **(
+                                {"protected_candidate_preserved": True}
+                                if protected_preservation
+                                else {}
+                            ),
                             "attempt_consumed": (
                                 getattr(exc, "attempt_consumed", False)
                                 if retryable
@@ -80115,7 +80848,9 @@ class DatabaseImplementationDaemon:
                                 True
                                 if deferred
                                 else False
-                                if validation_retry or capacity_retry
+                                if validation_retry
+                                or capacity_retry
+                                or protected_preservation
                                 else "unknown"
                             ),
                             "backoff_seconds": backoff_seconds,
@@ -80142,6 +80877,15 @@ class DatabaseImplementationDaemon:
                                 if typed_validation_retry is not None
                                 else {}
                             ),
+                            **(
+                                {
+                                    "typed_protected_preservation": (
+                                        typed_protected_preservation
+                                    )
+                                }
+                                if typed_protected_preservation is not None
+                                else {}
+                            ),
                         },
                     )
                 terminal = failed or current
@@ -80149,7 +80893,28 @@ class DatabaseImplementationDaemon:
                     raise DatabaseImplementationAuthorityError(
                         "Portal failure attempt disappeared before retry CAS"
                     )
-                if deferred:
+                if protected_preservation:
+                    verified_protected_preservation = (
+                        self._verified_protected_preservation_receipt(
+                            terminal,
+                            getattr(exc, "retry_receipt", None),
+                        )
+                    )
+                    control_state = self._persist_task_retry_state(
+                        terminal,
+                        reason=reason,
+                        backoff_ms=0,
+                        evidence_source=(
+                            "typed_portal_protected_preservation:"
+                            + str(
+                                verified_protected_preservation["receipt_id"]
+                            )
+                        ),
+                        protected_preservation_evidence=(
+                            verified_protected_preservation
+                        ),
+                    )
+                elif deferred:
                     budget = self._typed_deferral_budget_observation(terminal)
                     if (
                         isinstance(budget, Mapping)
@@ -80215,6 +80980,7 @@ class DatabaseImplementationDaemon:
                     "portal_retryable_failure": retryable,
                     "portal_terminal_failure": not retryable,
                     "deferred": deferred,
+                    "protected_candidate_preserved": protected_preservation,
                     "attempt_consumed": (
                         getattr(exc, "attempt_consumed", False)
                         if retryable
@@ -80229,7 +80995,9 @@ class DatabaseImplementationDaemon:
                         True
                         if deferred
                         else False
-                        if validation_retry or capacity_retry
+                        if validation_retry
+                        or capacity_retry
+                        or protected_preservation
                         else "unknown"
                     ),
                     "backoff_seconds": backoff_seconds,
@@ -80248,6 +81016,7 @@ class DatabaseImplementationDaemon:
                 "portal_retryable_failure": retryable,
                 "portal_terminal_failure": not retryable,
                 "deferred": deferred,
+                "protected_candidate_preserved": protected_preservation,
                 "attempt_consumed": (
                     getattr(exc, "attempt_consumed", False)
                     if retryable
@@ -80262,7 +81031,9 @@ class DatabaseImplementationDaemon:
                     True
                     if deferred
                     else False
-                    if validation_retry or capacity_retry
+                    if validation_retry
+                    or capacity_retry
+                    or protected_preservation
                     else "unknown"
                 ),
                 "backoff_seconds": backoff_seconds,
