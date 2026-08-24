@@ -26,6 +26,7 @@ import hashlib
 import importlib
 import importlib.abc
 import importlib.machinery
+import importlib.util
 import io
 import json
 import os
@@ -1114,6 +1115,19 @@ _QUALIFICATION_RUNTIME_BUNDLE_SCHEMA: Final[str] = (
 )
 _QUALIFICATION_RUNTIME_PROJECTION_SCHEMA: Final[str] = (
     "lgcvf-qualification-runtime-projection@1"
+)
+_ORDINARY_PYTEST_RUNTIME_SCHEMA: Final[str] = (
+    "lgcvf-ordinary-pytest-runtime@1"
+)
+_ORDINARY_PYTEST_RUNTIME_COMPONENT_NAMES: Final[tuple[str, ...]] = (
+    "pytest",
+    "pluggy",
+    "iniconfig",
+    "packaging",
+    "pygments",
+)
+_ORDINARY_PYTEST_RUNTIME_MODULE_ROOTS: Final[frozenset[str]] = frozenset(
+    {"pytest", "_pytest", "py", "pluggy", "iniconfig", "packaging", "pygments"}
 )
 _QUALIFICATION_RUNTIME_BOOTSTRAP_SCHEMA: Final[str] = (
     "lgcvf-qualification-runtime-bootstrap@1"
@@ -3208,24 +3222,99 @@ def _pytest_record_identity(
     return package_identity
 
 
-def _pytest_distribution_version() -> str:
+def _read_admitted_runtime_entry_if_present(
+    root_fd: int,
+    relative: str,
+    *,
+    noun: str,
+    owner_uid: int,
+    limit: int = _MAX_QUALIFICATION_RUNTIME_FILE_BYTES,
+) -> tuple[bytes, dict[str, Any]] | None:
+    """Read an entry when its leading component exists in one admitted root.
+
+    The ordered roots returned by :func:`_pytest_site_roots` are the closed
+    dependency precedence used by ordinary qualification workers.  The helper
+    reports absence only when the leading component is absent.  Primary-root
+    admission callers treat that absence, or any unsafe or malformed entry, as
+    authoritative failure rather than permission to fall through.
+    """
+
+    _strict_record_relative_path(relative, noun=noun)
+    leading = relative.split("/", 1)[0]
+    try:
+        os.stat(leading, dir_fd=root_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise QualificationError(f"{noun} leading component is unavailable") from exc
+    return _read_qualification_runtime_relative(
+        root_fd,
+        relative,
+        noun=noun,
+        owner_uid=owner_uid,
+        limit=limit,
+    )
+
+
+def _revalidate_admitted_runtime_root(
+    root: Path,
+    root_fd: int,
+    before: os.stat_result,
+    *,
+    noun: str,
+) -> None:
+    """Require one admitted root path and open descriptor to stay identical."""
+
+    try:
+        descriptor_after = os.fstat(root_fd)
+        path_after = root.lstat()
+    except OSError as exc:
+        raise QualificationError(f"{noun} changed during resolution") from exc
+    stable_fields = (
+        "st_dev",
+        "st_ino",
+        "st_uid",
+        "st_gid",
+        "st_mode",
+        "st_nlink",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    expected = tuple(getattr(before, key) for key in stable_fields)
+    if (
+        not stat.S_ISDIR(path_after.st_mode)
+        or tuple(getattr(descriptor_after, key) for key in stable_fields) != expected
+        or tuple(getattr(path_after, key) for key in stable_fields) != expected
+    ):
+        raise QualificationError(f"{noun} changed during resolution")
+
+
+def _pytest_distribution_version(
+    *,
+    roots: Sequence[Path] | None = None,
+) -> str:
     """Resolve pytest from RECORD-bound bytes without importing its code.
 
     Isolated launch admission deliberately excludes the user site from
     ``sys.path``.  Qualification execution may nevertheless have used a
     user-site pytest.  This resolver treats distribution metadata and package
     bytes strictly as bounded data, and selects the sole distribution whose
-    RECORD identity matches the installed package at the same interpreter-
-    derived site root.  Stale dist-info directories therefore cannot win by
-    name or search order, and no user-site Python is executed.
+    RECORD identity matches the installed package in the primary admitted
+    root.  Lower-precedence installations cannot create false ambiguity or
+    rescue an absent or broken primary root.  Stale dist-info directories
+    therefore cannot win by name or search order, and no user-site Python is
+    executed.
     """
 
-    matches: list[str] = []
     candidate_count = 0
     directory_pattern = re.compile(
         r"pytest-([0-9A-Za-z][0-9A-Za-z.!+_-]{0,127})\.dist-info"
     )
-    for root in _pytest_site_roots():
+    admitted_roots = tuple(roots) if roots is not None else _pytest_site_roots()
+    if not admitted_roots:
+        raise QualificationError("pytest distribution root is absent")
+    for root in admitted_roots[:1]:
         flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
@@ -3240,6 +3329,16 @@ def _pytest_distribution_version() -> str:
                 os.geteuid(),
             }:
                 raise QualificationError("pytest distribution root is not owned")
+            admitted_entry = _read_admitted_runtime_entry_if_present(
+                root_fd,
+                "pytest/__init__.py",
+                noun="pytest package entry point",
+                owner_uid=root_status.st_uid,
+                limit=_MAX_PYTEST_METADATA_BYTES,
+            )
+            if admitted_entry is None:
+                continue
+            package, package_source = admitted_entry
             names: list[str] = []
             with os.scandir(root_fd) as entries:
                 for entry in entries:
@@ -3252,24 +3351,9 @@ def _pytest_distribution_version() -> str:
                             "pytest distribution population exceeds its bound"
                         )
             names.sort()
-            if not names:
-                continue
-            package_fd = _open_owned_directory_at(
-                root_fd,
-                "pytest",
-                noun="pytest package directory",
-            )
-            try:
-                package = _read_owned_regular_at(
-                    package_fd,
-                    "__init__.py",
-                    noun="pytest package entry point",
-                    limit=_MAX_PYTEST_METADATA_BYTES,
-                )
-            finally:
-                os.close(package_fd)
             package_digest = hashlib.sha256(package).digest()
             package_size = len(package)
+            matches: list[str] = []
 
             for name in names:
                 candidate_fd = _open_owned_directory_at(
@@ -3332,13 +3416,146 @@ def _pytest_distribution_version() -> str:
                 )
                 if record_digest == package_digest and record_size == package_size:
                     matches.append(version)
+            final_entry = _read_admitted_runtime_entry_if_present(
+                root_fd,
+                "pytest/__init__.py",
+                noun="pytest package entry point",
+                owner_uid=root_status.st_uid,
+                limit=_MAX_PYTEST_METADATA_BYTES,
+            )
+            if final_entry != (package, package_source):
+                raise QualificationError(
+                    "pytest package entry point changed during distribution resolution"
+                )
+            if len(matches) != 1:
+                raise QualificationError(
+                    "pytest distribution does not have one exact RECORD-matched installation"
+                )
+            _revalidate_admitted_runtime_root(
+                root,
+                root_fd,
+                root_status,
+                noun="pytest distribution root",
+            )
+            return matches[0]
         finally:
             os.close(root_fd)
-    if len(matches) != 1:
-        raise QualificationError(
-            "pytest distribution does not have one exact RECORD-matched installation"
+    raise QualificationError(
+        "pytest distribution does not have one exact RECORD-matched installation"
+    )
+
+
+def _validate_admitted_pytest_module_origins(root: Path) -> None:
+    """Require every loaded runner module to originate in one projection."""
+
+    if not _ORDINARY_PYTEST_RUNTIME_MODULE_ROOTS.issubset(sys.modules):
+        raise QualificationError("imported pytest dependency population differs")
+    for name, loaded_module in sorted(sys.modules.items()):
+        if name.partition(".")[0] not in _ORDINARY_PYTEST_RUNTIME_MODULE_ROOTS:
+            continue
+        loaded_origin = _module_file(loaded_module)
+        if loaded_origin is None or not loaded_origin.is_relative_to(root):
+            raise QualificationError("imported pytest dependency provenance differs")
+
+
+def _import_admitted_pytest(*, root: Path) -> Any:
+    """Import only pytest and dependencies from one sealed projection root."""
+
+    selected_root = root.resolve(strict=True)
+    admitted_roots = (selected_root,)
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        root_fd = os.open(selected_root, flags)
+    except OSError as exc:
+        raise QualificationError("pytest distribution root cannot be opened") from exc
+    try:
+        root_status = os.fstat(root_fd)
+        if not stat.S_ISDIR(root_status.st_mode) or root_status.st_uid not in {
+            0,
+            os.geteuid(),
+        }:
+            raise QualificationError("pytest distribution root is not owned")
+        admitted_entry = _read_admitted_runtime_entry_if_present(
+            root_fd,
+            "pytest/__init__.py",
+            noun="pytest package entry point",
+            owner_uid=root_status.st_uid,
+            limit=_MAX_PYTEST_METADATA_BYTES,
         )
-    return matches[0]
+        if admitted_entry is None:
+            raise QualificationError("pytest package entry point is absent")
+        package, package_source = admitted_entry
+        expected_version = _pytest_distribution_version(roots=admitted_roots)
+        preloaded = sorted(
+            name
+            for name in sys.modules
+            if name.partition(".")[0] in _ORDINARY_PYTEST_RUNTIME_MODULE_ROOTS
+        )
+        if preloaded:
+            raise QualificationError(
+                "pytest runtime was imported before provenance admission"
+            )
+        specification = importlib.util.find_spec("pytest")
+        expected_origin = selected_root / "pytest/__init__.py"
+        expected_package = selected_root / "pytest"
+        try:
+            observed_origin = (
+                Path(str(specification.origin)).resolve(strict=True)
+                if specification is not None and specification.origin is not None
+                else None
+            )
+            observed_locations = tuple(
+                Path(value).resolve(strict=True)
+                for value in (
+                    specification.submodule_search_locations
+                    if specification is not None
+                    and specification.submodule_search_locations is not None
+                    else ()
+                )
+            )
+        except OSError as exc:
+            raise QualificationError("pytest import provenance is unavailable") from exc
+        if (
+            specification is None
+            or not isinstance(
+                specification.loader, importlib.machinery.SourceFileLoader
+            )
+            or observed_origin != expected_origin
+            or observed_locations != (expected_package,)
+        ):
+            raise QualificationError("pytest import provenance differs")
+        pytest_module = importlib.import_module("pytest")
+        for module_name in sorted(_ORDINARY_PYTEST_RUNTIME_MODULE_ROOTS):
+            importlib.import_module(module_name)
+        try:
+            imported_origin = Path(str(pytest_module.__file__)).resolve(strict=True)
+        except (AttributeError, OSError) as exc:
+            raise QualificationError("imported pytest provenance is unavailable") from exc
+        final_entry = _read_admitted_runtime_entry_if_present(
+            root_fd,
+            "pytest/__init__.py",
+            noun="pytest package entry point",
+            owner_uid=root_status.st_uid,
+            limit=_MAX_PYTEST_METADATA_BYTES,
+        )
+        if (
+            imported_origin != expected_origin
+            or str(getattr(pytest_module, "__version__", "")) != expected_version
+            or final_entry != (package, package_source)
+            or _pytest_distribution_version(roots=admitted_roots) != expected_version
+        ):
+            raise QualificationError("imported pytest identity differs")
+        _validate_admitted_pytest_module_origins(selected_root)
+        _revalidate_admitted_runtime_root(
+            selected_root,
+            root_fd,
+            root_status,
+            noun="pytest distribution root",
+        )
+        return pytest_module
+    finally:
+        os.close(root_fd)
 
 
 def _read_owned_regular_relative(
@@ -3871,8 +4088,10 @@ def _candidate_distribution_directories(
 def _wheel_runtime_component(
     spec: _QualificationRuntimeComponentSpec,
 ) -> tuple[dict[str, Any], tuple[dict[str, Any], ...], dict[str, bytes]]:
-    matches: list[tuple[dict[str, Any], tuple[dict[str, Any], ...], dict[str, bytes]]] = []
-    for site_root in _pytest_site_roots():
+    roots = _pytest_site_roots()
+    if not roots:
+        raise QualificationError("qualification site root is absent")
+    for site_root in roots[:1]:
         flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
         try:
             root_fd = os.open(site_root, flags)
@@ -3885,6 +4104,18 @@ def _wheel_runtime_component(
                 root_status, owner_uid=owner_uid
             ):
                 raise QualificationError("qualification site root identity differs")
+            admitted_entry = _read_admitted_runtime_entry_if_present(
+                root_fd,
+                spec.package_entry,
+                noun=f"{spec.normalized_name} package entry point",
+                owner_uid=owner_uid,
+            )
+            if admitted_entry is None:
+                continue
+            package_entry_bytes, package_entry_source = admitted_entry
+            matches: list[
+                tuple[dict[str, Any], tuple[dict[str, Any], ...], dict[str, bytes]]
+            ] = []
             for candidate_name in _candidate_distribution_directories(root_fd, spec):
                 candidate_fd = _open_owned_directory_at(
                     root_fd,
@@ -3961,12 +4192,20 @@ def _wheel_runtime_component(
                             size,
                             noun=f"{spec.normalized_name} RECORD {relative}",
                         )
-                        item_bytes, _source = _read_qualification_runtime_relative(
+                        item_bytes, item_source = _read_qualification_runtime_relative(
                             root_fd,
                             relative,
                             noun=f"{spec.normalized_name} runtime {relative}",
                             owner_uid=owner_uid,
                         )
+                        if relative == spec.package_entry and (
+                            item_bytes != package_entry_bytes
+                            or item_source != package_entry_source
+                        ):
+                            raise QualificationError(
+                                f"{spec.normalized_name} package entry changed during "
+                                "RECORD resolution"
+                            )
                         if (hashlib.sha256(item_bytes).digest(), len(item_bytes)) != (
                             expected_digest,
                             expected_size,
@@ -4051,13 +4290,32 @@ def _wheel_runtime_component(
                     )
                 component["component_cid"] = content_identity(component)
                 matches.append((component, tuple(manifest), payloads))
+            final_entry = _read_admitted_runtime_entry_if_present(
+                root_fd,
+                spec.package_entry,
+                noun=f"{spec.normalized_name} package entry point",
+                owner_uid=owner_uid,
+            )
+            if final_entry != (package_entry_bytes, package_entry_source):
+                raise QualificationError(
+                    f"{spec.normalized_name} package entry changed during distribution resolution"
+                )
+            if len(matches) != 1:
+                raise QualificationError(
+                    f"{spec.normalized_name} does not have one exact RECORD installation"
+                )
+            _revalidate_admitted_runtime_root(
+                site_root,
+                root_fd,
+                root_status,
+                noun=f"{spec.normalized_name} qualification site root",
+            )
+            return matches[0]
         finally:
             os.close(root_fd)
-    if len(matches) != 1:
-        raise QualificationError(
-            f"{spec.normalized_name} does not have one exact RECORD installation"
-        )
-    return matches[0]
+    raise QualificationError(
+        f"{spec.normalized_name} does not have one exact RECORD installation"
+    )
 
 
 _PYGMENTS_DPKG_LIST_SHA256: Final[str] = (
@@ -4757,6 +5015,123 @@ def _resolve_qualification_runtime() -> _ResolvedQualificationRuntime:
     )
 
 
+def _resolve_ordinary_pytest_runtime() -> _ResolvedQualificationRuntime:
+    """Resolve the complete immutable runtime used by ordinary pytest workers."""
+
+    specs = tuple(
+        spec
+        for spec in _QUALIFICATION_RUNTIME_COMPONENTS
+        if spec.role == "runner"
+    )
+    if (
+        tuple(spec.normalized_name for spec in specs)
+        != _ORDINARY_PYTEST_RUNTIME_COMPONENT_NAMES
+        or any(spec.role != "runner" for spec in specs)
+    ):
+        raise QualificationError("ordinary pytest runtime policy differs")
+    components: list[dict[str, Any]] = []
+    payload_manifest: list[dict[str, Any]] = []
+    payload_bytes: dict[str, bytes] = {}
+    for spec in specs:
+        if spec.provenance_kind == "debian_dpkg_md5sums":
+            component, manifest, files = _pygments_runtime_component(spec)
+        else:
+            component, manifest, files = _wheel_runtime_component(spec)
+        if any(path in payload_bytes for path in files):
+            raise QualificationError("ordinary pytest runtime payload paths overlap")
+        components.append(component)
+        payload_manifest.extend(dict(item) for item in manifest)
+        payload_bytes.update(files)
+    payload_manifest.sort(key=lambda item: str(item["path"]))
+    expected_file_count = sum(spec.expected_file_count for spec in specs)
+    expected_total_bytes = sum(spec.expected_total_bytes for spec in specs)
+    if (
+        len(components) != len(specs)
+        or len(payload_manifest) != expected_file_count
+        or len(payload_bytes) != expected_file_count
+        or sum(int(item["size_bytes"]) for item in payload_manifest)
+        != expected_total_bytes
+    ):
+        raise QualificationError("ordinary pytest runtime aggregate population differs")
+    payload_native: list[dict[str, Any]] = []
+    for component in components:
+        native_binding = component.get("native_binding")
+        native_files = (
+            native_binding.get("native_files")
+            if isinstance(native_binding, Mapping)
+            else None
+        )
+        if not isinstance(native_files, list):
+            raise QualificationError("ordinary pytest native binding is absent")
+        payload_native.extend(dict(item) for item in native_files)
+    if payload_native:
+        raise QualificationError("ordinary pytest runtime unexpectedly contains native code")
+    component_summaries = [
+        {
+            "ordinal": item["ordinal"],
+            "role": item["role"],
+            "normalized_name": item["normalized_name"],
+            "version": item["version"],
+            "file_count": item["file_count"],
+            "total_bytes": item["total_bytes"],
+            "file_manifest_root": item["file_manifest_root"],
+            "component_cid": item["component_cid"],
+        }
+        for item in components
+    ]
+    omissions = {
+        "schema": "lgcvf-ordinary-pytest-runtime-omissions@1",
+        "bytecode_suffixes": [".pyc", ".pyo"],
+        "bytecode_directories": ["__pycache__"],
+        "pth_processed": False,
+        "external_record_paths": {
+            spec.normalized_name: sorted(
+                _QUALIFICATION_RUNTIME_EXTERNAL_RECORD_PATHS.get(
+                    spec.normalized_name, frozenset()
+                )
+            )
+            for spec in specs
+        },
+        "component_omitted_paths": [
+            {
+                "ordinal": item["ordinal"],
+                "normalized_name": item["normalized_name"],
+                "omitted_paths": item["omitted_paths"],
+            }
+            for item in components
+        ],
+    }
+    bundle: dict[str, Any] = {
+        "schema": _ORDINARY_PYTEST_RUNTIME_SCHEMA,
+        "components": component_summaries,
+        "component_count": len(components),
+        "component_binding_root": content_identity(components),
+        "file_count": len(payload_manifest),
+        "total_bytes": sum(
+            int(item["size_bytes"]) for item in payload_manifest
+        ),
+        "file_manifest_root": content_identity(payload_manifest),
+        "omission_manifest_root": content_identity(omissions),
+        "admitted_root_policy": {
+            "wheel_precedence": "primary_root_only",
+            "lower_root_fallback": False,
+            "full_payload_provenance_validated_before_projection": True,
+        },
+        "pycache_projected": False,
+        "pth_processed": False,
+        "plugin_autoload": False,
+        "native_file_count": 0,
+    }
+    bundle["runtime_cid"] = content_identity(bundle)
+    return _ResolvedQualificationRuntime(
+        bundle=bundle,
+        components=tuple(components),
+        payload_manifest=tuple(payload_manifest),
+        payload_bytes=payload_bytes,
+        native_source_observation={},
+    )
+
+
 def qualification_runtime_bundle_evidence() -> dict[str, Any]:
     """Return the compact observed bundle without projecting or importing it."""
 
@@ -5060,7 +5435,7 @@ def _build_qualification_runtime_projection(
             "runtime_cid": resolved.bundle["runtime_cid"],
             "bundle_manifest_cid": control_body["manifest_cid"],
             "component_cids": [item["component_cid"] for item in resolved.components],
-            "component_count": len(_QUALIFICATION_RUNTIME_COMPONENTS),
+            "component_count": len(resolved.components),
             "file_count": len(resolved.payload_manifest),
             "total_bytes": sum(
                 int(item["size_bytes"]) for item in resolved.payload_manifest
@@ -5105,6 +5480,55 @@ def _build_qualification_runtime_projection(
         os.close(root_fd)
         directory.cleanup()
         raise
+
+
+def _validate_ordinary_pytest_runtime(
+    active: _ActiveQualificationRuntime,
+) -> None:
+    """Revalidate one sealed, runner-only pytest projection."""
+
+    _validate_qualification_runtime_projection(active)
+    bundle = active.resolved.bundle
+    components = bundle.get("components")
+    observed_names = (
+        tuple(item.get("normalized_name") for item in components)
+        if isinstance(components, list)
+        and all(isinstance(item, Mapping) for item in components)
+        else ()
+    )
+    body = {key: value for key, value in bundle.items() if key != "runtime_cid"}
+    if (
+        bundle.get("schema") != _ORDINARY_PYTEST_RUNTIME_SCHEMA
+        or observed_names != _ORDINARY_PYTEST_RUNTIME_COMPONENT_NAMES
+        or bundle.get("component_count") != len(active.resolved.components)
+        or active.projection.get("component_count")
+        != len(active.resolved.components)
+        or bundle.get("file_count") != len(active.resolved.payload_manifest)
+        or bundle.get("native_file_count") != 0
+        or bundle.get("runtime_cid") != content_identity(body)
+    ):
+        raise QualificationError("ordinary pytest runtime projection differs")
+
+
+@contextlib.contextmanager
+def isolated_ordinary_pytest_runtime() -> Any:
+    """Project fully validated runner bytes for one or more ordinary suites."""
+
+    active = _build_qualification_runtime_projection(
+        _resolve_ordinary_pytest_runtime()
+    )
+    try:
+        _validate_ordinary_pytest_runtime(active)
+        try:
+            yield active
+        finally:
+            _validate_ordinary_pytest_runtime(active)
+    finally:
+        try:
+            _restore_qualification_projection_for_cleanup(active.root_fd)
+        finally:
+            os.close(active.root_fd)
+            active.directory.cleanup()
 
 
 def _cleanup_active_qualification_runtime() -> None:
@@ -6115,6 +6539,19 @@ def _protected_input_projection(
         resolved_root,
         ("--version",),
     ).decode("utf-8", errors="strict").strip()
+    pytest_runner_runtime = _resolve_ordinary_pytest_runtime().bundle
+    pytest_runner_components = pytest_runner_runtime.get("components")
+    pytest_runner_version = (
+        str(pytest_runner_components[0].get("version"))
+        if isinstance(pytest_runner_components, list)
+        and len(pytest_runner_components) == len(
+            _ORDINARY_PYTEST_RUNTIME_COMPONENT_NAMES
+        )
+        and isinstance(pytest_runner_components[0], Mapping)
+        else ""
+    )
+    if pytest_runner_version != _pytest_distribution_version():
+        raise QualificationError("ordinary pytest runtime version differs")
     body = {
         "schema": "lgcvf-qualification-protected-input-projection@1",
         "declared_generated_evidence_exclusions": list(normalized_exclusions),
@@ -6128,7 +6565,8 @@ def _protected_input_projection(
             "python_executable_size_bytes": executable_size,
             "python_implementation": sys.implementation.name,
             "python_version": platform.python_version(),
-            "pytest_version": _pytest_distribution_version(),
+            "pytest_version": pytest_runner_version,
+            "pytest_runner_runtime_cid": pytest_runner_runtime["runtime_cid"],
         },
     }
     body["fingerprint_cid"] = content_identity(body)
@@ -15453,6 +15891,27 @@ def _worker(
             or isolation.get("network_permitted") is not False
         ):
             raise QualificationError("worker sandbox is not fail-closed")
+        ordinary_runner_root: Path | None = None
+        if recovery is None:
+            runner_root_text = os.environ.pop(
+                "LGCVF_QUALIFIED_PYTEST_ROOT", ""
+            )
+            runner_root_candidate = Path(runner_root_text)
+            try:
+                ordinary_runner_root = runner_root_candidate.resolve(strict=True)
+            except (OSError, RuntimeError) as exc:
+                raise QualificationError(
+                    "ordinary pytest runtime root is unavailable"
+                ) from exc
+            if (
+                not runner_root_text
+                or not runner_root_candidate.is_absolute()
+                or str(runner_root_candidate) != runner_root_text
+                or ordinary_runner_root != runner_root_candidate
+            ):
+                raise QualificationError(
+                    "ordinary pytest runtime root is not canonical"
+                )
         recorder = _Recorder()
         capture_budget = [_MAX_WORKER_TRANSCRIPT_BYTES]
         captured_out: io.StringIO = (
@@ -15467,7 +15926,11 @@ def _worker(
         )
         started = time.monotonic_ns()
         previous = Path.cwd()
-        required_import_paths = [] if recovery is not None else [str(owner)]
+        required_import_paths = (
+            []
+            if recovery is not None
+            else [str(ordinary_runner_root), str(owner)]
+        )
         inserted_import_paths: list[str] = []
         provider_guard = (
             _RecoveryProviderGuard(retain_until_process_exit=True)
@@ -15480,11 +15943,19 @@ def _worker(
         try:
             os.chdir(owner)
             for import_path in reversed(required_import_paths):
-                if import_path not in sys.path:
-                    sys.path.insert(0, import_path)
-                    inserted_import_paths.append(import_path)
+                sys.path[:] = [item for item in sys.path if item != import_path]
+                sys.path.insert(0, import_path)
+                inserted_import_paths.append(import_path)
             with guard_context:
                 sealed_worker_path = tuple(sys.path)
+                if recovery is None and (
+                    ordinary_runner_root is None
+                    or not sealed_worker_path
+                    or sealed_worker_path[0] != str(ordinary_runner_root)
+                ):
+                    raise QualificationError(
+                        "ordinary pytest runtime import precedence differs"
+                    )
                 if temporary_import_path is not None:
                     if str(temporary_import_path) in sys.path_importer_cache:
                         raise QualificationError(
@@ -15616,7 +16087,11 @@ def _worker(
                         ),
                     )
                 else:
-                    import pytest
+                    if ordinary_runner_root is None:
+                        raise QualificationError(
+                            "ordinary pytest runtime root is absent"
+                        )
+                    pytest = _import_admitted_pytest(root=ordinary_runner_root)
 
                 sealed_environ = dict(os.environ) if recovery is not None else None
                 with tempfile.TemporaryDirectory(
@@ -15647,6 +16122,14 @@ def _worker(
                                 pytest_arguments,
                                 plugins=[recorder],
                             )
+                        )
+                    if recovery is None:
+                        if ordinary_runner_root is None:
+                            raise QualificationError(
+                                "ordinary pytest runtime root is absent"
+                            )
+                        _validate_admitted_pytest_module_origins(
+                            ordinary_runner_root
                         )
                     if recovery is not None:
                         if sealed_environ is None:
@@ -16274,6 +16757,14 @@ def _run_suite(
     qualification_runtime: _ActiveQualificationRuntime | None = None,
 ) -> dict[str, Any]:
     recovery = _RECOVERY_BY_SUITE_ID.get(suite.suite_id)
+    if recovery is None and qualification_runtime is None:
+        with isolated_ordinary_pytest_runtime() as ordinary_runtime:
+            return _run_suite(
+                suite,
+                expected_manifest=expected_manifest,
+                root=root,
+                qualification_runtime=ordinary_runtime,
+            )
     expected_worker_schema = (
         RECOVERY_WORKER_SCHEMA if recovery is not None else WORKER_SCHEMA
     )
@@ -16297,15 +16788,18 @@ def _run_suite(
         )
         dependency_paths: tuple[str, ...] = ()
     else:
+        if qualification_runtime is None:  # established by the context above
+            raise QualificationError("ordinary pytest runtime is required")
+        _validate_ordinary_pytest_runtime(qualification_runtime)
+        dependency_roots = _pytest_site_roots()
+        if any(path.is_relative_to(source_root) for path in dependency_roots):
+            raise QualificationError("qualified Python dependency root escapes policy")
+        if qualification_runtime.root.is_relative_to(source_root):
+            raise QualificationError("ordinary pytest projection escapes policy")
         dependency_paths = tuple(
             dict.fromkeys(
-                str(resolved)
-                for entry in sys.path
-                if entry
-                and Path(entry).is_dir()
-                and not (
-                    (resolved := Path(entry).resolve()).is_relative_to(source_root)
-                )
+                (str(qualification_runtime.root),)
+                + tuple(str(path) for path in dependency_roots)
             )
         )
     if recovery is None and not dependency_paths:
@@ -16351,7 +16845,14 @@ def _run_suite(
                 "PYTHONDONTWRITEBYTECODE": "1",
                 "PYTHONPYCACHEPREFIX": str(worker_pycache),
                 "PYTHONPATH": os.pathsep.join(
-                    (*projected_import_paths, *dependency_paths)
+                    (
+                        dependency_paths[0],
+                        *projected_import_paths,
+                        *dependency_paths[1:],
+                    )
+                ),
+                "LGCVF_QUALIFIED_PYTEST_ROOT": str(
+                    qualification_runtime.root
                 ),
                 "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
                 "PYTHONHASHSEED": "0",
@@ -16462,6 +16963,8 @@ def _run_suite(
             else:
                 worker_arguments = [
                     sys.executable,
+                    "-S",
+                    "-B",
                     str(qualifier_path),
                     "--worker",
                     suite.suite_id,
@@ -16931,6 +17434,10 @@ def _run_suite(
                 raise QualificationError(
                     "qualification runtime policy changed during worker execution"
                 )
+        else:
+            if qualification_runtime is None:
+                raise QualificationError("ordinary pytest runtime is required")
+            _validate_ordinary_pytest_runtime(qualification_runtime)
     try:
         receipt_text = receipt.decode("utf-8")
     except UnicodeDecodeError as exc:
@@ -18577,16 +19084,21 @@ def build_result() -> dict[str, Any]:
     manifests = [_suite_manifest(suite) for suite in SUITES]
     before = _protected_input_projection(manifests)
     observations: list[dict[str, Any]] = []
-    for suite, manifest in zip(SUITES, manifests, strict=True):
-        observations.append(
-            _run_suite(suite, expected_manifest=manifest)
-        )
-        current_manifests = [_suite_manifest(item) for item in SUITES]
-        current = _protected_input_projection(current_manifests)
-        if current_manifests != manifests or current != before:
-            raise QualificationError(
-                f"{suite.suite_id}: checkout changed during independent qualification"
+    with isolated_ordinary_pytest_runtime() as ordinary_runtime:
+        for suite, manifest in zip(SUITES, manifests, strict=True):
+            observations.append(
+                _run_suite(
+                    suite,
+                    expected_manifest=manifest,
+                    qualification_runtime=ordinary_runtime,
+                )
             )
+            current_manifests = [_suite_manifest(item) for item in SUITES]
+            current = _protected_input_projection(current_manifests)
+            if current_manifests != manifests or current != before:
+                raise QualificationError(
+                    f"{suite.suite_id}: checkout changed during independent qualification"
+                )
     final_manifests = [_suite_manifest(item) for item in SUITES]
     after = _protected_input_projection(final_manifests)
     totals = {

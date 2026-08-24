@@ -3936,6 +3936,296 @@ def test_pytest_distribution_resolution_uses_exact_record_match(
         module._pytest_distribution_version()
 
 
+def test_pytest_distribution_resolution_uses_admitted_root_precedence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load()
+    higher = tmp_path / "higher"
+    lower = tmp_path / "lower"
+
+    def add_installation(root: Path, version: str, package_bytes: bytes) -> Path:
+        package = root / "pytest"
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_bytes(package_bytes)
+        distribution = root / f"pytest-{version}.dist-info"
+        distribution.mkdir()
+        metadata_bytes = (
+            "Metadata-Version: 2.1\n"
+            "Name: pytest\n"
+            f"Version: {version}\n\n"
+        ).encode()
+        (distribution / "METADATA").write_bytes(metadata_bytes)
+        package_digest = base64.urlsafe_b64encode(
+            hashlib.sha256(package_bytes).digest()
+        ).decode("ascii").rstrip("=")
+        metadata_digest = base64.urlsafe_b64encode(
+            hashlib.sha256(metadata_bytes).digest()
+        ).decode("ascii").rstrip("=")
+        record = distribution / "RECORD"
+        record.write_text(
+            f"pytest/__init__.py,sha256={package_digest},{len(package_bytes)}\n"
+            f"pytest-{version}.dist-info/METADATA,"
+            f"sha256={metadata_digest},{len(metadata_bytes)}\n"
+            f"pytest-{version}.dist-info/RECORD,,\n",
+            encoding="utf-8",
+        )
+        return record
+
+    add_installation(higher, "9.1.1", b"higher pytest\n")
+    add_installation(lower, "8.1.1", b"lower pytest!\n")
+    monkeypatch.setattr(module, "_pytest_site_roots", lambda: (higher, lower))
+
+    assert module._pytest_distribution_version() == "9.1.1"
+
+    (higher / "pytest/__init__.py").write_bytes(b"unbound pytest\n")
+    with pytest.raises(
+        module.QualificationError,
+        match="one exact RECORD-matched installation",
+    ):
+        module._pytest_distribution_version()
+
+    shutil.rmtree(higher / "pytest")
+    (higher / "pytest.py").write_text("shadow = True\n", encoding="utf-8")
+    with pytest.raises(
+        module.QualificationError,
+        match="one exact RECORD-matched installation",
+    ):
+        module._pytest_distribution_version()
+
+
+def test_wheel_runtime_component_uses_admitted_root_precedence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load()
+    higher = tmp_path / "higher"
+    lower = tmp_path / "lower"
+    metadata_bytes = (
+        b"Metadata-Version: 2.1\n"
+        b"Name: iniconfig\n"
+        b"Version: 2.3.0\n"
+        b"Requires-Python: >=3.10\n\n"
+    )
+    wheel_bytes = (
+        b"Wheel-Version: 1.0\n"
+        b"Generator: lgcvf-test\n"
+        b"Root-Is-Purelib: true\n"
+        b"Tag: py3-none-any\n"
+    )
+
+    def encoded(payload: bytes) -> str:
+        return base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).decode(
+            "ascii"
+        ).rstrip("=")
+
+    def add_installation(root: Path, package_bytes: bytes) -> tuple[Path, int]:
+        package = root / "iniconfig"
+        package.mkdir(parents=True)
+        (package / "__init__.py").write_bytes(package_bytes)
+        distribution = root / "iniconfig-2.3.0.dist-info"
+        distribution.mkdir()
+        (distribution / "METADATA").write_bytes(metadata_bytes)
+        (distribution / "WHEEL").write_bytes(wheel_bytes)
+        record_bytes = (
+            f"iniconfig/__init__.py,sha256={encoded(package_bytes)},{len(package_bytes)}\n"
+            "iniconfig-2.3.0.dist-info/METADATA,"
+            f"sha256={encoded(metadata_bytes)},{len(metadata_bytes)}\n"
+            f"iniconfig-2.3.0.dist-info/WHEEL,sha256={encoded(wheel_bytes)},{len(wheel_bytes)}\n"
+            "iniconfig-2.3.0.dist-info/RECORD,,\n"
+        ).encode()
+        record = distribution / "RECORD"
+        record.write_bytes(record_bytes)
+        return record, sum(
+            map(len, (package_bytes, metadata_bytes, wheel_bytes, record_bytes))
+        )
+
+    higher_bytes = b"VALUE = 111\n"
+    lower_bytes = b"VALUE = 222\n"
+    higher_record, expected_total = add_installation(higher, higher_bytes)
+    _, lower_total = add_installation(lower, lower_bytes)
+    assert lower_total == expected_total
+    spec = module._QualificationRuntimeComponentSpec(
+        1,
+        "runner",
+        "iniconfig",
+        "iniconfig-2.3.0.dist-info",
+        "2.3.0",
+        ("iniconfig", "iniconfig-2.3.0.dist-info"),
+        "iniconfig/__init__.py",
+        (),
+        4,
+        expected_total,
+    )
+    monkeypatch.setattr(module, "_pytest_site_roots", lambda: (higher, lower))
+
+    _component, _manifest, payloads = module._wheel_runtime_component(spec)
+    assert payloads["iniconfig/__init__.py"] == higher_bytes
+
+    higher_record.write_text(
+        higher_record.read_text(encoding="utf-8").replace(
+            encoded(higher_bytes), encoded(lower_bytes), 1
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        module.QualificationError,
+        match="runtime bytes differ from RECORD",
+    ):
+        module._wheel_runtime_component(spec)
+
+
+def test_admitted_runtime_root_revalidation_rejects_path_replacement(
+    tmp_path: Path,
+) -> None:
+    module = _load()
+    root = tmp_path / "site"
+    root.mkdir()
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        before = os.fstat(descriptor)
+        root.rename(tmp_path / "moved-site")
+        root.mkdir()
+        with pytest.raises(module.QualificationError, match="changed during resolution"):
+            module._revalidate_admitted_runtime_root(
+                root,
+                descriptor,
+                before,
+                noun="test runtime root",
+            )
+    finally:
+        os.close(descriptor)
+
+
+def test_ordinary_pytest_projection_rejects_unbound_import_payload_before_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load()
+    site_root = tmp_path / "site"
+    package = site_root / "pytest"
+    package.mkdir(parents=True)
+    marker = tmp_path / "payload-executed"
+    init_bytes = b'from . import payload\n__version__ = "9.1.1"\n'
+    benign_payload = b"VALUE = 'record-authorized'\n"
+    actual_payload = (
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n"
+    ).encode()
+    metadata_bytes = (
+        b"Metadata-Version: 2.1\n"
+        b"Name: pytest\n"
+        b"Version: 9.1.1\n"
+        b"Requires-Python: >=3.10\n"
+        b"Requires-Dist: iniconfig>=1.0.1\n"
+        b"Requires-Dist: packaging>=22\n"
+        b"Requires-Dist: pluggy<2,>=1.5\n"
+        b"Requires-Dist: pygments>=2.7.2\n\n"
+    )
+    wheel_bytes = (
+        b"Wheel-Version: 1.0\n"
+        b"Generator: lgcvf-test\n"
+        b"Root-Is-Purelib: true\n"
+        b"Tag: py3-none-any\n"
+    )
+
+    def encoded(payload: bytes) -> str:
+        return base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).decode(
+            "ascii"
+        ).rstrip("=")
+
+    (package / "__init__.py").write_bytes(init_bytes)
+    (package / "payload.py").write_bytes(actual_payload)
+    distribution = site_root / "pytest-9.1.1.dist-info"
+    distribution.mkdir()
+    (distribution / "METADATA").write_bytes(metadata_bytes)
+    (distribution / "WHEEL").write_bytes(wheel_bytes)
+    record_bytes = (
+        f"pytest/__init__.py,sha256={encoded(init_bytes)},{len(init_bytes)}\n"
+        f"pytest/payload.py,sha256={encoded(benign_payload)},{len(benign_payload)}\n"
+        "pytest-9.1.1.dist-info/METADATA,"
+        f"sha256={encoded(metadata_bytes)},{len(metadata_bytes)}\n"
+        "pytest-9.1.1.dist-info/WHEEL,"
+        f"sha256={encoded(wheel_bytes)},{len(wheel_bytes)}\n"
+        "../../../bin/py.test,,\n"
+        "../../../bin/pytest,,\n"
+        "pytest-9.1.1.dist-info/RECORD,,\n"
+    ).encode()
+    (distribution / "RECORD").write_bytes(record_bytes)
+    monkeypatch.setattr(module, "_pytest_site_roots", lambda: (site_root,))
+
+    # Entry-point-only admission can identify the distribution without running
+    # it; projection admission must still bind every executable RECORD row.
+    assert module._pytest_distribution_version() == "9.1.1"
+    with pytest.raises(
+        module.QualificationError,
+        match="runtime bytes differ from RECORD",
+    ):
+        module._resolve_ordinary_pytest_runtime()
+    assert marker.exists() is False
+
+
+def test_ordinary_pytest_import_anchors_dependencies_before_checkout_shadows(
+    tmp_path: Path,
+) -> None:
+    module = _load()
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    marker = tmp_path / "shadow-executed"
+    (shadow / "pluggy.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    probe = r"""
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+script, runtime_text, shadow_text = map(Path, sys.argv[1:])
+specification = importlib.util.spec_from_file_location("lgcvf_runner_anchor_probe", script)
+module = importlib.util.module_from_spec(specification)
+sys.modules[specification.name] = module
+specification.loader.exec_module(module)
+sys.path.insert(0, str(shadow_text))
+sys.path.insert(0, str(runtime_text))
+pytest_module = module._import_admitted_pytest(root=runtime_text)
+print(json.dumps({
+    "pytest": pytest_module.__file__,
+    "pluggy": sys.modules["pluggy"].__file__,
+}, sort_keys=True))
+"""
+    environment = dict(os.environ)
+    for name in ("PYTHONPATH", "LD_LIBRARY_PATH", "LD_PRELOAD", "GLIBC_TUNABLES"):
+        environment.pop(name, None)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    with module.isolated_ordinary_pytest_runtime() as runtime:
+        completed = subprocess.run(
+            (
+                sys.executable,
+                "-S",
+                "-B",
+                "-c",
+                probe,
+                str(SCRIPT),
+                str(runtime.root),
+                str(shadow),
+            ),
+            cwd=ROOT,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert completed.returncode == 0, completed.stderr
+        origins = json.loads(completed.stdout)
+        assert Path(origins["pytest"]).is_relative_to(runtime.root)
+        assert Path(origins["pluggy"]).is_relative_to(runtime.root)
+    assert marker.exists() is False
+
+
 @pytest.mark.parametrize(
     "alias",
     (
@@ -4013,6 +4303,9 @@ def test_pytest_distribution_candidate_enumeration_is_bounded_and_streaming(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _load()
+    package = tmp_path / "pytest"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
     for ordinal in range(module._MAX_PYTEST_DISTRIBUTION_CANDIDATES + 1):
         (tmp_path / f"pytest-{ordinal}.dist-info").mkdir()
     monkeypatch.setattr(module, "_pytest_site_roots", lambda: (tmp_path,))
