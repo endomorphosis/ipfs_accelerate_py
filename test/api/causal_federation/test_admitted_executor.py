@@ -21,6 +21,9 @@ from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+    open_database_coordinator,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
     OwnerLiveness,
 )
@@ -39,6 +42,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
     TaskRecord,
+    TaskSourceConflictError,
     TaskSourceIntegrityError,
     TaskSourceSnapshot,
 )
@@ -46,6 +50,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     open_duckdb_connection,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
+    QuackClientError,
     QuackStateClient,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_execution_route_policy import (
@@ -58,6 +63,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+    TYPED_DATABASE_CLAIM_RECOVERY_OPERATION,
     TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_STATE_OWNER_SOCKET_ENV,
@@ -65,6 +71,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TypedStateOwnerAuthorizationError,
     TypedStateOwnerConnection,
     TypedStateOwnerError,
+    _process_birth_content_id,
     build_control_plane_operation_catalog,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -74,6 +81,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
     DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
+    DatabaseTaskAttempt,
 )
 from test.api.causal_federation.test_bootstrap_runtime import (
     _capability,
@@ -193,6 +201,84 @@ def test_admitted_plan_uses_configured_builder_and_env_only_handle() -> None:
         "deterministic_task_count": 31,
         "model_task_count": 13,
     }
+
+
+def test_quack_daemon_defaults_to_distinct_sidecars_and_rejects_aliases(
+    tmp_path: Path,
+) -> None:
+    control = tmp_path / "control.duckdb"
+    daemon = DatabaseImplementationDaemon(
+        database_path=control,
+        authority_mode="quack",
+        task_source_kind="duckdb",
+        quack_uri="quack:127.0.0.1:45123",
+    )
+    assert daemon.database_path == control
+    assert daemon.coordination_path == (
+        tmp_path / "control.coordination.duckdb"
+    )
+    assert daemon.execution_path == tmp_path / "control.execution.duckdb"
+    assert len(
+        {
+            daemon.database_path.resolve(strict=False),
+            daemon.coordination_path.resolve(strict=False),
+            daemon.execution_path.resolve(strict=False),
+        }
+    ) == 3
+
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="coordination sidecar must not alias",
+    ):
+        DatabaseImplementationDaemon(
+            database_path=control,
+            coordination_path=tmp_path / "." / "control.duckdb",
+            authority_mode="quack",
+            task_source_kind="duckdb",
+            quack_uri="quack:127.0.0.1:45123",
+        )
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="execution sidecar must not alias",
+    ):
+        DatabaseImplementationDaemon(
+            database_path=control,
+            execution_path=tmp_path / "." / "control.duckdb",
+            authority_mode="quack",
+            task_source_kind="duckdb",
+            quack_uri="quack:127.0.0.1:45123",
+        )
+    shared_sidecar = tmp_path / "lane-private.duckdb"
+    with pytest.raises(
+        DatabaseImplementationAuthorityError,
+        match="coordination and execution sidecars must be distinct",
+    ):
+        DatabaseImplementationDaemon(
+            database_path=control,
+            coordination_path=shared_sidecar,
+            execution_path=shared_sidecar,
+            authority_mode="quack",
+            task_source_kind="duckdb",
+            quack_uri="quack:127.0.0.1:45123",
+        )
+    control.write_bytes(b"hardlink-alias-probe")
+    hardlink_sidecar = tmp_path / "control-hardlink.duckdb"
+    try:
+        os.link(control, hardlink_sidecar)
+    except OSError:
+        pass
+    else:
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="coordination sidecar must not alias",
+        ):
+            DatabaseImplementationDaemon(
+                database_path=control,
+                coordination_path=hardlink_sidecar,
+                authority_mode="quack",
+                task_source_kind="duckdb",
+                quack_uri="quack:127.0.0.1:45123",
+            )
 
 
 def test_execution_route_policy_fails_closed_on_population_and_task_drift() -> None:
@@ -800,6 +886,19 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             "operation": "database_claim",
             "claim_phase_schema": TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
         }
+        generation_before_recovery = client.load_generation()
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            adapter.recover_dead_claim_reservation(
+                reservation.task_cid,
+                expected_task_revision=reservation.revision,
+                now_ms=1_000,
+            )
+        unchanged_reservation = adapter.get(reservation.task_cid)
+        assert unchanged_reservation == reservation
+        assert adapter._retry_cooldown_row(reservation.task_cid) is None
+        assert client.load_generation().revision == (
+            generation_before_recovery.revision
+        )
         provider_calls: list[str] = []
         with pytest.raises(
             DatabaseImplementationAuthorityError,
@@ -840,6 +939,770 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
         assert admitted_receipt["attempt_execution_phase"] == ATTEMPT_PHASE_CLAIMED
         assert admitted_receipt["attempt_execution_revision"] == 1
         assert context_attempt.revision > running[0].revision
+        admitted_revision = admitted.revision
+        with pytest.raises(
+            QuackClientError,
+            match="exact typed reservation",
+        ):
+            adapter.recover_dead_claim_reservation(
+                admitted.task_cid,
+                expected_task_revision=admitted_revision,
+                now_ms=1_000,
+            )
+        admitted_after_rejection = adapter.get(admitted.task_cid)
+        assert admitted_after_rejection == admitted
+        assert adapter._retry_cooldown_row(admitted.task_cid) is None
+    finally:
+        if daemon is not None:
+            daemon.close()
+        if adapter is not None:
+            adapter.close()
+        else:
+            client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+        server.stop()
+
+
+def test_dead_typed_reservation_recovers_atomically_to_fresh_attempt_two(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "typed-dead-claim-recovery.duckdb"
+    client_id = "database-implementation-daemon:typed-dead-recovery"
+    old_pid = 987_654_321
+    old_start = 17
+    old_boot = "boot:typed-dead-recovery"
+    old_parent = 1
+    old_attestation = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "typed-database-claim-process@1"
+        ),
+        "grant_id": "owner-grant:historic-dead-process",
+        "client_id": client_id,
+        "process_birth_id": _process_birth_content_id(
+            old_pid,
+            old_start,
+            old_boot,
+            old_parent,
+        ),
+        "pid": old_pid,
+        "uid": os.getuid(),
+        "start_time_ticks": old_start,
+        "boot_id": old_boot,
+        "parent_pid": old_parent,
+    }
+    old_claim = {
+        "operation": "database_claim",
+        "claim_phase_schema": TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+        "claim_process_attestation": old_attestation,
+        "claim_id": "claim:typed-dead-recovery:1",
+        "attempt_id": "attempt:typed-dead-recovery:1",
+        "attempt_number": 1,
+        "lease_id": "lease:typed-dead-recovery:1",
+        "owner_session_id": "session:typed-dead-recovery",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+        "claimed_from_revision": 0,
+    }
+    source = DatabaseTaskSource(database)
+    source.materialize(
+        {
+            "repository_tree_id": "tree:typed-dead-recovery",
+            "plan_root_cid": "plan:typed-dead-recovery",
+            "goals": [
+                {
+                    "goal_cid": "goal:typed-dead-recovery",
+                    "goal_alias": "CASF-G-TYPED-DEAD-RECOVERY",
+                    "title": "Typed dead reservation recovery",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": "task:typed-dead-recovery",
+                    "task_id": "CASF-TYPED-DEAD-RECOVERY",
+                    "goal_cid": "goal:typed-dead-recovery",
+                    "status": "ready",
+                },
+                {
+                    "task_cid": "task:typed-legacy-claim",
+                    "task_id": "CASF-TYPED-LEGACY-CLAIM",
+                    "goal_cid": "goal:typed-dead-recovery",
+                    "status": "ready",
+                },
+                {
+                    "task_cid": "task:typed-foreign-claim",
+                    "task_id": "CASF-TYPED-FOREIGN-CLAIM",
+                    "goal_cid": "goal:typed-dead-recovery",
+                    "status": "ready",
+                },
+                {
+                    "task_cid": "task:typed-existing-cooldown",
+                    "task_id": "CASF-TYPED-EXISTING-COOLDOWN",
+                    "goal_cid": "goal:typed-dead-recovery",
+                    "status": "ready",
+                },
+            ],
+        }
+    )
+    initial_tasks = source.list_tasks(limit=10).tasks
+    route_policy = TaskExecutionRoutePolicy.seal(
+        snapshot=source.snapshot(),
+        tasks=initial_tasks,
+        execution_modes={
+            task.task_alias: DETERMINISTIC_ONLY_EXECUTION_MODE
+            for task in initial_tasks
+        },
+    )
+    by_alias = {task.task_alias: task for task in initial_tasks}
+    historic_task = by_alias["CASF-TYPED-DEAD-RECOVERY"]
+    historic_route = route_policy.binding_for_task(historic_task).to_dict()
+    old_claim = {
+        **old_claim,
+        "claimed_from_revision": int(historic_task.revision),
+        "execution_route_binding": historic_route,
+        "execution_route_policy_id": historic_route["policy_id"],
+        "execution_route_origin_revision": int(
+            historic_route["task_revision"]
+        ),
+    }
+    source.compare_and_set_status(
+        historic_task,
+        int(historic_task.revision),
+        "in_progress",
+        old_claim,
+    )
+    legacy_task = by_alias["CASF-TYPED-LEGACY-CLAIM"]
+    legacy_route = route_policy.binding_for_task(legacy_task).to_dict()
+    source.compare_and_set_status(
+        legacy_task,
+        int(legacy_task.revision),
+        "in_progress",
+        {
+            **old_claim,
+            "claim_id": "claim:typed-legacy",
+            "attempt_id": "attempt:typed-legacy",
+            "lease_id": "lease:typed-legacy",
+            "claimed_from_revision": int(legacy_task.revision),
+            "claim_phase_schema": "",
+            "execution_route_binding": legacy_route,
+            "execution_route_policy_id": legacy_route["policy_id"],
+            "execution_route_origin_revision": int(
+                legacy_route["task_revision"]
+            ),
+        },
+    )
+    foreign_task = by_alias["CASF-TYPED-FOREIGN-CLAIM"]
+    foreign_route = route_policy.binding_for_task(foreign_task).to_dict()
+    foreign_claim = {
+        **old_claim,
+        "claim_id": "claim:typed-foreign",
+        "attempt_id": "attempt:typed-foreign",
+        "lease_id": "lease:typed-foreign",
+        "owner_session_id": "session:typed-foreign",
+        "claimed_from_revision": int(foreign_task.revision),
+        "claim_process_attestation": {
+            **old_attestation,
+            "client_id": "database-implementation-daemon:foreign-client",
+        },
+        "execution_route_binding": foreign_route,
+        "execution_route_policy_id": foreign_route["policy_id"],
+        "execution_route_origin_revision": int(
+            foreign_route["task_revision"]
+        ),
+    }
+    source.compare_and_set_status(
+        foreign_task,
+        int(foreign_task.revision),
+        "in_progress",
+        foreign_claim,
+    )
+    cooldown_task = by_alias["CASF-TYPED-EXISTING-COOLDOWN"]
+    cooldown_route = route_policy.binding_for_task(cooldown_task).to_dict()
+    cooldown_claim = {
+        **old_claim,
+        "claim_id": "claim:typed-existing-cooldown",
+        "attempt_id": "attempt:typed-existing-cooldown",
+        "lease_id": "lease:typed-existing-cooldown",
+        "owner_session_id": "session:typed-existing-cooldown",
+        "claimed_from_revision": int(cooldown_task.revision),
+        "execution_route_binding": cooldown_route,
+        "execution_route_policy_id": cooldown_route["policy_id"],
+        "execution_route_origin_revision": int(
+            cooldown_route["task_revision"]
+        ),
+    }
+    source.compare_and_set_status(
+        cooldown_task,
+        int(cooldown_task.revision),
+        "in_progress",
+        cooldown_claim,
+    )
+    source.close()
+    historic_liveness: dict[str, Any] = {
+        "result": OwnerLiveness.DEAD,
+    }
+
+    def historic_process_liveness(_birth: Any) -> OwnerLiveness:
+        result = historic_liveness["result"]
+        if isinstance(result, BaseException):
+            raise result
+        return OwnerLiveness(result)
+
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-dead-recovery-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-typed-dead-recovery-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=historic_process_liveness,
+    )
+    identity = server.start()
+    operator = _operator()
+    token, grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=tuple(
+            sorted(operator.EXECUTOR_OWNER_ALLOWED_OPERATIONS)
+        ),
+        allowed_command_operations=tuple(
+            sorted(operator.EXECUTOR_OWNER_COMMAND_OPERATIONS)
+        ),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        str(server.typed_command_socket_path()),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id=identity.store_id,
+        process_birth_id=identity.process_birth_id,
+    )
+    adapter: TypedDatabaseTaskSource | None = None
+    daemon: DatabaseImplementationDaemon | None = None
+    try:
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        adapter = TypedDatabaseTaskSource(
+            client,
+            execution_route_policy=route_policy,
+            clock_ms=lambda: 2_000,
+        )
+        daemon = DatabaseImplementationDaemon(
+            database_path=database,
+            coordination_path=tmp_path / "fresh-coordination.duckdb",
+            execution_path=tmp_path / "fresh-execution.duckdb",
+            owner_session_id="session:typed-dead-recovery",
+            authority_mode="quack",
+            task_source_kind="duckdb",
+            quack_uri=identity.listen_uri,
+            task_source=adapter,
+            close_task_source=False,
+            lease_ms=5_000,
+            clock_ms=lambda: 2_000,
+            provider_fn=lambda _attempt: {"status": "ok", "accepted": True},
+            effect_fn=lambda _attempt, _provider: {"status": "applied"},
+            validation_fn=lambda _attempt, _effect: {
+                "outcome": "passed",
+                "evidence_digest": "sha256:" + "b" * 64,
+            },
+            require_real_execution=True,
+        ).open()
+
+        legacy = adapter.get("CASF-TYPED-LEGACY-CLAIM")
+        assert legacy is not None
+        assert daemon._shared_claim_binding_for_this_owner(legacy) is None
+        assert daemon._typed_authoritative_attempt_floor(legacy) == 0
+        with pytest.raises(
+            QuackClientError,
+            match="exact typed reservation",
+        ):
+            adapter.recover_dead_claim_reservation(
+                legacy.task_cid,
+                expected_task_revision=legacy.revision,
+                now_ms=2_000,
+            )
+
+        foreign = adapter.get("CASF-TYPED-FOREIGN-CLAIM")
+        assert foreign is not None
+        foreign_generation = client.load_generation()
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            adapter.recover_dead_claim_reservation(
+                foreign.task_cid,
+                expected_task_revision=foreign.revision,
+                now_ms=2_000,
+            )
+        assert adapter.get(foreign.task_cid) == foreign
+        assert adapter._retry_cooldown_row(foreign.task_cid) is None
+        assert client.load_generation().revision == foreign_generation.revision
+
+        occupied = adapter.get("CASF-TYPED-EXISTING-COOLDOWN")
+        assert occupied is not None
+        adapter.record_task_retry_cooldown(
+            task_cid=occupied.task_cid,
+            expected_task_revision=occupied.revision,
+            expected_task_status="in_progress",
+            attempt_id=cooldown_claim["attempt_id"],
+            claim_id=cooldown_claim["claim_id"],
+            lease_id=cooldown_claim["lease_id"],
+            owner_session_id=cooldown_claim["owner_session_id"],
+            attempt_number=cooldown_claim["attempt_number"],
+            fencing_token=cooldown_claim["fencing_token"],
+            fence_epoch=cooldown_claim["fence_epoch"],
+            delay_ms=1,
+            reason="database_portal_retry:occupied-before-recovery",
+            now_ms=2_000,
+        )
+        occupied_queue = adapter._retry_cooldown_row(occupied.task_cid)
+        assert occupied_queue is not None
+        occupied_generation = client.load_generation()
+        with pytest.raises(
+            TaskSourceConflictError,
+            match="cooldown absence became stale",
+        ):
+            adapter.recover_dead_claim_reservation(
+                occupied.task_cid,
+                expected_task_revision=occupied.revision,
+                now_ms=2_000,
+            )
+        assert adapter.get(occupied.task_cid) == occupied
+        assert adapter._retry_cooldown_row(occupied.task_cid) == occupied_queue
+        assert client.load_generation().revision == occupied_generation.revision
+
+        historic = adapter.get("CASF-TYPED-DEAD-RECOVERY")
+        assert historic is not None
+        with pytest.raises(
+            TaskSourceConflictError,
+            match="revision is stale",
+        ):
+            adapter.recover_dead_claim_reservation(
+                historic.task_cid,
+                expected_task_revision=historic.revision + 1,
+                now_ms=2_000,
+            )
+
+        def assert_recovery_state_unchanged() -> None:
+            current = adapter.get(historic.task_cid)
+            assert current is not None
+            assert current.status == "in_progress"
+            assert current.revision == historic.revision
+            assert current.body["completion_receipt"] == old_claim
+            assert adapter._retry_cooldown_row(current.task_cid) is None
+
+        for rejected_liveness in (
+            OwnerLiveness.ALIVE,
+            OwnerLiveness.UNKNOWN,
+            RuntimeError("liveness probe failed"),
+        ):
+            historic_liveness["result"] = rejected_liveness
+            generation_before = client.load_generation()
+            with pytest.raises(TransactionError, match="authorization_denied"):
+                adapter.recover_dead_claim_reservation(
+                    historic.task_cid,
+                    expected_task_revision=historic.revision,
+                    now_ms=2_000,
+                )
+            assert client.load_generation().revision == generation_before.revision
+            assert_recovery_state_unchanged()
+
+        submit_command = client.submit_command
+
+        def submit_reidentified_recovery(
+            command: Any,
+            parameters: Mapping[str, Any],
+            *,
+            apply: Any,
+            refresh_on_conflict: bool,
+        ) -> Any:
+            digest = hashlib.sha256(
+                canonical_json_bytes(parameters)
+            ).hexdigest()
+            return submit_command(
+                replace(
+                    command,
+                    command_id=f"cmd:dead-claim-recovery:{digest}",
+                    idempotency_key=(
+                        f"executor-dead-claim-recovery:{digest}"
+                    ),
+                    parameters=dict(parameters),
+                ),
+                apply=apply,
+                refresh_on_conflict=refresh_on_conflict,
+            )
+
+        def alter_recovery_body(
+            command: Any,
+            *,
+            apply: Any = None,
+            refresh_on_conflict: bool = True,
+        ) -> Any:
+            parameters = dict(command.parameters)
+            body = json.loads(parameters["body_json"])
+            route = dict(
+                body["completion_receipt"]["execution_route_binding"]
+            )
+            route["task_alias"] = "CASF-ALTERED-ROUTE"
+            body["completion_receipt"]["execution_route_binding"] = route
+            parameters["body_json"] = canonical_json_bytes(body).decode(
+                "utf-8"
+            )
+            return submit_reidentified_recovery(
+                command,
+                parameters,
+                apply=apply,
+                refresh_on_conflict=refresh_on_conflict,
+            )
+
+        historic_liveness["result"] = OwnerLiveness.DEAD
+        generation_before = client.load_generation()
+        with monkeypatch.context() as altered:
+            altered.setattr(client, "submit_command", alter_recovery_body)
+            with pytest.raises(TransactionError, match="authorization_denied"):
+                adapter.recover_dead_claim_reservation(
+                    historic.task_cid,
+                    expected_task_revision=historic.revision,
+                    now_ms=2_000,
+                )
+        assert client.load_generation().revision == generation_before.revision
+        assert_recovery_state_unchanged()
+
+        def alter_recovery_tuple(
+            command: Any,
+            *,
+            apply: Any = None,
+            refresh_on_conflict: bool = True,
+        ) -> Any:
+            parameters = dict(command.parameters)
+            parameters["attempt_id"] = "attempt:caller-altered"
+            body = json.loads(parameters["body_json"])
+            body["completion_receipt"]["attempt_id"] = parameters[
+                "attempt_id"
+            ]
+            parameters["body_json"] = canonical_json_bytes(body).decode(
+                "utf-8"
+            )
+            extension = json.loads(parameters["extension_json"])
+            extension["attempt_id"] = parameters["attempt_id"]
+            parameters["extension_json"] = canonical_json_bytes(
+                extension
+            ).decode("utf-8")
+            parameters["resolution_cid"] = content_identity(
+                {
+                    "typed_retry_cooldown": extension,
+                    "started_at_ms": parameters["started_at_ms"],
+                }
+            )
+            return submit_reidentified_recovery(
+                command,
+                parameters,
+                apply=apply,
+                refresh_on_conflict=refresh_on_conflict,
+            )
+
+        generation_before = client.load_generation()
+        with monkeypatch.context() as altered:
+            altered.setattr(client, "submit_command", alter_recovery_tuple)
+            with pytest.raises(TransactionError, match="authorization_denied"):
+                adapter.recover_dead_claim_reservation(
+                    historic.task_cid,
+                    expected_task_revision=historic.revision,
+                    now_ms=2_000,
+                )
+        assert client.load_generation().revision == generation_before.revision
+        assert_recovery_state_unchanged()
+
+        assert "task:typed-dead-recovery" in (
+            daemon.sync_ready_tasks_into_coordination()
+        )
+        recovered = adapter.get(historic.task_cid)
+        assert recovered is not None and recovered.status == "retrying"
+        recovery_receipt = recovered.body["completion_receipt"]
+        assert recovery_receipt["operation"] == (
+            TYPED_DATABASE_CLAIM_RECOVERY_OPERATION
+        )
+        assert recovery_receipt["execution_route_binding"] == historic_route
+        assert recovery_receipt["execution_route_policy_id"] == (
+            historic_route["policy_id"]
+        )
+        assert recovery_receipt["execution_route_origin_revision"] == (
+            historic_route["task_revision"]
+        )
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        assert attempt.attempt_number == 2
+        assert attempt.attempt_id != old_claim["attempt_id"]
+        admitted = adapter.get(attempt.task_cid)
+        assert admitted is not None
+        assert admitted.body["completion_receipt"]["operation"] == (
+            "database_attempt_admitted"
+        )
+        assert admitted.body["completion_receipt"][
+            "execution_route_binding"
+        ] == historic_route
+        cooldown = adapter._retry_cooldown_row(attempt.task_cid)
+        assert cooldown is not None
+        assert cooldown["attempt"] == 1
+        assert cooldown["extension"]["reason"] == (
+            "database_claim_lost_sidecar_dead_process"
+        )
+
+        provider_calls: list[str] = []
+        stale = DatabaseTaskAttempt(
+            attempt_id=str(old_claim["attempt_id"]),
+            claim_id=str(old_claim["claim_id"]),
+            task_cid=attempt.task_cid,
+            task_alias=attempt.task_alias,
+            attempt_number=1,
+            owner_session_id=str(old_claim["owner_session_id"]),
+            fencing_token=1,
+            fence_epoch=1,
+            lease_id=str(old_claim["lease_id"]),
+            committed_phase=ATTEMPT_PHASE_CLAIMED,
+            status="running",
+            started_at_ms=1_000,
+        )
+        with pytest.raises(DatabaseImplementationAuthorityError):
+            daemon.run_provider(
+                stale,
+                provider_fn=lambda candidate: provider_calls.append(
+                    candidate.attempt_id
+                )
+                or {"status": "ok", "accepted": True},
+            )
+        assert provider_calls == []
+        current = daemon.commit_phase(attempt, "context")
+        _updated, _result, duplicated = daemon.run_provider(
+            current,
+            provider_fn=lambda candidate: provider_calls.append(
+                candidate.attempt_id
+            )
+            or {"status": "ok", "accepted": True},
+        )
+        assert duplicated is False
+        assert provider_calls == [attempt.attempt_id]
+    finally:
+        if daemon is not None:
+            daemon.close()
+        if adapter is not None:
+            adapter.close()
+        else:
+            client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+        server.stop()
+
+
+def test_run_once_recovers_preserved_dead_reservation_before_stale_resume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "typed-preserved-dead-claim.duckdb"
+    coordination_path = tmp_path / "preserved-coordination.duckdb"
+    execution_path = tmp_path / "preserved-execution.duckdb"
+    owner_session_id = "session:typed-preserved-dead-claim"
+    client_id = "database-implementation-daemon:typed-preserved-dead-claim"
+    source = DatabaseTaskSource(database)
+    source.materialize(
+        {
+            "repository_tree_id": "tree:typed-preserved-dead-claim",
+            "plan_root_cid": "plan:typed-preserved-dead-claim",
+            "goals": [
+                {
+                    "goal_cid": "goal:typed-preserved-dead-claim",
+                    "goal_alias": "CASF-G-TYPED-PRESERVED-DEAD-CLAIM",
+                    "title": "Preserved dead reservation recovery",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": "task:typed-preserved-dead-claim",
+                    "task_id": "CASF-TYPED-PRESERVED-DEAD-CLAIM",
+                    "goal_cid": "goal:typed-preserved-dead-claim",
+                    "status": "ready",
+                }
+            ],
+        }
+    )
+    initial = source.list_tasks(limit=10).tasks
+    task = initial[0]
+    route_policy = TaskExecutionRoutePolicy.seal(
+        snapshot=source.snapshot(),
+        tasks=initial,
+        execution_modes={
+            task.task_alias: DETERMINISTIC_ONLY_EXECUTION_MODE,
+        },
+    )
+    route = route_policy.binding_for_task(task).to_dict()
+    coordinator = open_database_coordinator(
+        coordination_path,
+        clock_ms=lambda: 1_000,
+        default_lease_ms=5_000,
+    )
+    coordinator.register_task(
+        task_cid=task.task_cid,
+        task_id=task.task_alias,
+        now_ms=1_000,
+    )
+    stale_claim = coordinator.claim_ready_task(
+        owner_session_id=owner_session_id,
+        lease_ms=5_000,
+        now_ms=1_000,
+    )
+    assert stale_claim is not None and stale_claim.attempt_number == 1
+    fixture_daemon = DatabaseImplementationDaemon(
+        database_path=database,
+        coordination_path=coordination_path,
+        execution_path=execution_path,
+        owner_session_id=owner_session_id,
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        task_source=source,
+        close_task_source=False,
+        coordinator=coordinator,
+        clock_ms=lambda: 1_000,
+    ).open()
+    try:
+        stale_attempt = fixture_daemon._insert_attempt_from_claim(
+            stale_claim,
+            task_alias=task.task_alias,
+            execution_route_binding=route,
+        )
+    finally:
+        fixture_daemon.close()
+        coordinator.close()
+
+    old_pid = 987_654_320
+    old_start = 19
+    old_boot = "boot:typed-preserved-dead-claim"
+    old_parent = 1
+    old_attestation = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "typed-database-claim-process@1"
+        ),
+        "grant_id": "owner-grant:preserved-dead-process",
+        "client_id": client_id,
+        "process_birth_id": _process_birth_content_id(
+            old_pid,
+            old_start,
+            old_boot,
+            old_parent,
+        ),
+        "pid": old_pid,
+        "uid": os.getuid(),
+        "start_time_ticks": old_start,
+        "boot_id": old_boot,
+        "parent_pid": old_parent,
+    }
+    reservation = {
+        "operation": "database_claim",
+        "claim_phase_schema": TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+        "claim_process_attestation": old_attestation,
+        "claim_id": stale_claim.claim_id,
+        "attempt_id": stale_claim.attempt_id,
+        "attempt_number": int(stale_claim.attempt_number),
+        "lease_id": stale_claim.lease_id,
+        "owner_session_id": stale_claim.owner_session_id,
+        "fencing_token": int(stale_claim.fencing_token),
+        "fence_epoch": int(stale_claim.fence_epoch),
+        "claimed_from_revision": int(task.revision),
+        "execution_route_binding": route,
+        "execution_route_policy_id": route["policy_id"],
+        "execution_route_origin_revision": int(route["task_revision"]),
+    }
+    source.compare_and_set_status(
+        task,
+        int(task.revision),
+        "in_progress",
+        reservation,
+    )
+    source.close()
+
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-preserved-dead-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-typed-preserved-dead-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    operator = _operator()
+    token, grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=tuple(
+            sorted(operator.EXECUTOR_OWNER_ALLOWED_OPERATIONS)
+        ),
+        allowed_command_operations=tuple(
+            sorted(operator.EXECUTOR_OWNER_COMMAND_OPERATIONS)
+        ),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        str(server.typed_command_socket_path()),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id=identity.store_id,
+        process_birth_id=identity.process_birth_id,
+    )
+    adapter: TypedDatabaseTaskSource | None = None
+    daemon: DatabaseImplementationDaemon | None = None
+    provider_calls: list[str] = []
+    try:
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        adapter = TypedDatabaseTaskSource(
+            client,
+            execution_route_policy=route_policy,
+            clock_ms=lambda: 2_000,
+        )
+        daemon = DatabaseImplementationDaemon(
+            database_path=database,
+            coordination_path=coordination_path,
+            execution_path=execution_path,
+            owner_session_id=owner_session_id,
+            authority_mode="quack",
+            task_source_kind="duckdb",
+            quack_uri=identity.listen_uri,
+            task_source=adapter,
+            close_task_source=False,
+            lease_ms=5_000,
+            clock_ms=lambda: 2_000,
+            provider_fn=lambda candidate: provider_calls.append(
+                candidate.attempt_id
+            )
+            or {"status": "ok", "accepted": True},
+            effect_fn=lambda _attempt, _provider: {"status": "applied"},
+            validation_fn=lambda _attempt, _effect: {
+                "outcome": "passed",
+                "evidence_digest": "sha256:" + "c" * 64,
+            },
+            require_real_execution=True,
+        ).open()
+        daemon.bind_post_merge_recovery(lambda: None)
+        result = daemon.run_once()
+        assert len(result["dead_claim_reservation_recoveries"]) == 1
+        assert result["dead_claim_reservation_recoveries"][0][
+            "attempt_number"
+        ] == 1
+        assert result["attempt_id"] != stale_attempt.attempt_id
+        fresh_attempt = daemon.get_attempt(result["attempt_id"])
+        assert fresh_attempt is not None
+        assert fresh_attempt.attempt_number == 2
+        assert provider_calls == [fresh_attempt.attempt_id]
+        retired = daemon.get_attempt(stale_attempt.attempt_id)
+        assert retired is not None and retired.status != "running"
+        cooldown = adapter._retry_cooldown_row(task.task_cid)
+        assert cooldown is not None and cooldown["attempt"] == 1
     finally:
         if daemon is not None:
             daemon.close()

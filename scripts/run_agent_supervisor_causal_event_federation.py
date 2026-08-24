@@ -121,6 +121,7 @@ EXECUTOR_OWNER_COMMAND_OPERATIONS: Final = frozenset(
         "task.status.cas",
         "task.status.cas.receipt",
         "task.retry.cooldown.record",
+        "task.claim.reservation.recover",
         "task.validation.record.passed",
         "task.validation.record.nonpassing",
     }
