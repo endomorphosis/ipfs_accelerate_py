@@ -15,6 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.federation.formal import (
     CASF_FORMAL_SUITE_SCHEMA,
     AdversarialMutation,
     ExternalCheckStatus,
+    ExternalModelInvariant,
     FederationFormalError,
     FederationFormalIdentity,
     FederationFormalProperty,
@@ -45,6 +46,14 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_state_model
 
 SOURCE_REVISION = "b8328ec3a9cc066acfb3240d0e4b03d16950f5c7"
 SOURCE_TREE = "1e26e0b1c7d7b8df9eafb1d2e7aede6bfea19233"
+CASF_INVARIANT_NAMES = {
+    FederationFormalProperty.EVENT_DELIVERY: "IdempotentAuthoritativeEffect",
+    FederationFormalProperty.CLAIM_LEASE_FENCE: "CurrentFenceWins",
+    FederationFormalProperty.LIFECYCLE: "LegalLifecycleTransition",
+    FederationFormalProperty.SHARD_TRANSFER: "UniqueShardOwner",
+    FederationFormalProperty.BUDGET_CONSERVATION: "BudgetConservation",
+    FederationFormalProperty.CAUSAL_PROPAGATION: "CausalParentBeforeDependent",
+}
 
 
 def _identity() -> FederationFormalIdentity:
@@ -332,6 +341,35 @@ def test_fence_identity_must_fit_the_recorded_finite_bound() -> None:
         )
 
 
+def test_all_external_matrix_entries_claim_only_the_configured_generic_invariant() -> None:
+    suite = _suite()
+    receipts = run_external_model_checks(suite, matrix=_matrix())
+
+    assert {
+        (item.scenario_property, item.tool) for item in receipts
+    } == {
+        (property_, tool)
+        for property_ in FederationFormalProperty
+        for tool in (ModelCheckerTool.TLC, ModelCheckerTool.APALACHE)
+    }
+    for receipt in receipts:
+        scenario = suite.scenario(receipt.scenario_property)
+        model = scenario.generated_model
+        configuration = model.configuration_for(receipt.tool)
+        casf_invariant = CASF_INVARIANT_NAMES[receipt.scenario_property]
+
+        assert receipt.property is ExternalModelInvariant.SUPERVISOR_SAFETY
+        assert receipt.to_dict()["property"] == "Safety"
+        assert receipt.to_dict()["property_scope"] == "generic_supervisor_state_model"
+        assert receipt.to_dict()["external_model_satisfies_casf_property_alone"] is False
+        assert model.model_text.count("\nSafety ==\n") == 1
+        assert configuration.splitlines().count("INVARIANT Safety") == 1
+        assert f"\n{casf_invariant} ==\n" not in model.model_text
+        assert f"INVARIANT {casf_invariant}" not in configuration.splitlines()
+        assert not receipt.casf_property_satisfied_by_pair
+        assert not receipt.casf_property_passed
+
+
 def test_absent_tlc_and_apalache_are_unavailable_and_never_run_or_pass() -> None:
     receipts = run_external_model_checks(_suite(), matrix=_matrix())
 
@@ -343,6 +381,8 @@ def test_absent_tlc_and_apalache_are_unavailable_and_never_run_or_pass() -> None
     assert all(item.status is ExternalCheckStatus.UNAVAILABLE for item in receipts)
     assert all(not item.ran and not item.passed for item in receipts)
     assert all(not item.model_check_receipt_id for item in receipts)
+    assert all(not item.paired_hermetic_receipt_id for item in receipts)
+    assert all(not item.casf_property_satisfied_by_pair for item in receipts)
     assert all(item.to_dict()["unbounded_proof"] is False for item in receipts)
 
 
@@ -352,6 +392,7 @@ def test_discovery_without_matrix_self_test_is_not_run_and_never_passed() -> Non
     assert len(receipts) == 12
     assert all(item.status is ExternalCheckStatus.NOT_RUN for item in receipts)
     assert all(not item.ran and not item.passed for item in receipts)
+    assert all(not item.casf_property_satisfied_by_pair for item in receipts)
     assert all(item.matrix_entry_state == "discovered" for item in receipts)
     assert all("smoke-tested" in item.reason for item in receipts)
 
@@ -413,9 +454,63 @@ def test_external_pass_requires_both_qualified_matrix_and_executed_receipt() -> 
     assert len(receipts) == 12
     assert all(item.status is ExternalCheckStatus.PASSED for item in receipts)
     assert all(item.ran and item.passed for item in receipts)
+    assert all(
+        item.property is ExternalModelInvariant.SUPERVISOR_SAFETY for item in receipts
+    )
+    assert {item.scenario_property for item in receipts} == set(FederationFormalProperty)
     assert all(item.model_check_receipt_id for item in receipts)
+    assert all(not item.paired_hermetic_receipt_id for item in receipts)
+    assert all(not item.casf_property_satisfied_by_pair for item in receipts)
     assert all(item.to_dict()["unbounded_proof"] is False for item in receipts)
     assert len(checker_runtime.requests) == 24  # version plus bounded check per result
+
+
+def test_casf_property_satisfaction_requires_exact_trusted_hermetic_pairing() -> None:
+    suite = _suite()
+    hermetic_receipts = check_federation_formal_suite(suite)
+    checker_runtime = _MatrixRuntime()
+    receipts = run_external_model_checks(
+        suite,
+        matrix=_qualified_matrix(_MatrixRuntime()),
+        checker=SupervisorStateModelChecker(command_runner=checker_runtime.run),
+        hermetic_receipts=hermetic_receipts,
+    )
+    hermetic_by_property = {item.property: item for item in hermetic_receipts}
+
+    assert len(receipts) == 12
+    assert all(
+        item.passed
+        and item.casf_property_satisfied_by_pair
+        and item.casf_property_passed
+        for item in receipts
+    )
+    assert all(
+        item.paired_hermetic_receipt_id
+        == hermetic_by_property[item.scenario_property].receipt_id
+        for item in receipts
+    )
+    assert all(item.property is ExternalModelInvariant.SUPERVISOR_SAFETY for item in receipts)
+
+    unavailable = run_external_model_checks(
+        suite,
+        matrix=_matrix(),
+        hermetic_receipts=hermetic_receipts,
+    )
+    assert all(item.paired_hermetic_receipt_id for item in unavailable)
+    assert all(not item.passed for item in unavailable)
+    assert all(not item.casf_property_satisfied_by_pair for item in unavailable)
+
+    forged = replace(
+        hermetic_receipts[0],
+        explored_states=hermetic_receipts[0].explored_states + 1,
+    )
+    with pytest.raises(FederationFormalError, match="trusted finite exploration"):
+        run_external_model_checks(
+            suite,
+            matrix=_qualified_matrix(_MatrixRuntime()),
+            checker=SupervisorStateModelChecker(command_runner=_MatrixRuntime().run),
+            hermetic_receipts=(forged,),
+        )
 
 
 def test_checker_runtime_unavailability_cannot_be_promoted_by_matrix_capability() -> None:
@@ -431,6 +526,7 @@ def test_checker_runtime_unavailability_cannot_be_promoted_by_matrix_capability(
     assert all(item.status is ExternalCheckStatus.ERROR for item in receipts)
     assert all(item.ran for item in receipts)
     assert all(not item.passed for item in receipts)
+    assert all(not item.casf_property_satisfied_by_pair for item in receipts)
 
 
 def test_checker_subclass_cannot_replace_the_trusted_execution_boundary() -> None:

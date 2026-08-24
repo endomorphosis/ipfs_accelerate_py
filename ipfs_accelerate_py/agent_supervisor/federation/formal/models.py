@@ -57,7 +57,7 @@ CASF_FORMAL_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/causal-federation/formal-check-receipt@1"
 )
 CASF_EXTERNAL_CHECK_RECEIPT_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/causal-federation/external-model-check-receipt@1"
+    "ipfs_accelerate_py/agent-supervisor/causal-federation/external-model-check-receipt@2"
 )
 CASF_FORMAL_TASK_ID: Final = "CASF-036"
 MAX_HERMETIC_EXPLORED_STATES: Final = 200_000
@@ -117,6 +117,12 @@ class ExternalCheckStatus(str, Enum):
     UNAVAILABLE = "unavailable"
     NOT_RUN = "not_run"
     ERROR = "error"
+
+
+class ExternalModelInvariant(str, Enum):
+    """Closed generic invariants which an external checker actually checks."""
+
+    SUPERVISOR_SAFETY = "Safety"
 
 
 def _identity_token(value: Any, name: str, *, required: bool = True) -> str:
@@ -470,6 +476,8 @@ class FederationFormalScenario:
         return {
             "scenario_id": self.scenario_id,
             "property": self.property.value,
+            "external_model_invariant": ExternalModelInvariant.SUPERVISOR_SAFETY.value,
+            "external_model_satisfies_casf_property_alone": False,
             "transition_schema_identity": self.transition_schema.schema_identity,
             "generated_model_identity": self.generated_model.artifact_identity,
             "model_identity": self.generated_model.model_identity,
@@ -664,7 +672,8 @@ class HermeticModelCheckReceipt:
 @dataclass(frozen=True)
 class ExternalModelCheckReceipt:
     scenario_id: str
-    property: FederationFormalProperty
+    scenario_property: FederationFormalProperty
+    property: ExternalModelInvariant
     tool: ModelCheckerTool
     status: ExternalCheckStatus
     ran: bool
@@ -672,20 +681,28 @@ class ExternalModelCheckReceipt:
     matrix_entry_state: str
     generated_model_identity: str
     model_check_receipt_id: str
+    paired_hermetic_receipt_id: str
+    casf_property_satisfied_by_pair: bool
     reason: str
     schema: str = CASF_EXTERNAL_CHECK_RECEIPT_SCHEMA
 
     def __post_init__(self) -> None:
         if self.schema != CASF_EXTERNAL_CHECK_RECEIPT_SCHEMA:
             raise FederationFormalError("unsupported external check receipt schema")
-        if not isinstance(self.property, FederationFormalProperty):
-            raise FederationFormalError("external receipt property is not closed")
+        if not isinstance(self.scenario_property, FederationFormalProperty):
+            raise FederationFormalError("external receipt scenario property is not closed")
+        if not isinstance(self.property, ExternalModelInvariant):
+            raise FederationFormalError("external receipt checked invariant is not closed")
+        if self.property is not ExternalModelInvariant.SUPERVISOR_SAFETY:
+            raise FederationFormalError("external receipt checked invariant is unsupported")
         if not isinstance(self.tool, ModelCheckerTool):
             raise FederationFormalError("external receipt tool is not closed")
         if not isinstance(self.status, ExternalCheckStatus):
             raise FederationFormalError("external receipt status is not closed")
         if type(self.ran) is not bool:
             raise FederationFormalError("external receipt ran flag must be boolean")
+        if type(self.casf_property_satisfied_by_pair) is not bool:
+            raise FederationFormalError("paired CASF satisfaction flag must be boolean")
         for name in (
             "scenario_id",
             "matrix_snapshot_id",
@@ -698,16 +715,37 @@ class ExternalModelCheckReceipt:
             "model_check_receipt_id",
             required=False,
         )
+        _identity_token(
+            self.paired_hermetic_receipt_id,
+            "paired_hermetic_receipt_id",
+            required=False,
+        )
         _bounded_text(self.reason, "reason")
         if self.status in {ExternalCheckStatus.UNAVAILABLE, ExternalCheckStatus.NOT_RUN}:
             if self.ran or self.model_check_receipt_id:
                 raise FederationFormalError("unavailable/not-run checks cannot claim execution")
         elif not self.ran or not self.model_check_receipt_id:
             raise FederationFormalError("executed external outcomes require an exact receipt")
+        expected_pair_satisfaction = bool(
+            self.passed and self.paired_hermetic_receipt_id
+        )
+        if self.casf_property_satisfied_by_pair != expected_pair_satisfaction:
+            raise FederationFormalError(
+                "CASF property satisfaction requires both a generic external pass "
+                "and paired hermetic evidence"
+            )
 
     @property
     def passed(self) -> bool:
+        """Whether the generic external invariant passed, not the CASF property."""
+
         return self.status is ExternalCheckStatus.PASSED
+
+    @property
+    def casf_property_passed(self) -> bool:
+        """Whether the external pass has exact trusted hermetic CASF evidence."""
+
+        return self.casf_property_satisfied_by_pair
 
     @property
     def receipt_id(self) -> str:
@@ -717,7 +755,10 @@ class ExternalModelCheckReceipt:
         payload = {
             "schema": self.schema,
             "scenario_id": self.scenario_id,
+            "scenario_property": self.scenario_property.value,
             "property": self.property.value,
+            "property_scope": "generic_supervisor_state_model",
+            "external_model_satisfies_casf_property_alone": False,
             "tool": self.tool.value,
             "status": self.status.value,
             "ran": self.ran,
@@ -728,6 +769,10 @@ class ExternalModelCheckReceipt:
             "matrix_entry_state": self.matrix_entry_state,
             "generated_model_identity": self.generated_model_identity,
             "model_check_receipt_id": self.model_check_receipt_id,
+            "paired_hermetic_receipt_id": self.paired_hermetic_receipt_id,
+            "casf_property_satisfied_by_pair": (
+                self.casf_property_satisfied_by_pair
+            ),
             "reason": self.reason,
         }
         if include_id:
@@ -1030,6 +1075,48 @@ def _initial_state(
     return FederationModelState(**common)
 
 
+def _external_invariant_is_bound(
+    model: GeneratedSupervisorStateModel,
+    tool: ModelCheckerTool,
+) -> bool:
+    invariant = ExternalModelInvariant.SUPERVISOR_SAFETY.value
+    configuration_lines = model.configuration_for(tool).splitlines()
+    safety_conjuncts = ("TypeOK", *SAFETY_PROPERTIES)
+    safety_definition = "\n".join(
+        (f"{invariant} ==", *(f"    /\\ {item}" for item in safety_conjuncts))
+    )
+    return (
+        model.model_text.count(f"\n{invariant} ==\n") == 1
+        and model.model_text.count(safety_definition) == 1
+        and configuration_lines.count(f"INVARIANT {invariant}") == 1
+    )
+
+
+def _bind_generic_external_invariant(
+    model: GeneratedSupervisorStateModel,
+) -> GeneratedSupervisorStateModel:
+    """Configure the generic ``Safety`` invariant for both external tools."""
+
+    invariant = ExternalModelInvariant.SUPERVISOR_SAFETY.value
+    if f"\n{invariant} ==\n" not in model.model_text:
+        raise FederationFormalError("generated model omits the generic external invariant")
+    tlc_lines = model.tlc_config_text.splitlines()
+    invariant_line = f"INVARIANT {invariant}"
+    if invariant_line not in tlc_lines:
+        insertion = next(
+            (index for index, line in enumerate(tlc_lines) if line.startswith("PROPERTY ")),
+            len(tlc_lines),
+        )
+        tlc_lines.insert(insertion, invariant_line)
+    bound = replace(model, tlc_config_text="\n".join(tlc_lines) + "\n")
+    if not all(
+        _external_invariant_is_bound(bound, tool)
+        for tool in (ModelCheckerTool.TLC, ModelCheckerTool.APALACHE)
+    ):
+        raise FederationFormalError("generic external invariant is not configured for every tool")
+    return bound
+
+
 def build_federation_formal_suite(
     identity: FederationFormalIdentity,
     *,
@@ -1068,10 +1155,15 @@ def build_federation_formal_suite(
                 "authority_created": False,
             },
         )
-        model = generate_supervisor_state_model(
-            transition_schema,
-            bounds=bounds,
-            module_name="CASF036_" + "".join(part.title() for part in property_.value.split("_")),
+        model = _bind_generic_external_invariant(
+            generate_supervisor_state_model(
+                transition_schema,
+                bounds=bounds,
+                module_name=(
+                    "CASF036_"
+                    + "".join(part.title() for part in property_.value.split("_"))
+                ),
+            )
         )
         scenarios.append(
             FederationFormalScenario(
@@ -1678,6 +1770,29 @@ _EXTERNAL_STATUS: Final[Mapping[ModelCheckStatus, ExternalCheckStatus]] = Mappin
 # instance-level ``check`` replacement from substituting a fabricated receipt.
 _TRUSTED_MODEL_CHECK: Final = SupervisorStateModelChecker.check
 _TRUSTED_MODEL_CLASSIFY: Final = SupervisorStateModelChecker._classify
+_TRUSTED_HERMETIC_CHECK: Final = check_federation_scenario
+
+
+def _validated_hermetic_pairings(
+    suite: FederationFormalSuite,
+    receipts: Sequence[HermeticModelCheckReceipt],
+) -> Mapping[FederationFormalProperty, HermeticModelCheckReceipt]:
+    if isinstance(receipts, (str, bytes)) or not isinstance(receipts, Sequence):
+        raise FederationFormalError("hermetic receipts must be a typed sequence")
+    pairings: dict[FederationFormalProperty, HermeticModelCheckReceipt] = {}
+    for receipt in receipts:
+        if type(receipt) is not HermeticModelCheckReceipt:
+            raise FederationFormalError("hermetic pairing receipt is not canonical")
+        scenario = suite.scenario(receipt.property)
+        expected = _TRUSTED_HERMETIC_CHECK(scenario)
+        if receipt != expected or receipt.receipt_id != expected.receipt_id:
+            raise FederationFormalError(
+                "hermetic pairing receipt does not match trusted finite exploration"
+            )
+        if receipt.property in pairings:
+            raise FederationFormalError("hermetic pairing contains a duplicate property")
+        pairings[receipt.property] = receipt
+    return MappingProxyType(pairings)
 
 
 def _validate_external_model_check_receipt(
@@ -1696,6 +1811,11 @@ def _validate_external_model_check_receipt(
     the commands and generated model must be exact, and all properties the
     trusted checker claims for that tool must be present.
     """
+
+    if not _external_invariant_is_bound(scenario.generated_model, tool):
+        raise FederationFormalError(
+            "generic external invariant is not bound to the model and configuration"
+        )
 
     if type(receipt) is not ModelCheckReceipt:
         raise FederationFormalError("checker returned a non-canonical receipt type")
@@ -1800,19 +1920,24 @@ def run_external_model_checks(
     *,
     matrix: ProverMatrixSnapshot,
     checker: SupervisorStateModelChecker | None = None,
+    hermetic_receipts: Sequence[HermeticModelCheckReceipt] = (),
 ) -> tuple[ExternalModelCheckReceipt, ...]:
     """Run certified TLC/Apalache lanes and record every unavailable lane.
 
     Discovery is insufficient.  A lane runs only after the prover matrix has
     an executable-backed, smoke-tested, translation-conformant entry that is
-    authoritative for bounded state-machine checks.  The resulting pass is
-    still explicitly bounded and non-promoting.
+    authoritative for bounded state-machine checks.  External results are
+    labeled only with the generic ``Safety`` invariant actually present in
+    their model and configuration.  They can satisfy a scenario's CASF
+    property only as an explicit pair with an exactly reconstructed hermetic
+    receipt.  Every result remains bounded and non-promoting.
     """
 
     if not isinstance(suite, FederationFormalSuite):
         raise FederationFormalError("suite must be FederationFormalSuite")
     if not isinstance(matrix, ProverMatrixSnapshot):
         raise FederationFormalError("matrix must be ProverMatrixSnapshot")
+    pairings = _validated_hermetic_pairings(suite, hermetic_receipts)
     if checker is not None and type(checker) is not SupervisorStateModelChecker:
         raise FederationFormalError(
             "checker must be an exact SupervisorStateModelChecker instance"
@@ -1825,12 +1950,17 @@ def run_external_model_checks(
             (ModelCheckerTool.APALACHE, "apalache"),
         ):
             entry = matrix.capabilities.get(prover_id)
+            hermetic_receipt = pairings.get(scenario.property)
             common = {
                 "scenario_id": scenario.scenario_id,
-                "property": scenario.property,
+                "scenario_property": scenario.property,
+                "property": ExternalModelInvariant.SUPERVISOR_SAFETY,
                 "tool": tool,
                 "matrix_snapshot_id": matrix.snapshot_id,
                 "generated_model_identity": scenario.generated_model.artifact_identity,
+                "paired_hermetic_receipt_id": (
+                    hermetic_receipt.receipt_id if hermetic_receipt is not None else ""
+                ),
             }
             if entry is None or entry.absent:
                 results.append(
@@ -1842,6 +1972,7 @@ def run_external_model_checks(
                             entry.highest_state.value if entry is not None else "absent"
                         ),
                         model_check_receipt_id="",
+                        casf_property_satisfied_by_pair=False,
                         reason=f"{prover_id} is unavailable in the bound prover matrix",
                     )
                 )
@@ -1860,6 +1991,7 @@ def run_external_model_checks(
                         ran=False,
                         matrix_entry_state=entry.highest_state.value,
                         model_check_receipt_id="",
+                        casf_property_satisfied_by_pair=False,
                         reason=(
                             f"{prover_id} lacks an executable-backed, smoke-tested, "
                             "translation-conformant bounded-state-machine capability"
@@ -1894,6 +2026,7 @@ def run_external_model_checks(
                         ran=False,
                         matrix_entry_state=entry.highest_state.value,
                         model_check_receipt_id="",
+                        casf_property_satisfied_by_pair=False,
                         reason=(
                             "qualified checker did not produce a valid execution receipt: "
                             f"{type(exc).__name__}: {exc}"
@@ -1909,6 +2042,7 @@ def run_external_model_checks(
                         ran=False,
                         matrix_entry_state=entry.highest_state.value,
                         model_check_receipt_id="",
+                        casf_property_satisfied_by_pair=False,
                         reason=receipt.reason,
                     )
                 )
@@ -1920,6 +2054,10 @@ def run_external_model_checks(
                     ran=True,
                     matrix_entry_state=entry.highest_state.value,
                     model_check_receipt_id=receipt.receipt_id,
+                    casf_property_satisfied_by_pair=(
+                        receipt.status is ModelCheckStatus.PASSED
+                        and hermetic_receipt is not None
+                    ),
                     reason=receipt.reason,
                 )
             )
@@ -1935,6 +2073,7 @@ __all__ = [
     "AdversarialMutation",
     "ExternalCheckStatus",
     "ExternalModelCheckReceipt",
+    "ExternalModelInvariant",
     "FederationFormalError",
     "FederationFormalIdentity",
     "FederationFormalProperty",
