@@ -22,6 +22,9 @@ from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     configured_board_scheduler as configured_scheduler,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime import (
+    multi_supervisor_runner as multi_runner,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     DatabaseProgramConfig,
     provider_subprocess_environment,
@@ -90,6 +93,74 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
 from scripts import run_agent_supervisor_efficiency_state_hardening as aseh_operator
 
 _CWD_OWNER_DIR = Path("/proc/self/cwd/quack-owner")
+
+
+def test_foreground_master_pid_recovers_only_a_proven_dead_owner(
+    tmp_path: Path,
+) -> None:
+    exited = subprocess.Popen(
+        [sys.executable, "-c", "pass"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    dead_pid = int(exited.pid)
+    assert exited.wait(timeout=5) == 0
+
+    pid_path = tmp_path / "state" / "configured-board-master.pid"
+    pid_path.parent.mkdir()
+    pid_path.write_text(f"{dead_pid}\n", encoding="ascii")
+    pid_path.chmod(0o600)
+
+    multi_runner._adopt_or_create_current_master_pid_projection(  # noqa: SLF001
+        pid_path
+    )
+
+    assert pid_path.read_text(encoding="ascii") == f"{os.getpid()}\n"
+    current_projection = pid_path.stat()
+    assert current_projection.st_nlink == 1
+    assert current_projection.st_mode & 0o777 == 0o600
+    quarantines = tuple(pid_path.parent.glob(f".{pid_path.name}.stale-*.quarantine"))
+    decisions = tuple(pid_path.parent.glob(f".{pid_path.name}.stale-*.decision.json"))
+    receipts = tuple(pid_path.parent.glob(f".{pid_path.name}.stale-*.receipt.json"))
+    assert len(quarantines) == len(decisions) == len(receipts) == 1
+    assert quarantines[0].read_text(encoding="ascii") == f"{dead_pid}\n"
+    decision = json.loads(decisions[0].read_text(encoding="utf-8"))
+    receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
+    assert decision["schema"] == multi_runner.STALE_DETACHED_MASTER_PID_DECISION_SCHEMA
+    assert decision["decision"] == "quarantine_authorized"
+    assert decision["legacy_pid"] == dead_pid
+    assert decision["liveness_evidence"]["errno"] == "ESRCH"
+    assert receipt["schema"] == multi_runner.STALE_DETACHED_MASTER_PID_RECEIPT_SCHEMA
+    assert receipt["outcome"] == "quarantined"
+    assert receipt["legacy_pid"] == dead_pid
+
+
+def test_foreground_master_pid_refuses_a_live_owner(tmp_path: Path) -> None:
+    live = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    pid_path = tmp_path / "state" / "configured-board-master.pid"
+    pid_path.parent.mkdir()
+    pid_path.write_text(f"{live.pid}\n", encoding="ascii")
+    pid_path.chmod(0o600)
+    try:
+        with pytest.raises(
+            ValueError,
+            match="master PID projection names a live process",
+        ):
+            multi_runner._adopt_or_create_current_master_pid_projection(  # noqa: SLF001
+                pid_path
+            )
+        assert pid_path.read_text(encoding="ascii") == f"{live.pid}\n"
+        assert not tuple(pid_path.parent.glob(f".{pid_path.name}.stale-*"))
+    finally:
+        live.terminate()
+        live.wait(timeout=5)
 
 
 def test_aseh_task_authority_spec_excludes_typed_lifecycle_fields_only() -> None:

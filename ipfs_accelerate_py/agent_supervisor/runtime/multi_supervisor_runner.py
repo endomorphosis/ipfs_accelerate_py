@@ -4318,7 +4318,7 @@ def _discard_reserved_pid_projection_locked(
 
 
 def _adopt_or_create_current_master_pid_projection(pid_path: Path) -> None:
-    """Adopt a detached parent's exact projection or create a foreground one."""
+    """Adopt this runner or recover a proven-dead foreground predecessor."""
 
     path = Path(pid_path)
     expected = f"{os.getpid()}\n".encode("ascii")
@@ -4329,14 +4329,20 @@ def _adopt_or_create_current_master_pid_projection(pid_path: Path) -> None:
             raise ValueError(f"unsafe master PID projection: {exc}") from exc
         if payload is not None:
             if (
-                payload != expected
-                or int(evidence.get("uid", -1)) != os.geteuid()
-                or int(evidence.get("link_count", -1)) != 1
-                or not stat.S_ISREG(int(evidence.get("mode", 0)))
-                or stat.S_IMODE(int(evidence.get("mode", 0))) != 0o600
+                payload == expected
+                and int(evidence.get("uid", -1)) == os.geteuid()
+                and int(evidence.get("link_count", -1)) == 1
+                and stat.S_ISREG(int(evidence.get("mode", 0)))
+                and stat.S_IMODE(int(evidence.get("mode", 0))) == 0o600
             ):
-                raise ValueError("master PID projection is not owned by this runner")
-            return
+                return
+            # Foreground runners use the same audited recovery contract as a
+            # detached launch.  It admits only a same-UID, single-link regular
+            # legacy PID whose signal-zero probe returns ESRCH, then publishes
+            # the decision and outcome receipts around an atomic quarantine.
+            # Live, permission-denied, malformed, swapped, or ambiguous
+            # projections continue to fail closed before any child starts.
+            _quarantine_stale_detached_master_pid_locked(path)
         descriptor, identity = _reserve_owned_pid_projection_locked(path)
         try:
             _publish_reserved_pid_projection(
