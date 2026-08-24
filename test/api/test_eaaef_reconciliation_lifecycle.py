@@ -687,13 +687,19 @@ def test_canonical_casf_import_is_exact_and_structurally_valid(
         forest = _REAL_INSPECT_CURRENT_REPOSITORY_FOREST(repo_root)
         evidence = _REAL_VERIFY_IMPORTED_CASF_SOURCE(repo_root, forest=forest)
 
-    assert evidence["canonical_tip"] == "e93df4ec6cdabf153218df30151b840fe60fa2b9"
-    assert evidence["canonical_tree"] == "0771702f9a2643903e50be3e056e6c0d84532fcc"
+    assert evidence["canonical_tip"] == "0db0c4203ed5f98896c9db053bb2145b33759847"
+    assert evidence["canonical_tree"] == "cdd4916b63d90f8ad14dc2eb53d9471cfb719c03"
     assert evidence["structural_validation_report_cid"] == (
         "sha256:ed81aec7bad2b030325fe998d187f32e757c3514d35eef01a7d1a91ba4d98c67"
     )
     assert evidence["standalone_operator_policy_unchanged"] is True
     assert set(evidence["selected_blobs"]) == lifecycle._EAAEF_CASF_IMPORT_BLOB_PATHS
+    assert len(evidence["selected_blobs"]) == 17
+    assert lifecycle._EAAEF_CASF_IMPORT_OVERRIDE_PATHS == {
+        "ipfs_accelerate_py/agent_supervisor/runtime/quack_state_server.py",
+        "ipfs_accelerate_py/agent_supervisor/task_sources/typed_state_owner.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    }
 
 
 def test_casf_import_rejects_config_binding_and_current_blob_drift(
@@ -796,7 +802,7 @@ def test_casf_import_rejects_config_binding_and_current_blob_drift(
             *,
             maximum_bytes: int,
         ) -> bytes:
-            if blob_oid == "e85b412939fc93646b01ce4c78696eb7661f8d2b":
+            if blob_oid == "60d79d42809424f02e4aaf3779c340624a4e4ca9":
                 return b"raise RuntimeError('divergent sealed validator sentinel')\n"
             return real_git_blob(root, blob_oid, maximum_bytes=maximum_bytes)
 
