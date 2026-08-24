@@ -1,0 +1,61 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation/idle-benchmark-manifest@1",
+  "benchmark_id": "casf-idle-event-driven-v1",
+  "program_id": "agent-supervisor-causal-event-federation-v1",
+  "objective_id": "CASF-038",
+  "frozen": true,
+  "state": "specification_only",
+  "authoritative": false,
+  "promotion_eligible": false,
+  "execution": {
+    "required_measurement_mode": "live",
+    "required_wait_interface": "TypedStateOwnerEventWait@1",
+    "required_client_interface": "QuackStateClientEventWait@1",
+    "network_permitted": false,
+    "direct_database_access_permitted": false,
+    "ducklake_scheduling_authority_permitted": false
+  },
+  "identity_requirements": [
+    "repository_commit",
+    "repository_tree",
+    "control_plane_generation",
+    "schema_fingerprint",
+    "policy_ref",
+    "policy_revision",
+    "capability_ref",
+    "federation_id",
+    "supervisor_id",
+    "task_id",
+    "attempt_id",
+    "worktree_id",
+    "assignment_revision",
+    "fencing_epoch"
+  ],
+  "idle_window": {
+    "minimum_duration_seconds": 60,
+    "minimum_completed_waits": 1,
+    "maximum_event_deliveries": 0
+  },
+  "required_zero_metrics": [
+    "task_board_scans",
+    "model_calls",
+    "context_recompilations",
+    "unchanged_state_writes",
+    "wakeup_count",
+    "event_deliveries",
+    "duplicate_committed_effects",
+    "lost_deliveries"
+  ],
+  "permitted_activity": [
+    "blocked_server_owned_event_wait",
+    "required_lease_heartbeat",
+    "bounded_health_deadline",
+    "explicit_recovery_timer"
+  ],
+  "result_storage": "Content-addressed managed artifact; this manifest and runner never grant scheduling, lease, policy, acceptance, completion, or promotion authority.",
+  "nonclaims": [
+    "This specification is not a benchmark result.",
+    "A hermetic fixture or in-process simulation is not live qualification evidence.",
+    "A passing idle observation does not grant promotion or completion authority."
+  ]
+}
