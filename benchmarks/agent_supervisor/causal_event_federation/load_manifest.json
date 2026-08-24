@@ -1,0 +1,83 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation/load-benchmark-manifest@1",
+  "benchmark_id": "casf-load-256-agent-bounded-v1",
+  "program_id": "agent-supervisor-causal-event-federation-v1",
+  "objective_id": "CASF-040",
+  "frozen": true,
+  "state": "capability_blocked_specification_only",
+  "authoritative": false,
+  "promotion_eligible": false,
+  "matrix_binding": {
+    "relative_path": "benchmarks/agent_supervisor/causal_event_federation/matrix.yaml",
+    "schema": "ipfs_accelerate_py/agent-supervisor/causal-event-federation-benchmark-matrix@1",
+    "sha256": "b23681a8c811f2020ef97e1b1b0172c15c87577d7882a4323f67e072dd7dfd9f"
+  },
+  "execution": {
+    "measurement_scope": "twelve_independent_supervisor_processes_256_registered_agents_qualified_live_profile",
+    "required_supervisor_processes": 12,
+    "registered_logical_agents": 256,
+    "maximum_concurrent_subagents": 64,
+    "minimum_bounded_tasks": 1000,
+    "minimum_event_deliveries_with_replay": 100000,
+    "subprocess_budget": 12,
+    "real_independent_processes_required": true,
+    "in_process_simulation_qualifies": false,
+    "network_permitted": false,
+    "direct_database_access_permitted": false,
+    "ducklake_scheduling_authority_permitted": false,
+    "launch_permitted": false
+  },
+  "zero_tolerance_gates": [
+    "lost_deliveries",
+    "duplicate_committed_effects",
+    "stale_fence_completion",
+    "unauthorized_creation",
+    "tenant_leakage",
+    "agent_sql",
+    "secret_leaks",
+    "causal_notification_loss",
+    "stale_abstraction_suppression",
+    "model_created_authority_or_completion",
+    "ducklake_authority_promotion",
+    "reduced_assurance"
+  ],
+  "identity_requirements": [
+    "repository_commit",
+    "repository_tree",
+    "control_plane_generation",
+    "schema_fingerprint",
+    "policy_ref",
+    "policy_revision",
+    "capability_ref",
+    "federation_id",
+    "supervisor_id",
+    "task_id",
+    "attempt_id",
+    "worktree_id",
+    "assignment_revision",
+    "fencing_epoch"
+  ],
+  "source_modules": [
+    "benchmarks/agent_supervisor/causal_event_federation/load_manifest.json",
+    "benchmarks/agent_supervisor/causal_event_federation/run_load.py"
+  ],
+  "live_capability": {
+    "availability": "unavailable",
+    "execution_status": "not_run",
+    "reason_code": "qualified_256_agent_bounded_load_live_capacity_not_admitted",
+    "required_attestation": "casf/load-live-capacity-attestation@1",
+    "required_evidence": "current_generation_accepted_gate_current_fences_and_live_host_provider_proof_merge_storage_telemetry",
+    "metrics_omitted": true
+  },
+  "result_storage": "No result is emitted while capability is unavailable. A future admitted run must produce a content-addressed non-authoritative artifact and compact state-owner receipt; neither grants scheduling, completion, acceptance, or promotion authority.",
+  "nonclaims": [
+    "This frozen recipe is not itself a benchmark result.",
+    "No 256-agent load process launch occurred while the capability is unavailable.",
+    "An in-process simulation, object graph, synthetic agent count, or caller-supplied telemetry cannot qualify this benchmark.",
+    "No direct database access, file fallback, network access, credential use, or DuckLake scheduling authority is permitted.",
+    "A capability preflight failure is not a qualification result or proof of safe causal or parallel behavior.",
+    "Metrics alone cannot establish completion, release, acceptance, or promotion.",
+    "This benchmark does not qualify token efficiency, multihost behavior, production behavior, or any capability outside its separately admitted live profile.",
+    "Model-created authority, policy permission, completion, or promotion remains prohibited."
+  ]
+}
