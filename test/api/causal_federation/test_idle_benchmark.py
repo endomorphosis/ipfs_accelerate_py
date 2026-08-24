@@ -74,6 +74,7 @@ def _prepared_measured_clone(path: Path) -> tuple[Path, Any]:
         "user.email=casf-test@example.invalid",
         "commit",
         "-q",
+        "--allow-empty",
         "-m",
         "CASF-038 fixture",
         cwd=repository_path,
