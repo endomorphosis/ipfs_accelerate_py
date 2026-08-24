@@ -432,6 +432,9 @@ _MERGE_TARGET_BINDING_SCHEMA: Final[str] = (
 _POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON: Final[str] = (
     "post_merge_declared_outputs_missing"
 )
+_FALSE_POSITIVE_COMPLETION_LINEAGE_UNPROVEN_REASON: Final[str] = (
+    "false_positive_completion_integration_lineage_unproven"
+)
 _CROSS_BOARD_COMPLETION_REASONS: Final[frozenset[str]] = frozenset(
     {
         "cross_board_manual_completion_authority_metadata_invalid",
@@ -1763,6 +1766,7 @@ class DatabasePortalExecutionBridge:
             if status == "quarantined":
                 return failure_reason in {
                     _POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON,
+                    _FALSE_POSITIVE_COMPLETION_LINEAGE_UNPROVEN_REASON,
                     "merge train consumer exited on final attempt",
                     "processing request exceeded max age",
                 }

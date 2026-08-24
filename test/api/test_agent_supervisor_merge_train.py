@@ -11,7 +11,11 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_repository_id,
 )
-from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue, MergeRequest
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
+    FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA,
+    MergeQueue,
+    MergeRequest,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     MergeResolverRegistry,
     conflict_fingerprint,
@@ -2129,6 +2133,333 @@ def test_false_completion_lineage_bounds_distance_not_repository_age(
     missing = prove(foreign_previous)
     assert missing["passed"] is False
     assert missing["reason"] == "false_completion_lineage_history_unbounded"
+
+
+def test_false_completion_lineage_retry_requires_new_target_generation(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/lineage-retry")
+    (repo / "base.txt").write_text(
+        "candidate output\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "candidate output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    previous_target = _git(repo, "rev-parse", "HEAD")
+    _git(
+        repo,
+        "merge",
+        "--no-ff",
+        "implementation/lineage-retry",
+        "-m",
+        "integrate candidate before lineage retry",
+    )
+    failed_target = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "branch", "foreign-lineage-target", baseline)
+    _git(repo, "switch", "foreign-lineage-target")
+    _git(repo, "commit", "--allow-empty", "-m", "foreign lineage target")
+    foreign_target = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+
+    reason = "false_positive_completion_integration_lineage_unproven"
+    queue = MergeQueue(
+        tmp_path / "merge-queue",
+        max_attempts=3,
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+
+    def lineage(target: str, **updates: object) -> dict[str, object]:
+        value: dict[str, object] = {
+            "passed": False,
+            "reason": "false_completion_lineage_history_unbounded",
+            "candidate_commit": candidate,
+            "baseline_commit": baseline,
+            "previous_target_commit": previous_target,
+            "target_commit": target,
+            "ancestry": {
+                "candidate_to_previous_target": 1,
+                "baseline_to_previous_target": 0,
+                "previous_target_to_target": 0,
+                "candidate_to_target": 0,
+            },
+            "previous_declared_output_identity": False,
+            "current_declared_output_identity": True,
+        }
+        value.update(updates)
+        return value
+
+    def exhausted_quarantine(
+        suffix: str,
+        *,
+        proof_target: str,
+        marker_schema: str = FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA,
+        proof_updates: dict[str, object] | None = None,
+    ) -> MergeRequest:
+        task_id = f"LINEAGE-{suffix}"
+        request = queue.enqueue(
+            branch_name="implementation/lineage-retry",
+            task_id=task_id,
+            canonical_task_id=f"canonical:{suffix}",
+            commit_sha=candidate,
+            metadata={
+                "baseline_ref": baseline,
+                "task": {"outputs": ["base.txt"]},
+            },
+        )
+        initial_claim = queue.claim_pending_request(
+            request.request_id,
+            consumer_id=f"merge-train:false-completion-{suffix}",
+        )
+        assert initial_claim is not None
+        queue.complete(initial_claim)
+        completed = queue.get(request.request_id)
+        assert completed is not None and completed.status == "completed"
+        false_completion_receipt = {
+            "already_merged": True,
+            "canonical_task_id": completed.canonical_identity,
+            "commit_sha": candidate,
+            "distributed_publication_admission": {
+                "admitted": True,
+                "distributed": False,
+                "request_id": request.request_id,
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "distributed-lane-admission@1"
+                ),
+                "status": "local",
+            },
+            "finished_at": 2.0,
+            "integrated": True,
+            "merge_commit": previous_target,
+            "merged": False,
+            "mutation_short_circuited": True,
+            "reason": "declared_outputs_already_on_target",
+            "request_id": request.request_id,
+            "started_at": 1.0,
+            "status": "already_merged",
+            "target_branch": "main",
+            "target_commit": previous_target,
+            "task_id": task_id,
+        }
+        reopened = queue.reopen_false_positive_completion(
+            completed,
+            completion_receipt=false_completion_receipt,
+        )
+        assert reopened is not None and reopened.status == "pending"
+        for prior in range(2):
+            claimed = queue.claim_pending_request(
+                request.request_id,
+                consumer_id=f"merge-train:prior-{suffix}-{prior}",
+            )
+            assert claimed is not None
+            retried = queue.requeue(
+                claimed,
+                reason=f"prior bounded failure {prior}",
+            )
+            assert isinstance(retried, MergeRequest)
+        claimed = queue.claim_pending_request(
+            request.request_id,
+            consumer_id=f"merge-train:terminal-{suffix}",
+        )
+        assert claimed is not None
+        proof = lineage(proof_target, **(proof_updates or {}))
+        queue.quarantine(
+            claimed,
+            reason=reason,
+            metadata={
+                "status": "quarantined",
+                "reason": reason,
+                "merge_result": {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": reason,
+                    "false_positive_completion_integration_lineage": proof,
+                },
+            },
+        )
+        stored = queue.get(request.request_id)
+        assert stored is not None
+        if marker_schema != FALSE_POSITIVE_COMPLETION_REOPEN_SCHEMA:
+            with queue._connect() as connection:
+                row = connection.execute(
+                    "SELECT metadata_json FROM merge_requests "
+                    "WHERE request_id=?",
+                    (request.request_id,),
+                ).fetchone()
+                assert row is not None
+                raw_metadata = json.loads(row["metadata_json"])
+                raw_metadata["false_positive_completion_reopen"][
+                    "schema"
+                ] = marker_schema
+                connection.execute(
+                    "UPDATE merge_requests SET metadata_json=? "
+                    "WHERE request_id=?",
+                    (
+                        json.dumps(
+                            raw_metadata,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        request.request_id,
+                    ),
+                )
+                connection.commit()
+            stored = queue.get(request.request_id)
+            assert stored is not None
+        assert stored.status == "quarantined"
+        assert stored.attempt == 3
+        assert stored.failure_count == 3
+        return stored
+
+    callbacks: list[str] = []
+
+    def fail_lineage_again(_request: MergeRequest) -> dict[str, object]:
+        target = _git(repo, "rev-parse", "refs/heads/main")
+        callbacks.append(target)
+        return {
+            "attempted": False,
+            "merged": False,
+            "returncode": 2,
+            "reason": reason,
+            "false_positive_completion_integration_lineage": lineage(target),
+        }
+
+    train = MergeTrain(
+        repo,
+        queue,
+        target_branch="main",
+        max_attempts=3,
+        merge_callback=fail_lineage_again,
+    )
+    selected = exhausted_quarantine(
+        "VALID",
+        proof_target=failed_target,
+    )
+    assert DatabasePortalExecutionBridge._request_has_missing_output_recovery_lineage(
+        selected
+    )
+    assert not train._quarantine_may_auto_recover(selected)
+    assert not train._quarantine_may_auto_recover(
+        selected,
+        allow_post_merge_declared_output_recovery=True,
+    )
+    before_same_target = queue.get(selected.request_id)
+    assert train.recover_one_integrated_quarantine(
+        request_id=selected.request_id,
+        allow_post_merge_declared_output_recovery=True,
+    ) is None
+    after_same_target = queue.get(selected.request_id)
+    assert before_same_target == after_same_target
+    assert callbacks == []
+
+    _git(repo, "commit", "--allow-empty", "-m", "new retry generation")
+    retry_target = _git(repo, "rev-parse", "HEAD")
+    retry = train._false_positive_completion_lineage_retry(selected)
+    assert retry == {
+        "failed_target_commit": failed_target,
+        "target_commit": retry_target,
+    }
+    first_result = train.recover_one_integrated_quarantine(
+        request_id=selected.request_id,
+        allow_post_merge_declared_output_recovery=True,
+    )
+    assert first_result is not None
+    assert first_result["status"] == "quarantined"
+    first_failure = queue.get(selected.request_id)
+    assert first_failure is not None
+    assert first_failure.status == "quarantined"
+    assert first_failure.attempt == 3
+    assert first_failure.failure_count == 4
+    assert callbacks == [retry_target]
+    assert len(first_failure.metadata["revivals"]) == 1
+    assert failed_target in first_failure.metadata["revivals"][-1]["reason"]
+    assert retry_target in first_failure.metadata["revivals"][-1]["reason"]
+    assert (
+        first_failure.metadata["quarantine"]["merge_result"][
+            "false_positive_completion_integration_lineage"
+        ]["target_commit"]
+        == retry_target
+    )
+
+    same_generation = queue.get(selected.request_id)
+    assert train.recover_one_integrated_quarantine(
+        request_id=selected.request_id,
+        allow_post_merge_declared_output_recovery=True,
+    ) is None
+    assert queue.get(selected.request_id) == same_generation
+    assert callbacks == [retry_target]
+
+    _git(repo, "commit", "--allow-empty", "-m", "second retry generation")
+    second_target = _git(repo, "rev-parse", "HEAD")
+    second_result = train.recover_one_integrated_quarantine(
+        request_id=selected.request_id,
+        allow_post_merge_declared_output_recovery=True,
+    )
+    assert second_result is not None
+    assert second_result["status"] == "quarantined"
+    second_failure = queue.get(selected.request_id)
+    assert second_failure is not None
+    assert second_failure.failure_count == 5
+    assert len(second_failure.metadata["revivals"]) == 2
+    assert callbacks == [retry_target, second_target]
+
+    invalid_rows = (
+        exhausted_quarantine("DIVERGENT", proof_target=foreign_target),
+        exhausted_quarantine("UNKNOWN", proof_target="f" * 40),
+        exhausted_quarantine("MALFORMED", proof_target="not-a-commit"),
+        exhausted_quarantine(
+            "INNER-REASON",
+            proof_target=failed_target,
+            proof_updates={"reason": "false_completion_lineage_commit_unavailable"},
+        ),
+        exhausted_quarantine(
+            "OUTPUT-IDENTITY",
+            proof_target=failed_target,
+            proof_updates={"current_declared_output_identity": False},
+        ),
+    )
+    for invalid in invalid_rows:
+        assert DatabasePortalExecutionBridge._request_has_missing_output_recovery_lineage(
+            invalid
+        )
+        assert not train._quarantine_may_auto_recover(
+            invalid,
+            allow_post_merge_declared_output_recovery=True,
+        )
+        before = queue.get(invalid.request_id)
+        assert train.recover_one_integrated_quarantine(
+            request_id=invalid.request_id,
+            allow_post_merge_declared_output_recovery=True,
+        ) is None
+        assert queue.get(invalid.request_id) == before
+    assert callbacks == [retry_target, second_target]
+
+    malformed_marker = exhausted_quarantine(
+        "MARKER",
+        proof_target=failed_target,
+        marker_schema="malformed-reopen-marker",
+    )
+    assert not DatabasePortalExecutionBridge._request_has_missing_output_recovery_lineage(
+        malformed_marker
+    )
+    assert not train._quarantine_may_auto_recover(
+        malformed_marker,
+        allow_post_merge_declared_output_recovery=True,
+    )
+    before_marker = queue.get(malformed_marker.request_id)
+    assert train.recover_one_integrated_quarantine(
+        request_id=malformed_marker.request_id,
+        allow_post_merge_declared_output_recovery=True,
+    ) is None
+    assert queue.get(malformed_marker.request_id) == before_marker
+    assert callbacks == [retry_target, second_target]
 
 
 def test_merge_train_rejects_a_mismatched_bound_queue_target(
