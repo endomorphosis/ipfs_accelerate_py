@@ -28988,6 +28988,15 @@ class PortalImplementationDaemon:
                     "protected_path_violation": protected_path_violation,
                 }
 
+            # Candidate binding is the last in-process consumer of the typed
+            # proposal result.  The merge queue and its events persist this
+            # validation dict, so retain only the compact proposal gate.
+            validation_result = (
+                self._detach_in_process_proposal_validation(
+                    validation_result
+                )
+            )
+
             if validation_result.get("passed", False):
                 post_validation_status = self._run_git(
                     [
@@ -29148,6 +29157,13 @@ class PortalImplementationDaemon:
             }
         finally:
             try:
+                # Exceptions may bypass the normal pre-queue projection.
+                # Terminal events and return values must remain JSON-safe.
+                validation_result = (
+                    self._detach_in_process_proposal_validation(
+                        validation_result
+                    )
+                )
                 if protected_path_snapshot is not None:
                     protected_path_violation = (
                         self._finalize_implementation_protected_path_fence(
