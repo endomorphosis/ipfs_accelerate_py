@@ -1,0 +1,330 @@
+{
+  "artifacts": [
+    {
+      "bytes_available": true,
+      "distribution": "ipfs-datasets-py",
+      "filename": "ipfs_datasets_py-0.2.0-cp312-cp312-linux_aarch64.whl",
+      "kind": "wheel",
+      "license_declared": "MIT",
+      "sha256": "7cd7898808ac5d5db3d587c0f25a4e520858eeb00b6dbe9534cec198aebf5d38",
+      "size": 44053405,
+      "source_commit": "6eb5803548b070a55c81d4631f13996d5c28137b",
+      "version": "0.2.0"
+    },
+    {
+      "bytes_available": true,
+      "distribution": "ipfs-datasets-py",
+      "filename": "ipfs_datasets_py-0.2.0.tar.gz",
+      "kind": "sdist",
+      "license_declared": "MIT",
+      "sha256": "f118b2ccd2b8a7f7262a95981ae05d8432d26b4c4bf3a29338e073c60786b26f",
+      "size": 41102914,
+      "source_commit": "6eb5803548b070a55c81d4631f13996d5c28137b",
+      "version": "0.2.0"
+    },
+    {
+      "bytes_available": true,
+      "distribution": "ipfs-kit-py",
+      "filename": "ipfs_kit_py-0.3.0-py3-none-any.whl",
+      "kind": "wheel",
+      "license_declared": "AGPL-3.0-or-later",
+      "sha256": "f100c569681cfc534c5705b51e89bc2734bfa637200b7f30ebe8dab170bc3be3",
+      "size": 7318209,
+      "source_commit": "ec95e129bb39a3a18562c6b82ad5f3af3ff1230f",
+      "version": "0.3.0"
+    },
+    {
+      "bytes_available": false,
+      "distribution": "ipfs-kit-py",
+      "filename": "ipfs_kit_py-0.3.0.tar.gz",
+      "kind": "sdist",
+      "license_declared": "AGPL-3.0-or-later",
+      "sha256": "8db7299f2cc144814d6b1b01a8476ba2daa67830856513f2863c6fac4af3ed15",
+      "size": null,
+      "source_commit": "ec95e129bb39a3a18562c6b82ad5f3af3ff1230f",
+      "unavailability_evidence": {
+        "bounded_provider_replay_candidate_sha256": "66a52a69252858dc96947aa6d26af14c48e6ed211bcd4170f25ced0ffab516cf",
+        "bounded_provider_replay_candidate_size": 6893895,
+        "disposition": "rejected-hash-mismatch"
+      },
+      "unavailability_reason": "The exact admitted identity is retained, but bounded replay of the original provider environment could not reproduce per-member PAX subsecond timestamps; no mismatched reconstruction is substituted.",
+      "version": "0.3.0"
+    },
+    {
+      "bytes_available": true,
+      "distribution": "ipfs-accelerate-py",
+      "filename": "ipfs_accelerate_py-0.0.45-py3-none-any.whl",
+      "kind": "wheel",
+      "license_declared": "AGPL-3.0-or-later",
+      "sha256": "ddc10e3e9f484639ce679c26542689df0e873f0a2214df632ff5a9da99c73c65",
+      "size": 17826043,
+      "source_commit": "8b3b08ad3b9705b7981080e5414c6b3aecb06afe",
+      "version": "0.0.45"
+    },
+    {
+      "bytes_available": true,
+      "distribution": "ipfs-accelerate-py",
+      "filename": "ipfs_accelerate_py-0.0.45.tar.gz",
+      "kind": "sdist",
+      "license_declared": "AGPL-3.0-or-later",
+      "sha256": "7f3883460ec5b7980e3944acd0e67833c460837e8ab30647b12adc1fb465608d",
+      "size": 20579108,
+      "source_commit": "8b3b08ad3b9705b7981080e5414c6b3aecb06afe",
+      "version": "0.0.45"
+    },
+    {
+      "bytes_available": true,
+      "distribution": "mcp-plus-plus-contracts",
+      "filename": "mcp_plus_plus_contracts-0.1.0-py3-none-any.whl",
+      "kind": "wheel",
+      "license_declared": "AGPL-3.0-or-later",
+      "sha256": "d88cc9ba3562f0b592ddfe234810a596c42a4398e32d11e246ea5ebf831a8c9c",
+      "size": 18516,
+      "source_commit": "0ed2b23d13371a6cae25e5f328a10152e5d1da11",
+      "version": "0.1.0"
+    },
+    {
+      "bytes_available": true,
+      "distribution": "mcp-plus-plus-contracts",
+      "filename": "mcp_plus_plus_contracts-0.1.0.tar.gz",
+      "kind": "sdist",
+      "license_declared": "AGPL-3.0-or-later",
+      "sha256": "4f2c9be7307cc8b55f2f75e24e732b60829a179d6354090306f03ee368966b4e",
+      "size": 20373,
+      "source_commit": "0ed2b23d13371a6cae25e5f328a10152e5d1da11",
+      "version": "0.1.0"
+    }
+  ],
+  "artifact_byte_availability_status": "partial-one-admitted-sdist-unavailable",
+  "artifact_clean_install_status": "no-go-sdist-builds-not-qualified",
+  "evidence_created": "2026-08-24T00:00:00Z",
+  "hash_gate_validation": {
+    "archive_set": "fully materialized exact selected archives with no index access",
+    "command": [
+      "/usr/bin/python3.12",
+      "-m",
+      "pip",
+      "install",
+      "--dry-run",
+      "--ignore-installed",
+      "--no-cache-dir",
+      "--require-hashes",
+      "--no-index",
+      "--find-links",
+      "<exact-selected-archive-directory>",
+      "--no-build-isolation",
+      "-r",
+      "<profile-lock>"
+    ],
+    "frontend_environment": {
+      "python": "CPython 3.12.3",
+      "scikit_build_core": "absent",
+      "setuptools": "82.0.1",
+      "wheel": "0.42.0"
+    },
+    "profiles": {
+      "codex": {
+        "exit_code": 0,
+        "log_sha256": "965937acae75480b72e350c855f9885f3fa2de2c13e43782f7cbb47173e4060f",
+        "outcome": "hash-gate-resolution-passed"
+      },
+      "core": {
+        "exit_code": 0,
+        "log_sha256": "b3430ebd6bec41d906f8cc4aa1ca5824f2f08e6710659e00200a3dbca4b95d31",
+        "outcome": "hash-gate-resolution-passed"
+      },
+      "evaluation": {
+        "exit_code": 2,
+        "failure": "ModuleNotFoundError: No module named 'scikit_build_core' while preparing selected llama-cpp-python sdist metadata",
+        "log_sha256": "13e6a5e829667fa811f561079a12137129778c18e910de232f85c6e58e9ea046",
+        "outcome": "no-go-native-sdist-build-backend-unavailable"
+      },
+      "local-model": {
+        "exit_code": 2,
+        "failure": "ModuleNotFoundError: No module named 'scikit_build_core' while preparing selected llama-cpp-python sdist metadata",
+        "log_sha256": "154875372a9de1ed8c88e51c24b0d98d5367b53710f65fc259439759c47da54c",
+        "outcome": "no-go-native-sdist-build-backend-unavailable"
+      },
+      "verification": {
+        "exit_code": 0,
+        "log_sha256": "35463ee2ab958f1993e1b738819406e9518c2525d11ddffb2efa5c9a08543ed1",
+        "outcome": "hash-gate-resolution-passed"
+      }
+    },
+    "selected_archive_identity_count": 107
+  },
+  "profiles": {
+    "core": {
+      "accelerator_extra": null,
+      "capabilities": [
+        "proof-context CLI and local orchestration",
+        "datasets proof-context contracts",
+        "kit hermetic local CAS, receipts, and seal WAL",
+        "MCP++ contract resources"
+      ],
+      "artifact_clean_install_status": "no-go-sdist-builds-not-qualified",
+      "native_build_status": "not-required-by-profile",
+      "qualification": "supported hash-bound dependency resolution; clean installation is not qualified because the selected varint and python-baseconv artifacts are sdists whose builds are outside PCCE-053",
+      "resolution_status": "supported-hash-bound",
+      "root_requirement": "ipfs-accelerate-py==0.0.45"
+    },
+    "verification": {
+      "accelerator_extra": "verification",
+      "capabilities": [
+        "core",
+        "JSON Schema verification"
+      ],
+      "artifact_clean_install_status": "no-go-sdist-builds-not-qualified",
+      "native_build_status": "not-required-by-profile",
+      "qualification": "supported hash-bound dependency resolution; clean installation is not qualified because the selected varint and python-baseconv artifacts are sdists whose builds are outside PCCE-053",
+      "resolution_status": "supported-hash-bound",
+      "root_requirement": "ipfs-accelerate-py[verification]==0.0.45"
+    },
+    "codex": {
+      "accelerator_extra": "codex",
+      "capabilities": [
+        "core",
+        "Codex command adapter contract; no Codex binary, account, credential, or availability claim"
+      ],
+      "artifact_clean_install_status": "no-go-sdist-builds-not-qualified",
+      "native_build_status": "not-required-by-profile",
+      "qualification": "supported hash-bound dependency resolution; clean installation is not qualified because the selected varint and python-baseconv artifacts are sdists whose builds are outside PCCE-053; Codex executable availability remains unclaimed",
+      "resolution_status": "supported-hash-bound",
+      "root_requirement": "ipfs-accelerate-py[codex]==0.0.45"
+    },
+    "local-model": {
+      "accelerator_extra": "local-model",
+      "capabilities": [
+        "core",
+        "llama.cpp Python server dependencies",
+        "Hugging Face Hub client; no model weights, server health, or accelerator claim"
+      ],
+      "artifact_clean_install_status": "no-go-sdist-builds-not-qualified",
+      "native_build_status": "no-go-native-sdist-only",
+      "qualification": "supported hash-bound dependency resolution; clean installation is not qualified because selected sdists require builds outside PCCE-053, including the native llama-cpp-python build",
+      "resolution_status": "supported-hash-bound",
+      "root_requirement": "ipfs-accelerate-py[local-model]==0.0.45"
+    },
+    "evaluation": {
+      "accelerator_extra": "evaluation",
+      "capabilities": [
+        "core",
+        "verification",
+        "local-model dependency surface",
+        "pytest evaluation runner; no model quality claim"
+      ],
+      "artifact_clean_install_status": "no-go-sdist-builds-not-qualified",
+      "native_build_status": "no-go-native-sdist-only",
+      "qualification": "supported hash-bound dependency resolution; clean installation is not qualified because selected sdists require builds outside PCCE-053, including the native llama-cpp-python build",
+      "resolution_status": "supported-hash-bound",
+      "root_requirement": "ipfs-accelerate-py[evaluation]==0.0.45"
+    }
+  },
+  "resolver": {
+    "command": [
+      "/usr/bin/python3.12",
+      "-m",
+      "pip",
+      "install",
+      "--dry-run",
+      "--ignore-installed",
+      "--no-cache-dir",
+      "--index-url",
+      "https://pypi.org/simple",
+      "--find-links",
+      "<admitted-artifact-dir>",
+      "--report",
+      "<profile>.json",
+      "<explicit-admitted-accelerator-wheel-with-profile-extra>",
+      "<explicit-admitted-datasets-wheel>",
+      "<explicit-admitted-kit-wheel>",
+      "<explicit-admitted-mcp-contracts-wheel>"
+    ],
+    "observed_environment": {
+      "implementation_name": "cpython",
+      "platform_machine": "aarch64",
+      "platform_system": "Linux",
+      "python_full_version": "3.12.3"
+    },
+    "pip_version": "24.0",
+    "resolution_date_utc": "2026-08-24",
+    "resolution_mode": "fresh, ignore-installed, no-cache, dry-run report",
+    "trusted_hosts": []
+  },
+  "schema": "lift_coding.proof-carrying-context-engine.environment-inputs@1",
+  "resolution_status": "supported-hash-bound",
+  "semantic_surrogates": [],
+  "source_commits": {
+    "ipfs_accelerate_py": "8b3b08ad3b9705b7981080e5414c6b3aecb06afe",
+    "ipfs_datasets_py": "6eb5803548b070a55c81d4631f13996d5c28137b",
+    "ipfs_kit_py": "ec95e129bb39a3a18562c6b82ad5f3af3ff1230f",
+    "mcp_plus_plus": "0ed2b23d13371a6cae25e5f328a10152e5d1da11"
+  },
+  "supported_environment": {
+    "architecture": "aarch64",
+    "implementation": "CPython",
+    "operating_system": "Linux",
+    "python": "3.12"
+  },
+  "toolchain": {
+    "operating_system": "Ubuntu 24.04.4 LTS",
+    "pip": "24.0",
+    "python": "CPython 3.12.3",
+    "resolver_index": "https://pypi.org/simple"
+  },
+  "unvalidated_environments": [
+    {
+      "architecture": "x86_64",
+      "operating_system": "Linux",
+      "python": "CPython 3.12",
+      "reason": "No tested resolver runner or lock exists for this platform.",
+      "status": "unvalidated"
+    },
+    {
+      "architecture": "arm64 or x86_64",
+      "operating_system": "macOS",
+      "python": "CPython 3.12",
+      "reason": "No tested resolver runner or lock exists for this operating system.",
+      "status": "unvalidated"
+    },
+    {
+      "architecture": "AMD64 or ARM64",
+      "operating_system": "Windows",
+      "python": "CPython 3.12",
+      "reason": "No tested resolver runner or lock exists for this operating system.",
+      "status": "unvalidated"
+    },
+    {
+      "architecture": "any",
+      "operating_system": "any",
+      "python": "CPython 3.11 and earlier",
+      "reason": "The admitted datasets and accelerator artifacts require Python >=3.12.",
+      "status": "unsupported"
+    },
+    {
+      "architecture": "any",
+      "operating_system": "any",
+      "python": "CPython 3.13 and later",
+      "reason": "No tested resolver runner or lock exists for these Python versions.",
+      "status": "unvalidated"
+    },
+    {
+      "architecture": "any",
+      "operating_system": "any",
+      "python": "non-CPython implementations",
+      "reason": "No tested resolver runner or lock exists for another Python implementation.",
+      "status": "unvalidated"
+    }
+  ],
+  "validation": [
+    "python external/ipfs_accelerate/scripts/proof_context/build_environment_manifest.py --check",
+    "python -m json.tool artifacts/proof_carrying_context_engine/environment/sbom.spdx.json",
+    "python -m json.tool artifacts/proof_carrying_context_engine/environment/manifest.json",
+    "fresh pip 24.0 metadata-resolution reports for all five profiles using only https://pypi.org/simple and exact admitted direct-package wheels",
+    "all five locks bind the admitted wheel and sdist identities for all four direct packages; seven exact archives are byte-verified and one admitted kit sdist remains explicitly unavailable",
+    "all five clean installs remain no-go because selected source-distribution builds were inspected but not qualified by PCCE-053",
+    "offline no-index pip --require-hashes dry-run resolution passed for core, verification, and codex and failed closed at the unprovided native build backend for local-model and evaluation",
+    "selected source-distribution hashes and build-system metadata inspected for all five profiles",
+    "two independent environment-evidence generations compared byte-for-byte"
+  ]
+}
