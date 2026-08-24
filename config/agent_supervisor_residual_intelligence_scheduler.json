@@ -108,6 +108,7 @@
     "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_scheduler.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/vrif_runtime_settlement.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
     "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py",
@@ -119,6 +120,8 @@
     "scripts/validate_agent_supervisor_residual_intelligence_board.py",
     "scripts/run_agent_supervisor_residual_intelligence.py",
     "test/api/residual_intelligence/test_board.py",
+    "test/api/residual_intelligence/test_goal_authority.py",
+    "test/api/residual_intelligence/test_runtime_settlement.py",
     "test/api/residual_intelligence/test_runtime_bootstrap.py",
     "test/api/test_agent_supervisor_quack_owner_commands.py"
   ],
@@ -131,6 +134,35 @@
     "evidence": "data/agent_supervisor/residual_intelligence_foundry/evidence",
     "quack_owner": "data/agent_supervisor/residual_intelligence_foundry/quack-owner",
     "generated_runtime_artifacts_are_completion_authority": false
+  },
+  "runtime_settlement": {
+    "schema": "ipfs_accelerate_py/agent-supervisor/vrif-runtime-settlement-config@1",
+    "retired_coordination_snapshots": [
+      {
+        "schema": "ipfs_accelerate_py/agent-supervisor/vrif-retired-coordination-snapshot@1",
+        "lane_index": 2,
+        "database_path": "data/agent_supervisor/residual_intelligence_foundry/state/sidecar-quarantine/20260824T025041Z/lane-2/quack-lane-control.coordination.duckdb",
+        "database_size_bytes": 13381632,
+        "database_sha256": "sha256:85ac6df174f23dfe5af9c17ad115cd83a23268ff7673f57c8b818befef5a8a50",
+        "wal_path": "data/agent_supervisor/residual_intelligence_foundry/state/sidecar-quarantine/20260824T025041Z/lane-2/quack-lane-control.coordination.duckdb.wal",
+        "wal_size_bytes": 6405,
+        "wal_sha256": "sha256:fc390563519209559a838f9ce103def6a69ead7019a9a0ea6c6478858d21d0f9",
+        "terminal_execution_attempt_ids": [
+          "attempt:148a87b2fed8470ab94b1beb6e5ff2b5",
+          "attempt:437fec04942b4bccb304370d2922fc51",
+          "attempt:8045c543ccef4b4aba9b20b86d82d9e1",
+          "attempt:8344a8f96fc3435893f6d42b086ad82b",
+          "attempt:83739fc145b9407f9948fbe5d5054702",
+          "attempt:90bec3212608462b80cf6ba86711620c",
+          "attempt:a1a35a3759b64bb7994308e953ba8b33",
+          "attempt:a9900d5a8f2f4c0a81b050b1c970f0ac",
+          "attempt:b9c34484dad3462a836949479b67b3c8",
+          "attempt:d2821c185d2b4a15b4737276c5932204",
+          "attempt:e1fa6d4147c14cfc90599cbddf4ed18b"
+        ],
+        "terminal_execution_attempt_ids_cid": "sha256:ca73a1a1a22d45ca49b822446c977377566ba88c84a8ccc5bf149456fe0382b9"
+      }
+    ]
   },
   "lanes": [
     {"index": 0, "name": "vrif-lane-0", "strict_shard_remainder": 0, "initial_task_ids": ["VRIF-009"], "initial_focus": "deterministic-baselines"},

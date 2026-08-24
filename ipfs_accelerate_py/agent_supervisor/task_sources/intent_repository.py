@@ -90,6 +90,9 @@ GOAL_COMPLETION_RECEIPT_SCHEMA: Final[str] = (
 GOAL_ROOT_COMPLETION_GATE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/goal-root-completion-gate@1"
 )
+GOAL_RUNTIME_SETTLEMENT_BINDING_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/vrif-runtime-settlement-binding@1"
+)
 GOAL_AUTHORITY_PROJECTION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/goal-authority-projection@1"
 )
@@ -101,6 +104,9 @@ GOAL_TERMINAL_REPORT_EVIDENCE_SCHEMA: Final[str] = (
 )
 _DATABASE_PORTAL_COMPLETION_BINDING_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-completion-binding@1"
+)
+_MERGE_TARGET_BINDING_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
 )
 _GOAL_TERMINAL_PRODUCER_ARTIFACTS_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/goal-terminal-producer-artifacts@1"
@@ -1623,6 +1629,139 @@ def _goal_terminal_report_evidence(value: Mapping[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _goal_runtime_settlement_binding(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate the compact, content-addressed runtime settlement proof."""
+
+    binding = _mapping(value, noun="VRIF runtime settlement binding")
+    expected_fields = {
+        "schema",
+        "settled",
+        "receipt_cid",
+        "snapshot_cid",
+        "owner_generation",
+        "target",
+        "config_cid",
+        "profile_cid",
+        "lane_snapshot_cids",
+        "merge_queue_receipt_cid",
+        "merge_queue_snapshot_cid",
+        "active_counts",
+        "retired_ready_task_cids",
+        "binding_id",
+    }
+    if (
+        set(binding) != expected_fields
+        or binding.get("schema") != GOAL_RUNTIME_SETTLEMENT_BINDING_SCHEMA
+        or binding.get("settled") is not True
+    ):
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement binding schema or state is not exact"
+        )
+    cid_fields = (
+        "receipt_cid",
+        "snapshot_cid",
+        "config_cid",
+        "profile_cid",
+        "merge_queue_receipt_cid",
+        "merge_queue_snapshot_cid",
+    )
+    if any(
+        re.fullmatch(r"sha256:[0-9a-f]{64}", str(binding.get(field) or ""))
+        is None
+        for field in cid_fields
+    ):
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement binding contains an invalid content identity"
+        )
+    owner_generation = _positive_int(
+        binding.get("owner_generation"),
+        noun="VRIF runtime settlement owner generation",
+    )
+    target = _mapping(binding.get("target"), noun="VRIF runtime settlement target")
+    if set(target) != {"binding_schema", "repository_id", "branch"} or target.get(
+        "binding_schema"
+    ) != _MERGE_TARGET_BINDING_SCHEMA:
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement target schema is not exact"
+        )
+    repository_id = _identifier(
+        target.get("repository_id"), noun="runtime target repository_id"
+    )
+    branch = _identifier(target.get("branch"), noun="runtime target branch")
+    if re.fullmatch(r"repository:baguqeera[a-z2-7]{52}", repository_id) is None:
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement target repository identity is invalid"
+        )
+
+    lane_values = binding.get("lane_snapshot_cids")
+    if (
+        not isinstance(lane_values, list)
+        or len(lane_values) != 4
+        or len(set(lane_values)) != 4
+        or any(
+            re.fullmatch(r"sha256:[0-9a-f]{64}", str(item or "")) is None
+            for item in lane_values
+        )
+    ):
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement must bind four ordered lane snapshots"
+        )
+    active_counts = _mapping(
+        binding.get("active_counts"), noun="VRIF runtime active counts"
+    )
+    if set(active_counts) != {"coordination", "execution", "merge_queue", "total"} or any(
+        type(active_counts.get(field)) is not int or active_counts.get(field) != 0
+        for field in ("coordination", "execution", "merge_queue", "total")
+    ):
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement binding is not exactly inactive"
+        )
+    retired_values = binding.get("retired_ready_task_cids")
+    if isinstance(retired_values, (str, bytes, bytearray)) or not isinstance(
+        retired_values, Sequence
+    ):
+        raise IntentRepositoryIntegrityError(
+            "VRIF retired ready task identities must be a sequence"
+        )
+    retired_ready_task_cids = [
+        _identifier(item, noun="retired ready task_cid") for item in retired_values
+    ]
+    if (
+        len(retired_ready_task_cids) > MAX_PAGE_LIMIT
+        or retired_ready_task_cids != sorted(set(retired_ready_task_cids))
+        or any(
+            re.fullmatch(r"baguqeera[a-z2-7]{52}", task_cid) is None
+            for task_cid in retired_ready_task_cids
+        )
+    ):
+        raise IntentRepositoryIntegrityError(
+            "VRIF retired ready task identities are not exact sorted CIDs"
+        )
+    normalized = {
+        **dict(binding),
+        "owner_generation": owner_generation,
+        "target": {
+            "binding_schema": _MERGE_TARGET_BINDING_SCHEMA,
+            "repository_id": repository_id,
+            "branch": branch,
+        },
+        "lane_snapshot_cids": list(lane_values),
+        "active_counts": dict(active_counts),
+        "retired_ready_task_cids": retired_ready_task_cids,
+    }
+    supplied_binding_id = str(normalized.pop("binding_id") or "")
+    normalized["binding_id"] = "sha256:" + hashlib.sha256(
+        _canonical(normalized, noun="VRIF runtime settlement binding").encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    if supplied_binding_id != normalized["binding_id"]:
+        raise IntentRepositoryIntegrityError(
+            "VRIF runtime settlement binding identity is invalid"
+        )
+    return normalized
+
+
 def _goal_root_completion_gate(
     value: Mapping[str, Any],
     *,
@@ -1639,6 +1778,7 @@ def _goal_root_completion_gate(
         "owner_restart_admission_id",
         "owner_restart_receipt_id",
         "completion_policy",
+        "runtime_settlement_binding",
         "terminal_report_evidence",
         "gate_id",
     }
@@ -1662,6 +1802,16 @@ def _goal_root_completion_gate(
     owner_generation = _positive_int(
         gate.get("owner_generation"), noun="root gate owner_generation"
     )
+    runtime_settlement_binding = _goal_runtime_settlement_binding(
+        _mapping(
+            gate.get("runtime_settlement_binding"),
+            noun="root runtime settlement binding",
+        )
+    )
+    if runtime_settlement_binding["owner_generation"] != owner_generation:
+        raise IntentRepositoryIntegrityError(
+            "root gate and runtime settlement owner generations differ"
+        )
     policy = _mapping(gate.get("completion_policy"), noun="root completion policy")
     if set(policy) != {
         *_ROOT_COMPLETION_POLICY_FIELDS,
@@ -1686,6 +1836,7 @@ def _goal_root_completion_gate(
         "predecessor_gate_id": predecessor_gate_id,
         "owner_generation": owner_generation,
         "completion_policy": policy,
+        "runtime_settlement_binding": runtime_settlement_binding,
         "terminal_report_evidence": terminal_report_evidence,
     }
 
@@ -3615,6 +3766,8 @@ class IntentRepository:
                 )
             ),
             "merge_queue_settled": settlement_counts["unsettled_merge_queue_entries"] == 0,
+            "runtime_settlement_gate_satisfied": False,
+            "retired_ready_tasks_satisfied": False,
             "terminal_report_contract_satisfied": True,
             "terminal_report_completion_receipt_satisfied": (
                 terminal_production_receipt_satisfied
@@ -3804,6 +3957,51 @@ class IntentRepository:
                     candidate_gate if candidate_gate_admitted else None
                 )
                 current_gate = effective_candidate_gate or root_gate_for_current_receipt
+                context = (
+                    root_gate_context
+                    if isinstance(root_gate_context, Mapping)
+                    else {}
+                )
+                gate_runtime_binding = (
+                    current_gate.get("runtime_settlement_binding")
+                    if isinstance(current_gate, Mapping)
+                    else None
+                )
+                context_runtime_binding: Mapping[str, Any] | None = None
+                if isinstance(context.get("runtime_settlement_binding"), Mapping):
+                    try:
+                        context_runtime_binding = _goal_runtime_settlement_binding(
+                            context["runtime_settlement_binding"]
+                        )
+                    except IntentRepositoryError:
+                        context_runtime_binding = None
+                database_gates["runtime_settlement_gate_satisfied"] = bool(
+                    isinstance(gate_runtime_binding, Mapping)
+                    and context_runtime_binding is not None
+                    and dict(gate_runtime_binding) == dict(context_runtime_binding)
+                )
+                expected_retired_ready_task_cids = sorted(
+                    task["task_cid"]
+                    for task in spec["tasks"]
+                    if task["task_alias"] in {"VRIF-013", "VRIF-014", "VRIF-015"}
+                )
+                observed_retired_ready_task_cids = (
+                    list(gate_runtime_binding.get("retired_ready_task_cids") or [])
+                    if isinstance(gate_runtime_binding, Mapping)
+                    else []
+                )
+                database_gates["retired_ready_tasks_satisfied"] = bool(
+                    len(expected_retired_ready_task_cids) == 3
+                    and observed_retired_ready_task_cids
+                    == expected_retired_ready_task_cids
+                    and all(
+                        task_cid in tasks
+                        and str(tasks[task_cid]["status"] or "").strip().lower()
+                        in _SUCCESSFUL_TASK_STATUSES
+                        and task_bindings.get(task_cid) is not None
+                        for task_cid in expected_retired_ready_task_cids
+                    )
+                )
                 terminal_gate_evidence = (
                     current_gate.get("terminal_report_evidence")
                     if isinstance(current_gate, Mapping)
@@ -3929,7 +4127,6 @@ class IntentRepository:
                 if root_gate_for_current_receipt is None:
                     reasons.append("root_completion_gate_missing")
                 if current_gate is not None:
-                    context = root_gate_context if isinstance(root_gate_context, Mapping) else {}
                     if context:
                         if (
                             context.get("current_tree_clean") is not True
@@ -4285,6 +4482,9 @@ class IntentRepository:
                             "repository_tree_id": current_root_gate.get(
                                 "repository_tree_id"
                             ),
+                            "runtime_settlement_binding": current_root_gate.get(
+                                "runtime_settlement_binding"
+                            ),
                         }
                         if isinstance(current_root_gate, Mapping)
                         else None
@@ -4382,6 +4582,9 @@ class IntentRepository:
                         "source_head": final_root_gate.get("source_head"),
                         "repository_tree_id": final_root_gate.get(
                             "repository_tree_id"
+                        ),
+                        "runtime_settlement_binding": final_root_gate.get(
+                            "runtime_settlement_binding"
                         ),
                     }
                     if isinstance(final_root_gate, Mapping)
@@ -8457,6 +8660,7 @@ __all__ = (
     "GOAL_COMPLETION_AUTHORITY_SPEC_SCHEMA",
     "GOAL_COMPLETION_RECEIPT_SCHEMA",
     "GOAL_ROOT_COMPLETION_GATE_SCHEMA",
+    "GOAL_RUNTIME_SETTLEMENT_BINDING_SCHEMA",
     "GOAL_AUTHORITY_PROJECTION_SCHEMA",
     "GOAL_TERMINAL_REPORT_CONTRACT_SCHEMA",
     "GOAL_TERMINAL_REPORT_EVIDENCE_SCHEMA",

@@ -3103,6 +3103,8 @@ def _vrif_root_completion_gate(
     admission: Mapping[str, Any],
     restart_receipt: Mapping[str, Any],
     connection: Any,
+    *,
+    runtime_settlement_binding: Mapping[str, Any] | None,
 ) -> dict[str, Any] | None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
         content_identity,
@@ -3115,12 +3117,7 @@ def _vrif_root_completion_gate(
     admission_id = str(admission.get("admission_id") or "")
     if not receipt_id or not admission_id:
         raise OperatorError("VRIF root completion gate lacks owner restart authority")
-    terminal_report_evidence = _vrif_terminal_report_evidence(
-        specification,
-        admission,
-        connection,
-    )
-    if terminal_report_evidence is None:
+    if not isinstance(runtime_settlement_binding, Mapping):
         return None
     state_owner = restart_receipt.get("state_owner")
     owner_generation = (
@@ -3132,6 +3129,35 @@ def _vrif_root_completion_gate(
         or owner_generation < 1
     ):
         raise OperatorError("VRIF root completion gate has no owner generation")
+    if runtime_settlement_binding.get("owner_generation") != owner_generation:
+        raise OperatorError(
+            "VRIF root completion gate runtime settlement generation differs"
+        )
+    terminal_report_evidence = _vrif_terminal_report_evidence(
+        specification,
+        admission,
+        connection,
+    )
+    if terminal_report_evidence is None:
+        return None
+
+    def completion_gate(predecessor_gate_id: str) -> dict[str, Any]:
+        gate: dict[str, Any] = {
+            "schema": GOAL_ROOT_COMPLETION_GATE_SCHEMA,
+            "authority_spec_id": str(specification.get("authority_spec_id") or ""),
+            "source_head": str(admission.get("current_source_head") or ""),
+            "repository_tree_id": str(admission.get("current_source_tree") or ""),
+            "predecessor_gate_id": predecessor_gate_id,
+            "owner_generation": owner_generation,
+            "owner_restart_admission_id": admission_id,
+            "owner_restart_receipt_id": receipt_id,
+            "completion_policy": dict(specification.get("completion_policy") or {}),
+            "runtime_settlement_binding": dict(runtime_settlement_binding),
+            "terminal_report_evidence": dict(terminal_report_evidence),
+        }
+        gate["gate_id"] = content_identity(gate)
+        return gate
+
     predecessor_gate_id = ""
     root_rows = _rows(
         connection,
@@ -3171,10 +3197,20 @@ def _vrif_root_completion_gate(
             or isinstance(stored_generation, bool)
             or not isinstance(stored_generation, int)
             or stored_generation < 1
-            or owner_generation <= stored_generation
             or re.fullmatch(r"[0-9a-f]{40}", stored_source_head) is None
         ):
             return None
+        if owner_generation < stored_generation:
+            return None
+        if owner_generation == stored_generation:
+            same_generation_gate = completion_gate(
+                str(stored_gate.get("predecessor_gate_id") or "")
+            )
+            return (
+                same_generation_gate
+                if same_generation_gate == dict(stored_gate)
+                else None
+            )
         try:
             _git_is_ancestor(
                 stored_source_head,
@@ -3184,30 +3220,19 @@ def _vrif_root_completion_gate(
         except OperatorError:
             return None
         predecessor_gate_id = stored_gate_id
-    gate: dict[str, Any] = {
-        "schema": GOAL_ROOT_COMPLETION_GATE_SCHEMA,
-        "authority_spec_id": str(specification.get("authority_spec_id") or ""),
-        "source_head": str(admission.get("current_source_head") or ""),
-        "repository_tree_id": str(admission.get("current_source_tree") or ""),
-        "predecessor_gate_id": predecessor_gate_id,
-        "owner_generation": owner_generation,
-        "owner_restart_admission_id": admission_id,
-        "owner_restart_receipt_id": receipt_id,
-        "completion_policy": dict(specification.get("completion_policy") or {}),
-        "terminal_report_evidence": dict(terminal_report_evidence),
-    }
-    gate["gate_id"] = content_identity(gate)
-    return gate
+    return completion_gate(predecessor_gate_id)
 
 
 def _current_vrif_root_completion_gate(
     config: Mapping[str, Any],
     admission: Mapping[str, Any],
     gate: Mapping[str, Any] | None,
+    *,
+    runtime_settlement_binding: Mapping[str, Any] | None = None,
 ) -> Mapping[str, Any] | None:
     """Return the gate only while the owner's admitted clean tree is current."""
 
-    if gate is None:
+    if gate is None or not isinstance(runtime_settlement_binding, Mapping):
         return None
     try:
         head, tree = _assert_clean_current_tree(config)
@@ -3218,6 +3243,8 @@ def _current_vrif_root_completion_gate(
         or tree != str(admission.get("current_source_tree") or "")
         or head != str(gate.get("source_head") or "")
         or tree != str(gate.get("repository_tree_id") or "")
+        or gate.get("runtime_settlement_binding")
+        != dict(runtime_settlement_binding)
     ):
         return None
     return gate
@@ -3246,6 +3273,123 @@ def _reconcile_vrif_goal_completion(
         except IntentRepositoryConflictError as exc:
             last_conflict = exc
     raise OperatorError("VRIF goal completion CAS conflict retry was exhausted") from last_conflict
+
+
+def _vrif_runtime_target(config: Mapping[str, Any]) -> tuple[str, str]:
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        checkout_repository_id,
+    )
+
+    target_repository_id = checkout_repository_id(ROOT)
+    target_branch = str(config.get("merge_target_branch") or "").strip()
+    if (
+        re.fullmatch(r"repository:baguqeera[a-z2-7]{52}", target_repository_id)
+        is None
+        or not target_branch
+        or "\x00" in target_branch
+    ):
+        raise OperatorError("VRIF runtime settlement target identity is invalid")
+    return target_repository_id, target_branch
+
+
+def _vrif_owner_generation(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise OperatorError("VRIF runtime settlement owner generation is invalid")
+    return value
+
+
+def _reconcile_vrif_goal_completion_under_runtime_guard(
+    *,
+    config_path: Path,
+    config: Mapping[str, Any],
+    admission: Mapping[str, Any],
+    restart_receipt: Mapping[str, Any],
+    repository: Any,
+    specification: Mapping[str, Any],
+    connection: Any,
+) -> Mapping[str, Any]:
+    """Reconcile goals while retaining every runtime settlement lock.
+
+    Runtime unavailability or a well-formed unsettled receipt only withholds the
+    root gate; non-root goals still reconcile.  If a settled guard fails while
+    leaving after an admitted root reconciliation, the owner fails closed
+    instead of pretending that an already-committed root CAS did not occur.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.runtime.vrif_runtime_settlement import (
+        VRIFRuntimeSettlementError,
+        hold_vrif_runtime_settlement,
+        vrif_runtime_settlement_binding,
+    )
+
+    target_repository_id, target_branch = _vrif_runtime_target(config)
+    state_owner = restart_receipt.get("state_owner")
+    owner_generation = _vrif_owner_generation(
+        state_owner.get("generation") if isinstance(state_owner, Mapping) else None
+    )
+    reconciliation_completed = False
+    admitted_root_gate: Mapping[str, Any] | None = None
+    try:
+        with hold_vrif_runtime_settlement(
+            config_path,
+            repository_root=ROOT,
+            target_repository_id=target_repository_id,
+            target_branch=target_branch,
+            owner_generation=owner_generation,
+            lock_timeout_seconds=0.05,
+        ) as runtime_receipt:
+            runtime_binding: Mapping[str, Any] | None = None
+            if runtime_receipt.get("settled") is True:
+                runtime_binding = vrif_runtime_settlement_binding(
+                    runtime_receipt,
+                    target_repository_id=target_repository_id,
+                    target_branch=target_branch,
+                    owner_generation=owner_generation,
+                )
+            root_gate = (
+                _vrif_root_completion_gate(
+                    specification,
+                    admission,
+                    restart_receipt,
+                    connection,
+                    runtime_settlement_binding=runtime_binding,
+                )
+                if runtime_binding is not None
+                else None
+            )
+            admitted_root_gate = _current_vrif_root_completion_gate(
+                config,
+                admission,
+                root_gate,
+                runtime_settlement_binding=runtime_binding,
+            )
+            reconciliation = _reconcile_vrif_goal_completion(
+                repository,
+                specification,
+                root_completion_gate=admitted_root_gate,
+                root_gate_current_validator=(
+                    lambda candidate: _current_vrif_root_completion_gate(
+                        config,
+                        admission,
+                        candidate,
+                        runtime_settlement_binding=runtime_binding,
+                    )
+                    is not None
+                ),
+            )
+            reconciliation_completed = True
+            return reconciliation
+    except VRIFRuntimeSettlementError as exc:
+        if reconciliation_completed and admitted_root_gate is not None:
+            raise OperatorError(
+                "VRIF runtime settlement changed across the root completion CAS"
+            ) from exc
+        return _reconcile_vrif_goal_completion(
+            repository,
+            specification,
+            root_completion_gate=None,
+            root_gate_current_validator=None,
+        )
 
 
 def _runtime_paths(board: Any) -> dict[str, Path]:
@@ -4379,29 +4523,16 @@ def state_owner(config_path: Path) -> int:
             restart_admission,
             owner_connection,
         )
-        root_completion_gate = _vrif_root_completion_gate(
-            goal_authority_spec,
-            restart_admission,
-            restart_receipt,
-            owner_connection,
-        )
-        admitted_root_completion_gate = _current_vrif_root_completion_gate(
-            config,
-            restart_admission,
-            root_completion_gate,
-        )
-        initial_goal_reconciliation = _reconcile_vrif_goal_completion(
-            owner_repository,
-            goal_authority_spec,
-            root_completion_gate=admitted_root_completion_gate,
-            root_gate_current_validator=(
-                lambda candidate: _current_vrif_root_completion_gate(
-                    config,
-                    restart_admission,
-                    candidate,
-                )
-                is not None
-            ),
+        initial_goal_reconciliation = (
+            _reconcile_vrif_goal_completion_under_runtime_guard(
+                config_path=config_path,
+                config=config,
+                admission=restart_admission,
+                restart_receipt=restart_receipt,
+                repository=owner_repository,
+                specification=goal_authority_spec,
+                connection=owner_connection,
+            )
         )
     except BaseException:
         server.stop()
@@ -4463,29 +4594,14 @@ def state_owner(config_path: Path) -> int:
             ),
         )
         if time.monotonic() >= next_goal_reconcile:
-            root_completion_gate = _vrif_root_completion_gate(
-                goal_authority_spec,
-                restart_admission,
-                restart_receipt,
-                owner_connection,
-            )
-            admitted_root_completion_gate = _current_vrif_root_completion_gate(
-                config,
-                restart_admission,
-                root_completion_gate,
-            )
-            reconciliation = _reconcile_vrif_goal_completion(
-                owner_repository,
-                goal_authority_spec,
-                root_completion_gate=admitted_root_completion_gate,
-                root_gate_current_validator=(
-                    lambda candidate: _current_vrif_root_completion_gate(
-                        config,
-                        restart_admission,
-                        candidate,
-                    )
-                    is not None
-                ),
+            reconciliation = _reconcile_vrif_goal_completion_under_runtime_guard(
+                config_path=config_path,
+                config=config,
+                admission=restart_admission,
+                restart_receipt=restart_receipt,
+                repository=owner_repository,
+                specification=goal_authority_spec,
+                connection=owner_connection,
             )
             if reconciliation["changed"]:
                 goal_authority = reconciliation.get("goal_authority")
@@ -4725,11 +4841,85 @@ def _task_status(connection: Any) -> dict[str, Any]:
     }
 
 
-def status(config_path: Path) -> dict[str, Any]:
+def _quack_status_authority_snapshot(
+    *,
+    board: Any,
+    config: Mapping[str, Any],
+    paths: Mapping[str, Path],
+    program: Any,
+    runtime_settlement_binding: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Read task/spec/goal authority from one Quack MVCC snapshot."""
+
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         open_quack_transport_connection,
     )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        goal_authority_projection_on_connection,
+    )
 
+    token = _read_owner_token(
+        _token_path(paths["owner"], program.endpoint_secret_handle)
+    )
+    connection = open_quack_transport_connection(
+        program.quack_endpoint,
+        token=token,
+    )
+    transaction_open = False
+    try:
+        connection.execute("BEGIN TRANSACTION")
+        transaction_open = True
+        task_projection = {
+            "available": True,
+            "transport": "quack",
+            **_task_status(connection),
+        }
+        admission = _owner_restart_admission(board, config, paths)
+        specification = _vrif_goal_completion_authority_spec(
+            board,
+            config,
+            admission,
+            connection,
+        )
+        current_head, current_tree = _assert_clean_current_tree(config)
+        projected = goal_authority_projection_on_connection(
+            connection,
+            specification,
+            root_gate_context={
+                "current_tree_clean": True,
+                "source_head": current_head,
+                "repository_tree_id": current_tree,
+                "runtime_settlement_binding": (
+                    dict(runtime_settlement_binding)
+                    if isinstance(runtime_settlement_binding, Mapping)
+                    else None
+                ),
+            },
+            transaction_owned_by_caller=True,
+        )
+        goal_projection = {
+            "available": True,
+            "transport": "quack",
+            **dict(projected),
+        }
+        connection.execute("COMMIT")
+        transaction_open = False
+        return task_projection, goal_projection
+    except BaseException:
+        if transaction_open:
+            try:
+                connection.execute("ROLLBACK")
+            except Exception:
+                pass
+        raise
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
+def status(config_path: Path) -> dict[str, Any]:
     board, _config = _load_config(config_path)
     paths = _runtime_paths(board)
     program = board.resolved_database_program()
@@ -4751,64 +4941,106 @@ def status(config_path: Path) -> dict[str, Any]:
         "available": False,
         "reason_code": "control_plane_unavailable",
     }
-    connection = None
+    runtime_settlement: dict[str, Any] = {
+        "available": False,
+        "settled": False,
+        "reason_code": "state_owner_unavailable",
+    }
     try:
         if live_ready:
-            token = _read_owner_token(_token_path(paths["owner"], program.endpoint_secret_handle))
-            connection = open_quack_transport_connection(
-                program.quack_endpoint,
-                token=token,
-            )
-            connection.execute("BEGIN TRANSACTION")
             try:
-                task_projection = {
-                    "available": True,
-                    "transport": "quack",
-                    **_task_status(connection),
-                }
-                from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
-                    goal_authority_projection_on_connection,
+                from ipfs_accelerate_py.agent_supervisor.runtime.vrif_runtime_settlement import (
+                    VRIFRuntimeSettlementError,
+                    hold_vrif_runtime_settlement,
+                    vrif_runtime_settlement_binding,
                 )
-
-                admission = _owner_restart_admission(board, _config, paths)
-                specification = _vrif_goal_completion_authority_spec(
-                    board,
-                    _config,
-                    admission,
-                    connection,
+                target_repository_id, target_branch = _vrif_runtime_target(_config)
+                owner_identity = owner_status.get("identity")
+                owner_generation = _vrif_owner_generation(
+                    owner_identity.get("generation")
+                    if isinstance(owner_identity, Mapping)
+                    else None
                 )
-                current_head, current_tree = _assert_clean_current_tree(_config)
-                projected = goal_authority_projection_on_connection(
-                    connection,
-                    specification,
-                    root_gate_context={
-                        "current_tree_clean": True,
-                        "source_head": current_head,
-                        "repository_tree_id": current_tree,
-                    },
-                    transaction_owned_by_caller=True,
-                )
-                goal_projection = {
-                    "available": True,
-                    "transport": "quack",
-                    **dict(projected),
-                }
-                connection.execute("COMMIT")
             except Exception as exc:
+                runtime_settlement = {
+                    "available": False,
+                    "settled": False,
+                    "reason_code": "runtime_settlement_configuration_invalid",
+                    "error_class": type(exc).__name__,
+                }
                 try:
-                    connection.execute("ROLLBACK")
-                except Exception:
-                    pass
-                task_projection = {
-                    "available": False,
-                    "reason_code": "goal_authority_probe_failed",
-                    "error_class": type(exc).__name__,
-                }
-                goal_projection = {
-                    "available": False,
-                    "reason_code": "goal_authority_probe_failed",
-                    "error_class": type(exc).__name__,
-                }
+                    task_projection, goal_projection = (
+                        _quack_status_authority_snapshot(
+                            board=board,
+                            config=_config,
+                            paths=paths,
+                            program=program,
+                            runtime_settlement_binding=None,
+                        )
+                    )
+                except Exception as probe_exc:
+                    raise probe_exc
+            else:
+                try:
+                    with hold_vrif_runtime_settlement(
+                        config_path,
+                        repository_root=ROOT,
+                        target_repository_id=target_repository_id,
+                        target_branch=target_branch,
+                        owner_generation=owner_generation,
+                        lock_timeout_seconds=0.05,
+                    ) as runtime_receipt:
+                        runtime_binding: Mapping[str, Any] | None = None
+                        if runtime_receipt.get("settled") is True:
+                            runtime_binding = vrif_runtime_settlement_binding(
+                                runtime_receipt,
+                                target_repository_id=target_repository_id,
+                                target_branch=target_branch,
+                                owner_generation=owner_generation,
+                            )
+                            runtime_settlement = {
+                                "available": True,
+                                "settled": True,
+                                "reason_code": "settled",
+                                "binding": dict(runtime_binding),
+                            }
+                        else:
+                            active_counts = runtime_receipt.get("active_counts")
+                            runtime_settlement = {
+                                "available": True,
+                                "settled": False,
+                                "reason_code": "runtime_not_settled",
+                                "active_counts": (
+                                    dict(active_counts)
+                                    if isinstance(active_counts, Mapping)
+                                    else {}
+                                ),
+                            }
+                        task_projection, goal_projection = (
+                            _quack_status_authority_snapshot(
+                                board=board,
+                                config=_config,
+                                paths=paths,
+                                program=program,
+                                runtime_settlement_binding=runtime_binding,
+                            )
+                        )
+                except VRIFRuntimeSettlementError as exc:
+                    runtime_settlement = {
+                        "available": False,
+                        "settled": False,
+                        "reason_code": "runtime_settlement_unavailable",
+                        "error_class": type(exc).__name__,
+                    }
+                    task_projection, goal_projection = (
+                        _quack_status_authority_snapshot(
+                            board=board,
+                            config=_config,
+                            paths=paths,
+                            program=program,
+                            runtime_settlement_binding=None,
+                        )
+                    )
         elif paths["database"].is_file():
             task_projection = {
                 "available": False,
@@ -4819,22 +5051,21 @@ def status(config_path: Path) -> dict[str, Any]:
                 "reason_code": "quack_authority_unavailable",
             }
     except Exception as exc:
+        probe_reason = (
+            "goal_authority_probe_failed"
+            if live_ready
+            else "control_plane_probe_failed"
+        )
         task_projection = {
             "available": False,
-            "reason_code": "control_plane_probe_failed",
+            "reason_code": probe_reason,
             "error_class": type(exc).__name__,
         }
         goal_projection = {
             "available": False,
-            "reason_code": "control_plane_probe_failed",
+            "reason_code": probe_reason,
             "error_class": type(exc).__name__,
         }
-    finally:
-        if connection is not None:
-            try:
-                connection.close()
-            except Exception:
-                pass
     ducklake: dict[str, Any] = {
         "status": "absent",
         "authoritative": False,
@@ -4863,6 +5094,7 @@ def status(config_path: Path) -> dict[str, Any]:
         },
         "task_authority": task_projection,
         "goal_authority": goal_projection,
+        "runtime_settlement": runtime_settlement,
         "ducklake_projection": ducklake,
     }
 

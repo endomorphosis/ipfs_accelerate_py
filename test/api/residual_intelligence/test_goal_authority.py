@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import importlib.util
+import base64
 import hashlib
+import importlib.util
 import json
 import subprocess
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     GOAL_COMPLETION_AUTHORITY_SPEC_SCHEMA,
     GOAL_ROOT_COMPLETION_GATE_SCHEMA,
+    GOAL_RUNTIME_SETTLEMENT_BINDING_SCHEMA,
     GOAL_TERMINAL_REPORT_CONTRACT_SCHEMA,
     GOAL_TERMINAL_REPORT_EVIDENCE_SCHEMA,
     IntentRepository,
@@ -111,7 +114,8 @@ def _goal_cid(alias: str) -> str:
 
 
 def _task_cid(ordinal: int) -> str:
-    return f"task:vrif:{ordinal:03d}"
+    digest = hashlib.sha256(f"VRIF-{ordinal:03d}".encode("utf-8")).digest()
+    return "baguqeera" + base64.b32encode(digest).decode("ascii").lower().rstrip("=")
 
 
 @lru_cache(maxsize=1)
@@ -408,6 +412,49 @@ def _producer_artifacts(
     return result
 
 
+def _runtime_settlement_binding(
+    *,
+    owner_generation: int = 1,
+    variant: int = 0,
+) -> dict[str, object]:
+    def digest(offset: int) -> str:
+        return "sha256:" + (f"{variant + offset:x}"[-1] * 64)
+
+    binding: dict[str, object] = {
+        "schema": GOAL_RUNTIME_SETTLEMENT_BINDING_SCHEMA,
+        "settled": True,
+        "receipt_cid": digest(1),
+        "snapshot_cid": digest(2),
+        "owner_generation": owner_generation,
+        "target": {
+            "binding_schema": (
+                "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+            ),
+            "repository_id": (
+                "repository:baguqeera"
+                "ul4vqj7wze6dfjxogue57aadnvwrzw55527c2kfafyiyvuoaw2ca"
+            ),
+            "branch": "codex/verified-residual-intelligence-foundry-v1",
+        },
+        "config_cid": digest(3),
+        "profile_cid": digest(4),
+        "lane_snapshot_cids": [digest(index) for index in range(5, 9)],
+        "merge_queue_receipt_cid": digest(9),
+        "merge_queue_snapshot_cid": digest(10),
+        "active_counts": {
+            "coordination": 0,
+            "execution": 0,
+            "merge_queue": 0,
+            "total": 0,
+        },
+        "retired_ready_task_cids": sorted(
+            _task_cid(index) for index in (13, 14, 15)
+        ),
+    }
+    binding["binding_id"] = _sha256_identity(binding)
+    return binding
+
+
 def _root_gate(
     specification: dict[str, object],
     connection: object,
@@ -511,6 +558,7 @@ def _root_gate(
         "owner_restart_admission_id": "sha256:" + ("3" * 64),
         "owner_restart_receipt_id": "sha256:" + ("4" * 64),
         "completion_policy": dict(specification["completion_policy"]),
+        "runtime_settlement_binding": _runtime_settlement_binding(),
         "terminal_report_evidence": terminal_evidence,
     }
     gate["gate_id"] = content_identity(gate)
@@ -524,6 +572,10 @@ def _renewed_root_gate(gate: dict[str, object]) -> dict[str, object]:
     renewed["repository_tree_id"] = "b" * 40
     renewed["predecessor_gate_id"] = gate["gate_id"]
     renewed["owner_generation"] = int(gate["owner_generation"]) + 1
+    renewed["runtime_settlement_binding"] = _runtime_settlement_binding(
+        owner_generation=int(renewed["owner_generation"]),
+        variant=1,
+    )
     renewed["owner_restart_admission_id"] = "sha256:" + ("6" * 64)
     renewed["owner_restart_receipt_id"] = "sha256:" + ("7" * 64)
     renewed["gate_id"] = content_identity(renewed)
@@ -850,10 +902,32 @@ def test_owner_reconciles_exact_goals_and_backfills_preseeded_receipts(
                 "current_tree_clean": True,
                 "source_head": gate["source_head"],
                 "repository_tree_id": gate["repository_tree_id"],
+                "runtime_settlement_binding": gate[
+                    "runtime_settlement_binding"
+                ],
             },
         )
         assert readback["all_goals_satisfied"] is True
         assert readback["projection_cid"] == authority["projection_cid"]
+
+        runtime_mismatch = repository.goal_authority_projection(
+            specification,
+            root_gate_context={
+                "current_tree_clean": True,
+                "source_head": gate["source_head"],
+                "repository_tree_id": gate["repository_tree_id"],
+                "runtime_settlement_binding": _runtime_settlement_binding(
+                    variant=1
+                ),
+            },
+        )
+        assert runtime_mismatch["all_goals_satisfied"] is False
+        assert runtime_mismatch["completion_gates"][
+            "runtime_settlement_gate_satisfied"
+        ] is False
+        assert "completion_gate:runtime_settlement_gate_satisfied" in (
+            runtime_mismatch["root_goal"]["incomplete_reasons"]
+        )
 
         repository.rebuild_projections_from_events()
         rebuilt = repository.goal_authority_projection(
@@ -862,6 +936,9 @@ def test_owner_reconciles_exact_goals_and_backfills_preseeded_receipts(
                 "current_tree_clean": True,
                 "source_head": gate["source_head"],
                 "repository_tree_id": gate["repository_tree_id"],
+                "runtime_settlement_binding": gate[
+                    "runtime_settlement_binding"
+                ],
             },
         )
         assert rebuilt["all_goals_satisfied"] is True
@@ -890,6 +967,9 @@ def test_owner_reconciles_exact_goals_and_backfills_preseeded_receipts(
                 "current_tree_clean": True,
                 "source_head": renewed_gate["source_head"],
                 "repository_tree_id": renewed_gate["repository_tree_id"],
+                "runtime_settlement_binding": renewed_gate[
+                    "runtime_settlement_binding"
+                ],
             },
         )
         assert projected["all_goals_satisfied"] is True
@@ -900,6 +980,9 @@ def test_owner_reconciles_exact_goals_and_backfills_preseeded_receipts(
                 "current_tree_clean": True,
                 "source_head": "5" * 40,
                 "repository_tree_id": renewed_gate["repository_tree_id"],
+                "runtime_settlement_binding": renewed_gate[
+                    "runtime_settlement_binding"
+                ],
             },
         )
         assert stale["all_goals_satisfied"] is False
@@ -2154,6 +2237,40 @@ def test_unknown_canonical_claim_state_cannot_close_root(tmp_path: Path) -> None
         connection.close()
 
 
+def test_root_requires_exact_retired_ready_task_lineage(tmp_path: Path) -> None:
+    path = tmp_path / "retired-ready-lineage.duckdb"
+    specification = _specification()
+    _seed(path)
+    connection, repository = _bound_repository(path)
+    try:
+        gate = _root_gate(specification, connection)
+        binding = dict(gate["runtime_settlement_binding"])
+        binding.pop("binding_id")
+        binding["retired_ready_task_cids"] = binding[
+            "retired_ready_task_cids"
+        ][:-1]
+        binding["binding_id"] = _sha256_identity(binding)
+        gate.pop("gate_id")
+        gate["runtime_settlement_binding"] = binding
+        gate["gate_id"] = content_identity(gate)
+
+        observed = repository.reconcile_goal_completion_authority(
+            specification,
+            root_completion_gate=gate,
+        )
+        assert "VRIF-G000" not in observed["changed_goal_ids"]
+        assert observed["goal_authority"]["all_goals_satisfied"] is False
+        assert observed["goal_authority"]["completion_gates"][
+            "retired_ready_tasks_satisfied"
+        ] is False
+        assert "completion_gate:retired_ready_tasks_satisfied" in observed[
+            "goal_authority"
+        ]["root_goal"]["incomplete_reasons"]
+    finally:
+        repository.close()
+        connection.close()
+
+
 def test_assignment_orphan_survives_event_rebuild_and_blocks_root(
     tmp_path: Path,
 ) -> None:
@@ -2369,6 +2486,7 @@ def test_status_uses_one_snapshot_and_resets_partial_failure(
         trace.append("GOAL")
         assert observed.in_transaction is True
         assert kwargs["transaction_owned_by_caller"] is True
+        assert kwargs["root_gate_context"]["runtime_settlement_binding"] is None
         if projection_fails:
             raise RuntimeError("projection failed")
         return {"goal_count": 9, "all_goals_satisfied": False}
@@ -2385,3 +2503,424 @@ def test_status_uses_one_snapshot_and_resets_partial_failure(
         assert trace == ["BEGIN", "TASK", "ADMISSION", "SPEC", "GOAL", "COMMIT", "CLOSE"]
         assert observed["task_authority"]["available"] is True
         assert observed["goal_authority"]["available"] is True
+
+
+def test_runtime_guard_is_held_through_root_reconciliation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    import ipfs_accelerate_py.agent_supervisor.runtime.vrif_runtime_settlement as runtime
+
+    events: list[str] = []
+    guard_active = {"value": False}
+    binding = _runtime_settlement_binding()
+
+    @contextmanager
+    def hold_guard(*_args, **_kwargs):
+        events.append("guard_enter")
+        guard_active["value"] = True
+        try:
+            yield {"settled": True}
+        finally:
+            guard_active["value"] = False
+            events.append("guard_exit")
+
+    monkeypatch.setattr(runtime, "hold_vrif_runtime_settlement", hold_guard)
+    monkeypatch.setattr(
+        runtime,
+        "vrif_runtime_settlement_binding",
+        lambda *_args, **_kwargs: binding,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_vrif_runtime_target",
+        lambda _config: (
+            binding["target"]["repository_id"],
+            binding["target"]["branch"],
+        ),
+    )
+
+    def root_gate(*_args, runtime_settlement_binding, **_kwargs):
+        assert guard_active["value"] is True
+        assert runtime_settlement_binding == binding
+        return {"runtime_settlement_binding": dict(binding)}
+
+    def current_gate(
+        _config,
+        _admission,
+        gate,
+        *,
+        runtime_settlement_binding=None,
+    ):
+        assert guard_active["value"] is True
+        return gate if runtime_settlement_binding == binding else None
+
+    def reconcile(
+        _repository,
+        _specification,
+        *,
+        root_completion_gate,
+        root_gate_current_validator,
+        **_kwargs,
+    ):
+        events.append("root_cas")
+        assert guard_active["value"] is True
+        assert root_completion_gate is not None
+        assert root_gate_current_validator(root_completion_gate) is True
+        return {"changed": True, "changed_goal_ids": ["VRIF-G000"]}
+
+    monkeypatch.setattr(operator, "_vrif_root_completion_gate", root_gate)
+    monkeypatch.setattr(operator, "_current_vrif_root_completion_gate", current_gate)
+    monkeypatch.setattr(operator, "_reconcile_vrif_goal_completion", reconcile)
+    observed = operator._reconcile_vrif_goal_completion_under_runtime_guard(
+        config_path=tmp_path / "config.json",
+        config={"merge_target_branch": binding["target"]["branch"]},
+        admission={},
+        restart_receipt={"state_owner": {"generation": 1}},
+        repository=object(),
+        specification={},
+        connection=object(),
+    )
+    assert observed["changed_goal_ids"] == ["VRIF-G000"]
+    assert events == ["guard_enter", "root_cas", "guard_exit"]
+
+
+def test_root_gate_reuses_exact_stored_gate_in_same_owner_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    binding = _runtime_settlement_binding()
+    specification = {
+        "authority_spec_id": "authority:pytest",
+        "root_goal_cid": "goal:pytest",
+        "completion_policy": {"terminal_task_id": "VRIF-032"},
+    }
+    admission = {
+        "admission_id": "admission:pytest",
+        "current_source_head": "a" * 40,
+        "current_source_tree": "b" * 40,
+    }
+    restart_receipt = {
+        "receipt_id": "restart:pytest",
+        "state_owner": {"generation": 1},
+    }
+    terminal_evidence = {"evidence": "terminal:pytest"}
+    monkeypatch.setattr(
+        operator,
+        "_vrif_terminal_report_evidence",
+        lambda *_args, **_kwargs: terminal_evidence,
+    )
+
+    class Result:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def fetchall(self):
+            return self._rows
+
+    class Connection:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def execute(self, *_args, **_kwargs):
+            return Result(self._rows)
+
+    initial = operator._vrif_root_completion_gate(
+        specification,
+        admission,
+        restart_receipt,
+        Connection([("pending", "{}")]),
+        runtime_settlement_binding=binding,
+    )
+    assert initial is not None
+    stored_body = json.dumps(
+        {"completion_receipt": {"root_completion_gate": initial}}
+    )
+    monkeypatch.setattr(
+        operator,
+        "_git_is_ancestor",
+        lambda *_args, **_kwargs: pytest.fail(
+            "same-generation exact gate reuse needs no ancestry refresh"
+        ),
+    )
+    observed = operator._vrif_root_completion_gate(
+        specification,
+        admission,
+        restart_receipt,
+        Connection([("completed", stored_body)]),
+        runtime_settlement_binding=binding,
+    )
+    assert observed == initial
+
+
+def test_runtime_guard_exit_failure_after_root_cas_fails_closed_without_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    import ipfs_accelerate_py.agent_supervisor.runtime.vrif_runtime_settlement as runtime
+
+    binding = _runtime_settlement_binding()
+
+    @contextmanager
+    def changing_guard(*_args, **_kwargs):
+        yield {"settled": True}
+        raise runtime.VRIFRuntimeSettlementError("runtime changed on guard exit")
+
+    monkeypatch.setattr(runtime, "hold_vrif_runtime_settlement", changing_guard)
+    monkeypatch.setattr(
+        runtime,
+        "vrif_runtime_settlement_binding",
+        lambda *_args, **_kwargs: binding,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_vrif_runtime_target",
+        lambda _config: (
+            binding["target"]["repository_id"],
+            binding["target"]["branch"],
+        ),
+    )
+    gate = {"runtime_settlement_binding": dict(binding)}
+    monkeypatch.setattr(
+        operator,
+        "_vrif_root_completion_gate",
+        lambda *_args, **_kwargs: gate,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_current_vrif_root_completion_gate",
+        lambda _config, _admission, candidate, **_kwargs: candidate,
+    )
+    reconcile_calls: list[object] = []
+
+    def reconcile(
+        _repository,
+        _specification,
+        *,
+        root_completion_gate,
+        **_kwargs,
+    ):
+        reconcile_calls.append(root_completion_gate)
+        return {"changed": True, "changed_goal_ids": ["VRIF-G000"]}
+
+    monkeypatch.setattr(operator, "_reconcile_vrif_goal_completion", reconcile)
+    with pytest.raises(
+        operator.OperatorError,
+        match="runtime settlement changed across the root completion CAS",
+    ):
+        operator._reconcile_vrif_goal_completion_under_runtime_guard(
+            config_path=tmp_path / "config.json",
+            config={"merge_target_branch": binding["target"]["branch"]},
+            admission={},
+            restart_receipt={"state_owner": {"generation": 1}},
+            repository=object(),
+            specification={},
+            connection=object(),
+        )
+    assert reconcile_calls == [gate]
+
+
+@pytest.mark.parametrize("runtime_state", ["busy", "unsettled"])
+def test_runtime_unavailable_or_unsettled_advances_only_nonroot_goals(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    runtime_state: str,
+) -> None:
+    operator = _operator()
+    import ipfs_accelerate_py.agent_supervisor.runtime.vrif_runtime_settlement as runtime
+
+    binding = _runtime_settlement_binding()
+
+    @contextmanager
+    def hold_guard(*_args, **_kwargs):
+        if runtime_state == "busy":
+            raise runtime.VRIFRuntimeSettlementError("busy")
+        yield {
+            "settled": False,
+            "active_counts": {
+                "coordination": 1,
+                "execution": 0,
+                "merge_queue": 0,
+                "total": 1,
+            },
+        }
+
+    monkeypatch.setattr(runtime, "hold_vrif_runtime_settlement", hold_guard)
+    monkeypatch.setattr(
+        runtime,
+        "vrif_runtime_settlement_binding",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unsettled runtime must not produce a root binding"
+        ),
+    )
+    monkeypatch.setattr(
+        operator,
+        "_vrif_runtime_target",
+        lambda _config: (
+            binding["target"]["repository_id"],
+            binding["target"]["branch"],
+        ),
+    )
+    calls: list[object] = []
+
+    def reconcile(
+        _repository,
+        _specification,
+        *,
+        root_completion_gate,
+        root_gate_current_validator,
+        **_kwargs,
+    ):
+        calls.append(root_completion_gate)
+        assert root_completion_gate is None
+        assert root_gate_current_validator is None or runtime_state == "unsettled"
+        return {"changed": True, "changed_goal_ids": ["VRIF-G041"]}
+
+    monkeypatch.setattr(operator, "_reconcile_vrif_goal_completion", reconcile)
+    observed = operator._reconcile_vrif_goal_completion_under_runtime_guard(
+        config_path=tmp_path / "config.json",
+        config={"merge_target_branch": binding["target"]["branch"]},
+        admission={},
+        restart_receipt={"state_owner": {"generation": 1}},
+        repository=object(),
+        specification={},
+        connection=object(),
+    )
+    assert observed["changed_goal_ids"] == ["VRIF-G041"]
+    assert calls == [None]
+
+
+def _status_runtime_fixture(
+    operator: object,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[dict[str, object], dict[str, object]]:
+    owner_dir = tmp_path / "owner"
+    owner_dir.mkdir()
+    (owner_dir / "quack-state-server.status.json").write_text(
+        json.dumps(
+            {
+                "lifecycle": "ready",
+                "identity": {"generation": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+    paths: dict[str, object] = {
+        "owner": owner_dir,
+        "database": tmp_path / "control.duckdb",
+        "bootstrap_receipt": tmp_path / "bootstrap.json",
+        "ducklake_receipt": tmp_path / "ducklake.json",
+    }
+    program = SimpleNamespace(
+        endpoint_secret_handle="secret-handle",
+        quack_endpoint="quack://127.0.0.1:1",
+    )
+    board = SimpleNamespace(resolved_database_program=lambda: program)
+    config = {
+        "merge_target_branch": "codex/verified-residual-intelligence-foundry-v1"
+    }
+    monkeypatch.setattr(operator, "_load_config", lambda _path: (board, config))
+    monkeypatch.setattr(operator, "_runtime_paths", lambda _board: paths)
+    monkeypatch.setattr(operator, "_owner_liveness", lambda _status: "alive")
+    return config, paths
+
+
+def test_status_runtime_busy_preserves_task_and_goal_projection_availability(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    import ipfs_accelerate_py.agent_supervisor.runtime.vrif_runtime_settlement as runtime
+
+    config, _paths = _status_runtime_fixture(operator, tmp_path, monkeypatch)
+    binding = _runtime_settlement_binding()
+
+    @contextmanager
+    def busy_guard(*_args, **_kwargs):
+        raise runtime.VRIFRuntimeSettlementError("busy")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(runtime, "hold_vrif_runtime_settlement", busy_guard)
+    monkeypatch.setattr(
+        operator,
+        "_vrif_runtime_target",
+        lambda _config: (
+            binding["target"]["repository_id"],
+            config["merge_target_branch"],
+        ),
+    )
+
+    def snapshot(*, runtime_settlement_binding, **_kwargs):
+        assert runtime_settlement_binding is None
+        return (
+            {"available": True, "task_count": 33},
+            {"available": True, "all_goals_satisfied": False},
+        )
+
+    monkeypatch.setattr(operator, "_quack_status_authority_snapshot", snapshot)
+    observed = operator.status(tmp_path / "config.json")
+    assert observed["task_authority"]["available"] is True
+    assert observed["goal_authority"]["available"] is True
+    assert observed["goal_authority"]["all_goals_satisfied"] is False
+    assert observed["runtime_settlement"]["available"] is False
+    assert observed["runtime_settlement"]["reason_code"] == (
+        "runtime_settlement_unavailable"
+    )
+
+
+def test_status_settled_binding_is_guarded_through_quack_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    import ipfs_accelerate_py.agent_supervisor.runtime.vrif_runtime_settlement as runtime
+
+    config, _paths = _status_runtime_fixture(operator, tmp_path, monkeypatch)
+    binding = _runtime_settlement_binding()
+    guard_active = {"value": False}
+
+    @contextmanager
+    def settled_guard(*_args, **_kwargs):
+        guard_active["value"] = True
+        try:
+            yield {"settled": True}
+        finally:
+            guard_active["value"] = False
+
+    monkeypatch.setattr(runtime, "hold_vrif_runtime_settlement", settled_guard)
+    monkeypatch.setattr(
+        runtime,
+        "vrif_runtime_settlement_binding",
+        lambda *_args, **_kwargs: binding,
+    )
+    monkeypatch.setattr(
+        operator,
+        "_vrif_runtime_target",
+        lambda _config: (
+            binding["target"]["repository_id"],
+            config["merge_target_branch"],
+        ),
+    )
+
+    def snapshot(*, runtime_settlement_binding, **_kwargs):
+        assert guard_active["value"] is True
+        assert runtime_settlement_binding == binding
+        return (
+            {"available": True, "task_count": 33},
+            {"available": True, "all_goals_satisfied": True},
+        )
+
+    monkeypatch.setattr(operator, "_quack_status_authority_snapshot", snapshot)
+    observed = operator.status(tmp_path / "config.json")
+    assert guard_active["value"] is False
+    assert observed["task_authority"]["available"] is True
+    assert observed["goal_authority"]["all_goals_satisfied"] is True
+    assert observed["runtime_settlement"] == {
+        "available": True,
+        "settled": True,
+        "reason_code": "settled",
+        "binding": binding,
+    }
