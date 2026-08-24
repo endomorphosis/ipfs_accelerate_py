@@ -1851,12 +1851,49 @@ def test_superseded_consumed_attempt_recovers_and_crosses_lanes(
         clock_ms=lambda: clock[0],
         lane="consumed-b",
     )
+    racer = _open_daemon(
+        tmp_path,
+        session="session:consumed-lane-racer",
+        max_task_attempts=3,
+        clock_ms=lambda: clock[0],
+        lane="consumed-racer",
+    )
     try:
         second.task_source._intent._clock_ms = (  # type: ignore[attr-defined]
             lambda: clock[0]
         )
+        racer.task_source._intent._clock_ms = (  # type: ignore[attr-defined]
+            lambda: clock[0]
+        )
         assert second.get_attempt(source.attempt_id) is None
-        successor = second.claim_next()
+        winner: dict[str, DatabaseTaskAttempt] = {}
+        losing_receipt: dict[str, object] = {}
+        original_loser_cas = racer._cas_task_status_database
+
+        def win_shared_claim_before_loser_cas(
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            receipt = kwargs.get("receipt")
+            assert isinstance(receipt, dict)
+            losing_receipt.update(receipt)
+            if "attempt" not in winner:
+                claimed = second.claim_next()
+                assert claimed is not None
+                winner["attempt"] = claimed
+            return original_loser_cas(*args, **kwargs)
+
+        monkeypatch.setattr(
+            racer,
+            "_cas_task_status_database",
+            win_shared_claim_before_loser_cas,
+        )
+        # Both lanes admitted the retrying revision.  Lane B wins its shared
+        # claim immediately before the racer's owner CAS.  The racer must
+        # observe an ordinary stale-CAS conflict, release its lane-local
+        # lease, and never reinterpret the winner's carried seed.
+        assert racer.claim_next() is None
+        successor = winner["attempt"]
         assert successor is not None
         assert successor.attempt_number == 1
         claimed = second.task_source.get(source.task_cid)
@@ -1867,7 +1904,19 @@ def test_superseded_consumed_attempt_recovers_and_crosses_lanes(
             "consumed_attempt_retry_source_attempt_id"
         ] == source.attempt_id
         assert claim_receipt["consumed_attempt_retry_seed"] == seed
+        losing_claim = racer.coordinator.get_task_claim(
+            str(losing_receipt["claim_id"])
+        )
+        losing_lease = racer.coordinator.get_lease(
+            str(losing_receipt["lease_id"])
+        )
+        assert losing_claim is not None
+        assert losing_claim.to_dict()["state"] == "released"
+        assert losing_lease is not None
+        assert losing_lease.to_dict()["state"] == "released"
+        assert racer.get_attempt(str(losing_receipt["attempt_id"])) is None
     finally:
+        racer.close()
         second.close()
 
 

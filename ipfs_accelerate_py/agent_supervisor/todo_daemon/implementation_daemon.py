@@ -73696,6 +73696,25 @@ class DatabaseImplementationDaemon:
             and receipt_payload.get("operation") == "database_claim"
         ):
             task = self.task_source.get(task_cid)
+            if task is not None:
+                observed_revision = getattr(task, "revision", None)
+                if (
+                    isinstance(observed_revision, bool)
+                    or not isinstance(observed_revision, int)
+                    or observed_revision < 1
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim observed a malformed shared task revision"
+                    )
+                if observed_revision != int(expected_revision):
+                    # Another lane already advanced the shared row after this
+                    # claimant admitted its snapshot.  Do not reinterpret the
+                    # winner's carried retry seed as if it authorized this
+                    # losing claim; surface the ordinary CAS conflict so
+                    # claim_next releases the lane-local claim and lease.
+                    raise DatabaseTaskSourceConflictError(
+                        "database claim task revision CAS is stale"
+                    )
             task_body = (
                 dict(getattr(task, "body", {}) or {})
                 if task is not None
