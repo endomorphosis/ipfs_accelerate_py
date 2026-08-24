@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 from copy import deepcopy
@@ -27,6 +28,40 @@ def _check(report: dict[str, object], name: str) -> dict[str, object]:
     return next(item for item in checks if isinstance(item, dict) and item.get("name") == name)
 
 
+def _load_benchmark(module) -> dict[str, object]:
+    payload = json.loads(module.BENCHMARK_MANIFEST.read_text(encoding="utf-8"))
+    assert isinstance(payload, dict)
+    return payload
+
+
+def _isolated_benchmark_state(
+    module,
+    tmp_path: Path,
+    monkeypatch,
+    manifest: dict[str, object],
+    *,
+    recipes: dict[str, object] | None = None,
+    copy_recipe: bool = True,
+) -> tuple[bool, dict[str, object]]:
+    source_recipe_path = module.BENCHMARK_RECIPE_PATH
+    recipe_path = tmp_path / "case_recipes.fixture"
+    if recipes is not None:
+        recipe_path.write_text(
+            json.dumps(recipes, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    elif copy_recipe:
+        recipe_path.write_bytes(source_recipe_path.read_bytes())
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "BENCHMARK_MANIFEST", manifest_path)
+    monkeypatch.setattr(module, "BENCHMARK_RECIPE_PATH", recipe_path)
+    return module._benchmark_frozen_state()
+
+
 def test_board_validator_accepts_sealed_program() -> None:
     report = _validator_module().validate_program()
     assert report["valid"] is True, json.dumps(report["errors"], indent=2)
@@ -37,6 +72,135 @@ def test_board_validator_accepts_sealed_program() -> None:
     assert _check(report, "self_contained_normative_vocabulary")["passed"] is True
     assert _check(report, "task_parallel_lanes")["passed"] is True
     assert _check(report, "concurrency_dependency_safety")["passed"] is True
+    benchmark = _check(report, "benchmark_frozen_state")
+    assert benchmark["passed"] is True
+    assert benchmark["detail"]["accepted_state"] == "qualified_frozen"
+
+
+def test_board_validator_accepts_exact_safe_benchmark_scaffold(
+    tmp_path, monkeypatch
+) -> None:
+    module = _validator_module()
+    qualified = _load_benchmark(module)
+    scaffold = {
+        key: deepcopy(qualified[key]) for key in module.BENCHMARK_SCAFFOLD_FIELDS
+    }
+    scaffold.update(
+        {
+            "status": "scaffold_only",
+            "frozen_scope": "family_and_partition_vocabulary",
+            "case_corpus_qualified": False,
+            "partition_coverage_established": False,
+            "partition_case_counts": deepcopy(module.BENCHMARK_ZERO_PARTITION_COUNTS),
+            "case_manifest_refs": [],
+            "pcpc_029_obligation": (
+                "populate every task family with disjoint synthesis, development, "
+                "held_out, negative, boundary, and adversarial cases before qualification"
+            ),
+            "qualification_blocker": (
+                "PCPC-029 has not populated or independently qualified the case corpus"
+            ),
+        }
+    )
+
+    passed, detail = _isolated_benchmark_state(
+        module, tmp_path, monkeypatch, scaffold, copy_recipe=False
+    )
+
+    assert passed is True
+    assert detail["accepted_state"] == "scaffold_only"
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "qualification_flag",
+        "partition_vocabulary",
+        "partition_count",
+        "duplicate_family",
+        "private_material",
+        "held_out_access",
+        "case_count",
+        "recipe_reference",
+        "corpus_identity",
+        "recipe_bound",
+        "privacy_policy",
+        "partial_manifest",
+    ),
+)
+def test_board_validator_rejects_malformed_qualified_benchmark_declarations(
+    mutation: str, tmp_path, monkeypatch
+) -> None:
+    module = _validator_module()
+    manifest = deepcopy(_load_benchmark(module))
+    if mutation == "qualification_flag":
+        manifest["case_corpus_qualified"] = False
+    elif mutation == "partition_vocabulary":
+        manifest["partitions"] = [*module.BENCHMARK_PARTITIONS, "training"]
+    elif mutation == "partition_count":
+        manifest["partition_case_counts"]["held_out"] = 22
+    elif mutation == "duplicate_family":
+        manifest["task_families"][-1] = manifest["task_families"][0]
+    elif mutation == "private_material":
+        manifest["private_prompts_included"] = True
+    elif mutation == "held_out_access":
+        manifest["partition_access"]["synthesis"].append("held_out")
+    elif mutation == "case_count":
+        manifest["corpus_case_count"] = 137
+    elif mutation == "recipe_reference":
+        manifest["case_manifest_refs"][0]["sha256"] = "0" * 64
+    elif mutation == "corpus_identity":
+        manifest["corpus_sha256"] = "0" * 64
+    elif mutation == "recipe_bound":
+        manifest["bounds"]["max_recipe_bytes"] = 1
+    elif mutation == "privacy_policy":
+        manifest["privacy_policy"]["forbidden_data"].remove("private prompts")
+    elif mutation == "partial_manifest":
+        manifest.pop("corpus_schema")
+    else:  # pragma: no cover - the parameter list is closed above
+        raise AssertionError(f"unknown benchmark mutation: {mutation}")
+
+    passed, detail = _isolated_benchmark_state(
+        module, tmp_path, monkeypatch, manifest
+    )
+
+    assert passed is False
+    assert detail["accepted_state"] is None
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("synthetic_flag", "recipe_partitions", "missing_family"),
+)
+def test_board_validator_rejects_coordinated_recipe_corruption(
+    mutation: str, tmp_path, monkeypatch
+) -> None:
+    module = _validator_module()
+    manifest = deepcopy(_load_benchmark(module))
+    recipes = json.loads(module.BENCHMARK_RECIPE_PATH.read_text(encoding="utf-8"))
+    if mutation == "synthetic_flag":
+        recipes["synthetic_only"] = False
+    elif mutation == "recipe_partitions":
+        recipes["partitions"] = list(reversed(recipes["partitions"]))
+    elif mutation == "missing_family":
+        recipes["families"].pop()
+    else:  # pragma: no cover - the parameter list is closed above
+        raise AssertionError(f"unknown recipe mutation: {mutation}")
+    recipe_bytes = (json.dumps(recipes, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    recipe_digest = hashlib.sha256(recipe_bytes).hexdigest()
+    manifest["case_manifest_refs"][0]["sha256"] = recipe_digest
+    monkeypatch.setattr(module, "BENCHMARK_RECIPE_SHA256", recipe_digest)
+
+    passed, detail = _isolated_benchmark_state(
+        module,
+        tmp_path,
+        monkeypatch,
+        manifest,
+        recipes=recipes,
+    )
+
+    assert passed is False
+    assert detail["accepted_state"] is None
 
 
 def test_board_validator_rejects_lane_metadata_drift(tmp_path, monkeypatch) -> None:
