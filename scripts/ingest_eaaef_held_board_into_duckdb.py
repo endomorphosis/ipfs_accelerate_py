@@ -143,11 +143,16 @@ def _materialization_binding(control: Path) -> dict[str, str]:
 
 def _ingest_under_lease(control: Path) -> dict[str, object]:
     board = json.loads(BOARD_PATH.read_text(encoding="utf-8"))
+    held_catalog_task_ids = [
+        str(task.get("stable_task_id") or "")
+        for task in board.get("tasks") or ()
+        if str(task.get("stable_task_id") or "")
+        and not _is_bootstrap(str(task.get("stable_task_id") or ""))
+    ]
     binding = _materialization_binding(control)
     plan_root_cid = binding["plan_root_cid"]
     tree = binding["repository_tree_id"]
     source_head = binding["source_head"]
-    inserted: list[str] = []
     skipped: list[str] = []
     database_task_source = _database_task_source_class()
     with database_task_source(control, install_schema=False) as source:
@@ -239,7 +244,6 @@ def _ingest_under_lease(control: Path) -> dict[str, object]:
                     "validations": execution_validation,
                 }
             )
-            inserted.append(alias)
         goals = [
             {
                 "goal_cid": cid,
@@ -291,9 +295,12 @@ def _ingest_under_lease(control: Path) -> dict[str, object]:
         "control_db": str(control.relative_to(ROOT)),
         "plan_root_cid": plan_root_cid,
         "board_cid": board.get("board_cid"),
-        "inserted_task_ids": inserted,
+        # These established receipt fields describe the durable catalog
+        # population, not only mutations made by this invocation.  Keeping
+        # them stable makes a recovered/replayed ingestion byte-idempotent.
+        "inserted_task_ids": held_catalog_task_ids,
         "skipped_existing_task_ids": sorted(set(skipped)),
-        "inserted_count": len(inserted),
+        "inserted_count": len(held_catalog_task_ids),
         "task_count_after": len(after.tasks),
         "status_counts": statuses,
         "materialize_task_count": receipt.get("task_count"),
