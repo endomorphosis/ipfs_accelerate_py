@@ -5691,6 +5691,18 @@ def test_reconcile_reopens_inflight_deferral_budget_block(
     )
     try:
         daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        attempt = daemon.commit_phase(attempt, "context")
+        attempt = daemon.commit_phase(
+            attempt,
+            "failed",
+            body={
+                "reason": "inflight_process",
+                "portal_retryable_failure": True,
+                "portal_terminal_failure": False,
+            },
+        )
         task = daemon.task_source.get("task:cid:001")
         assert task is not None
         daemon.task_source.compare_and_set_status(
@@ -5699,6 +5711,13 @@ def test_reconcile_reopens_inflight_deferral_budget_block(
             status="blocked",
             receipt={
                 "operation": "database_portal_typed_deferral_budget_exhausted",
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "owner_session_id": attempt.owner_session_id,
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
                 "retry_budget": {
                     "matching_attempts": [
                         {"reason": "inflight_process"},
@@ -5713,9 +5732,55 @@ def test_reconcile_reopens_inflight_deferral_budget_block(
         assert blocked.status == "blocked"
         outcomes = daemon.reconcile_inflight_deferral_blocks()
         assert [item["task_cid"] for item in outcomes] == ["task:cid:001"]
+        assert outcomes[0]["changed"] is True
         retried = daemon.task_source.get("task:cid:001")
         assert retried is not None
         assert retried.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_reconcile_refuses_unbound_inflight_deferral_budget_block(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:inflight-deferral-unbound",
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        daemon.task_source.compare_and_set_status(
+            task.task_cid,
+            expected_revision=int(task.revision),
+            status="blocked",
+            receipt={
+                "operation": "database_portal_typed_deferral_budget_exhausted",
+                "retry_budget": {
+                    "matching_attempts": [{"reason": "inflight_process"}],
+                },
+            },
+        )
+
+        result = daemon.run_once()
+
+        assert result["unchanged"] is True
+        assert result["write_count"] == 0
+        assert result["inflight_deferral_unstalls"] == [
+            {
+                "task_cid": "task:cid:001",
+                "task_alias": "DQP-T001",
+                "previous_status": "blocked",
+                "status": "blocked",
+                "changed": False,
+                "reason": "inflight_deferral_exact_attempt_unavailable",
+            }
+        ]
+        blocked = daemon.task_source.get("task:cid:001")
+        assert blocked is not None
+        assert blocked.status == "blocked"
     finally:
         daemon.close()
 
