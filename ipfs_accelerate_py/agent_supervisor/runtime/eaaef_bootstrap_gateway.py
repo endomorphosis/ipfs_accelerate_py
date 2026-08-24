@@ -43,6 +43,12 @@ from ..task_sources.eaaef_borrowed_transaction import (
     EAAEF_DEAD_LANE_RECOVERY_AUTHORITY_SCHEMA,
     EAAEF_TASK_OPERATION_AUTHORITY_SCHEMA,
 )
+from ..task_sources.eaaef_typed_owner_service import (
+    EAAEF_TYPED_OWNER_COMMAND_LOOKUP_OPERATION,
+    EAAEF_TYPED_OWNER_COMMAND_SUBMIT_OPERATION,
+    EAAEF_TYPED_OWNER_PUBLIC_RECEIPT_FIELDS,
+    EAAEF_TYPED_OWNER_TRANSPORT_PRODUCTION_BLOCKER,
+)
 from ..task_sources.plan_revision_store import (
     PlanRevisionStore,
     PlanRevisionStoreError,
@@ -61,6 +67,7 @@ from ..task_sources.quack_daemon_gateway import (
     quack_daemon_operation_intent,
     quack_daemon_operation_intent_from_envelope,
 )
+from ..task_sources.typed_state_owner import TypedStateOwnerConnection
 from ..todo_daemon.external_agent_container_dispatcher import (
     ExternalAgentContainerDispatchError,
     ExternalAgentContainerWorkerDispatcher,
@@ -108,6 +115,12 @@ EAAEF_EXACT_ENVELOPE_JOURNAL_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-exact-envelope-journal@1"
 )
 EAAEF_BOOTSTRAP_COMMAND_TRANSPORT_INTERFACE: Final = "EAAEFBootstrapAuthorizedCommandTransport@1"
+EAAEF_TYPED_OWNER_COMMAND_CLIENT_INTERFACE: Final = (
+    "EAAEFTypedOwnerCommandClient@1"
+)
+EAAEF_TYPED_OWNER_COMMAND_TRANSPORT_INTERFACE: Final = (
+    "EAAEFTypedOwnerCommandTransport@1"
+)
 EAAEF_BOOTSTRAP_COMMAND_GATEWAY_INTERFACE: Final = "EAAEFBootstrapCommandGateway@1"
 EAAEF_SEALED_QUACK_SECRET_INTERFACE: Final = "EAAEFSealedQuackSecret@1"
 EAAEF_SEALED_QUACK_SECRET_SCHEMA: Final = (
@@ -1691,6 +1704,39 @@ class EAAEFBootstrapCommandTransport:
             raise EAAEFBootstrapRuntimeGatewayError("command transport is closed")
         return self._read_client.list_recent_receipts()
 
+    def lookup_receipt(
+        self, envelope: AuthorizedStateCommand
+    ) -> Mapping[str, Any] | None:
+        """Find one exact receipt in the legacy bounded projection."""
+
+        if type(envelope) is not AuthorizedStateCommand:
+            raise EAAEFBootstrapRuntimeGatewayError(
+                "command receipt lookup requires an exact envelope"
+            )
+        matched: Mapping[str, Any] | None = None
+        receipts = self.receipts()
+        if type(receipts) is not tuple:
+            raise EAAEFBootstrapRuntimeGatewayDiverged(
+                "owner receipt projection is not an exact tuple"
+            )
+        for receipt in receipts:
+            if not isinstance(receipt, Mapping):
+                raise EAAEFBootstrapRuntimeGatewayDiverged(
+                    "owner receipt projection contains a non-record"
+                )
+            if receipt.get("submission_id") != envelope.submission_id:
+                continue
+            if receipt.get("envelope_cid") != envelope.envelope_cid:
+                raise EAAEFBootstrapRuntimeGatewayDiverged(
+                    "ordinary submission_id collision has a different envelope"
+                )
+            if matched is not None and dict(matched) != dict(receipt):
+                raise EAAEFBootstrapRuntimeGatewayDiverged(
+                    "duplicate owner receipts diverged"
+                )
+            matched = receipt
+        return matched
+
     def close(self) -> None:
         if self._closed:
             return
@@ -1780,6 +1826,259 @@ def bind_eaaef_qualified_bootstrap_command_transport(
         poll_interval_ms=poll_interval_ms,
         qualified_clients=clients,
     )
+
+
+_TYPED_OWNER_CLIENT_FACTORY_TOKEN = object()
+_TYPED_OWNER_TRANSPORT_FACTORY_TOKEN = object()
+
+
+class EAAEFTypedOwnerCommandClient:
+    """Borrow one authenticated typed-owner channel; never expose it onward."""
+
+    INTERFACE: ClassVar[str] = EAAEF_TYPED_OWNER_COMMAND_CLIENT_INTERFACE
+    __slots__ = (
+        "_owner_connection",
+        "_admission_cid",
+        "_operational_capability_cid",
+        "_closed",
+    )
+
+    def __init__(
+        self,
+        token: object,
+        *,
+        owner_connection: TypedStateOwnerConnection,
+        admission: VerifiedEAAEFLaneRuntimeAdmission,
+    ) -> None:
+        if token is not _TYPED_OWNER_CLIENT_FACTORY_TOKEN:
+            raise TypeError(
+                "typed-owner EAAEF clients come from the exact channel binder"
+            )
+        if (
+            type(owner_connection) is not TypedStateOwnerConnection
+            or type(admission) is not VerifiedEAAEFLaneRuntimeAdmission
+        ):
+            raise EAAEFBootstrapRuntimeGatewayError(
+                "typed-owner EAAEF client rejects mappings, callbacks, and substitutes"
+            )
+        self._owner_connection = owner_connection
+        self._admission_cid = str(admission["merge_admission_cid"])
+        self._operational_capability_cid = str(
+            admission["operational_capability_cid"]
+        )
+        self._closed = False
+
+    @property
+    def admission_cid(self) -> str:
+        return self._admission_cid
+
+    def _request(
+        self,
+        operation: str,
+        envelope: AuthorizedStateCommand,
+        *,
+        receipt_required: bool,
+    ) -> Mapping[str, Any] | None:
+        if self._closed:
+            raise EAAEFBootstrapRuntimeGatewayError(
+                "typed-owner EAAEF client is closed"
+            )
+        if (
+            operation
+            not in {
+                EAAEF_TYPED_OWNER_COMMAND_SUBMIT_OPERATION,
+                EAAEF_TYPED_OWNER_COMMAND_LOOKUP_OPERATION,
+            }
+            or type(envelope) is not AuthorizedStateCommand
+            or type(envelope.command) is not StateCommand
+        ):
+            raise EAAEFBootstrapRuntimeGatewayError(
+                "typed-owner EAAEF request is outside the exact wire vocabulary"
+            )
+        response = self._owner_connection._request(  # noqa: SLF001
+            operation,
+            envelope=envelope.to_dict(),
+            merge_admission_cid=self._admission_cid,
+            operational_capability_cid=self._operational_capability_cid,
+        )
+        receipt = response.get("receipt")
+        if receipt is None and not receipt_required:
+            return None
+        if not isinstance(receipt, Mapping) or set(receipt) != set(
+            EAAEF_TYPED_OWNER_PUBLIC_RECEIPT_FIELDS
+        ):
+            raise EAAEFBootstrapRuntimeGatewayDiverged(
+                "typed owner returned a non-exact EAAEF receipt"
+            )
+        detached = _canonical_detached(dict(receipt), "typed owner EAAEF receipt")
+        return MappingProxyType(detached)
+
+    def submit(
+        self, envelope: AuthorizedStateCommand
+    ) -> Mapping[str, Any]:
+        receipt = self._request(
+            EAAEF_TYPED_OWNER_COMMAND_SUBMIT_OPERATION,
+            envelope,
+            receipt_required=True,
+        )
+        if receipt is None:
+            raise EAAEFBootstrapRuntimeGatewayDiverged(
+                "typed owner submit returned no durable receipt"
+            )
+        return receipt
+
+    def lookup(
+        self, envelope: AuthorizedStateCommand
+    ) -> Mapping[str, Any] | None:
+        return self._request(
+            EAAEF_TYPED_OWNER_COMMAND_LOOKUP_OPERATION,
+            envelope,
+            receipt_required=False,
+        )
+
+    def close(self) -> None:
+        # The connection belongs to the surrounding typed-owner session.  A
+        # component adapter must never close or replace that shared channel.
+        self._closed = True
+
+
+class EAAEFTypedOwnerCommandTransport:
+    """Exact receipt transport over an already-open typed-owner channel."""
+
+    INTERFACE: ClassVar[str] = EAAEF_TYPED_OWNER_COMMAND_TRANSPORT_INTERFACE
+    __slots__ = (
+        "_client",
+        "_admission_cid",
+        "_maximum_wait_ms",
+        "_poll_interval_ms",
+        "_last_receipt",
+        "_closed",
+    )
+
+    def __init__(
+        self,
+        token: object,
+        *,
+        client: EAAEFTypedOwnerCommandClient,
+        admission: VerifiedEAAEFLaneRuntimeAdmission,
+        maximum_wait_ms: int,
+        poll_interval_ms: int,
+    ) -> None:
+        if token is not _TYPED_OWNER_TRANSPORT_FACTORY_TOKEN:
+            raise TypeError(
+                "typed-owner EAAEF transports come from the exact binder"
+            )
+        if (
+            type(client) is not EAAEFTypedOwnerCommandClient
+            or type(admission) is not VerifiedEAAEFLaneRuntimeAdmission
+            or client.admission_cid != admission["merge_admission_cid"]
+        ):
+            raise EAAEFBootstrapRuntimeGatewayError(
+                "typed-owner transport requires one exact client/lane binding"
+            )
+        self._client = client
+        self._admission_cid = str(admission["merge_admission_cid"])
+        self._maximum_wait_ms = _positive(
+            maximum_wait_ms, "maximum receipt wait", maximum=60_000
+        )
+        self._poll_interval_ms = _positive(
+            poll_interval_ms,
+            "receipt poll interval",
+            maximum=self._maximum_wait_ms,
+        )
+        self._last_receipt: Mapping[str, Any] | None = None
+        self._closed = False
+
+    @property
+    def admission_cid(self) -> str:
+        return self._admission_cid
+
+    def append(self, envelope: AuthorizedStateCommand) -> None:
+        if self._closed:
+            raise EAAEFBootstrapRuntimeGatewayError(
+                "typed-owner EAAEF transport is closed"
+            )
+        self._last_receipt = self._client.submit(envelope)
+
+    def lookup_receipt(
+        self, envelope: AuthorizedStateCommand
+    ) -> Mapping[str, Any] | None:
+        if self._closed:
+            raise EAAEFBootstrapRuntimeGatewayError(
+                "typed-owner EAAEF transport is closed"
+            )
+        cached = self._last_receipt
+        if (
+            cached is not None
+            and cached.get("submission_id") == envelope.submission_id
+        ):
+            if cached.get("envelope_cid") != envelope.envelope_cid:
+                raise EAAEFBootstrapRuntimeGatewayDiverged(
+                    "ordinary submission_id collision has a different envelope"
+                )
+            return cached
+        receipt = self._client.lookup(envelope)
+        if receipt is not None:
+            self._last_receipt = receipt
+        return receipt
+
+    def receipts(self) -> tuple[Mapping[str, Any], ...]:
+        """Retain a bounded compatibility projection for source diagnostics."""
+
+        if self._closed:
+            raise EAAEFBootstrapRuntimeGatewayError(
+                "typed-owner EAAEF transport is closed"
+            )
+        return () if self._last_receipt is None else (self._last_receipt,)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._client.close()
+        self._last_receipt = None
+        self._closed = True
+
+
+def bind_eaaef_typed_owner_command_client(
+    *,
+    owner_connection: TypedStateOwnerConnection,
+    admission: VerifiedEAAEFLaneRuntimeAdmission,
+) -> EAAEFTypedOwnerCommandClient:
+    """Bind a borrowed authenticated typed-owner connection to one lane."""
+
+    return EAAEFTypedOwnerCommandClient(
+        _TYPED_OWNER_CLIENT_FACTORY_TOKEN,
+        owner_connection=owner_connection,
+        admission=admission,
+    )
+
+
+def bind_eaaef_typed_owner_command_transport(
+    *,
+    owner_connection: TypedStateOwnerConnection,
+    admission: VerifiedEAAEFLaneRuntimeAdmission,
+    maximum_wait_ms: int = 30_000,
+    poll_interval_ms: int = 10,
+) -> EAAEFTypedOwnerCommandTransport:
+    """Build the source-only typed transport without claiming cutover."""
+
+    client = bind_eaaef_typed_owner_command_client(
+        owner_connection=owner_connection,
+        admission=admission,
+    )
+    return EAAEFTypedOwnerCommandTransport(
+        _TYPED_OWNER_TRANSPORT_FACTORY_TOKEN,
+        client=client,
+        admission=admission,
+        maximum_wait_ms=maximum_wait_ms,
+        poll_interval_ms=poll_interval_ms,
+    )
+
+
+_EAAEF_COMMAND_TRANSPORT_TYPES: Final = (
+    EAAEFBootstrapCommandTransport,
+    EAAEFTypedOwnerCommandTransport,
+)
 
 
 def _process_start_time_ticks(pid: int) -> int:
@@ -2376,7 +2675,8 @@ class _EAAEFCommandDispatcher:
         *,
         admission: VerifiedEAAEFLaneRuntimeAdmission,
         authorization_client: EAAEFCommandAuthorizationServiceClient,
-        transport: EAAEFBootstrapCommandTransport,
+        transport: EAAEFBootstrapCommandTransport
+        | EAAEFTypedOwnerCommandTransport,
         journal: EAAEFExactEnvelopeJournal,
         recovery_admissions: Sequence[
             VerifiedEAAEFLaneRuntimeAdmission | VerifiedEAAEFExpiredLaneRecoveryAdmission
@@ -2385,7 +2685,7 @@ class _EAAEFCommandDispatcher:
         if (
             type(admission) is not VerifiedEAAEFLaneRuntimeAdmission
             or type(authorization_client) is not EAAEFCommandAuthorizationServiceClient
-            or type(transport) is not EAAEFBootstrapCommandTransport
+            or type(transport) not in _EAAEF_COMMAND_TRANSPORT_TYPES
             or type(journal) is not EAAEFExactEnvelopeJournal
             or transport.admission_cid != admission["merge_admission_cid"]
             or journal._admission_cid != admission["merge_admission_cid"]
@@ -2715,27 +3015,22 @@ class _EAAEFCommandDispatcher:
         return result["value"]
 
     def _find_receipt(self, envelope: AuthorizedStateCommand) -> Mapping[str, Any] | None:
-        matched: Mapping[str, Any] | None = None
-        receipts = self._transport.receipts()
-        if type(receipts) is not tuple:
+        receipt = self._transport.lookup_receipt(envelope)
+        if receipt is None:
+            return None
+        if not isinstance(receipt, Mapping):
             raise EAAEFBootstrapRuntimeGatewayDiverged(
-                "owner receipt projection is not an exact tuple"
+                "owner receipt lookup returned a non-record"
             )
-        for receipt in receipts:
-            if not isinstance(receipt, Mapping):
-                raise EAAEFBootstrapRuntimeGatewayDiverged(
-                    "owner receipt projection contains a non-record"
-                )
-            if receipt.get("submission_id") != envelope.submission_id:
-                continue
-            if receipt.get("envelope_cid") != envelope.envelope_cid:
-                raise EAAEFBootstrapRuntimeGatewayDiverged(
-                    "ordinary submission_id collision has a different envelope"
-                )
-            if matched is not None and dict(matched) != dict(receipt):
-                raise EAAEFBootstrapRuntimeGatewayDiverged("duplicate owner receipts diverged")
-            matched = receipt
-        return matched
+        if receipt.get("submission_id") != envelope.submission_id:
+            raise EAAEFBootstrapRuntimeGatewayDiverged(
+                "owner receipt lookup returned a different submission"
+            )
+        if receipt.get("envelope_cid") != envelope.envelope_cid:
+            raise EAAEFBootstrapRuntimeGatewayDiverged(
+                "ordinary submission_id collision has a different envelope"
+            )
+        return receipt
 
     def _finish_receipt(
         self,
@@ -3333,6 +3628,11 @@ class EAAEFBootstrapCommandGateway(QuackDaemonCommandGateway):
             )
 
     def require_production_admission(self) -> Mapping[str, Any]:
+        if type(self._dispatcher._transport) is EAAEFTypedOwnerCommandTransport:
+            raise QuackDaemonGatewayError(
+                "EAAEF typed-owner transport remains production no-go: "
+                + EAAEF_TYPED_OWNER_TRANSPORT_PRODUCTION_BLOCKER
+            )
         try:
             checked = self._admission.reverify(now_ms=time.time_ns() // 1_000_000)
         except EAAEFLaneGatewayAdmissionError as exc:
@@ -3379,6 +3679,13 @@ class EAAEFBootstrapCommandGateway(QuackDaemonCommandGateway):
             self._attached = False
 
     def evidence(self) -> Mapping[str, Any]:
+        typed_owner_transport = (
+            type(self._dispatcher._transport)
+            is EAAEFTypedOwnerCommandTransport
+        )
+        blockers = list(EAAEF_BOOTSTRAP_RUNTIME_GATEWAY_PRODUCTION_BLOCKERS)
+        if typed_owner_transport:
+            blockers.append(EAAEF_TYPED_OWNER_TRANSPORT_PRODUCTION_BLOCKER)
         return MappingProxyType(
             {
                 "interface": self.INTERFACE,
@@ -3393,10 +3700,15 @@ class EAAEFBootstrapCommandGateway(QuackDaemonCommandGateway):
                 "attached": self.attached,
                 "direct_database_open": False,
                 "arbitrary_sql_enabled": False,
+                "transport": (
+                    "typed_state_owner"
+                    if typed_owner_transport
+                    else "legacy_quack_clients"
+                ),
                 "production_blockers": (
                     []
                     if self.capability.production_admitted
-                    else list(EAAEF_BOOTSTRAP_RUNTIME_GATEWAY_PRODUCTION_BLOCKERS)
+                    else blockers
                 ),
             }
         )
@@ -3406,7 +3718,7 @@ def create_eaaef_bootstrap_command_gateway(
     *,
     admission: VerifiedEAAEFLaneRuntimeAdmission,
     authorization_client: EAAEFCommandAuthorizationServiceClient,
-    transport: EAAEFBootstrapCommandTransport,
+    transport: EAAEFBootstrapCommandTransport | EAAEFTypedOwnerCommandTransport,
     journal: EAAEFExactEnvelopeJournal,
     recovery_admissions: Sequence[
         VerifiedEAAEFLaneRuntimeAdmission | VerifiedEAAEFExpiredLaneRecoveryAdmission
@@ -3417,7 +3729,7 @@ def create_eaaef_bootstrap_command_gateway(
     if (
         type(admission) is not VerifiedEAAEFLaneRuntimeAdmission
         or type(authorization_client) is not EAAEFCommandAuthorizationServiceClient
-        or type(transport) is not EAAEFBootstrapCommandTransport
+        or type(transport) not in _EAAEF_COMMAND_TRANSPORT_TYPES
         or type(journal) is not EAAEFExactEnvelopeJournal
     ):
         raise EAAEFBootstrapRuntimeGatewayError(
@@ -3910,6 +4222,8 @@ __all__ = (
     "EAAEF_BOOTSTRAP_EXECUTION_REPOSITORY_PROXY_SCHEMA",
     "EAAEF_BOOTSTRAP_RUNTIME_GATEWAY_PRODUCTION_BLOCKERS",
     "EAAEF_BOOTSTRAP_RUNTIME_GATEWAY_QUALIFICATION_STATUS",
+    "EAAEF_TYPED_OWNER_COMMAND_CLIENT_INTERFACE",
+    "EAAEF_TYPED_OWNER_COMMAND_TRANSPORT_INTERFACE",
     "EAAEF_CONTAINER_DISPATCHER_FACTORY_INTERFACE",
     "EAAEF_CONTAINER_DYNAMIC_SERVICE_REQUEST_SCHEMA",
     "EAAEF_CONTAINER_DYNAMIC_SERVICE_RESPONSE_SCHEMA",
@@ -3929,6 +4243,8 @@ __all__ = (
     "EAAEFBootstrapRuntimeGatewayError",
     "EAAEFBootstrapRuntimeGatewayNoGo",
     "EAAEFBootstrapTaskSourceProxy",
+    "EAAEFTypedOwnerCommandClient",
+    "EAAEFTypedOwnerCommandTransport",
     "EAAEFExactEnvelopeJournal",
     "EAAEFContainerDispatcherFactory",
     "EAAEFLaneRuntimeDependencyBundle",
@@ -3939,6 +4255,8 @@ __all__ = (
     "bind_eaaef_bootstrap_command_transport",
     "bind_eaaef_qualified_bootstrap_command_transport",
     "bind_eaaef_sealed_quack_client_descriptors",
+    "bind_eaaef_typed_owner_command_client",
+    "bind_eaaef_typed_owner_command_transport",
     "create_eaaef_bootstrap_command_gateway",
     "create_eaaef_container_dispatcher_factory",
     "create_eaaef_lane_runtime_dependency_factory",
