@@ -76072,6 +76072,62 @@ class DatabaseImplementationDaemon:
             for name, value in expected.items()
         )
 
+    def _shared_claim_revision_lineage_bound(
+        self,
+        task: Any,
+        receipt: Any,
+    ) -> bool:
+        """Validate the exact shared revision occupied by one claim phase.
+
+        A typed claim is deliberately two shared CAS transitions: the
+        reservation occupies ``claimed_from_revision + 1`` and admission
+        occupies the following revision.  Legacy direct database sources do
+        not publish a phase schema and retain their original one-CAS binding.
+        """
+
+        if not isinstance(receipt, Mapping):
+            return False
+        claimed_from_revision = receipt.get("claimed_from_revision")
+        if (
+            isinstance(claimed_from_revision, bool)
+            or not isinstance(claimed_from_revision, int)
+            or claimed_from_revision < 1
+        ):
+            return False
+        task_revision = int(getattr(task, "revision", 0) or 0)
+        operation = str(receipt.get("operation") or "")
+        phase_schema = str(receipt.get("claim_phase_schema") or "")
+        typed_claim_source = callable(
+            getattr(self.task_source, "claim_process_attestation", None)
+        )
+        if not typed_claim_source and not phase_schema:
+            return bool(
+                operation == "database_claim"
+                and task_revision == claimed_from_revision + 1
+            )
+        if (
+            operation == "database_claim"
+            and phase_schema == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+        ):
+            return task_revision == claimed_from_revision + 1
+        if (
+            operation != "database_attempt_admitted"
+            or phase_schema != TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        ):
+            return False
+        admitted_from_revision = receipt.get("admitted_from_revision")
+        return bool(
+            not isinstance(admitted_from_revision, bool)
+            and isinstance(admitted_from_revision, int)
+            and admitted_from_revision == claimed_from_revision + 1
+            and task_revision == admitted_from_revision + 1
+            and receipt.get("attempt_execution_phase")
+            == ATTEMPT_PHASE_CLAIMED
+            and not isinstance(receipt.get("attempt_execution_revision"), bool)
+            and isinstance(receipt.get("attempt_execution_revision"), int)
+            and receipt["attempt_execution_revision"] == 1
+        )
+
     def _shared_retry_binding_matches_attempt(
         self,
         task: Any,
@@ -76084,9 +76140,27 @@ class DatabaseImplementationDaemon:
 
         if int(attempt.attempt_number) <= 1:
             return False
-        binding = self._shared_claim_binding_for_this_owner(task)
-        if binding is None:
+        shared_binding = self._shared_claim_binding_for_this_owner(task)
+        if shared_binding is None:
             return False
+        identity_names = (
+            "claim_id",
+            "attempt_id",
+            "lease_id",
+            "owner_session_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+        )
+        current_identity = {
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
         if local_task_body.get("restart_recovery_ready") is not True:
             return False
         if local_task_body.get("restart_recovery_owner_session_id") != (
@@ -76094,8 +76168,66 @@ class DatabaseImplementationDaemon:
         ):
             return False
         local_binding = local_task_body.get("restart_recovery_binding")
-        if not isinstance(local_binding, Mapping) or dict(local_binding) != dict(
-            binding
+        if (
+            not isinstance(local_binding, Mapping)
+            or set(local_binding) != set(identity_names)
+        ):
+            return False
+        prior_identity = {name: local_binding.get(name) for name in identity_names}
+        prior_number = prior_identity["attempt_number"]
+        if (
+            type(prior_identity["claim_id"]) is not str
+            or not prior_identity["claim_id"]
+            or type(prior_identity["attempt_id"]) is not str
+            or not prior_identity["attempt_id"]
+            or type(prior_identity["lease_id"]) is not str
+            or not prior_identity["lease_id"]
+            or prior_identity["owner_session_id"] != self.owner_session_id
+            or type(prior_number) is not int
+            or prior_number >= int(attempt.attempt_number)
+            or type(prior_identity["fencing_token"]) is not int
+            or prior_identity["fencing_token"] < 1
+            or type(prior_identity["fence_epoch"]) is not int
+            or prior_identity["fence_epoch"] < 1
+            or int(attempt.fencing_token)
+            <= int(prior_identity["fencing_token"])
+            or int(attempt.fence_epoch) <= int(prior_identity["fence_epoch"])
+        ):
+            return False
+        shared_matches_current = all(
+            type(shared_binding.get(name)) is type(value)
+            and shared_binding.get(name) == value
+            for name, value in current_identity.items()
+        )
+        shared_matches_prior = all(
+            type(shared_binding.get(name)) is type(value)
+            and shared_binding.get(name) == value
+            for name, value in prior_identity.items()
+        )
+        typed_claim_source = callable(
+            getattr(self.task_source, "claim_process_attestation", None)
+        )
+        if typed_claim_source:
+            task_body = getattr(task, "body", None)
+            shared_receipt = (
+                task_body.get("completion_receipt")
+                if isinstance(task_body, Mapping)
+                else None
+            )
+            if (
+                not shared_matches_current
+                or shared_matches_prior
+                or not self._shared_claim_revision_lineage_bound(
+                    task,
+                    shared_receipt,
+                )
+            ):
+                return False
+        elif (
+            not shared_matches_prior
+            or shared_matches_current
+            or shared_binding.get("operation") != "database_claim"
+            or str(shared_binding.get("claim_phase_schema") or "")
         ):
             return False
         claim_rows = [
@@ -76103,62 +76235,127 @@ class DatabaseImplementationDaemon:
             for row in local_projection.get("task_claims", ())
             if str(row.get("task_cid") or "") == attempt.task_cid
         ]
-        prior = next(
-            (
+        prior_claims = [
+            row
+            for row in claim_rows
+            if all(row.get(name) == prior_identity[name] for name in identity_names)
+        ]
+        current_claims = [
+            row
+            for row in claim_rows
+            if all(row.get(name) == current_identity[name] for name in identity_names)
+        ]
+        if len(prior_claims) != 1 or len(current_claims) != 1:
+            return False
+        prior_claim = prior_claims[0]
+        current_claim = current_claims[0]
+        prior_state = str(prior_claim.get("state") or "")
+        if prior_state not in {"released", "expired"}:
+            return False
+        if str(current_claim.get("state") or "") != "accepted":
+            return False
+
+        attempt_rows = [
+            row
+            for row in local_projection.get("task_attempts", ())
+            if str(row.get("task_cid") or "") == attempt.task_cid
+        ]
+        lease_rows = [
+            row
+            for row in local_projection.get("fenced_leases", ())
+            if str(row.get("task_cid") or "") == attempt.task_cid
+            and str(row.get("lease_kind") or "") == "task"
+        ]
+
+        def matching_attempt_rows(identity: Mapping[str, Any]) -> list[Any]:
+            return [
                 row
-                for row in claim_rows
+                for row in attempt_rows
                 if all(
-                    row.get(name) == binding.get(name)
+                    row.get(name) == identity[name]
                     for name in (
-                        "claim_id",
                         "attempt_id",
-                        "lease_id",
                         "owner_session_id",
                         "attempt_number",
                         "fencing_token",
                         "fence_epoch",
                     )
                 )
-            ),
-            None,
-        )
-        current = next(
-            (
+            ]
+
+        def matching_lease_rows(identity: Mapping[str, Any]) -> list[Any]:
+            return [
                 row
-                for row in claim_rows
-                if row.get("claim_id") == attempt.claim_id
-                and row.get("attempt_id") == attempt.attempt_id
-                and row.get("lease_id") == attempt.lease_id
-                and row.get("owner_session_id") == attempt.owner_session_id
-                and row.get("fencing_token") == int(attempt.fencing_token)
-                and row.get("fence_epoch") == int(attempt.fence_epoch)
-                and row.get("attempt_number") == int(attempt.attempt_number)
-            ),
-            None,
-        )
-        if prior is None or current is None:
-            return False
-        if str(prior.get("state") or "") not in {"released", "expired"}:
-            return False
-        if str(current.get("state") or "") != "accepted":
-            return False
-        prior_number = prior.get("attempt_number")
-        if (
-            isinstance(prior_number, bool)
-            or not isinstance(prior_number, int)
-            or prior_number != binding.get("attempt_number")
-            or prior_number >= int(attempt.attempt_number)
+                for row in lease_rows
+                if all(row.get(name) == identity[name] for name in identity_names)
+            ]
+
+        prior_attempts = matching_attempt_rows(prior_identity)
+        current_attempts = matching_attempt_rows(current_identity)
+        prior_leases = matching_lease_rows(prior_identity)
+        current_leases = matching_lease_rows(current_identity)
+        if any(
+            len(rows) != 1
+            for rows in (
+                prior_attempts,
+                current_attempts,
+                prior_leases,
+                current_leases,
+            )
         ):
             return False
+        if (
+            str(prior_attempts[0].get("status") or "") != prior_state
+            or str(prior_leases[0].get("state") or "") != prior_state
+            or str(current_attempts[0].get("status") or "") != "running"
+            or str(current_leases[0].get("state") or "") != "accepted"
+        ):
+            return False
+        if any(
+            type(row.get("attempt_number")) is not int
+            for row in claim_rows
+        ):
+            return False
+        intermediate_claims = [
+            row
+            for row in claim_rows
+            if prior_number
+            < row["attempt_number"]
+            < int(attempt.attempt_number)
+        ]
+        if (
+            len(intermediate_claims)
+            != int(attempt.attempt_number) - prior_number - 1
+            or {
+                row["attempt_number"]
+                for row in intermediate_claims
+            }
+            != set(range(prior_number + 1, int(attempt.attempt_number)))
+        ):
+            return False
+        for intermediate_claim in intermediate_claims:
+            intermediate_state = str(intermediate_claim.get("state") or "")
+            if intermediate_state not in {"released", "expired"}:
+                return False
+            intermediate_identity = {
+                name: intermediate_claim.get(name) for name in identity_names
+            }
+            intermediate_attempts = matching_attempt_rows(
+                intermediate_identity
+            )
+            intermediate_leases = matching_lease_rows(intermediate_identity)
+            if (
+                len(intermediate_attempts) != 1
+                or len(intermediate_leases) != 1
+                or str(intermediate_attempts[0].get("status") or "")
+                != intermediate_state
+                or str(intermediate_leases[0].get("state") or "")
+                != intermediate_state
+            ):
+                return False
         for row in claim_rows:
             number = row.get("attempt_number")
-            if isinstance(number, bool) or not isinstance(number, int):
-                return False
             if number > int(attempt.attempt_number):
-                return False
-            if prior_number < number < int(attempt.attempt_number) and str(
-                row.get("state") or ""
-            ) not in {"released", "expired"}:
                 return False
         return True
 
@@ -83353,8 +83550,14 @@ class DatabaseImplementationDaemon:
         # A crash between those writes leaves an apparently pre-provider
         # attempt whose external call may already have happened.  Requeue only
         # when both durable authorities prove that provider work never began.
-        requeue_safe = (
-            not provider_phase_committed and not provider_invocation_present
+        attempt_budget_remaining = bool(
+            self.max_task_attempts <= 0
+            or int(attempt.attempt_number) < self.max_task_attempts
+        )
+        requeue_safe = bool(
+            not provider_phase_committed
+            and not provider_invocation_present
+            and attempt_budget_remaining
         )
         disposition = "requeued" if requeue_safe else "quarantined"
         operation = (
@@ -83376,6 +83579,8 @@ class DatabaseImplementationDaemon:
             "provider_invocation_receipt_present": (
                 provider_invocation_present
             ),
+            "max_task_attempts": int(self.max_task_attempts),
+            "attempt_budget_exhausted": not attempt_budget_remaining,
             "task_shard_count": self.task_shard_count,
             "task_shard_index": self.task_shard_index,
             "reasons": sorted({str(reason) for reason in reasons}),
@@ -83451,11 +83656,9 @@ class DatabaseImplementationDaemon:
             if isinstance(shared_receipt, Mapping)
             else None
         )
-        claim_revision_bound = not (
-            isinstance(claimed_from_revision, bool)
-            or not isinstance(claimed_from_revision, int)
-            or claimed_from_revision < 1
-            or int(task.revision) != claimed_from_revision + 1
+        claim_revision_bound = self._shared_claim_revision_lineage_bound(
+            task,
+            shared_receipt,
         )
         if not claim_revision_bound:
             reasons.append("shared_claim_revision_unbound")
@@ -83478,16 +83681,20 @@ class DatabaseImplementationDaemon:
                 reasons.append("local_task_projection_unauthoritative")
             # A root claim deliberately retains the exact pre-CAS ready
             # projection so an expired owner can be fenced and replaced by
-            # the coordination authority.  A lane-local retry is created
-            # only after synchronizing the current in-progress projection.
+            # the coordination authority.  A lane-local retry retains the
+            # exact pre-CAS in-progress projection plus its prior released or
+            # expired tuple; the rotated current tuple alone is not enough to
+            # classify it as a retry.
             expected_local_revision = (
                 claimed_from_revision
                 if direct_shared_binding and claim_revision_bound
                 else int(task.revision)
             )
             expected_local_statuses = (
-                _DATABASE_READY_TASK_STATUSES
-                if direct_shared_binding
+                {"in_progress"}
+                if retry_shared_binding
+                else _DATABASE_READY_TASK_STATUSES
+                if direct_shared_binding and claim_revision_bound
                 else {task_status}
             )
             if int(local_body.get("authoritative_revision") or 0) != int(
