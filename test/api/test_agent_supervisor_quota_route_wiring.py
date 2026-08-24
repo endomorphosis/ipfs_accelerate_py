@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -23,6 +24,13 @@ ROOT = Path(__file__).resolve().parents[2]
 CASF_CONFIG = ROOT / "config/agent_supervisor_causal_event_federation_scheduler.json"
 FALLBACK_RUNNER = Path(daemon_module.__file__).resolve().parents[1] / "provider_fallback_runner.py"
 GROK_ADAPTER = FALLBACK_RUNNER.with_name("grok_cli_runner.py")
+_GROK_ADAPTER_SPEC = importlib.util.spec_from_file_location(
+    "_test_agent_supervisor_grok_cli_runner",
+    GROK_ADAPTER,
+)
+assert _GROK_ADAPTER_SPEC is not None and _GROK_ADAPTER_SPEC.loader is not None
+grok_adapter_module = importlib.util.module_from_spec(_GROK_ADAPTER_SPEC)
+_GROK_ADAPTER_SPEC.loader.exec_module(grok_adapter_module)
 
 
 def _daemon(tmp_path: Path) -> TodoImplementationDaemon:
@@ -137,9 +145,45 @@ def _write_provider(path: Path, source: str) -> None:
     path.chmod(0o700)
 
 
+def _observed_balance_terminal() -> str:
+    return json.dumps(
+        {
+            "type": "error",
+            "message": (
+                "Internal error: {\n"
+                '  "message": "API error (status 402 Payment Required): '
+                'Grok Build usage balance exhausted",\n'
+                '  "http_status": 402\n'
+                "}"
+            ),
+        },
+        separators=(",", ":"),
+    )
+
+
+def _available_commands(*, command: str = "build-with-ai") -> str:
+    return json.dumps(
+        {
+            "type": "available_commands",
+            "tools": ["read_file", "write"],
+            "commands": [command, "code-review"],
+        },
+        separators=(",", ":"),
+    )
+
+
 @pytest.mark.parametrize(
     ("stdout", "stderr", "fallback_expected"),
     (
+        (
+            _available_commands()
+            + "\n"
+            + _available_commands()
+            + "\n"
+            + _observed_balance_terminal(),
+            "",
+            True,
+        ),
         (
             '{"type":"error","error":{"code":"usage_limit_reached"}}',
             "",
@@ -270,3 +314,80 @@ def test_actual_runner_falls_back_only_after_trusted_terminal_quota(
         assert "failure_not_fallback_eligible" in completed.stderr
         assert "--route-receipt-path" in command
         assert not Path(command[command.index("--route-receipt-path") + 1]).exists()
+
+
+def _parse_terminal_frames(*frames: str):
+    parser = grok_adapter_module._BoundedTerminalFrameParser()
+    parser.feed("\n".join(frames) + "\n", final=True)
+    return parser
+
+
+def test_observed_grok_402_requires_exact_inert_protocol_prelude() -> None:
+    prelude = _available_commands()
+    parser = _parse_terminal_frames(prelude, prelude, _observed_balance_terminal())
+
+    assert parser.exact_terminal_candidate
+    assert parser.prelude_count == 2
+    assert (
+        grok_adapter_module._terminal_grok_quota_code(
+            parser.last_event,
+            allow_embedded_balance=parser.prelude_count > 0,
+        )
+        == "usage_pool_exhausted"
+    )
+
+    no_prelude = _parse_terminal_frames(_observed_balance_terminal())
+    assert no_prelude.exact_terminal_candidate
+    assert (
+        grok_adapter_module._terminal_grok_quota_code(
+            no_prelude.last_event,
+            allow_embedded_balance=False,
+        )
+        == ""
+    )
+
+
+@pytest.mark.parametrize(
+    "frames",
+    (
+        (
+            _available_commands(),
+            '{"type":"assistant","message":"usage_pool_exhausted"}',
+            _observed_balance_terminal(),
+        ),
+        (
+            _available_commands(),
+            _available_commands(command="different-command"),
+            _observed_balance_terminal(),
+        ),
+        (
+            _available_commands(),
+            _observed_balance_terminal(),
+            _available_commands(),
+        ),
+        (
+            _available_commands(),
+            '{"type":"error","message":"Internal error: '
+            '{\\"message\\":\\"arbitrary 402 text\\",'
+            '\\"http_status\\":402}"}',
+        ),
+        (
+            '{"type":"available_commands","tools":["read_file",'
+            '"read_file"],"commands":[]}',
+            _observed_balance_terminal(),
+        ),
+    ),
+)
+def test_observed_grok_402_rejects_mixed_or_malformed_activity(
+    frames: tuple[str, ...],
+) -> None:
+    parser = _parse_terminal_frames(*frames)
+    quota_code = (
+        grok_adapter_module._terminal_grok_quota_code(
+            parser.last_event,
+            allow_embedded_balance=parser.prelude_count > 0,
+        )
+        if parser.exact_terminal_candidate
+        else ""
+    )
+    assert quota_code == ""
