@@ -72433,6 +72433,7 @@ _RETRYABLE_PORTAL_FAILURE_REASONS = frozenset(
         "validation_command_failed",
         "declared_validation_failed",
         "quack_attach_contended",
+        "quack_transport_unavailable",
         "authentication_failed",
     }
 )
@@ -72443,6 +72444,7 @@ _PROCESS_TRANSIENT_PORTAL_REASONS = frozenset(
     {
         "inflight_process",
         "quack_attach_contended",
+        "quack_transport_unavailable",
         "authentication_failed",
     }
 )
@@ -73075,6 +73077,10 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any]
         ]
         | None = None,
+        quack_preprojection_transport_recovery_fn: Callable[
+            ["DatabaseTaskAttempt", str], Mapping[str, Any]
+        ]
+        | None = None,
         deterministic_reconciliation_fn: Callable[
             ["DatabaseTaskAttempt", Mapping[str, Any]],
             Mapping[str, Any],
@@ -73309,6 +73315,16 @@ class DatabaseImplementationDaemon:
             raise TypeError("pooled_worktree_create_recovery_fn must be callable")
         self._pooled_worktree_create_recovery_fn = (
             pooled_worktree_create_recovery_fn
+        )
+        if (
+            quack_preprojection_transport_recovery_fn is not None
+            and not callable(quack_preprojection_transport_recovery_fn)
+        ):
+            raise TypeError(
+                "quack_preprojection_transport_recovery_fn must be callable"
+            )
+        self._quack_preprojection_transport_recovery_fn = (
+            quack_preprojection_transport_recovery_fn
         )
         if (
             deterministic_reconciliation_fn is not None
@@ -73611,6 +73627,10 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any]
         ]
         | None = None,
+        quack_preprojection_transport_recovery_fn: Callable[
+            ["DatabaseTaskAttempt", str], Mapping[str, Any]
+        ]
+        | None = None,
         deterministic_reconciliation_fn: Callable[
             ["DatabaseTaskAttempt", Mapping[str, Any]],
             Mapping[str, Any],
@@ -73655,6 +73675,13 @@ class DatabaseImplementationDaemon:
                 "pooled worktree create recovery callback must be callable"
             )
         if (
+            quack_preprojection_transport_recovery_fn is not None
+            and not callable(quack_preprojection_transport_recovery_fn)
+        ):
+            raise TypeError(
+                "Quack preprojection transport recovery callback must be callable"
+            )
+        if (
             deterministic_reconciliation_fn is not None
             and not callable(deterministic_reconciliation_fn)
         ):
@@ -73673,6 +73700,7 @@ class DatabaseImplementationDaemon:
                     self._inflight_process_recovery_fn,
                     self._validation_retry_seed_conflict_recovery_fn,
                     self._pooled_worktree_create_recovery_fn,
+                    self._quack_preprojection_transport_recovery_fn,
                     self._deterministic_reconciliation_fn,
                 )
             ):
@@ -73695,6 +73723,9 @@ class DatabaseImplementationDaemon:
             )
             self._pooled_worktree_create_recovery_fn = (
                 pooled_worktree_create_recovery_fn
+            )
+            self._quack_preprojection_transport_recovery_fn = (
+                quack_preprojection_transport_recovery_fn
             )
             self._deterministic_reconciliation_fn = (
                 deterministic_reconciliation_fn
@@ -81085,6 +81116,256 @@ class DatabaseImplementationDaemon:
             )
         self._protect_attempt_claim(attempt, claim)
 
+    def _verified_quack_preprojection_transport_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+        *,
+        expected_source_reason: str = "",
+    ) -> dict[str, Any]:
+        """Verify one filesystem-sealed pre-Portal transport recovery."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_QUACK_PREPROJECTION_RECOVERY_SCHEMA,
+        )
+        from ..task_sources.duckdb_state import (
+            quack_transport_failure_text_is_unavailable,
+            quack_transport_uri,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "Quack preprojection recovery evidence is malformed"
+            )
+        receipt = dict(raw)
+        receipt_id = str(receipt.pop("receipt_id", "") or "")
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "source_reason",
+            "source_reason_digest",
+            "quack_uri",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_root",
+            "attempt_directory",
+            "absence_sealed",
+            "projection_present",
+            "provider_dispatched",
+            "effect_executed",
+            "backoff_seconds",
+        }
+        source_reason = str(receipt.get("source_reason") or "")
+        quack_uri = quack_transport_uri(self._quack_uri)
+        attempt_root_text = str(receipt.get("attempt_root") or "")
+        attempt_directory_text = str(
+            receipt.get("attempt_directory") or ""
+        )
+        attempt_root = Path(attempt_root_text)
+        attempt_directory = Path(attempt_directory_text)
+        expected_attempt_key = hashlib.sha256(
+            attempt.attempt_id.encode("utf-8")
+        ).hexdigest()[:24]
+        expected_source_digest = "sha256:" + hashlib.sha256(
+            source_reason.encode("utf-8")
+        ).hexdigest()
+        identity_invalid = (
+            set(receipt) != expected_fields
+            or raw.get("schema")
+            != DATABASE_PORTAL_QUACK_PREPROJECTION_RECOVERY_SCHEMA
+            or raw.get("disposition") != "retry"
+            or raw.get("reason")
+            != "quack_preprojection_transport_failure_recovered"
+            or not source_reason
+            or (
+                expected_source_reason
+                and source_reason != expected_source_reason
+            )
+            or raw.get("source_reason_digest") != expected_source_digest
+            or raw.get("quack_uri") != quack_uri
+            or not quack_uri
+            or not quack_transport_failure_text_is_unavailable(
+                source_reason,
+                uri=quack_uri,
+            )
+            or raw.get("task_cid") != attempt.task_cid
+            or raw.get("task_alias") != attempt.task_alias
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("lease_id") != attempt.lease_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("fencing_token") != int(attempt.fencing_token)
+            or raw.get("fence_epoch") != int(attempt.fence_epoch)
+            or raw.get("absence_sealed") is not True
+            or raw.get("projection_present") is not False
+            or raw.get("provider_dispatched") is not False
+            or raw.get("effect_executed") is not False
+            or raw.get("backoff_seconds") != 30
+            or not attempt_root.is_absolute()
+            or not attempt_directory.is_absolute()
+            or attempt_directory.parent != attempt_root
+            or attempt_directory.name != expected_attempt_key
+            or receipt_id != _database_daemon_evidence_digest(receipt)
+        )
+        if identity_invalid:
+            raise DatabaseImplementationAuthorityError(
+                "Quack preprojection recovery evidence failed identity verification"
+            )
+        receipt_path = attempt_directory / (
+            "database-portal-quack-preprojection-recovery.json"
+        )
+        try:
+            if (
+                attempt_root.is_symlink()
+                or attempt_directory.is_symlink()
+                or attempt_root.resolve(strict=True) != attempt_root
+                or attempt_directory.resolve(strict=True) != attempt_directory
+                or not attempt_root.is_dir()
+                or not attempt_directory.is_dir()
+                or tuple(attempt_directory.iterdir()) != (receipt_path,)
+                or receipt_path.is_symlink()
+                or not receipt_path.is_file()
+                or receipt_path.stat().st_size > 64 * 1024
+            ):
+                raise OSError("recovery artifact boundary changed")
+            observed = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise DatabaseImplementationAuthorityError(
+                "Quack preprojection recovery artifact is not durable"
+            ) from exc
+        if observed != dict(raw):
+            raise DatabaseImplementationConflictError(
+                "Quack preprojection recovery artifact changed after sealing"
+            )
+        return dict(raw)
+
+    def _verified_quack_preprojection_transport_recovery_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify retrying control state superseding one transport block."""
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "Quack preprojection recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        control = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        if not isinstance(control, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "Quack preprojection recovery task has no control receipt"
+            )
+        seed = self._verified_quack_preprojection_transport_recovery_receipt(
+            attempt,
+            control.get("quack_preprojection_transport_recovery_seed"),
+            expected_source_reason=self._terminal_portal_failure_reason(attempt)
+            or "",
+        )
+        if (
+            expected_recovery_evidence is not None
+            and seed != dict(expected_recovery_evidence)
+        ):
+            raise DatabaseImplementationConflictError(
+                "Quack preprojection recovery control has a foreign seed"
+            )
+        task_revision = getattr(task, "revision", None)
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:"
+            "quack_transport_unavailable"
+        )[:2048]
+        queue_entry = self.task_source.get_queue_entry(attempt.task_cid)
+        coordination = control.get("coordination")
+        expected_source = (
+            "quack_preprojection_transport_recovered:"
+            + str(seed["receipt_id"])
+        )
+        expected_control_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "quack_preprojection_transport_recovery_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if (
+            set(control) != expected_control_fields
+            or isinstance(task_revision, bool)
+            or not isinstance(task_revision, int)
+            or control.get("operation")
+            != "database_portal_quack_preprojection_retry_recovery"
+            or control.get("attempt_id") != attempt.attempt_id
+            or control.get("claim_id") != attempt.claim_id
+            or control.get("lease_id") != attempt.lease_id
+            or control.get("owner_session_id") != attempt.owner_session_id
+            or control.get("fencing_token") != int(attempt.fencing_token)
+            or control.get("fence_epoch") != int(attempt.fence_epoch)
+            or control.get("attempt_number") != int(attempt.attempt_number)
+            or control.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or control.get("execution_revision") != int(attempt.revision)
+            or control.get("execution_finished_at_ms") != attempt.finished_at_ms
+            or control.get("reason") != "quack_transport_unavailable"
+            or control.get("backoff_seconds") != 30
+            or control.get("backoff_ms") != 30_000
+            or control.get("evidence_source") != expected_source
+            or control.get("queue_reason") != queue_reason
+            or not isinstance(control.get("queue_reused"), bool)
+            or not isinstance(control.get("queue_receipt"), Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or control.get("control_expected_status") != "blocked"
+            or control.get("control_expected_revision") != task_revision - 1
+            or queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != int(control.get("retry_not_before_ms") or -1)
+        ):
+            raise DatabaseImplementationConflictError(
+                "Quack preprojection recovery control state is not exact"
+            )
+        execution_boundary = (
+            self._verified_quack_preprojection_execution_boundary(attempt)
+        )
+        return {
+            "receipt": dict(control),
+            "recovery_evidence": seed,
+            "queue_reason": queue_reason,
+            "execution_boundary": execution_boundary,
+        }
+
     def _verified_validation_retry_recovery_state(
         self,
         attempt: DatabaseTaskAttempt,
@@ -81895,6 +82176,8 @@ class DatabaseImplementationDaemon:
         | None = None,
         pooled_worktree_create_recovery_evidence: Mapping[str, Any]
         | None = None,
+        quack_preprojection_transport_recovery_evidence: Mapping[str, Any]
+        | None = None,
         false_completion_reintegration_evidence: Mapping[str, Any]
         | None = None,
         preserved_unknown_provider_outcome: Mapping[str, Any] | None = None,
@@ -81910,6 +82193,7 @@ class DatabaseImplementationDaemon:
             validation_retry_seed_conflict_recovery_evidence is not None,
             leftover_wait_deferral_budget_recovery_evidence is not None,
             pooled_worktree_create_recovery_evidence is not None,
+            quack_preprojection_transport_recovery_evidence is not None,
             false_completion_reintegration_evidence is not None,
         ]
         if sum(recovery_authorities) > 1:
@@ -82019,6 +82303,14 @@ class DatabaseImplementationDaemon:
                         pooled_worktree_create_recovery_evidence
                     ),
                 )
+            if quack_preprojection_transport_recovery_evidence is not None:
+                self._verified_quack_preprojection_transport_recovery_state(
+                    attempt,
+                    task,
+                    expected_recovery_evidence=(
+                        quack_preprojection_transport_recovery_evidence
+                    ),
+                )
             existing_entry = get_queue_entry(attempt.task_cid)
             if (
                 (
@@ -82031,6 +82323,8 @@ class DatabaseImplementationDaemon:
                     or leftover_wait_deferral_budget_recovery_evidence
                     is not None
                     or pooled_worktree_create_recovery_evidence is not None
+                    or quack_preprojection_transport_recovery_evidence
+                    is not None
                     or false_completion_reintegration_evidence is not None
                 )
                 and existing_entry is not None
@@ -82081,6 +82375,7 @@ class DatabaseImplementationDaemon:
                 or validation_retry_seed_conflict_recovery_evidence is not None
                 or leftover_wait_deferral_budget_recovery_evidence is not None
                 or pooled_worktree_create_recovery_evidence is not None
+                or quack_preprojection_transport_recovery_evidence is not None
                 or false_completion_reintegration_evidence is not None
                 or allow_blocked_recovery
             )
@@ -82096,7 +82391,10 @@ class DatabaseImplementationDaemon:
         # cooled task; restart reconciliation will finish the exact CAS.
         queue_entry = get_queue_entry(attempt.task_cid)
         if (
-            protected_path_recovery_evidence is not None
+            (
+                protected_path_recovery_evidence is not None
+                or quack_preprojection_transport_recovery_evidence is not None
+            )
             and queue_entry is not None
             and str(getattr(queue_entry, "reason", "") or "")
             != queue_reason
@@ -82148,6 +82446,9 @@ class DatabaseImplementationDaemon:
                     if leftover_wait_deferral_budget_recovery_evidence is not None
                     else "database_portal_pooled_worktree_create_retry_recovery"
                     if pooled_worktree_create_recovery_evidence is not None
+                    else "database_portal_quack_preprojection_retry_recovery"
+                    if quack_preprojection_transport_recovery_evidence
+                    is not None
                     else "database_portal_false_completion_reintegration_retry_recovery"
                     if false_completion_reintegration_evidence is not None
                     else "database_portal_validation_retry_recovery"
@@ -82243,6 +82544,16 @@ class DatabaseImplementationDaemon:
                 ),
                 **(
                     {
+                        "quack_preprojection_transport_recovery_seed": dict(
+                            quack_preprojection_transport_recovery_evidence
+                        ),
+                    }
+                    if quack_preprojection_transport_recovery_evidence
+                    is not None
+                    else {}
+                ),
+                **(
+                    {
                         "false_completion_reintegration_seed": dict(
                             false_completion_reintegration_evidence
                         ),
@@ -82304,6 +82615,14 @@ class DatabaseImplementationDaemon:
                     str(pooled_worktree_create_recovery_evidence["receipt_id"])
                 ]
                 if pooled_worktree_create_recovery_evidence is not None
+                else [
+                    str(
+                        quack_preprojection_transport_recovery_evidence[
+                            "receipt_id"
+                        ]
+                    )
+                ]
+                if quack_preprojection_transport_recovery_evidence is not None
                 else [
                     str(false_completion_reintegration_evidence["evidence_id"]),
                     *(
@@ -82507,6 +82826,179 @@ class DatabaseImplementationDaemon:
         )
         result["coordination"] = coordination
         result["validation_retry_evidence"] = verified
+        return result
+
+    def _verified_quack_preprojection_execution_boundary(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any]:
+        """Reproduce the absence of every Portal provider/effect boundary."""
+
+        history = self.phase_history(attempt.attempt_id)
+        effectful_phases = {
+            ATTEMPT_PHASE_PROVIDER,
+            ATTEMPT_PHASE_EFFECT,
+            ATTEMPT_PHASE_VALIDATION,
+            ATTEMPT_PHASE_COMPLETE,
+        }.intersection(str(item.get("phase") or "") for item in history)
+        connection = self._require_connection()
+        effect_count_row = connection.execute(
+            "SELECT COUNT(*) FROM effect_claims WHERE attempt_id = ?",
+            [attempt.attempt_id],
+        ).fetchone()
+        effect_count = int(effect_count_row[0] if effect_count_row else 0)
+        provider_rows = connection.execute(
+            """
+            SELECT idempotency_key, result_json
+            FROM provider_invocations
+            WHERE attempt_id = ?
+            ORDER BY idempotency_key
+            """,
+            [attempt.attempt_id],
+        ).fetchall()
+        if effectful_phases or effect_count or len(provider_rows) > 1:
+            raise DatabaseImplementationAuthorityError(
+                "Quack preprojection recovery found provider/effect evidence"
+            )
+        fingerprint = ""
+        if provider_rows:
+            row = provider_rows[0]
+            key = str(row[0] or "")
+            evidence = _database_daemon_load_json(row[1])
+            try:
+                unknown = _sealed_database_provider_callback_unknown_evidence(
+                    evidence
+                )
+            except (TypeError, ValueError) as exc:
+                raise DatabaseImplementationAuthorityError(
+                    "Quack preprojection recovery found a committed callback outcome"
+                ) from exc
+            expected_identity = {
+                "idempotency_key": f"provider:{attempt.attempt_id}",
+                "attempt_id": attempt.attempt_id,
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "owner_session_id": attempt.owner_session_id,
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
+                "task_cid": attempt.task_cid,
+            }
+            if (
+                key != expected_identity["idempotency_key"]
+                or any(
+                    unknown.get(name) != value
+                    for name, value in expected_identity.items()
+                )
+                or unknown.get("database_binding_id") != ""
+                or unknown.get("portal_failure_fingerprint") != ""
+            ):
+                raise DatabaseImplementationConflictError(
+                    "Quack preprojection callback intent is stale or rebound"
+                )
+            fingerprint = str(unknown["failure_fingerprint"])
+        return {
+            "provider_phase_present": False,
+            "effect_phase_present": False,
+            "effect_claim_count": 0,
+            "provider_callback_intent_present": bool(provider_rows),
+            "provider_callback_intent_fingerprint": fingerprint,
+        }
+
+    def recover_blocked_quack_preprojection_transport_failure(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+    ) -> dict[str, Any]:
+        """Rearm one historical Quack refusal proved before Portal setup.
+
+        This path never infers a provider outcome from the failure message.
+        It requires: the exact current endpoint-bound DuckDB refusal, no
+        provider/effect/validation phase, no effect row, at most the original
+        unresolved callback intent, and the bridge's exclusive filesystem
+        seal proving that the deterministic Portal attempt directory had no
+        projection or artifact.  Only then may the canonical queue/task CAS
+        create a fresh fenced attempt.
+        """
+
+        self._require_execution_authority(
+            "Quack preprojection transport recovery"
+        )
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "Quack preprojection recovery requires an exact failed attempt"
+            )
+        current = persisted
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(current.task_cid)
+        if latest is None or latest.attempt_id != current.attempt_id:
+            raise DatabaseImplementationConflictError(
+                "Quack preprojection recovery rejected a superseded attempt"
+            )
+        source_reason = self._terminal_portal_failure_reason(current) or ""
+        from ..task_sources.duckdb_state import (
+            quack_transport_failure_text_is_unavailable,
+        )
+
+        if not quack_transport_failure_text_is_unavailable(
+            source_reason,
+            uri=self._quack_uri,
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "Quack preprojection recovery rejected a foreign failure"
+            )
+        self._verified_quack_preprojection_execution_boundary(current)
+        task = self.task_source.get(current.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "Quack preprojection recovery task disappeared"
+            )
+        if self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "Quack preprojection recovery rejected a manual/review-only task"
+            )
+        status = str(getattr(task, "status", "") or "").strip().lower()
+        if status not in {"blocked", "retrying"}:
+            raise DatabaseImplementationConflictError(
+                "Quack preprojection recovery requires blocked or exact "
+                f"retrying control state, observed {status!r}"
+            )
+        callback = self._quack_preprojection_transport_recovery_fn
+        if not callable(callback):
+            raise DatabaseImplementationAuthorityError(
+                "Quack preprojection recovery callback is unavailable"
+            )
+        evidence = self._verified_quack_preprojection_transport_recovery_receipt(
+            current,
+            callback(current, source_reason),
+            expected_source_reason=source_reason,
+        )
+        coordination = self._reconcile_failed_attempt_coordination(current)
+        result = self._persist_task_retry_state(
+            current,
+            reason="quack_transport_unavailable",
+            backoff_ms=30_000,
+            evidence_source=(
+                "quack_preprojection_transport_recovered:"
+                + str(evidence["receipt_id"])
+            ),
+            coordination_evidence=coordination,
+            quack_preprojection_transport_recovery_evidence=evidence,
+        )
+        result["coordination"] = coordination
+        result["quack_preprojection_transport_recovery_evidence"] = evidence
         return result
 
     def recover_blocked_portal_protected_path_retry(
@@ -86241,6 +86733,49 @@ class DatabaseImplementationDaemon:
                 )
             status = str(task.status or "").strip().lower()
             if status == "blocked":
+                from ..task_sources.duckdb_state import (
+                    quack_transport_failure_text_is_unavailable,
+                )
+
+                if (
+                    self._quack_preprojection_transport_recovery_fn
+                    is not None
+                    and quack_transport_failure_text_is_unavailable(
+                        reason,
+                        uri=self._quack_uri,
+                    )
+                ):
+                    try:
+                        outcome = (
+                            self.recover_blocked_quack_preprojection_transport_failure(
+                                attempt
+                            )
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Quack preprojection transport recovery not admitted "
+                            "for %s: %s: %s",
+                            attempt.attempt_id,
+                            type(exc).__name__,
+                            str(exc)[:512],
+                        )
+                        outcomes.append(
+                            {
+                                "task_cid": attempt.task_cid,
+                                "attempt_id": attempt.attempt_id,
+                                "status": "blocked",
+                                "changed": False,
+                                "reason": (
+                                    "quack_preprojection_transport_recovery_"
+                                    "not_admitted"
+                                ),
+                                "error_type": type(exc).__name__,
+                                "error": str(exc)[:512],
+                            }
+                        )
+                    else:
+                        outcomes.append(outcome)
+                        continue
                 from .database_portal_bridge import (
                     DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS,
                     DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON,
@@ -86366,6 +86901,14 @@ class DatabaseImplementationDaemon:
                     == "database_portal_pooled_worktree_create_retry_recovery"
                 ):
                     self._verified_pooled_worktree_create_recovery_state(
+                        attempt,
+                        task,
+                    )
+                elif (
+                    operation
+                    == "database_portal_quack_preprojection_retry_recovery"
+                ):
+                    self._verified_quack_preprojection_transport_recovery_state(
                         attempt,
                         task,
                     )
@@ -88137,7 +88680,8 @@ class DatabaseImplementationDaemon:
             )
             candidate_retry = isinstance(exc, DatabasePortalCandidateRetry)
             reason = self._database_portal_reason(str(exc))
-            if reason in _PROCESS_TRANSIENT_PORTAL_REASONS:
+            process_transient = reason in _PROCESS_TRANSIENT_PORTAL_REASONS
+            if process_transient:
                 # Keep the claim retryable without consuming the typed
                 # deferral anti-spin budget that would block the gate.
                 deferred = False
@@ -88215,7 +88759,7 @@ class DatabaseImplementationDaemon:
                             True
                             if deferred
                             else False
-                            if validation_retry
+                            if validation_retry or process_transient
                             else "unknown"
                         ),
                         "backoff_seconds": backoff_seconds,
@@ -88308,6 +88852,8 @@ class DatabaseImplementationDaemon:
                         evidence_source=(
                             "portal_candidate_retry"
                             if candidate_retry
+                            else "portal_process_transient_retry"
+                            if process_transient
                             else "typed_portal_proposal_gate_retry"
                         ),
                     )
@@ -88370,7 +88916,7 @@ class DatabaseImplementationDaemon:
                         True
                         if deferred
                         else False
-                        if validation_retry or candidate_retry
+                        if validation_retry or candidate_retry or process_transient
                         else "unknown"
                     ),
                     "backoff_seconds": backoff_seconds,
@@ -88403,7 +88949,7 @@ class DatabaseImplementationDaemon:
                     True
                     if deferred
                     else False
-                    if validation_retry or candidate_retry
+                    if validation_retry or candidate_retry or process_transient
                     else "unknown"
                 ),
                 "backoff_seconds": backoff_seconds,

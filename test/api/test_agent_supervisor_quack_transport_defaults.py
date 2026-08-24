@@ -53,6 +53,38 @@ def test_quack_transport_unavailable_matches_exact_duckdb_loopback_endpoint() ->
     ) is True
 
 
+def test_quack_transport_unavailable_matches_current_duckdb_http_post_error() -> None:
+    import duckdb
+
+    error = duckdb.IOException(
+        "IO Error: Failed to send message: IO Error: Could not connect to "
+        "server error for HTTP POST to 'http://127.0.0.1:45123/quack'"
+    )
+
+    assert quack_transport_error_is_unavailable(
+        error,
+        uri="quack:127.0.0.1:45123",
+    ) is True
+
+
+def test_current_quack_http_post_error_rejects_a_different_path_or_endpoint() -> None:
+    import duckdb
+
+    for target in (
+        "http://127.0.0.1:45124/quack",
+        "http://127.0.0.1:45123/not-quack",
+        "https://127.0.0.1:45123/quack",
+    ):
+        error = duckdb.IOException(
+            "IO Error: Failed to send message: IO Error: Could not connect to "
+            f"server error for HTTP POST to '{target}'"
+        )
+        assert quack_transport_error_is_unavailable(
+            error,
+            uri="quack:127.0.0.1:45123",
+        ) is False
+
+
 def test_quack_transport_unavailable_follows_a_bounded_exception_cause() -> None:
     import duckdb
 

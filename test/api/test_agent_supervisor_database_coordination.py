@@ -77,6 +77,60 @@ def _open(
     return coordinator, clock
 
 
+def test_open_rebuilds_stale_ready_index_before_updates(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "coordination.duckdb"
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(
+            task_cid="task:index-recovery",
+            task_id="INDEX-RECOVERY",
+        )
+    finally:
+        coordinator.close()
+
+    import duckdb
+
+    raw = duckdb.connect(str(database_path))
+    try:
+        raw.execute("DROP INDEX coordination_tasks_ready_idx")
+        raw.execute(
+            "CREATE INDEX coordination_tasks_ready_idx "
+            "ON coordination_tasks(task_id)"
+        )
+    finally:
+        raw.close()
+
+    reopened = open_database_coordinator(database_path)
+    try:
+        selected = reopened.claim_ready_task(
+            owner_session_id="session:index-recovery"
+        )
+        assert selected is not None
+        assert selected.task_cid == "task:index-recovery"
+    finally:
+        reopened.close()
+
+    observed = duckdb.connect(str(database_path), read_only=True)
+    try:
+        index_sql = observed.execute(
+            "SELECT sql FROM duckdb_indexes() "
+            "WHERE index_name = 'coordination_tasks_ready_idx'"
+        ).fetchone()
+        task_row = observed.execute(
+            "SELECT task_cid, task_id, ready FROM coordination_tasks"
+        ).fetchone()
+    finally:
+        observed.close()
+    assert index_sql is not None
+    assert index_sql[0] == (
+        "CREATE INDEX coordination_tasks_ready_idx ON "
+        "coordination_tasks(ready, registered_at_ms, task_cid);"
+    )
+    assert task_row == ("task:index-recovery", "INDEX-RECOVERY", True)
+
+
 def _completed_control_task(
     prepared: dict[str, object],
     *,

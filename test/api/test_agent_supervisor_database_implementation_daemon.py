@@ -70,6 +70,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalBridgeError,
     DatabasePortalCandidateRetry,
     DatabasePortalDeterministicReconciliationDeferred,
+    DatabasePortalExecutionBridge,
     DatabasePortalValidationRetry,
     database_portal_consumed_no_progress_fingerprint,
     database_portal_task_contract_digest,
@@ -5367,6 +5368,152 @@ def test_reconcile_rearms_blocked_checkout_contention(tmp_path: Path) -> None:
         daemon.close()
 
 
+@pytest.mark.parametrize(
+    "provider_intent_present",
+    (True, False),
+    ids=("callback-intent", "before-callback-intent"),
+)
+def test_reconcile_recovers_exact_quack_preprojection_transport_failure(
+    tmp_path: Path,
+    provider_intent_present: bool,
+) -> None:
+    import duckdb
+
+    quack_uri = "quack:127.0.0.1:45123"
+    source_reason = (
+        "IO Error: Failed to send message: IO Error: Could not connect to "
+        "server error for HTTP POST to 'http://127.0.0.1:45123/quack'"
+    )
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise duckdb.IOException(source_reason)
+
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:quack-preprojection-recovery",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(database_path=quack_uri),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    daemon._quack_uri = quack_uri
+    daemon._quack_preprojection_transport_recovery_fn = (
+        bridge.recover_quack_preprojection_transport_failure
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+        if not provider_intent_present:
+            daemon._require_connection().execute(
+                "DELETE FROM provider_invocations WHERE attempt_id = ?",
+                [attempt.attempt_id],
+            )
+        unknown = daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        )
+        if provider_intent_present:
+            assert unknown is not None
+            assert unknown["schema"] == DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA
+        else:
+            assert unknown is None
+        assert daemon.effect_claim_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"effect:{attempt.attempt_id}",
+        ) is None
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        recovered = outcomes[0]
+        assert recovered["changed"] is True
+        assert recovered["status"] == "retrying"
+        evidence = recovered[
+            "quack_preprojection_transport_recovery_evidence"
+        ]
+        assert evidence["provider_dispatched"] is False
+        assert evidence["effect_executed"] is False
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        control = task.body["completion_receipt"]
+        assert control["operation"] == (
+            "database_portal_quack_preprojection_retry_recovery"
+        )
+        assert control["quack_preprojection_transport_recovery_seed"] == evidence
+        assert daemon.reconcile_terminal_portal_failures() == []
+    finally:
+        daemon.close()
+
+
+def test_quack_preprojection_recovery_rejects_a_committed_provider_outcome(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    quack_uri = "quack:127.0.0.1:45123"
+    source_reason = (
+        "IO Error: Failed to send message: IO Error: Could not connect to "
+        "server error for HTTP POST to 'http://127.0.0.1:45123/quack'"
+    )
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise duckdb.IOException(source_reason)
+
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:quack-preprojection-reject-provider",
+        provider_fn=provider,
+        max_task_attempts=4,
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(database_path=quack_uri),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    daemon._quack_uri = quack_uri
+    daemon._quack_preprojection_transport_recovery_fn = (
+        bridge.recover_quack_preprojection_transport_failure
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_result = daemon.run_once()
+        attempt = daemon.get_attempt(failed_result["attempt_id"])
+        assert attempt is not None
+        daemon._require_connection().execute(
+            "UPDATE provider_invocations SET result_json = ? "
+            "WHERE attempt_id = ?",
+            [
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "accepted": True,
+                        "task_cid": attempt.task_cid,
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                attempt.attempt_id,
+            ],
+        )
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["changed"] is False
+        assert outcomes[0]["reason"] == (
+            "quack_preprojection_transport_recovery_not_admitted"
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "blocked"
+        assert not (tmp_path / "attempts").exists()
+    finally:
+        daemon.close()
+
+
 def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(
     tmp_path: Path,
 ) -> None:
@@ -6630,6 +6777,38 @@ def test_inflight_process_deferral_does_not_exhaust_typed_budget(
         task = daemon.task_source.get("task:cid:001")
         assert task is not None
         assert task.status == "retrying"
+    finally:
+        daemon.close()
+
+
+def test_quack_transport_deferral_does_not_consume_model_or_spin_budget(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "quack_transport_unavailable",
+            backoff_seconds=30,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:quack-transport-deferral-budget",
+        provider_fn=provider,
+        max_task_attempts=1,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        implementation = first["implementation_result"]
+        assert implementation["portal_retryable_failure"] is True
+        assert implementation["portal_terminal_failure"] is False
+        assert implementation["reason"] == "quack_transport_unavailable"
+        assert implementation["typed_deferral_slot_consumed"] is False
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None and task.status == "retrying"
     finally:
         daemon.close()
 

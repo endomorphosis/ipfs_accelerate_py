@@ -1414,6 +1414,9 @@ def bind_database_portal_execution_from_args(
             bridge.recover_validation_retry_seed_conflict
         ),
         pooled_worktree_create_recovery_fn=bridge.recover_pooled_worktree_create,
+        quack_preprojection_transport_recovery_fn=(
+            bridge.recover_quack_preprojection_transport_failure
+        ),
         deterministic_reconciliation_fn=(
             bridge.run_deterministic_reconciliation
         ),

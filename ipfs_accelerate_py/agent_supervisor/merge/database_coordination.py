@@ -1142,6 +1142,32 @@ CREATE INDEX IF NOT EXISTS maintenance_leases_scope_idx
 """
 
 
+_STARTUP_REBUILT_INDEXES: Final[tuple[tuple[str, str], ...]] = (
+    (
+        "coordination_tasks_ready_idx",
+        "CREATE INDEX coordination_tasks_ready_idx "
+        "ON coordination_tasks(ready, registered_at_ms, task_cid)",
+    ),
+)
+
+
+def _rebuild_startup_indexes(connection: Any) -> None:
+    """Rebuild exact disposable indexes before coordination mutations.
+
+    DuckDB can preserve an inconsistent ART index after an interrupted update
+    while every underlying table row remains readable. Reopening that file
+    and updating ``coordination_tasks.ready`` then invalidates the connection
+    with ``Failed to delete all rows from index`` on every daemon restart.
+    The coordinator's file lock is already held here, so replacing this one
+    derived lookup structure cannot contend with another writer and does not
+    alter authoritative task, claim, lease, or event rows.
+    """
+
+    for name, statement in _STARTUP_REBUILT_INDEXES:
+        connection.execute(f'DROP INDEX IF EXISTS "{name}"')
+        connection.execute(statement)
+
+
 _COORDINATION_REQUIRED_COLUMNS: Final[Mapping[str, tuple[tuple[str, str], ...]]] = {
     "coordination_metadata": (("key", "VARCHAR"), ("value", "VARCHAR")),
     "coordination_tasks": (
@@ -1718,6 +1744,7 @@ class DatabaseCoordinator:
                 if not self._quack_transport:
                     for statement in _split_sql_statements(_BOOKKEEPING_SQL):
                         connection.execute(statement)
+                    _rebuild_startup_indexes(connection)
                     for key, value in (
                         ("interface", DATABASE_COORDINATOR_INTERFACE),
                         ("schema", DATABASE_COORDINATION_SCHEMA),

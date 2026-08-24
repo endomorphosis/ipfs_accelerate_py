@@ -33,6 +33,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
     DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA,
+    DATABASE_PORTAL_QUACK_PREPROJECTION_RECOVERY_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON,
     DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA,
     DatabasePortalBridgeDeferred,
@@ -1113,6 +1114,155 @@ def test_bridge_preserves_explicit_non_consuming_portal_deferral(
     ):
         bridge.run_provider(_attempt())
     assert portals and portals[0].closed is True
+
+
+def test_bridge_types_current_quack_refusal_before_portal_dispatch(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    class RefusingTaskSource:
+        database_path = "quack:127.0.0.1:45123"
+
+        def get_task(self, _task_cid: str) -> object:
+            raise duckdb.IOException(
+                "IO Error: Failed to send message: IO Error: Could not connect "
+                "to server error for HTTP POST to "
+                "'http://127.0.0.1:45123/quack'"
+            )
+
+    factory_called = False
+
+    def factory(_paths: object, _alias: str) -> object:
+        nonlocal factory_called
+        factory_called = True
+        raise AssertionError("Portal factory must remain outside this boundary")
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=RefusingTaskSource(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=factory,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+    assert caught.value.reason == "quack_transport_unavailable"
+    assert caught.value.backoff_seconds == 30
+    assert caught.value.provider_dispatched is False
+    assert caught.value.attempt_consumed is False
+    assert factory_called is False
+    assert not (tmp_path / "attempts").exists()
+
+
+def test_bridge_does_not_type_foreign_quack_refusal_as_pre_dispatch(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    class RefusingTaskSource:
+        database_path = "quack:127.0.0.1:45123"
+
+        def get_task(self, _task_cid: str) -> object:
+            raise duckdb.IOException(
+                "IO Error: Failed to send message: IO Error: Could not connect "
+                "to server error for HTTP POST to "
+                "'http://127.0.0.1:45124/quack'"
+            )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=RefusingTaskSource(),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(paths, alias),
+    )
+
+    with pytest.raises(duckdb.IOException) as caught:
+        bridge.run_provider(_attempt())
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+
+
+def test_bridge_seals_historical_quack_preprojection_absence(
+    tmp_path: Path,
+) -> None:
+    task_source = SimpleNamespace(database_path="quack:127.0.0.1:45123")
+    bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(paths, alias),
+    )
+    reason = (
+        "IO Error: Failed to send message: IO Error: Could not connect to "
+        "server error for HTTP POST to 'http://127.0.0.1:45123/quack'"
+    )
+
+    receipt = bridge.recover_quack_preprojection_transport_failure(
+        _attempt(),
+        reason,
+    )
+    replay = bridge.recover_quack_preprojection_transport_failure(
+        _attempt(),
+        reason,
+    )
+
+    assert receipt == replay
+    assert receipt["schema"] == DATABASE_PORTAL_QUACK_PREPROJECTION_RECOVERY_SCHEMA
+    assert receipt["absence_sealed"] is True
+    assert receipt["projection_present"] is False
+    assert receipt["provider_dispatched"] is False
+    assert receipt["effect_executed"] is False
+    attempt_dir = bridge._paths(_attempt()).root
+    assert [item.name for item in attempt_dir.iterdir()] == [
+        "database-portal-quack-preprojection-recovery.json"
+    ]
+
+
+def test_bridge_quack_preprojection_recovery_rejects_any_projection_artifact(
+    tmp_path: Path,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(
+            database_path="quack:127.0.0.1:45123"
+        ),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(paths, alias),
+    )
+    attempt_dir = bridge._paths(_attempt()).root
+    attempt_dir.mkdir(parents=True)
+    (attempt_dir / "task-projection.md").write_text("foreign", encoding="utf-8")
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="projection or foreign artifact",
+    ):
+        bridge.recover_quack_preprojection_transport_failure(
+            _attempt(),
+            "IO Error: Failed to send message: IO Error: Could not connect to "
+            "server error for HTTP POST to "
+            "'http://127.0.0.1:45123/quack'",
+        )
+
+
+def test_bridge_quack_preprojection_recovery_rejects_foreign_endpoint(
+    tmp_path: Path,
+) -> None:
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(
+            database_path="quack:127.0.0.1:45123"
+        ),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda paths, alias: _CompletingPortal(paths, alias),
+    )
+
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="not an exact Quack transport refusal",
+    ):
+        bridge.recover_quack_preprojection_transport_failure(
+            _attempt(),
+            "IO Error: Failed to send message: IO Error: Could not connect to "
+            "server error for HTTP POST to "
+            "'http://127.0.0.1:45124/quack'",
+        )
+    assert not (tmp_path / "attempts").exists()
 
 
 def test_bridge_seals_consumed_no_progress_without_cause_inference(
@@ -3881,6 +4031,11 @@ def test_configured_runner_binds_post_merge_recovery_when_queue_is_target_bound(
         assert daemon._merge_queue is not None
         assert daemon._merge_target_branch == "main"
         assert daemon._post_merge_recovery_fn is not None
+        assert daemon._quack_preprojection_transport_recovery_fn is not None
+        assert (
+            daemon._quack_preprojection_transport_recovery_fn.__name__
+            == "recover_quack_preprojection_transport_failure"
+        )
         assert checkout_repository_id(repo) == daemon._merge_queue.target_repository_id
     finally:
         daemon.close()

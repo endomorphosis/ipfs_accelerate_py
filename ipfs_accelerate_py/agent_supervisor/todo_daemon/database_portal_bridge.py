@@ -129,6 +129,9 @@ _VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_FILENAME: Final[str] = (
 _POOLED_WORKTREE_CREATE_RECOVERY_FILENAME: Final[str] = (
     "database-portal-pooled-worktree-create-recovery.json"
 )
+_QUACK_PREPROJECTION_RECOVERY_FILENAME: Final[str] = (
+    "database-portal-quack-preprojection-recovery.json"
+)
 _PAIRED_SUPERVISOR_PROTECTED_RECOVERY_OWNER: Final[str] = (
     "implementation_supervisor"
 )
@@ -224,6 +227,10 @@ DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
 )
 DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS: Final[int] = (
     FENCE_CONTENTION_BACKOFF_SECONDS
+)
+DATABASE_PORTAL_QUACK_PREPROJECTION_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-quack-preprojection-recovery@1"
 )
 _MAX_DATABASE_PORTAL_BINDING_BYTES: Final[int] = 64 * 1024
 _MAX_DATABASE_PORTAL_PROJECTION_BYTES: Final[int] = 1024 * 1024
@@ -8507,8 +8514,28 @@ class DatabasePortalExecutionBridge:
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
-        record = self._record_for_attempt(self.task_source, attempt)
-        paths, binding = self._ensure_attempt_projection(attempt, record)
+        try:
+            record = self._record_for_attempt(self.task_source, attempt)
+            paths, binding = self._ensure_attempt_projection(attempt, record)
+        except Exception as exc:
+            # The task lookup and projection render precede construction of a
+            # Portal daemon, worktree allocation, and every provider/effect
+            # boundary.  DuckDB's endpoint-bound loopback refusal is therefore
+            # an observed pre-dispatch infrastructure deferral, not a terminal
+            # provider outcome.  Keep every other exception fail closed.
+            from ..task_sources.duckdb_state import (
+                quack_transport_error_is_unavailable,
+                reset_quack_transport_cache,
+            )
+
+            quack_uri = getattr(self.task_source, "database_path", "")
+            if not quack_transport_error_is_unavailable(exc, uri=quack_uri):
+                raise
+            reset_quack_transport_cache(quack_uri)
+            raise DatabasePortalBridgeDeferred(
+                "quack_transport_unavailable",
+                backoff_seconds=30,
+            ) from exc
         self._reclaim_dead_lane_portal_lifecycle_claims(
             attempt=attempt,
             paths=paths,
@@ -8697,6 +8724,163 @@ class DatabasePortalExecutionBridge:
             close = getattr(daemon, "close_event_runtime", None) or getattr(daemon, "close", None)
             if callable(close):
                 close()
+
+    def recover_quack_preprojection_transport_failure(
+        self,
+        attempt: Any,
+        failure_reason: str,
+    ) -> Mapping[str, Any]:
+        """Seal proof that a historical Quack refusal preceded Portal setup.
+
+        Before :meth:`run_provider` gained its typed transport boundary, a
+        Quack refusal during task lookup/render was terminalized with an
+        outcome-unknown callback intent.  At that point this bridge had not
+        created the deterministic attempt directory.  Exclusively creating
+        that exact directory now seals the observed absence; any projection,
+        event, log, provider, or foreign artifact keeps recovery fail closed.
+        The database daemon independently checks its phase/effect history
+        before this receipt may authorize a new fenced attempt.
+        """
+
+        from ..task_sources.duckdb_state import (
+            quack_transport_failure_text_is_unavailable,
+            quack_transport_uri,
+        )
+
+        quack_uri = quack_transport_uri(
+            getattr(self.task_source, "database_path", "")
+        )
+        reason = str(failure_reason or "").strip()
+        if (
+            not quack_uri
+            or not reason
+            or len(reason.encode("utf-8", errors="surrogatepass")) > 2048
+            or not quack_transport_failure_text_is_unavailable(
+                reason,
+                uri=quack_uri,
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "terminal failure is not an exact Quack transport refusal"
+            )
+
+        paths = self._paths(attempt)
+        try:
+            root_parent = self.attempt_root.parent.resolve(strict=True)
+            if root_parent != self.attempt_root.parent:
+                raise DatabasePortalBridgeError(
+                    "Quack recovery attempt-root parent is redirected"
+                )
+            try:
+                os.mkdir(self.attempt_root, 0o700)
+            except FileExistsError:
+                pass
+            attempt_root = self.attempt_root.resolve(strict=True)
+            if attempt_root != self.attempt_root or not attempt_root.is_dir():
+                raise DatabasePortalBridgeError(
+                    "Quack recovery attempt root is not an exact directory"
+                )
+            if paths.root.parent != attempt_root:
+                raise DatabasePortalBridgeError(
+                    "Quack recovery attempt escaped its exact root"
+                )
+            try:
+                os.mkdir(paths.root, 0o700)
+            except FileExistsError:
+                pass
+            metadata = paths.root.lstat()
+            if (
+                paths.root.is_symlink()
+                or not stat.S_ISDIR(metadata.st_mode)
+                or paths.root.resolve(strict=True) != paths.root
+            ):
+                raise DatabasePortalBridgeError(
+                    "Quack recovery attempt directory is redirected"
+                )
+        except DatabasePortalBridgeError:
+            raise
+        except OSError as exc:
+            raise DatabasePortalBridgeError(
+                "Quack recovery could not seal the attempt directory"
+            ) from exc
+
+        receipt_path = paths.root / _QUACK_PREPROJECTION_RECOVERY_FILENAME
+        entries = tuple(paths.root.iterdir())
+        if any(entry != receipt_path for entry in entries):
+            raise DatabasePortalBridgeError(
+                "Quack recovery found a Portal projection or foreign artifact"
+            )
+        if receipt_path.is_symlink() or (
+            receipt_path.exists() and not receipt_path.is_file()
+        ):
+            raise DatabasePortalBridgeError(
+                "Quack preprojection recovery receipt is not a private file"
+            )
+        receipt: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_QUACK_PREPROJECTION_RECOVERY_SCHEMA,
+            "disposition": "retry",
+            "reason": "quack_preprojection_transport_failure_recovered",
+            "source_reason": reason,
+            "source_reason_digest": _sha256_bytes(reason.encode("utf-8")),
+            "quack_uri": quack_uri,
+            "task_cid": str(getattr(attempt, "task_cid", "") or ""),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "attempt_id": str(getattr(attempt, "attempt_id", "") or ""),
+            "claim_id": str(getattr(attempt, "claim_id", "") or ""),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(
+                getattr(attempt, "attempt_number", 0) or 0
+            ),
+            "fencing_token": int(
+                getattr(attempt, "fencing_token", 0) or 0
+            ),
+            "fence_epoch": int(getattr(attempt, "fence_epoch", 0) or 0),
+            "attempt_root": str(attempt_root),
+            "attempt_directory": str(paths.root),
+            "absence_sealed": True,
+            "projection_present": False,
+            "provider_dispatched": False,
+            "effect_executed": False,
+            "backoff_seconds": 30,
+        }
+        if (
+            not receipt["task_cid"]
+            or not receipt["attempt_id"]
+            or not receipt["claim_id"]
+            or not receipt["lease_id"]
+            or receipt["attempt_number"] < 1
+            or receipt["fencing_token"] < 1
+            or receipt["fence_epoch"] < 1
+        ):
+            raise DatabasePortalBridgeError(
+                "Quack recovery attempt identity is incomplete"
+            )
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        payload = (
+            json.dumps(receipt, indent=2, sort_keys=True).encode("utf-8")
+            + b"\n"
+        )
+        if not _atomic_write_once(receipt_path, payload):
+            observed = self._read_json_object(
+                receipt_path,
+                noun="Quack preprojection recovery receipt",
+            )
+            if observed != receipt:
+                raise DatabasePortalBridgeError(
+                    "Quack preprojection recovery receipt changed across replay"
+                )
+        final_entries = tuple(paths.root.iterdir())
+        if final_entries != (receipt_path,) or receipt_path.is_symlink():
+            raise DatabasePortalBridgeError(
+                "Quack recovery attempt directory changed after sealing"
+            )
+        if json.loads(
+            _bounded_file(receipt_path, limit=64 * 1024).decode("utf-8")
+        ) != receipt:
+            raise DatabasePortalBridgeError(
+                "Quack preprojection recovery receipt failed durable replay"
+            )
+        return receipt
 
     def recover_post_merge_declared_outputs(
         self,
@@ -9544,6 +9728,7 @@ __all__ = (
     "DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON",
     "DATABASE_PORTAL_POOLED_WORKTREE_CREATE_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON",
+    "DATABASE_PORTAL_QUACK_PREPROJECTION_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_REASON",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_CONFLICT_RECOVERY_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_RECOVERY_INTENT_SCHEMA",

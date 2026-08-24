@@ -3112,17 +3112,18 @@ _QUACK_TRANSPORT_UNAVAILABLE_FORBIDDEN_MARKERS = (
 )
 
 
-def quack_transport_error_is_unavailable(
-    exc: BaseException,
+def quack_transport_failure_text_is_unavailable(
+    value: object,
     *,
     uri: object,
 ) -> bool:
-    """Recognize only DuckDB's exact live loopback Quack connection failure.
+    """Match DuckDB's endpoint-bound loopback refusal text only.
 
-    This classifier is deliberately narrower than ATTACH contention.  It
-    cannot turn an application ``RuntimeError`` or an authentication, policy,
-    schema, or data error into a retryable transport observation.  The server
-    named by DuckDB must exactly match the admitted loopback Quack URI.
+    Text alone is not retry authority.  This helper exists so a recovery
+    validator can pair an immutable historical failure string with separate
+    proof that no provider projection or effect boundary existed.  Live
+    exception classification remains type-gated by
+    :func:`quack_transport_error_is_unavailable` below.
     """
 
     canonical_uri = quack_transport_uri(uri)
@@ -3136,6 +3137,38 @@ def quack_transport_error_is_unavailable(
     endpoints = {f"{host}:{port}"}
     if host == "::1":
         endpoints.add(f"[{host}]:{port}")
+    message = " ".join(str(value or "").casefold().split())
+    if any(
+        marker in message
+        for marker in _QUACK_TRANSPORT_UNAVAILABLE_FORBIDDEN_MARKERS
+    ):
+        return False
+    legacy_refusal = any(
+        "failed to send message: could not connect to server "
+        f'"{endpoint}"' in message
+        for endpoint in endpoints
+    )
+    current_refusal = any(
+        "failed to send message: io error: could not connect to server "
+        "error for http post to "
+        f"'http://{endpoint}/quack'" in message
+        for endpoint in endpoints
+    )
+    return legacy_refusal or current_refusal
+
+
+def quack_transport_error_is_unavailable(
+    exc: BaseException,
+    *,
+    uri: object,
+) -> bool:
+    """Recognize only DuckDB's exact live loopback Quack connection failure.
+
+    This classifier is deliberately narrower than ATTACH contention.  It
+    cannot turn an application ``RuntimeError`` or an authentication, policy,
+    schema, or data error into a retryable transport observation.  The server
+    named by DuckDB must exactly match the admitted loopback Quack URI.
+    """
 
     chain: list[BaseException] = []
     seen: set[int] = set()
@@ -3160,11 +3193,7 @@ def quack_transport_error_is_unavailable(
             or exception_type.__name__ != "IOException"
         ):
             continue
-        if any(
-            "failed to send message: could not connect to server "
-            f'"{endpoint}"' in message
-            for endpoint in endpoints
-        ):
+        if quack_transport_failure_text_is_unavailable(message, uri=uri):
             return True
     return False
 
