@@ -264,6 +264,11 @@ class FederationControlService:
     def execute(self, command: FederationCommand) -> FederationControlResponse:
         """Execute one authorized post-admission command through the owner."""
 
+        # Capability evidence is a live fail-closed gate, not merely a
+        # construction-time assertion.  Rechecking it prevents a service
+        # whose owner/transport evidence has been revoked (or unsafely
+        # mutated by an embedding process) from dispatching another command.
+        self._capability.__post_init__()
         if not isinstance(command, FederationCommand):
             raise FederationControlServiceError("control service accepts FederationCommand only")
         self._validate_command(command)
@@ -363,8 +368,8 @@ class FederationControlService:
             raise FederationControlResultError("audit binds another authorization")
         if audit.result_ref != result.cid:
             raise FederationControlResultError("audit result reference differs")
-        if audit.control_plane_generation < command.expected_generation:
-            raise FederationControlResultError("audit generation predates command")
+        if audit.control_plane_generation != command.expected_generation:
+            raise FederationControlResultError("audit generation differs from command")
         if audit.fencing_epoch != command.expected_fencing_epoch:
             raise FederationControlResultError("audit fence differs")
 

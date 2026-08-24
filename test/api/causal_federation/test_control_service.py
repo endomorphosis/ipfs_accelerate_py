@@ -157,6 +157,39 @@ def test_missing_or_unqualified_capability_fails_before_dispatch() -> None:
         FederationControlCapability(True, "TypedStateOwnerFederationControl@1", True, False, True, False, False)
 
 
+def test_capability_is_rechecked_before_each_dispatch() -> None:
+    value = command()
+    control, authorizer_, owner = service()
+    object.__setattr__(control.capability, "quack_transport", False)
+
+    with pytest.raises(FederationControlCapabilityError, match="Quack"):
+        control.execute(value)
+
+    assert not authorizer_.commands
+    assert not owner.calls
+
+
+def test_control_authorization_and_audit_are_closed_content_addressed_records() -> None:
+    value = command()
+    admitted = authorization(value)
+    audit = response(value, admitted).audit
+
+    assert FederationControlAuthorization.from_dict(admitted.to_dict()) == admitted
+    assert FederationControlAuditReceipt.from_dict(audit.to_dict()) == audit
+    assert FederationControlAuthorization.from_dict(admitted.to_dict()).cid == admitted.cid
+    assert FederationControlAuditReceipt.from_dict(audit.to_dict()).cid == audit.cid
+
+    authorization_payload = admitted.to_dict()
+    authorization_payload["model_policy_override"] = True
+    with pytest.raises(contracts.UnknownNormativeFieldError):
+        FederationControlAuthorization.from_dict(authorization_payload)
+
+    audit_payload = audit.to_dict()
+    audit_payload["model_policy_override"] = True
+    with pytest.raises(contracts.UnknownNormativeFieldError):
+        FederationControlAuditReceipt.from_dict(audit_payload)
+
+
 def test_live_commands_require_declared_effects() -> None:
     value = replace(command(), expected_effects=())
     control, authorizer_, owner = service()
@@ -269,6 +302,7 @@ def test_owner_may_return_a_matching_typed_fail_closed_outcome(outcome: str) -> 
         lambda item: replace(item, audit=replace(item.audit, command_cid="command:other")),
         lambda item: replace(item, audit=replace(item.audit, result_ref="result:other")),
         lambda item: replace(item, audit=replace(item.audit, fencing_epoch=3)),
+        lambda item: replace(item, audit=replace(item.audit, control_plane_generation=2)),
         lambda item: replace(item, result=replace(item.result, evidence_refs=("evidence:other",))),
     ],
 )
