@@ -440,6 +440,10 @@ def test_workflow_is_immutable_arm64_and_fails_on_current_no_go() -> None:
     assert action_refs
     assert all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in action_refs)
     assert "runs-on: ubuntu-24.04-arm" in text
+    assert "repository: ${{ job.workflow_repository }}" in text
+    assert "ref: ${{ job.workflow_sha }}" in text
+    assert "repository: ${{ github.repository }}" not in text
+    assert "ref: ${{ github.sha }}" not in text
     assert "run-id: ${{ inputs.artifact_run_id }}" in text
     assert "--artifact-root" in text
     assert "--require-qualified" in text
