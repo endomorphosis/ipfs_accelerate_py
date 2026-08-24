@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
+import ipfs_accelerate_py.agent_supervisor.federation.formal.models as formal_models
 import pytest
 from ipfs_accelerate_py.agent_supervisor.federation.contracts import (
     FederationLifecycleState,
@@ -33,8 +35,10 @@ from ipfs_accelerate_py.agent_supervisor.proof.prover_matrix_registry import (
     ProverMatrixSnapshot,
 )
 from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_state_model import (
+    CounterexampleTrace,
     ModelCheckBounds,
     ModelCheckerTool,
+    ModelCheckStatus,
     SupervisorStateModelChecker,
     TransitionRule,
 )
@@ -429,41 +433,134 @@ def test_checker_runtime_unavailability_cannot_be_promoted_by_matrix_capability(
     assert all(not item.passed for item in receipts)
 
 
-def test_checker_boundary_failure_is_recorded_as_not_run_and_never_passed() -> None:
+def test_checker_subclass_cannot_replace_the_trusted_execution_boundary() -> None:
     class ExplodingChecker(SupervisorStateModelChecker):
         def check(self, *args, **kwargs):  # type: ignore[no-untyped-def]
             del args, kwargs
             raise RuntimeError("execution boundary failed")
 
-    receipts = run_external_model_checks(
-        _suite(),
-        matrix=_qualified_matrix(_MatrixRuntime()),
-        checker=ExplodingChecker(),
-    )
-
-    assert len(receipts) == 12
-    assert all(item.status is ExternalCheckStatus.NOT_RUN for item in receipts)
-    assert all(not item.ran and not item.passed for item in receipts)
-    assert all(not item.model_check_receipt_id for item in receipts)
-    assert all("did not produce a typed receipt" in item.reason for item in receipts)
+    with pytest.raises(FederationFormalError, match="exact SupervisorStateModelChecker"):
+        run_external_model_checks(
+            _suite(),
+            matrix=_qualified_matrix(_MatrixRuntime()),
+            checker=ExplodingChecker(),
+        )
 
 
-def test_untyped_checker_result_is_recorded_as_not_run_and_never_passed() -> None:
-    class UntypedReceiptChecker(SupervisorStateModelChecker):
+def test_subclass_cannot_promote_a_dataclass_replace_forgery() -> None:
+    class ForgingChecker(SupervisorStateModelChecker):
         def check(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-            del args, kwargs
-            return object()
+            receipt = super().check(*args, **kwargs)
+            return replace(
+                receipt,
+                status=ModelCheckStatus.PASSED,
+                executable="",
+                tool_version="",
+                version_returncode=None,
+                version_stdout="",
+                version_stderr="",
+                command=(),
+                version_command=(),
+                returncode=None,
+                stdout="",
+                stderr="",
+                checked_safety_properties=(),
+                checked_liveness_properties=(),
+                counterexample=None,
+            )
 
+    matrix = _qualified_matrix(_MatrixRuntime())
+    checker = ForgingChecker(command_runner=_MatrixRuntime().run)
+    scenario = _suite().scenarios[0]
+    forged = checker.check(
+        scenario.generated_model,
+        tool=ModelCheckerTool.TLC,
+        executable=matrix.entry("tla_tlc").executable_path,
+    )
+    assert forged.passed
+    assert not forged.executable
+    assert not forged.version_command and not forged.command
+    assert forged.version_returncode is None and forged.returncode is None
+    assert not forged.checked_safety_properties
+    assert not forged.checked_liveness_properties
+
+    with pytest.raises(FederationFormalError, match="exact SupervisorStateModelChecker"):
+        run_external_model_checks(_suite(), matrix=matrix, checker=checker)
+
+
+@pytest.mark.parametrize(
+    "malformation",
+    (
+        "empty_execution_evidence",
+        "wrong_executable",
+        "empty_commands",
+        "failed_version",
+        "failed_check",
+        "missing_properties",
+        "status_inconsistent_output",
+        "version_drift",
+        "counterexample_on_pass",
+    ),
+)
+def test_malformed_passed_receipts_are_fail_closed_as_not_run(
+    monkeypatch: pytest.MonkeyPatch,
+    malformation: str,
+) -> None:
+    trusted_check = formal_models._TRUSTED_MODEL_CHECK
+
+    def malformed_check(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        receipt = trusted_check(self, *args, **kwargs)
+        if malformation == "empty_execution_evidence":
+            changes = {
+                "executable": "",
+                "tool_version": "",
+                "version_returncode": None,
+                "version_stdout": "",
+                "version_stderr": "",
+                "command": (),
+                "version_command": (),
+                "returncode": None,
+                "stdout": "",
+                "stderr": "",
+                "checked_safety_properties": (),
+                "checked_liveness_properties": (),
+            }
+        elif malformation == "wrong_executable":
+            changes = {"executable": "/tools/forged-checker"}
+        elif malformation == "empty_commands":
+            changes = {"command": (), "version_command": ()}
+        elif malformation == "failed_version":
+            changes = {"version_returncode": 1}
+        elif malformation == "failed_check":
+            changes = {"returncode": 1}
+        elif malformation == "missing_properties":
+            changes = {
+                "checked_safety_properties": (),
+                "checked_liveness_properties": (),
+            }
+        elif malformation == "status_inconsistent_output":
+            changes = {"stdout": "ambiguous checker output\n", "stderr": ""}
+        elif malformation == "version_drift":
+            changes = {
+                "tool_version": "forged checker 9.0",
+                "version_stdout": "forged checker 9.0\n",
+            }
+        else:
+            changes = {"counterexample": CounterexampleTrace(raw="forged trace")}
+        return replace(receipt, **changes)
+
+    monkeypatch.setattr(formal_models, "_TRUSTED_MODEL_CHECK", malformed_check)
     receipts = run_external_model_checks(
         _suite(),
         matrix=_qualified_matrix(_MatrixRuntime()),
-        checker=UntypedReceiptChecker(),
+        checker=SupervisorStateModelChecker(command_runner=_MatrixRuntime().run),
     )
 
     assert len(receipts) == 12
     assert all(item.status is ExternalCheckStatus.NOT_RUN for item in receipts)
     assert all(not item.ran and not item.passed for item in receipts)
     assert all(not item.model_check_receipt_id for item in receipts)
+    assert all("valid execution receipt" in item.reason for item in receipts)
 
 
 def test_external_checker_must_be_the_canonical_typed_checker() -> None:

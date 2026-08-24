@@ -26,12 +26,18 @@ from types import MappingProxyType
 from typing import Any, ClassVar, Final
 
 from ...proof.formal_verification_contracts import content_identity
-from ...proof.prover_matrix_registry import ProverMatrixSnapshot
+from ...proof.prover_matrix_registry import (
+    CommandResult,
+    ProverMatrixEntry,
+    ProverMatrixSnapshot,
+)
 from ...self_improvement.supervisor_state_model import (
+    LIVENESS_PROPERTIES,
+    SAFETY_PROPERTIES,
     GeneratedSupervisorStateModel,
     ModelCheckBounds,
-    ModelCheckReceipt,
     ModelCheckerTool,
+    ModelCheckReceipt,
     ModelCheckStatus,
     SupervisorStateModelChecker,
     SupervisorTransitionSchema,
@@ -279,7 +285,7 @@ class FederationFormalIdentity:
         if unknown:
             raise FederationFormalError(
                 "formal identity has unknown fields: "
-                + repr(sorted((str(item) for item in unknown)))
+                + repr(sorted(str(item) for item in unknown))
             )
         result = cls(
             source_revision=value.get("source_revision", ""),
@@ -1667,6 +1673,127 @@ _EXTERNAL_STATUS: Final[Mapping[ModelCheckStatus, ExternalCheckStatus]] = Mappin
     }
 )
 
+# Capture the reviewed implementation itself.  Calling this unbound method,
+# together with the exact-type gate below, prevents a checker subclass or an
+# instance-level ``check`` replacement from substituting a fabricated receipt.
+_TRUSTED_MODEL_CHECK: Final = SupervisorStateModelChecker.check
+_TRUSTED_MODEL_CLASSIFY: Final = SupervisorStateModelChecker._classify
+
+
+def _validate_external_model_check_receipt(
+    receipt: ModelCheckReceipt,
+    *,
+    scenario: FederationFormalScenario,
+    tool: ModelCheckerTool,
+    entry: ProverMatrixEntry,
+) -> None:
+    """Reject receipts which do not prove an exact checker invocation.
+
+    ``ModelCheckReceipt`` is also used as a general execution record, so its
+    constructor deliberately permits incomplete non-passing outcomes.  A CASF
+    external *pass* has a narrower truth boundary: the qualified matrix
+    executable must have produced successful version and check executions,
+    the commands and generated model must be exact, and all properties the
+    trusted checker claims for that tool must be present.
+    """
+
+    if type(receipt) is not ModelCheckReceipt:
+        raise FederationFormalError("checker returned a non-canonical receipt type")
+    if receipt.tool is not tool:
+        raise FederationFormalError("checker receipt tool does not match the requested tool")
+    if (
+        receipt.model is not scenario.generated_model
+        or receipt.model.artifact_identity != scenario.generated_model.artifact_identity
+    ):
+        raise FederationFormalError("checker receipt does not bind the generated scenario model")
+    if receipt.configuration_text != scenario.generated_model.configuration_for(tool):
+        raise FederationFormalError("checker receipt configuration does not bind the scenario")
+
+    executable = entry.executable_path or ""
+    if not executable or receipt.executable != executable:
+        raise FederationFormalError("checker receipt executable does not match the matrix")
+    if not receipt.version_command or receipt.version_command[0] != executable:
+        raise FederationFormalError("checker version command does not invoke the matrix executable")
+    if not receipt.command or receipt.command[0] != executable:
+        raise FederationFormalError("checker command does not invoke the matrix executable")
+
+    expected_version_command = (
+        (executable, "--version")
+        if tool is ModelCheckerTool.TLC
+        else (executable, "version")
+    )
+    if receipt.version_command != expected_version_command:
+        raise FederationFormalError("checker version command is not the reviewed command")
+    module_name = scenario.generated_model.module_name
+    if tool is ModelCheckerTool.TLC:
+        command_shape_valid = (
+            len(receipt.command) == 4
+            and receipt.command[1] == "-config"
+            and receipt.command[2].endswith(f"/{module_name}.cfg")
+            and receipt.command[3].endswith(f"/{module_name}.tla")
+        )
+    else:
+        command_shape_valid = (
+            len(receipt.command) == 7
+            and receipt.command[1] == "check"
+            and receipt.command[2].endswith("/apalache.cfg")
+            and receipt.command[2].startswith("--config=")
+            and receipt.command[3] == f"--length={scenario.generated_model.bounds.max_steps}"
+            and receipt.command[4:6] == ("--inv=Safety", "--no-deadlock")
+            and receipt.command[6].endswith(f"/{module_name}.tla")
+        )
+    if not command_shape_valid:
+        raise FederationFormalError("checker command is not the reviewed bounded command")
+
+    if receipt.status is not ModelCheckStatus.PASSED:
+        return
+
+    if type(receipt.version_returncode) is not int or receipt.version_returncode != 0:
+        raise FederationFormalError("passed receipt lacks a successful version return code")
+    if type(receipt.returncode) is not int or receipt.returncode != 0:
+        raise FederationFormalError("passed receipt lacks a successful check return code")
+    version_output = (receipt.version_stdout or receipt.version_stderr).strip()
+    version_lines = tuple(
+        line.strip()
+        for line in f"{receipt.version_stdout}\n{receipt.version_stderr}".splitlines()
+        if line.strip()
+    )
+    if not version_output or receipt.tool_version != version_output:
+        raise FederationFormalError("passed receipt lacks exact version-command evidence")
+    if not entry.executable_version or not version_lines:
+        raise FederationFormalError("passed receipt is not bound to a matrix executable version")
+    if version_lines[0] != entry.executable_version:
+        raise FederationFormalError("passed receipt executable version differs from the matrix")
+
+    required_safety = tuple(sorted(SAFETY_PROPERTIES))
+    required_liveness = (
+        tuple(sorted(LIVENESS_PROPERTIES)) if tool is ModelCheckerTool.TLC else ()
+    )
+    if receipt.checked_safety_properties != required_safety:
+        raise FederationFormalError("passed receipt omits required safety properties")
+    if receipt.checked_liveness_properties != required_liveness:
+        raise FederationFormalError("passed receipt omits required liveness properties")
+    if receipt.output_truncated:
+        raise FederationFormalError("truncated checker output cannot establish a pass")
+    if receipt.counterexample is not None:
+        raise FederationFormalError("passed receipt cannot contain a counterexample")
+
+    combined = "\n".join(part for part in (receipt.stdout, receipt.stderr) if part)
+    classified_status, classified_reason = _TRUSTED_MODEL_CLASSIFY(
+        tool,
+        CommandResult(
+            returncode=receipt.returncode,
+            stdout=receipt.stdout,
+            stderr=receipt.stderr,
+            output_truncated=receipt.output_truncated,
+        ),
+        combined,
+    )
+    if classified_status is not ModelCheckStatus.PASSED:
+        raise FederationFormalError("passed receipt output does not establish a reviewed pass")
+    if receipt.reason != classified_reason:
+        raise FederationFormalError("passed receipt reason is inconsistent with checker output")
+
 
 def run_external_model_checks(
     suite: FederationFormalSuite,
@@ -1686,8 +1813,10 @@ def run_external_model_checks(
         raise FederationFormalError("suite must be FederationFormalSuite")
     if not isinstance(matrix, ProverMatrixSnapshot):
         raise FederationFormalError("matrix must be ProverMatrixSnapshot")
-    if checker is not None and not isinstance(checker, SupervisorStateModelChecker):
-        raise FederationFormalError("checker must be SupervisorStateModelChecker")
+    if checker is not None and type(checker) is not SupervisorStateModelChecker:
+        raise FederationFormalError(
+            "checker must be an exact SupervisorStateModelChecker instance"
+        )
     engine = checker or SupervisorStateModelChecker()
     results: list[ExternalModelCheckReceipt] = []
     for scenario in suite.scenarios:
@@ -1739,23 +1868,18 @@ def run_external_model_checks(
                 )
                 continue
             try:
-                receipt = engine.check(
+                receipt = _TRUSTED_MODEL_CHECK(
+                    engine,
                     scenario.generated_model,
                     tool=tool,
                     executable=entry.executable_path,
                 )
-                if not isinstance(receipt, ModelCheckReceipt):
-                    raise FederationFormalError(
-                        "checker returned an untyped model-check receipt"
-                    )
-                if receipt.tool is not tool:
-                    raise FederationFormalError(
-                        "checker receipt tool does not match the requested tool"
-                    )
-                if receipt.model.artifact_identity != scenario.generated_model.artifact_identity:
-                    raise FederationFormalError(
-                        "checker receipt does not bind the generated scenario model"
-                    )
+                _validate_external_model_check_receipt(
+                    receipt,
+                    scenario=scenario,
+                    tool=tool,
+                    entry=entry,
+                )
             except Exception as exc:
                 # The matrix establishes that the executable was qualified,
                 # not that this particular invocation completed.  Without a
@@ -1771,9 +1895,21 @@ def run_external_model_checks(
                         matrix_entry_state=entry.highest_state.value,
                         model_check_receipt_id="",
                         reason=(
-                            "qualified checker did not produce a typed receipt: "
-                            f"{type(exc).__name__}"
+                            "qualified checker did not produce a valid execution receipt: "
+                            f"{type(exc).__name__}: {exc}"
                         ),
+                    )
+                )
+                continue
+            if receipt.status is ModelCheckStatus.UNAVAILABLE:
+                results.append(
+                    ExternalModelCheckReceipt(
+                        **common,
+                        status=ExternalCheckStatus.UNAVAILABLE,
+                        ran=False,
+                        matrix_entry_state=entry.highest_state.value,
+                        model_check_receipt_id="",
+                        reason=receipt.reason,
                     )
                 )
                 continue
