@@ -2005,31 +2005,73 @@ class DatabaseCoordinator:
         body: Mapping[str, Any] | None = None,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
-        """Record successful prerequisite completion for dependency readiness."""
+        """Record successful prerequisite completion for dependency readiness.
+
+        A response-loss replay with the same status and body is a read-only
+        success.  A replay that changes either field fails closed.  In
+        particular, this path must not replace an existing primary-key row:
+        DuckDB 1.5 can invalidate an attached Quack connection while deleting
+        the unique-index entry used by ``INSERT OR REPLACE``.
+        """
 
         cid = _text(task_cid, "task_cid")
         now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
         status_text = _text(status, "status")
+        body_json = _canonical_json(dict(body or {}))
         with self._lock:
             connection = self._require()
             self._begin(connection)
             try:
-                connection.execute(
+                existing = connection.execute(
                     """
-                    INSERT OR REPLACE INTO task_completions(
-                        task_cid, completed_at_ms, status, body_json
-                    ) VALUES (?, ?, ?, ?)
+                    SELECT completed_at_ms, status, body_json
+                    FROM task_completions WHERE task_cid = ?
                     """,
-                    [cid, now, status_text, _canonical_json(dict(body or {}))],
-                )
-                connection.execute(
-                    "UPDATE coordination_tasks SET ready = FALSE WHERE task_cid = ?",
                     [cid],
-                )
+                ).fetchone()
+                completed_at_ms = now
+                if existing is None:
+                    connection.execute(
+                        """
+                        INSERT INTO task_completions(
+                            task_cid, completed_at_ms, status, body_json
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        [cid, now, status_text, body_json],
+                    )
+                    connection.execute(
+                        """
+                        UPDATE coordination_tasks SET ready = FALSE
+                        WHERE task_cid = ?
+                        """,
+                        [cid],
+                    )
+                else:
+                    completed_at_ms = int(
+                        _coordination_row_value(existing, 0, "completed_at_ms")
+                    )
+                    existing_status = str(
+                        _coordination_row_value(existing, 1, "status")
+                    )
+                    existing_body = _decode_coordination_body(
+                        _coordination_row_value(existing, 2, "body_json"),
+                        table="task_completions",
+                        identity=cid,
+                    )
+                    mismatches: list[str] = []
+                    if existing_status != status_text:
+                        mismatches.append("status")
+                    if _canonical_json(existing_body) != body_json:
+                        mismatches.append("body")
+                    if mismatches:
+                        raise DatabaseCoordinationConflictError(
+                            "task completion replay conflicts with existing "
+                            f"{', '.join(mismatches)} for {cid}"
+                        )
                 self._commit_if_idle(connection)
                 return {
                     "task_cid": cid,
-                    "completed_at_ms": now,
+                    "completed_at_ms": completed_at_ms,
                     "status": status_text,
                 }
             except Exception:

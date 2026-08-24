@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
@@ -59,6 +60,28 @@ class FakeClock:
 
     def advance(self, ms: int) -> None:
         self.now += int(ms)
+
+
+class RecordingConnection:
+    """Record SQL while preserving the real DuckDB connection behavior."""
+
+    def __init__(self, connection: Any) -> None:
+        self.connection = connection
+        self.statements: list[str] = []
+
+    def execute(
+        self,
+        statement: str,
+        parameters: object | None = None,
+    ) -> Any:
+        self.statements.append(" ".join(statement.split()).upper())
+        execute = self.connection.execute
+        if parameters is None:
+            return execute(statement)
+        return execute(statement, parameters)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.connection, name)
 
 
 def _open(
@@ -727,6 +750,115 @@ def test_coordination_registry_projection_is_exact_and_timestamp_free(
     finally:
         first.close()
         second.close()
+
+
+def test_mark_task_complete_replay_is_read_only_across_reopen(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "coordination.duckdb"
+    first = open_database_coordinator(database_path)
+    try:
+        first.register_task(task_cid="task:completed", task_id="COMPLETED")
+        completion = first.mark_task_complete(
+            "task:completed",
+            status="succeeded",
+            body={"receipt": {"alpha": 1, "beta": 2}},
+            now_ms=1_000_100,
+        )
+        assert completion["completed_at_ms"] == 1_000_100
+    finally:
+        first.close()
+
+    second = open_database_coordinator(database_path)
+    raw_connection = second._connection
+    assert raw_connection is not None
+    recording = RecordingConnection(raw_connection)
+    second._connection = recording
+    try:
+        replay = second.mark_task_complete(
+            "task:completed",
+            status="succeeded",
+            body={"receipt": {"beta": 2, "alpha": 1}},
+            now_ms=9_000_000,
+        )
+
+        assert replay == {
+            "task_cid": "task:completed",
+            "completed_at_ms": 1_000_100,
+            "status": "succeeded",
+        }
+        assert not any(
+            statement.startswith(("INSERT ", "UPDATE ", "DELETE ", "REPLACE "))
+            for statement in recording.statements
+        )
+        projection = second.coordination_registry_projection()
+        assert projection["logical_completions"] == [
+            {
+                "task_cid": "task:completed",
+                "status": "succeeded",
+                "body": {"receipt": {"alpha": 1, "beta": 2}},
+            }
+        ]
+        assert projection["tasks"][0]["ready"] is False
+    finally:
+        second._connection = raw_connection
+        second.close()
+
+
+@pytest.mark.parametrize(
+    ("replay_status", "replay_body", "mismatch"),
+    [
+        ("failed", {"receipt_cid": "sha256:original"}, "status"),
+        ("succeeded", {"receipt_cid": "sha256:conflict"}, "body"),
+    ],
+)
+def test_mark_task_complete_replay_rejects_conflicting_completion(
+    tmp_path: Path,
+    replay_status: str,
+    replay_body: dict[str, str],
+    mismatch: str,
+) -> None:
+    coordinator, _clock = _open(tmp_path)
+    try:
+        coordinator.register_task(task_cid="task:completed", task_id="COMPLETED")
+        coordinator.mark_task_complete(
+            "task:completed",
+            status="succeeded",
+            body={"receipt_cid": "sha256:original"},
+            now_ms=1_000_100,
+        )
+
+        with pytest.raises(
+            DatabaseCoordinationConflictError,
+            match=rf"existing {mismatch}",
+        ):
+            coordinator.mark_task_complete(
+                "task:completed",
+                status=replay_status,
+                body=replay_body,
+                now_ms=9_000_000,
+            )
+
+        # Conflict rollback leaves the connection usable and the first
+        # completion authoritative.
+        replay = coordinator.mark_task_complete(
+            "task:completed",
+            status="succeeded",
+            body={"receipt_cid": "sha256:original"},
+            now_ms=9_000_001,
+        )
+        assert replay["completed_at_ms"] == 1_000_100
+        assert coordinator.coordination_registry_projection()[
+            "logical_completions"
+        ] == [
+            {
+                "task_cid": "task:completed",
+                "status": "succeeded",
+                "body": {"receipt_cid": "sha256:original"},
+            }
+        ]
+    finally:
+        coordinator.close()
 
 
 def test_coordination_registry_projection_exposes_exact_claim_and_lease_counts(
