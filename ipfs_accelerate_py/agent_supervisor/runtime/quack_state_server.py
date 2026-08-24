@@ -2661,6 +2661,29 @@ class QuackStateServer:
             )
         return gateway
 
+    def bind_external_quack_owner(
+        self,
+        *,
+        board_namespace: str,
+        shard_id: str,
+    ) -> Any:
+        """Issue the resource-free EAAEF-093 facade from this exact owner.
+
+        The facade receives no connection, database path, token, dispatcher,
+        or signing material.  Construction remains inside the owner boundary
+        so a caller cannot present a lookalike server identity as authority.
+        """
+
+        with self._lock:
+            self._require_eaaef_owner_gateway()
+            from .external_quack_owner import _bind_external_quack_owner
+
+            return _bind_external_quack_owner(
+                owner_server=self,
+                board_namespace=board_namespace,
+                shard_id=shard_id,
+            )
+
     def bind_eaaef_typed_owner_command_service(
         self,
         *,

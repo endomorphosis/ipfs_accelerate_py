@@ -16,19 +16,19 @@ import subprocess
 import sys
 import threading
 from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC
 from pathlib import Path
-from types import MappingProxyType
 from typing import Any
 
 import pytest
-from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
-    DatabaseCoordinationExpiredError,
-    LeaseState,
-)
 from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
     OwnerLiveness,
     ProcessBirthIdentity,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+    RUNTIME_REGISTRY_PATH_ENV,
+    STATE_QUACK_MUTATION_DIR_ENV,
+    DatabaseProgramConfig,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     DEFAULT_LOOPBACK_HOST,
@@ -36,7 +36,6 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     STATE_SERVER_IDENTITY_INTERFACE,
     ExclusiveOwnerLease,
     FakeQuackTransport,
-    InProcessQuackTransport,
     OwnerMarker,
     QuackStateServer,
     QuackStateServerBindError,
@@ -56,26 +55,12 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
     reclaim_stale_owner_marker,
     sanitize_for_export,
 )
-from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
-    DatabaseProgramConfig,
-    RUNTIME_REGISTRY_PATH_ENV,
-    STATE_QUACK_MUTATION_DIR_ENV,
-)
-from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
-    content_identity,
-)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     MigrationRunReport,
     duckdb_available,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
     install_control_plane_schema,
-)
-from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
-    DATABASE_TASK_SOURCE_SCHEMA,
-    TaskPage,
-    TaskRecord,
-    TaskSourceSnapshot,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnection,
@@ -91,6 +76,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import 
     default_compatibility_profile,
     probe_quack_capabilities,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.quack_daemon_gateway import (
+    QuackDaemonGatewayError,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_mutation import (
     QuackOwnerMutationEnvelopeError,
     build_mutation_request,
@@ -99,20 +87,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.quack_owner_mutation impor
     read_envelope,
     write_envelope_atomic,
 )
-from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
-    TaskSourceConflictError,
-)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     DatabaseImplementationAuthorityError,
-    DatabaseImplementationConflictError,
     DatabaseImplementationDaemon,
-    database_program_from_daemon_namespace,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
-    parse_args as parse_implementation_daemon_args,
-)
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
-    resolve_database_implementation_paths,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -311,158 +288,6 @@ def _real_database_server(
         process_birth_factory=lambda: _birth(),
         owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
     )
-
-
-class _OwnerMutationTaskSource:
-    """Small read/CAS client for exercising the real owner mutation boundary."""
-
-    def __init__(
-        self,
-        connection: DuckDBConnection,
-        *,
-        owner_lock: threading.RLock,
-        first_claim_barrier: threading.Barrier,
-    ) -> None:
-        self._connection = connection
-        self._owner_lock = owner_lock
-        self._first_claim_barrier = first_claim_barrier
-        self._barrier_lock = threading.Lock()
-        self._raced_threads: set[int] = set()
-        self.claim_receipts: list[dict[str, Any]] = []
-
-    @staticmethod
-    def _record(row: Any) -> TaskRecord:
-        return TaskRecord(
-            task_cid=str(row[0]),
-            task_alias=str(row[1]),
-            goal_cid=str(row[2]),
-            ordinal=int(row[3]),
-            status=str(row[4]),
-            revision=int(row[5]),
-            body=MappingProxyType({}),
-        )
-
-    def _select(self, *, task_cid: str = "") -> tuple[TaskRecord, ...]:
-        sql = "SELECT task_cid, task_alias, goal_cid, ordinal, status, revision FROM tasks"
-        params: list[Any] = []
-        if task_cid:
-            sql += " WHERE task_cid = ?"
-            params.append(task_cid)
-        sql += " ORDER BY ordinal, task_cid"
-        with self._owner_lock:
-            rows = self._connection.execute(sql, params).fetchall()
-        return tuple(self._record(row) for row in rows)
-
-    def ready_tasks(
-        self,
-        completed_ids: Any = (),
-        blocked_ids: Any = (),
-        limit: int = 1000,
-    ) -> TaskPage:
-        completed = {str(item) for item in completed_ids}
-        blocked = {str(item) for item in blocked_ids}
-        tasks = tuple(
-            task
-            for task in self._select()
-            if task.status in {"todo", "ready", "open"}
-            and task.task_cid not in completed
-            and task.task_cid not in blocked
-        )[: int(limit)]
-        revision = max((task.revision for task in tasks), default=1)
-        return TaskPage(tasks=tasks, revision=revision)
-
-    def list_tasks(self, cursor: str = "", limit: int = 1000) -> TaskPage:
-        tasks = self._select()
-        offset = int(cursor or "0")
-        bounded = tasks[offset : offset + int(limit)]
-        end = offset + len(bounded)
-        revision = max((task.revision for task in tasks), default=1)
-        return TaskPage(
-            tasks=bounded,
-            revision=revision,
-            next_cursor=str(end) if end < len(tasks) else "",
-        )
-
-    def snapshot(self) -> TaskSourceSnapshot:
-        tasks = self._select()
-        projection_cid = content_identity(
-            {"tasks": [task.to_dict() for task in tasks]}
-        )
-        terminal_statuses = {
-            "completed",
-            "skipped",
-            "cancelled",
-            "failed",
-            "quarantined",
-            "complete",
-            "done",
-        }
-        return TaskSourceSnapshot(
-            source_schema=DATABASE_TASK_SOURCE_SCHEMA,
-            schema_version=1,
-            plan_root_cid="plan:parallel",
-            repository_tree_id="tree:parallel",
-            projection_cid=projection_cid,
-            formal_plan_id="plan:parallel",
-            source_identity=content_identity(
-                {"source": "owner-mutation-task-source"}
-            ),
-            revision=max((task.revision for task in tasks), default=1),
-            event_cursor=max((task.revision for task in tasks), default=1),
-            goal_count=len({task.goal_cid for task in tasks}),
-            task_count=len(tasks),
-            dependency_count=sum(len(task.dependencies) for task in tasks),
-            terminal=bool(tasks)
-            and all(task.status in terminal_statuses for task in tasks),
-            objective_count=0,
-            plan_count=1,
-        )
-
-    def get(self, task_cid: str) -> TaskRecord | None:
-        rows = self._select(task_cid=str(task_cid))
-        task = rows[0] if rows else None
-        if task is not None and task.ordinal == 0:
-            thread_id = threading.get_ident()
-            with self._barrier_lock:
-                should_race = thread_id not in self._raced_threads
-                self._raced_threads.add(thread_id)
-            if should_race:
-                self._first_claim_barrier.wait(timeout=5.0)
-        return task
-
-    get_task = get
-
-    def compare_and_set_status(
-        self,
-        task_cid: str,
-        expected_revision: int,
-        status: str,
-        receipt: Any = None,
-        *,
-        evidence_digests: Any = None,
-    ) -> Any:
-        del evidence_digests
-        if isinstance(receipt, dict):
-            with self._barrier_lock:
-                self.claim_receipts.append(dict(receipt))
-        client = DuckDBConnection.wrap(object())
-        client._default_catalog = "control_plane"  # noqa: SLF001
-        result = client.execute(
-            "UPDATE tasks SET status = ?, revision = revision + 1 "
-            "WHERE task_cid = ? AND revision = ? "
-            "AND status IN ('todo', 'ready', 'open') "
-            "RETURNING revision",
-            [str(status), str(task_cid), int(expected_revision)],
-        )
-        row = result.fetchone()
-        if row is None:
-            raise TaskSourceConflictError(
-                f"task {task_cid} revision/status compare-and-set conflict"
-            )
-        return MappingProxyType({"changed": True, "revision": int(row[0])})
-
-    cas_status = compare_and_set_status
-
 
 # ---------------------------------------------------------------------------
 # Interface identity
@@ -1287,192 +1112,52 @@ def test_owner_mutation_pump_rejects_forged_or_malformed_request(
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB optional dependency unavailable")
-def test_two_database_daemons_claim_distinct_tasks_through_one_quack_owner(
+def test_two_database_daemon_clients_refuse_legacy_sidecars_through_one_owner(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A remote CAS loser releases its local lease and claims different work."""
+    """The real owner cannot self-promote the missing 39-op dispatcher."""
 
-    server = _real_database_server(tmp_path)
+    server = build_server(
+        database_path=tmp_path / "real-control.duckdb",
+        state_dir=tmp_path / "real-owner",
+        port=0,
+        repository_id="repository:eaaef-093-two-client-test",
+        store_id="eaaef-093-two-client-test",
+        secret_handle="handle:eaaef-093-two-client-test",
+    )
     identity = server.start()
-    owner_connection = server._connection  # noqa: SLF001 - exact owner boundary
-    for ordinal in range(2):
-        owner_connection.execute(
-            """
-            INSERT INTO tasks(
-                task_cid, task_alias, goal_cid, ordinal, status, revision,
-                body_json
-            ) VALUES (?, ?, ?, ?, 'ready', 1, '{}')
-            """,
-            [
-                f"task:parallel:{ordinal}",
-                f"APMC-PARALLEL-{ordinal}",
-                "goal:parallel",
-                ordinal,
-            ],
-        )
-    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", token)
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", identity.store_id)
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", str(identity.generation))
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
-        str(server.mutation_inbox_path()),
+    owner = server.bind_external_quack_owner(
+        board_namespace="external-agent-autonomous-execution-fabric-v1",
+        shard_id="eaaef-093-disposable-shard",
     )
-
-    owner_lock = threading.RLock()
-    first_claim_barrier = threading.Barrier(2)
-    task_sources = tuple(
-        _OwnerMutationTaskSource(
-            owner_connection,
-            owner_lock=owner_lock,
-            first_claim_barrier=first_claim_barrier,
-        )
-        for _ in range(2)
-    )
-    shared_store_id = "state/apmc/control.duckdb"
-    lane_args = tuple(
-        parse_implementation_daemon_args(
-            [
-                "--task-source-kind",
-                "duckdb",
-                "--authority-mode",
-                "quack",
-                "--endpoint-secret-handle",
-                identity.secret_handle,
-                "--quack-endpoint",
-                identity.listen_uri,
-                "--state-store-id",
-                shared_store_id,
-                "--state-store-generation",
-                str(identity.generation),
-                "--state-schema-revision",
-                str(identity.schema_revision),
-                "--state-dir",
-                str(tmp_path / f"lane-{lane}"),
-                "--task-shard-count",
-                "2",
-                "--task-shard-index",
-                str(lane),
-            ]
-        )
-        for lane in range(2)
-    )
-    programs = tuple(database_program_from_daemon_namespace(args) for args in lane_args)
-    assert all(program is not None for program in programs)
-    assert {program.store_id for program in programs if program is not None} == {shared_store_id}
-    lane_paths = tuple(
-        resolve_database_implementation_paths(args, authority_mode="quack") for args in lane_args
-    )
-    assert lane_paths[0]["database_path"] != lane_paths[1]["database_path"]
-    assert all(
-        str(paths["database_path"]).endswith("quack-lane-control.duckdb") for paths in lane_paths
-    )
-
-    daemons = tuple(
-        DatabaseImplementationDaemon(
-            database_path=lane_paths[lane]["database_path"],
-            owner_session_id=f"parallel-lane-{lane}",
-            authority_mode="quack",
-            task_source_kind="database",
-            quack_uri=identity.listen_uri,
-            task_source=task_sources[lane],
-            require_real_execution=True,
-        )
-        for lane in range(2)
-    )
-    stop = threading.Event()
-
-    def pump() -> None:
-        while not stop.wait(0.002):
-            with owner_lock:
-                server.process_mutation_inbox()
-
-    pump_thread = threading.Thread(target=pump, daemon=True)
-    pump_thread.start()
     try:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = [executor.submit(daemon.claim_next) for daemon in daemons]
-            attempts = tuple(future.result(timeout=10.0) for future in futures)
-
-            # A losing lane's next lane-local claim has attempt_number=2.
-            # That number is not shared authority and must not let it inherit
-            # the other lane's durable in-progress task.
-            for source in task_sources:
-                source._first_claim_barrier = threading.Barrier(1)  # noqa: SLF001
-            duplicate_futures = [executor.submit(daemon.claim_next) for daemon in daemons]
-            duplicate_attempts = tuple(future.result(timeout=10.0) for future in duplicate_futures)
-
-        assert all(attempt is not None for attempt in attempts)
-        assert {attempt.task_cid for attempt in attempts if attempt is not None} == {
-            "task:parallel:0",
-            "task:parallel:1",
-        }
-        assert duplicate_attempts == (None, None)
-        with owner_lock:
-            rows = owner_connection.execute(
-                "SELECT task_cid, status FROM tasks ORDER BY ordinal"
-            ).fetchall()
-        assert [(row[0], row[1]) for row in rows] == [
-            ("task:parallel:0", "in_progress"),
-            ("task:parallel:1", "in_progress"),
-        ]
-        winning_receipts = {
-            receipt["attempt_id"]: receipt
-            for source in task_sources
-            for receipt in source.claim_receipts
-            if receipt["attempt_id"] in {attempt.attempt_id for attempt in attempts}
-        }
-        assert set(winning_receipts) == {attempt.attempt_id for attempt in attempts}
-        for attempt in attempts:
-            receipt = winning_receipts[attempt.attempt_id]
-            assert receipt["claim_id"] == attempt.claim_id
-            assert receipt["lease_id"] == attempt.lease_id
-            assert receipt["fencing_token"] == attempt.fencing_token
-            assert receipt["fence_epoch"] == attempt.fence_epoch
-
-        # Claims are bound to their own lane's accepted lease and cannot be
-        # used in the other daemon's coordination store.
-        for daemon, attempt in zip(daemons, attempts, strict=True):
-            assert attempt is not None
-            claim = daemon.coordinator.get_task_claim(attempt.claim_id)
-            assert claim is not None
-            assert claim.state is LeaseState.ACCEPTED
-            assert claim.task_cid == attempt.task_cid
-            assert claim.owner_session_id == daemon.owner_session_id
-            assert claim.fencing_token == attempt.fencing_token
-            assert claim.fence_epoch == attempt.fence_epoch
-            lease = daemon.coordinator.get_lease(claim.lease_id)
-            assert lease is not None
-            assert lease.state is LeaseState.ACCEPTED
-
-        with pytest.raises(
-            (DatabaseImplementationAuthorityError, DatabaseImplementationConflictError),
-            match="unknown execution attempt|no coordination claim",
-        ):
-            daemons[0]._protect_attempt_write(attempts[1])  # noqa: SLF001
-
-        # Once the exact accepted lease is released, its prior fence cannot
-        # authorize another write.
-        for daemon, attempt in zip(daemons, attempts, strict=True):
-            assert attempt is not None
-            claim = daemon.coordinator.get_task_claim(attempt.claim_id)
-            assert claim is not None
-            lease = daemon.coordinator.get_lease(claim.lease_id)
-            assert lease is not None
-            daemon.coordinator.release(
-                lease,
-                reason="test_stale_fence",
-                expected_fencing_token=attempt.fencing_token,
-                expected_fence_epoch=attempt.fence_epoch,
-            )
-            with pytest.raises(DatabaseCoordinationExpiredError):
-                daemon._protect_attempt_write(attempt)  # noqa: SLF001
+        for lane in range(2):
+            # The sole real owner cannot invent the independently signed
+            # operational capability/dispatcher required by EAAEF-092.
+            with pytest.raises(
+                QuackDaemonGatewayError,
+                match="canonical_39_operation_owner_handler_unqualified",
+            ):
+                owner.daemon_gateway()
+            with pytest.raises(
+                DatabaseImplementationAuthorityError,
+                match="independently injected QuackDaemonCommandGateway@1",
+            ):
+                DatabaseImplementationDaemon(
+                    database_path=(
+                        tmp_path / f"lane-{lane}" / "quack-lane-control.duckdb"
+                    ),
+                    owner_session_id=f"parallel-lane-{lane}",
+                    authority_mode="quack",
+                    task_source_kind="database",
+                    quack_uri=identity.listen_uri,
+                    require_real_execution=True,
+                )
+        assert (tmp_path / "real-control.duckdb").is_file()
+        assert not tuple(tmp_path.rglob("quack-lane-control.duckdb"))
+        assert not tuple(tmp_path.rglob("*.execution.duckdb"))
+        assert not tuple(tmp_path.rglob("*.coordination.duckdb"))
     finally:
-        stop.set()
-        pump_thread.join(timeout=2.0)
-        for daemon in daemons:
-            daemon.close()
         server.stop()
 
 
@@ -1924,7 +1609,7 @@ def test_start_applies_explicit_legacy_board_unstall_policy(
     expected_status: str,
     expected_revision: int,
 ) -> None:
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
         open_duckdb_connection,
@@ -1939,7 +1624,7 @@ def test_start_applies_explicit_legacy_board_unstall_policy(
         tool_version="1.5.2",
         owner_id="test-owner",
     )
-    stale = (datetime.now(timezone.utc) - timedelta(hours=12)).strftime(
+    stale = (datetime.now(UTC) - timedelta(hours=12)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     connection = open_duckdb_connection(db)
