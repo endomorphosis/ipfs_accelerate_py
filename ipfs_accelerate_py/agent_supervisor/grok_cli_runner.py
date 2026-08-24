@@ -29,11 +29,57 @@ DEFAULT_GROK_MODEL = "grok-4.5"
 DEFAULT_GROK_MAX_TURNS = 4_294_967_295
 TRUSTED_FAILURE_RECEIPT_FD_ENV = "IPFS_ACCELERATE_AGENT_TRUSTED_FAILURE_RECEIPT_FD"
 GROK_STREAM_FRAME_MAX_BYTES = 256 * 1024
+GROK_AVAILABLE_COMMANDS_MAX_FRAMES = 4
+GROK_AVAILABLE_COMMANDS_MAX_ITEMS = 512
+GROK_AVAILABLE_COMMAND_MAX_BYTES = 256
 GROK_ACCOUNT_QUOTA_CODES = frozenset({"usage_limit_reached", "usage_pool_exhausted"})
+_GROK_BUILD_BALANCE_MESSAGE = (
+    "API error (status 402 Payment Required): "
+    "Grok Build usage balance exhausted"
+)
+
+
+def _available_commands_prelude(event: object) -> str:
+    """Return a canonical exact startup frame, or an empty rejection.
+
+    Grok Build 1.0.x emits this protocol metadata before attempting the paid
+    request.  It is not model activity, but accepting arbitrary frames here
+    would let assistant output manufacture a fallback signal.  Keep the
+    shape and every scalar bounded, and require repeated frames to be exactly
+    identical in :class:`_BoundedTerminalFrameParser`.
+    """
+
+    if (
+        not isinstance(event, dict)
+        or set(event) != {"type", "tools", "commands"}
+        or event.get("type") != "available_commands"
+    ):
+        return ""
+    for field in ("tools", "commands"):
+        values = event.get(field)
+        if (
+            not isinstance(values, list)
+            or len(values) > GROK_AVAILABLE_COMMANDS_MAX_ITEMS
+        ):
+            return ""
+        normalized: list[str] = []
+        for value in values:
+            if (
+                not isinstance(value, str)
+                or not value
+                or value != value.strip()
+                or len(value.encode("utf-8")) > GROK_AVAILABLE_COMMAND_MAX_BYTES
+                or any(marker in value for marker in ("\x00", "\n", "\r"))
+            ):
+                return ""
+            normalized.append(value)
+        if len(set(normalized)) != len(normalized):
+            return ""
+    return json.dumps(event, sort_keys=True, separators=(",", ":"))
 
 
 class _BoundedTerminalFrameParser:
-    """Retain one exact final NDJSON frame without buffering provider output."""
+    """Retain one exact terminal frame after bounded inert protocol metadata."""
 
     def __init__(self, max_frame_bytes: int = GROK_STREAM_FRAME_MAX_BYTES) -> None:
         self.max_frame_bytes = max_frame_bytes
@@ -41,6 +87,9 @@ class _BoundedTerminalFrameParser:
         self.overlong = False
         self.tainted = False
         self.frame_count = 0
+        self.prelude_count = 0
+        self.terminal_frame_count = 0
+        self._prelude_canonical = ""
         self.last_event: dict[str, object] | None = None
 
     def _append(self, value: bytes) -> None:
@@ -67,7 +116,26 @@ class _BoundedTerminalFrameParser:
                     self.tainted = True
                 else:
                     if isinstance(value, dict):
-                        self.last_event = value
+                        prelude = _available_commands_prelude(value)
+                        if prelude:
+                            if (
+                                self.terminal_frame_count
+                                or self.prelude_count
+                                >= GROK_AVAILABLE_COMMANDS_MAX_FRAMES
+                                or (
+                                    self._prelude_canonical
+                                    and prelude != self._prelude_canonical
+                                )
+                            ):
+                                self.tainted = True
+                            else:
+                                self.prelude_count += 1
+                                self._prelude_canonical = prelude
+                        else:
+                            self.terminal_frame_count += 1
+                            if self.terminal_frame_count != 1:
+                                self.tainted = True
+                            self.last_event = value
                     else:
                         self.last_event = None
                         self.tainted = True
@@ -90,8 +158,47 @@ class _BoundedTerminalFrameParser:
         if final and (self.pending or self.overlong):
             self._finish_line()
 
+    @property
+    def exact_terminal_candidate(self) -> bool:
+        return (
+            not self.tainted
+            and self.terminal_frame_count == 1
+            and self.frame_count == self.prelude_count + 1
+        )
 
-def _terminal_grok_quota_code(event: object) -> str:
+
+def _embedded_grok_balance_quota_code(event: object) -> str:
+    """Recognize only the exact Grok Build 1.0.x terminal 402 envelope."""
+
+    if (
+        not isinstance(event, dict)
+        or set(event) != {"type", "message"}
+        or event.get("type") != "error"
+    ):
+        return ""
+    message = event.get("message")
+    if not isinstance(message, str) or not message.startswith("Internal error: "):
+        return ""
+    try:
+        payload = json.loads(message.removeprefix("Internal error: ").strip())
+    except (TypeError, ValueError, RecursionError):
+        return ""
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"message", "http_status"}
+        or isinstance(payload.get("http_status"), bool)
+        or payload.get("http_status") != 402
+        or payload.get("message") != _GROK_BUILD_BALANCE_MESSAGE
+    ):
+        return ""
+    return "usage_pool_exhausted"
+
+
+def _terminal_grok_quota_code(
+    event: object,
+    *,
+    allow_embedded_balance: bool = False,
+) -> str:
     """Return only an exact machine quota code from a top-level error frame."""
 
     if not isinstance(event, dict) or event.get("type") != "error":
@@ -118,6 +225,11 @@ def _terminal_grok_quota_code(event: object) -> str:
         [selected] = distinct
         return selected if selected in GROK_ACCOUNT_QUOTA_CODES else ""
 
+    if allow_embedded_balance:
+        embedded = _embedded_grok_balance_quota_code(event)
+        if embedded:
+            return embedded
+
     message_codes: set[str] = set()
     for record in records:
         if "message" not in record:
@@ -129,7 +241,8 @@ def _terminal_grok_quota_code(event: object) -> str:
         if normalized not in GROK_ACCOUNT_QUOTA_CODES:
             return ""
         message_codes.add(normalized)
-    return next(iter(message_codes)) if len(message_codes) == 1 else ""
+    selected = next(iter(message_codes)) if len(message_codes) == 1 else ""
+    return selected
 
 
 def _resolve_grok_bin(configured: str = "") -> str:
@@ -415,10 +528,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             quota_code = ""
             if (
                 args.require_terminal_quota_frame
-                and not terminal_parser.tainted
-                and terminal_parser.frame_count == 1
+                and terminal_parser.exact_terminal_candidate
             ):
-                quota_code = _terminal_grok_quota_code(terminal_parser.last_event)
+                quota_code = _terminal_grok_quota_code(
+                    terminal_parser.last_event,
+                    allow_embedded_balance=terminal_parser.prelude_count > 0,
+                )
             if quota_code:
                 activity = AgentCLIActivityState.NO_ACTIVITY
                 classification = AgentCLIFailureClassification(
