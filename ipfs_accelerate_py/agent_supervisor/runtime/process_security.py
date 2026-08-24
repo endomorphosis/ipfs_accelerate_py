@@ -17,6 +17,7 @@ from __future__ import annotations
 import ctypes
 import os
 import sys
+import threading
 from collections.abc import Mapping, MutableMapping
 from typing import Final
 
@@ -28,6 +29,8 @@ STATE_AUTHORITY_CREDENTIAL_NAMES: Final = frozenset(
         "IPFS_ACCELERATE_AGENT_OWNER_STATE_TOKEN",
     }
 )
+_CAPTURED_STATE_AUTHORITY_CREDENTIALS: dict[str, str] = {}
+_CAPTURED_STATE_AUTHORITY_LOCK = threading.RLock()
 
 
 class StateAuthorityProcessIsolationError(RuntimeError):
@@ -62,10 +65,27 @@ def forward_env_secret_handle_credentials(
     if not target:
         return child_environment
     source = os.environ if source_environment is None else source_environment
-    value = str(source.get(target, "") or "").strip()
+    value = state_authority_credential(target, environment=source)
     if value:
         child_environment[target] = value
     return child_environment
+
+
+def state_authority_credential(
+    name: str,
+    *,
+    environment: Mapping[str, str] | None = None,
+) -> str:
+    """Resolve a trusted process credential without exposing it to children."""
+
+    source = os.environ if environment is None else environment
+    value = str(source.get(name, "") or "").strip()
+    if value:
+        return value
+    if name not in STATE_AUTHORITY_CREDENTIAL_NAMES:
+        return ""
+    with _CAPTURED_STATE_AUTHORITY_LOCK:
+        return str(_CAPTURED_STATE_AUTHORITY_CREDENTIALS.get(name, "") or "")
 
 
 def state_authority_credentials_present(
@@ -74,23 +94,23 @@ def state_authority_credentials_present(
     """Return whether an admitted raw state credential is present."""
 
     source = os.environ if environment is None else environment
-    return any(bool(str(source.get(name, "") or "").strip()) for name in STATE_AUTHORITY_CREDENTIAL_NAMES)
-
-
-def harden_state_authority_process(
-    environment: Mapping[str, str] | None = None,
-) -> bool:
-    """Make a credential-bearing Linux process non-dumpable, or fail closed.
-
-    Returns ``False`` when no credential is present, so ordinary provider-free
-    imports and hermetic tests retain their normal process behavior.
-    """
-
-    if not state_authority_credentials_present(environment):
+    if any(
+        bool(str(source.get(name, "") or "").strip())
+        for name in STATE_AUTHORITY_CREDENTIAL_NAMES
+    ):
+        return True
+    if environment is not None:
         return False
+    with _CAPTURED_STATE_AUTHORITY_LOCK:
+        return any(_CAPTURED_STATE_AUTHORITY_CREDENTIALS.values())
+
+
+def establish_state_authority_process_boundary() -> bool:
+    """Make the current process non-dumpable before it mints a credential."""
+
     if not sys.platform.startswith("linux"):
         raise StateAuthorityProcessIsolationError(
-            "state credentials require a qualified Linux non-dumpable process"
+            "state authority requires a qualified Linux non-dumpable process"
         )
     libc = ctypes.CDLL(None, use_errno=True)
     if libc.prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0:
@@ -105,13 +125,60 @@ def harden_state_authority_process(
     return True
 
 
+def capture_state_authority_credentials() -> bool:
+    """Harden, retain credentials in memory, and remove them from ``environ``.
+
+    Ordinary subprocess APIs inherit ``os.environ`` when no explicit mapping is
+    supplied.  Capturing at each trusted module entry therefore makes every
+    unclassified child token-free by default.  The few sealed authority hops
+    re-add the captured value through ``forward_env_secret_handle_credentials``.
+    """
+
+    present = {
+        name: str(os.environ.get(name, "") or "").strip()
+        for name in STATE_AUTHORITY_CREDENTIAL_NAMES
+        if str(os.environ.get(name, "") or "").strip()
+    }
+    if not present:
+        return False
+    establish_state_authority_process_boundary()
+    with _CAPTURED_STATE_AUTHORITY_LOCK:
+        for name, value in present.items():
+            prior = _CAPTURED_STATE_AUTHORITY_CREDENTIALS.get(name, "")
+            if prior and prior != value:
+                raise StateAuthorityProcessIsolationError(
+                    "state-authority credential changed within one process"
+                )
+        _CAPTURED_STATE_AUTHORITY_CREDENTIALS.update(present)
+        for name in present:
+            os.environ.pop(name, None)
+    return True
+
+
+def harden_state_authority_process(
+    environment: Mapping[str, str] | None = None,
+) -> bool:
+    """Make a credential-bearing Linux process non-dumpable, or fail closed.
+
+    Returns ``False`` when no credential is present, so ordinary provider-free
+    imports and hermetic tests retain their normal process behavior.
+    """
+
+    if not state_authority_credentials_present(environment):
+        return False
+    return establish_state_authority_process_boundary()
+
+
 __all__ = (
     "PR_GET_DUMPABLE",
     "PR_SET_DUMPABLE",
     "STATE_AUTHORITY_CREDENTIAL_NAMES",
     "StateAuthorityProcessIsolationError",
+    "capture_state_authority_credentials",
+    "establish_state_authority_process_boundary",
     "env_secret_handle_target",
     "forward_env_secret_handle_credentials",
     "harden_state_authority_process",
+    "state_authority_credential",
     "state_authority_credentials_present",
 )

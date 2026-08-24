@@ -16,10 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
-from ..todo_daemon.production_provider_cli import (
-    DEFAULT_CONTEXT_BUDGET_TOKENS,
-    production_cli_policy_readiness,
-)
 from .provider_capacity_snapshot import (
     DEFAULT_PROVIDER_CAPACITY_MAX_AGE_MS,
     DUAL_REVIEW_PROVIDER_ROLE_CAPABILITIES,
@@ -37,6 +33,17 @@ DEFAULT_RESPONSE_TOKENS_PER_REQUEST: Final = 4_096
 MAX_CLOCK_ADVANCE_WAIT_SECONDS: Final = 1.0
 CLOCK_ADVANCE_POLL_SECONDS: Final = 0.001
 _PROVIDER_NAMES: Final = ("grok_cli", "codex_cli")
+DEFAULT_CONTEXT_BUDGET_TOKENS: Final = 24_576
+
+
+def production_cli_policy_readiness() -> Mapping[str, Any]:
+    """Load legacy provider attestation only when a monitor samples it."""
+
+    from ..todo_daemon.production_provider_cli import (
+        production_cli_policy_readiness as _readiness,
+    )
+
+    return _readiness()
 
 
 def _positive_integer(name: str, value: Any) -> int:

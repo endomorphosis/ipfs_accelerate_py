@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import importlib.util
 import json
 import os
@@ -148,8 +149,8 @@ def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(
 ) -> None:
     operator = _operator()
     source = tmp_path / "run-v17" / "control.duckdb"
-    target = tmp_path / "run-v18" / "control.duckdb"
-    provenance = tmp_path / "run-v18" / "evidence" / "provenance.json"
+    target = tmp_path / "run-v19" / "control.duckdb"
+    provenance = tmp_path / "run-v19" / "evidence" / "provenance.json"
     source.parent.mkdir(parents=True)
     _seed_datasets_profile(source)
     source_digest = operator._sha256_regular_file(source)
@@ -176,7 +177,7 @@ def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(
         "evidence",
     }
     assert {item.name for item in provenance.parent.iterdir()} == {provenance.name}
-    assert not tuple(tmp_path.glob("run-v18.stage-*"))
+    assert not tuple(tmp_path.glob("run-v19.stage-*"))
     for path, expected_mode in (
         (target.parent, 0o700),
         (provenance.parent, 0o700),
@@ -188,7 +189,7 @@ def test_verified_run_v17_clone_is_no_overwrite_and_content_addressed(
         if path.is_file():
             assert metadata.st_nlink == 1
     assert receipt["source_generation"] == "lgcvf-run-v17"
-    assert receipt["target_generation"] == "lgcvf-run-v18"
+    assert receipt["target_generation"] == "lgcvf-run-v19"
     assert receipt["source_database_statuses_read"] is False
     assert (
         operator._strict_json(
@@ -212,8 +213,8 @@ def test_successor_bootstrap_rejects_any_preexisting_generation(
 ) -> None:
     operator = _operator()
     source = tmp_path / "run-v17" / "control.duckdb"
-    target = tmp_path / "run-v18" / "control.duckdb"
-    provenance = tmp_path / "run-v18" / "evidence" / "provenance.json"
+    target = tmp_path / "run-v19" / "control.duckdb"
+    provenance = tmp_path / "run-v19" / "evidence" / "provenance.json"
     source.parent.mkdir(parents=True)
     _seed_datasets_profile(source)
     if existing_kind == "directory":
@@ -221,7 +222,7 @@ def test_successor_bootstrap_rejects_any_preexisting_generation(
     elif existing_kind == "file":
         target.parent.write_bytes(b"occupied")
     else:
-        target.parent.symlink_to("missing-run-v18")
+        target.parent.symlink_to("missing-run-v19")
     before = os.lstat(target.parent)
     recovery = {
         "valid": True,
@@ -251,8 +252,8 @@ def test_successor_receipt_failure_never_publishes_database_only_generation(
 ) -> None:
     operator = _operator()
     source = tmp_path / "run-v17" / "control.duckdb"
-    target = tmp_path / "run-v18" / "control.duckdb"
-    provenance = tmp_path / "run-v18" / "evidence" / "provenance.json"
+    target = tmp_path / "run-v19" / "control.duckdb"
+    provenance = tmp_path / "run-v19" / "evidence" / "provenance.json"
     source.parent.mkdir(parents=True)
     _seed_datasets_profile(source)
 
@@ -274,7 +275,7 @@ def test_successor_receipt_failure_never_publishes_database_only_generation(
         )
 
     assert not os.path.lexists(target.parent)
-    assert not tuple(tmp_path.glob("run-v18.stage-*"))
+    assert not tuple(tmp_path.glob("run-v19.stage-*"))
 
 
 def test_successor_stage_remains_clean_during_reverification(
@@ -298,8 +299,8 @@ def test_successor_stage_remains_clean_during_reverification(
             env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
         )
     source = repository / "run-v17" / "control.duckdb"
-    target = repository / "run-v18" / "control.duckdb"
-    provenance = repository / "run-v18" / "evidence" / "provenance.json"
+    target = repository / "run-v19" / "control.duckdb"
+    provenance = repository / "run-v19" / "evidence" / "provenance.json"
     source.parent.mkdir()
     _seed_datasets_profile(source)
     operator._require_ignored_successor(repository)
@@ -335,7 +336,7 @@ def test_successor_stage_remains_clean_during_reverification(
     )
 
     assert observed_status == [""]
-    assert not tuple(repository.glob("run-v18.stage-*"))
+    assert not tuple(repository.glob("run-v19.stage-*"))
 
 
 @pytest.mark.parametrize(
@@ -351,8 +352,8 @@ def test_successor_load_rejects_aliases_and_live_wal(
 ) -> None:
     operator = _operator()
     source = tmp_path / "run-v17" / "control.duckdb"
-    target = tmp_path / "run-v18" / "control.duckdb"
-    provenance = tmp_path / "run-v18" / "evidence" / "provenance.json"
+    target = tmp_path / "run-v19" / "control.duckdb"
+    provenance = tmp_path / "run-v19" / "evidence" / "provenance.json"
     source.parent.mkdir(parents=True)
     _seed_datasets_profile(source)
     operator.clone_verified_successor(
@@ -417,6 +418,193 @@ def test_controller_lock_is_held_before_locked_admission(
         fcntl.flock(held.fileno(), fcntl.LOCK_UN)
         held.close()
     assert entered is False
+
+
+def _live_controller_source_audit_fixture(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path, ModuleType, dict[str, bytes], dict[str, str]]:
+    root = tmp_path / "repo"
+    (root / "ipfs_datasets_py").mkdir(parents=True)
+    operator_path = root / (
+        "scripts/run_logic_governed_compositional_verification_fabric_quack.py"
+    )
+    module_path = root / "ipfs_accelerate_py/sealed_dependency.py"
+    operator_path.parent.mkdir(parents=True)
+    module_path.parent.mkdir(parents=True)
+    operator_path.write_bytes(b"operator_identity = 'sealed'\n")
+    module_path.write_bytes(b"dependency_identity = 'sealed'\n")
+    module_name = "ipfs_accelerate_py.sealed_dependency"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    payloads = {
+        operator_path.relative_to(root).as_posix(): operator_path.read_bytes(),
+        module_path.relative_to(root).as_posix(): module_path.read_bytes(),
+    }
+    manifest = {
+        relative: "sha256:" + hashlib.sha256(raw).hexdigest()
+        for relative, raw in payloads.items()
+    }
+    return root, operator_path, module_path, module, payloads, manifest
+
+
+def test_live_controller_source_audit_rejects_post_import_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    (
+        root,
+        operator_path,
+        module_path,
+        module,
+        payloads,
+        manifest,
+    ) = _live_controller_source_audit_fixture(tmp_path)
+    module_name = "ipfs_accelerate_py.sealed_dependency"
+    monkeypatch.setattr(
+        operator,
+        "LGCVF_LIVE_CONTROLLER_PRELOAD_MODULES",
+        (module_name,),
+    )
+    outer_main = ModuleType("__main__")
+    outer_main.__file__ = str(operator_path)
+    arguments = {
+        "root": root,
+        "operator_path": operator_path,
+        "manifest_files": manifest,
+        "read_member": payloads.__getitem__,
+        "modules": {"__main__": outer_main, module_name: module},
+    }
+
+    assert operator._audit_lgcvf_live_loaded_repository_modules(
+        **arguments
+    ) == (module_name,)
+    operator_path.write_bytes(b"operator_identity = 'mutable'\n")
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="outer operator bytes differ",
+    ):
+        operator._audit_lgcvf_live_loaded_repository_modules(**arguments)
+    operator_path.write_bytes(payloads[operator_path.relative_to(root).as_posix()])
+    module_path.write_bytes(b"dependency_identity = 'mutable'\n")
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="module bytes differ",
+    ):
+        operator._audit_lgcvf_live_loaded_repository_modules(**arguments)
+
+
+def test_live_controller_source_audit_rejects_loaded_origin_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    operator = _operator()
+    (
+        root,
+        operator_path,
+        _module_path,
+        module,
+        payloads,
+        manifest,
+    ) = _live_controller_source_audit_fixture(tmp_path)
+    module_name = "ipfs_accelerate_py.sealed_dependency"
+    monkeypatch.setattr(
+        operator,
+        "LGCVF_LIVE_CONTROLLER_PRELOAD_MODULES",
+        (module_name,),
+    )
+    assert module.__spec__ is not None
+    module.__spec__.origin = str(tmp_path / "substituted.py")
+
+    with pytest.raises(
+        operator.SuccessorOperatorError,
+        match="module origin differs",
+    ):
+        operator._audit_lgcvf_live_loaded_repository_modules(
+            root=root,
+            operator_path=operator_path,
+            manifest_files=manifest,
+            read_member=payloads.__getitem__,
+            modules={module_name: module},
+        )
+
+
+def test_live_controller_retargets_all_repository_package_search_paths(
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    root = tmp_path / "repo"
+    nested = root / "ipfs_datasets_py"
+    package_root = root / "ipfs_accelerate_py"
+    nested.mkdir(parents=True)
+    package_root.mkdir()
+    package_init = package_root / "__init__.py"
+    package_init.write_bytes(b"# sealed package\n")
+    spec = importlib.util.spec_from_file_location(
+        "ipfs_accelerate_py",
+        package_init,
+        submodule_search_locations=[str(package_root)],
+    )
+    assert spec is not None and spec.loader is not None
+    package = importlib.util.module_from_spec(spec)
+    path_entries = [str(root), str(nested), "/usr/lib/python3.12"]
+    foreign_finder = object()
+    meta_path = [
+        foreign_finder,
+        operator.importlib.machinery.BuiltinImporter,
+        operator.importlib.machinery.FrozenImporter,
+        operator.importlib.machinery.PathFinder,
+    ]
+
+    retargeted = operator._retarget_lgcvf_live_repository_imports(
+        root=root,
+        archive_path="/proc/self/fd/991",
+        modules={"ipfs_accelerate_py": package},
+        path_entries=path_entries,
+        meta_path=meta_path,
+    )
+
+    assert retargeted == ("ipfs_accelerate_py",)
+    assert path_entries == [
+        "/proc/self/fd/991/ipfs_datasets_py",
+        "/proc/self/fd/991",
+        "/usr/lib/python3.12",
+    ]
+    assert meta_path == [
+        operator.importlib.machinery.BuiltinImporter,
+        operator.importlib.machinery.FrozenImporter,
+        operator.importlib.machinery.PathFinder,
+    ]
+    assert list(package.__path__) == [
+        "/proc/self/fd/991/ipfs_accelerate_py"
+    ]
+    assert package.__spec__ is not None
+    assert list(package.__spec__.submodule_search_locations or ()) == [
+        "/proc/self/fd/991/ipfs_accelerate_py"
+    ]
+
+
+def test_live_extension_home_is_inside_ignored_successor_runtime() -> None:
+    operator = _operator()
+    relative = operator.LGCVF_LIVE_QUALIFICATION_HOMES_RELATIVE
+
+    assert relative.parent == operator.SUCCESSOR_RUN_RELATIVE
+    assert relative.name == "qualification-homes"
+    for candidate in (relative, relative / ("a" * 64)):
+        ignored = subprocess.run(
+            [
+                "/usr/bin/git",
+                "check-ignore",
+                "--quiet",
+                "--",
+                candidate.as_posix(),
+            ],
+            cwd=ROOT,
+            env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"},
+            check=False,
+        )
+        assert ignored.returncode == 0
 
 
 def test_tracked_runtime_inventory_hashes_bytes_and_rejects_ignored_source(
@@ -741,7 +929,11 @@ def test_owner_socket_and_ducklake_projection_are_physically_separate(
         "_extension_preflight",
         lambda: {
             "available": True,
-            "extensions": {"quack": "test", "ducklake": "test"},
+            "extensions": {
+                "quack": "test",
+                "ducklake": "test",
+                "httpfs": "test",
+            },
             "automatic_installation_permitted": False,
         },
     )
@@ -1166,7 +1358,7 @@ def test_real_four_process_quack_cas_has_one_winner_and_private_sidecars(
         )
 
     operator = _operator()
-    runtime = tmp_path / "run-v18"
+    runtime = tmp_path / "run-v19"
     database = runtime / "control.duckdb"
     owner_state = runtime / "quack-owner"
     logical_generation = "lgcvf-synthetic-v1"

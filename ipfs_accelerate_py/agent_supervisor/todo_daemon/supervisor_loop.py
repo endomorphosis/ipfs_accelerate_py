@@ -8,6 +8,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Callable, Mapping, Optional, Sequence
 
 from .core import ManagedDaemonSpec, pid_alive, read_json
@@ -69,11 +70,48 @@ class SupervisorLoopConfig:
     max_restarts: int = 0
     latest_log_path: Optional[Path] = None
     child_env: Mapping[str, str] = field(default_factory=dict)
+    child_inherit_environment: bool = True
+    pass_fds: tuple[int, ...] = ()
+    pre_popen_verify: Optional[
+        Callable[[SupervisedChildSpec], None]
+    ] = None
     status_static_fields: Mapping[str, Any] = field(default_factory=dict)
     status_extra_fields: Mapping[str, Any] = field(default_factory=dict)
     watchdog_quiescent_status_predicate: Optional[
         WatchdogQuiescentStatusPredicate
     ] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "child_env",
+            MappingProxyType(
+                {
+                    str(name): str(value)
+                    for name, value in self.child_env.items()
+                }
+            ),
+        )
+        if not isinstance(self.child_inherit_environment, bool):
+            raise ValueError("child_inherit_environment must be boolean")
+        descriptors: list[int] = []
+        for descriptor in self.pass_fds:
+            if (
+                isinstance(descriptor, bool)
+                or not isinstance(descriptor, int)
+                or descriptor < 0
+            ):
+                raise ValueError("pass_fds must contain non-negative integers")
+            descriptors.append(descriptor)
+        object.__setattr__(
+            self,
+            "pass_fds",
+            tuple(sorted(set(descriptors))),
+        )
+        if self.pre_popen_verify is not None and not callable(
+            self.pre_popen_verify
+        ):
+            raise ValueError("pre_popen_verify must be callable")
 
 
 @dataclass(frozen=True)
@@ -178,6 +216,9 @@ class SupervisorLoop:
             child_pid_path=self.config.spec.child_pid_path,
             latest_log_path=self.config.latest_log_path or self.config.spec.latest_log_path,
             env=self.config.child_env,
+            inherit_environment=self.config.child_inherit_environment,
+            pass_fds=self.config.pass_fds,
+            pre_popen_verify=self.config.pre_popen_verify,
         )
 
     def _write_status(

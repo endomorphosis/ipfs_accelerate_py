@@ -88291,6 +88291,16 @@ TodoImplementationDaemon = PortalImplementationDaemon
 
 
 def main(argv: list[str] | None = None) -> None:
+    # ``execve`` resets Linux's dumpable flag.  A live Quack daemon retains
+    # the in-memory attach credential, so re-establish the kernel boundary
+    # before argument parsing, state access, or any provider-capable path.
+    from ..runtime.process_security import (
+        capture_state_authority_credentials,
+        harden_state_authority_process,
+    )
+
+    harden_state_authority_process()
+    capture_state_authority_credentials()
     args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),

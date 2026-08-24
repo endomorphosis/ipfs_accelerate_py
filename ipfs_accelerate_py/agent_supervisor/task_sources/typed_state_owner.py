@@ -3547,7 +3547,9 @@ def open_typed_state_owner_connection(
     process_birth_id: str,
     timeout_seconds: float = 30.0,
 ) -> TypedStateOwnerConnection:
-    token = str(os.environ.get(TYPED_STATE_OWNER_TOKEN_ENV, "") or "").strip()
+    from ..runtime.process_security import state_authority_credential
+
+    token = state_authority_credential(TYPED_STATE_OWNER_TOKEN_ENV)
     return TypedStateOwnerConnection(
         socket_path=typed_owner_socket_path(store_id),
         token=token,

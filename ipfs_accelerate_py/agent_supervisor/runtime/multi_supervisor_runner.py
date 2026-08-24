@@ -15,6 +15,7 @@ import stat
 import subprocess
 import sys
 import time
+import zipfile
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
@@ -33,9 +34,17 @@ _CONFIGURED_BOARD_LIVE_LAUNCH_FLAG = "--require-configured-board-live-seal"
 _CONFIGURED_BOARD_LIVE_BIRTH_MARKER = (
     "--run-configured-board-live-seal-launch-gate"
 )
+_LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_FLAG = (
+    "--require-lgcvf-configured-board-live-seal"
+)
+_LGCVF_CONFIGURED_BOARD_LIVE_BIRTH_MARKER = (
+    "--run-lgcvf-configured-board-live-capsule-gate"
+)
 if __package__ in {None, ""} and (
     _CONFIGURED_BOARD_LIVE_LAUNCH_FLAG in sys.argv[1:]
     or _CONFIGURED_BOARD_LIVE_BIRTH_MARKER in sys.argv[1:]
+    or _LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_FLAG in sys.argv[1:]
+    or _LGCVF_CONFIGURED_BOARD_LIVE_BIRTH_MARKER in sys.argv[1:]
 ):
     raise SystemExit(78)
 
@@ -120,6 +129,39 @@ CONFIGURED_BOARD_LIVE_SEAL_VERIFIERS = MappingProxyType(
         ),
     }
 )
+LGCVF_CONFIGURED_BOARD_LIVE_ADMISSION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "lgcvf-configured-board-live-admission@1"
+)
+LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH = (
+    "config/agent_supervisor_logic_governed_compositional_verification_"
+    "fabric_quack_candidate_scheduler.json"
+)
+LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE = (
+    "logic-governed-compositional-verification-fabric-v1"
+)
+LGCVF_CONFIGURED_BOARD_LIVE_SCHEDULER_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "logic_governed_compositional_verification_fabric.scheduler_config@1"
+)
+LGCVF_CONFIGURED_BOARD_LIVE_LANE_NAMES = tuple(
+    f"lgcvf-quack-lane-{index}" for index in range(4)
+)
+LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_MARKER = (
+    _LGCVF_CONFIGURED_BOARD_LIVE_BIRTH_MARKER
+)
+LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_SUCCESS = b"\x01"
+LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_MODULE = (
+    "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner"
+)
+LGCVF_CONFIGURED_BOARD_LIVE_MODULES = frozenset(
+    {
+        "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler",
+        "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+    }
+)
 PLAN_BOUND_REPLAN_RETURN_CODE = 75
 STALE_DETACHED_MASTER_PID_DECISION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -136,6 +178,7 @@ SEALED_CONTROL_PLANE_MODULES = frozenset(
         "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler",
         "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
     }
 )
 SEALED_CONTROL_PLANE_BOOTSTRAP = r'''import fcntl,hashlib,json,os,stat,sys
@@ -151,7 +194,8 @@ try:
     if fd<3 or type(pin) is not dict or set(pin)!={'schema','runner_path','runner_sha256','capsule_root','capsule_id','source_head','source_tree','archive_sha256'}: raise SystemExit(78)
     if any(type(value) is not str or not value for value in pin.values()): raise SystemExit(78)
     if pin['schema']!='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2': raise SystemExit(78)
-    if module not in {'ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler','ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor'}: raise SystemExit(78)
+    if module not in {'ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler','ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon'}: raise SystemExit(78)
+    if module in {'ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon'}: raise SystemExit(78)
     command_line=open('/proc/self/cmdline','rb').read().split(b'\0')
     code_index=command_line.index(b'-c')+1
     if 'sha256:'+hashlib.sha256(command_line[code_index]).hexdigest()!=expected_bootstrap: raise SystemExit(78)
@@ -206,6 +250,144 @@ except BaseException: raise SystemExit(78)
 SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256 = (
     "sha256:"
     + hashlib.sha256(SEALED_CONTROL_PLANE_BOOTSTRAP.encode("utf-8")).hexdigest()
+)
+LGCVF_CONFIGURED_BOARD_LIVE_BOOTSTRAP = r'''import ctypes,os,sys
+def _deny(): raise SystemExit(78)
+def _pairs(items):
+    result={}
+    for key,value in items:
+        if key in result: _deny()
+        result[key]=value
+    return result
+def _decode(value):
+    try: result=json.loads(value,object_pairs_hook=_pairs)
+    except BaseException: _deny()
+    if type(result) is not dict or json.dumps(result,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)!=value: _deny()
+    return result
+def _sha(value): return 'sha256:'+hashlib.sha256(value).hexdigest()
+def _field(value,name):
+    if type(value) is dict: return value.get(name)
+    return getattr(value,name,None)
+try:
+    if not sys.flags.isolated or not sys.flags.no_site or not sys.flags.dont_write_bytecode or not sys.platform.startswith('linux') or any(name.startswith(('LD_','PYTHON')) or name=='GLIBC_TUNABLES' for name in os.environ): _deny()
+    if os.environ.get('IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY','')!='load_only': _deny()
+    token=os.environ.get('IPFS_ACCELERATE_AGENT_QUACK_TOKEN','')
+    try: token_bytes=token.encode('ascii')
+    except BaseException: _deny()
+    if not 8<=len(token_bytes)<=4096 or any(value not in b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-' for value in token_bytes): _deny()
+    libc=ctypes.CDLL(None,use_errno=True)
+    if libc.prctl(4,0,0,0,0)!=0 or libc.prctl(3,0,0,0,0)!=0: _deny()
+    import fcntl,hashlib,json,re,stat
+    token_sink=os.environ.get('IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE',''); token_marker=os.path.dirname(token_sink)
+    try:
+        marker_fd=os.open(token_marker,os.O_RDONLY|getattr(os,'O_CLOEXEC',0)|getattr(os,'O_NOFOLLOW',0)); marker_metadata=os.fstat(marker_fd)
+        marker_payload=os.read(marker_fd,256); marker_after=os.fstat(marker_fd); os.close(marker_fd)
+    except BaseException: _deny()
+    if (marker_metadata.st_dev,marker_metadata.st_ino,marker_metadata.st_size,marker_metadata.st_mtime_ns,marker_metadata.st_ctime_ns)!=(marker_after.st_dev,marker_after.st_ino,marker_after.st_size,marker_after.st_mtime_ns,marker_after.st_ctime_ns) or not token_sink or '\x00' in token_sink or len(token_sink.encode('utf-8'))>4096 or not os.path.isabs(token_sink) or os.path.abspath(token_sink)!=token_sink or os.path.basename(token_sink)!='unavailable' or os.path.basename(token_marker)!='.ephemeral-token-persistence-disabled' or not stat.S_ISREG(marker_metadata.st_mode) or marker_metadata.st_uid!=os.geteuid() or marker_metadata.st_nlink!=1 or stat.S_IMODE(marker_metadata.st_mode)!=0o400 or marker_payload!=b'trusted controller keeps the Quack attach credential in memory\n': _deny()
+    capsule_fd=int(sys.argv.pop(1)); pin_text=sys.argv.pop(1); admission_text=sys.argv.pop(1)
+    native_fd=int(sys.argv.pop(1)); native_text=sys.argv.pop(1); module=sys.argv.pop(1)
+    expected_bootstrap=sys.argv.pop(1); expected_python=sys.argv.pop(1)
+    if capsule_fd<3 or native_fd<3 or capsule_fd==native_fd: _deny()
+    if module not in {'ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler','ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor','ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon'}: _deny()
+    command_line=open('/proc/self/cmdline','rb').read().split(b'\0')
+    if command_line[1:5]!=[b'-I',b'-S',b'-B',b'-c']: _deny()
+    code_index=command_line.index(b'-c')+1
+    if _sha(command_line[code_index])!=expected_bootstrap: _deny()
+    executable=os.open('/proc/self/exe',os.O_RDONLY|getattr(os,'O_CLOEXEC',0))
+    try:
+        executable_hash=hashlib.sha256()
+        while True:
+            block=os.read(executable,65536)
+            if not block: break
+            executable_hash.update(block)
+    finally: os.close(executable)
+    if 'sha256:'+executable_hash.hexdigest()!=expected_python: _deny()
+    pin_payload=_decode(pin_text); admission=_decode(admission_text); native_payload=_decode(native_text)
+    archive_sha=pin_payload.get('archive_sha256')
+    if type(archive_sha) is not str or re.fullmatch(r'sha256:[0-9a-f]{64}',archive_sha) is None: _deny()
+    required=fcntl.F_SEAL_WRITE|fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SEAL
+    metadata=os.fstat(capsule_fd)
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size<=0 or fcntl.fcntl(capsule_fd,fcntl.F_GET_SEALS)&required!=required: _deny()
+    archive_hash=hashlib.sha256(); offset=0
+    while offset<metadata.st_size:
+        block=os.pread(capsule_fd,min(65536,metadata.st_size-offset),offset)
+        if not block: break
+        archive_hash.update(block); offset+=len(block)
+    if offset!=metadata.st_size or 'sha256:'+archive_hash.hexdigest()!=archive_sha: _deny()
+    archive='/proc/self/fd/'+str(capsule_fd); path_metadata=os.stat(archive)
+    if (path_metadata.st_dev,path_metadata.st_ino)!=(metadata.st_dev,metadata.st_ino): _deny()
+    stdlib=[]
+    for entry in sys.path:
+        if type(entry) is not str or not entry or not os.path.isabs(entry): continue
+        lowered=entry.casefold()
+        if 'site-packages' in lowered or 'dist-packages' in lowered: continue
+        stdlib.append(entry)
+    sys.path[:]=[archive,*dict.fromkeys(stdlib)]
+    import importlib,importlib.machinery,runpy
+    allowed_meta=(importlib.machinery.BuiltinImporter,importlib.machinery.FrozenImporter,importlib.machinery.PathFinder)
+    if any(finder not in allowed_meta for finder in sys.meta_path): _deny()
+    import ipfs_accelerate_py as accepted_root
+    prefix=archive+'/'
+    root_origin=getattr(accepted_root,'__file__',None)
+    if type(root_origin) is not str or not root_origin.startswith(prefix): _deny()
+    from ipfs_accelerate_py import agent_implementation_route as route
+    pin=route.parse_lgcvf_configured_board_live_capsule_pin(pin_payload)
+    if pin.to_json()!=pin_text or route.verify_lgcvf_configured_board_live_sealed_capsule(pin,capsule_fd)!=archive: _deny()
+    if tuple(pin.python_path_prefixes)!=('.', 'ipfs_datasets_py'): _deny()
+    capsule_roots=[]
+    for root in pin.python_path_prefixes:
+        if type(root) is not str or not root or root.startswith(('/', '\\')) or '\x00' in root or '..' in root.replace('\\','/').split('/'): _deny()
+        projected=archive if root=='.' else archive+'/'+root.strip('/')
+        if projected not in capsule_roots: capsule_roots.append(projected)
+    from ipfs_accelerate_py import llm_router as router
+    native=router.parse_agent_supervisor_native_dependency_launch(native_payload)
+    if native.to_json()!=native_text or native.descriptor.descriptor!=native_fd: _deny()
+    if router.verify_agent_supervisor_native_dependency_sealed_fd(native)!='/proc/self/fd/'+str(native_fd): _deny()
+    if pin.native_authorization_id!=native.accepted_authorization_id or pin.native_dependency_id!=native.pin.dependency_id: _deny()
+    expected_fields={'schema','admission_id','capsule_id','capsule_archive_sha256','source_head','source_tree','candidate_config_path','candidate_config_sha256','board_namespace','scheduler_schema','validator_sha256','materializer_sha256','operator_sha256','native_authorization_id','native_dependency_id','task_source_kind','authority_mode','state_schema_revision','lane_names'}
+    if set(admission)!=expected_fields: _deny()
+    unsigned=dict(admission); unsigned.pop('admission_id',None)
+    admission_id=_sha(json.dumps(unsigned,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False).encode('utf-8'))
+    if admission.get('schema')!='ipfs_accelerate_py.agent_supervisor.lgcvf-configured-board-live-admission@1' or admission.get('admission_id')!=admission_id: _deny()
+    expected={'capsule_id':pin.capsule_id,'capsule_archive_sha256':pin.archive_sha256,'source_head':pin.source_head,'source_tree':pin.source_tree,'candidate_config_path':pin.candidate_config_path,'candidate_config_sha256':pin.candidate_config_sha256,'board_namespace':'logic-governed-compositional-verification-fabric-v1','scheduler_schema':'ipfs_accelerate_py.agent_supervisor.logic_governed_compositional_verification_fabric.scheduler_config@1','validator_sha256':pin.validator_sha256,'materializer_sha256':pin.materializer_sha256,'operator_sha256':pin.operator_sha256,'native_authorization_id':pin.native_authorization_id,'native_dependency_id':pin.native_dependency_id,'task_source_kind':'duckdb','authority_mode':'quack','state_schema_revision':'datasets-authoritative-operational-v1','lane_names':['lgcvf-quack-lane-0','lgcvf-quack-lane-1','lgcvf-quack-lane-2','lgcvf-quack-lane-3']}
+    if any(admission.get(name)!=value for name,value in expected.items()): _deny()
+    python_identity=pin.python_identity
+    accepted_python=_field(python_identity,'python_executable_sha256')
+    if accepted_python is None: accepted_python=_field(python_identity,'executable_sha256')
+    if accepted_python!=expected_python or native.pin.python_executable_sha256!=expected_python: _deny()
+    router.preload_agent_supervisor_native_dependency(native)
+    dataset_prefix=archive+'/ipfs_datasets_py/'
+    projected_roots=list(reversed(capsule_roots))
+    sys.path[:]=[*projected_roots,*[entry for entry in sys.path if entry not in capsule_roots]]
+    package_name='ipfs_accelerate_py.agent_supervisor'
+    if any(name==package_name or name.startswith(package_name+'.') for name in sys.modules): _deny()
+    package=importlib.import_module(package_name)
+    package_origin=getattr(package,'__file__',None)
+    if type(package_origin) is not str or not package_origin.startswith(prefix): _deny()
+    setattr(accepted_root,'agent_supervisor',package)
+    if module in sys.modules: _deny()
+    namespace=runpy.run_module(module,run_name=module,alter_sys=True)
+    if module in sys.modules: _deny()
+    target_origin=namespace.get('__file__')
+    if type(target_origin) is not str or not target_origin.startswith(prefix): _deny()
+    for name,loaded in tuple(sys.modules.items()):
+        if name=='ipfs_accelerate_py' or name.startswith('ipfs_accelerate_py.'):
+            origin=getattr(loaded,'__file__',None)
+            if type(origin) is not str or not origin.startswith(prefix): _deny()
+        if name=='ipfs_datasets_py' or name.startswith('ipfs_datasets_py.'):
+            origin=getattr(loaded,'__file__',None)
+            if type(origin) is not str or not origin.startswith(dataset_prefix): _deny()
+    main=namespace.get('main')
+    if not callable(main): _deny()
+    raise SystemExit(main())
+except SystemExit: raise
+except BaseException: raise SystemExit(78)
+'''
+LGCVF_CONFIGURED_BOARD_LIVE_BOOTSTRAP_SHA256 = (
+    "sha256:"
+    + hashlib.sha256(
+        LGCVF_CONFIGURED_BOARD_LIVE_BOOTSTRAP.encode("utf-8")
+    ).hexdigest()
 )
 
 ORDERED_IMPLEMENTATION_PROVIDER_ROUTE: Mapping[str, str] = MappingProxyType(
@@ -302,6 +484,374 @@ def accepted_control_plane_pin_json(
     )
 
 
+def _strict_canonical_json_object(
+    value: str,
+    *,
+    label: str,
+    maximum_bytes: int = 262_144,
+) -> dict[str, object]:
+    if (
+        type(value) is not str
+        or not value
+        or "\x00" in value
+        or len(value.encode("utf-8")) > maximum_bytes
+    ):
+        raise ValueError(f"{label} JSON is invalid")
+    try:
+        payload = json.loads(
+            value,
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"{label} JSON is invalid") from exc
+    if type(payload) is not dict:
+        raise ValueError(f"{label} JSON must be an exact object")
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    )
+    if canonical != value:
+        raise ValueError(f"{label} JSON is not canonical")
+    return payload
+
+
+@dataclass(frozen=True, slots=True)
+class LgcvfConfiguredBoardLiveAdmission:
+    """Closed authorization joining the LGCVF capsule and native launch."""
+
+    schema: str
+    admission_id: str
+    capsule_id: str
+    capsule_archive_sha256: str
+    source_head: str
+    source_tree: str
+    candidate_config_path: str
+    candidate_config_sha256: str
+    board_namespace: str
+    scheduler_schema: str
+    validator_sha256: str
+    materializer_sha256: str
+    operator_sha256: str
+    native_authorization_id: str
+    native_dependency_id: str
+    task_source_kind: str
+    authority_mode: str
+    state_schema_revision: str
+    lane_names: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "schema": self.schema,
+            "admission_id": self.admission_id,
+            "capsule_id": self.capsule_id,
+            "capsule_archive_sha256": self.capsule_archive_sha256,
+            "source_head": self.source_head,
+            "source_tree": self.source_tree,
+            "candidate_config_path": self.candidate_config_path,
+            "candidate_config_sha256": self.candidate_config_sha256,
+            "board_namespace": self.board_namespace,
+            "scheduler_schema": self.scheduler_schema,
+            "validator_sha256": self.validator_sha256,
+            "materializer_sha256": self.materializer_sha256,
+            "operator_sha256": self.operator_sha256,
+            "native_authorization_id": self.native_authorization_id,
+            "native_dependency_id": self.native_dependency_id,
+            "task_source_kind": self.task_source_kind,
+            "authority_mode": self.authority_mode,
+            "state_schema_revision": self.state_schema_revision,
+            "lane_names": list(self.lane_names),
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(
+            self.as_dict(),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        )
+
+
+def _lgcvf_live_admission_id(payload: Mapping[str, object]) -> str:
+    unsigned = dict(payload)
+    unsigned.pop("admission_id", None)
+    return "sha256:" + hashlib.sha256(
+        json.dumps(
+            unsigned,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def parse_lgcvf_configured_board_live_admission(
+    value: str | Mapping[str, object],
+) -> LgcvfConfiguredBoardLiveAdmission:
+    """Strictly decode the one closed LGCVF live launch admission."""
+
+    if isinstance(value, str):
+        payload = _strict_canonical_json_object(
+            value,
+            label="LGCVF configured-board live admission",
+        )
+    elif type(value) is dict:
+        payload = dict(value)
+    else:
+        raise ValueError(
+            "LGCVF configured-board live admission must be an exact object"
+        )
+    expected = {
+        "schema",
+        "admission_id",
+        "capsule_id",
+        "capsule_archive_sha256",
+        "source_head",
+        "source_tree",
+        "candidate_config_path",
+        "candidate_config_sha256",
+        "board_namespace",
+        "scheduler_schema",
+        "validator_sha256",
+        "materializer_sha256",
+        "operator_sha256",
+        "native_authorization_id",
+        "native_dependency_id",
+        "task_source_kind",
+        "authority_mode",
+        "state_schema_revision",
+        "lane_names",
+    }
+    lane_names = payload.get("lane_names")
+    if (
+        set(payload) != expected
+        or any(
+            type(payload.get(name)) is not str or not payload.get(name)
+            for name in expected - {"lane_names"}
+        )
+        or type(lane_names) is not list
+        or any(type(name) is not str or not name for name in lane_names)
+    ):
+        raise ValueError(
+            "LGCVF configured-board live admission fields are not exact"
+        )
+    admission = LgcvfConfiguredBoardLiveAdmission(
+        **{
+            **{name: str(payload[name]) for name in expected - {"lane_names"}},
+            "lane_names": tuple(lane_names),
+        }
+    )
+    sha256_pattern = r"sha256:[0-9a-f]{64}"
+    if (
+        admission.schema != LGCVF_CONFIGURED_BOARD_LIVE_ADMISSION_SCHEMA
+        or admission.admission_id != _lgcvf_live_admission_id(payload)
+        or re.fullmatch(sha256_pattern, admission.admission_id) is None
+        or re.fullmatch(sha256_pattern, admission.capsule_id) is None
+        or re.fullmatch(sha256_pattern, admission.capsule_archive_sha256)
+        is None
+        or re.fullmatch(sha256_pattern, admission.candidate_config_sha256)
+        is None
+        or re.fullmatch(sha256_pattern, admission.validator_sha256) is None
+        or re.fullmatch(sha256_pattern, admission.materializer_sha256) is None
+        or re.fullmatch(sha256_pattern, admission.operator_sha256) is None
+        or re.fullmatch(sha256_pattern, admission.native_authorization_id)
+        is None
+        or re.fullmatch(sha256_pattern, admission.native_dependency_id)
+        is None
+        or re.fullmatch(r"[0-9a-f]{40}", admission.source_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", admission.source_tree) is None
+        or admission.candidate_config_path
+        != LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH
+        or admission.board_namespace != LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE
+        or admission.scheduler_schema
+        != LGCVF_CONFIGURED_BOARD_LIVE_SCHEDULER_SCHEMA
+        or admission.task_source_kind != TASK_SOURCE_DUCKDB
+        or admission.authority_mode != AUTHORITY_MODE_QUACK
+        or admission.state_schema_revision
+        != DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION
+        or admission.lane_names != LGCVF_CONFIGURED_BOARD_LIVE_LANE_NAMES
+    ):
+        raise ValueError(
+            "LGCVF configured-board live admission identity is invalid"
+        )
+    if admission.to_json() != json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ):
+        raise ValueError(
+            "LGCVF configured-board live admission changed during decode"
+        )
+    return admission
+
+
+def build_lgcvf_configured_board_live_admission(
+    capsule_pin: object,
+    native_launch: object,
+) -> LgcvfConfiguredBoardLiveAdmission:
+    """Build the sole accepted LGCVF profile from already verified DTOs."""
+
+    pin_fields = {
+        name: getattr(capsule_pin, name, None)
+        for name in (
+            "capsule_id",
+            "archive_sha256",
+            "source_head",
+            "source_tree",
+            "candidate_config_path",
+            "candidate_config_sha256",
+            "validator_sha256",
+            "materializer_sha256",
+            "operator_sha256",
+            "native_authorization_id",
+            "native_dependency_id",
+        )
+    }
+    native_pin = getattr(native_launch, "pin", None)
+    if (
+        any(type(value) is not str or not value for value in pin_fields.values())
+        or getattr(native_launch, "accepted_authorization_id", None)
+        != pin_fields["native_authorization_id"]
+        or getattr(native_pin, "dependency_id", None)
+        != pin_fields["native_dependency_id"]
+    ):
+        raise ValueError(
+            "LGCVF capsule and native launch authority are not identical"
+        )
+    payload: dict[str, object] = {
+        "schema": LGCVF_CONFIGURED_BOARD_LIVE_ADMISSION_SCHEMA,
+        "admission_id": "",
+        "capsule_id": pin_fields["capsule_id"],
+        "capsule_archive_sha256": pin_fields["archive_sha256"],
+        "source_head": pin_fields["source_head"],
+        "source_tree": pin_fields["source_tree"],
+        "candidate_config_path": pin_fields["candidate_config_path"],
+        "candidate_config_sha256": pin_fields["candidate_config_sha256"],
+        "board_namespace": LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,
+        "scheduler_schema": LGCVF_CONFIGURED_BOARD_LIVE_SCHEDULER_SCHEMA,
+        "validator_sha256": pin_fields["validator_sha256"],
+        "materializer_sha256": pin_fields["materializer_sha256"],
+        "operator_sha256": pin_fields["operator_sha256"],
+        "native_authorization_id": pin_fields["native_authorization_id"],
+        "native_dependency_id": pin_fields["native_dependency_id"],
+        "task_source_kind": TASK_SOURCE_DUCKDB,
+        "authority_mode": AUTHORITY_MODE_QUACK,
+        "state_schema_revision": (
+            DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION
+        ),
+        "lane_names": list(LGCVF_CONFIGURED_BOARD_LIVE_LANE_NAMES),
+    }
+    payload["admission_id"] = _lgcvf_live_admission_id(payload)
+    return parse_lgcvf_configured_board_live_admission(payload)
+
+
+@dataclass(frozen=True, slots=True)
+class LgcvfConfiguredBoardLiveContext:
+    capsule_pin: object
+    capsule_descriptor: int
+    admission: LgcvfConfiguredBoardLiveAdmission
+    native_launch: object
+    native_descriptor: int
+    capsule_pin_json: str
+    admission_json: str
+    native_launch_json: str
+
+    @property
+    def pass_fds(self) -> tuple[int, ...]:
+        return tuple(
+            sorted({self.capsule_descriptor, self.native_descriptor})
+        )
+
+
+def verify_lgcvf_configured_board_live_context(
+    *,
+    capsule_pin_json: str,
+    capsule_descriptor: int,
+    admission_json: str,
+    native_launch_json: str,
+    native_descriptor: int,
+) -> LgcvfConfiguredBoardLiveContext:
+    """Revalidate one capsule/native/admission join without importing DuckDB."""
+
+    if (
+        isinstance(capsule_descriptor, bool)
+        or not isinstance(capsule_descriptor, int)
+        or isinstance(native_descriptor, bool)
+        or not isinstance(native_descriptor, int)
+        or capsule_descriptor < 3
+        or native_descriptor < 3
+        or capsule_descriptor == native_descriptor
+    ):
+        raise ValueError("LGCVF configured-board live descriptors are invalid")
+    from ipfs_accelerate_py.agent_implementation_route import (
+        parse_lgcvf_configured_board_live_capsule_pin,
+        verify_lgcvf_configured_board_live_sealed_capsule,
+    )
+    from ipfs_accelerate_py.llm_router import (
+        parse_agent_supervisor_native_dependency_launch,
+        verify_agent_supervisor_native_dependency_sealed_fd,
+    )
+
+    capsule_payload = _strict_canonical_json_object(
+        capsule_pin_json,
+        label="LGCVF configured-board live capsule pin",
+    )
+    capsule_pin = parse_lgcvf_configured_board_live_capsule_pin(
+        capsule_payload
+    )
+    if getattr(capsule_pin, "to_json", lambda: "")() != capsule_pin_json:
+        raise ValueError("LGCVF configured-board live capsule pin is not canonical")
+    capsule_path = verify_lgcvf_configured_board_live_sealed_capsule(
+        capsule_pin,
+        capsule_descriptor,
+    )
+    native_payload = _strict_canonical_json_object(
+        native_launch_json,
+        label="LGCVF configured-board live native launch",
+        maximum_bytes=32_768,
+    )
+    native_launch = parse_agent_supervisor_native_dependency_launch(
+        native_payload
+    )
+    if getattr(native_launch, "to_json", lambda: "")() != native_launch_json:
+        raise ValueError("LGCVF configured-board native launch is not canonical")
+    if getattr(getattr(native_launch, "descriptor", None), "descriptor", -1) != (
+        native_descriptor
+    ):
+        raise ValueError("LGCVF configured-board native descriptor was substituted")
+    native_path = verify_agent_supervisor_native_dependency_sealed_fd(
+        native_launch
+    )
+    admission = parse_lgcvf_configured_board_live_admission(admission_json)
+    expected_admission = build_lgcvf_configured_board_live_admission(
+        capsule_pin,
+        native_launch,
+    )
+    if admission != expected_admission:
+        raise ValueError("LGCVF configured-board live admission is foreign")
+    if (
+        capsule_path != f"/proc/self/fd/{capsule_descriptor}"
+        or native_path != f"/proc/self/fd/{native_descriptor}"
+    ):
+        raise ValueError("LGCVF configured-board live descriptor path drifted")
+    return LgcvfConfiguredBoardLiveContext(
+        capsule_pin=capsule_pin,
+        capsule_descriptor=capsule_descriptor,
+        admission=admission,
+        native_launch=native_launch,
+        native_descriptor=native_descriptor,
+        capsule_pin_json=capsule_pin_json,
+        admission_json=admission_json,
+        native_launch_json=native_launch_json,
+    )
+
+
 def _python_executable_sha256(python_executable: str) -> tuple[str, str]:
     executable = Path(python_executable).resolve(strict=True)
     metadata = os.stat(executable, follow_symlinks=False)
@@ -366,6 +916,68 @@ def build_sealed_control_plane_module_command(
         accepted_control_plane_pin_json(pin),
         module_name,
         SEALED_CONTROL_PLANE_BOOTSTRAP_SHA256,
+        executable_sha256,
+        *[str(item) for item in argv],
+    ]
+
+
+def build_lgcvf_configured_board_live_module_command(
+    *,
+    python_executable: str,
+    capsule_pin_json: str,
+    capsule_descriptor: int,
+    admission_json: str,
+    native_launch_json: str,
+    native_descriptor: int,
+    module_name: str,
+    argv: Sequence[str],
+) -> list[str]:
+    """Build an isolated LGCVF role launch from two independently sealed FDs."""
+
+    if module_name not in LGCVF_CONFIGURED_BOARD_LIVE_MODULES:
+        raise ValueError("LGCVF configured-board live target module is not allowed")
+    context = verify_lgcvf_configured_board_live_context(
+        capsule_pin_json=capsule_pin_json,
+        capsule_descriptor=capsule_descriptor,
+        admission_json=admission_json,
+        native_launch_json=native_launch_json,
+        native_descriptor=native_descriptor,
+    )
+    executable, executable_sha256 = _python_executable_sha256(
+        python_executable
+    )
+    python_identity = getattr(context.capsule_pin, "python_identity", None)
+    accepted_python_sha256 = getattr(
+        python_identity,
+        "python_executable_sha256",
+        getattr(python_identity, "executable_sha256", ""),
+    )
+    native_python_sha256 = getattr(
+        getattr(context.native_launch, "pin", None),
+        "python_executable_sha256",
+        "",
+    )
+    if (
+        executable_sha256 != accepted_python_sha256
+        or executable_sha256 != native_python_sha256
+    ):
+        raise ValueError(
+            "LGCVF configured-board Python executable differs from admission"
+        )
+    return [
+        executable,
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        LGCVF_CONFIGURED_BOARD_LIVE_BOOTSTRAP,
+        str(context.capsule_descriptor),
+        context.capsule_pin_json,
+        context.admission_json,
+        str(context.native_descriptor),
+        context.native_launch_json,
+        module_name,
+        LGCVF_CONFIGURED_BOARD_LIVE_BOOTSTRAP_SHA256,
         executable_sha256,
         *[str(item) for item in argv],
     ]
@@ -493,6 +1105,11 @@ STATE_LIVE_SCHEMA_REVISION_ENV = (
     "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION"
 )
 STATE_OWNER_SOCKET_ENV = "IPFS_ACCELERATE_AGENT_STATE_OWNER_SOCKET"
+QUACK_TOKEN_FILE_ENV = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE"
+BOARD_EXTENSION_INSTALL_POLICY_ENV = (
+    "IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY"
+)
+BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY = "load_only"
 TASK_SOURCE_KIND_ENV = "IPFS_ACCELERATE_AGENT_TASK_SOURCE_KIND"
 EVENT_STORE_PATH_ENV = "IPFS_ACCELERATE_AGENT_EVENT_STORE_PATH"
 RUNTIME_REGISTRY_PATH_ENV = "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH"
@@ -539,6 +1156,7 @@ _PLAN_BOUND_PROFILE_ENV_NAMES = frozenset(
         *DATABASE_PROGRAM_ENV_NAMES,
         PROVIDER_EXTERNAL_ISOLATION_ENV,
         TRUSTED_DUCKDB_HOME_ENV,
+        QUACK_TOKEN_FILE_ENV,
     }
 )
 _PLAN_BOUND_LIFECYCLE_ENV_NAMES = frozenset(
@@ -590,6 +1208,141 @@ def _plan_bound_positive_child_environment(
     return projected
 
 
+def _lgcvf_configured_board_live_positive_child_environment(
+    environment: Mapping[str, str],
+    *,
+    common_args: Sequence[str],
+) -> dict[str, str]:
+    """Project only the admitted LGCVF state credential and control bindings."""
+
+    allowed_names = {
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "TZ",
+        *_PLAN_BOUND_LIFECYCLE_ENV_NAMES,
+        *_PLAN_BOUND_PROFILE_ENV_NAMES,
+    }
+    projected = {
+        name: str(value)
+        for name, value in environment.items()
+        if name in allowed_names
+    }
+    trusted_home = str(
+        projected.get(TRUSTED_DUCKDB_HOME_ENV, "") or ""
+    )
+    if trusted_home:
+        repository_root = str(environment.get(REPOSITORY_ROOT_ENV, "") or "")
+        home = _validate_trusted_duckdb_home(
+            trusted_home,
+            repository_root=repository_root,
+            observed_home=str(environment.get("HOME", "") or ""),
+        )
+        cache_root = home / ".cache"
+        xdg_cache = cache_root / "xdg"
+        cuda_cache = cache_root / "cuda"
+        for directory in (cache_root, xdg_cache, cuda_cache):
+            observed = os.lstat(directory)
+            if (
+                directory.resolve(strict=True) != directory
+                or not stat.S_ISDIR(observed.st_mode)
+                or stat.S_ISLNK(observed.st_mode)
+                or observed.st_uid != os.geteuid()
+                or stat.S_IMODE(observed.st_mode) != 0o700
+            ):
+                raise ValueError("LGCVF trusted runtime cache is unsafe")
+        projected.update(
+            {
+                "HOME": str(home),
+                TRUSTED_DUCKDB_HOME_ENV: str(home),
+                TRUSTED_XDG_CACHE_HOME_ENV: str(xdg_cache),
+                TRUSTED_CUDA_CACHE_PATH_ENV: str(cuda_cache),
+                TRUSTED_CUDA_CACHE_DISABLE_ENV: "1",
+            }
+        )
+    handles = _profile_option_values(common_args, "--endpoint-secret-handle")
+    if handles != ("env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN",):
+        raise ValueError("LGCVF live Quack credential handle is not exact")
+    credential_name = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+    from .process_security import state_authority_credential
+
+    credential = state_authority_credential(
+        credential_name,
+        environment=environment,
+    )
+    if not credential:
+        raise ValueError("LGCVF live Quack credential is unavailable")
+    projected[credential_name] = credential
+    token_sink_value = str(environment.get(QUACK_TOKEN_FILE_ENV, "") or "")
+    if (
+        not token_sink_value
+        or "\x00" in token_sink_value
+        or len(token_sink_value.encode("utf-8")) > 4096
+    ):
+        raise ValueError("LGCVF live Quack token sink is unavailable")
+    token_sink = Path(token_sink_value)
+    token_sink_marker = token_sink.parent
+    marker_descriptor = -1
+    try:
+        marker_descriptor = os.open(
+            token_sink_marker,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        marker_metadata = os.fstat(marker_descriptor)
+        marker_payload = os.read(marker_descriptor, 256)
+        marker_after = os.fstat(marker_descriptor)
+    except OSError as exc:
+        raise ValueError("LGCVF live Quack token sink is unavailable") from exc
+    finally:
+        if marker_descriptor >= 0:
+            os.close(marker_descriptor)
+    if (
+        (
+            marker_metadata.st_dev,
+            marker_metadata.st_ino,
+            marker_metadata.st_size,
+            marker_metadata.st_mtime_ns,
+            marker_metadata.st_ctime_ns,
+        )
+        != (
+            marker_after.st_dev,
+            marker_after.st_ino,
+            marker_after.st_size,
+            marker_after.st_mtime_ns,
+            marker_after.st_ctime_ns,
+        )
+        or
+        not token_sink.is_absolute()
+        or Path(os.path.abspath(token_sink_value)) != token_sink
+        or token_sink.name != "unavailable"
+        or token_sink_marker.name != ".ephemeral-token-persistence-disabled"
+        or not stat.S_ISREG(marker_metadata.st_mode)
+        or marker_metadata.st_uid != os.geteuid()
+        or marker_metadata.st_nlink != 1
+        or stat.S_IMODE(marker_metadata.st_mode) != 0o400
+        or marker_payload
+        != b"trusted controller keeps the Quack attach credential in memory\n"
+    ):
+        raise ValueError("LGCVF live Quack token sink is unsafe")
+    projected[QUACK_TOKEN_FILE_ENV] = token_sink_value
+    extension_policy = str(
+        environment.get(BOARD_EXTENSION_INSTALL_POLICY_ENV, "") or ""
+    )
+    if extension_policy != BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY:
+        raise ValueError("LGCVF live DuckDB extension policy is not load-only")
+    projected[BOARD_EXTENSION_INSTALL_POLICY_ENV] = extension_policy
+    for name in tuple(projected):
+        if (
+            name.startswith(("LD_", "PYTHON"))
+            or name == "GLIBC_TUNABLES"
+        ):
+            projected.pop(name, None)
+    projected["PATH"] = "/usr/bin:/bin"
+    return projected
+
+
 def _plan_bound_profile_environment(
     environment: Mapping[str, str],
 ) -> tuple[tuple[str, str], ...]:
@@ -599,6 +1352,25 @@ def _plan_bound_profile_environment(
         sorted(
             (name, str(environment[name]))
             for name in _PLAN_BOUND_PROFILE_ENV_NAMES
+            if name in environment
+        )
+    )
+
+
+def _lgcvf_configured_board_live_profile_environment(
+    environment: Mapping[str, str],
+) -> tuple[tuple[str, str], ...]:
+    """Bind the non-secret token sink in addition to the closed lane profile."""
+
+    names = {
+        *_PLAN_BOUND_PROFILE_ENV_NAMES,
+        QUACK_TOKEN_FILE_ENV,
+        BOARD_EXTENSION_INSTALL_POLICY_ENV,
+    }
+    return tuple(
+        sorted(
+            (name, str(environment[name]))
+            for name in names
             if name in environment
         )
     )
@@ -1324,6 +2096,8 @@ def provider_subprocess_environment(
     # bindings; they operate on worktree files only.
     for name in DATABASE_PROGRAM_ENV_NAMES:
         cleaned.pop(name, None)
+    cleaned.pop(QUACK_TOKEN_FILE_ENV, None)
+    cleaned.pop(BOARD_EXTENSION_INSTALL_POLICY_ENV, None)
     cleaned.pop(REPOSITORY_ROOT_ENV, None)
     cleaned.pop(PROVIDER_EXTERNAL_ISOLATION_ENV, None)
     trusted_home = str(cleaned.pop(TRUSTED_DUCKDB_HOME_ENV, "") or "")
@@ -2091,6 +2865,223 @@ def _configured_board_live_seal_required(
     return DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION in (
         _profile_option_values(argv, "--state-schema-revision")
     )
+
+
+def _lgcvf_configured_board_live_embedded_config(
+    context: LgcvfConfiguredBoardLiveContext,
+) -> dict[str, object]:
+    """Read the admitted candidate config only from the sealed capsule FD."""
+
+    pin = context.capsule_pin
+    member_name = str(getattr(pin, "candidate_config_path", "") or "")
+    if member_name != LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH:
+        raise ValueError("LGCVF configured-board capsule config path is foreign")
+    try:
+        with zipfile.ZipFile(
+            f"/proc/self/fd/{context.capsule_descriptor}",
+            mode="r",
+            allowZip64=False,
+        ) as archive:
+            infos = archive.infolist()
+            names = [item.filename for item in infos]
+            if len(names) != len(set(names)) or member_name not in names:
+                raise ValueError("LGCVF capsule config member is not unique")
+            info = archive.getinfo(member_name)
+            mode = info.external_attr >> 16
+            if (
+                info.is_dir()
+                or stat.S_ISLNK(mode)
+                or info.file_size <= 0
+                or info.file_size > 2_097_152
+                or info.compress_size > 2_097_152
+            ):
+                raise ValueError("LGCVF capsule config member is invalid")
+            raw = archive.read(info)
+    except (KeyError, OSError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
+        raise ValueError("LGCVF capsule config member is unavailable") from exc
+    if (
+        len(raw) != info.file_size
+        or "sha256:" + hashlib.sha256(raw).hexdigest()
+        != getattr(pin, "candidate_config_sha256", "")
+    ):
+        raise ValueError("LGCVF capsule config bytes drifted")
+    try:
+        payload = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_json_keys,
+        )
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError("LGCVF capsule config is invalid JSON") from exc
+    if type(payload) is not dict:
+        raise ValueError("LGCVF capsule config must be an exact object")
+    return payload
+
+
+def _lgcvf_live_exact_option(
+    argv: Sequence[str],
+    option: str,
+    expected: str,
+) -> None:
+    if _profile_option_values(argv, option) != (str(expected),):
+        raise ValueError(
+            f"LGCVF configured-board live {option} differs from the capsule"
+        )
+
+
+def _verify_lgcvf_configured_board_live_profile(
+    *,
+    tracks: Sequence[SupervisorTrack],
+    repo_root: Path,
+    common_args: Sequence[str],
+    context: LgcvfConfiguredBoardLiveContext,
+    require_complete_lane_set: bool = True,
+) -> tuple[SupervisorTrack, ...]:
+    """Bind the runner's four projected lanes to the sealed config bytes."""
+
+    root = _canonical_accepted_tree_root(Path(repo_root))
+    payload = _lgcvf_configured_board_live_embedded_config(context)
+    database = payload.get("database_program")
+    runtime_paths = payload.get("runtime_paths")
+    lanes = payload.get("lanes")
+    if (
+        payload.get("schema") != LGCVF_CONFIGURED_BOARD_LIVE_SCHEDULER_SCHEMA
+        or payload.get("board_namespace")
+        != LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE
+        or payload.get("max_lanes") != 4
+        or payload.get("strict_task_sharding") is not True
+        or type(database) is not dict
+        or type(runtime_paths) is not dict
+        or type(lanes) is not list
+        or len(lanes) != 4
+    ):
+        raise ValueError("LGCVF capsule config is not the closed live profile")
+    expected_lane_records = [
+        {
+            "index": index,
+            "name": LGCVF_CONFIGURED_BOARD_LIVE_LANE_NAMES[index],
+            "strict_shard_remainder": index,
+        }
+        for index in range(4)
+    ]
+    for observed, expected in zip(lanes, expected_lane_records):  # noqa: B905
+        if type(observed) is not dict or any(
+            observed.get(name) != value for name, value in expected.items()
+        ):
+            raise ValueError("LGCVF capsule lane topology is foreign")
+    common = tuple(str(item) for item in common_args)
+    exact_options = {
+        "--board-namespace": LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,
+        "--task-prefix": str(payload.get("task_prefix") or ""),
+        "--merge-target-branch": str(payload.get("merge_target_branch") or ""),
+        "--task-source-kind": str(database.get("task_source_kind") or ""),
+        "--authority-mode": str(database.get("authority_mode") or ""),
+        "--state-failover-policy": str(database.get("failover_policy") or ""),
+        "--endpoint-secret-handle": str(
+            database.get("endpoint_secret_handle") or ""
+        ),
+        "--quack-endpoint": str(database.get("quack_endpoint") or ""),
+        "--state-store-id": str(database.get("store_id") or ""),
+        "--state-store-generation": str(
+            database.get("store_generation") or ""
+        ),
+        "--state-schema-revision": str(
+            database.get("schema_revision") or ""
+        ),
+        "--event-store-path": str(database.get("event_store_path") or ""),
+        "--runtime-registry-path": str(
+            database.get("runtime_registry_path") or ""
+        ),
+        "--export-profile": str(database.get("export_profile") or ""),
+        "--worktree-root": str(
+            root / str(runtime_paths.get("worktrees") or "")
+        ),
+        "--merge-queue-dir": str(
+            root / str(runtime_paths.get("merge_queue") or "")
+        ),
+        "--todo-path": str(root / str(payload.get("taskboard_path") or "")),
+    }
+    if (
+        database.get("task_source_kind") != TASK_SOURCE_DUCKDB
+        or database.get("authority_mode") != AUTHORITY_MODE_QUACK
+        or database.get("schema_revision")
+        != DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION
+        or database.get("failover_policy") != FAILOVER_FAIL_CLOSED
+        or database.get("explicit_legacy") is not False
+        or database.get("authoritative_transactional_data_model") is not True
+        or database.get("authoritative_records_schema_cas_and_fencing")
+        is not True
+        or database.get("endpoint_secret_handle")
+        != "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+        or common.count("--strict-task-sharding") != 1
+    ):
+        raise ValueError("LGCVF live database profile is not exact Quack authority")
+    for option, expected in exact_options.items():
+        if not expected:
+            raise ValueError(f"LGCVF capsule config lacks {option}")
+        _lgcvf_live_exact_option(common, option, expected)
+    if require_complete_lane_set:
+        if tuple(track.name for track in tracks) != (
+            LGCVF_CONFIGURED_BOARD_LIVE_LANE_NAMES
+        ):
+            raise ValueError("LGCVF live runner lane names are not exact")
+        indexed_tracks = tuple(enumerate(tracks))
+    else:
+        if (
+            len(tracks) != 1
+            or tracks[0].name not in LGCVF_CONFIGURED_BOARD_LIVE_LANE_NAMES
+        ):
+            raise ValueError("LGCVF live runner lane identity is not exact")
+        indexed_tracks = (
+            (
+                LGCVF_CONFIGURED_BOARD_LIVE_LANE_NAMES.index(tracks[0].name),
+                tracks[0],
+            ),
+        )
+    entry = root / PLAN_BOUND_ACCEPTED_ENTRY_PATH
+    _lexical_contained_path(root, entry, require_regular=True)
+    state_root = root / str(runtime_paths.get("state") or "")
+    resolved_tracks: list[SupervisorTrack] = []
+    for index, track in indexed_tracks:
+        resolved = track.resolve(root)
+        if (
+            resolved.module_name
+            or resolved.script_path != entry
+            or resolved.log_path.parent != state_root / f"lane-{index}"
+            or resolved.supervisor_pid_path.parent
+            != state_root / f"lane-{index}"
+            or resolved.daemon_pid_path.parent != state_root / f"lane-{index}"
+            or (
+                resolved.supervisor_status_path is not None
+                and resolved.supervisor_status_path.parent
+                != state_root / f"lane-{index}"
+            )
+            or not _path_within(resolved.log_path, root)
+            or not _path_within(resolved.supervisor_pid_path, root)
+            or not _path_within(resolved.daemon_pid_path, root)
+        ):
+            raise ValueError("LGCVF live lane paths are not exact")
+        _lgcvf_live_exact_option(
+            resolved.extra_args,
+            "--state-dir",
+            str(state_root / f"lane-{index}"),
+        )
+        _lgcvf_live_exact_option(
+            resolved.extra_args,
+            "--state-prefix",
+            f"lgcvf_lane_{index}",
+        )
+        _lgcvf_live_exact_option(
+            resolved.extra_args,
+            "--task-shard-count",
+            "4",
+        )
+        _lgcvf_live_exact_option(
+            resolved.extra_args,
+            "--task-shard-index",
+            str(index),
+        )
+        resolved_tracks.append(resolved)
+    return tuple(resolved_tracks)
 
 
 def _strict_plan_bound_process_fence_observation(
@@ -3069,6 +4060,24 @@ class SupervisorRunInterrupted(Exception):
 
 class PlanBoundProcessBirthError(RuntimeError):
     """A plan-bound child was fenced before launch authority was released."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        pid: int,
+        profile: LifecycleProfile,
+        all_trees_fenced: bool,
+    ) -> None:
+        super().__init__(message)
+        self.pid = int(pid)
+        self.profile = profile
+        self.profile_id = profile.profile_id
+        self.all_trees_fenced = bool(all_trees_fenced)
+
+
+class LgcvfConfiguredBoardLiveProcessBirthError(RuntimeError):
+    """A live capsule gate was fenced before its typed birth was captured."""
 
     def __init__(
         self,
@@ -4790,6 +5799,241 @@ def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
     return " ".join(parts)
 
 
+@dataclass(frozen=True)
+class _LgcvfLiveDaemonTerminationAuthority:
+    """Parent-held authority for fencing one sealed live daemon generation."""
+
+    profile_id: str
+    state_dir: Path
+    state_prefix: str
+    todo_path: Path
+    pid_path: Path
+    identity_path: Path
+    owner_scope: tuple[tuple[str, str], ...]
+    sealed_command_prefix: tuple[str, ...]
+
+
+def _lgcvf_live_daemon_termination_authority(
+    *,
+    profile: LifecycleProfile,
+    context: LgcvfConfiguredBoardLiveContext,
+    supervisor_argv: Sequence[str],
+) -> _LgcvfLiveDaemonTerminationAuthority:
+    """Bind daemon shutdown authority to the immutable parent launch profile."""
+
+    context = verify_lgcvf_configured_board_live_context(
+        capsule_pin_json=context.capsule_pin_json,
+        capsule_descriptor=context.capsule_descriptor,
+        admission_json=context.admission_json,
+        native_launch_json=context.native_launch_json,
+        native_descriptor=context.native_descriptor,
+    )
+    argv = tuple(str(item) for item in supervisor_argv)
+    state_dirs = _profile_option_values(argv, "--state-dir")
+    state_prefixes = _profile_option_values(argv, "--state-prefix")
+    todo_paths = _profile_option_values(argv, "--todo-path")
+    shard_counts = _profile_option_values(argv, "--task-shard-count")
+    shard_indices = _profile_option_values(argv, "--task-shard-index")
+    namespaces = _profile_option_values(argv, "--board-namespace")
+    if (
+        len(state_dirs) != 1
+        or len(state_prefixes) != 1
+        or len(todo_paths) != 1
+        or shard_counts != ("4",)
+        or len(shard_indices) != 1
+        or shard_indices[0] not in {"0", "1", "2", "3"}
+        or namespaces != (LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,)
+        or state_prefixes[0] != f"lgcvf_lane_{shard_indices[0]}"
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", state_prefixes[0])
+        is None
+    ):
+        raise ValueError("LGCVF live daemon termination scope is not exact")
+    repository_root = Path(profile.repository_root)
+    state_dir = Path(state_dirs[0])
+    todo_path = Path(todo_paths[0])
+    if (
+        not repository_root.is_absolute()
+        or repository_root.resolve(strict=False) != repository_root
+        or Path(profile.cwd) != repository_root
+        or not state_dir.is_absolute()
+        or state_dir.resolve(strict=False) != state_dir
+        or state_dir != Path(profile.state_root)
+        or not _path_within(state_dir, repository_root)
+        or not todo_path.is_absolute()
+        or todo_path.resolve(strict=False) != todo_path
+        or not _path_within(todo_path, repository_root)
+    ):
+        raise ValueError("LGCVF live daemon termination paths are not exact")
+    supervisor_command = tuple(
+        build_lgcvf_configured_board_live_module_command(
+            python_executable=profile.argv[0],
+            capsule_pin_json=context.capsule_pin_json,
+            capsule_descriptor=context.capsule_descriptor,
+            admission_json=context.admission_json,
+            native_launch_json=context.native_launch_json,
+            native_descriptor=context.native_descriptor,
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_supervisor"
+            ),
+            argv=argv,
+        )
+    )
+    if (
+        len(profile.argv) < len(supervisor_command)
+        or tuple(profile.argv[-len(supervisor_command) :]) != supervisor_command
+    ):
+        raise ValueError("LGCVF live supervisor command is outside its profile")
+    sealed_command_prefix = tuple(
+        build_lgcvf_configured_board_live_module_command(
+            python_executable=profile.argv[0],
+            capsule_pin_json=context.capsule_pin_json,
+            capsule_descriptor=context.capsule_descriptor,
+            admission_json=context.admission_json,
+            native_launch_json=context.native_launch_json,
+            native_descriptor=context.native_descriptor,
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_daemon"
+            ),
+            argv=(),
+        )
+    )
+    from ..todo_daemon.supervisor_runtime import supervised_child_identity_path
+
+    state_prefix = state_prefixes[0]
+    pid_path = state_dir / f"{state_prefix}_managed_daemon.pid"
+    identity_path = supervised_child_identity_path(pid_path)
+    owner_scope = tuple(
+        sorted(
+            {
+                "repo_root": str(repository_root),
+                "state_dir": str(state_dir),
+                "state_prefix": state_prefix,
+                "todo_path": str(todo_path),
+                "daemon_entrypoint": (
+                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                    "implementation_daemon"
+                ),
+            }.items()
+        )
+    )
+    return _LgcvfLiveDaemonTerminationAuthority(
+        profile_id=profile.profile_id,
+        state_dir=state_dir,
+        state_prefix=state_prefix,
+        todo_path=todo_path,
+        pid_path=pid_path,
+        identity_path=identity_path,
+        owner_scope=owner_scope,
+        sealed_command_prefix=sealed_command_prefix,
+    )
+
+
+def _lgcvf_live_boot_id() -> str:
+    """Read the Linux boot identity required by a live parent attestation."""
+
+    try:
+        boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(
+            encoding="ascii"
+        ).strip()
+    except (OSError, UnicodeError) as exc:
+        raise ProcessIdentityMismatch("Linux boot identity is unavailable") from exc
+    if re.fullmatch(
+        r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+        boot_id,
+    ) is None:
+        raise ProcessIdentityMismatch("Linux boot identity is invalid")
+    return boot_id.lower()
+
+
+def _capture_lgcvf_live_gated_process_identity(
+    process: subprocess.Popen[bytes],
+    profile: LifecycleProfile,
+) -> ProcessIdentity:
+    """Attest an unreleased owned gate without ptrace-gated procfs fields.
+
+    The live bootstrap becomes non-dumpable before it waits for the parent's
+    release byte.  ``/proc/<pid>/environ``, ``cwd``, and ``exe`` are therefore
+    intentionally unavailable.  The parent nevertheless owns an exact Popen
+    child which cannot run the requested supervisor yet, and supplied its
+    immutable command, cwd, environment, and new-session request itself.  Bind
+    that parent-held profile to two stable ``stat`` observations instead of
+    weakening the generic marker-observing lifecycle adapter.
+    """
+
+    pid = int(process.pid)
+    if pid <= 1 or process.poll() is not None:
+        raise ProcessIdentityMismatch("LGCVF live gate exited before birth capture")
+    popen_args = process.args
+    if (
+        isinstance(popen_args, (str, bytes))
+        or tuple(popen_args) != tuple(profile.argv)
+    ):
+        raise ProcessIdentityMismatch(
+            "LGCVF live gate Popen command differs from its parent-held profile"
+        )
+    adapter = LinuxProcessAdapter()
+    try:
+        first = adapter._stat(pid)  # noqa: SLF001 - exact Linux birth fields
+        boot_id = _lgcvf_live_boot_id()
+        second = adapter._stat(pid)  # noqa: SLF001 - close observation race
+    except (OSError, UnicodeError, ValueError, ProcessLookupError) as exc:
+        raise ProcessIdentityMismatch(
+            "LGCVF live gate process birth is unavailable"
+        ) from exc
+    if first != second or process.poll() is not None:
+        raise ProcessIdentityMismatch(
+            "LGCVF live gate process birth changed during capture"
+        )
+    parent, process_group, session, started = second
+    if (
+        parent != os.getpid()
+        or process_group != pid
+        or session != pid
+        or started <= 0
+    ):
+        raise ProcessIdentityMismatch(
+            "LGCVF live gate is not the parent's dedicated-session child"
+        )
+    if not profile.argv or not Path(profile.argv[0]).is_absolute():
+        raise ProcessIdentityMismatch("LGCVF live profile executable is not exact")
+    executable = Path(profile.argv[0]).resolve(strict=True)
+    identity = ProcessIdentity(
+        pid=pid,
+        start_time_ticks=started,
+        parent_pid=parent,
+        process_group_id=process_group,
+        session_id=session,
+        boot_id=boot_id,
+        argv=tuple(profile.argv),
+        cwd=profile.cwd,
+        executable=str(executable),
+        run_id=profile.run_id,
+        profile_id=profile.profile_id,
+        target_id=profile.target_id,
+        repository_root=profile.repository_root,
+        state_root=profile.state_root,
+        run_root=profile.run_root,
+        fencing_epoch=0,
+        configuration_root=profile.configuration_root,
+    )
+    try:
+        _parent, _group, _session, final_started = adapter._stat(  # noqa: SLF001
+            pid
+        )
+    except (OSError, UnicodeError, ValueError, ProcessLookupError) as exc:
+        raise ProcessIdentityMismatch(
+            "LGCVF live gate exited after birth capture"
+        ) from exc
+    if final_started != identity.start_time_ticks or process.poll() is not None:
+        raise ProcessIdentityMismatch(
+            "LGCVF live gate process birth changed after capture"
+        )
+    return identity
+
+
 def _persist_plan_bound_process_birth(
     *,
     profile: LifecycleProfile,
@@ -5109,6 +6353,9 @@ def start_track(
     python_executable: str = "python3",
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
     accepted_control_plane_descriptor: int = -1,
+    configured_board_live_context: (
+        LgcvfConfiguredBoardLiveContext | None
+    ) = None,
     output: OutputFn = _default_output,
 ) -> subprocess.Popen[bytes]:
     """Start one marker-bound supervisor tree and write its PID projection.
@@ -5118,8 +6365,41 @@ def start_track(
     returned process, never the PID projection.
     """
 
-    if _configured_board_live_seal_required(common_args, (track,)):
+    live_profile_required = _configured_board_live_seal_required(
+        common_args,
+        (track,),
+    )
+    if live_profile_required and configured_board_live_context is None:
         raise ValueError(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
+    if configured_board_live_context is not None:
+        if not live_profile_required:
+            raise ValueError(
+                "LGCVF configured-board live context requires its exact profile"
+            )
+        configured_board_live_context = (
+            verify_lgcvf_configured_board_live_context(
+                capsule_pin_json=(
+                    configured_board_live_context.capsule_pin_json
+                ),
+                capsule_descriptor=(
+                    configured_board_live_context.capsule_descriptor
+                ),
+                admission_json=configured_board_live_context.admission_json,
+                native_launch_json=(
+                    configured_board_live_context.native_launch_json
+                ),
+                native_descriptor=(
+                    configured_board_live_context.native_descriptor
+                ),
+            )
+        )
+        _verify_lgcvf_configured_board_live_profile(
+            tracks=(track,),
+            repo_root=repo_root,
+            common_args=common_args,
+            context=configured_board_live_context,
+            require_complete_lane_set=False,
+        )
 
     resolved = track.resolve(repo_root)
     child_command = (
@@ -5128,6 +6408,9 @@ def start_track(
         else [python_executable, str(resolved.script_path), *common_args, *resolved.extra_args]
     )
     plan_bound_dispatch = "--plan-bound-dispatch" in resolved.extra_args
+    lgcvf_live_dispatch = configured_board_live_context is not None
+    if plan_bound_dispatch and lgcvf_live_dispatch:
+        raise ValueError("plan-bound and LGCVF live dispatch cannot be combined")
     gate_read_fd: int | None = None
     gate_write_fd: int | None = None
     recovery_authorization_cid = ""
@@ -5414,15 +6697,81 @@ def start_track(
             module_name=PLAN_BOUND_LAUNCH_GATE_MODULE,
             argv=gate_argv,
         )
-    resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
-    resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
+    elif lgcvf_live_dispatch:
+        assert configured_board_live_context is not None
+        gate_read_fd, gate_write_fd = os.pipe()
+        supervisor_argv = [
+            *common_args,
+            *resolved.extra_args,
+            _LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_FLAG,
+            LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH,
+            "--configured-board-live-capsule-pin-json",
+            configured_board_live_context.capsule_pin_json,
+            "--configured-board-live-capsule-fd",
+            str(configured_board_live_context.capsule_descriptor),
+            "--configured-board-live-admission-json",
+            configured_board_live_context.admission_json,
+            "--configured-board-live-native-launch-json",
+            configured_board_live_context.native_launch_json,
+            "--configured-board-live-native-fd",
+            str(configured_board_live_context.native_descriptor),
+        ]
+        child_command = build_lgcvf_configured_board_live_module_command(
+            python_executable=python_executable,
+            capsule_pin_json=(
+                configured_board_live_context.capsule_pin_json
+            ),
+            capsule_descriptor=(
+                configured_board_live_context.capsule_descriptor
+            ),
+            admission_json=configured_board_live_context.admission_json,
+            native_launch_json=(
+                configured_board_live_context.native_launch_json
+            ),
+            native_descriptor=(
+                configured_board_live_context.native_descriptor
+            ),
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_supervisor"
+            ),
+            argv=supervisor_argv,
+        )
+        gate_argv = [
+            LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_MARKER,
+            str(gate_read_fd),
+            str(accepted_tree_root),
+            configured_board_live_context.capsule_pin_json,
+            str(configured_board_live_context.capsule_descriptor),
+            configured_board_live_context.admission_json,
+            configured_board_live_context.native_launch_json,
+            str(configured_board_live_context.native_descriptor),
+            "--",
+            *child_command,
+        ]
+        command = build_lgcvf_configured_board_live_module_command(
+            python_executable=python_executable,
+            capsule_pin_json=(
+                configured_board_live_context.capsule_pin_json
+            ),
+            capsule_descriptor=(
+                configured_board_live_context.capsule_descriptor
+            ),
+            admission_json=configured_board_live_context.admission_json,
+            native_launch_json=(
+                configured_board_live_context.native_launch_json
+            ),
+            native_descriptor=(
+                configured_board_live_context.native_descriptor
+            ),
+            module_name=LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_MODULE,
+            argv=gate_argv,
+        )
     pid_reservation_fd: int | None = None
     pid_reservation_identity: tuple[int, int] | None = None
-    if plan_bound_dispatch:
-        (
-            pid_reservation_fd,
-            pid_reservation_identity,
-        ) = _reserve_owned_pid_projection(resolved.supervisor_pid_path)
+    live_daemon_termination_authority: (
+        _LgcvfLiveDaemonTerminationAuthority | None
+    ) = None
     configuration_root = "sha256:" + hashlib.sha256(
         json.dumps(
             command, separators=(",", ":"), ensure_ascii=False
@@ -5432,16 +6781,21 @@ def start_track(
     run_root = state_root / "lifecycle-runs" / resolved.name
     status_path = _inferred_supervisor_status_path(resolved)
     profile_environment_values = dict(
-        _plan_bound_profile_environment(os.environ)
-        if plan_bound_dispatch
-        else ()
-    )
-    profile_environment_values.update(
-        _trusted_duckdb_profile_environment(
-            os.environ,
-            repository_root=repo_root,
+        _lgcvf_configured_board_live_profile_environment(os.environ)
+        if lgcvf_live_dispatch
+        else (
+            _plan_bound_profile_environment(os.environ)
+            if plan_bound_dispatch
+            else ()
         )
     )
+    if not lgcvf_live_dispatch:
+        profile_environment_values.update(
+            _trusted_duckdb_profile_environment(
+                os.environ,
+                repository_root=repo_root,
+            )
+        )
     profile_environment = tuple(sorted(profile_environment_values.items()))
     profile = LifecycleProfile(
         target_id=f"supervisor-track:{resolved.name}",
@@ -5465,19 +6819,8 @@ def start_track(
             else ""
         ),
     )
-    try:
-        out_handle = resolved.log_path.open("ab")
-    except BaseException:
-        if pid_reservation_fd is not None:
-            os.close(pid_reservation_fd)
-        if pid_reservation_identity is not None:
-            _discard_reserved_pid_projection(
-                resolved.supervisor_pid_path,
-                pid_reservation_identity,
-            )
-        raise
     launch_environment = profile.launch_environment(0)
-    if plan_bound_dispatch:
+    if plan_bound_dispatch or lgcvf_live_dispatch:
         # Isolated absolute-script launch bootstraps only its own accepted
         # repository root.  Build a positive environment in the parent before
         # the interpreter is born; clearing loader knobs in the bootstrap
@@ -5490,6 +6833,8 @@ def start_track(
         # members, but they are valid sealed profile fields at this boundary.
         route_names = {
             *_PLAN_BOUND_PROFILE_ENV_NAMES,
+            QUACK_TOKEN_FILE_ENV,
+            BOARD_EXTENSION_INSTALL_POLICY_ENV,
             "HOME",
             TRUSTED_PYTHON_USER_BASE_ENV,
             *TRUSTED_RUNTIME_CACHE_ENV_NAMES,
@@ -5500,11 +6845,71 @@ def start_track(
             raise ValueError(
                 "plan-bound lifecycle profile contains non-route environment"
             )
-        launch_environment = _plan_bound_positive_child_environment(
-            launch_environment
+        launch_environment = (
+            _lgcvf_configured_board_live_positive_child_environment(
+                launch_environment,
+                common_args=common_args,
+            )
+            if lgcvf_live_dispatch
+            else _plan_bound_positive_child_environment(launch_environment)
         )
+    if lgcvf_live_dispatch:
+        assert configured_board_live_context is not None
+        configured_board_live_context = verify_lgcvf_configured_board_live_context(
+            capsule_pin_json=configured_board_live_context.capsule_pin_json,
+            capsule_descriptor=configured_board_live_context.capsule_descriptor,
+            admission_json=configured_board_live_context.admission_json,
+            native_launch_json=configured_board_live_context.native_launch_json,
+            native_descriptor=configured_board_live_context.native_descriptor,
+        )
+        live_daemon_termination_authority = (
+            _lgcvf_live_daemon_termination_authority(
+                profile=profile,
+                context=configured_board_live_context,
+                supervisor_argv=supervisor_argv,
+            )
+        )
+    resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
+    resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
+    if plan_bound_dispatch or lgcvf_live_dispatch:
+        (
+            pid_reservation_fd,
+            pid_reservation_identity,
+        ) = _reserve_owned_pid_projection(resolved.supervisor_pid_path)
+    try:
+        out_handle = resolved.log_path.open("ab")
+    except BaseException:
+        if pid_reservation_fd is not None:
+            os.close(pid_reservation_fd)
+        if pid_reservation_identity is not None:
+            _discard_reserved_pid_projection(
+                resolved.supervisor_pid_path,
+                pid_reservation_identity,
+            )
+        raise
     try:
         try:
+            if lgcvf_live_dispatch:
+                assert configured_board_live_context is not None
+                configured_board_live_context = (
+                    verify_lgcvf_configured_board_live_context(
+                        capsule_pin_json=(
+                            configured_board_live_context.capsule_pin_json
+                        ),
+                        capsule_descriptor=(
+                            configured_board_live_context.capsule_descriptor
+                        ),
+                        admission_json=(
+                            configured_board_live_context.admission_json
+                        ),
+                        native_launch_json=(
+                            configured_board_live_context.native_launch_json
+                        ),
+                        native_descriptor=(
+                            configured_board_live_context.native_descriptor
+                        ),
+                    )
+                )
             process = subprocess.Popen(
                 command,
                 cwd=repo_root,
@@ -5514,8 +6919,23 @@ def start_track(
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
                 pass_fds=(
-                    (gate_read_fd, accepted_control_plane_descriptor)
-                    if plan_bound_dispatch and gate_read_fd is not None
+                    tuple(
+                        sorted(
+                            {
+                                gate_read_fd,
+                                *(
+                                    configured_board_live_context.pass_fds
+                                    if lgcvf_live_dispatch
+                                    and configured_board_live_context is not None
+                                    else (accepted_control_plane_descriptor,)
+                                ),
+                            }
+                        )
+                    )
+                    if (
+                        (plan_bound_dispatch or lgcvf_live_dispatch)
+                        and gate_read_fd is not None
+                    )
                     else ()
                 ),
             )
@@ -5539,6 +6959,12 @@ def start_track(
     # Popen is only an observation handle.  The immutable profile is what lets
     # stop/restart rediscover children that have detached or been reparented.
     process._agent_supervisor_lifecycle_profile = profile
+    if lgcvf_live_dispatch:
+        if live_daemon_termination_authority is None:
+            raise AssertionError("LGCVF live daemon termination authority is absent")
+        process._agent_supervisor_live_daemon_termination_authority = (
+            live_daemon_termination_authority
+        )
     if plan_bound_dispatch:
         if gate_write_fd is None:
             raise AssertionError("plan-bound launch gate was not created")
@@ -5598,6 +7024,90 @@ def start_track(
                 )
             raise PlanBoundProcessBirthError(
                 "plan-bound process birth capture failed; launch remained gated",
+                pid=int(process.pid),
+                profile=profile,
+                all_trees_fenced=all_trees_fenced,
+            ) from exc
+        finally:
+            if gate_write_fd is not None:
+                os.close(gate_write_fd)
+    elif lgcvf_live_dispatch:
+        if gate_write_fd is None or configured_board_live_context is None:
+            raise AssertionError("LGCVF live launch gate was not created")
+        try:
+            configured_board_live_context = (
+                verify_lgcvf_configured_board_live_context(
+                    capsule_pin_json=(
+                        configured_board_live_context.capsule_pin_json
+                    ),
+                    capsule_descriptor=(
+                        configured_board_live_context.capsule_descriptor
+                    ),
+                    admission_json=(
+                        configured_board_live_context.admission_json
+                    ),
+                    native_launch_json=(
+                        configured_board_live_context.native_launch_json
+                    ),
+                    native_descriptor=(
+                        configured_board_live_context.native_descriptor
+                    ),
+                )
+            )
+            process_identity = _capture_lgcvf_live_gated_process_identity(
+                process,
+                profile,
+            )
+            if not isinstance(process_identity, ProcessIdentity):
+                raise ProcessIdentityMismatch(
+                    "LGCVF live launch returned no typed process identity"
+                )
+            process._agent_supervisor_process_identity = process_identity
+            process._agent_supervisor_live_admission_id = (
+                configured_board_live_context.admission.admission_id
+            )
+            process._agent_supervisor_live_capsule_id = getattr(
+                configured_board_live_context.capsule_pin,
+                "capsule_id",
+            )
+            if (
+                pid_reservation_fd is None
+                or pid_reservation_identity is None
+            ):
+                raise AssertionError("LGCVF live PID projection was not reserved")
+            _publish_reserved_pid_projection(
+                resolved.supervisor_pid_path,
+                pid_reservation_fd,
+                pid_reservation_identity,
+                int(process.pid),
+            )
+            os.close(pid_reservation_fd)
+            pid_reservation_fd = None
+            if os.write(
+                gate_write_fd,
+                LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_SUCCESS,
+            ) != len(LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_SUCCESS):
+                raise OSError("LGCVF live launch gate release was incomplete")
+        except Exception as exc:
+            try:
+                os.close(gate_write_fd)
+            except OSError:
+                pass
+            gate_write_fd = None
+            all_trees_fenced = _fence_unreleased_plan_bound_process(process)
+            if pid_reservation_fd is not None:
+                try:
+                    os.close(pid_reservation_fd)
+                except OSError:
+                    pass
+                pid_reservation_fd = None
+            if pid_reservation_identity is not None:
+                _discard_reserved_pid_projection(
+                    resolved.supervisor_pid_path,
+                    pid_reservation_identity,
+                )
+            raise LgcvfConfiguredBoardLiveProcessBirthError(
+                "LGCVF live process birth capture failed; launch remained gated",
                 pid=int(process.pid),
                 profile=profile,
                 all_trees_fenced=all_trees_fenced,
@@ -6648,6 +8158,233 @@ def _validate_plan_bound_accepted_tree(
             )
 
 
+def _lgcvf_live_exact_root_state(identity: ProcessIdentity) -> str:
+    """Return alive/dead/unknown for one exact non-dumpable live root."""
+
+    try:
+        current_boot_id = _lgcvf_live_boot_id()
+    except ProcessIdentityMismatch:
+        return "unknown"
+    if identity.boot_id != current_boot_id:
+        return "dead"
+    try:
+        _parent, group, session, started = LinuxProcessAdapter._stat(  # noqa: SLF001
+            identity.pid
+        )
+    except (FileNotFoundError, ProcessLookupError):
+        return "dead"
+    except (OSError, UnicodeError, ValueError):
+        return "unknown"
+    if started != identity.start_time_ticks:
+        return "dead"
+    if (
+        group != identity.process_group_id
+        or session != identity.session_id
+    ):
+        return "unknown"
+    return "alive"
+
+
+def _lgcvf_live_daemon_command_matches(
+    command: Sequence[str],
+    authority: _LgcvfLiveDaemonTerminationAuthority,
+) -> bool:
+    """Verify a sidecar command against the exact sealed daemon and lane scope."""
+
+    tokens = tuple(str(item) for item in command)
+    prefix = authority.sealed_command_prefix
+    expected_shard_index = authority.state_prefix.removeprefix("lgcvf_lane_")
+    try:
+        return bool(
+            prefix
+            and expected_shard_index in {"0", "1", "2", "3"}
+            and len(tokens) > len(prefix)
+            and tokens[: len(prefix)] == prefix
+            and _profile_option_values(tokens, "--state-dir")
+            == (str(authority.state_dir),)
+            and _profile_option_values(tokens, "--state-prefix")
+            == (authority.state_prefix,)
+            and _profile_option_values(tokens, "--todo-path")
+            == (str(authority.todo_path),)
+            and _profile_option_values(tokens, "--board-namespace")
+            == (LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,)
+            and _profile_option_values(tokens, "--task-shard-count") == ("4",)
+            and _profile_option_values(tokens, "--task-shard-index")
+            == (expected_shard_index,)
+            and tokens.count("--strict-task-sharding") == 1
+        )
+    except ValueError:
+        return False
+
+
+def _fence_lgcvf_live_daemon_sidecar(
+    authority: _LgcvfLiveDaemonTerminationAuthority,
+    *,
+    grace_seconds: float,
+) -> tuple[bool, tuple[int, ...]]:
+    """Fence the exact daemon group named by its content-addressed sidecar."""
+
+    from ..merge.worktree_lifecycle import OwnerLiveness, read_process_birth
+    from ..todo_daemon.core import terminate_pid_tree
+    from ..todo_daemon.supervisor_runtime import (
+        SupervisedChildIdentity,
+        read_process_command_argv,
+        supervised_child_identity_liveness,
+    )
+
+    try:
+        payload, evidence = _read_stable_regular_json(
+            authority.identity_path,
+            max_bytes=262_144,
+        )
+    except _StableArtifactReadError:
+        return False, ()
+    if payload is None:
+        # The content-addressed identity is the signal authority.  A raw PID
+        # without it is deliberately not enough to claim that no daemon exists.
+        try:
+            raw_pid, _pid_evidence = _read_stable_regular_bytes(
+                authority.pid_path,
+                max_bytes=64,
+            )
+        except _StableArtifactReadError:
+            return False, ()
+        return (raw_pid is None), ()
+    if evidence.get("uid") != os.geteuid():
+        return False, ()
+    identity = SupervisedChildIdentity.from_dict(payload)
+    if (
+        identity is None
+        or dict(identity.owner_scope) != dict(authority.owner_scope)
+        or not _lgcvf_live_daemon_command_matches(
+            identity.command,
+            authority,
+        )
+    ):
+        return False, ()
+    daemon_pid = int(identity.process_birth.pid)
+    try:
+        raw_pid, pid_evidence = _read_stable_regular_bytes(
+            authority.pid_path,
+            max_bytes=64,
+        )
+    except _StableArtifactReadError:
+        return False, ()
+    if raw_pid is not None:
+        try:
+            projected_pid = int(raw_pid.decode("ascii").strip())
+        except (UnicodeError, ValueError):
+            return False, ()
+        if (
+            projected_pid != daemon_pid
+            or pid_evidence.get("uid") != os.geteuid()
+        ):
+            return False, ()
+    liveness = supervised_child_identity_liveness(identity)
+    if liveness is OwnerLiveness.UNKNOWN:
+        return False, ()
+    if liveness is OwnerLiveness.ALIVE:
+        observed_argv = read_process_command_argv(daemon_pid)
+        if observed_argv != identity.command:
+            return False, ()
+        # Close the command-read race with the same durable birth check used by
+        # the supervisor runtime immediately before entering the strict fence.
+        if supervised_child_identity_liveness(identity) is not OwnerLiveness.ALIVE:
+            return False, ()
+    else:
+        # DEAD has two materially different meanings.  If this numeric PID now
+        # has another birth (or the machine rebooted), the durable owner is
+        # conclusively gone and its old process group cannot still exist; do
+        # not present the reused PID to a signal path.  If the leader is simply
+        # absent, retain the captured PGID authority so strict fencing can find
+        # and kill surviving members of the daemon's dedicated group.
+        try:
+            current_boot_id = _lgcvf_live_boot_id()
+            current_birth = read_process_birth(daemon_pid)
+        except (OSError, ProcessIdentityMismatch):
+            return False, ()
+        if (
+            identity.process_birth.boot_id
+            and identity.process_birth.boot_id != current_boot_id
+        ):
+            return True, (daemon_pid,)
+        if current_birth is not None:
+            if (
+                current_birth.start_time_ticks
+                != identity.process_birth.start_time_ticks
+                or (
+                    identity.process_birth.boot_id
+                    and current_birth.boot_id
+                    and current_birth.boot_id
+                    != identity.process_birth.boot_id
+                )
+            ):
+                return True, (daemon_pid,)
+            # A supposedly DEAD identity that still has the exact live birth is
+            # contradictory inspection evidence, so fail closed.
+            return False, ()
+    fenced = terminate_pid_tree(
+        daemon_pid,
+        grace_seconds=max(0.0, float(grace_seconds)),
+        freeze_first=True,
+        require_gone=True,
+        owned_process_group_id=daemon_pid,
+        expected_root_start_time_ticks=(
+            identity.process_birth.start_time_ticks
+        ),
+    )
+    gone = supervised_child_identity_liveness(identity)
+    return bool(fenced and gone is OwnerLiveness.DEAD), (daemon_pid,)
+
+
+def _terminate_lgcvf_live_managed_process(
+    process: subprocess.Popen[bytes],
+    *,
+    profile: LifecycleProfile,
+    process_identity: ProcessIdentity,
+    authority: _LgcvfLiveDaemonTerminationAuthority,
+    grace_seconds: float,
+) -> tuple[bool, tuple[int, ...]]:
+    """Strictly fence one non-dumpable live root and its sealed daemon group."""
+
+    from ..todo_daemon.core import terminate_pid_tree
+
+    if (
+        authority.profile_id != profile.profile_id
+        or process_identity.pid != int(process.pid)
+        or process_identity.profile_id != profile.profile_id
+        or process_identity.run_id != profile.run_id
+        or process_identity.target_id != profile.target_id
+        or process_identity.state_root != profile.state_root
+        or process_identity.configuration_root != profile.configuration_root
+    ):
+        return False, ()
+    root_state = _lgcvf_live_exact_root_state(process_identity)
+    if root_state == "unknown":
+        # Inaccessible expected live state is never collapsed into absence.
+        return False, ()
+    stopped: set[int] = set()
+    if root_state == "alive":
+        if not terminate_pid_tree(
+            process_identity.pid,
+            grace_seconds=max(0.0, float(grace_seconds)),
+            freeze_first=True,
+            require_gone=True,
+            owned_process_group_id=process_identity.process_group_id,
+            expected_root_start_time_ticks=process_identity.start_time_ticks,
+        ):
+            return False, ()
+        stopped.add(process_identity.pid)
+        if _lgcvf_live_exact_root_state(process_identity) != "dead":
+            return False, tuple(sorted(stopped))
+    daemon_fenced, daemon_pids = _fence_lgcvf_live_daemon_sidecar(
+        authority,
+        grace_seconds=grace_seconds,
+    )
+    stopped.update(daemon_pids)
+    return daemon_fenced, tuple(sorted(stopped))
+
+
 def _terminate_managed_process(
     process: subprocess.Popen[bytes] | None,
     *,
@@ -6662,6 +8399,46 @@ def _terminate_managed_process(
         # A caller-created Popen has no durable run/profile binding.  Refuse to
         # turn its PID into signal authority.
         return False, ()
+    live_admission_id = getattr(
+        process,
+        "_agent_supervisor_live_admission_id",
+        "",
+    )
+    live_capsule_id = getattr(
+        process,
+        "_agent_supervisor_live_capsule_id",
+        "",
+    )
+    live_authority = getattr(
+        process,
+        "_agent_supervisor_live_daemon_termination_authority",
+        None,
+    )
+    if live_admission_id or live_capsule_id or live_authority is not None:
+        process_identity = getattr(
+            process,
+            "_agent_supervisor_process_identity",
+            None,
+        )
+        if (
+            not isinstance(live_admission_id, str)
+            or not live_admission_id
+            or not isinstance(live_capsule_id, str)
+            or not live_capsule_id
+            or not isinstance(process_identity, ProcessIdentity)
+            or not isinstance(
+                live_authority,
+                _LgcvfLiveDaemonTerminationAuthority,
+            )
+        ):
+            return False, ()
+        return _terminate_lgcvf_live_managed_process(
+            process,
+            profile=profile,
+            process_identity=process_identity,
+            authority=live_authority,
+            grace_seconds=grace_seconds,
+        )
     adapter = LinuxProcessAdapter()
     tree = adapter.snapshot(profile)
     if not tree.members:
@@ -7423,6 +9200,12 @@ def run_supervisor_tracks(
     accepted_control_plane_pin: AgentImplementationControlPlanePin | None = None,
     accepted_control_plane_descriptor: int = -1,
     require_configured_board_live_seal: str = "",
+    require_lgcvf_configured_board_live_seal: str = "",
+    configured_board_live_capsule_pin_json: str = "",
+    configured_board_live_capsule_fd: int = -1,
+    configured_board_live_admission_json: str = "",
+    configured_board_live_native_launch_json: str = "",
+    configured_board_live_native_fd: int = -1,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
     """Run and supervise multiple tracks for the requested duration."""
@@ -7448,6 +9231,66 @@ def run_supervisor_tracks(
                 "configured-board live seal requires the canonical scheduler config"
             )
         raise ValueError(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
+    lgcvf_live_config = str(
+        require_lgcvf_configured_board_live_seal or ""
+    )
+    lgcvf_profile_requested = _profile_option_values(
+        tuple(str(item) for item in common_args),
+        "--board-namespace",
+    ) == (LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,)
+    live_binding_presence = (
+        bool(configured_board_live_capsule_pin_json),
+        configured_board_live_capsule_fd >= 3,
+        bool(configured_board_live_admission_json),
+        bool(configured_board_live_native_launch_json),
+        configured_board_live_native_fd >= 3,
+    )
+    has_complete_live_binding = all(live_binding_presence)
+    if any(live_binding_presence) and not has_complete_live_binding:
+        raise ValueError("LGCVF configured-board live binding is incomplete")
+    if lgcvf_profile_requested != bool(lgcvf_live_config):
+        raise ValueError(
+            "LGCVF configured-board profile and live-seal flag are bidirectional"
+        )
+    if bool(lgcvf_live_config) != has_complete_live_binding:
+        raise ValueError(
+            "LGCVF configured-board live flag and descriptors are bidirectional"
+        )
+    configured_board_live_context: (
+        LgcvfConfiguredBoardLiveContext | None
+    ) = None
+    if lgcvf_live_config:
+        relative = _configured_board_gate_relative_path(
+            lgcvf_live_config,
+            field="LGCVF configured-board live-seal config",
+        )
+        if relative != LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH:
+            raise ValueError(
+                "LGCVF configured-board live seal requires its candidate config"
+            )
+        if not live_profile_required:
+            raise ValueError(
+                "LGCVF configured-board live seal requires datasets authority"
+            )
+        if plan_bound_children or accepted_control_plane_pin is not None:
+            raise ValueError(
+                "LGCVF configured-board live seal cannot reuse plan-bound authority"
+            )
+        configured_board_live_context = (
+            verify_lgcvf_configured_board_live_context(
+                capsule_pin_json=configured_board_live_capsule_pin_json,
+                capsule_descriptor=configured_board_live_capsule_fd,
+                admission_json=configured_board_live_admission_json,
+                native_launch_json=configured_board_live_native_launch_json,
+                native_descriptor=configured_board_live_native_fd,
+            )
+        )
+        _verify_lgcvf_configured_board_live_profile(
+            tracks=managed_tracks,
+            repo_root=repo_root,
+            common_args=common_args,
+            context=configured_board_live_context,
+        )
     resolved_repo_root = repo_root.resolve()
     plan_children_by_name = {
         child.name: child for child in plan_bound_children
@@ -7475,7 +9318,7 @@ def run_supervisor_tracks(
     if master_pid_path is not None:
         resolved_master_pid = _resolve_path(resolved_repo_root, master_pid_path)
         resolved_master_pid.parent.mkdir(parents=True, exist_ok=True)
-        if plan_bound_children:
+        if plan_bound_children or configured_board_live_context is not None:
             master_descriptor, master_identity = (
                 _reserve_owned_pid_projection(resolved_master_pid)
             )
@@ -7540,6 +9383,7 @@ def run_supervisor_tracks(
             accepted_control_plane_descriptor=(
                 accepted_control_plane_descriptor
             ),
+            configured_board_live_context=configured_board_live_context,
             output=output,
         )
         track_generation_started_at[track.name] = generation_started_at
@@ -8011,7 +9855,10 @@ def run_supervisor_tracks(
             _emit(output, "completed after terminal board drain")
         else:
             _emit(output, "completed requested run window")
-    except PlanBoundProcessBirthError as exc:
+    except (
+        PlanBoundProcessBirthError,
+        LgcvfConfiguredBoardLiveProcessBirthError,
+    ) as exc:
         blocked = str(exc)
         _emit(
             output,
@@ -8054,6 +9901,22 @@ def run_supervisor_tracks(
         "terminal_quiescent": terminal_quiescent,
         "replan_required": replan_required,
         "scope_drift_receipts": scope_drift_receipts,
+        "configured_board_live_admission_id": (
+            configured_board_live_context.admission.admission_id
+            if configured_board_live_context is not None
+            else ""
+        ),
+        "configured_board_live_capsule_id": (
+            str(
+                getattr(
+                    configured_board_live_context.capsule_pin,
+                    "capsule_id",
+                    "",
+                )
+            )
+            if configured_board_live_context is not None
+            else ""
+        ),
     }
 
 
@@ -8110,6 +9973,38 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--require-configured-board-live-seal",
         default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--require-lgcvf-configured-board-live-seal",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-capsule-pin-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-capsule-fd",
+        type=int,
+        default=-1,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-admission-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-launch-json",
+        default="",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--configured-board-live-native-fd",
+        type=int,
+        default=-1,
         help=argparse.SUPPRESS,
     )
     parser.add_argument("--common-arg", action="append", default=[])
@@ -8231,6 +10126,10 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
 
     if args.require_configured_board_live_seal:
         raise ValueError(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
+    if getattr(args, "require_lgcvf_configured_board_live_seal", ""):
+        raise ValueError(
+            "LGCVF configured-board live runner must retain its sealed parent FDs"
+        )
 
     master_log, master_pid = _master_paths(args)
     master_log.parent.mkdir(parents=True, exist_ok=True)
@@ -8395,6 +10294,129 @@ def tracks_from_parsed_args(args: argparse.Namespace) -> list[SupervisorTrack]:
     for record in getattr(args, "implementation_plan_bound_track", ()):
         tracks.append(PlanBoundSupervisorChild.from_cli_record(record).track(stamp=args.stamp))
     return tracks
+
+
+def _run_lgcvf_configured_board_live_launch_gate(
+    argv: Sequence[str],
+) -> int:
+    """Release one capsule/native-bound supervisor after parent birth capture."""
+
+    tokens = tuple(str(item) for item in argv)
+    if len(tokens) < 10 or tokens[7] != "--":
+        return 78
+    try:
+        gate_fd = int(tokens[0])
+        capsule_fd = int(tokens[3])
+        native_fd = int(tokens[6])
+        context = verify_lgcvf_configured_board_live_context(
+            capsule_pin_json=tokens[2],
+            capsule_descriptor=capsule_fd,
+            admission_json=tokens[4],
+            native_launch_json=tokens[5],
+            native_descriptor=native_fd,
+        )
+        accepted_tree_root = _canonical_accepted_tree_root(Path(tokens[1]))
+    except (OSError, ValueError):
+        return 78
+    child_command = list(tokens[8:])
+    try:
+        expected_prefix = build_lgcvf_configured_board_live_module_command(
+            python_executable=child_command[0],
+            capsule_pin_json=context.capsule_pin_json,
+            capsule_descriptor=context.capsule_descriptor,
+            admission_json=context.admission_json,
+            native_launch_json=context.native_launch_json,
+            native_descriptor=context.native_descriptor,
+            module_name=(
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                "implementation_supervisor"
+            ),
+            argv=(),
+        )
+    except (IndexError, OSError, ValueError):
+        return 78
+    prefix_length = len(expected_prefix)
+    if child_command[:prefix_length] != expected_prefix:
+        return 78
+    child_argv = child_command[prefix_length:]
+    try:
+        exact_options = {
+            _LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_FLAG: (
+                LGCVF_CONFIGURED_BOARD_LIVE_CONFIG_PATH
+            ),
+            "--configured-board-live-capsule-pin-json": (
+                context.capsule_pin_json
+            ),
+            "--configured-board-live-capsule-fd": str(
+                context.capsule_descriptor
+            ),
+            "--configured-board-live-admission-json": context.admission_json,
+            "--configured-board-live-native-launch-json": (
+                context.native_launch_json
+            ),
+            "--configured-board-live-native-fd": str(
+                context.native_descriptor
+            ),
+            "--board-namespace": LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,
+            "--task-source-kind": TASK_SOURCE_DUCKDB,
+            "--authority-mode": AUTHORITY_MODE_QUACK,
+            "--state-schema-revision": (
+                DATASETS_AUTHORITATIVE_OPERATIONAL_SCHEMA_REVISION
+            ),
+            "--task-shard-count": "4",
+        }
+        for option, expected in exact_options.items():
+            _lgcvf_live_exact_option(child_argv, option, expected)
+        shard_indices = _profile_option_values(
+            child_argv,
+            "--task-shard-index",
+        )
+        state_prefixes = _profile_option_values(child_argv, "--state-prefix")
+        if (
+            len(shard_indices) != 1
+            or shard_indices[0] not in {"0", "1", "2", "3"}
+            or state_prefixes != (f"lgcvf_lane_{shard_indices[0]}",)
+            or gate_fd < 3
+            or gate_fd in context.pass_fds
+        ):
+            return 78
+    except ValueError:
+        return 78
+    try:
+        while True:
+            try:
+                authorization = os.read(gate_fd, 1)
+                break
+            except InterruptedError:
+                continue
+    except OSError:
+        return 78
+    finally:
+        try:
+            os.close(gate_fd)
+        except OSError:
+            pass
+    if authorization != LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_SUCCESS:
+        return 78
+    try:
+        verify_lgcvf_configured_board_live_context(
+            capsule_pin_json=context.capsule_pin_json,
+            capsule_descriptor=context.capsule_descriptor,
+            admission_json=context.admission_json,
+            native_launch_json=context.native_launch_json,
+            native_descriptor=context.native_descriptor,
+        )
+        environment = (
+            _lgcvf_configured_board_live_positive_child_environment(
+                os.environ,
+                common_args=child_argv,
+            )
+        )
+        environment[REPOSITORY_ROOT_ENV] = str(accepted_tree_root)
+        os.execvpe(child_command[0], child_command, environment)
+    except (OSError, ValueError):
+        return 78
+    return 78
 
 
 def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
@@ -8620,10 +10642,16 @@ def _run_plan_bound_launch_gate(argv: Sequence[str]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from .process_security import harden_state_authority_process
+    from .process_security import (
+        capture_state_authority_credentials,
+        harden_state_authority_process,
+    )
 
     harden_state_authority_process()
+    capture_state_authority_credentials()
     args_list = list(sys.argv[1:] if argv is None else argv)
+    if args_list[:1] == [LGCVF_CONFIGURED_BOARD_LIVE_LAUNCH_GATE_MARKER]:
+        return _run_lgcvf_configured_board_live_launch_gate(args_list[1:])
     if args_list[:1] == [CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_GATE_MARKER]:
         return 78
     if args_list[:1] == [PLAN_BOUND_LAUNCH_GATE_MARKER]:
@@ -8639,6 +10667,35 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("at least one --track or --implementation-track is required")
     if args.require_configured_board_live_seal:
         parser.error(CONFIGURED_BOARD_LIVE_SEAL_LAUNCH_NO_GO)
+    tracks = tracks_from_parsed_args(args)
+    effective_common_args = common_args_from_parsed_args(args)
+    live_namespace_requested = _profile_option_values(
+        effective_common_args,
+        "--board-namespace",
+    ) == (LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,)
+    if live_namespace_requested or args.require_lgcvf_configured_board_live_seal:
+        try:
+            if not args.require_lgcvf_configured_board_live_seal:
+                raise ValueError(
+                    "LGCVF configured-board profile requires its live-seal flag"
+                )
+            context = verify_lgcvf_configured_board_live_context(
+                capsule_pin_json=args.configured_board_live_capsule_pin_json,
+                capsule_descriptor=args.configured_board_live_capsule_fd,
+                admission_json=args.configured_board_live_admission_json,
+                native_launch_json=(
+                    args.configured_board_live_native_launch_json
+                ),
+                native_descriptor=args.configured_board_live_native_fd,
+            )
+            _verify_lgcvf_configured_board_live_profile(
+                tracks=tracks,
+                repo_root=args.repo_root,
+                common_args=effective_common_args,
+                context=context,
+            )
+        except (OSError, ValueError) as exc:
+            parser.error(f"LGCVF configured-board live binding is invalid: {exc}")
     if (
         args.implementation_track
         or args.implementation_plan_bound_track
@@ -8709,7 +10766,6 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(
                 "plan-bound slices differ from the accepted control-plane generation"
             )
-    tracks = tracks_from_parsed_args(args)
     master_log.parent.mkdir(parents=True, exist_ok=True)
     with master_log.open("ab") as log_handle:
         stdout_is_master_log = _stream_targets_path(sys.stdout, master_log)
@@ -8723,7 +10779,7 @@ def main(argv: list[str] | None = None) -> int:
         run_result = run_supervisor_tracks(
             tracks,
             repo_root=args.repo_root,
-            common_args=common_args_from_parsed_args(args),
+            common_args=effective_common_args,
             duration_seconds=args.duration_seconds,
             heartbeat_interval_seconds=args.heartbeat_interval_seconds,
             supervisor_status_stale_seconds=args.supervisor_status_stale_seconds,
@@ -8737,6 +10793,24 @@ def main(argv: list[str] | None = None) -> int:
             plan_bound_children=plan_bound_children,
             accepted_control_plane_pin=accepted_control_plane_pin,
             accepted_control_plane_descriptor=args.accepted_control_plane_fd,
+            require_lgcvf_configured_board_live_seal=(
+                args.require_lgcvf_configured_board_live_seal
+            ),
+            configured_board_live_capsule_pin_json=(
+                args.configured_board_live_capsule_pin_json
+            ),
+            configured_board_live_capsule_fd=(
+                args.configured_board_live_capsule_fd
+            ),
+            configured_board_live_admission_json=(
+                args.configured_board_live_admission_json
+            ),
+            configured_board_live_native_launch_json=(
+                args.configured_board_live_native_launch_json
+            ),
+            configured_board_live_native_fd=(
+                args.configured_board_live_native_fd
+            ),
             output=output,
         )
     if (

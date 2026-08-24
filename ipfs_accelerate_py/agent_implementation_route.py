@@ -106,6 +106,44 @@ _AGENT_CONTROL_PLANE_MANIFEST_FILENAME = (
 _AGENT_CONTROL_PLANE_MAX_FILE_BYTES = 4 * 1024 * 1024
 _AGENT_CONTROL_PLANE_MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 _AGENT_CONTROL_PLANE_MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
+# The LGCVF live capsule is deliberately separate from the generic accepted
+# control-plane capsule above.  In particular, these limits and schemas must
+# never widen ``accepted-control-plane@2``: the live capsule also carries the
+# clean nested datasets source tree, DuckDB's Python facade, and three reviewed
+# DuckDB extensions, so it requires a larger, independently audited envelope.
+_LGCVF_LIVE_CAPSULE_PIN_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.lgcvf-configured-board-live-capsule@1"
+)
+_LGCVF_LIVE_CAPSULE_MANIFEST_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor."
+    "lgcvf-configured-board-live-capsule-manifest@1"
+)
+_LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME = (
+    ".lgcvf-configured-board-live-capsule-manifest.json"
+)
+_LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES = 64 * 1024 * 1024
+_LGCVF_LIVE_CAPSULE_MAX_MANIFEST_BYTES = 8 * 1024 * 1024
+_LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES = 384 * 1024 * 1024
+_LGCVF_LIVE_CAPSULE_MAX_FILES = 8192
+_LGCVF_LIVE_CANDIDATE_CONFIG_PATH = (
+    "config/agent_supervisor_logic_governed_compositional_verification_"
+    "fabric_quack_candidate_scheduler.json"
+)
+_LGCVF_LIVE_VALIDATOR_PATH = (
+    "scripts/validate_logic_governed_compositional_verification_fabric_plan.py"
+)
+_LGCVF_LIVE_MATERIALIZER_PATH = (
+    "scripts/materialize_logic_governed_compositional_verification_"
+    "fabric_control_plane.py"
+)
+_LGCVF_LIVE_OPERATOR_PATH = (
+    "scripts/run_logic_governed_compositional_verification_fabric_quack.py"
+)
+_LGCVF_LIVE_EXTENSION_ROLES = {
+    "quack": ("authority_bearing_state_transport", "load_only"),
+    "httpfs": ("quack_transport_dependency", "load_only"),
+    "ducklake": ("non_authoritative_projection_only", "projection_only"),
+}
 # Non-supervisor roots plus the security-critical supervisor modules called out
 # explicitly for auditability.  Capsule construction additionally walks and
 # hashes the complete ``agent_supervisor`` Python source tree on every build and
@@ -142,6 +180,35 @@ _AGENT_CONTROL_PLANE_RELATIVE_FILES = (
     "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
     "scripts/ops/agent_supervisor/configured_board_scheduler.py",
     "scripts/ops/agent_supervisor/implementation_supervisor_entry.py",
+)
+_LGCVF_LIVE_REQUIRED_SUPERPROJECT_FILES = (
+    *_AGENT_CONTROL_PLANE_RELATIVE_FILES,
+    "scripts/__init__.py",
+    "scripts/emit_logic_governed_compositional_verification_fabric_plan.py",
+    _LGCVF_LIVE_CANDIDATE_CONFIG_PATH,
+    (
+        "config/agent_supervisor_logic_governed_compositional_verification_"
+        "fabric_scheduler.json"
+    ),
+    _LGCVF_LIVE_VALIDATOR_PATH,
+    _LGCVF_LIVE_MATERIALIZER_PATH,
+    _LGCVF_LIVE_OPERATOR_PATH,
+    "scripts/ops/agent_supervisor/quack_state_server.py",
+    (
+        "data/agent_supervisor/logic_governed_compositional_verification_fabric/"
+        "formal_work_plan.json"
+    ),
+    (
+        "data/agent_supervisor/logic_governed_compositional_verification_fabric/"
+        "plan_revisions/"
+        "baguqeeraqe65yknsg7gy5vkze76exc3qhe4kn2owecnwa65zg6kaepl7id3q.json"
+    ),
+    "docs/architecture/LOGIC_GOVERNED_COMPOSITIONAL_VERIFICATION_FABRIC_PLAN.md",
+    (
+        "docs/architecture/logic_governed_compositional_verification_fabric."
+        "objectives.md"
+    ),
+    "docs/architecture/logic_governed_compositional_verification_fabric.todo.md",
 )
 _LEGACY_AGENT_IMPLEMENTATION_ROUTE_ID = (
     "agent-supervisor-grok45-terra56-medium-hard-quota-v1"
@@ -6492,6 +6559,2256 @@ def seal_agent_implementation_control_plane_capsule(
         seals=seals,
         capsule_id=pin.capsule_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# LGCVF configured-board live capsule
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class LgcvfConfiguredBoardLivePythonIdentity:
+    """Exact interpreter and ABI identity accepted for the live capsule."""
+
+    executable_path: str
+    executable_sha256: str
+    implementation: str
+    version: str
+    cache_tag: str
+    soabi: str
+    platform: str
+    machine: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "executable_path": self.executable_path,
+            "executable_sha256": self.executable_sha256,
+            "implementation": self.implementation,
+            "version": self.version,
+            "cache_tag": self.cache_tag,
+            "soabi": self.soabi,
+            "platform": self.platform,
+            "machine": self.machine,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class LgcvfConfiguredBoardLiveExtensionIdentity:
+    """Path-independent bytes and policy for one DuckDB extension."""
+
+    name: str
+    version: str
+    authority_role: str
+    load_policy: str
+    relative_path: str
+    info_relative_path: str
+    member_path: str
+    info_member_path: str
+    payload_sha256: str
+    info_sha256: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "name": self.name,
+            "version": self.version,
+            "authority_role": self.authority_role,
+            "load_policy": self.load_policy,
+            "relative_path": self.relative_path,
+            "info_relative_path": self.info_relative_path,
+            "member_path": self.member_path,
+            "info_member_path": self.info_member_path,
+            "payload_sha256": self.payload_sha256,
+            "info_sha256": self.info_sha256,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class LgcvfConfiguredBoardLiveCapsulePin:
+    """Closed source, runtime, ABI, and native-acceptance live pin."""
+
+    schema: str
+    capsule_root: str
+    capsule_id: str
+    source_head: str
+    source_tree: str
+    datasets_gitlink: str
+    datasets_head: str
+    datasets_tree: str
+    candidate_config_path: str
+    candidate_config_sha256: str
+    validator_path: str
+    validator_sha256: str
+    materializer_path: str
+    materializer_sha256: str
+    operator_path: str
+    operator_sha256: str
+    superproject_python_root: str
+    datasets_python_root: str
+    python_path_prefixes: tuple[str, ...]
+    duckdb_distribution_version: str
+    duckdb_package_files_root: str
+    duckdb_distribution_files_root: str
+    extension_engine_version: str
+    extension_platform: str
+    quack_extension: LgcvfConfiguredBoardLiveExtensionIdentity
+    httpfs_extension: LgcvfConfiguredBoardLiveExtensionIdentity
+    ducklake_extension: LgcvfConfiguredBoardLiveExtensionIdentity
+    python_identity: LgcvfConfiguredBoardLivePythonIdentity
+    native_authorization_id: str
+    native_dependency_id: str
+    archive_sha256: str
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "schema": self.schema,
+            "capsule_root": self.capsule_root,
+            "capsule_id": self.capsule_id,
+            "source_head": self.source_head,
+            "source_tree": self.source_tree,
+            "datasets_gitlink": self.datasets_gitlink,
+            "datasets_head": self.datasets_head,
+            "datasets_tree": self.datasets_tree,
+            "candidate_config_path": self.candidate_config_path,
+            "candidate_config_sha256": self.candidate_config_sha256,
+            "validator_path": self.validator_path,
+            "validator_sha256": self.validator_sha256,
+            "materializer_path": self.materializer_path,
+            "materializer_sha256": self.materializer_sha256,
+            "operator_path": self.operator_path,
+            "operator_sha256": self.operator_sha256,
+            "superproject_python_root": self.superproject_python_root,
+            "datasets_python_root": self.datasets_python_root,
+            "python_path_prefixes": list(self.python_path_prefixes),
+            "duckdb_distribution_version": self.duckdb_distribution_version,
+            "duckdb_package_files_root": self.duckdb_package_files_root,
+            "duckdb_distribution_files_root": (
+                self.duckdb_distribution_files_root
+            ),
+            "extension_engine_version": self.extension_engine_version,
+            "extension_platform": self.extension_platform,
+            "quack_extension": self.quack_extension.as_dict(),
+            "httpfs_extension": self.httpfs_extension.as_dict(),
+            "ducklake_extension": self.ducklake_extension.as_dict(),
+            "python_identity": self.python_identity.as_dict(),
+            "native_authorization_id": self.native_authorization_id,
+            "native_dependency_id": self.native_dependency_id,
+            "archive_sha256": self.archive_sha256,
+        }
+
+    def to_json(self) -> str:
+        return _lgcvf_live_canonical_json(self.as_dict()).decode("utf-8")
+
+
+@dataclass(frozen=True, slots=True)
+class LgcvfConfiguredBoardLiveSealedCapsule:
+    """Write-sealed archive descriptor for one verified LGCVF capsule."""
+
+    descriptor: int
+    executable_path: str
+    archive_sha256: str
+    seals: int
+    capsule_id: str
+
+    @property
+    def pass_fds(self) -> tuple[int, ...]:
+        return (self.descriptor,)
+
+
+def _lgcvf_live_canonical_json(value: Mapping[str, object]) -> bytes:
+    return json.dumps(
+        dict(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _lgcvf_live_sha256(raw: bytes) -> str:
+    return "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
+def _lgcvf_live_mapping_root(value: Mapping[str, str]) -> str:
+    return _lgcvf_live_sha256(_lgcvf_live_canonical_json(value))
+
+
+def _lgcvf_live_exact_sha256(value: object, noun: str) -> str:
+    if not isinstance(value, str) or re.fullmatch(
+        r"sha256:[0-9a-f]{64}", value
+    ) is None:
+        raise ValueError(f"LGCVF live capsule {noun} is invalid")
+    return value
+
+
+def _lgcvf_live_exact_git_id(value: object, noun: str) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{40}", value) is None:
+        raise ValueError(f"LGCVF live capsule {noun} is invalid")
+    return value
+
+
+def _lgcvf_live_exact_text(
+    value: object,
+    noun: str,
+    *,
+    maximum_characters: int = 512,
+) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > maximum_characters
+        or value != value.strip()
+        or any(character in value for character in "\0\n\r")
+    ):
+        raise ValueError(f"LGCVF live capsule {noun} is invalid")
+    return value
+
+
+def _parse_lgcvf_live_python_identity(
+    value: object,
+) -> LgcvfConfiguredBoardLivePythonIdentity:
+    expected = {
+        "executable_path",
+        "executable_sha256",
+        "implementation",
+        "version",
+        "cache_tag",
+        "soabi",
+        "platform",
+        "machine",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise ValueError("LGCVF live capsule Python identity fields are invalid")
+    strings = {
+        name: _lgcvf_live_exact_text(value.get(name), f"Python {name}")
+        for name in expected
+    }
+    _lgcvf_live_exact_sha256(
+        strings["executable_sha256"], "Python executable digest"
+    )
+    executable = Path(strings["executable_path"])
+    if not executable.is_absolute() or ".." in executable.parts:
+        raise ValueError("LGCVF live capsule Python executable path is invalid")
+    return LgcvfConfiguredBoardLivePythonIdentity(**strings)
+
+
+def _parse_lgcvf_live_extension_identity(
+    value: object,
+    *,
+    expected_name: str,
+) -> LgcvfConfiguredBoardLiveExtensionIdentity:
+    expected = {
+        "name",
+        "version",
+        "authority_role",
+        "load_policy",
+        "relative_path",
+        "info_relative_path",
+        "member_path",
+        "info_member_path",
+        "payload_sha256",
+        "info_sha256",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise ValueError("LGCVF live capsule extension fields are invalid")
+    strings = {
+        name: _lgcvf_live_exact_text(value.get(name), f"extension {name}")
+        for name in expected
+    }
+    role, policy = _LGCVF_LIVE_EXTENSION_ROLES[expected_name]
+    relative = Path(strings["relative_path"])
+    info_relative = Path(strings["info_relative_path"])
+    member = Path(strings["member_path"])
+    info_member = Path(strings["info_member_path"])
+    if (
+        strings["name"] != expected_name
+        or strings["authority_role"] != role
+        or strings["load_policy"] != policy
+        or any(
+            path.is_absolute() or ".." in path.parts
+            for path in (relative, info_relative, member, info_member)
+        )
+        or relative.name != f"{expected_name}.duckdb_extension"
+        or info_relative != Path(str(relative) + ".info")
+        or member
+        != Path(".lgcvf-native-extensions") / relative
+        or info_member != Path(str(member) + ".info")
+    ):
+        raise ValueError("LGCVF live capsule extension identity is invalid")
+    _lgcvf_live_exact_sha256(strings["payload_sha256"], "extension digest")
+    _lgcvf_live_exact_sha256(strings["info_sha256"], "extension info digest")
+    return LgcvfConfiguredBoardLiveExtensionIdentity(**strings)
+
+
+def parse_lgcvf_configured_board_live_capsule_pin(
+    value: object,
+) -> LgcvfConfiguredBoardLiveCapsulePin:
+    """Strictly parse one serialized LGCVF live capsule pin."""
+
+    expected = {
+        "schema",
+        "capsule_root",
+        "capsule_id",
+        "source_head",
+        "source_tree",
+        "datasets_gitlink",
+        "datasets_head",
+        "datasets_tree",
+        "candidate_config_path",
+        "candidate_config_sha256",
+        "validator_path",
+        "validator_sha256",
+        "materializer_path",
+        "materializer_sha256",
+        "operator_path",
+        "operator_sha256",
+        "superproject_python_root",
+        "datasets_python_root",
+        "python_path_prefixes",
+        "duckdb_distribution_version",
+        "duckdb_package_files_root",
+        "duckdb_distribution_files_root",
+        "extension_engine_version",
+        "extension_platform",
+        "quack_extension",
+        "httpfs_extension",
+        "ducklake_extension",
+        "python_identity",
+        "native_authorization_id",
+        "native_dependency_id",
+        "archive_sha256",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise ValueError("LGCVF live capsule pin fields are invalid")
+    strings = {
+        name: _lgcvf_live_exact_text(value.get(name), name)
+        for name in expected
+        if name not in {
+            "quack_extension",
+            "httpfs_extension",
+            "ducklake_extension",
+            "python_identity",
+            "python_path_prefixes",
+        }
+    }
+    if strings["schema"] != _LGCVF_LIVE_CAPSULE_PIN_SCHEMA:
+        raise ValueError("LGCVF live capsule pin schema is invalid")
+    root = Path(strings["capsule_root"])
+    if not root.is_absolute() or ".." in root.parts:
+        raise ValueError("LGCVF live capsule root is invalid")
+    for name in (
+        "capsule_id",
+        "candidate_config_sha256",
+        "validator_sha256",
+        "materializer_sha256",
+        "operator_sha256",
+        "superproject_python_root",
+        "datasets_python_root",
+        "duckdb_package_files_root",
+        "duckdb_distribution_files_root",
+        "native_authorization_id",
+        "native_dependency_id",
+        "archive_sha256",
+    ):
+        _lgcvf_live_exact_sha256(strings[name], name)
+    for name in (
+        "source_head",
+        "source_tree",
+        "datasets_gitlink",
+        "datasets_head",
+        "datasets_tree",
+    ):
+        _lgcvf_live_exact_git_id(strings[name], name)
+    if strings["datasets_gitlink"] != strings["datasets_head"]:
+        raise ValueError("LGCVF live capsule nested gitlink drifted")
+    prefixes = value.get("python_path_prefixes")
+    if prefixes != [".", "ipfs_datasets_py"]:
+        raise ValueError("LGCVF live capsule Python path prefixes drifted")
+    expected_paths = {
+        "candidate_config_path": _LGCVF_LIVE_CANDIDATE_CONFIG_PATH,
+        "validator_path": _LGCVF_LIVE_VALIDATOR_PATH,
+        "materializer_path": _LGCVF_LIVE_MATERIALIZER_PATH,
+        "operator_path": _LGCVF_LIVE_OPERATOR_PATH,
+    }
+    if any(strings[name] != path for name, path in expected_paths.items()):
+        raise ValueError("LGCVF live capsule authority path drifted")
+    if (
+        re.fullmatch(
+            r"[0-9][0-9A-Za-z.+_-]{0,63}",
+            strings["duckdb_distribution_version"],
+        )
+        is None
+        or strings["extension_engine_version"]
+        != "v" + strings["duckdb_distribution_version"]
+        or re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}",
+            strings["extension_platform"],
+        )
+        is None
+    ):
+        raise ValueError("LGCVF live capsule DuckDB runtime identity is invalid")
+    quack = _parse_lgcvf_live_extension_identity(
+        value.get("quack_extension"), expected_name="quack"
+    )
+    httpfs = _parse_lgcvf_live_extension_identity(
+        value.get("httpfs_extension"), expected_name="httpfs"
+    )
+    ducklake = _parse_lgcvf_live_extension_identity(
+        value.get("ducklake_extension"), expected_name="ducklake"
+    )
+    expected_parent = Path(strings["extension_engine_version"]) / strings[
+        "extension_platform"
+    ]
+    if (
+        Path(quack.relative_path).parent != expected_parent
+        or Path(httpfs.relative_path).parent != expected_parent
+        or Path(ducklake.relative_path).parent != expected_parent
+    ):
+        raise ValueError("LGCVF live capsule extension layout drifted")
+    python_identity = _parse_lgcvf_live_python_identity(
+        value.get("python_identity")
+    )
+    return LgcvfConfiguredBoardLiveCapsulePin(
+        **strings,
+        quack_extension=quack,
+        httpfs_extension=httpfs,
+        ducklake_extension=ducklake,
+        python_identity=python_identity,
+        python_path_prefixes=tuple(prefixes),
+    )
+
+
+def _lgcvf_live_read_stable_external_file(
+    path: Path | str,
+    *,
+    maximum_bytes: int = _LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES,
+) -> bytes:
+    """Read a stable owned/root-owned regular source without blessing mode."""
+
+    lexical = resolve_agent_implementation_private_state_path(path)
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise ValueError("LGCVF live capsule no-follow reads are unavailable")
+    directory_flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | nofollow
+    )
+    parent_descriptor = os.open(lexical.anchor, directory_flags)
+    try:
+        for component in lexical.parts[1:-1]:
+            child = os.open(component, directory_flags, dir_fd=parent_descriptor)
+            os.close(parent_descriptor)
+            parent_descriptor = child
+        descriptor = os.open(
+            lexical.name,
+            os.O_RDONLY
+            | nofollow
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0),
+            dir_fd=parent_descriptor,
+        )
+    except OSError as exc:
+        os.close(parent_descriptor)
+        raise ValueError("LGCVF live capsule source is unavailable") from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_uid not in {0, os.geteuid()}
+            or not 0 <= before.st_size <= maximum_bytes
+        ):
+            raise ValueError("LGCVF live capsule source is not a bounded file")
+        chunks: list[bytes] = []
+        remaining = maximum_bytes + 1
+        while remaining:
+            chunk = os.read(descriptor, min(64 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        after = os.fstat(descriptor)
+        final = os.stat(
+            lexical.name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+    except OSError as exc:
+        raise ValueError("LGCVF live capsule source changed") from exc
+    finally:
+        os.close(descriptor)
+        os.close(parent_descriptor)
+    identity = lambda item: (
+        item.st_dev,
+        item.st_ino,
+        item.st_mode,
+        item.st_nlink,
+        item.st_uid,
+        item.st_size,
+        item.st_mtime_ns,
+        item.st_ctime_ns,
+    )
+    if (
+        len(raw) != before.st_size
+        or len(raw) > maximum_bytes
+        or identity(before) != identity(after)
+        or identity(after) != identity(final)
+    ):
+        raise ValueError("LGCVF live capsule source changed during admission")
+    return raw
+
+
+def _lgcvf_live_python_identity(
+    python_executable: Path | str,
+) -> LgcvfConfiguredBoardLivePythonIdentity:
+    import sysconfig
+
+    raw_requested = os.fspath(python_executable)
+    requested = Path(raw_requested)
+    if (
+        not requested.is_absolute()
+        or "\0" in raw_requested
+        or Path(os.path.abspath(raw_requested)) != requested
+    ):
+        raise ValueError("LGCVF live capsule Python executable path is invalid")
+    try:
+        # Launcher aliases such as ``~/.local/bin/python`` are expected.  First
+        # canonicalize that alias, then apply every stable/no-follow check to
+        # the resolved regular target and require it to be this process's
+        # kernel-observed executable.
+        executable = requested.resolve(strict=True)
+        running = Path("/proc/self/exe").resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("LGCVF live capsule Python executable is unavailable") from exc
+    if executable != running:
+        raise ValueError(
+            "LGCVF live capsule must bind the currently running executable"
+        )
+    raw = _lgcvf_live_read_stable_external_file(
+        executable,
+        maximum_bytes=32 * 1024 * 1024,
+    )
+    soabi = sysconfig.get_config_var("SOABI")
+    cache_tag = sys.implementation.cache_tag
+    if (
+        not isinstance(soabi, str)
+        or not soabi
+        or not isinstance(cache_tag, str)
+        or not cache_tag
+        or not hasattr(os, "uname")
+    ):
+        raise ValueError("LGCVF live capsule Python ABI is unavailable")
+    identity = LgcvfConfiguredBoardLivePythonIdentity(
+        executable_path=str(executable),
+        executable_sha256=_lgcvf_live_sha256(raw),
+        implementation=sys.implementation.name,
+        version=(
+            f"{sys.version_info.major}.{sys.version_info.minor}."
+            f"{sys.version_info.micro}"
+        ),
+        cache_tag=cache_tag,
+        soabi=soabi,
+        platform=sys.platform,
+        machine=os.uname().machine,
+    )
+    return _parse_lgcvf_live_python_identity(identity.as_dict())
+
+
+def _lgcvf_live_require_current_python(
+    identity: LgcvfConfiguredBoardLivePythonIdentity,
+) -> None:
+    observed = _lgcvf_live_python_identity(identity.executable_path)
+    if observed != identity:
+        raise ValueError("LGCVF live capsule Python identity drifted")
+
+
+def _lgcvf_live_json(raw: bytes, noun: str) -> dict[str, object]:
+    def reject_duplicates(
+        pairs: Sequence[tuple[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"LGCVF live capsule {noun} has duplicate keys")
+            result[key] = value
+        return result
+
+    try:
+        value = json.loads(raw, object_pairs_hook=reject_duplicates)
+    except (UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"LGCVF live capsule {noun} is invalid") from exc
+    if not isinstance(value, dict):
+        raise ValueError(  # noqa: TRY004
+            f"LGCVF live capsule {noun} is invalid"
+        )
+    return value
+
+
+def _lgcvf_live_validate_candidate_config(raw: bytes) -> None:
+    value = _lgcvf_live_json(raw, "candidate configuration")
+    database = value.get("database_program")
+    source_binding = value.get("source_binding")
+    provider = value.get("provider")
+    authority = value.get("authority_policy")
+    projection = value.get("ducklake_projection_program")
+    lanes = value.get("lanes")
+    protected = value.get("protected_paths")
+    if (
+        value.get("schema")
+        != "ipfs_accelerate_py.agent_supervisor."
+        "logic_governed_compositional_verification_fabric.scheduler_config@1"
+        or value.get("board_namespace")
+        != "logic-governed-compositional-verification-fabric-v1"
+        or value.get("merge_target_branch")
+        != "agent/logic-governed-compositional-verification-fabric-v1"
+        or value.get("validator_path") != _LGCVF_LIVE_VALIDATOR_PATH
+        or value.get("max_lanes") != 4
+        or value.get("strict_task_sharding") is not True
+        or not isinstance(lanes, list)
+        or len(lanes) != 4
+        or [lane.get("index") for lane in lanes if isinstance(lane, Mapping)]
+        != [0, 1, 2, 3]
+        or not isinstance(database, Mapping)
+        or database.get("authority_mode") != "quack"
+        or database.get("task_source_kind") != "duckdb"
+        or database.get("schema_revision")
+        != "datasets-authoritative-operational-v1"
+        or database.get("failover_policy") != "fail_closed"
+        or database.get("authoritative_transactional_data_model") is not True
+        or not isinstance(source_binding, Mapping)
+        or source_binding.get("ipfs_datasets_submodule_path")
+        != "ipfs_datasets_py"
+        or source_binding.get("require_initialized_gitlinks") is not True
+        or source_binding.get(
+            "require_superproject_gitlink_equals_nested_head"
+        )
+        is not True
+        or not isinstance(provider, Mapping)
+        or provider.get("max_concurrency") != 4
+        or not isinstance(authority, Mapping)
+        or authority.get("quack_exclusive_transport_required") is not True
+        or authority.get("direct_multi_process_duckdb_file_open_permitted")
+        is not False
+        or authority.get("ducklake_projection_authoritative") is not False
+        or not isinstance(projection, Mapping)
+        or projection.get("authority") is not False
+        or projection.get("scheduling_prerequisite") is not False
+        or not isinstance(protected, list)
+        or _LGCVF_LIVE_CANDIDATE_CONFIG_PATH not in protected
+        or _LGCVF_LIVE_OPERATOR_PATH not in protected
+        or _LGCVF_LIVE_VALIDATOR_PATH not in protected
+    ):
+        raise ValueError(
+            "LGCVF live capsule candidate configuration is not the exact "
+            "four-lane Quack profile"
+        )
+
+
+def _lgcvf_live_git_state(
+    root: Path,
+    *,
+    expected_head: str,
+    expected_tree: str,
+    include_submodules: bool,
+) -> None:
+    top = Path(
+        os.fsdecode(
+            _agent_git_output(root, ("rev-parse", "--show-toplevel"))
+        ).strip()
+    )
+    try:
+        exact_top = top.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("LGCVF live capsule Git root is unavailable") from exc
+    head = os.fsdecode(
+        _agent_git_output(root, ("rev-parse", "--verify", "HEAD^{commit}"))
+    ).strip()
+    tree = os.fsdecode(
+        _agent_git_output(root, ("rev-parse", "--verify", "HEAD^{tree}"))
+    ).strip()
+    status_arguments = [
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+    ]
+    if include_submodules:
+        status_arguments.append("--ignore-submodules=none")
+    status = _agent_git_output(root, tuple(status_arguments))
+    if (
+        exact_top != root
+        or head != expected_head
+        or tree != expected_tree
+        or status
+    ):
+        raise ValueError("LGCVF live capsule requires an exact clean Git tree")
+
+
+def _lgcvf_live_gitlink(root: Path, source_head: str) -> str:
+    raw = _agent_git_output(
+        root,
+        ("ls-tree", "-z", source_head, "--", "ipfs_datasets_py"),
+        maximum_bytes=1024,
+    )
+    entries = [entry for entry in raw.split(b"\0") if entry]
+    if len(entries) != 1:
+        raise ValueError("LGCVF live capsule nested gitlink is unavailable")
+    try:
+        metadata, path = entries[0].split(b"\t", 1)
+        mode, object_type, object_id = metadata.decode("ascii").split(" ")
+    except (UnicodeError, ValueError) as exc:
+        raise ValueError("LGCVF live capsule nested gitlink is invalid") from exc
+    if (
+        path != b"ipfs_datasets_py"
+        or mode != "160000"
+        or object_type != "commit"
+        or re.fullmatch(r"[0-9a-f]{40}", object_id) is None
+    ):
+        raise ValueError("LGCVF live capsule nested gitlink is invalid")
+    return object_id
+
+
+def _lgcvf_live_git_batch_blobs(
+    root: Path,
+    object_ids: Sequence[str],
+) -> dict[str, bytes]:
+    ordered = tuple(dict.fromkeys(object_ids))
+    if not ordered:
+        return {}
+    git_environment = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("GIT_")
+    }
+    git_environment.update(
+        {
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "LC_ALL": "C",
+            "LANG": "C",
+        }
+    )
+    request = b"".join(item.encode("ascii") + b"\n" for item in ordered)
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "-c",
+                "core.quotepath=false",
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                f"core.hooksPath={os.devnull}",
+                "cat-file",
+                "--batch",
+            ],
+            cwd=root,
+            env=git_environment,
+            input=request,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ValueError("LGCVF live capsule Git blob query failed") from exc
+    raw = completed.stdout
+    if (
+        completed.returncode != 0
+        or len(raw) > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES
+    ):
+        raise ValueError("LGCVF live capsule Git blob query failed")
+    cursor = 0
+    result: dict[str, bytes] = {}
+    for requested in ordered:
+        line_end = raw.find(b"\n", cursor)
+        if line_end < 0:
+            raise ValueError("LGCVF live capsule Git blob response is truncated")
+        try:
+            observed, object_type, size_text = raw[cursor:line_end].decode(
+                "ascii"
+            ).split(" ")
+            size = int(size_text)
+        except (UnicodeError, ValueError) as exc:
+            raise ValueError("LGCVF live capsule Git blob response is invalid") from exc
+        cursor = line_end + 1
+        end = cursor + size
+        if (
+            observed != requested
+            or object_type != "blob"
+            or not 0 <= size <= _LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES
+            or end >= len(raw)
+            or raw[end : end + 1] != b"\n"
+        ):
+            raise ValueError("LGCVF live capsule Git blob response is invalid")
+        result[requested] = raw[cursor:end]
+        cursor = end + 1
+    if cursor != len(raw):
+        raise ValueError("LGCVF live capsule Git blob response has trailing data")
+    return result
+
+
+def _lgcvf_live_git_payloads(
+    root: Path,
+    *,
+    revision: str,
+    pathspecs: Sequence[str],
+    required: Sequence[str],
+    select: Any,
+    destination_prefix: str = "",
+) -> dict[str, bytes]:
+    tree = _agent_git_output(
+        root,
+        ("ls-tree", "-lr", "-z", revision, "--", *pathspecs),
+        maximum_bytes=_LGCVF_LIVE_CAPSULE_MAX_MANIFEST_BYTES,
+    )
+    entries: dict[str, tuple[str, int]] = {}
+    total = 0
+    for raw_entry in tree.split(b"\0"):
+        if not raw_entry:
+            continue
+        try:
+            metadata, raw_path = raw_entry.split(b"\t", 1)
+            mode, object_type, object_id, size_text = metadata.decode(
+                "ascii"
+            ).split(" ", 3)
+            relative = raw_path.decode("utf-8")
+            size = int(size_text.strip())
+        except (UnicodeError, ValueError) as exc:
+            raise ValueError("LGCVF live capsule Git tree is invalid") from exc
+        relative_path = Path(relative)
+        if (
+            relative_path.is_absolute()
+            or ".." in relative_path.parts
+            or not select(relative)
+        ):
+            continue
+        if (
+            object_type != "blob"
+            or mode not in {"100644", "100755"}
+            or re.fullmatch(r"[0-9a-f]{40}", object_id) is None
+            or not 0 <= size <= _LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES
+            or relative in entries
+        ):
+            raise ValueError("LGCVF live capsule Git dependency is invalid")
+        total += size
+        if total > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES:
+            raise ValueError("LGCVF live capsule Git dependency closure is oversized")
+        entries[relative] = (object_id, size)
+    if not set(required).issubset(entries):
+        missing = sorted(set(required) - set(entries))
+        raise ValueError(
+            "LGCVF live capsule HEAD is missing a dependency: "
+            + ", ".join(missing[:3])
+        )
+    if not 1 <= len(entries) <= _LGCVF_LIVE_CAPSULE_MAX_FILES:
+        raise ValueError("LGCVF live capsule Git dependency count is invalid")
+    blobs = _lgcvf_live_git_batch_blobs(
+        root, [value[0] for value in entries.values()]
+    )
+    payloads: dict[str, bytes] = {}
+    for relative, (object_id, size) in sorted(entries.items()):
+        raw = blobs.get(object_id)
+        if raw is None or len(raw) != size:
+            raise ValueError("LGCVF live capsule Git blob changed")
+        disk = _lgcvf_live_read_stable_external_file(root / relative)
+        if disk != raw:
+            raise ValueError("LGCVF live capsule worktree differs from HEAD")
+        destination = destination_prefix + relative
+        if destination in payloads:
+            raise ValueError("LGCVF live capsule destination path is duplicated")
+        payloads[destination] = raw
+    return payloads
+
+
+def _lgcvf_live_superproject_payloads(
+    root: Path,
+    source_head: str,
+) -> dict[str, bytes]:
+    required = tuple(dict.fromkeys(_LGCVF_LIVE_REQUIRED_SUPERPROJECT_FILES))
+
+    def selected(relative: str) -> bool:
+        return bool(
+            relative in required
+            or (
+                relative.startswith("ipfs_accelerate_py/agent_supervisor/")
+                and relative.endswith(".py")
+            )
+            or (
+                relative.startswith("scripts/ops/agent_supervisor/")
+                and relative.endswith(".py")
+            )
+        )
+
+    return _lgcvf_live_git_payloads(
+        root,
+        revision=source_head,
+        pathspecs=tuple(
+            dict.fromkeys(
+                (
+                    "ipfs_accelerate_py",
+                    "scripts/ops/agent_supervisor",
+                    *required,
+                )
+            )
+        ),
+        required=required,
+        select=selected,
+    )
+
+
+def _lgcvf_live_datasets_payloads(
+    datasets_root: Path,
+    datasets_head: str,
+) -> dict[str, bytes]:
+    required = ("__init__.py", "ipfs_datasets_py/__init__.py")
+
+    def selected(relative: str) -> bool:
+        return bool(
+            relative == "__init__.py"
+            or (
+                relative.startswith("ipfs_datasets_py/")
+                and relative.endswith(".py")
+            )
+            or (
+                relative.startswith("scripts/ops/")
+                and relative.endswith(".py")
+            )
+        )
+
+    return _lgcvf_live_git_payloads(
+        datasets_root,
+        revision=datasets_head,
+        pathspecs=("__init__.py", "ipfs_datasets_py", "scripts/ops"),
+        required=required,
+        select=selected,
+        destination_prefix="ipfs_datasets_py/",
+    )
+
+
+def _lgcvf_live_external_directory(path: Path | str, noun: str) -> Path:
+    unresolved = resolve_agent_implementation_private_state_path(path)
+    try:
+        resolved = unresolved.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError(f"LGCVF live capsule {noun} is unavailable") from exc
+    if resolved != unresolved:
+        raise ValueError(f"LGCVF live capsule {noun} contains a symlink")
+    metadata = os.lstat(resolved)
+    if (
+        not stat_module.S_ISDIR(metadata.st_mode)
+        or stat_module.S_ISLNK(metadata.st_mode)
+        or metadata.st_uid not in {0, os.geteuid()}
+    ):
+        raise ValueError(f"LGCVF live capsule {noun} custody is invalid")
+    return resolved
+
+
+def _lgcvf_live_validate_record(
+    payloads: Mapping[str, bytes],
+    *,
+    distribution_directory: str,
+) -> None:
+    import csv
+
+    record_name = f"{distribution_directory}/RECORD"
+    metadata_name = f"{distribution_directory}/METADATA"
+    if record_name not in payloads or metadata_name not in payloads:
+        raise ValueError("LGCVF live capsule DuckDB metadata is incomplete")
+    try:
+        rows = tuple(
+            csv.reader(
+                io.StringIO(payloads[record_name].decode("utf-8"), newline="")
+            )
+        )
+    except (UnicodeError, csv.Error) as exc:
+        raise ValueError("LGCVF live capsule DuckDB RECORD is invalid") from exc
+    by_path: dict[str, tuple[str, str]] = {}
+    for row in rows:
+        if len(row) != 3 or row[0] in by_path:
+            raise ValueError("LGCVF live capsule DuckDB RECORD is invalid")
+        path = Path(row[0])
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError("LGCVF live capsule DuckDB RECORD path is invalid")
+        by_path[row[0]] = (row[1], row[2])
+    for relative, raw in payloads.items():
+        if not relative.startswith(
+            ("duckdb/", distribution_directory + "/")
+        ):
+            continue
+        record = by_path.get(relative)
+        if record is None:
+            raise ValueError("LGCVF live capsule DuckDB file is absent from RECORD")
+        digest, size = record
+        if relative == record_name:
+            if digest or size:
+                raise ValueError("LGCVF live capsule DuckDB RECORD self-row is invalid")
+            continue
+        try:
+            algorithm, encoded = digest.split("=", 1)
+            padding = "=" * (-len(encoded) % 4)
+            decoded = base64.urlsafe_b64decode(encoded + padding)
+            recorded_size = int(size)
+        except (ValueError, binascii.Error) as exc:
+            raise ValueError("LGCVF live capsule DuckDB RECORD digest is invalid") from exc
+        if (
+            algorithm != "sha256"
+            or decoded != hashlib.sha256(raw).digest()
+            or recorded_size != len(raw)
+        ):
+            raise ValueError("LGCVF live capsule DuckDB distribution drifted")
+
+
+def _lgcvf_live_duckdb_python_payloads(
+    *,
+    package_root: Path | str,
+    distribution_metadata_root: Path | str,
+    distribution_version: str,
+) -> tuple[dict[str, bytes], str, str]:
+    if re.fullmatch(
+        r"[0-9][0-9A-Za-z.+_-]{0,63}", distribution_version
+    ) is None:
+        raise ValueError("LGCVF live capsule DuckDB version is invalid")
+    package = _lgcvf_live_external_directory(
+        package_root, "DuckDB Python package"
+    )
+    metadata = _lgcvf_live_external_directory(
+        distribution_metadata_root, "DuckDB distribution metadata"
+    )
+    expected_metadata_name = f"duckdb-{distribution_version}.dist-info"
+    if (
+        package.name != "duckdb"
+        or metadata.name != expected_metadata_name
+        or package.parent != metadata.parent
+    ):
+        raise ValueError("LGCVF live capsule DuckDB distribution layout drifted")
+    payloads: dict[str, bytes] = {}
+    for root, destination_root, predicate in (
+        (package, "duckdb", lambda item: item.suffix == ".py"),
+        (metadata, metadata.name, lambda item: item.is_file()),
+    ):
+        entries = tuple(root.rglob("*"))
+        for entry in entries:
+            entry_metadata = os.lstat(entry)
+            if stat_module.S_ISLNK(entry_metadata.st_mode):
+                raise ValueError("LGCVF live capsule DuckDB distribution has a symlink")
+            if not stat_module.S_ISREG(entry_metadata.st_mode) or not predicate(entry):
+                continue
+            relative = entry.relative_to(root).as_posix()
+            destination = f"{destination_root}/{relative}"
+            payloads[destination] = _lgcvf_live_read_stable_external_file(entry)
+    required = {
+        "duckdb/__init__.py",
+        f"{metadata.name}/METADATA",
+        f"{metadata.name}/RECORD",
+        f"{metadata.name}/WHEEL",
+    }
+    if not required.issubset(payloads):
+        raise ValueError("LGCVF live capsule DuckDB Python facade is incomplete")
+    metadata_raw = payloads[f"{metadata.name}/METADATA"]
+    if (
+        re.search(rb"(?m)^Name: duckdb\r?$", metadata_raw) is None
+        or re.search(
+            rb"(?m)^Version: "
+            + re.escape(distribution_version.encode("ascii"))
+            + rb"\r?$",
+            metadata_raw,
+        )
+        is None
+    ):
+        raise ValueError("LGCVF live capsule DuckDB METADATA identity drifted")
+    _lgcvf_live_validate_record(
+        payloads,
+        distribution_directory=metadata.name,
+    )
+    package_files = {
+        path: _lgcvf_live_sha256(raw)
+        for path, raw in payloads.items()
+        if path.startswith("duckdb/")
+    }
+    metadata_files = {
+        path: _lgcvf_live_sha256(raw)
+        for path, raw in payloads.items()
+        if path.startswith(metadata.name + "/")
+    }
+    return (
+        payloads,
+        _lgcvf_live_mapping_root(package_files),
+        _lgcvf_live_mapping_root(metadata_files),
+    )
+
+
+def _lgcvf_live_extension_payload(
+    *,
+    name: str,
+    source_path: Path | str,
+    extension_version: str,
+    duckdb_distribution_version: str,
+) -> tuple[LgcvfConfiguredBoardLiveExtensionIdentity, dict[str, bytes]]:
+    if name not in _LGCVF_LIVE_EXTENSION_ROLES or re.fullmatch(
+        r"[0-9a-f]{7,40}", extension_version
+    ) is None:
+        raise ValueError("LGCVF live capsule extension version is invalid")
+    unresolved = resolve_agent_implementation_private_state_path(source_path)
+    try:
+        source = unresolved.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("LGCVF live capsule extension is unavailable") from exc
+    if source != unresolved or source.name != f"{name}.duckdb_extension":
+        raise ValueError("LGCVF live capsule extension path is invalid")
+    info = Path(str(source) + ".info")
+    raw = _lgcvf_live_read_stable_external_file(source)
+    info_raw = _lgcvf_live_read_stable_external_file(
+        info, maximum_bytes=64 * 1024
+    )
+    engine_version = "v" + duckdb_distribution_version
+    platform_name = source.parent.name
+    if (
+        source.parent.parent.name != engine_version
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", platform_name)
+        is None
+        or extension_version.encode("ascii") not in info_raw
+    ):
+        raise ValueError("LGCVF live capsule extension installation drifted")
+    relative = Path(engine_version) / platform_name / source.name
+    member = Path(".lgcvf-native-extensions") / relative
+    role, policy = _LGCVF_LIVE_EXTENSION_ROLES[name]
+    identity = LgcvfConfiguredBoardLiveExtensionIdentity(
+        name=name,
+        version=extension_version,
+        authority_role=role,
+        load_policy=policy,
+        relative_path=relative.as_posix(),
+        info_relative_path=(relative.as_posix() + ".info"),
+        member_path=member.as_posix(),
+        info_member_path=(member.as_posix() + ".info"),
+        payload_sha256=_lgcvf_live_sha256(raw),
+        info_sha256=_lgcvf_live_sha256(info_raw),
+    )
+    parsed = _parse_lgcvf_live_extension_identity(
+        identity.as_dict(), expected_name=name
+    )
+    return parsed, {
+        parsed.member_path: raw,
+        parsed.info_member_path: info_raw,
+    }
+
+
+def _lgcvf_live_manifest_bytes(
+    *,
+    source_head: str,
+    source_tree: str,
+    datasets_gitlink: str,
+    datasets_head: str,
+    datasets_tree: str,
+    payloads: Mapping[str, bytes],
+    duckdb_distribution_version: str,
+    duckdb_package_files_root: str,
+    duckdb_distribution_files_root: str,
+    quack_extension: LgcvfConfiguredBoardLiveExtensionIdentity,
+    httpfs_extension: LgcvfConfiguredBoardLiveExtensionIdentity,
+    ducklake_extension: LgcvfConfiguredBoardLiveExtensionIdentity,
+    python_identity: LgcvfConfiguredBoardLivePythonIdentity,
+    native_authorization_id: str,
+    native_dependency_id: str,
+) -> bytes:
+    digests = {
+        path: _lgcvf_live_sha256(raw)
+        for path, raw in sorted(payloads.items())
+    }
+    superproject_python = {
+        path: digest
+        for path, digest in digests.items()
+        if path.endswith(".py")
+        and not path.startswith("ipfs_datasets_py/")
+        and not path.startswith("duckdb/")
+    }
+    datasets_python = {
+        path: digest
+        for path, digest in digests.items()
+        if path.startswith("ipfs_datasets_py/") and path.endswith(".py")
+    }
+    manifest: dict[str, object] = {
+        "schema": _LGCVF_LIVE_CAPSULE_MANIFEST_SCHEMA,
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "datasets_gitlink": datasets_gitlink,
+        "datasets_head": datasets_head,
+        "datasets_tree": datasets_tree,
+        "candidate_config_path": _LGCVF_LIVE_CANDIDATE_CONFIG_PATH,
+        "candidate_config_sha256": digests[_LGCVF_LIVE_CANDIDATE_CONFIG_PATH],
+        "validator_path": _LGCVF_LIVE_VALIDATOR_PATH,
+        "validator_sha256": digests[_LGCVF_LIVE_VALIDATOR_PATH],
+        "materializer_path": _LGCVF_LIVE_MATERIALIZER_PATH,
+        "materializer_sha256": digests[_LGCVF_LIVE_MATERIALIZER_PATH],
+        "operator_path": _LGCVF_LIVE_OPERATOR_PATH,
+        "operator_sha256": digests[_LGCVF_LIVE_OPERATOR_PATH],
+        "superproject_python_root": _lgcvf_live_mapping_root(
+            superproject_python
+        ),
+        "datasets_python_root": _lgcvf_live_mapping_root(datasets_python),
+        "python_path_prefixes": [".", "ipfs_datasets_py"],
+        "duckdb_distribution_version": duckdb_distribution_version,
+        "duckdb_package_files_root": duckdb_package_files_root,
+        "duckdb_distribution_files_root": duckdb_distribution_files_root,
+        "extension_engine_version": "v" + duckdb_distribution_version,
+        "extension_platform": Path(quack_extension.relative_path).parent.name,
+        "quack_extension": quack_extension.as_dict(),
+        "httpfs_extension": httpfs_extension.as_dict(),
+        "ducklake_extension": ducklake_extension.as_dict(),
+        "python_identity": python_identity.as_dict(),
+        "native_authorization_id": native_authorization_id,
+        "native_dependency_id": native_dependency_id,
+        "files": digests,
+    }
+    manifest["capsule_id"] = _content_addressed_mapping(
+        manifest, identity_field="capsule_id"
+    )
+    encoded = _lgcvf_live_canonical_json(manifest) + b"\n"
+    if len(encoded) > _LGCVF_LIVE_CAPSULE_MAX_MANIFEST_BYTES:
+        raise ValueError("LGCVF live capsule manifest is oversized")
+    return encoded
+
+
+def _lgcvf_live_parse_manifest(raw: bytes) -> dict[str, object]:
+    manifest = _lgcvf_live_json(raw, "manifest")
+    expected = {
+        "schema",
+        "capsule_id",
+        "source_head",
+        "source_tree",
+        "datasets_gitlink",
+        "datasets_head",
+        "datasets_tree",
+        "candidate_config_path",
+        "candidate_config_sha256",
+        "validator_path",
+        "validator_sha256",
+        "materializer_path",
+        "materializer_sha256",
+        "operator_path",
+        "operator_sha256",
+        "superproject_python_root",
+        "datasets_python_root",
+        "python_path_prefixes",
+        "duckdb_distribution_version",
+        "duckdb_package_files_root",
+        "duckdb_distribution_files_root",
+        "extension_engine_version",
+        "extension_platform",
+        "quack_extension",
+        "httpfs_extension",
+        "ducklake_extension",
+        "python_identity",
+        "native_authorization_id",
+        "native_dependency_id",
+        "files",
+    }
+    if (
+        set(manifest) != expected
+        or manifest.get("schema") != _LGCVF_LIVE_CAPSULE_MANIFEST_SCHEMA
+        or manifest.get("capsule_id")
+        != _content_addressed_mapping(manifest, identity_field="capsule_id")
+    ):
+        raise ValueError("LGCVF live capsule manifest identity is invalid")
+    files = manifest.get("files")
+    if (
+        not isinstance(files, dict)
+        or not 1 <= len(files) <= _LGCVF_LIVE_CAPSULE_MAX_FILES
+    ):
+        raise ValueError("LGCVF live capsule manifest file inventory is invalid")
+    normalized_files: dict[str, str] = {}
+    for relative, digest in files.items():
+        path = Path(str(relative))
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or path.is_absolute()
+            or ".." in path.parts
+            or relative != path.as_posix()
+            or relative in normalized_files
+        ):
+            raise ValueError("LGCVF live capsule manifest path is invalid")
+        normalized_files[relative] = _lgcvf_live_exact_sha256(
+            digest, "manifest file digest"
+        )
+    required = set(_LGCVF_LIVE_REQUIRED_SUPERPROJECT_FILES)
+    required.update(
+        {
+            "ipfs_datasets_py/__init__.py",
+            "ipfs_datasets_py/ipfs_datasets_py/__init__.py",
+            "duckdb/__init__.py",
+        }
+    )
+    if not required.issubset(normalized_files):
+        raise ValueError("LGCVF live capsule manifest misses a dependency")
+    pin_value = {
+        key: value
+        for key, value in manifest.items()
+        if key not in {"files", "schema"}
+    }
+    pin_value.update(
+        {
+            "schema": _LGCVF_LIVE_CAPSULE_PIN_SCHEMA,
+            "capsule_root": "/lgcvf-live-capsule-placeholder",
+            "archive_sha256": "sha256:" + "0" * 64,
+        }
+    )
+    parsed = parse_lgcvf_configured_board_live_capsule_pin(pin_value)
+    if (
+        normalized_files.get(parsed.candidate_config_path)
+        != parsed.candidate_config_sha256
+        or normalized_files.get(parsed.validator_path) != parsed.validator_sha256
+        or normalized_files.get(parsed.materializer_path)
+        != parsed.materializer_sha256
+        or normalized_files.get(parsed.operator_path) != parsed.operator_sha256
+        or normalized_files.get(parsed.quack_extension.member_path)
+        != parsed.quack_extension.payload_sha256
+        or normalized_files.get(parsed.quack_extension.info_member_path)
+        != parsed.quack_extension.info_sha256
+        or normalized_files.get(parsed.httpfs_extension.member_path)
+        != parsed.httpfs_extension.payload_sha256
+        or normalized_files.get(parsed.httpfs_extension.info_member_path)
+        != parsed.httpfs_extension.info_sha256
+        or normalized_files.get(parsed.ducklake_extension.member_path)
+        != parsed.ducklake_extension.payload_sha256
+        or normalized_files.get(parsed.ducklake_extension.info_member_path)
+        != parsed.ducklake_extension.info_sha256
+    ):
+        raise ValueError("LGCVF live capsule authority digest drifted")
+    superproject_python = {
+        path: digest
+        for path, digest in normalized_files.items()
+        if path.endswith(".py")
+        and not path.startswith("ipfs_datasets_py/")
+        and not path.startswith("duckdb/")
+    }
+    datasets_python = {
+        path: digest
+        for path, digest in normalized_files.items()
+        if path.startswith("ipfs_datasets_py/") and path.endswith(".py")
+    }
+    package_python = {
+        path: digest
+        for path, digest in normalized_files.items()
+        if path.startswith("duckdb/")
+    }
+    distribution_prefix = (
+        f"duckdb-{parsed.duckdb_distribution_version}.dist-info/"
+    )
+    distribution_files = {
+        path: digest
+        for path, digest in normalized_files.items()
+        if path.startswith(distribution_prefix)
+    }
+    if (
+        not superproject_python
+        or not datasets_python
+        or not package_python
+        or not distribution_files
+        or _lgcvf_live_mapping_root(superproject_python)
+        != parsed.superproject_python_root
+        or _lgcvf_live_mapping_root(datasets_python)
+        != parsed.datasets_python_root
+        or _lgcvf_live_mapping_root(package_python)
+        != parsed.duckdb_package_files_root
+        or _lgcvf_live_mapping_root(distribution_files)
+        != parsed.duckdb_distribution_files_root
+    ):
+        raise ValueError("LGCVF live capsule runtime inventory root drifted")
+    manifest["files"] = normalized_files
+    return manifest
+
+
+def _lgcvf_live_pin_from_manifest(
+    manifest: Mapping[str, object],
+    *,
+    capsule_root: Path,
+    archive_sha256: str,
+) -> LgcvfConfiguredBoardLiveCapsulePin:
+    value = {
+        key: item
+        for key, item in manifest.items()
+        if key not in {"schema", "files"}
+    }
+    value.update(
+        {
+            "schema": _LGCVF_LIVE_CAPSULE_PIN_SCHEMA,
+            "capsule_root": str(capsule_root),
+            "archive_sha256": archive_sha256,
+        }
+    )
+    return parse_lgcvf_configured_board_live_capsule_pin(value)
+
+
+def _lgcvf_live_archive_bytes(
+    root: Path,
+    *,
+    manifest_raw: bytes,
+    files: Mapping[str, str],
+) -> bytes:
+    main = b"raise SystemExit(78)\n"
+    entries: dict[str, bytes] = {
+        "__main__.py": main,
+        _LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME: manifest_raw,
+    }
+    total = len(main) + len(manifest_raw)
+    for relative, digest in sorted(files.items()):
+        raw = _agent_read_stable_file(
+            root / relative,
+            maximum_bytes=_LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES,
+            exact_mode=0o400,
+        )
+        if _lgcvf_live_sha256(raw) != digest:
+            raise ValueError("LGCVF live capsule archive input drifted")
+        total += len(raw)
+        if total > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES:
+            raise ValueError("LGCVF live capsule archive is oversized")
+        entries[relative] = raw
+    stream = io.BytesIO()
+    with zipfile.ZipFile(
+        stream,
+        mode="w",
+        compression=zipfile.ZIP_STORED,
+        allowZip64=False,
+    ) as archive:
+        for name, raw in sorted(entries.items()):
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.create_system = 3
+            info.compress_type = zipfile.ZIP_STORED
+            info.external_attr = 0o100400 << 16
+            archive.writestr(info, raw)
+    payload = stream.getvalue()
+    if not payload or len(payload) > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES:
+        raise ValueError("LGCVF live capsule archive is oversized")
+    return payload
+
+
+def build_lgcvf_configured_board_live_capsule_pin(
+    *,
+    capsule_root: Path | str,
+    python_executable: Path | str,
+    native_authorization_id: str,
+    native_dependency_id: str,
+) -> LgcvfConfiguredBoardLiveCapsulePin:
+    """Validate one materialized capsule against externally accepted IDs."""
+
+    accepted_authorization = _lgcvf_live_exact_sha256(
+        native_authorization_id, "native authorization identity"
+    )
+    accepted_dependency = _lgcvf_live_exact_sha256(
+        native_dependency_id, "native dependency identity"
+    )
+    unresolved = resolve_agent_implementation_private_state_path(capsule_root)
+    try:
+        root = unresolved.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("LGCVF live capsule root is unavailable") from exc
+    if root != unresolved:
+        raise ValueError("LGCVF live capsule root contains a symlink")
+    _agent_private_directory(root, mode=0o500)
+    manifest_raw = _agent_read_stable_file(
+        root / _LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME,
+        maximum_bytes=_LGCVF_LIVE_CAPSULE_MAX_MANIFEST_BYTES,
+        exact_mode=0o400,
+    )
+    manifest = _lgcvf_live_parse_manifest(manifest_raw)
+    if (
+        manifest.get("native_authorization_id") != accepted_authorization
+        or manifest.get("native_dependency_id") != accepted_dependency
+    ):
+        raise ValueError("LGCVF live capsule native acceptance differs")
+    python_identity = _parse_lgcvf_live_python_identity(
+        manifest.get("python_identity")
+    )
+    observed_python = _lgcvf_live_python_identity(python_executable)
+    if observed_python != python_identity:
+        raise ValueError("LGCVF live capsule Python executable differs")
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        raise ValueError(  # noqa: TRY004
+            "LGCVF live capsule file inventory is invalid"
+        )
+    expected_entries = {
+        Path(_LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME),
+        *(Path(relative) for relative in files),
+    }
+    actual_files: set[Path] = set()
+    for entry in root.rglob("*"):
+        metadata = os.lstat(entry)
+        if stat_module.S_ISLNK(metadata.st_mode):
+            raise ValueError("LGCVF live capsule contains a symlink")
+        relative = entry.relative_to(root)
+        if stat_module.S_ISDIR(metadata.st_mode):
+            if (
+                metadata.st_uid != os.geteuid()
+                or stat_module.S_IMODE(metadata.st_mode) != 0o500
+            ):
+                raise ValueError("LGCVF live capsule directory is dirty")
+            continue
+        if not stat_module.S_ISREG(metadata.st_mode):
+            raise ValueError("LGCVF live capsule contains a non-file")
+        actual_files.add(relative)
+    if actual_files != expected_entries:
+        raise ValueError("LGCVF live capsule contents are dirty")
+    capsule_payloads: dict[str, bytes] = {}
+    for relative, digest in files.items():
+        raw = _agent_read_stable_file(
+            root / relative,
+            maximum_bytes=_LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES,
+            exact_mode=0o400,
+        )
+        if _lgcvf_live_sha256(raw) != digest:
+            raise ValueError("LGCVF live capsule content drifted")
+        capsule_payloads[str(relative)] = raw
+    _lgcvf_live_validate_candidate_config(
+        capsule_payloads[_LGCVF_LIVE_CANDIDATE_CONFIG_PATH]
+    )
+    distribution_directory = (
+        f"duckdb-{manifest['duckdb_distribution_version']}.dist-info"
+    )
+    _lgcvf_live_validate_record(
+        capsule_payloads,
+        distribution_directory=distribution_directory,
+    )
+    for name in (
+        "quack_extension",
+        "httpfs_extension",
+        "ducklake_extension",
+    ):
+        extension = _parse_lgcvf_live_extension_identity(
+            manifest.get(name),
+            expected_name=name.removesuffix("_extension"),
+        )
+        if extension.version.encode("ascii") not in capsule_payloads[
+            extension.info_member_path
+        ]:
+            raise ValueError("LGCVF live capsule extension info drifted")
+    archive = _lgcvf_live_archive_bytes(
+        root,
+        manifest_raw=manifest_raw,
+        files={str(path): str(digest) for path, digest in files.items()},
+    )
+    archive_sha256 = _lgcvf_live_sha256(archive)
+    return _lgcvf_live_pin_from_manifest(
+        manifest,
+        capsule_root=root,
+        archive_sha256=archive_sha256,
+    )
+
+
+def materialize_lgcvf_configured_board_live_capsule(
+    *,
+    source_root: Path | str,
+    capsule_parent: Path | str,
+    source_head: str,
+    source_tree: str,
+    python_executable: Path | str,
+    duckdb_package_root: Path | str,
+    duckdb_distribution_metadata_root: Path | str,
+    duckdb_distribution_version: str,
+    quack_extension_path: Path | str,
+    quack_extension_version: str,
+    httpfs_extension_path: Path | str,
+    httpfs_extension_version: str,
+    ducklake_extension_path: Path | str,
+    ducklake_extension_version: str,
+    native_authorization_id: str,
+    native_dependency_id: str,
+) -> LgcvfConfiguredBoardLiveCapsulePin:
+    """Materialize the exact clean LGCVF + datasets + DuckDB generation."""
+
+    accepted_head = _lgcvf_live_exact_git_id(source_head, "source HEAD")
+    accepted_tree = _lgcvf_live_exact_git_id(source_tree, "source tree")
+    accepted_authorization = _lgcvf_live_exact_sha256(
+        native_authorization_id, "native authorization identity"
+    )
+    accepted_dependency = _lgcvf_live_exact_sha256(
+        native_dependency_id, "native dependency identity"
+    )
+    unresolved_root = resolve_agent_implementation_private_state_path(source_root)
+    try:
+        root = unresolved_root.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("LGCVF live capsule source root is unavailable") from exc
+    if root != unresolved_root:
+        raise ValueError("LGCVF live capsule source root contains a symlink")
+    _lgcvf_live_git_state(
+        root,
+        expected_head=accepted_head,
+        expected_tree=accepted_tree,
+        include_submodules=True,
+    )
+    datasets_gitlink = _lgcvf_live_gitlink(root, accepted_head)
+    datasets_root = _lgcvf_live_external_directory(
+        root / "ipfs_datasets_py", "nested datasets Git root"
+    )
+    datasets_head = os.fsdecode(
+        _agent_git_output(
+            datasets_root, ("rev-parse", "--verify", "HEAD^{commit}")
+        )
+    ).strip()
+    datasets_tree = os.fsdecode(
+        _agent_git_output(
+            datasets_root, ("rev-parse", "--verify", "HEAD^{tree}")
+        )
+    ).strip()
+    _lgcvf_live_exact_git_id(datasets_head, "datasets HEAD")
+    _lgcvf_live_exact_git_id(datasets_tree, "datasets tree")
+    if datasets_head != datasets_gitlink:
+        raise ValueError("LGCVF live capsule nested HEAD differs from gitlink")
+    _lgcvf_live_git_state(
+        datasets_root,
+        expected_head=datasets_head,
+        expected_tree=datasets_tree,
+        include_submodules=False,
+    )
+    superproject_payloads = _lgcvf_live_superproject_payloads(root, accepted_head)
+    datasets_payloads = _lgcvf_live_datasets_payloads(
+        datasets_root, datasets_head
+    )
+    duckdb_payloads, package_root, distribution_root = (
+        _lgcvf_live_duckdb_python_payloads(
+            package_root=duckdb_package_root,
+            distribution_metadata_root=duckdb_distribution_metadata_root,
+            distribution_version=duckdb_distribution_version,
+        )
+    )
+    quack, quack_payloads = _lgcvf_live_extension_payload(
+        name="quack",
+        source_path=quack_extension_path,
+        extension_version=quack_extension_version,
+        duckdb_distribution_version=duckdb_distribution_version,
+    )
+    httpfs, httpfs_payloads = _lgcvf_live_extension_payload(
+        name="httpfs",
+        source_path=httpfs_extension_path,
+        extension_version=httpfs_extension_version,
+        duckdb_distribution_version=duckdb_distribution_version,
+    )
+    ducklake, ducklake_payloads = _lgcvf_live_extension_payload(
+        name="ducklake",
+        source_path=ducklake_extension_path,
+        extension_version=ducklake_extension_version,
+        duckdb_distribution_version=duckdb_distribution_version,
+    )
+    if (
+        Path(quack.relative_path).parent
+        != Path(httpfs.relative_path).parent
+        or Path(quack.relative_path).parent
+        != Path(ducklake.relative_path).parent
+    ):
+        raise ValueError("LGCVF live capsule extension platforms differ")
+    payloads: dict[str, bytes] = {}
+    for group in (
+        superproject_payloads,
+        datasets_payloads,
+        duckdb_payloads,
+        quack_payloads,
+        httpfs_payloads,
+        ducklake_payloads,
+    ):
+        overlap = set(payloads).intersection(group)
+        if overlap:
+            raise ValueError("LGCVF live capsule member path is duplicated")
+        payloads.update(group)
+    if (
+        len(payloads) > _LGCVF_LIVE_CAPSULE_MAX_FILES
+        or sum(len(raw) for raw in payloads.values())
+        > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES
+    ):
+        raise ValueError("LGCVF live capsule dependency closure is oversized")
+    _lgcvf_live_validate_candidate_config(
+        payloads[_LGCVF_LIVE_CANDIDATE_CONFIG_PATH]
+    )
+    python_identity = _lgcvf_live_python_identity(python_executable)
+    manifest_raw = _lgcvf_live_manifest_bytes(
+        source_head=accepted_head,
+        source_tree=accepted_tree,
+        datasets_gitlink=datasets_gitlink,
+        datasets_head=datasets_head,
+        datasets_tree=datasets_tree,
+        payloads=payloads,
+        duckdb_distribution_version=duckdb_distribution_version,
+        duckdb_package_files_root=package_root,
+        duckdb_distribution_files_root=distribution_root,
+        quack_extension=quack,
+        httpfs_extension=httpfs,
+        ducklake_extension=ducklake,
+        python_identity=python_identity,
+        native_authorization_id=accepted_authorization,
+        native_dependency_id=accepted_dependency,
+    )
+    manifest = _lgcvf_live_parse_manifest(manifest_raw)
+    _lgcvf_live_git_state(
+        datasets_root,
+        expected_head=datasets_head,
+        expected_tree=datasets_tree,
+        include_submodules=False,
+    )
+    _lgcvf_live_git_state(
+        root,
+        expected_head=accepted_head,
+        expected_tree=accepted_tree,
+        include_submodules=True,
+    )
+    parent = resolve_agent_implementation_private_state_path(capsule_parent)
+    created_parent_identity: tuple[int, int, int, int] | None = None
+    try:
+        os.lstat(parent)
+    except FileNotFoundError:
+        created_parent_identity = _agent_create_private_directory_chain(
+            parent, final_mode=0o700
+        )
+    except OSError as exc:
+        raise ValueError("LGCVF live capsule parent is unavailable") from exc
+    _agent_private_directory(parent, mode=0o700)
+    if created_parent_identity is not None:
+        observed_parent = os.lstat(parent)
+        if (
+            observed_parent.st_dev,
+            observed_parent.st_ino,
+            observed_parent.st_mode,
+            observed_parent.st_uid,
+        ) != created_parent_identity:
+            raise ValueError("LGCVF live capsule parent changed during creation")
+    capsule_id = str(manifest["capsule_id"])
+    destination = parent / capsule_id.removeprefix("sha256:")
+    try:
+        existing = os.lstat(destination)
+    except FileNotFoundError:
+        existing = None
+    except OSError as exc:
+        raise ValueError("LGCVF live capsule destination is unavailable") from exc
+    if existing is not None:
+        if stat_module.S_ISLNK(existing.st_mode):
+            raise ValueError("LGCVF live capsule destination is a symlink")
+        return build_lgcvf_configured_board_live_capsule_pin(
+            capsule_root=destination,
+            python_executable=python_executable,
+            native_authorization_id=accepted_authorization,
+            native_dependency_id=accepted_dependency,
+        )
+    staging = Path(tempfile.mkdtemp(prefix=".lgcvf-live-", dir=parent))
+    try:
+        for relative, raw in payloads.items():
+            _agent_write_capsule_file(staging / relative, raw)
+        _agent_write_capsule_file(
+            staging / _LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME,
+            manifest_raw,
+        )
+        directories = sorted(
+            (item for item in staging.rglob("*") if item.is_dir()),
+            key=lambda item: len(item.parts),
+            reverse=True,
+        )
+        for directory in directories:
+            os.chmod(directory, 0o500)
+        os.chmod(staging, 0o500)
+        try:
+            os.rename(staging, destination)
+        except FileExistsError:
+            os.chmod(staging, 0o700)
+            for directory in directories:
+                try:
+                    os.chmod(directory, 0o700)
+                except FileNotFoundError:
+                    pass
+            shutil.rmtree(staging)
+        parent_fd = os.open(
+            parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        )
+        try:
+            os.fsync(parent_fd)
+        finally:
+            os.close(parent_fd)
+    except Exception:
+        if staging.exists():
+            try:
+                os.chmod(staging, 0o700)
+            except OSError:
+                pass
+            for directory in sorted(
+                (item for item in staging.rglob("*") if item.is_dir()),
+                key=lambda item: len(item.parts),
+            ):
+                try:
+                    os.chmod(directory, 0o700)
+                except OSError:
+                    pass
+            shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return build_lgcvf_configured_board_live_capsule_pin(
+        capsule_root=destination,
+        python_executable=python_executable,
+        native_authorization_id=accepted_authorization,
+        native_dependency_id=accepted_dependency,
+    )
+
+
+def _lgcvf_live_verified_archive(
+    pin: LgcvfConfiguredBoardLiveCapsulePin,
+    descriptor: int,
+) -> tuple[str, bytes, dict[str, object]]:
+    parsed_pin = parse_lgcvf_configured_board_live_capsule_pin(pin.as_dict())
+    if parsed_pin != pin:
+        raise ValueError("LGCVF live capsule pin is not canonical")
+    _lgcvf_live_require_current_python(pin.python_identity)
+    if isinstance(descriptor, bool) or not isinstance(descriptor, int) or descriptor < 3:
+        raise ValueError("LGCVF live capsule descriptor is invalid")
+    required_names = (
+        "F_GET_SEALS",
+        "F_SEAL_WRITE",
+        "F_SEAL_SHRINK",
+        "F_SEAL_GROW",
+        "F_SEAL_SEAL",
+    )
+    if any(not hasattr(fcntl, name) for name in required_names):
+        raise ValueError("LGCVF live capsule descriptor sealing is unavailable")
+    required_seals = (
+        fcntl.F_SEAL_WRITE
+        | fcntl.F_SEAL_SHRINK
+        | fcntl.F_SEAL_GROW
+        | fcntl.F_SEAL_SEAL
+    )
+    try:
+        before = os.fstat(descriptor)
+        seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+        if (
+            not stat_module.S_ISREG(before.st_mode)
+            or before.st_size <= 0
+            or before.st_size > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES
+            or seals & required_seals != required_seals
+        ):
+            raise ValueError("LGCVF live capsule descriptor is not sealed")
+        chunks: list[bytes] = []
+        offset = 0
+        while offset < before.st_size:
+            chunk = os.pread(
+                descriptor,
+                min(1024 * 1024, before.st_size - offset),
+                offset,
+            )
+            if not chunk:
+                break
+            chunks.append(chunk)
+            offset += len(chunk)
+        after = os.fstat(descriptor)
+    except OSError as exc:
+        raise ValueError("LGCVF live capsule descriptor is unavailable") from exc
+    archive_raw = b"".join(chunks)
+    identity = lambda item: (
+        item.st_dev,
+        item.st_ino,
+        item.st_mode,
+        item.st_uid,
+        item.st_nlink,
+        item.st_size,
+        item.st_mtime_ns,
+        item.st_ctime_ns,
+    )
+    if (
+        len(archive_raw) != before.st_size
+        or identity(before) != identity(after)
+        or _lgcvf_live_sha256(archive_raw) != pin.archive_sha256
+    ):
+        raise ValueError("LGCVF live capsule sealed archive drifted")
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive_raw), mode="r") as archive:
+            infos = archive.infolist()
+            names = [info.filename for info in infos]
+            if len(names) != len(set(names)):
+                raise ValueError("LGCVF live capsule archive has duplicate members")
+            for info in infos:
+                path = Path(info.filename)
+                if (
+                    not info.filename
+                    or path.is_absolute()
+                    or ".." in path.parts
+                    or info.filename != path.as_posix()
+                    or info.is_dir()
+                    or info.compress_type != zipfile.ZIP_STORED
+                    or info.date_time != (1980, 1, 1, 0, 0, 0)
+                    or info.create_system != 3
+                    or info.external_attr != 0o100400 << 16
+                    or info.file_size > _LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES
+                ):
+                    raise ValueError("LGCVF live capsule archive member is invalid")
+            manifest_raw = archive.read(
+                _LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME
+            )
+            manifest = _lgcvf_live_parse_manifest(manifest_raw)
+            files = manifest.get("files")
+            if not isinstance(files, dict):
+                raise ValueError(  # noqa: TRY004
+                    "LGCVF live capsule archive inventory is invalid"
+                )
+            expected_names = {
+                "__main__.py",
+                _LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME,
+                *files,
+            }
+            if set(names) != expected_names or archive.read("__main__.py") != (
+                b"raise SystemExit(78)\n"
+            ):
+                raise ValueError("LGCVF live capsule archive contents are dirty")
+            total = len(manifest_raw) + len(b"raise SystemExit(78)\n")
+            selected_payloads: dict[str, bytes] = {}
+            distribution_prefix = (
+                f"duckdb-{manifest['duckdb_distribution_version']}.dist-info/"
+            )
+            for relative, digest in files.items():
+                raw = archive.read(relative)
+                total += len(raw)
+                if (
+                    total > _LGCVF_LIVE_CAPSULE_MAX_ARCHIVE_BYTES
+                    or _lgcvf_live_sha256(raw) != digest
+                ):
+                    raise ValueError("LGCVF live capsule archive member drifted")
+                if (
+                    relative == _LGCVF_LIVE_CANDIDATE_CONFIG_PATH
+                    or relative.startswith(("duckdb/", distribution_prefix))
+                ):
+                    selected_payloads[relative] = raw
+            _lgcvf_live_validate_candidate_config(
+                selected_payloads[_LGCVF_LIVE_CANDIDATE_CONFIG_PATH]
+            )
+            _lgcvf_live_validate_record(
+                selected_payloads,
+                distribution_directory=distribution_prefix.rstrip("/"),
+            )
+    except (KeyError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise ValueError("LGCVF live capsule sealed archive is invalid") from exc
+    observed_pin = _lgcvf_live_pin_from_manifest(
+        manifest,
+        capsule_root=Path(pin.capsule_root),
+        archive_sha256=_lgcvf_live_sha256(archive_raw),
+    )
+    if observed_pin != pin:
+        raise ValueError("LGCVF live capsule sealed manifest differs from pin")
+    executable = f"/proc/self/fd/{descriptor}"
+    try:
+        path_stat = os.stat(executable)
+    except OSError as exc:
+        raise ValueError("LGCVF live capsule descriptor path is unavailable") from exc
+    if (path_stat.st_dev, path_stat.st_ino) != (before.st_dev, before.st_ino):
+        raise ValueError("LGCVF live capsule descriptor path drifted")
+    return executable, archive_raw, manifest
+
+
+def verify_lgcvf_configured_board_live_sealed_capsule(
+    pin: LgcvfConfiguredBoardLiveCapsulePin,
+    descriptor: int,
+) -> str:
+    """Verify the sealed live archive and return its isolated import path."""
+
+    executable, _archive, _manifest = _lgcvf_live_verified_archive(
+        pin, descriptor
+    )
+    return executable
+
+
+def seal_lgcvf_configured_board_live_capsule(
+    pin: LgcvfConfiguredBoardLiveCapsulePin,
+) -> LgcvfConfiguredBoardLiveSealedCapsule:
+    """Copy one validated live capsule into a write-sealed memfd archive."""
+
+    parsed_pin = parse_lgcvf_configured_board_live_capsule_pin(pin.as_dict())
+    if parsed_pin != pin:
+        raise ValueError("LGCVF live capsule pin is not canonical")
+    verified = build_lgcvf_configured_board_live_capsule_pin(
+        capsule_root=pin.capsule_root,
+        python_executable=pin.python_identity.executable_path,
+        native_authorization_id=pin.native_authorization_id,
+        native_dependency_id=pin.native_dependency_id,
+    )
+    if verified != pin:
+        raise ValueError("LGCVF live capsule pin drifted before sealing")
+    root = Path(pin.capsule_root)
+    manifest_raw = _agent_read_stable_file(
+        root / _LGCVF_LIVE_CAPSULE_MANIFEST_FILENAME,
+        maximum_bytes=_LGCVF_LIVE_CAPSULE_MAX_MANIFEST_BYTES,
+        exact_mode=0o400,
+    )
+    manifest = _lgcvf_live_parse_manifest(manifest_raw)
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        raise ValueError(  # noqa: TRY004
+            "LGCVF live capsule manifest inventory is invalid"
+        )
+    archive = _lgcvf_live_archive_bytes(
+        root,
+        manifest_raw=manifest_raw,
+        files={str(path): str(digest) for path, digest in files.items()},
+    )
+    if _lgcvf_live_sha256(archive) != pin.archive_sha256:
+        raise ValueError("LGCVF live capsule archive identity drifted")
+    if not hasattr(os, "memfd_create") or not hasattr(os, "MFD_ALLOW_SEALING"):
+        raise ValueError("LGCVF live capsule memfd sealing is unavailable")
+    descriptor = os.memfd_create(
+        "ipfs-accelerate-lgcvf-live-capsule",
+        flags=getattr(os, "MFD_CLOEXEC", 0) | os.MFD_ALLOW_SEALING,
+    )
+    try:
+        view = memoryview(archive)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise ValueError("LGCVF live capsule archive write failed")
+            view = view[written:]
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        required = (
+            fcntl.F_SEAL_WRITE
+            | fcntl.F_SEAL_SHRINK
+            | fcntl.F_SEAL_GROW
+            | fcntl.F_SEAL_SEAL
+        )
+        fcntl.fcntl(descriptor, fcntl.F_ADD_SEALS, required)
+        executable = verify_lgcvf_configured_board_live_sealed_capsule(
+            pin, descriptor
+        )
+        seals = int(fcntl.fcntl(descriptor, fcntl.F_GET_SEALS))
+    except Exception:
+        os.close(descriptor)
+        raise
+    return LgcvfConfiguredBoardLiveSealedCapsule(
+        descriptor=descriptor,
+        executable_path=executable,
+        archive_sha256=pin.archive_sha256,
+        seals=seals,
+        capsule_id=pin.capsule_id,
+    )
+
+
+def read_lgcvf_configured_board_live_capsule_member(
+    pin: LgcvfConfiguredBoardLiveCapsulePin,
+    descriptor: int,
+    relative_path: Path | str,
+) -> bytes:
+    """Read one exact manifest member after complete descriptor verification."""
+
+    requested = Path(str(relative_path))
+    if (
+        requested.is_absolute()
+        or ".." in requested.parts
+        or not requested.parts
+        or requested.as_posix() != str(relative_path)
+    ):
+        raise ValueError("LGCVF live capsule requested member is invalid")
+    _executable, archive_raw, manifest = _lgcvf_live_verified_archive(
+        pin, descriptor
+    )
+    files = manifest.get("files")
+    relative = requested.as_posix()
+    if not isinstance(files, dict) or relative not in files:
+        raise ValueError("LGCVF live capsule requested member is not admitted")
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive_raw), mode="r") as archive:
+            raw = archive.read(relative)
+    except (KeyError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise ValueError("LGCVF live capsule requested member is unavailable") from exc
+    if (
+        len(raw) > _LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES
+        or _lgcvf_live_sha256(raw) != files[relative]
+    ):
+        raise ValueError("LGCVF live capsule requested member drifted")
+    return raw
+
+
+def _lgcvf_live_verify_projected_home(
+    pin: LgcvfConfiguredBoardLiveCapsulePin,
+    home: Path,
+) -> None:
+    directory_modes = {
+        Path("."): 0o500,
+        Path(".duckdb"): 0o500,
+        Path(".duckdb/extensions"): 0o500,
+        Path(".duckdb/extensions") / pin.extension_engine_version: 0o500,
+        Path(".duckdb/extensions")
+        / pin.extension_engine_version
+        / pin.extension_platform: 0o500,
+        Path(".python-user-base"): 0o500,
+        Path(".cache"): 0o700,
+        Path(".cache/xdg"): 0o700,
+        Path(".cache/cuda"): 0o700,
+    }
+    extension_files = {
+        Path(".duckdb/extensions") / pin.quack_extension.relative_path: (
+            pin.quack_extension.payload_sha256
+        ),
+        Path(".duckdb/extensions") / pin.quack_extension.info_relative_path: (
+            pin.quack_extension.info_sha256
+        ),
+        Path(".duckdb/extensions") / pin.httpfs_extension.relative_path: (
+            pin.httpfs_extension.payload_sha256
+        ),
+        Path(".duckdb/extensions") / pin.httpfs_extension.info_relative_path: (
+            pin.httpfs_extension.info_sha256
+        ),
+        Path(".duckdb/extensions") / pin.ducklake_extension.relative_path: (
+            pin.ducklake_extension.payload_sha256
+        ),
+        Path(".duckdb/extensions") / pin.ducklake_extension.info_relative_path: (
+            pin.ducklake_extension.info_sha256
+        ),
+    }
+    actual_directories = {Path(".")}
+    actual_files: set[Path] = set()
+    for entry in home.rglob("*"):
+        metadata = os.lstat(entry)
+        if stat_module.S_ISLNK(metadata.st_mode) or metadata.st_uid != os.geteuid():
+            raise ValueError("LGCVF live capsule projected HOME custody drifted")
+        relative = entry.relative_to(home)
+        if stat_module.S_ISDIR(metadata.st_mode):
+            actual_directories.add(relative)
+            expected_mode = directory_modes.get(relative)
+            if expected_mode is None or stat_module.S_IMODE(
+                metadata.st_mode
+            ) != expected_mode:
+                raise ValueError("LGCVF live capsule projected directory drifted")
+        elif stat_module.S_ISREG(metadata.st_mode):
+            actual_files.add(relative)
+        else:
+            raise ValueError("LGCVF live capsule projected HOME has a non-file")
+    root_metadata = os.lstat(home)
+    if (
+        stat_module.S_IMODE(root_metadata.st_mode) != 0o500
+        or actual_directories != set(directory_modes)
+        or actual_files != set(extension_files)
+    ):
+        raise ValueError("LGCVF live capsule projected HOME contents drifted")
+    for relative, digest in extension_files.items():
+        raw = _agent_read_stable_file(
+            home / relative,
+            maximum_bytes=_LGCVF_LIVE_CAPSULE_MAX_FILE_BYTES,
+            exact_mode=0o400,
+        )
+        if _lgcvf_live_sha256(raw) != digest:
+            raise ValueError("LGCVF live capsule projected extension drifted")
+
+
+def project_lgcvf_configured_board_live_extensions(
+    pin: LgcvfConfiguredBoardLiveCapsulePin,
+    descriptor: int,
+    parent: Path | str,
+) -> Path:
+    """Project all sealed extensions into one immutable private DuckDB HOME."""
+
+    _executable, archive_raw, _manifest = _lgcvf_live_verified_archive(
+        pin, descriptor
+    )
+    unresolved_parent = resolve_agent_implementation_private_state_path(parent)
+    created_parent = False
+    try:
+        os.lstat(unresolved_parent)
+    except FileNotFoundError:
+        _agent_create_private_directory_chain(unresolved_parent, final_mode=0o700)
+        created_parent = True
+    except OSError as exc:
+        raise ValueError("LGCVF live capsule projection parent is unavailable") from exc
+    _agent_private_directory(unresolved_parent, mode=0o700)
+    if unresolved_parent.name != "qualification-homes":
+        raise ValueError(
+            "LGCVF live capsule projection parent must be qualification-homes"
+        )
+    home = unresolved_parent / pin.capsule_id.removeprefix("sha256:")
+    try:
+        existing = os.lstat(home)
+    except FileNotFoundError:
+        existing = None
+    except OSError as exc:
+        raise ValueError("LGCVF live capsule projected HOME is unavailable") from exc
+    if existing is not None:
+        if stat_module.S_ISLNK(existing.st_mode):
+            raise ValueError("LGCVF live capsule projected HOME is a symlink")
+        _lgcvf_live_verify_projected_home(pin, home)
+        return home
+    members = (
+        pin.quack_extension,
+        pin.httpfs_extension,
+        pin.ducklake_extension,
+    )
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive_raw), mode="r") as archive:
+            extension_payloads = {
+                Path(".duckdb/extensions") / extension.relative_path: archive.read(
+                    extension.member_path
+                )
+                for extension in members
+            }
+            extension_payloads.update(
+                {
+                    Path(".duckdb/extensions")
+                    / extension.info_relative_path: archive.read(
+                        extension.info_member_path
+                    )
+                    for extension in members
+                }
+            )
+    except (KeyError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise ValueError("LGCVF live capsule extension projection failed") from exc
+    staging = Path(tempfile.mkdtemp(prefix=".lgcvf-home-", dir=unresolved_parent))
+    try:
+        private_directories = (
+            staging / ".duckdb" / "extensions" / pin.extension_engine_version
+            / pin.extension_platform,
+            staging / ".python-user-base",
+        )
+        cache_directories = (
+            staging / ".cache",
+            staging / ".cache" / "xdg",
+            staging / ".cache" / "cuda",
+        )
+        for directory in (*private_directories, *cache_directories):
+            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        for relative, raw in extension_payloads.items():
+            _agent_write_capsule_file(staging / relative, raw)
+        for directory in sorted(
+            {
+                staging / ".duckdb",
+                staging / ".duckdb" / "extensions",
+                staging / ".duckdb" / "extensions" / pin.extension_engine_version,
+                *private_directories,
+            },
+            key=lambda item: len(item.parts),
+            reverse=True,
+        ):
+            os.chmod(directory, 0o500)
+        for directory in cache_directories:
+            os.chmod(directory, 0o700)
+        os.chmod(staging, 0o500)
+        os.rename(staging, home)
+        parent_fd = os.open(
+            unresolved_parent,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+        )
+        try:
+            os.fsync(parent_fd)
+        finally:
+            os.close(parent_fd)
+    except Exception:
+        if staging.exists():
+            try:
+                os.chmod(staging, 0o700)
+            except OSError:
+                pass
+            for directory in staging.rglob("*"):
+                if directory.is_dir():
+                    try:
+                        os.chmod(directory, 0o700)
+                    except OSError:
+                        pass
+            shutil.rmtree(staging, ignore_errors=True)
+        if created_parent:
+            # The empty private parent is harmless and intentionally retained;
+            # removing shared state here would make failure cleanup destructive.
+            pass
+        raise
+    _lgcvf_live_verify_projected_home(pin, home)
+    return home
 
 
 def _parse_agent_control_plane_pin(

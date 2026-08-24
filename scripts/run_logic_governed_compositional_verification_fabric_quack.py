@@ -6,7 +6,7 @@ configuration remains an embedded, single-writer recovery target.  This
 operator therefore has two explicit stages:
 
 * ``bootstrap`` verifies the canonical run-v17 recovery and publishes one
-  no-overwrite run-v18 database clone with a provenance receipt;
+  no-overwrite run-v19 database clone with a provenance receipt;
 * ``bootstrap-sealed-continuity`` admits a separately preserved run-v17 only
   through six explicit raw-byte pins, exact target-state reconstruction, and
   an operational-continuity-only authority ceiling;
@@ -32,9 +32,14 @@ import ctypes
 import errno
 import fcntl
 import hashlib
+import importlib
+import importlib.machinery
+import importlib.metadata
+import importlib.util
 import json
 import os
 import re
+import shutil
 import signal
 import stat
 import subprocess
@@ -42,6 +47,7 @@ import sys
 import tempfile
 import time
 import uuid
+import zipfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Final
@@ -72,7 +78,7 @@ PROGRAM_ROOT_RELATIVE: Final = Path(
     "data/agent_supervisor/logic_governed_compositional_verification_fabric"
 )
 SOURCE_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v17"
-SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v18"
+SUCCESSOR_RUN_RELATIVE: Final = PROGRAM_ROOT_RELATIVE / "run-v19"
 SOURCE_DATABASE_RELATIVE: Final = SOURCE_RUN_RELATIVE / "control.duckdb"
 SUCCESSOR_DATABASE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "control.duckdb"
 OWNER_STATE_RELATIVE: Final = SUCCESSOR_RUN_RELATIVE / "quack-owner"
@@ -124,6 +130,60 @@ BOARD_EXTENSION_INSTALL_POLICY_ENV: Final = (
     "IPFS_ACCELERATE_AGENT_BOARD_EXTENSION_INSTALL_POLICY"
 )
 BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY: Final = "load_only"
+LGCVF_LIVE_NATIVE_AUTHORIZATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "lgcvf-configured-board-native-launch-authorization@1"
+)
+LGCVF_LIVE_SCHEDULER_MODULE: Final = (
+    "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler"
+)
+LGCVF_LIVE_CAPSULE_MANIFEST_MEMBER: Final = (
+    ".lgcvf-configured-board-live-capsule-manifest.json"
+)
+LGCVF_LIVE_CONTROLLER_PRELOAD_MODULES: Final = (
+    "ipfs_accelerate_py.agent_implementation_route",
+    "ipfs_accelerate_py.llm_router",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema",
+    "ipfs_accelerate_py.agent_supervisor.merge.database_coordination",
+    "ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle",
+    "ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler",
+    "ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner",
+    "ipfs_accelerate_py.agent_supervisor.runtime.process_security",
+    "ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server",
+    "ipfs_accelerate_py.agent_supervisor.task_sources.board_control_plane",
+)
+LGCVF_LIVE_REPOSITORY_MODULE_PREFIXES: Final = (
+    "ipfs_accelerate_py",
+    "ipfs_datasets_py",
+    "scripts",
+)
+LGCVF_LIVE_QUALIFICATION_HOMES_RELATIVE: Final = Path(
+    SUCCESSOR_RUN_RELATIVE / "qualification-homes"
+)
+LGCVF_LIVE_RENDERED_ENV_NAMES: Final = frozenset(
+    {
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT",
+        "IPFS_ACCELERATE_AGENT_DATABASE_PROGRAM_JSON",
+        "IPFS_ACCELERATE_AGENT_EVENT_STORE_PATH",
+        "IPFS_ACCELERATE_AGENT_EXPORT_PROFILE",
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+        "IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT",
+        "IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR",
+        "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH",
+        "IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE",
+        "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE",
+        "IPFS_ACCELERATE_AGENT_STATE_FAILOVER_POLICY",
+        "IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION",
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION",
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_ID",
+        "IPFS_ACCELERATE_AGENT_TASK_SOURCE_KIND",
+    }
+)
 SECRET_HANDLE: Final = f"env://{TOKEN_ENV}"
 APPROVED_BOARD_BRANCH: Final = (
     "agent/logic-governed-compositional-verification-fabric-v1"
@@ -2268,12 +2328,12 @@ def clone_verified_successor(
         ) from exc
     if (
         source.parent.name != "run-v17"
-        or final_run.name != "run-v18"
+        or final_run.name != "run-v19"
         or target.name != "control.duckdb"
         or len(provenance_relative.parts) != 2
         or provenance_relative.parts[0] != "evidence"
     ):
-        raise SuccessorOperatorError("successor clone must be run-v17 -> run-v18")
+        raise SuccessorOperatorError("successor clone must be run-v17 -> run-v19")
     if source == target:
         raise SuccessorOperatorError("successor source and target are identical")
     try:
@@ -2336,7 +2396,7 @@ def clone_verified_successor(
     _privatize_owned_directory(publish_parent, noun="successor publication parent")
     # Keep the unpublished generation under the same reviewed run-v* ignore
     # boundary as the final generation.  Sealed admission is repeated after
-    # cloning; a hidden .run-v18.* stage would otherwise appear as untracked
+    # cloning; a hidden .run-v19.* stage would otherwise appear as untracked
     # worktree dirt and make every real bootstrap fail closed on itself.
     stage = publish_parent / f"{final_run.name}.stage-{uuid.uuid4().hex}"
     os.mkdir(stage, mode=0o700)
@@ -2384,7 +2444,7 @@ def clone_verified_successor(
             while view:
                 written = os.write(target_descriptor, view)
                 if written <= 0:
-                    raise SuccessorOperatorError("run-v18 clone write made no progress")
+                    raise SuccessorOperatorError("run-v19 clone write made no progress")
                 view = view[written:]
         os.fsync(target_descriptor)
         os.close(target_descriptor)
@@ -2404,7 +2464,7 @@ def clone_verified_successor(
             or target_verification.get("schema_fingerprint")
             != source_verification.get("schema_fingerprint")
         ):
-            raise SuccessorOperatorError("run-v18 clone differs from verified run-v17")
+            raise SuccessorOperatorError("run-v19 clone differs from verified run-v17")
         if sealed_source_paths is not None:
             pins = recovery_verification.get("pins") or {}
             refreshed = verify_sealed_target_continuity(
@@ -2426,7 +2486,7 @@ def clone_verified_successor(
             "schema": PROVENANCE_SCHEMA,
             "issued_at": _utc_now(),
             "source_generation": "lgcvf-run-v17",
-            "target_generation": "lgcvf-run-v18",
+            "target_generation": "lgcvf-run-v19",
             "source_database": str(source),
             "target_database": str(target),
             "source_sha256": source_digest,
@@ -2652,8 +2712,8 @@ def _require_ignored_successor(root: Path) -> None:
         / ".control.duckdb.lock"
     )
     for relative, noun in (
-        (SUCCESSOR_DATABASE_RELATIVE, "run-v18 successor Git-ignore policy"),
-        (stage_lock, "run-v18 staging Git-ignore policy"),
+        (SUCCESSOR_DATABASE_RELATIVE, "run-v19 successor Git-ignore policy"),
+        (stage_lock, "run-v19 staging Git-ignore policy"),
     ):
         _git_quiet(
             root,
@@ -2756,7 +2816,7 @@ def _load_provenance(paths: Mapping[str, Path], *, root: Path = ROOT) -> dict[st
             or receipt.get("authoritative_for_release") is not False
             or receipt.get("production_authorized") is not False
             or receipt.get("source_generation") != "lgcvf-run-v17"
-            or receipt.get("target_generation") != "lgcvf-run-v18"
+            or receipt.get("target_generation") != "lgcvf-run-v19"
             or receipt.get("clone_preserves_database_uuid") is not True
             or receipt.get("owner_generation_rotates_on_start") is not True
         ):
@@ -2892,6 +2952,36 @@ def _load_provenance(paths: Mapping[str, Path], *, root: Path = ROOT) -> dict[st
     return receipt
 
 
+def _load_lgcvf_live_raw_provenance_receipt(
+    paths: Mapping[str, Path],
+) -> dict[str, Any]:
+    """Read the content-addressed receipt without importing the database stack."""
+
+    _require_private_directory(
+        paths["provenance"].parent,
+        noun="successor evidence directory",
+    )
+    receipt = _strict_json(
+        paths["provenance"],
+        expected_schema=PROVENANCE_SCHEMA,
+        require_private_owner=True,
+    )
+    receipt_cid = receipt.get("receipt_cid")
+    if (
+        type(receipt_cid) is not str
+        or re.fullmatch(r"[a-z2-7]{32,256}", receipt_cid) is None
+        or receipt.get("target_database") != str(paths["successor_database"])
+        or receipt.get("source_generation") != "lgcvf-run-v17"
+        or receipt.get("target_generation") != "lgcvf-run-v19"
+        or receipt.get("admission_mode")
+        not in {"canonical_fresh_generation_recovery", SEALED_CONTINUITY_MODE}
+    ):
+        raise SuccessorOperatorError(
+            "raw successor provenance is not the exact live generation receipt"
+        )
+    return receipt
+
+
 def _parse_quack_endpoint(endpoint: str) -> tuple[str, int]:
     match = re.fullmatch(r"quack:(?://)?(127\.0\.0\.1|localhost):(\d{1,5})", endpoint)
     if match is None or not 1 <= int(match.group(2)) <= 65535:
@@ -2900,14 +2990,22 @@ def _parse_quack_endpoint(endpoint: str) -> tuple[str, int]:
 
 
 def _validate_successor_board(
-    config_path: Path, root: Path = ROOT
+    config_path: Path,
+    root: Path = ROOT,
+    *,
+    config_bytes: bytes | None = None,
+    admitted_live_validator_sha256: str = "",
 ) -> tuple[Any, Any, str, int]:
     from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
         load_configured_board,
         preflight_configured_board,
     )
 
-    board = load_configured_board(config_path, repo_root=root)
+    board = load_configured_board(
+        config_path,
+        repo_root=root,
+        config_bytes=config_bytes,
+    )
     program = board.resolved_database_program()
     raw_program = board.payload.get("database_program")
     expected_store = SUCCESSOR_DATABASE_RELATIVE.as_posix()
@@ -2925,7 +3023,7 @@ def _validate_successor_board(
         or program.endpoint_secret_handle != SECRET_HANDLE
         or program.store_id != expected_store
         or program.runtime_registry_path != expected_registry
-        or program.store_generation != "lgcvf-run-v18"
+        or program.store_generation != "lgcvf-run-v19"
         or program.schema_revision != "datasets-authoritative-operational-v1"
         or not isinstance(raw_program, Mapping)
         or raw_program.get("schema_profile") != "datasets-authoritative-operational"
@@ -2957,7 +3055,10 @@ def _validate_successor_board(
             "scheduler config is not the exact four-lane successor"
         )
     host, port = _parse_quack_endpoint(program.quack_endpoint)
-    preflight = preflight_configured_board(board)
+    preflight = preflight_configured_board(
+        board,
+        admitted_live_validator_sha256=admitted_live_validator_sha256,
+    )
     if preflight.get("valid") is not True:
         raise SuccessorOperatorError(
             "configured-board preflight failed: "
@@ -3090,6 +3191,203 @@ def _prepare_private_owner_socket(socket_path: Path) -> None:
         raise SuccessorOperatorError("existing state-owner socket custody is unsafe")
 
 
+def _installed_extension_version(info_path: Path, *, name: str) -> str:
+    """Read the sole short hexadecimal build identity from DuckDB metadata."""
+
+    raw = _read_bounded_regular_file(
+        info_path,
+        max_bytes=64 * 1024,
+        noun=f"installed {name} extension metadata",
+    )
+    versions = tuple(
+        match.decode("ascii")
+        for match in re.findall(
+            rb"(?<![0-9a-f])([0-9a-f]{7,8})(?![0-9a-f])",
+            raw,
+        )
+    )
+    if len(versions) != 1:
+        raise SuccessorOperatorError(
+            f"installed {name} extension build identity is ambiguous"
+        )
+    return versions[0]
+
+
+def _resolve_installed_duckdb_live_runtime() -> dict[str, Any]:
+    """Resolve the exact installed DuckDB facade, native ELF, and extensions.
+
+    Resolution deliberately uses import metadata and module specs without
+    importing DuckDB.  Native module creation is permitted only after the
+    capsule/native/admission join has been verified.
+    """
+
+    try:
+        distribution = importlib.metadata.distribution("duckdb")
+        version = str(distribution.version)
+        site_root = Path(distribution.locate_file("")).resolve(strict=True)
+        metadata_value = getattr(distribution, "_path", None)
+        if metadata_value is None:
+            raise SuccessorOperatorError(
+                "installed DuckDB distribution metadata root is unavailable"
+            )
+        metadata_root = Path(metadata_value).resolve(strict=True)
+        package_root = (site_root / "duckdb").resolve(strict=True)
+        native_spec = importlib.util.find_spec("_duckdb")
+        native_origin = getattr(native_spec, "origin", None)
+        if not isinstance(native_origin, str) or not native_origin:
+            raise SuccessorOperatorError("installed DuckDB native module is absent")
+        native_path = Path(native_origin).resolve(strict=True)
+    except (ImportError, importlib.metadata.PackageNotFoundError, OSError) as exc:
+        raise SuccessorOperatorError(
+            "installed DuckDB runtime cannot be resolved"
+        ) from exc
+    if (
+        re.fullmatch(r"[0-9][0-9A-Za-z.+_-]{0,63}", version) is None
+        or metadata_root.parent != site_root
+        or metadata_root.name != f"duckdb-{version}.dist-info"
+        or package_root.parent != site_root
+        or package_root.name != "duckdb"
+        or native_path.parent != site_root
+        or not native_path.name.startswith("_duckdb.")
+        or not native_path.name.endswith(".so")
+    ):
+        raise SuccessorOperatorError("installed DuckDB runtime layout differs")
+    machine = os.uname().machine if hasattr(os, "uname") else ""
+    platform_name = {
+        "aarch64": "linux_arm64",
+        "x86_64": "linux_amd64",
+    }.get(machine, "")
+    ambient_home = str(os.environ.get("HOME", "") or "")
+    if (
+        not platform_name
+        or not ambient_home
+        or "\x00" in ambient_home
+        or not Path(ambient_home).is_absolute()
+    ):
+        raise SuccessorOperatorError(
+            "installed DuckDB extension platform is unavailable"
+        )
+    extension_root = (
+        Path(ambient_home)
+        / ".duckdb"
+        / "extensions"
+        / f"v{version}"
+        / platform_name
+    )
+    try:
+        extension_root = extension_root.resolve(strict=True)
+    except OSError as exc:
+        raise SuccessorOperatorError(
+            "installed DuckDB extension directory is unavailable"
+        ) from exc
+    extensions: dict[str, dict[str, str | Path]] = {}
+    for name in ("quack", "ducklake", "httpfs"):
+        path = extension_root / f"{name}.duckdb_extension"
+        info_path = Path(str(path) + ".info")
+        extensions[name] = {
+            "path": path,
+            "version": _installed_extension_version(info_path, name=name),
+        }
+    return {
+        "version": version,
+        "engine_version": f"v{version}",
+        "package_root": package_root,
+        "metadata_root": metadata_root,
+        "native_path": native_path,
+        "extension_platform": platform_name,
+        "quack_path": extensions["quack"]["path"],
+        "quack_version": extensions["quack"]["version"],
+        "ducklake_path": extensions["ducklake"]["path"],
+        "ducklake_version": extensions["ducklake"]["version"],
+        "httpfs_path": extensions["httpfs"]["path"],
+        "httpfs_version": extensions["httpfs"]["version"],
+    }
+
+
+def _lgcvf_live_native_authorization_id(
+    *,
+    native_pin: Any,
+    provenance: Mapping[str, Any],
+    source_head: str,
+    source_tree: str,
+    candidate_config_sha256: str,
+) -> str:
+    """Bind native evidence to this exact source/config/provenance admission."""
+
+    pin_payload = getattr(native_pin, "as_dict", lambda: None)()
+    receipt_cid = provenance.get("receipt_cid")
+    if (
+        not isinstance(pin_payload, Mapping)
+        or not isinstance(receipt_cid, str)
+        or not receipt_cid
+        or re.fullmatch(r"[0-9a-f]{40}", source_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", candidate_config_sha256)
+        is None
+    ):
+        raise SuccessorOperatorError(
+            "LGCVF native launch authorization inputs are incomplete"
+        )
+    body = {
+        "schema": LGCVF_LIVE_NATIVE_AUTHORIZATION_SCHEMA,
+        "board_namespace": (
+            "logic-governed-compositional-verification-fabric-v1"
+        ),
+        "target_generation": "lgcvf-run-v19",
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "candidate_config_path": DEFAULT_SUCCESSOR_CONFIG_RELATIVE.as_posix(),
+        "candidate_config_sha256": candidate_config_sha256,
+        "successor_provenance_cid": receipt_cid,
+        "native_pin": dict(pin_payload),
+        "claims": {
+            "capsule_exact_match_required": True,
+            "parent_loader_environment_sanitized_before_exec": True,
+            "quack_extension_install_policy": "load_only",
+            "ducklake_authority": False,
+        },
+    }
+    return "sha256:" + hashlib.sha256(_canonical_bytes(body)).hexdigest()
+
+
+def _remove_private_live_capsule_parent(path: Path | None) -> None:
+    """Remove only this launch's owner-private temporary capsule directory."""
+
+    if path is None:
+        return
+    parent = Path(path)
+    try:
+        temporary_root = Path(tempfile.gettempdir()).resolve(strict=True)
+        observed_parent = os.lstat(parent)
+        if (
+            parent.parent.resolve(strict=True) != temporary_root
+            or not parent.name.startswith(
+                f"lgcvf-live-capsule-{os.geteuid()}-"
+            )
+            or not stat.S_ISDIR(observed_parent.st_mode)
+            or stat.S_ISLNK(observed_parent.st_mode)
+            or observed_parent.st_uid != os.geteuid()
+        ):
+            return
+        entries = tuple(parent.rglob("*"))
+        if any(
+            stat.S_ISLNK(os.lstat(entry).st_mode)
+            or os.lstat(entry).st_uid != os.geteuid()
+            for entry in entries
+        ):
+            return
+        for directory in sorted(
+            (entry for entry in entries if entry.is_dir()),
+            key=lambda entry: len(entry.parts),
+            reverse=True,
+        ):
+            os.chmod(directory, 0o700)
+        os.chmod(parent, 0o700)
+        shutil.rmtree(parent)
+    except OSError:
+        return
+
+
 def _child_environment(
     *,
     token: str,
@@ -3097,13 +3395,29 @@ def _child_environment(
     owner_state: Path,
     root: Path,
     rendered_environment: Mapping[str, Any] | None = None,
+    launch_home: Path | None = None,
 ) -> dict[str, str]:
-    environment = dict(os.environ)
     rendered = dict(rendered_environment or {})
-    if TOKEN_ENV in rendered or TOKEN_FILE_ENV in rendered:
-        raise SuccessorOperatorError(
-            "configured scheduler rendered an attach-credential environment field"
+    if (
+        TOKEN_ENV in rendered
+        or TOKEN_FILE_ENV in rendered
+        or not set(rendered).issubset(LGCVF_LIVE_RENDERED_ENV_NAMES)
+        or any(
+            not isinstance(name, str)
+            or not isinstance(value, (str, int, float))
+            or "\x00" in str(value)
+            for name, value in rendered.items()
         )
+    ):
+        raise SuccessorOperatorError(
+            "configured scheduler rendered a foreign environment field"
+        )
+    environment = {
+        name: str(os.environ[name])
+        for name in ("LANG", "LC_ALL", "LC_CTYPE", "TZ")
+        if name in os.environ and "\x00" not in str(os.environ[name])
+    }
+    environment["PATH"] = "/usr/bin:/bin"
     environment.update({str(name): str(value) for name, value in rendered.items()})
     environment[TOKEN_ENV] = token
     environment[TOKEN_FILE_ENV] = str(_token_sink(owner_state))
@@ -3117,21 +3431,20 @@ def _child_environment(
     environment[BOARD_EXTENSION_INSTALL_POLICY_ENV] = (
         BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
     )
-    child_pycache = owner_state / "python-pycache"
-    child_pycache.mkdir(mode=0o700, parents=True, exist_ok=True)
-    _privatize_owned_directory(child_pycache, noun="scheduler Python bytecode root")
-    for name in (
-        "PYTHONHOME",
-        "PYTHONINSPECT",
-        "PYTHONSTARTUP",
-        "PYTHONUSERBASE",
+    home = Path(launch_home) if launch_home is not None else owner_state
+    environment["HOME"] = str(home)
+    if launch_home is not None:
+        environment["IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME"] = str(home)
+        environment["XDG_CACHE_HOME"] = str(home / ".cache" / "xdg")
+        environment["CUDA_CACHE_PATH"] = str(home / ".cache" / "cuda")
+        environment["CUDA_CACHE_DISABLE"] = "1"
+    if any(
+        name.startswith(("LD_", "PYTHON")) or name == "GLIBC_TUNABLES"
+        for name in environment
     ):
-        environment.pop(name, None)
-    environment["PYTHONPATH"] = os.pathsep.join(
-        (str(root), str(root / "ipfs_datasets_py"))
-    )
-    environment["PYTHONPYCACHEPREFIX"] = str(child_pycache)
-    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        raise SuccessorOperatorError(
+            "scheduler environment retained ambient loader or Python authority"
+        )
     return environment
 
 
@@ -3240,6 +3553,694 @@ def run_successor(
             lock_handle.close()
 
 
+def _preload_lgcvf_live_controller_dependency_closure() -> tuple[str, ...]:
+    """Import every repository module the live controller can call later."""
+
+    loaded: list[str] = []
+    for module_name in LGCVF_LIVE_CONTROLLER_PRELOAD_MODULES:
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as exc:
+            raise SuccessorOperatorError(
+                "LGCVF live controller dependency closure is unavailable: "
+                f"{module_name}: {type(exc).__name__}"
+            ) from exc
+        if getattr(module, "__name__", None) != module_name:
+            raise SuccessorOperatorError(
+                "LGCVF live controller dependency identity differs: "
+                f"{module_name}"
+            )
+        loaded.append(module_name)
+    return tuple(loaded)
+
+
+def _lgcvf_live_module_expected_members(module_name: str) -> frozenset[str]:
+    """Return the only capsule members allowed to implement one module name."""
+
+    if module_name == "ipfs_datasets_py":
+        return frozenset(
+            {
+                "ipfs_datasets_py/__init__.py",
+                "ipfs_datasets_py/ipfs_datasets_py/__init__.py",
+            }
+        )
+    if module_name.startswith("ipfs_datasets_py."):
+        stem = "ipfs_datasets_py/" + module_name.replace(".", "/")
+    elif any(
+        module_name == prefix or module_name.startswith(prefix + ".")
+        for prefix in ("ipfs_accelerate_py", "scripts")
+    ):
+        stem = module_name.replace(".", "/")
+    else:
+        return frozenset()
+    return frozenset({stem + ".py", stem + "/__init__.py"})
+
+
+def _lgcvf_live_manifest_member(
+    relative: str,
+    *,
+    manifest_files: Mapping[str, str],
+    read_member: Any,
+    noun: str,
+) -> bytes:
+    """Read one member and bind it to the authenticated manifest digest."""
+
+    digest = manifest_files.get(relative)
+    if (
+        not isinstance(digest, str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None
+    ):
+        raise SuccessorOperatorError(f"{noun} is absent from the sealed capsule")
+    try:
+        raw = read_member(relative)
+    except (KeyError, OSError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise SuccessorOperatorError(
+            f"{noun} cannot be read from the sealed capsule"
+        ) from exc
+    if (
+        type(raw) is not bytes
+        or len(raw) > 64 * 1024 * 1024
+        or "sha256:" + hashlib.sha256(raw).hexdigest() != digest
+    ):
+        raise SuccessorOperatorError(f"{noun} sealed capsule bytes differ")
+    return raw
+
+
+def _lgcvf_live_sealed_manifest_inventory(
+    capsule_pin: Any,
+    capsule_descriptor: int,
+) -> tuple[str, dict[str, str]]:
+    """Read the already-verified manifest from the immutable archive itself."""
+
+    from ipfs_accelerate_py.agent_implementation_route import (
+        verify_lgcvf_configured_board_live_sealed_capsule,
+    )
+
+    try:
+        archive_path = verify_lgcvf_configured_board_live_sealed_capsule(
+            capsule_pin,
+            capsule_descriptor,
+        )
+        with zipfile.ZipFile(archive_path, mode="r") as archive:
+            manifest_raw = archive.read(LGCVF_LIVE_CAPSULE_MANIFEST_MEMBER)
+    except (KeyError, OSError, RuntimeError, ValueError, zipfile.BadZipFile) as exc:
+        raise SuccessorOperatorError(
+            "LGCVF live sealed capsule manifest is unavailable"
+        ) from exc
+    if not 0 < len(manifest_raw) <= 8 * 1024 * 1024:
+        raise SuccessorOperatorError(
+            "LGCVF live sealed capsule manifest is out of bounds"
+        )
+
+    def reject_duplicates(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate manifest key")
+            result[key] = value
+        return result
+
+    try:
+        manifest = json.loads(
+            manifest_raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicates,
+        )
+        canonical = (
+            json.dumps(
+                manifest,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            ).encode("utf-8")
+            + b"\n"
+        )
+    except (UnicodeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise SuccessorOperatorError(
+            "LGCVF live sealed capsule manifest is invalid"
+        ) from exc
+    files = manifest.get("files") if isinstance(manifest, Mapping) else None
+    if (
+        manifest_raw != canonical
+        or not isinstance(files, dict)
+        or manifest.get("capsule_id") != getattr(capsule_pin, "capsule_id", None)
+        or manifest.get("operator_path")
+        != getattr(capsule_pin, "operator_path", None)
+        or manifest.get("operator_sha256")
+        != getattr(capsule_pin, "operator_sha256", None)
+        or manifest.get("candidate_config_path")
+        != getattr(capsule_pin, "candidate_config_path", None)
+        or manifest.get("candidate_config_sha256")
+        != getattr(capsule_pin, "candidate_config_sha256", None)
+    ):
+        raise SuccessorOperatorError(
+            "LGCVF live sealed capsule manifest identity differs"
+        )
+    normalized: dict[str, str] = {}
+    for relative, digest in files.items():
+        path = Path(str(relative))
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or path.is_absolute()
+            or ".." in path.parts
+            or relative != path.as_posix()
+            or not isinstance(digest, str)
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None
+        ):
+            raise SuccessorOperatorError(
+                "LGCVF live sealed capsule manifest inventory differs"
+            )
+        normalized[relative] = digest
+    return archive_path, normalized
+
+
+def _audit_lgcvf_live_loaded_repository_modules(
+    *,
+    root: Path,
+    operator_path: Path,
+    manifest_files: Mapping[str, str],
+    read_member: Any,
+    modules: Mapping[str, Any] | None = None,
+) -> tuple[str, ...]:
+    """Bind loaded repository source origins and current bytes to the capsule."""
+
+    try:
+        exact_root = root.resolve(strict=True)
+        exact_datasets_root = (exact_root / "ipfs_datasets_py").resolve(
+            strict=True
+        )
+        exact_operator = operator_path.resolve(strict=True)
+    except OSError as exc:
+        raise SuccessorOperatorError(
+            "LGCVF live loaded-source roots are unavailable"
+        ) from exc
+    expected_operator = exact_root / (
+        "scripts/run_logic_governed_compositional_verification_fabric_quack.py"
+    )
+    if exact_operator != expected_operator:
+        raise SuccessorOperatorError(
+            "LGCVF live outer operator origin differs"
+        )
+    operator_member = expected_operator.relative_to(exact_root).as_posix()
+    sealed_operator = _lgcvf_live_manifest_member(
+        operator_member,
+        manifest_files=manifest_files,
+        read_member=read_member,
+        noun="LGCVF live outer operator",
+    )
+    current_operator = _read_bounded_regular_file(
+        exact_operator,
+        max_bytes=64 * 1024 * 1024,
+        noun="LGCVF live outer operator",
+    )
+    if current_operator != sealed_operator:
+        raise SuccessorOperatorError(
+            "LGCVF live outer operator bytes differ from the sealed capsule"
+        )
+
+    module_table = sys.modules if modules is None else modules
+    audited: list[str] = []
+    member_owners: dict[str, tuple[str, Any]] = {}
+    for module_name, module in sorted(module_table.items()):
+        namespace_member = any(
+            module_name == prefix or module_name.startswith(prefix + ".")
+            for prefix in LGCVF_LIVE_REPOSITORY_MODULE_PREFIXES
+        )
+        module_file = getattr(module, "__file__", None) if module is not None else None
+        if isinstance(module_file, str):
+            lexical_file = Path(module_file)
+            under_repository = False
+            if lexical_file.is_absolute():
+                try:
+                    lexical_file.relative_to(exact_root)
+                    under_repository = True
+                except ValueError:
+                    pass
+        else:
+            lexical_file = None
+            under_repository = False
+        if not namespace_member and not under_repository:
+            continue
+        if module is None or lexical_file is None:
+            raise SuccessorOperatorError(
+                f"LGCVF live loaded repository module origin is invalid: {module_name}"
+            )
+        if module_name == "__main__":
+            try:
+                main_origin = lexical_file.resolve(strict=True)
+            except OSError as exc:
+                raise SuccessorOperatorError(
+                    "LGCVF live outer operator module origin is unavailable"
+                ) from exc
+            if main_origin == exact_operator:
+                continue
+        if not lexical_file.is_absolute():
+            raise SuccessorOperatorError(
+                f"LGCVF live loaded repository module origin is invalid: {module_name}"
+            )
+        spec = getattr(module, "__spec__", None)
+        spec_origin = getattr(spec, "origin", None)
+        if not isinstance(spec_origin, str) or Path(spec_origin) != lexical_file:
+            raise SuccessorOperatorError(
+                f"LGCVF live loaded repository module origin differs: {module_name}"
+            )
+        try:
+            exact_file = lexical_file.resolve(strict=True)
+        except OSError as exc:
+            raise SuccessorOperatorError(
+                f"LGCVF live loaded repository module origin is unavailable: {module_name}"
+            ) from exc
+        if exact_file != lexical_file:
+            raise SuccessorOperatorError(
+                f"LGCVF live loaded repository module origin contains a link: {module_name}"
+            )
+        if exact_file == exact_operator:
+            continue
+        try:
+            nested_relative = exact_file.relative_to(exact_datasets_root)
+        except ValueError:
+            try:
+                relative = exact_file.relative_to(exact_root).as_posix()
+            except ValueError as exc:
+                raise SuccessorOperatorError(
+                    f"LGCVF live loaded repository module escaped the source root: {module_name}"
+                ) from exc
+        else:
+            relative = (
+                Path("ipfs_datasets_py") / nested_relative
+            ).as_posix()
+        previous_owner = member_owners.setdefault(relative, (module_name, module))
+        if previous_owner[1] is not module:
+            raise SuccessorOperatorError(
+                "LGCVF live loaded repository module origin is aliased"
+            )
+        sealed_source = _lgcvf_live_manifest_member(
+            relative,
+            manifest_files=manifest_files,
+            read_member=read_member,
+            noun=f"LGCVF live loaded repository module {module_name}",
+        )
+        current_source = _read_bounded_regular_file(
+            exact_file,
+            max_bytes=64 * 1024 * 1024,
+            noun=f"LGCVF live loaded repository module {module_name}",
+        )
+        if current_source != sealed_source:
+            raise SuccessorOperatorError(
+                "LGCVF live loaded repository module bytes differ from the "
+                f"sealed capsule: {module_name}"
+            )
+        audited.append(module_name)
+    if not set(LGCVF_LIVE_CONTROLLER_PRELOAD_MODULES).issubset(audited):
+        missing = sorted(set(LGCVF_LIVE_CONTROLLER_PRELOAD_MODULES) - set(audited))
+        raise SuccessorOperatorError(
+            "LGCVF live controller dependency closure is incomplete: "
+            + ", ".join(missing[:3])
+        )
+    return tuple(audited)
+
+
+def _retarget_lgcvf_live_repository_imports(
+    *,
+    root: Path,
+    archive_path: str,
+    modules: Mapping[str, Any] | None = None,
+    path_entries: list[str] | None = None,
+    meta_path: list[Any] | None = None,
+) -> tuple[str, ...]:
+    """Remove mutable repository import roots and project package paths to ZIP."""
+
+    exact_root = root.resolve(strict=True)
+    if (
+        not archive_path.startswith("/proc/self/fd/")
+        or not Path(archive_path).is_absolute()
+    ):
+        raise SuccessorOperatorError("LGCVF live sealed import root is invalid")
+    capsule_roots = (
+        archive_path + "/ipfs_datasets_py",
+        archive_path,
+    )
+    target_path = sys.path if path_entries is None else path_entries
+    retained: list[str] = []
+    for entry in target_path:
+        if entry in capsule_roots or not isinstance(entry, str) or not entry:
+            continue
+        if entry.startswith("__editable__.") or not Path(entry).is_absolute():
+            continue
+        try:
+            resolved = Path(entry).resolve(strict=False)
+            resolved.relative_to(exact_root)
+        except ValueError:
+            retained.append(entry)
+        else:
+            continue
+    target_path[:] = list(dict.fromkeys((*capsule_roots, *retained)))
+
+    allowed_meta = (
+        importlib.machinery.BuiltinImporter,
+        importlib.machinery.FrozenImporter,
+        importlib.machinery.PathFinder,
+    )
+    target_meta = sys.meta_path if meta_path is None else meta_path
+    if any(finder not in target_meta for finder in allowed_meta):
+        raise SuccessorOperatorError(
+            "LGCVF live standard import machinery is unavailable"
+        )
+    target_meta[:] = list(allowed_meta)
+
+    module_table = sys.modules if modules is None else modules
+    retargeted: list[str] = []
+    for module_name, module in sorted(module_table.items()):
+        if module is None:
+            continue
+        package_path = getattr(module, "__path__", None)
+        if package_path is None:
+            continue
+        module_file = getattr(module, "__file__", None)
+        if not isinstance(module_file, str) or not Path(module_file).is_absolute():
+            continue
+        try:
+            exact_file = Path(module_file).resolve(strict=True)
+            nested_relative = exact_file.relative_to(
+                exact_root / "ipfs_datasets_py"
+            )
+        except ValueError:
+            try:
+                relative = exact_file.relative_to(exact_root)
+            except (OSError, ValueError):
+                continue
+        except OSError:
+            continue
+        else:
+            relative = Path("ipfs_datasets_py") / nested_relative
+        if module_name == "ipfs_datasets_py":
+            sealed_package = archive_path + "/ipfs_datasets_py/ipfs_datasets_py"
+        else:
+            sealed_package = archive_path + "/" + relative.parent.as_posix()
+        projected = [sealed_package]
+        module.__path__ = projected
+        spec = getattr(module, "__spec__", None)
+        if spec is None or getattr(spec, "submodule_search_locations", None) is None:
+            raise SuccessorOperatorError(
+                f"LGCVF live loaded package spec differs: {module_name}"
+            )
+        spec.submodule_search_locations = projected
+        retargeted.append(module_name)
+
+    if path_entries is None and modules is None:
+        sys.path_importer_cache.clear()
+        importlib.invalidate_caches()
+    if tuple(target_path[:2]) != capsule_roots:
+        raise SuccessorOperatorError("LGCVF live sealed import roots drifted")
+    return tuple(retargeted)
+
+
+def _prepare_lgcvf_configured_board_live_launch(
+    *,
+    root: Path,
+    config_path: Path,
+    provenance: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Materialize and authenticate every byte needed by the live child.
+
+    This function has no database or Quack-owner effect.  It may create only a
+    private content-addressed capsule, sealed anonymous descriptors, and the
+    verified load-only extension HOME.  Its caller must close both descriptors
+    on every exit path.
+    """
+
+    expected_config = _contained(root, DEFAULT_SUCCESSOR_CONFIG_RELATIVE)
+    try:
+        exact_config = config_path.resolve(strict=True)
+    except OSError as exc:
+        raise SuccessorOperatorError(
+            "LGCVF live candidate config is unavailable"
+        ) from exc
+    if exact_config != expected_config:
+        raise SuccessorOperatorError(
+            "LGCVF live capsule requires the exact candidate config"
+        )
+    continuity = _candidate_runtime_continuity(root)
+    source_head = str(continuity.get("current_head") or "")
+    source_tree = str(continuity.get("current_tree") or "")
+    config_raw = _read_bounded_regular_file(
+        exact_config,
+        max_bytes=4 * 1024 * 1024,
+        noun="LGCVF live candidate config",
+    )
+    candidate_config_sha256 = (
+        "sha256:" + hashlib.sha256(config_raw).hexdigest()
+    )
+    runtime = _resolve_installed_duckdb_live_runtime()
+
+    from ipfs_accelerate_py.agent_implementation_route import (
+        materialize_lgcvf_configured_board_live_capsule,
+        project_lgcvf_configured_board_live_extensions,
+        seal_lgcvf_configured_board_live_capsule,
+        verify_lgcvf_configured_board_live_sealed_capsule,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        build_lgcvf_configured_board_live_admission,
+        verify_lgcvf_configured_board_live_context,
+    )
+    from ipfs_accelerate_py.llm_router import (
+        inspect_agent_supervisor_native_dependency_source,
+        seal_agent_supervisor_native_dependency,
+        verify_agent_supervisor_native_dependency_sealed_fd,
+    )
+
+    native_pin = inspect_agent_supervisor_native_dependency_source(
+        runtime["native_path"],
+        distribution_version=str(runtime["version"]),
+        engine_version=str(runtime["engine_version"]),
+    )
+    native_authorization_id = _lgcvf_live_native_authorization_id(
+        native_pin=native_pin,
+        provenance=provenance,
+        source_head=source_head,
+        source_tree=source_tree,
+        candidate_config_sha256=candidate_config_sha256,
+    )
+    capsule_parent = Path(
+        tempfile.mkdtemp(
+            prefix=f"lgcvf-live-capsule-{os.geteuid()}-",
+            dir=tempfile.gettempdir(),
+        )
+    )
+    os.chmod(capsule_parent, 0o700)
+    capsule = None
+    native_launch = None
+    try:
+        capsule_pin = materialize_lgcvf_configured_board_live_capsule(
+            source_root=root,
+            capsule_parent=capsule_parent,
+            source_head=source_head,
+            source_tree=source_tree,
+            python_executable=sys.executable,
+            duckdb_package_root=runtime["package_root"],
+            duckdb_distribution_metadata_root=runtime["metadata_root"],
+            duckdb_distribution_version=str(runtime["version"]),
+            quack_extension_path=runtime["quack_path"],
+            quack_extension_version=str(runtime["quack_version"]),
+            ducklake_extension_path=runtime["ducklake_path"],
+            ducklake_extension_version=str(runtime["ducklake_version"]),
+            httpfs_extension_path=runtime["httpfs_path"],
+            httpfs_extension_version=str(runtime["httpfs_version"]),
+            native_authorization_id=native_authorization_id,
+            native_dependency_id=native_pin.dependency_id,
+        )
+        if (
+            capsule_pin.source_head != source_head
+            or capsule_pin.source_tree != source_tree
+            or capsule_pin.candidate_config_sha256
+            != candidate_config_sha256
+            or capsule_pin.native_authorization_id
+            != native_authorization_id
+            or capsule_pin.native_dependency_id != native_pin.dependency_id
+            or capsule_pin.duckdb_distribution_version
+            != runtime["version"]
+            or capsule_pin.quack_extension.version
+            != runtime["quack_version"]
+            or capsule_pin.ducklake_extension.version
+            != runtime["ducklake_version"]
+            or capsule_pin.httpfs_extension.version
+            != runtime["httpfs_version"]
+        ):
+            raise SuccessorOperatorError(
+                "LGCVF live capsule differs from its controller admission"
+            )
+        capsule = seal_lgcvf_configured_board_live_capsule(capsule_pin)
+        if (
+            verify_lgcvf_configured_board_live_sealed_capsule(
+                capsule_pin,
+                capsule.descriptor,
+            )
+            != capsule.executable_path
+        ):
+            raise SuccessorOperatorError(
+                "LGCVF live capsule sealed descriptor drifted"
+            )
+        native_launch = seal_agent_supervisor_native_dependency(
+            runtime["native_path"],
+            expected_pin=native_pin,
+            accepted_authorization_id=native_authorization_id,
+        )
+        if (
+            native_launch.pin != native_pin
+            or native_launch.accepted_authorization_id
+            != native_authorization_id
+            or verify_agent_supervisor_native_dependency_sealed_fd(
+                native_launch
+            )
+            != f"/proc/self/fd/{native_launch.descriptor.descriptor}"
+        ):
+            raise SuccessorOperatorError(
+                "LGCVF native dependency sealed descriptor drifted"
+            )
+        admission = build_lgcvf_configured_board_live_admission(
+            capsule_pin,
+            native_launch,
+        )
+        capsule_pin_json = capsule_pin.to_json()
+        admission_json = admission.to_json()
+        native_launch_json = native_launch.to_json()
+        context = verify_lgcvf_configured_board_live_context(
+            capsule_pin_json=capsule_pin_json,
+            capsule_descriptor=capsule.descriptor,
+            admission_json=admission_json,
+            native_launch_json=native_launch_json,
+            native_descriptor=native_launch.descriptor.descriptor,
+        )
+        if context.admission != admission:
+            raise SuccessorOperatorError(
+                "LGCVF live capsule/native admission join drifted"
+            )
+        qualification_parent = _contained(
+            root,
+            LGCVF_LIVE_QUALIFICATION_HOMES_RELATIVE,
+        )
+        launch_home = project_lgcvf_configured_board_live_extensions(
+            capsule_pin,
+            capsule.descriptor,
+            qualification_parent,
+        )
+        expected_home = qualification_parent / capsule_pin.capsule_id.removeprefix(
+            "sha256:"
+        )
+        if launch_home != expected_home:
+            raise SuccessorOperatorError(
+                "LGCVF live extension HOME identity drifted"
+            )
+        preloaded_modules = _preload_lgcvf_live_controller_dependency_closure()
+        archive_path, manifest_files = _lgcvf_live_sealed_manifest_inventory(
+            capsule_pin,
+            capsule.descriptor,
+        )
+        try:
+            with zipfile.ZipFile(archive_path, mode="r") as archive:
+                sealed_config_raw = _lgcvf_live_manifest_member(
+                    capsule_pin.candidate_config_path,
+                    manifest_files=manifest_files,
+                    read_member=archive.read,
+                    noun="LGCVF live candidate config",
+                )
+        except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+            raise SuccessorOperatorError(
+                "LGCVF live sealed controller closure is unreadable"
+            ) from exc
+        if sealed_config_raw != config_raw:
+            raise SuccessorOperatorError(
+                "LGCVF live candidate config differs from the sealed capsule"
+            )
+        board, program, host, port = _validate_successor_board(
+            exact_config,
+            root,
+            config_bytes=sealed_config_raw,
+            admitted_live_validator_sha256=capsule_pin.validator_sha256,
+        )
+        try:
+            with zipfile.ZipFile(archive_path, mode="r") as archive:
+                audited_modules = _audit_lgcvf_live_loaded_repository_modules(
+                    root=root,
+                    operator_path=Path(__file__),
+                    manifest_files=manifest_files,
+                    read_member=archive.read,
+                )
+        except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+            raise SuccessorOperatorError(
+                "LGCVF live sealed controller closure is unreadable"
+            ) from exc
+        final_continuity = _candidate_runtime_continuity(root)
+        if final_continuity != continuity:
+            raise SuccessorOperatorError(
+                "LGCVF live source changed after controller closure admission"
+            )
+        retargeted_packages = _retarget_lgcvf_live_repository_imports(
+            root=root,
+            archive_path=archive_path,
+        )
+        return {
+            "capsule_parent": capsule_parent,
+            "capsule_pin": capsule_pin,
+            "capsule": capsule,
+            "capsule_pin_json": capsule_pin_json,
+            "admission": admission,
+            "admission_json": admission_json,
+            "native_launch": native_launch,
+            "native_launch_json": native_launch_json,
+            "launch_home": launch_home,
+            "pass_fds": context.pass_fds,
+            "board": board,
+            "program": program,
+            "host": host,
+            "port": port,
+            "sealed_config_raw": sealed_config_raw,
+            "preloaded_modules": preloaded_modules,
+            "audited_modules": audited_modules,
+            "retargeted_packages": retargeted_packages,
+        }
+    except BaseException:
+        if native_launch is not None:
+            try:
+                os.close(native_launch.descriptor.descriptor)
+            except OSError:
+                pass
+        if capsule is not None:
+            try:
+                os.close(capsule.descriptor)
+            except OSError:
+                pass
+        _remove_private_live_capsule_parent(capsule_parent)
+        raise
+
+
+def _close_lgcvf_configured_board_live_launch(
+    launch: Mapping[str, Any] | None,
+) -> None:
+    """Close only the two controller-owned sealed descriptors and capsule."""
+
+    if not launch:
+        return
+    descriptors = {
+        int(getattr(launch.get("capsule"), "descriptor", -1)),
+        int(
+            getattr(
+                getattr(launch.get("native_launch"), "descriptor", None),
+                "descriptor",
+                -1,
+            )
+        ),
+    }
+    for descriptor in descriptors:
+        if descriptor >= 3:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+    _remove_private_live_capsule_parent(launch.get("capsule_parent"))
+
+
 def _run_locked_successor(
     config_path: Path,
     *,
@@ -3248,53 +4249,14 @@ def _run_locked_successor(
     duration_seconds: float,
 ) -> int:
     paths = _paths(root)
-    provenance = _load_provenance(paths, root=root)
-    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
-        current_process_birth,
+    raw_provenance = _load_lgcvf_live_raw_provenance_receipt(paths)
+    live_launch = _prepare_lgcvf_configured_board_live_launch(
+        root=root,
+        config_path=config_path,
+        provenance=raw_provenance,
     )
-    from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
-        configured_board_launch_plan,
-    )
-    from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
-        harden_state_authority_process,
-    )
-    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
-        build_server,
-    )
-
-    board, program, host, port = _validate_successor_board(config_path, root)
-    rendered_plan = configured_board_launch_plan(
-        board,
-        implement=implement,
-        detach=False,
-        duration_seconds=duration_seconds,
-    )
-    rendered_environment = rendered_plan.get("environment")
-    if not isinstance(rendered_environment, Mapping):
-        raise SuccessorOperatorError("configured scheduler environment is unavailable")
-    expected_route_environment = {
-        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
-        "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.6",
-        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
-        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
-            "primary_quota_exhausted"
-        ),
-        "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
-        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "high",
-    }
-    if any(
-        rendered_environment.get(name) != value
-        for name, value in expected_route_environment.items()
-    ):
-        raise SuccessorOperatorError(
-            "configured scheduler did not render the reviewed ordered provider route"
-        )
-    # The owner-command dispatcher validates the board's logical generation
-    # independently of the live integer server generation.
-    os.environ[STORE_GENERATION_ENV] = program.store_generation
-    paths["owner_state"].mkdir(mode=0o700, parents=True, exist_ok=True)
-    _prepare_private_owner_socket(paths["owner_socket"])
     server: Any | None = None
+    previous_extension_environment: dict[str, str | None] = {}
 
     def stop_owner() -> Mapping[str, Any]:
         nonlocal server
@@ -3305,10 +4267,137 @@ def _run_locked_successor(
         return owned_server.stop()
 
     try:
-        if _load_provenance(paths, root=root) != provenance:
+        launch_home = Path(live_launch["launch_home"])
+        extension_environment = {
+            "HOME": str(launch_home),
+            "IPFS_ACCELERATE_AGENT_TRUSTED_DUCKDB_HOME": str(launch_home),
+            "XDG_CACHE_HOME": str(launch_home / ".cache" / "xdg"),
+            "CUDA_CACHE_PATH": str(launch_home / ".cache" / "cuda"),
+            "CUDA_CACHE_DISABLE": "1",
+            BOARD_EXTENSION_INSTALL_POLICY_ENV: (
+                BOARD_EXTENSION_INSTALL_POLICY_LOAD_ONLY
+            ),
+            STORE_GENERATION_ENV: "lgcvf-run-v19",
+        }
+        previous_extension_environment.update(
+            {name: os.environ.get(name) for name in extension_environment}
+        )
+        forbidden_loader_environment = {
+            name
+            for name in os.environ
+            if name.startswith("LD_") or name == "GLIBC_TUNABLES"
+        }
+        if forbidden_loader_environment:
             raise SuccessorOperatorError(
-                "successor provenance changed before owner construction"
+                "LGCVF native owner inherited ambient loader authority"
             )
+        os.environ.update(extension_environment)
+        from ipfs_accelerate_py.llm_router import (
+            preload_agent_supervisor_native_dependency,
+        )
+
+        preload_agent_supervisor_native_dependency(live_launch["native_launch"])
+        provenance = _load_provenance(paths, root=root)
+        if provenance != raw_provenance:
+            raise SuccessorOperatorError(
+                "verified successor provenance differs from native authorization"
+            )
+        from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+            current_process_birth,
+        )
+        from ipfs_accelerate_py.agent_supervisor.runtime.configured_board_scheduler import (
+            configured_board_launch_plan,
+        )
+        from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+            establish_state_authority_process_boundary,
+            harden_state_authority_process,
+        )
+
+        board = live_launch["board"]
+        program = live_launch["program"]
+        host = str(live_launch["host"])
+        port = int(live_launch["port"])
+        if program.store_generation != extension_environment[STORE_GENERATION_ENV]:
+            raise SuccessorOperatorError(
+                "configured board differs from the admitted live generation"
+            )
+        rendered_plan = configured_board_launch_plan(
+            board,
+            implement=implement,
+            detach=False,
+            duration_seconds=duration_seconds,
+        )
+        rendered_environment = rendered_plan.get("environment")
+        if not isinstance(rendered_environment, Mapping):
+            raise SuccessorOperatorError(
+                "configured scheduler environment is unavailable"
+            )
+        expected_route_environment = {
+            "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER": "grok_cli",
+            "IPFS_ACCELERATE_AGENT_GROK_MODEL": "grok-4.6",
+            "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER": "codex",
+            "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER": (
+                "primary_quota_exhausted"
+            ),
+            "IPFS_ACCELERATE_AGENT_CODEX_MODEL": "gpt-5.6-terra",
+            "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT": "high",
+        }
+        if any(
+            rendered_environment.get(name) != value
+            for name, value in expected_route_environment.items()
+        ):
+            raise SuccessorOperatorError(
+                "configured scheduler did not render the reviewed ordered "
+                "provider route"
+            )
+        scheduler_argv = [
+            "--repo-root",
+            str(root),
+            "--config",
+            str(config_path),
+            "--configured-board-live-capsule-pin-json",
+            str(live_launch["capsule_pin_json"]),
+            "--configured-board-live-capsule-fd",
+            str(live_launch["capsule"].descriptor),
+            "--configured-board-live-admission-json",
+            str(live_launch["admission_json"]),
+            "--configured-board-live-native-launch-json",
+            str(live_launch["native_launch_json"]),
+            "--configured-board-live-native-fd",
+            str(live_launch["native_launch"].descriptor.descriptor),
+            "launch",
+            "--foreground",
+            "--duration-seconds",
+            str(duration_seconds),
+        ]
+        if implement:
+            scheduler_argv.append("--implement")
+        from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+            build_lgcvf_configured_board_live_module_command,
+        )
+
+        command = build_lgcvf_configured_board_live_module_command(
+            python_executable=sys.executable,
+            capsule_pin_json=str(live_launch["capsule_pin_json"]),
+            capsule_descriptor=live_launch["capsule"].descriptor,
+            admission_json=str(live_launch["admission_json"]),
+            native_launch_json=str(live_launch["native_launch_json"]),
+            native_descriptor=live_launch["native_launch"].descriptor.descriptor,
+            module_name=LGCVF_LIVE_SCHEDULER_MODULE,
+            argv=scheduler_argv,
+        )
+        from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+            build_server,
+        )
+
+        # The owner-command dispatcher validates the logical generation
+        # independently of the live integer server generation.
+        # Establish the kernel boundary before Quack owner construction can
+        # mint or stage an attach credential.  The post-mint call below also
+        # verifies that the recognized credential-bearing path remains hard.
+        establish_state_authority_process_boundary()
+        paths["owner_state"].mkdir(mode=0o700, parents=True, exist_ok=True)
+        _prepare_private_owner_socket(paths["owner_socket"])
         controller_birth = current_process_birth()
         server = build_server(
             database_path=paths["successor_database"],
@@ -3344,24 +4433,6 @@ def _run_locked_successor(
             stop_owner()
             raise SuccessorOperatorError("owner published its Quack attach token")
 
-        command = [
-            sys.executable,
-            str(
-                _contained(
-                    root, "scripts/ops/agent_supervisor/configured_board_scheduler.py"
-                )
-            ),
-            "--repo-root",
-            str(root),
-            "--config",
-            str(config_path),
-            "launch",
-            "--foreground",
-            "--duration-seconds",
-            str(duration_seconds),
-        ]
-        if implement:
-            command.append("--implement")
         if any(token in item for item in command):
             stop_owner()
             raise SuccessorOperatorError("scheduler argv would contain the Quack token")
@@ -3371,6 +4442,7 @@ def _run_locked_successor(
             owner_state=paths["owner_state"],
             root=root,
             rendered_environment=rendered_environment,
+            launch_home=launch_home,
         )
         paths["controller_log"].parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         log_handle = paths["controller_log"].open("ab")
@@ -3392,8 +4464,15 @@ def _run_locked_successor(
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 env=environment,
+                pass_fds=tuple(live_launch["pass_fds"]),
                 start_new_session=True,
             )
+            # Popen returns only after the child has crossed exec.  The child
+            # owns inherited references; close the controller copies and drop
+            # the disk capsule now so descriptor numbers cannot later be reused
+            # and accidentally re-closed by the outer cleanup.
+            _close_lgcvf_configured_board_live_launch(live_launch)
+            live_launch = None
             scheduler_birth = _exact_birth(scheduler.pid)
             for signum in (signal.SIGINT, signal.SIGTERM):
                 prior_handlers[signum] = signal.signal(signum, request_stop)
@@ -3492,6 +4571,12 @@ def _run_locked_successor(
                     "LGCVF owner emergency stop failed: "
                     f"{type(cleanup_exc).__name__}\n"
                 )
+        for name, previous in previous_extension_environment.items():
+            if previous is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = previous
+        _close_lgcvf_configured_board_live_launch(live_launch)
 
 
 def controller_status(root: Path = ROOT) -> dict[str, Any]:
@@ -3546,7 +4631,7 @@ def _extension_preflight() -> dict[str, Any]:
             connection.execute("SET autoinstall_known_extensions = false")
             connection.execute("SET autoload_known_extensions = false")
             loaded: dict[str, str] = {}
-            for extension in ("quack", "ducklake"):
+            for extension in ("quack", "ducklake", "httpfs"):
                 connection.execute(f"LOAD {extension}")
                 row = connection.execute(
                     "SELECT installed, loaded, extension_version FROM duckdb_extensions() "

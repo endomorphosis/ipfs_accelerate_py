@@ -1574,17 +1574,17 @@ def test_accepted_tree_entries_ignore_hostile_python_import_authority(
         source_tree=source_tree,
     )
     sealed_modules = (
-        multi_runner_module.PLAN_BOUND_LAUNCH_GATE_MODULE,
-        (
+        (multi_runner_module.PLAN_BOUND_LAUNCH_GATE_MODULE, 0),
+        ((
             "ipfs_accelerate_py.agent_supervisor.runtime."
             "configured_board_scheduler"
-        ),
-        (
+        ), 0),
+        ((
             "ipfs_accelerate_py.agent_supervisor.todo_daemon."
             "implementation_supervisor"
-        ),
+        ), 78),
     )
-    for sealed_module in sealed_modules:
+    for sealed_module, expected_returncode in sealed_modules:
         sealed_command = (
             multi_runner_module.build_sealed_control_plane_module_command(
                 python_executable=sys.executable,
@@ -1604,8 +1604,11 @@ def test_accepted_tree_entries_ignore_hostile_python_import_authority(
             check=False,
             timeout=30,
         )
-        assert sealed_result.returncode == 0, sealed_result.stderr
-        assert "usage:" in sealed_result.stdout
+        assert sealed_result.returncode == expected_returncode, sealed_result.stderr
+        if expected_returncode == 0:
+            assert "usage:" in sealed_result.stdout
+        else:
+            assert sealed_result.stdout == ""
         assert not sentinel.exists()
     entries = (
         REPO_ROOT
@@ -1628,13 +1631,6 @@ def test_accepted_tree_entries_ignore_hostile_python_import_authority(
         assert not sentinel.exists()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "ASE3-031 must require an independently accepted sealed native "
-        "DuckDB launch before importing the implementation supervisor"
-    ),
-)
 def test_sealed_bootstrap_denies_missing_native_dependency_pin(
     tmp_path: Path,
 ) -> None:
@@ -1670,6 +1666,96 @@ def test_sealed_bootstrap_denies_missing_native_dependency_pin(
         timeout=30,
     )
     assert result.returncode == 78
+
+
+def test_implementation_daemon_rehardens_before_argument_parsing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The token-bearing daemon restores its kernel boundary after exec."""
+
+    from ipfs_accelerate_py.agent_supervisor.runtime import process_security
+
+    events: list[str] = []
+
+    def harden() -> bool:
+        events.append("harden")
+        return True
+
+    def stop_before_parse(_argv: list[str] | None = None) -> None:
+        events.append("parse")
+        raise RuntimeError("stop after observing entry order")
+
+    monkeypatch.setattr(
+        process_security,
+        "harden_state_authority_process",
+        harden,
+    )
+    monkeypatch.setattr(daemon_module, "parse_args", stop_before_parse)
+    with pytest.raises(RuntimeError, match="entry order"):
+        daemon_module.main([])
+    assert events == ["harden", "parse"]
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="in-memory state-authority isolation is Linux-specific",
+)
+def test_state_authority_capture_removes_ambient_subprocess_credential() -> None:
+    script = r'''
+import json
+import os
+import subprocess
+import sys
+
+from ipfs_accelerate_py.agent_supervisor.runtime.process_security import (
+    capture_state_authority_credentials,
+    forward_env_secret_handle_credentials,
+    state_authority_credential,
+)
+
+name = "IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
+expected = os.environ[name]
+assert capture_state_authority_credentials() is True
+assert name not in os.environ
+assert state_authority_credential(name) == expected
+probe_code = (
+    "import os; raise SystemExit(1 if "
+    "os.getenv('IPFS_ACCELERATE_AGENT_QUACK_TOKEN') else 0)"
+)
+probe = subprocess.run(
+    [sys.executable, "-c", probe_code],
+    check=False,
+)
+trusted = {}
+forward_env_secret_handle_credentials(
+    trusted,
+    secret_handle="env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN",
+    source_environment=os.environ,
+)
+print(json.dumps({
+    "generic_child_token_free": probe.returncode == 0,
+    "trusted_hop_restored": trusted.get(name) == expected,
+}))
+'''
+    environment = dict(os.environ)
+    environment["IPFS_ACCELERATE_AGENT_QUACK_TOKEN"] = (
+        "capture_regression_token_0123456789"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert json.loads(completed.stdout) == {
+        "generic_child_token_free": True,
+        "trusted_hop_restored": True,
+    }
 
 
 def test_detached_coordinator_pid_projection_rejects_symlink_and_hardlink(
@@ -10803,3 +10889,304 @@ def test_configured_board_live_seal_real_birth_rejects_before_startup_hook(
     )
     assert completed.returncode == 78
     assert not sentinel.exists()
+
+
+_REAL_NONDUMPABLE_GATE_CODE = (
+    "import ctypes,os,sys\n"
+    "libc=ctypes.CDLL(None,use_errno=True)\n"
+    "if libc.prctl(4,0,0,0,0)!=0 or libc.prctl(3,0,0,0,0)!=0:\n"
+    "    raise OSError(ctypes.get_errno(),'prctl')\n"
+    "print('ready:0',flush=True)\n"
+    "os.read(int(sys.argv[1]),1)\n"
+)
+
+
+def _spawn_real_nondumpable_live_gate(
+    tmp_path: Path,
+) -> tuple[
+    subprocess.Popen[Any],
+    int,
+    multi_runner_module.LifecycleProfile,
+    Path,
+    Path,
+    Path,
+]:
+    repo = (tmp_path / "repo").resolve()
+    state_dir = repo / "state"
+    run_root = state_dir / "run"
+    run_root.mkdir(parents=True)
+    todo_path = repo / "TODO.md"
+    _write(todo_path, "# test board\n")
+    read_fd, write_fd = os.pipe()
+    command = (
+        sys.executable,
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        _REAL_NONDUMPABLE_GATE_CODE,
+        str(read_fd),
+    )
+    profile = multi_runner_module.LifecycleProfile(
+        target_id="supervisor-track:lgcvf-lane-0",
+        run_id="test-lgcvf-live-nondumpable-gate",
+        configuration_root="test-lgcvf-live-nondumpable-config",
+        repository_root=str(repo),
+        state_root=str(state_dir),
+        run_root=str(run_root),
+        argv=command,
+        cwd=str(repo),
+    )
+    try:
+        process = _spawn_test_process(
+            command,
+            cwd=repo,
+            env=profile.launch_environment(0),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            pass_fds=(read_fd,),
+            start_new_session=True,
+        )
+    finally:
+        os.close(read_fd)
+    assert process.stdout is not None
+    assert process.stdout.readline().strip() == "ready:0"
+    return process, write_fd, profile, repo, state_dir, todo_path
+
+
+def _test_live_daemon_termination_authority(
+    *,
+    profile: multi_runner_module.LifecycleProfile,
+    repo: Path,
+    state_dir: Path,
+    todo_path: Path,
+    sealed_command_prefix: tuple[str, ...],
+) -> multi_runner_module._LgcvfLiveDaemonTerminationAuthority:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+        supervised_child_identity_path,
+    )
+
+    state_prefix = "lgcvf_lane_0"
+    pid_path = state_dir / f"{state_prefix}_managed_daemon.pid"
+    owner_scope = {
+        "repo_root": str(repo),
+        "state_dir": str(state_dir),
+        "state_prefix": state_prefix,
+        "todo_path": str(todo_path),
+        "daemon_entrypoint": (
+            "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+            "implementation_daemon"
+        ),
+    }
+    return multi_runner_module._LgcvfLiveDaemonTerminationAuthority(
+        profile_id=profile.profile_id,
+        state_dir=state_dir,
+        state_prefix=state_prefix,
+        todo_path=todo_path,
+        pid_path=pid_path,
+        identity_path=supervised_child_identity_path(pid_path),
+        owner_scope=tuple(sorted(owner_scope.items())),
+        sealed_command_prefix=sealed_command_prefix,
+    )
+
+
+def _bind_test_live_termination_authority(
+    process: subprocess.Popen[Any],
+    *,
+    profile: multi_runner_module.LifecycleProfile,
+    identity: Any,
+    authority: multi_runner_module._LgcvfLiveDaemonTerminationAuthority,
+) -> None:
+    process._agent_supervisor_lifecycle_profile = profile
+    process._agent_supervisor_process_identity = identity
+    process._agent_supervisor_live_admission_id = "sha256:" + "a" * 64
+    process._agent_supervisor_live_capsule_id = "sha256:" + "b" * 64
+    process._agent_supervisor_live_daemon_termination_authority = authority
+
+
+def _force_stop_real_live_test_process(process: subprocess.Popen[Any]) -> None:
+    if process.poll() is None:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+    try:
+        process.wait(timeout=5)
+    except (ChildProcessError, subprocess.TimeoutExpired):
+        pass
+
+
+def test_lgcvf_live_parent_attested_birth_fences_real_nondumpable_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process, write_fd, profile, repo, state_dir, todo_path = (
+        _spawn_real_nondumpable_live_gate(tmp_path)
+    )
+    try:
+        with pytest.raises(OSError) as denied:
+            Path(f"/proc/{process.pid}/environ").read_bytes()
+        assert denied.value.errno in {errno.EACCES, errno.EPERM}
+        assert not multi_runner_module.LinuxProcessAdapter().snapshot(
+            profile
+        ).members
+
+        def forbidden_proc_identity_field(*_args: Any) -> Any:
+            raise AssertionError("live gate capture read a ptrace-gated field")
+
+        monkeypatch.setattr(
+            multi_runner_module.LinuxProcessAdapter,
+            "_environ",
+            staticmethod(forbidden_proc_identity_field),
+        )
+        monkeypatch.setattr(
+            multi_runner_module.LinuxProcessAdapter,
+            "_argv",
+            staticmethod(forbidden_proc_identity_field),
+        )
+        identity = multi_runner_module._capture_lgcvf_live_gated_process_identity(
+            process,
+            profile,
+        )
+        assert identity.pid == process.pid
+        assert identity.argv == profile.argv
+        assert identity.parent_pid == os.getpid()
+        assert identity.process_group_id == process.pid
+        assert identity.session_id == process.pid
+        authority = _test_live_daemon_termination_authority(
+            profile=profile,
+            repo=repo,
+            state_dir=state_dir,
+            todo_path=todo_path,
+            sealed_command_prefix=("sealed-test-daemon",),
+        )
+        _bind_test_live_termination_authority(
+            process,
+            profile=profile,
+            identity=identity,
+            authority=authority,
+        )
+        fenced, stopped = multi_runner_module._terminate_managed_process(
+            process,
+            grace_seconds=0.2,
+        )
+        assert fenced is True
+        assert process.pid in stopped
+        process.wait(timeout=5)
+        assert multi_runner_module._lgcvf_live_exact_root_state(identity) == "dead"
+    finally:
+        try:
+            os.close(write_fd)
+        except OSError:
+            pass
+        _force_stop_real_live_test_process(process)
+
+
+def test_lgcvf_live_exited_root_fences_real_nondumpable_daemon_sidecar(
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+        write_supervised_child_identity,
+    )
+
+    root, write_fd, profile, repo, state_dir, todo_path = (
+        _spawn_real_nondumpable_live_gate(tmp_path)
+    )
+    cleanup_processes = [root]
+    cleanup_descriptors = {write_fd}
+
+    def cleanup() -> None:
+        for descriptor in cleanup_descriptors:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        for child in reversed(cleanup_processes):
+            _force_stop_real_live_test_process(child)
+
+    request.addfinalizer(cleanup)
+    identity = multi_runner_module._capture_lgcvf_live_gated_process_identity(
+        root,
+        profile,
+    )
+    os.write(write_fd, b"1")
+    os.close(write_fd)
+    cleanup_descriptors.discard(write_fd)
+    root.wait(timeout=5)
+    assert multi_runner_module._lgcvf_live_exact_root_state(identity) == "dead"
+
+    daemon_code = (
+        "import ctypes,time\n"
+        "libc=ctypes.CDLL(None,use_errno=True)\n"
+        "if libc.prctl(4,0,0,0,0)!=0 or libc.prctl(3,0,0,0,0)!=0:\n"
+        "    raise OSError(ctypes.get_errno(),'prctl')\n"
+        "print('ready:0',flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    sealed_prefix = (
+        sys.executable,
+        "-I",
+        "-S",
+        "-B",
+        "-c",
+        daemon_code,
+    )
+    daemon_command = (
+        *sealed_prefix,
+        "--state-dir",
+        str(state_dir),
+        "--state-prefix",
+        "lgcvf_lane_0",
+        "--todo-path",
+        str(todo_path),
+        "--board-namespace",
+        multi_runner_module.LGCVF_CONFIGURED_BOARD_LIVE_NAMESPACE,
+        "--task-shard-count",
+        "4",
+        "--task-shard-index",
+        "0",
+        "--strict-task-sharding",
+    )
+    daemon = _spawn_test_process(
+        daemon_command,
+        cwd=repo,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    cleanup_processes.append(daemon)
+    assert daemon.stdout is not None
+    assert daemon.stdout.readline().strip() == "ready:0"
+    authority = _test_live_daemon_termination_authority(
+        profile=profile,
+        repo=repo,
+        state_dir=state_dir,
+        todo_path=todo_path,
+        sealed_command_prefix=sealed_prefix,
+    )
+    write_supervised_child_identity(
+        authority.identity_path,
+        pid=daemon.pid,
+        command=daemon_command,
+        owner_scope=dict(authority.owner_scope),
+        require_direct_child=True,
+    )
+    _write(authority.pid_path, f"{daemon.pid}\n")
+    _bind_test_live_termination_authority(
+        root,
+        profile=profile,
+        identity=identity,
+        authority=authority,
+    )
+    fenced, stopped = multi_runner_module._terminate_managed_process(
+        root,
+        grace_seconds=0.2,
+    )
+    assert fenced is True
+    assert daemon.pid in stopped
+    daemon.wait(timeout=5)

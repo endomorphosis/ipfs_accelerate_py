@@ -2883,7 +2883,9 @@ def _execute_quack_owner_mutation(
         bound = dict(parameters)
     else:
         bound = list(parameters)
-    token = str(os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or "")
+    from ..runtime.process_security import state_authority_credential
+
+    token = state_authority_credential(_QUACK_ATTACH_TOKEN_ENV)
     store_id = str(
         os.environ.get("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "") or ""
     )
@@ -3035,8 +3037,10 @@ def persist_quack_attach_token_vault(token: str = "") -> Path | None:
     board drain can keep attaching.
     """
 
+    from ..runtime.process_security import state_authority_credential
+
     secret = str(
-        token or os.environ.get("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "") or ""
+        token or state_authority_credential(_QUACK_ATTACH_TOKEN_ENV)
     ).strip()
     if not secret or not _QUACK_TOKEN_RE.fullmatch(secret):
         return None
@@ -3107,7 +3111,12 @@ def resolve_quack_attach_token(
             material = _read_quack_token_vault(vault)
             if material:
                 return material
-    secret = str(source.get(_QUACK_ATTACH_TOKEN_ENV, "") or "").strip()
+    if environment is None:
+        from ..runtime.process_security import state_authority_credential
+
+        secret = state_authority_credential(_QUACK_ATTACH_TOKEN_ENV)
+    else:
+        secret = str(source.get(_QUACK_ATTACH_TOKEN_ENV, "") or "").strip()
     if secret:
         if not _QUACK_TOKEN_RE.fullmatch(secret):
             raise DuckDBConnectionPolicyError(
