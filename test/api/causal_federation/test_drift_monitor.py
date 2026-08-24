@@ -9,6 +9,7 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.federation.contracts import (
     FederationBinding,
     FederationContractError,
+    UnknownNormativeFieldError,
 )
 from ipfs_accelerate_py.agent_supervisor.federation.drift_monitor import (
     DRIFT_REPORT_SCHEMA,
@@ -263,6 +264,31 @@ def test_report_identity_is_deterministic_and_current_tree_validated() -> None:
             first,
             current_repository_tree_id="tree:current",
             current_control_plane_generation=8,
+        )
+
+
+def test_wire_contracts_are_closed_and_reject_forged_evidence() -> None:
+    roots = _roots()
+    report = produce_drift_report(roots, roots, observed_at=NOW)
+
+    assert FederationDriftRoots.from_dict(roots.to_dict()) == roots
+    assert type(report).from_dict(report.to_dict()) == report
+
+    with pytest.raises(UnknownNormativeFieldError, match="unknown fields"):
+        FederationDriftRoots.from_dict({**roots.to_dict(), "extension": "no"})
+    with pytest.raises(DriftMonitorError, match="status disagrees"):
+        type(report).from_dict({**report.to_dict(), "status": "drifted"})
+    with pytest.raises(DriftMonitorError, match="authority must be false"):
+        type(report).from_dict({**report.to_dict(), "authority": True})
+
+
+def test_monitor_rejects_non_sequence_event_inputs() -> None:
+    roots = _roots()
+    with pytest.raises(DriftMonitorError, match="events must be an array"):
+        FederationDriftMonitor(roots).observe(
+            roots,
+            events={"event": _event(11)},  # type: ignore[arg-type]
+            observed_at=NOW,
         )
 
 

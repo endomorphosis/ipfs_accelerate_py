@@ -11,7 +11,7 @@ Evidence: ``casf/drift-report@1``
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
@@ -22,6 +22,7 @@ from .contracts import (
     FederationBinding,
     FederationBoundsError,
     FederationContractError,
+    UnknownNormativeFieldError,
     _identifier,
     _integer,
     _text,
@@ -65,6 +66,41 @@ class DriftKind(str, Enum):  # noqa: UP042 - Python 3.8 compatibility
 DriftDimension = DriftKind
 
 
+def _closed_mapping(
+    payload: Mapping[str, Any],
+    name: str,
+    fields: tuple[str, ...],
+    *,
+    schema: str | None = None,
+) -> Mapping[str, Any]:
+    """Reject an incomplete or extensible wire payload before decoding it."""
+
+    if not isinstance(payload, Mapping):
+        raise DriftMonitorError(f"{name} payload must be an object")
+    allowed = set(fields)
+    if schema is not None:
+        allowed.add("schema")
+        if payload.get("schema") != schema:
+            raise DriftMonitorError(f"{name}.schema must equal {schema!r}")
+    unknown = set(payload) - allowed
+    if unknown:
+        raise UnknownNormativeFieldError(
+            f"{name} has unknown fields: {sorted(unknown)}"
+        )
+    missing = set(fields) - set(payload)
+    if missing:
+        raise DriftMonitorError(f"{name} is missing fields: {sorted(missing)}")
+    return payload
+
+
+def _closed_sequence(value: Any, name: str) -> Sequence[Any]:
+    """Accept only a bounded wire-array shape, never a text or mapping value."""
+
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise DriftMonitorError(f"{name} must be an array")
+    return value
+
+
 def closed_event_catalog_root() -> str:
     """Return the content identity of the exact closed CASF event catalog."""
 
@@ -77,12 +113,12 @@ def closed_event_catalog_root() -> str:
 
 
 def _bounded_identifiers(
-    values: Sequence[str] | Iterable[str],
+    values: Sequence[str],
     name: str,
     *,
     maximum: int,
 ) -> tuple[str, ...]:
-    if isinstance(values, (str, bytes)):
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
         raise DriftMonitorError(f"{name} must be an array")
     result = tuple(values)
     if len(result) > maximum:
@@ -150,7 +186,11 @@ class FederationDriftRoots:
 
         if not isinstance(binding, FederationBinding):
             raise DriftMonitorError("binding must be a FederationBinding")
-        selected_repository = repository_id or binding.repository_ids[0]
+        selected_repository = (
+            binding.repository_ids[0]
+            if repository_id is None
+            else repository_id
+        )
         try:
             repository_index = binding.repository_ids.index(selected_repository)
         except ValueError as exc:
@@ -158,7 +198,7 @@ class FederationDriftRoots:
                 "repository_id is absent from the federation binding"
             ) from exc
         bound_tree = binding.repository_tree_ids[repository_index]
-        selected_tree = repository_tree_id or bound_tree
+        selected_tree = bound_tree if repository_tree_id is None else repository_tree_id
         if selected_tree != bound_tree:
             raise DriftMonitorError(
                 "repository_tree_id disagrees with the federation binding"
@@ -171,7 +211,9 @@ class FederationDriftRoots:
             control_plane_generation=binding.control_plane_generation,
             schema_root=schema_root,
             operation_catalog_root=(
-                operation_catalog_root or binding.operation_catalog_ref
+                binding.operation_catalog_ref
+                if operation_catalog_root is None
+                else operation_catalog_root
             ),
             event_catalog_root=event_catalog_root,
             causal_graph_root=causal_graph_root,
@@ -194,6 +236,26 @@ class FederationDriftRoots:
             "causal_graph_revision": self.causal_graph_revision,
             "event_watermark": self.event_watermark,
         }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> FederationDriftRoots:
+        """Decode an exact, versioned root observation without extensions."""
+
+        fields = (
+            "tenant_id",
+            "federation_id",
+            "repository_id",
+            "repository_tree_id",
+            "control_plane_generation",
+            "schema_root",
+            "operation_catalog_root",
+            "event_catalog_root",
+            "causal_graph_root",
+            "causal_graph_revision",
+            "event_watermark",
+        )
+        values = _closed_mapping(payload, cls.__name__, fields, schema=cls.SCHEMA)
+        return cls(**{field: values[field] for field in fields})
 
     @property
     def cid(self) -> str:
@@ -233,6 +295,32 @@ class DriftFinding:
             "observed": self.observed,
             "blocks_promotion": True,
         }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> DriftFinding:
+        """Decode one closed, promotion-blocking drift finding."""
+
+        fields = (
+            "kind",
+            "code",
+            "subject_ref",
+            "expected",
+            "observed",
+            "blocks_promotion",
+        )
+        values = _closed_mapping(payload, cls.__name__, fields, schema=cls.SCHEMA)
+        try:
+            kind = DriftKind(values["kind"])
+        except (TypeError, ValueError) as exc:
+            raise DriftMonitorError("finding kind is not closed") from exc
+        return cls(
+            kind=kind,
+            code=values["code"],
+            subject_ref=values["subject_ref"],
+            expected=values["expected"],
+            observed=values["observed"],
+            blocks_promotion=values["blocks_promotion"],
+        )
 
 
 @dataclass(frozen=True)
@@ -329,6 +417,67 @@ class DriftReport:
             "blocks_promotion": self.drifted,
         }
 
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> DriftReport:
+        """Decode canonical evidence and reject forged status or capability flags."""
+
+        fields = (
+            "report_id",
+            "baseline",
+            "observed",
+            "observed_at",
+            "event_range",
+            "findings",
+            "authority",
+            "production_state_changed",
+            "ducklake_authoritative",
+            "model_calls",
+            "provider_calls",
+            "status",
+            "blocks_promotion",
+        )
+        values = _closed_mapping(payload, cls.__name__, fields, schema=cls.SCHEMA)
+        event_range = _closed_mapping(
+            values["event_range"],
+            "DriftReport.event_range",
+            ("start", "end", "count"),
+        )
+        findings = tuple(
+            DriftFinding.from_dict(item)
+            for item in _closed_sequence(values["findings"], "findings")
+        )
+        for field in (
+            "authority",
+            "production_state_changed",
+            "ducklake_authoritative",
+        ):
+            if values[field] is not False:
+                raise DriftMonitorError(f"DriftReport.{field} must be false")
+        for field in ("model_calls", "provider_calls"):
+            if (
+                isinstance(values[field], bool)
+                or not isinstance(values[field], int)
+                or values[field] != 0
+            ):
+                raise DriftMonitorError(f"DriftReport.{field} must be zero")
+        report = cls(
+            report_id=values["report_id"],
+            baseline=FederationDriftRoots.from_dict(values["baseline"]),
+            observed=FederationDriftRoots.from_dict(values["observed"]),
+            observed_at=values["observed_at"],
+            event_range_start=event_range["start"],
+            event_range_end=event_range["end"],
+            observed_event_count=event_range["count"],
+            findings=findings,
+        )
+        if values["status"] != ("drifted" if report.drifted else "current"):
+            raise DriftMonitorError("DriftReport.status disagrees with findings")
+        if values["blocks_promotion"] is not report.drifted:
+            raise DriftMonitorError(
+                "DriftReport.blocks_promotion disagrees with findings"
+            )
+        return report
+
 
 def _finding(
     kind: DriftKind,
@@ -374,7 +523,9 @@ class FederationDriftMonitor:
 
         if not isinstance(observed, FederationDriftRoots):
             raise DriftMonitorError("observed roots are required")
-        if isinstance(events, (str, bytes)) or len(events) > MAX_DRIFT_EVENTS:
+        if isinstance(events, (str, bytes)) or not isinstance(events, Sequence):
+            raise DriftMonitorError("events must be an array")
+        if len(events) > MAX_DRIFT_EVENTS:
             raise FederationBoundsError("event observation bound exceeded")
         if any(not isinstance(item, DomainEvent) for item in events):
             raise DriftMonitorError("events must be closed DomainEvent records")
