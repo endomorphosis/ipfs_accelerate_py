@@ -9,25 +9,22 @@ separate fail-closed gate.
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
-    DatabaseTaskSource,
-)
-from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
-    RECEIPT_DIR,
-    RECEIPT_FILES,
-    collect_and_write,
-)
+if TYPE_CHECKING:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
 
 CURSOR = (
     ROOT
@@ -84,6 +81,78 @@ S_PYTEST = {
     "EAAEF-191": "admission_bundle",
 }
 MAX_PASSES = 24
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse the intentionally argument-free legacy execution contract."""
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    return parser.parse_args(argv)
+
+
+def _ensure_repository_importable() -> None:
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
+
+def _receipt_contract() -> tuple[Path, dict[str, str]]:
+    _ensure_repository_importable()
+    from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
+        RECEIPT_DIR,
+        RECEIPT_FILES,
+    )
+
+    return RECEIPT_DIR, RECEIPT_FILES
+
+
+def _collect_host_admission() -> dict[str, Any]:
+    _ensure_repository_importable()
+    from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
+        collect_and_write,
+    )
+
+    return collect_and_write()
+
+
+def _database_task_source_class() -> type[DatabaseTaskSource]:
+    _ensure_repository_importable()
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    return DatabaseTaskSource
+
+
+def _acquire_state_owner_lease(control: Path) -> Any:
+    """Acquire the same OS lease/fence used by the live Quack owner.
+
+    The caller must acquire this before collecting/writing host receipts or
+    constructing ``DatabaseTaskSource``.  A competing live owner therefore
+    fails this offline path before any DuckDB connection can be opened.
+    """
+
+    _ensure_repository_importable()
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        current_process_birth,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        OWNER_LOCK_SUFFIX,
+        OWNER_MARKER_SUFFIX,
+        ExclusiveOwnerLease,
+    )
+
+    database = Path(control)
+    lease = ExclusiveOwnerLease(
+        lock_path=database.with_name(f".{database.name}{OWNER_LOCK_SUFFIX}"),
+        marker_path=database.with_name(f".{database.name}{OWNER_MARKER_SUFFIX}"),
+    )
+    lease.acquire(
+        server_id=f"offline:eaaef-host-admission:{os.getpid()}",
+        process_birth=current_process_birth(),
+        database_path=database,
+        generation=1,
+    )
+    return lease
 
 
 def _cid_bytes(raw: bytes) -> str:
@@ -186,13 +255,14 @@ def _run_pytest_file_isolation(
 
 
 def _complete_s_task(source: DatabaseTaskSource, alias: str) -> dict:
+    receipt_dir, receipt_files = _receipt_contract()
     task = source.get_task(alias)
     if task is None:
         return {"task_id": alias, "status": "missing"}
     if task.status == "completed":
         return {"task_id": alias, "status": "already_completed"}
-    receipt_name = RECEIPT_FILES[alias]
-    receipt_path = RECEIPT_DIR / receipt_name
+    receipt_name = receipt_files[alias]
+    receipt_path = receipt_dir / receipt_name
     if alias in ADMIT_REQUIRED_AUTO and receipt_path.is_file():
         current = json.loads(receipt_path.read_text(encoding="utf-8"))
         if current.get("decision") != "admitted":
@@ -347,7 +417,10 @@ def _complete_a_task(source: DatabaseTaskSource, alias: str) -> dict:
 
 
 def _plan_r2_remote_owner_admitted() -> bool:
-    receipt_path = RECEIPT_DIR / RECEIPT_FILES.get("EAAEF-190", "plan_r2_remote_owner.json")
+    receipt_dir, receipt_files = _receipt_contract()
+    receipt_path = receipt_dir / receipt_files.get(
+        "EAAEF-190", "plan_r2_remote_owner.json"
+    )
     if not receipt_path.is_file():
         return False
     try:
@@ -363,7 +436,8 @@ def _plan_r2_remote_owner_admitted() -> bool:
 
 
 def _complete(source: DatabaseTaskSource, alias: str) -> dict:
-    if alias in RECEIPT_FILES:
+    _receipt_dir, receipt_files = _receipt_contract()
+    if alias in receipt_files:
         return _complete_s_task(source, alias)
     if alias == "EAAEF-009" and not _plan_r2_remote_owner_admitted():
         return {
@@ -379,12 +453,13 @@ def _complete(source: DatabaseTaskSource, alias: str) -> dict:
 def _reopen_unadmitted(source: DatabaseTaskSource) -> list[dict]:
     """Reopen auto S tasks whose receipts are no longer admitted evidence."""
 
+    receipt_dir, receipt_files = _receipt_contract()
     reopened: list[dict] = []
     for alias in sorted(ADMIT_REQUIRED_AUTO | {"EAAEF-191"}):
         task = source.get_task(alias)
         if task is None or task.status != "completed":
             continue
-        receipt_path = RECEIPT_DIR / RECEIPT_FILES[alias]
+        receipt_path = receipt_dir / receipt_files[alias]
         if not receipt_path.is_file():
             continue
         current = json.loads(receipt_path.read_text(encoding="utf-8"))
@@ -419,72 +494,82 @@ def _reopen_unadmitted(source: DatabaseTaskSource) -> list[dict]:
 
 
 def run_once() -> dict:
-    collection = collect_and_write()
     control = _active_control_db()
-    completed: list[dict] = []
-    ready_before: list[str] = []
-    blocked_held: list[str] = []
-    with DatabaseTaskSource(control, install_schema=False) as source:
-        completed.extend(_reopen_unadmitted(source))
-        first = source.ready_tasks(limit=1000)
-        ready_before = [
-            item.task_alias for item in first.tasks if item.task_alias in BOOTSTRAP
-        ]
-        for _pass in range(MAX_PASSES):
-            page = source.ready_tasks(limit=1000)
-            ready = [
+    lease = _acquire_state_owner_lease(control)
+    try:
+        # Host-evidence materialization writes durable receipts, so it belongs
+        # inside the exact same exclusive lease as the embedded DuckDB writer.
+        collection = _collect_host_admission()
+        database_task_source = _database_task_source_class()
+        completed: list[dict] = []
+        ready_before: list[str] = []
+        blocked_held: list[str] = []
+        with database_task_source(control, install_schema=False) as source:
+            completed.extend(_reopen_unadmitted(source))
+            first = source.ready_tasks(limit=1000)
+            ready_before = [
                 item.task_alias
-                for item in page.tasks
-                if item.task_alias in HOST_AUTO
+                for item in first.tasks
+                if item.task_alias in BOOTSTRAP
             ]
-            held_ready = [
-                item.task_alias
-                for item in page.tasks
-                if item.task_alias not in BOOTSTRAP
-            ]
-            blocked_held = held_ready
-            if held_ready:
-                raise RuntimeError(
-                    "held Plan-R2 tasks became ready without EAAEF-009: "
-                    + ",".join(held_ready)
-                )
-            if not ready:
-                break
-            progressed = False
-            for alias in ready:
-                result = _complete(source, alias)
-                completed.append(result)
-                if result.get("status") == "completed" and result.get("changed"):
-                    progressed = True
-            if not progressed:
-                break
-        after = source.ready_tasks(limit=1000)
-        ready_after = [item.task_alias for item in after.tasks]
-        page_all = source.list_tasks(limit=1000)
-        status_counts: dict[str, int] = {}
-        for item in page_all.tasks:
-            status_counts[item.status] = status_counts.get(item.status, 0) + 1
-    payload = {
-        "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-supervisor@1",
-        "process_started": True,
-        "configured_board_launch": False,
-        "live_multi_supervisor": False,
-        "provider_invoked": False,
-        "control_db": str(control.relative_to(ROOT)),
-        "collection": collection["decisions"],
-        "completed": completed,
-        "ready_before": ready_before,
-        "ready_after": ready_after,
-        "blocked_held": blocked_held,
-        "task_count": sum(status_counts.values()),
-        "status_counts": status_counts,
-        "updated_at": int(time.time()),
-    }
-    _write_status(payload)
-    return payload
+            for _pass in range(MAX_PASSES):
+                page = source.ready_tasks(limit=1000)
+                ready = [
+                    item.task_alias
+                    for item in page.tasks
+                    if item.task_alias in HOST_AUTO
+                ]
+                held_ready = [
+                    item.task_alias
+                    for item in page.tasks
+                    if item.task_alias not in BOOTSTRAP
+                ]
+                blocked_held = held_ready
+                if held_ready:
+                    raise RuntimeError(
+                        "held Plan-R2 tasks became ready without EAAEF-009: "
+                        + ",".join(held_ready)
+                    )
+                if not ready:
+                    break
+                progressed = False
+                for alias in ready:
+                    result = _complete(source, alias)
+                    completed.append(result)
+                    if result.get("status") == "completed" and result.get("changed"):
+                        progressed = True
+                if not progressed:
+                    break
+            after = source.ready_tasks(limit=1000)
+            ready_after = [item.task_alias for item in after.tasks]
+            page_all = source.list_tasks(limit=1000)
+            status_counts: dict[str, int] = {}
+            for item in page_all.tasks:
+                status_counts[item.status] = status_counts.get(item.status, 0) + 1
+        payload = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-supervisor@1",
+            "process_started": True,
+            "configured_board_launch": False,
+            "live_multi_supervisor": False,
+            "provider_invoked": False,
+            "control_db": str(control.relative_to(ROOT)),
+            "collection": collection["decisions"],
+            "completed": completed,
+            "ready_before": ready_before,
+            "ready_after": ready_after,
+            "blocked_held": blocked_held,
+            "task_count": sum(status_counts.values()),
+            "status_counts": status_counts,
+            "updated_at": int(time.time()),
+        }
+        _write_status(payload)
+        return payload
+    finally:
+        lease.release(fence_token=lease.fence_token)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    _parse_args(argv)
     payload = run_once()
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
