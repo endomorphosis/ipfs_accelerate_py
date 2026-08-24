@@ -93,6 +93,8 @@ from .implementation_timeout import (
     implementation_timeout_metadata_value,
 )
 from ..runtime.provider_failure_policy import (
+    GROK_FAILURE_RECEIPT_PREFIX,
+    GROK_ROUTE_OUTCOME_PREFIX,
     extract_grok_failure_receipts,
     extract_grok_route_outcomes,
     valid_grok_failure_receipt,
@@ -3240,6 +3242,35 @@ if __name__ == "__main__":
 DEFAULT_AUTOMATIC_GROK_MODEL = "grok-4.6"
 DEFAULT_CODEX_MODEL = "gpt-5.6-terra"
 DEFAULT_CODEX_REASONING_EFFORT = "medium"
+_TRUSTED_QUOTA_FALLBACK_PYTHON_EXECUTABLE = Path(sys.executable).resolve(
+    strict=True
+)
+_TRUSTED_QUOTA_FALLBACK_SCRIPT = (
+    Path(__file__).resolve(strict=True).parents[1] / "grok_cli_runner.py"
+).resolve(strict=True)
+_CANONICAL_INVOCATION_NULL_GROK_ROUTE = resolve_agent_implementation_route(
+    primary_provider_id="grok_cli",
+    primary_model_id=DEFAULT_AUTOMATIC_GROK_MODEL,
+    fallback_provider_id="codex",
+    fallback_model_id=DEFAULT_CODEX_MODEL,
+    fallback_trigger="primary_quota_exhausted",
+    fallback_reasoning_effort="medium",
+)
+_HISTORICAL_INVOCATION_NULL_GROK_ROUTE = AgentImplementationRoutePlan(
+    primary_provider_id="grok_cli",
+    primary_model_id=DEFAULT_AUTOMATIC_GROK_MODEL,
+    fallback_provider_id="codex",
+    fallback_model_id=DEFAULT_CODEX_MODEL,
+    fallback_trigger="primary_quota_or_auth_unavailable",
+    fallback_reasoning_effort="high",
+    route_id=(
+        "agent-supervisor-prompt-v3-grok45-terra56-high-"
+        "auth-or-hard-quota-v1"
+    ),
+    authorization=None,
+    fallback_implementer_identity="codex",
+    invocation_binding=None,
+)
 
 
 def _configured_agent_implementation_route_plan(
@@ -13142,7 +13173,7 @@ class PortalImplementationDaemon:
         self,
         task: PortalTask,
         state: PortalTaskState,
-    ) -> dict[str, str] | None:
+    ) -> dict[str, Any] | None:
         """Return the board-bound retry scope eligible for local validation.
 
         Ordinary tasks still require their configured implementation provider.
@@ -13152,6 +13183,98 @@ class PortalImplementationDaemon:
         board for source tasks prevents a mutable state entry from granting
         this provider-bypass privilege on its own.
         """
+
+        landed_values = [
+            str(value).strip()
+            for key, value in task.metadata.items()
+            if str(key).strip().lower().replace("_", " ")
+            == "landed completion recovery"
+        ]
+        if landed_values:
+            if len(landed_values) != 1 or not landed_values[0]:
+                return None
+
+            def unique_object(
+                pairs: Sequence[tuple[str, Any]],
+            ) -> dict[str, Any]:
+                value: dict[str, Any] = {}
+                for key, item in pairs:
+                    if key in value:
+                        raise ValueError("duplicate landed recovery key")
+                    value[key] = item
+                return value
+
+            try:
+                database_attempt_id = str(
+                    task.metadata.get("database attempt id") or ""
+                )
+                database_claim_id = str(
+                    task.metadata.get("database claim id") or ""
+                )
+                owner_session_id = str(
+                    task.metadata.get("database owner session id") or ""
+                )
+                raw_seed = json.loads(
+                    landed_values[0],
+                    object_pairs_hook=unique_object,
+                )
+                from .landed_completion_recovery import (
+                    LandedCompletionRecoveryError,
+                    verify_landed_completion_claim_seed,
+                )
+
+                seed = verify_landed_completion_claim_seed(
+                    raw_seed if isinstance(raw_seed, Mapping) else None,
+                    task_cid=self._canonical_ref(task),
+                    task_alias=task.task_id,
+                    target_attempt_id=database_attempt_id,
+                    target_claim_id=database_claim_id,
+                    target_owner_session_id=owner_session_id,
+                )
+            except (
+                json.JSONDecodeError,
+                LandedCompletionRecoveryError,
+                TypeError,
+                ValueError,
+            ):
+                return None
+            try:
+                attempt_number = int(
+                    str(task.metadata.get("database attempt number") or "")
+                )
+                fencing_token = int(
+                    str(task.metadata.get("database fencing token") or "")
+                )
+                fence_epoch = int(
+                    str(task.metadata.get("database fence epoch") or "")
+                )
+            except ValueError:
+                return None
+            recovery = seed.get("recovery_receipt")
+            if (
+                task.metadata.get("projection authority") != "false"
+                or task.metadata.get("database task cid")
+                != self._canonical_ref(task)
+                or not database_attempt_id
+                or seed.get("target_attempt_id") != database_attempt_id
+                or not database_claim_id
+                or seed.get("target_claim_id") != database_claim_id
+                or attempt_number != seed.get("target_attempt_number")
+                or not owner_session_id
+                or seed.get("target_owner_session_id") != owner_session_id
+                or fencing_token != seed.get("target_fencing_token")
+                or fence_epoch != seed.get("target_fence_epoch")
+                or task.metadata.get("database lease id")
+                != seed.get("target_lease_id")
+                or not isinstance(recovery, Mapping)
+                or list(task_declared_output_paths(task))
+                != recovery.get("declared_outputs")
+            ):
+                return None
+            return {
+                "kind": "database_landed_completion_revalidation",
+                "claim_seed": seed,
+            }
 
         source_task_id, failure_kind = retry_budget_repair_source(task)
         if source_task_id:
@@ -21561,49 +21684,95 @@ class PortalImplementationDaemon:
             protected_latched = False
         protected_provenance = bool(protected_command or protected_latched)
         if protected_provenance:
-            return self._protected_provider_effect_audit(
-                command_items=command_items,
-                receipt_text=receipt_text,
-                returncode=returncode,
-            )
-        if protected_provenance:
             audit: dict[str, Any] = {
                 "exhausted": False,
                 "providers": [],
                 "reason": "",
             }
+            # Recovery locators and routes carrying a durable invocation are
+            # admitted only by the strict provider-effect audit.  The
+            # canonical legacy Grok route has neither an authorization nor an
+            # invocation binding; it instead uses the exact nonce/model-bound
+            # receipt + GROK_ROUTE_OUTCOME validation below.
+            if (
+                "--agent-implementation-recovery-json" in command_items
+                or not binding_raw
+            ):
+                return self._protected_provider_effect_audit(
+                    command_items=command_items,
+                    receipt_text=receipt_text,
+                    returncode=returncode,
+                )
+
+            def unique_binding(
+                pairs: Sequence[tuple[str, Any]],
+            ) -> dict[str, Any]:
+                result: dict[str, Any] = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError("duplicate protected route key")
+                    result[key] = value
+                return result
+
+            try:
+                binding = json.loads(
+                    binding_raw,
+                    object_pairs_hook=unique_binding,
+                )
+            except (TypeError, ValueError, json.JSONDecodeError):
+                return audit
+            if not isinstance(binding, dict):
+                return audit
+            if (
+                binding.get("invocation_binding") is not None
+                or binding.get("authorization") is not None
+            ):
+                return self._protected_provider_effect_audit(
+                    command_items=command_items,
+                    receipt_text=receipt_text,
+                    returncode=returncode,
+                )
             # A malformed/truncated protected command is still categorically
             # protected from legacy provider-capacity reclassification.
             if returncode is None or not receipt_nonce or not primary_model:
                 return audit
             observed_now_ms = int(time.time() * 1000)
             try:
-                def unique_binding(
-                    pairs: Sequence[tuple[str, Any]],
-                ) -> dict[str, Any]:
-                    result: dict[str, Any] = {}
-                    for key, value in pairs:
-                        if key in result:
-                            raise ValueError("duplicate protected route key")
-                        result[key] = value
-                    return result
-
-                binding = json.loads(
-                    binding_raw,
-                    object_pairs_hook=unique_binding,
-                )
-                if not isinstance(binding, dict):
-                    return audit
                 route_plan = resolve_agent_implementation_route_binding(
                     binding,
                     repo_root=self.repo_root,
                     now_ms=observed_now_ms,
                     max_age_ms=5 * 60 * 1000,
                 )
-            except (OSError, ValueError, json.JSONDecodeError):
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                # A live route generated before scoped authorization became
+                # mandatory remains admissible only as this exact frozen
+                # invocation-null tuple.  It grants no fallback effect; it
+                # can only restore the Grok task after a denied hard-quota
+                # preflight is independently reproduced below.
+                route_plan = _HISTORICAL_INVOCATION_NULL_GROK_ROUTE
+            if (
+                route_plan.invocation_binding is not None
+                or route_plan.authorization is not None
+                or binding != route_plan.as_binding_dict()
+                or binding
+                not in (
+                    _CANONICAL_INVOCATION_NULL_GROK_ROUTE.as_binding_dict(),
+                    _HISTORICAL_INVOCATION_NULL_GROK_ROUTE.as_binding_dict(),
+                )
+            ):
+                return audit
+            receipt_records = extract_grok_failure_receipts(receipt_text)
+            outcome_records = extract_grok_route_outcomes(receipt_text)
+            if (
+                receipt_text.count(GROK_FAILURE_RECEIPT_PREFIX) != 1
+                or receipt_text.count(GROK_ROUTE_OUTCOME_PREFIX) != 1
+                or len(receipt_records) != 1
+                or len(outcome_records) != 1
+            ):
                 return audit
             valid_receipts = []
-            for receipt in extract_grok_failure_receipts(receipt_text):
+            for receipt in receipt_records:
                 probe_returncode = receipt.get("probe_returncode")
                 if (
                     not isinstance(probe_returncode, int)
@@ -21767,7 +21936,7 @@ class PortalImplementationDaemon:
                         ):
                             valid_pairs.append((receipt, outcome))
                 else:
-                    for outcome in extract_grok_route_outcomes(receipt_text):
+                    for outcome in outcome_records:
                         if valid_grok_route_outcome(
                             outcome,
                             receipt=receipt,
@@ -21775,9 +21944,10 @@ class PortalImplementationDaemon:
                             runner_returncode=returncode,
                         ):
                             valid_pairs.append((receipt, outcome))
-            # Auth/high fallback is the same logical attempt. Every nonzero
-            # outcome categorically bypasses provider-capacity restoration;
-            # the sole valid terminal pair is retained only as audit evidence.
+            # Auth/high fallback is the same logical attempt.  Only a denied,
+            # undispatched hard-quota pair on the exact historical
+            # invocation-null route restores provider-capacity retry state;
+            # every other nonzero outcome remains audit evidence only.
             if len(valid_pairs) == 1:
                 receipt, outcome = valid_pairs[0]
                 invocation_binding = route_plan.invocation_binding
@@ -21811,6 +21981,34 @@ class PortalImplementationDaemon:
                         ),
                     }
                 )
+                if (
+                    route_plan.authorization is None
+                    and route_plan.invocation_binding is None
+                    and receipt.get("failure_class")
+                    == "hard_quota_exhausted"
+                    and receipt.get("primary_dispatched") is False
+                    and outcome.get("failure_class")
+                    == "hard_quota_exhausted"
+                    and outcome.get("decision") == "denied"
+                    and outcome.get("fallback_dispatched") is False
+                    and outcome.get("fallback_returncode") is None
+                ):
+                    audit.update(
+                        {
+                            "exhausted": True,
+                            "providers": ["grok"],
+                            "reason": "provider_capacity_exhausted",
+                            "failure_class": "hard_quota_exhausted",
+                            "hard_quota_exhausted_providers": ["grok"],
+                            "hard_quota_evidence_sha256": str(
+                                receipt.get("evidence_sha256") or ""
+                            ),
+                            "evidence": [
+                                "runner_receipt:"
+                                + str(receipt.get("receipt_id") or "")
+                            ],
+                        }
+                    )
             return audit
         # Protected nonce-bound routes returned above without invoking this
         # compatibility classifier.  Legacy, non-route provider commands keep
@@ -21968,28 +22166,46 @@ class PortalImplementationDaemon:
             command = event.get("command")
             if not isinstance(command, list):
                 continue
-            command_nonce = self._command_flag_value(
-                command,
-                "--grok-failure-receipt-nonce",
-            )
-            uses_canonical_legacy = (
-                "--canonical-legacy-preflight-route" in command
-                and not command_nonce
-            )
-            nonce_matches = (
-                command_nonce == nonce
-                if command_nonce
-                else uses_canonical_legacy
-                and bool(re.fullmatch(r"[0-9a-f]{64}", nonce))
+            command_items = [str(item) for item in command]
+            try:
+                command_python = Path(command_items[0]).expanduser().resolve(
+                    strict=True
+                )
+            except (IndexError, OSError, RuntimeError):
+                continue
+            if command_python != _TRUSTED_QUOTA_FALLBACK_PYTHON_EXECUTABLE:
+                continue
+            try:
+                script_runner = bool(
+                    len(command_items) >= 2
+                    and Path(command_items[1]).expanduser().resolve(strict=True)
+                    == _TRUSTED_QUOTA_FALLBACK_SCRIPT
+                )
+            except (OSError, RuntimeError):
+                script_runner = False
+            module_runner = bool(
+                len(command_items) >= 3
+                and command_items[1:3]
+                == [
+                    "-m",
+                    "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+                ]
             )
             if (
-                not nonce_matches
-                or self._command_flag_value(command, "--model") != model
-                or not any(
-                    Path(str(item)).name == "grok_cli_runner.py"
-                    or str(item).endswith("grok_cli_runner")
-                    for item in command
+                command_items.count("--grok-failure-receipt-nonce") != 1
+                or command_items.count("--model") != 1
+                or any(
+                    item.startswith("--grok-failure-receipt-nonce=")
+                    or item.startswith("--model=")
+                    for item in command_items
                 )
+                or self._command_flag_value(
+                    command_items,
+                    "--grok-failure-receipt-nonce",
+                )
+                != nonce
+                or self._command_flag_value(command_items, "--model") != model
+                or not (script_runner or module_runner)
             ):
                 continue
             return event
@@ -48705,6 +48921,64 @@ class PortalImplementationDaemon:
         scope = self._retry_no_change_pre_dispatch_scope(task, state)
         if scope is None:
             return None
+
+        if scope.get("kind") == "database_landed_completion_revalidation":
+            seed = scope.get("claim_seed")
+            recovery = (
+                seed.get("recovery_receipt")
+                if isinstance(seed, Mapping)
+                else None
+            )
+            try:
+                workspace_head = self._run_git(
+                    ["rev-parse", "--verify", "HEAD^{commit}"],
+                    cwd=workspace_path,
+                ).stdout.strip()
+                workspace_tree = self._run_git(
+                    ["rev-parse", "--verify", "HEAD^{tree}"],
+                    cwd=workspace_path,
+                ).stdout.strip()
+            except (OSError, RuntimeError):
+                workspace_head = ""
+                workspace_tree = ""
+            target_stable = bool(
+                isinstance(seed, Mapping)
+                and isinstance(recovery, Mapping)
+                and baseline_ref
+                and baseline_ref == workspace_head
+                and workspace_head == seed.get("validated_target_commit")
+                and workspace_tree == seed.get("validated_target_tree")
+                and self._git_ref_is_ancestor(
+                    str(recovery.get("target_commit_at_rearm") or ""),
+                    workspace_head,
+                )
+                and self._git_ref_is_ancestor(
+                    str(recovery.get("integrating_merge") or ""),
+                    workspace_head,
+                )
+            )
+            if not target_stable:
+                blocked = {
+                    **scope,
+                    "eligible": True,
+                    "provider_dispatched": False,
+                    "reason": "landed_recovery_target_changed",
+                    "baseline_ref": baseline_ref,
+                    "workspace_head": workspace_head,
+                    "workspace_tree": workspace_tree,
+                }
+                self._record_event(
+                    "implementation_pre_dispatch_no_change_blocked",
+                    {"task_id": task.task_id, **blocked},
+                )
+                return {
+                    "attempted": False,
+                    "passed": False,
+                    "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                    "results": [],
+                    "reason": "landed_recovery_target_changed",
+                    "pre_dispatch_no_change": blocked,
+                }
 
         if prepare_workspace:
             try:
@@ -76282,6 +76556,10 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any]
         ]
         | None = None,
+        landed_completion_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any] | None
+        ]
+        | None = None,
         require_real_execution: bool = False,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
@@ -76578,6 +76856,12 @@ class DatabaseImplementationDaemon:
         self._pooled_worktree_create_recovery_fn = (
             pooled_worktree_create_recovery_fn
         )
+        if (
+            landed_completion_recovery_fn is not None
+            and not callable(landed_completion_recovery_fn)
+        ):
+            raise TypeError("landed_completion_recovery_fn must be callable")
+        self._landed_completion_recovery_fn = landed_completion_recovery_fn
         self._post_merge_recovery_fn: Callable[[], Mapping[str, Any] | None] | None = (
             None
         )
@@ -76963,6 +77247,10 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any]
         ]
         | None = None,
+        landed_completion_recovery_fn: Callable[
+            ["DatabaseTaskAttempt"], Mapping[str, Any] | None
+        ]
+        | None = None,
     ) -> None:
         """Bind one real executor before a production attempt is dispatched."""
 
@@ -77001,6 +77289,11 @@ class DatabaseImplementationDaemon:
             raise TypeError(
                 "pooled worktree create recovery callback must be callable"
             )
+        if (
+            landed_completion_recovery_fn is not None
+            and not callable(landed_completion_recovery_fn)
+        ):
+            raise TypeError("landed completion recovery callback must be callable")
         with self._lock:
             if any(
                 callback is not None
@@ -77013,6 +77306,7 @@ class DatabaseImplementationDaemon:
                     self._inflight_process_recovery_fn,
                     self._validation_retry_seed_conflict_recovery_fn,
                     self._pooled_worktree_create_recovery_fn,
+                    self._landed_completion_recovery_fn,
                 )
             ):
                 raise DatabaseImplementationAuthorityError(
@@ -77034,6 +77328,9 @@ class DatabaseImplementationDaemon:
             )
             self._pooled_worktree_create_recovery_fn = (
                 pooled_worktree_create_recovery_fn
+            )
+            self._landed_completion_recovery_fn = (
+                landed_completion_recovery_fn
             )
 
     def bind_post_merge_recovery(
@@ -82307,12 +82604,16 @@ class DatabaseImplementationDaemon:
             seed_conflict_seed = prior_status_receipt.get(
                 "validation_retry_seed_conflict_recovery_seed"
             )
+            landed_seed = prior_status_receipt.get(
+                "landed_completion_recovery_seed"
+            )
             retry_authorities = [
                 seed is not None,
                 protected_seed is not None,
                 external_seed is not None,
                 inflight_seed is not None,
                 seed_conflict_seed is not None,
+                landed_seed is not None,
             ]
             if sum(retry_authorities) > 1:
                 raise DatabaseImplementationAuthorityError(
@@ -82408,6 +82709,109 @@ class DatabaseImplementationDaemon:
                     }
                 )
                 receipt_payload["validation_retry_seed"] = verified_seed
+            elif landed_seed is not None:
+                if (
+                    str(getattr(task, "status", "") or "").lower()
+                    != "retrying"
+                    or prior_status_receipt.get("operation")
+                    != "database_portal_landed_completion_revalidation"
+                    or not isinstance(landed_seed, Mapping)
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim found malformed landed recovery seed"
+                    )
+                source_attempt_id = str(
+                    landed_seed.get("source_attempt_id") or ""
+                )
+                source_attempt = self.get_attempt(source_attempt_id)
+                if source_attempt is None or source_attempt.status != "failed":
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim landed recovery source is unavailable"
+                    )
+                verified_landed_state = (
+                    self._verified_landed_completion_revalidation_state(
+                        source_attempt,
+                        task,
+                        expected_recovery_evidence=landed_seed,
+                    )
+                )
+                verified_landed_seed = dict(
+                    verified_landed_state[
+                        "landed_completion_recovery_evidence"
+                    ]
+                )
+                latest = {
+                    candidate.task_cid: candidate
+                    for candidate in self._latest_failed_attempts()
+                }.get(task_cid)
+                if (
+                    latest is None
+                    or latest.attempt_id != source_attempt.attempt_id
+                    or prior_status_receipt.get("control_expected_revision")
+                    != verified_landed_seed.get("source_control_revision")
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "database claim landed recovery source was superseded"
+                    )
+                coordination_attempt = self.coordinator.get_task_attempt(
+                    str(receipt_payload.get("attempt_id") or "")
+                )
+                coordination_claim = self.coordinator.get_task_claim(
+                    str(receipt_payload.get("claim_id") or "")
+                )
+                if coordination_attempt is None or coordination_claim is None:
+                    raise DatabaseImplementationAuthorityError(
+                        "database claim landed recovery target is unavailable"
+                    )
+                target_identity = coordination_attempt.to_dict()
+                target_claim_identity = coordination_claim.to_dict()
+                target_attempt_number = target_identity.get("attempt_number")
+                target_fencing_token = target_claim_identity.get(
+                    "fencing_token"
+                )
+                target_fence_epoch = target_claim_identity.get("fence_epoch")
+                if (
+                    target_identity.get("task_cid") != task_cid
+                    or target_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or target_claim_identity.get("task_cid") != task_cid
+                    or target_claim_identity.get("attempt_id")
+                    != receipt_payload.get("attempt_id")
+                    or target_claim_identity.get("claim_id")
+                    != receipt_payload.get("claim_id")
+                    or target_claim_identity.get("owner_session_id")
+                    != self.owner_session_id
+                    or isinstance(target_attempt_number, bool)
+                    or not isinstance(target_attempt_number, int)
+                    or target_attempt_number <= int(source_attempt.attempt_number)
+                    or isinstance(target_fencing_token, bool)
+                    or not isinstance(target_fencing_token, int)
+                    or target_fencing_token <= int(source_attempt.fencing_token)
+                    or isinstance(target_fence_epoch, bool)
+                    or not isinstance(target_fence_epoch, int)
+                    or target_fence_epoch < int(source_attempt.fence_epoch)
+                    or not str(target_claim_identity.get("lease_id") or "")
+                ):
+                    raise DatabaseImplementationConflictError(
+                        "database claim landed recovery target is not an exact "
+                        "newer fenced attempt"
+                    )
+                receipt_payload.update(
+                    {
+                        "attempt_number": int(target_attempt_number),
+                        "fencing_token": int(target_fencing_token),
+                        "fence_epoch": int(target_fence_epoch),
+                        "lease_id": str(target_claim_identity["lease_id"]),
+                        "landed_completion_recovery_source_attempt_id": (
+                            source_attempt.attempt_id
+                        ),
+                        "landed_completion_recovery_seed": (
+                            verified_landed_seed
+                        ),
+                    }
+                )
             elif protected_seed is not None:
                 if (
                     str(getattr(task, "status", "") or "").lower()
@@ -82796,9 +83200,60 @@ class DatabaseImplementationDaemon:
                 != str(new_status).strip().lower()
             ):
                 raise
-            # The owner already holds the requested status.  Replay the CAS at
-            # the observed revision so a no-op receipt is admitted instead of
-            # crash-looping the daemon on transition_invalid.
+            current_body = getattr(current, "body", None)
+            current_receipt = (
+                current_body.get("completion_receipt")
+                if isinstance(current_body, Mapping)
+                else None
+            )
+            replay_identity_valid = bool(
+                isinstance(current_receipt, Mapping)
+                and receipt_payload.get("operation")
+                and _database_daemon_json(dict(current_receipt))
+                == _database_daemon_json(receipt_payload)
+            )
+            normalized_replay_status = str(new_status).strip().lower()
+            if normalized_replay_status in {
+                "in_progress",
+                "retrying",
+            }:
+                required_identity = {
+                    "attempt_id": str(receipt_payload.get("attempt_id") or ""),
+                    "claim_id": str(receipt_payload.get("claim_id") or ""),
+                    "owner_session_id": str(
+                        receipt_payload.get("owner_session_id") or ""
+                    ),
+                    "lease_id": str(receipt_payload.get("lease_id") or ""),
+                }
+                attempt_number = receipt_payload.get("attempt_number")
+                fencing_token = receipt_payload.get("fencing_token")
+                fence_epoch = receipt_payload.get("fence_epoch")
+                replay_identity_valid = bool(
+                    replay_identity_valid
+                    and all(required_identity.values())
+                    and not isinstance(attempt_number, bool)
+                    and isinstance(attempt_number, int)
+                    and attempt_number > 0
+                    and not isinstance(fencing_token, bool)
+                    and isinstance(fencing_token, int)
+                    and fencing_token > 0
+                    and not isinstance(fence_epoch, bool)
+                    and isinstance(fence_epoch, int)
+                    and fence_epoch >= 0
+                    and (
+                        normalized_replay_status != "in_progress"
+                        or receipt_payload.get("operation") == "database_claim"
+                    )
+                )
+            if not replay_identity_valid:
+                raise DatabaseImplementationConflictError(
+                    "control status replay conflicts with a foreign durable "
+                    "receipt"
+                ) from exc
+            # The exact receipt already holds the requested status.  Replay at
+            # the observed revision only to obtain the task source's durable
+            # idempotent result; a foreign same-status receipt never reaches
+            # this call.
             return cas(
                 current.task_cid,
                 expected_revision=int(current.revision),
@@ -83965,100 +84420,162 @@ class DatabaseImplementationDaemon:
             ],
         ).fetchone()
         candidate_count = int(count_row[0] if count_row is not None else 0)
-        cursor = connection.execute(
-            """
-            SELECT candidate.attempt_id, candidate.claim_id,
-                   candidate.task_cid, candidate.task_alias,
-                   candidate.attempt_number, candidate.owner_session_id,
-                   candidate.fencing_token, candidate.fence_epoch,
-                   candidate.lease_id, candidate.committed_phase,
-                   candidate.status, candidate.started_at_ms,
-                   candidate.finished_at_ms, candidate.revision,
-                   candidate.body_json, phase.body_json
-            FROM database_task_attempts AS candidate
-            JOIN attempt_phases AS phase
-              ON phase.attempt_id = candidate.attempt_id
-             AND phase.phase = ?
-            WHERE candidate.task_cid = ?
-              AND candidate.status = 'failed'
-              AND phase.body_json LIKE ?
-            ORDER BY candidate.attempt_number DESC,
-                     candidate.started_at_ms DESC, candidate.attempt_id DESC
-            LIMIT ?
-            """,
-            [
-                ATTEMPT_PHASE_FAILED,
-                attempt.task_cid,
-                fingerprint_marker,
-                min(
-                    64,
-                    max(
-                        self.max_task_attempts * 4,
-                        _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW,
-                    ),
-                ),
-            ],
+        page_size = min(
+            64,
+            max(
+                self.max_task_attempts * 4,
+                _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW,
+            ),
         )
         matching: list[dict[str, Any]] = []
         verified_count = 0
         leftover_wait_count = 0
         observed_current = False
         matching_digest = hashlib.sha256()
-        # The query is scoped and limited before the DuckDB adapter
-        # materializes it.  Unlimited pre-patch history can therefore never
-        # be copied into an event/control receipt when a finite budget is
-        # enabled later.
-        for row in cursor.fetchall():
-            candidate = self._attempt_from_row(row)
-            phase_body = _database_daemon_load_json(row[15])
-            receipt = self._verified_typed_deferral_receipt(
-                candidate,
-                phase_body,
+        scanned_candidate_count = 0
+        seen_attempt_ids: set[str] = set()
+        exhaustion_proven = False
+        while scanned_candidate_count < candidate_count:
+            if scanned_candidate_count >= _MAX_DATABASE_TASK_ATTEMPTS:
+                raise DatabaseImplementationAuthorityError(
+                    "typed deferral history exceeded its bounded scan before "
+                    "exhaustion could be proven"
+                )
+            cursor = connection.execute(
+                """
+                SELECT candidate.attempt_id, candidate.claim_id,
+                       candidate.task_cid, candidate.task_alias,
+                       candidate.attempt_number, candidate.owner_session_id,
+                       candidate.fencing_token, candidate.fence_epoch,
+                       candidate.lease_id, candidate.committed_phase,
+                       candidate.status, candidate.started_at_ms,
+                       candidate.finished_at_ms, candidate.revision,
+                       candidate.body_json, phase.body_json
+                FROM database_task_attempts AS candidate
+                JOIN attempt_phases AS phase
+                  ON phase.attempt_id = candidate.attempt_id
+                 AND phase.phase = ?
+                WHERE candidate.task_cid = ?
+                  AND candidate.status = 'failed'
+                  AND phase.body_json LIKE ?
+                ORDER BY candidate.attempt_number DESC,
+                         candidate.started_at_ms DESC,
+                         candidate.attempt_id DESC
+                LIMIT ? OFFSET ?
+                """,
+                [
+                    ATTEMPT_PHASE_FAILED,
+                    attempt.task_cid,
+                    fingerprint_marker,
+                    min(
+                        page_size,
+                        candidate_count - scanned_candidate_count,
+                        _MAX_DATABASE_TASK_ATTEMPTS
+                        - scanned_candidate_count,
+                    ),
+                    scanned_candidate_count,
+                ],
             )
-            if receipt is None:
-                continue
-            if (
-                receipt["generation_fingerprint"]
-                != current["generation_fingerprint"]
-            ):
-                continue
-            observed_current = observed_current or (
-                candidate.attempt_id == attempt.attempt_id
+            rows = cursor.fetchall()
+            if not rows:
+                raise DatabaseImplementationAuthorityError(
+                    "typed deferral history changed during bounded pagination"
+                )
+            for row in rows:
+                scanned_candidate_count += 1
+                candidate = self._attempt_from_row(row)
+                if candidate.attempt_id in seen_attempt_ids:
+                    raise DatabaseImplementationAuthorityError(
+                        "typed deferral history changed during bounded "
+                        "pagination"
+                    )
+                seen_attempt_ids.add(candidate.attempt_id)
+                phase_body = _database_daemon_load_json(row[15])
+                receipt = self._verified_typed_deferral_receipt(
+                    candidate,
+                    phase_body,
+                )
+                if (
+                    receipt is None
+                    or receipt["generation_fingerprint"]
+                    != current["generation_fingerprint"]
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "typed deferral candidate failed exact receipt replay"
+                    )
+                observed_current = observed_current or (
+                    candidate.attempt_id == attempt.attempt_id
+                )
+                reason_text = str(receipt["reason"] or "")
+                if reason_text in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS:
+                    leftover_wait_count += 1
+                    continue
+                verified_count += 1
+                identity = {
+                    "attempt_id": candidate.attempt_id,
+                    "attempt_number": int(candidate.attempt_number),
+                    "reason": reason_text,
+                    "deferral_fingerprint": str(
+                        receipt["deferral_fingerprint"]
+                    ),
+                }
+                encoded_identity = _database_daemon_json(identity).encode(
+                    "utf-8"
+                )
+                matching_digest.update(
+                    len(encoded_identity).to_bytes(8, "big")
+                )
+                matching_digest.update(encoded_identity)
+                if len(matching) < _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW:
+                    matching.append(identity)
+                if (
+                    verified_count >= self.max_task_attempts
+                    and observed_current
+                ):
+                    exhaustion_proven = True
+                    break
+            if exhaustion_proven:
+                break
+        if not exhaustion_proven:
+            repeated_count_row = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM database_task_attempts AS candidate
+                JOIN attempt_phases AS phase
+                  ON phase.attempt_id = candidate.attempt_id
+                 AND phase.phase = ?
+                WHERE candidate.task_cid = ?
+                  AND candidate.status = 'failed'
+                  AND phase.body_json LIKE ?
+                """,
+                [
+                    ATTEMPT_PHASE_FAILED,
+                    attempt.task_cid,
+                    fingerprint_marker,
+                ],
+            ).fetchone()
+            repeated_candidate_count = int(
+                repeated_count_row[0]
+                if repeated_count_row is not None
+                else 0
             )
-            reason_text = str(receipt["reason"] or "")
-            if reason_text in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS:
-                leftover_wait_count += 1
-                continue
-            verified_count += 1
-            identity = {
-                "attempt_id": candidate.attempt_id,
-                "attempt_number": int(candidate.attempt_number),
-                "reason": reason_text,
-                "deferral_fingerprint": str(
-                    receipt["deferral_fingerprint"]
-                ),
-            }
-            encoded_identity = _database_daemon_json(identity).encode("utf-8")
-            matching_digest.update(len(encoded_identity).to_bytes(8, "big"))
-            matching_digest.update(encoded_identity)
-            if len(matching) < _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW:
-                matching.append(identity)
+            if repeated_candidate_count != candidate_count:
+                raise DatabaseImplementationAuthorityError(
+                    "typed deferral history changed during bounded pagination"
+                )
         if not observed_current:
             raise DatabaseImplementationAuthorityError(
                 "current typed deferral is absent from durable attempt history"
             )
-        budget_candidate_count = verified_count
-        if leftover_wait_count and verified_count == 0:
-            budget_candidate_count = 0
-        elif (
-            verified_count
-            and leftover_wait_count == 0
-            and verified_count != min(candidate_count, self.max_task_attempts)
-            and candidate_count <= self.max_task_attempts
+        history_complete = scanned_candidate_count == candidate_count
+        if (
+            history_complete
+            and verified_count + leftover_wait_count != candidate_count
         ):
             raise DatabaseImplementationAuthorityError(
                 "typed deferral candidate count did not reproduce"
             )
+        budget_candidate_count = verified_count
         observation = {
             "schema": _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA,
             "task_cid": attempt.task_cid,
@@ -84073,12 +84590,10 @@ class DatabaseImplementationDaemon:
             "typed_deferral_candidate_count": budget_candidate_count,
             "typed_deferral_count": verified_count,
             "typed_deferral_count_is_lower_bound": (
-                budget_candidate_count > self.max_task_attempts
+                not history_complete
             ),
             "verified_typed_deferral_count": verified_count,
-            "verified_count_complete": (
-                budget_candidate_count <= self.max_task_attempts
-            ),
+            "verified_count_complete": history_complete,
             "max_task_attempts": int(self.max_task_attempts),
             "exhausted": verified_count >= self.max_task_attempts,
             "attempt_consumed": False,
@@ -84088,7 +84603,7 @@ class DatabaseImplementationDaemon:
                 "sha256:" + matching_digest.hexdigest()
             ),
             "matching_attempts_truncated": (
-                budget_candidate_count > len(matching)
+                not history_complete or budget_candidate_count > len(matching)
             ),
             "omitted_matching_attempt_count": max(
                 0,
@@ -84927,6 +85442,272 @@ class DatabaseImplementationDaemon:
             "retry_not_before_ms": retry_not_before_ms,
         }
 
+    def _verified_landed_completion_recovery_receipt(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Mapping[str, Any] | None,
+        *,
+        task: Any = None,
+    ) -> dict[str, Any]:
+        """Bind a read-only Git proposal to one exact terminal attempt."""
+
+        from .landed_completion_recovery import (
+            LandedCompletionRecoveryError,
+            verify_landed_completion_recovery_receipt,
+        )
+
+        try:
+            receipt = verify_landed_completion_recovery_receipt(
+                raw,
+                task_cid=attempt.task_cid,
+                task_alias=attempt.task_alias,
+                source_attempt_id=attempt.attempt_id,
+            )
+        except LandedCompletionRecoveryError as exc:
+            raise DatabaseImplementationAuthorityError(
+                "landed completion recovery receipt failed static verification"
+            ) from exc
+        expected = {
+            "source_attempt_id": attempt.attempt_id,
+            "source_claim_id": attempt.claim_id,
+            "source_lease_id": attempt.lease_id,
+            "source_owner_session_id": attempt.owner_session_id,
+            "source_attempt_number": int(attempt.attempt_number),
+            "source_fencing_token": int(attempt.fencing_token),
+            "source_fence_epoch": int(attempt.fence_epoch),
+            "source_execution_revision": int(attempt.revision),
+            "source_execution_finished_at_ms": attempt.finished_at_ms,
+        }
+        mismatched = [
+            field
+            for field, expected_value in expected.items()
+            if receipt.get(field) != expected_value
+        ]
+        if (
+            mismatched
+            or attempt.status != "failed"
+            or attempt.committed_phase != ATTEMPT_PHASE_FAILED
+            or self._terminal_portal_failure_reason(attempt)
+            != "portal_provider_failed"
+        ):
+            raise DatabaseImplementationConflictError(
+                "landed completion recovery does not match the exact failed "
+                "attempt"
+                + (": " + ", ".join(mismatched) if mismatched else "")
+            )
+        if task is not None:
+            task_status = str(
+                getattr(task, "status", "") or ""
+            ).strip().lower()
+            task_body = getattr(task, "body", None)
+            control_receipt = (
+                task_body.get("completion_receipt")
+                if isinstance(task_body, Mapping)
+                else None
+            )
+            if (
+                task_status != "blocked"
+                or getattr(task, "revision", None)
+                != receipt.get("source_control_revision")
+                or not isinstance(control_receipt, Mapping)
+                or control_receipt.get("operation")
+                != "database_portal_terminal_failure"
+                or control_receipt.get("reason") != "portal_provider_failed"
+                or control_receipt.get("retryable") is not False
+                or any(
+                    control_receipt.get(field) != value
+                    for field, value in {
+                        "attempt_id": attempt.attempt_id,
+                        "claim_id": attempt.claim_id,
+                        "lease_id": attempt.lease_id,
+                        "owner_session_id": attempt.owner_session_id,
+                        "attempt_number": int(attempt.attempt_number),
+                        "fencing_token": int(attempt.fencing_token),
+                        "fence_epoch": int(attempt.fence_epoch),
+                        "execution_revision": int(attempt.revision),
+                        "execution_finished_at_ms": attempt.finished_at_ms,
+                    }.items()
+                )
+            ):
+                raise DatabaseImplementationConflictError(
+                    "landed completion recovery does not match blocked control state"
+                )
+        return receipt
+
+    def _verified_landed_completion_revalidation_state(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+        *,
+        expected_recovery_evidence: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify the owner-persisted retry projection for landed recovery."""
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "landed completion recovery projection is not retrying"
+            )
+        task_body = getattr(task, "body", None)
+        receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "landed_completion_recovery_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        route_fields = {
+            "execution_route_binding",
+            "execution_route_policy_id",
+            "execution_route_origin_revision",
+        }
+        receipt_fields = set(receipt) if isinstance(receipt, Mapping) else set()
+        carried_route_fields = receipt_fields & route_fields
+        if carried_route_fields:
+            expected_fields.update(route_fields)
+        if (
+            not isinstance(receipt, Mapping)
+            or carried_route_fields not in (set(), route_fields)
+            or receipt_fields != expected_fields
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "landed completion recovery projection has an invalid receipt"
+            )
+        if carried_route_fields:
+            route = receipt.get("execution_route_binding")
+            validate_route = getattr(
+                self.task_source,
+                "validate_execution_route_binding",
+                None,
+            )
+            if not isinstance(route, Mapping) or not callable(validate_route):
+                raise DatabaseImplementationAuthorityError(
+                    "landed completion recovery projection has no typed route "
+                    "validation boundary"
+                )
+            try:
+                normalized_route = dict(
+                    validate_route(
+                        route,
+                        task=task,
+                        allow_claim_revision=True,
+                    )
+                )
+            except Exception as exc:
+                raise DatabaseImplementationAuthorityError(
+                    "landed completion recovery projection has an invalid "
+                    "execution-route lineage"
+                ) from exc
+            if (
+                dict(route) != normalized_route
+                or receipt.get("execution_route_policy_id")
+                != normalized_route.get("policy_id")
+                or receipt.get("execution_route_origin_revision")
+                != normalized_route.get("task_revision")
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "landed completion recovery projection changed its "
+                    "execution-route lineage"
+                )
+        recovery = self._verified_landed_completion_recovery_receipt(
+            attempt,
+            receipt.get("landed_completion_recovery_seed"),
+        )
+        if (
+            expected_recovery_evidence is not None
+            and dict(expected_recovery_evidence) != recovery
+        ):
+            raise DatabaseImplementationConflictError(
+                "landed completion recovery projection has a foreign seed"
+            )
+        reason = "landed_completion_requires_fresh_validation"
+        queue_reason = (
+            f"database_portal_retry:{attempt.attempt_id}:{reason}"
+        )[:2048]
+        task_revision = getattr(task, "revision", None)
+        coordination = receipt.get("coordination")
+        if (
+            receipt.get("operation")
+            != "database_portal_landed_completion_revalidation"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms") != attempt.finished_at_ms
+            or receipt.get("reason") != reason
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or receipt.get("evidence_source")
+            != "landed_completion_revalidation:" + str(recovery["proof_id"])
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(receipt.get("queue_receipt"), Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or type(task_revision) is not int
+            or receipt.get("control_expected_revision") != task_revision - 1
+            or receipt.get("control_expected_revision")
+            != recovery.get("source_control_revision")
+        ):
+            raise DatabaseImplementationConflictError(
+                "landed completion recovery projection failed identity verification"
+            )
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        queue_entry = (
+            get_queue_entry(attempt.task_cid)
+            if callable(get_queue_entry)
+            else None
+        )
+        if (
+            isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+            or queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "landed completion recovery queue state changed"
+            )
+        return {
+            "receipt": dict(receipt),
+            "landed_completion_recovery_evidence": recovery,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
     def _persist_task_retry_state(
         self,
         attempt: DatabaseTaskAttempt,
@@ -84948,6 +85729,7 @@ class DatabaseImplementationDaemon:
         pooled_worktree_create_recovery_evidence: Mapping[str, Any]
         | None = None,
         inflight_deferral_unstall_evidence: Mapping[str, Any] | None = None,
+        landed_completion_recovery_evidence: Mapping[str, Any] | None = None,
         allow_blocked_recovery: bool = False,
     ) -> dict[str, Any]:
         """Project one exact failed attempt into canonical retry authority."""
@@ -84961,6 +85743,7 @@ class DatabaseImplementationDaemon:
             leftover_wait_deferral_budget_recovery_evidence is not None,
             pooled_worktree_create_recovery_evidence is not None,
             inflight_deferral_unstall_evidence is not None,
+            landed_completion_recovery_evidence is not None,
         ]
         if sum(recovery_authorities) > 1:
             raise DatabaseImplementationAuthorityError(
@@ -85026,6 +85809,7 @@ class DatabaseImplementationDaemon:
                 or leftover_wait_deferral_budget_recovery_evidence is not None
                 or pooled_worktree_create_recovery_evidence is not None
                 or inflight_deferral_unstall_evidence is not None
+                or landed_completion_recovery_evidence is not None
                 or allow_blocked_recovery
             )
         )
@@ -85143,6 +85927,14 @@ class DatabaseImplementationDaemon:
                         pooled_worktree_create_recovery_evidence
                     ),
                 )
+            if landed_completion_recovery_evidence is not None:
+                self._verified_landed_completion_revalidation_state(
+                    attempt,
+                    task,
+                    expected_recovery_evidence=(
+                        landed_completion_recovery_evidence
+                    ),
+                )
             existing_entry = get_queue_entry(attempt.task_cid)
             if (
                 (
@@ -85155,6 +85947,7 @@ class DatabaseImplementationDaemon:
                     or leftover_wait_deferral_budget_recovery_evidence
                     is not None
                     or pooled_worktree_create_recovery_evidence is not None
+                    or landed_completion_recovery_evidence is not None
                 )
                 and existing_entry is not None
                 and str(getattr(existing_entry, "reason", "") or "")
@@ -85221,12 +86014,33 @@ class DatabaseImplementationDaemon:
                 f"task from {task_status!r} to 'retrying'"
             )
 
+        if (
+            task_status == "blocked"
+            and landed_completion_recovery_evidence is not None
+        ):
+            verified_landed_recovery = (
+                self._verified_landed_completion_recovery_receipt(
+                    attempt,
+                    landed_completion_recovery_evidence,
+                    task=task,
+                )
+            )
+            if verified_landed_recovery != dict(
+                landed_completion_recovery_evidence
+            ):
+                raise DatabaseImplementationConflictError(
+                    "landed completion recovery evidence changed before retry"
+                )
+
         # Persist the cooldown before exposing retrying as ready.  A crash
         # between the two stores therefore fails closed as an in-progress but
         # cooled task; restart reconciliation will finish the exact CAS.
         queue_entry = get_queue_entry(attempt.task_cid)
         if (
-            protected_path_recovery_evidence is not None
+            (
+                protected_path_recovery_evidence is not None
+                or landed_completion_recovery_evidence is not None
+            )
             and queue_entry is not None
             and str(getattr(queue_entry, "reason", "") or "")
             != queue_reason
@@ -85271,7 +86085,9 @@ class DatabaseImplementationDaemon:
             new_status="retrying",
             receipt={
                 "operation": (
-                    "database_portal_protected_path_retry_recovery"
+                    "database_portal_landed_completion_revalidation"
+                    if landed_completion_recovery_evidence is not None
+                    else "database_portal_protected_path_retry_recovery"
                     if protected_path_recovery_evidence is not None
                     else "database_portal_external_protected_checkout_retry_recovery"
                     if external_protected_checkout_recovery_evidence is not None
@@ -85385,6 +86201,15 @@ class DatabaseImplementationDaemon:
                     if inflight_deferral_unstall_evidence is not None
                     else {}
                 ),
+                **(
+                    {
+                        "landed_completion_recovery_seed": dict(
+                            landed_completion_recovery_evidence
+                        )
+                    }
+                    if landed_completion_recovery_evidence is not None
+                    else {}
+                ),
                 "control_expected_status": task_status,
                 "control_expected_revision": int(task.revision),
             },
@@ -85432,6 +86257,8 @@ class DatabaseImplementationDaemon:
                 if pooled_worktree_create_recovery_evidence is not None
                 else [str(inflight_deferral_unstall_evidence["receipt_id"])]
                 if inflight_deferral_unstall_evidence is not None
+                else [str(landed_completion_recovery_evidence["proof_id"])]
+                if landed_completion_recovery_evidence is not None
                 else None
             ),
         )
@@ -86360,13 +87187,271 @@ class DatabaseImplementationDaemon:
             outcomes.append(outcome)
         return outcomes
 
+    def _verified_leftover_wait_retry_budget(
+        self,
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Replay an exact, complete legacy budget made solely from waits."""
+
+        expected_fields = {
+            "schema",
+            "task_cid",
+            "task_generation",
+            "generation_fingerprint",
+            "current_deferral_fingerprint",
+            "typed_deferral_candidate_count",
+            "typed_deferral_count",
+            "typed_deferral_count_is_lower_bound",
+            "verified_typed_deferral_count",
+            "verified_count_complete",
+            "max_task_attempts",
+            "exhausted",
+            "attempt_consumed",
+            "typed_deferral_slot_consumed",
+            "matching_attempts",
+            "matching_attempts_digest",
+            "matching_attempts_truncated",
+            "omitted_matching_attempt_count",
+            "observation_id",
+        }
+        if not isinstance(raw, Mapping) or set(raw) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget has unknown or missing fields"
+            )
+        budget = dict(raw)
+        observation_body = dict(budget)
+        observation_id = observation_body.pop("observation_id", None)
+        matching = budget.get("matching_attempts")
+        count = budget.get("typed_deferral_count")
+        candidate_count = budget.get("typed_deferral_candidate_count")
+        verified_count = budget.get("verified_typed_deferral_count")
+        if (
+            budget.get("schema")
+            != _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA
+            or budget.get("task_cid") != attempt.task_cid
+            or budget.get("task_generation") != attempt.task_cid
+            or type(count) is not int
+            or type(candidate_count) is not int
+            or type(verified_count) is not int
+            or not isinstance(matching, list)
+            or not matching
+            or len(matching) > _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW
+            or count != len(matching)
+            or candidate_count != count
+            or verified_count != count
+            or count < self.max_task_attempts
+            or budget.get("max_task_attempts") != self.max_task_attempts
+            or budget.get("typed_deferral_count_is_lower_bound") is not False
+            or budget.get("verified_count_complete") is not True
+            or budget.get("exhausted") is not True
+            or budget.get("attempt_consumed") is not False
+            or budget.get("typed_deferral_slot_consumed") is not True
+            or budget.get("matching_attempts_truncated") is not False
+            or budget.get("omitted_matching_attempt_count") != 0
+            or observation_id
+            != self._database_portal_evidence_digest(observation_body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget failed closed-field verification"
+            )
+        generation_fingerprint = budget.get("generation_fingerprint")
+        if not re.fullmatch(
+            r"sha256:[0-9a-f]{64}",
+            str(generation_fingerprint or ""),
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget has no generation binding"
+            )
+        fingerprint_marker = (
+            '%"generation_fingerprint":"'
+            + str(generation_fingerprint)
+            + '"%'
+        )
+        connection = self._require_connection()
+        rows = connection.execute(
+            """
+            SELECT candidate.attempt_id, candidate.claim_id,
+                   candidate.task_cid, candidate.task_alias,
+                   candidate.attempt_number, candidate.owner_session_id,
+                   candidate.fencing_token, candidate.fence_epoch,
+                   candidate.lease_id, candidate.committed_phase,
+                   candidate.status, candidate.started_at_ms,
+                   candidate.finished_at_ms, candidate.revision,
+                   candidate.body_json, phase.body_json
+            FROM database_task_attempts AS candidate
+            JOIN attempt_phases AS phase
+              ON phase.attempt_id = candidate.attempt_id
+             AND phase.phase = ?
+            WHERE candidate.task_cid = ?
+              AND candidate.status = 'failed'
+              AND phase.body_json LIKE ?
+            ORDER BY candidate.attempt_number DESC,
+                     candidate.started_at_ms DESC,
+                     candidate.attempt_id DESC
+            LIMIT ?
+            """,
+            [
+                ATTEMPT_PHASE_FAILED,
+                attempt.task_cid,
+                fingerprint_marker,
+                _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW + 1,
+            ],
+        ).fetchall()
+        if len(rows) != count:
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget omitted durable history"
+            )
+        reproduced: list[dict[str, Any]] = []
+        digest = hashlib.sha256()
+        current_fingerprint = ""
+        for row in rows:
+            candidate = self._attempt_from_row(row)
+            phase_body = _database_daemon_load_json(row[15])
+            typed = self._verified_typed_deferral_receipt(
+                candidate,
+                phase_body,
+            )
+            if (
+                typed is None
+                or typed.get("generation_fingerprint")
+                != generation_fingerprint
+                or typed.get("reason")
+                not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "leftover-wait recovery budget references a foreign receipt"
+                )
+            identity = {
+                "attempt_id": candidate.attempt_id,
+                "attempt_number": int(candidate.attempt_number),
+                "reason": str(typed["reason"]),
+                "deferral_fingerprint": str(
+                    typed["deferral_fingerprint"]
+                ),
+            }
+            reproduced.append(identity)
+            encoded = _database_daemon_json(identity).encode("utf-8")
+            digest.update(len(encoded).to_bytes(8, "big"))
+            digest.update(encoded)
+            if candidate.attempt_id == attempt.attempt_id:
+                current_fingerprint = str(typed["deferral_fingerprint"])
+        if (
+            reproduced != matching
+            or not current_fingerprint
+            or budget.get("current_deferral_fingerprint")
+            != current_fingerprint
+            or budget.get("matching_attempts_digest")
+            != "sha256:" + digest.hexdigest()
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery budget did not reproduce exactly"
+            )
+        return budget
+
+    def _verified_blocked_leftover_wait_retry_budget(
+        self,
+        attempt: DatabaseTaskAttempt,
+        task: Any,
+    ) -> dict[str, Any]:
+        """Verify the exact blocked control receipt that owns the budget."""
+
+        task_body = getattr(task, "body", None)
+        receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "attempt_number",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "retryable",
+            "attempt_consumed",
+            "typed_deferral_slot_consumed",
+            "retry_budget",
+            "prior_queue_entry_preserved_inactive",
+            "coordination",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        task_revision = getattr(task, "revision", None)
+        coordination = (
+            receipt.get("coordination")
+            if isinstance(receipt, Mapping)
+            else None
+        )
+        if (
+            str(getattr(task, "status", "") or "").strip().lower()
+            != "blocked"
+            or type(task_revision) is not int
+            or not isinstance(receipt, Mapping)
+            or set(receipt) != expected_fields
+            or receipt.get("operation")
+            != "database_portal_typed_deferral_budget_exhausted"
+            or receipt.get("reason")
+            != "typed_portal_deferral_budget_exhausted"
+            or receipt.get("attempt_id") != attempt.attempt_id
+            or receipt.get("attempt_number") != int(attempt.attempt_number)
+            or receipt.get("claim_id") != attempt.claim_id
+            or receipt.get("lease_id") != attempt.lease_id
+            or receipt.get("owner_session_id") != attempt.owner_session_id
+            or receipt.get("fencing_token") != int(attempt.fencing_token)
+            or receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(attempt.revision)
+            or receipt.get("execution_finished_at_ms")
+            != attempt.finished_at_ms
+            or receipt.get("retryable") is not False
+            or receipt.get("attempt_consumed") is not False
+            or receipt.get("typed_deferral_slot_consumed") is not True
+            or not isinstance(
+                receipt.get("prior_queue_entry_preserved_inactive"), bool
+            )
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != attempt.attempt_id
+            or coordination.get("claim_id") != attempt.claim_id
+            or coordination.get("attempt_number")
+            != int(attempt.attempt_number)
+            or receipt.get("control_expected_status")
+            not in {"in_progress", "retrying"}
+            or receipt.get("control_expected_revision") != task_revision - 1
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "leftover-wait recovery does not match its blocked control receipt"
+            )
+        return self._verified_leftover_wait_retry_budget(
+            attempt,
+            receipt.get("retry_budget"),
+        )
+
     def _finalize_leftover_wait_deferral_budget_recovery_receipt(
         self,
         *,
         attempt: DatabaseTaskAttempt,
-        exhausting_reasons: Sequence[str],
+        blocked_retry_budget: Mapping[str, Any],
     ) -> dict[str, Any]:
-        reasons = sorted({str(reason) for reason in exhausting_reasons})
+        """Bind one legacy leftover-wait budget rearm to its exact fence."""
+
+        budget = self._verified_leftover_wait_retry_budget(
+            attempt,
+            blocked_retry_budget,
+        )
+        reasons = sorted(
+            {
+                str(item["reason"])
+                for item in budget["matching_attempts"]
+            }
+        )
         receipt = {
             "schema": (
                 _DATABASE_PORTAL_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA
@@ -86383,6 +87468,16 @@ class DatabaseImplementationDaemon:
             "fencing_token": int(attempt.fencing_token),
             "fence_epoch": int(attempt.fence_epoch),
             "exhausting_reasons": reasons,
+            "blocked_retry_budget": budget,
+            "blocked_retry_budget_observation_id": str(
+                budget["observation_id"]
+            ),
+            "blocked_retry_budget_digest": (
+                self._database_portal_evidence_digest(budget)
+            ),
+            "blocked_matching_attempts_digest": str(
+                budget["matching_attempts_digest"]
+            ),
             "identity_bound": True,
             "backoff_seconds": 0,
             "attempt_consumed": False,
@@ -86394,7 +87489,11 @@ class DatabaseImplementationDaemon:
         self,
         attempt: DatabaseTaskAttempt,
         raw: Any,
+        *,
+        authoritative_blocked_budget: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Verify a closed, identity-bound leftover-wait recovery seed."""
+
         if not isinstance(raw, Mapping):
             raise DatabaseImplementationAuthorityError(
                 "typed leftover-wait deferral-budget recovery evidence is malformed"
@@ -86413,6 +87512,10 @@ class DatabaseImplementationDaemon:
             "fencing_token",
             "fence_epoch",
             "exhausting_reasons",
+            "blocked_retry_budget",
+            "blocked_retry_budget_observation_id",
+            "blocked_retry_budget_digest",
+            "blocked_matching_attempts_digest",
             "identity_bound",
             "backoff_seconds",
             "attempt_consumed",
@@ -86426,6 +87529,16 @@ class DatabaseImplementationDaemon:
         body = dict(raw)
         receipt_id = body.pop("receipt_id", None)
         reasons = raw.get("exhausting_reasons")
+        budget = self._verified_leftover_wait_retry_budget(
+            attempt,
+            raw.get("blocked_retry_budget"),
+        )
+        reproduced_reasons = sorted(
+            {
+                str(item["reason"])
+                for item in budget["matching_attempts"]
+            }
+        )
         if (
             raw.get("schema")
             != _DATABASE_PORTAL_LEFTOVER_WAIT_DEFERRAL_BUDGET_RECOVERY_SCHEMA
@@ -86449,6 +87562,17 @@ class DatabaseImplementationDaemon:
                 for reason in reasons
             )
             or reasons != sorted(set(reasons))
+            or reasons != reproduced_reasons
+            or raw.get("blocked_retry_budget_observation_id")
+            != budget["observation_id"]
+            or raw.get("blocked_retry_budget_digest")
+            != self._database_portal_evidence_digest(budget)
+            or raw.get("blocked_matching_attempts_digest")
+            != budget["matching_attempts_digest"]
+            or (
+                authoritative_blocked_budget is not None
+                and dict(authoritative_blocked_budget) != budget
+            )
             or raw.get("identity_bound") is not True
             or raw.get("backoff_seconds") != 0
             or raw.get("attempt_consumed") is not False
@@ -86644,10 +87768,6 @@ class DatabaseImplementationDaemon:
                 "leftover-wait deferral-budget recovery rejected a superseded "
                 "attempt"
             )
-        verified = self._verified_leftover_wait_deferral_budget_recovery_receipt(
-            current,
-            recovery_evidence,
-        )
         task = self.task_source.get(current.task_cid)
         if task is None:
             raise DatabaseImplementationAuthorityError(
@@ -86664,23 +87784,16 @@ class DatabaseImplementationDaemon:
                 "leftover-wait deferral-budget recovery requires blocked or "
                 f"exact retrying control state, observed {status!r}"
             )
-        task_body = getattr(task, "body", None)
-        blocked_receipt = (
-            task_body.get("completion_receipt")
-            if isinstance(task_body, Mapping)
+        authoritative_budget = (
+            self._verified_blocked_leftover_wait_retry_budget(current, task)
+            if status == "blocked"
             else None
         )
-        if status == "blocked" and (
-            not isinstance(blocked_receipt, Mapping)
-            or blocked_receipt.get("operation")
-            != "database_portal_typed_deferral_budget_exhausted"
-            or blocked_receipt.get("reason")
-            != "typed_portal_deferral_budget_exhausted"
-        ):
-            raise DatabaseImplementationAuthorityError(
-                "leftover-wait deferral-budget recovery is limited to an "
-                "exact leftover-wait budget-exhausted block"
-            )
+        verified = self._verified_leftover_wait_deferral_budget_recovery_receipt(
+            current,
+            recovery_evidence,
+            authoritative_blocked_budget=authoritative_budget,
+        )
         try:
             coordination = self._reconcile_failed_attempt_coordination(current)
         except (
@@ -86779,34 +87892,36 @@ class DatabaseImplementationDaemon:
                 != "database_portal_typed_deferral_budget_exhausted"
                 or blocked_receipt.get("reason")
                 != "typed_portal_deferral_budget_exhausted"
+                or blocked_receipt.get("attempt_id") != attempt.attempt_id
             ):
                 continue
-            budget = blocked_receipt.get("retry_budget")
-            matching = (
-                budget.get("matching_attempts")
-                if isinstance(budget, Mapping)
+            candidate_budget = blocked_receipt.get("retry_budget")
+            candidate_matching = (
+                candidate_budget.get("matching_attempts")
+                if isinstance(candidate_budget, Mapping)
                 else None
             )
-            if not isinstance(matching, list) or not matching:
-                continue
-            exhausting_reasons = [
-                str(item.get("reason") or "")
-                for item in matching
-                if isinstance(item, Mapping)
-            ]
             if (
-                len(exhausting_reasons) != len(matching)
-                or not exhausting_reasons
+                not isinstance(candidate_matching, list)
+                or not candidate_matching
                 or any(
-                    reason not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
-                    for reason in exhausting_reasons
+                    not isinstance(item, Mapping)
+                    or item.get("reason")
+                    not in _LEFTOVER_WAIT_TYPED_DEFERRAL_REASONS
+                    for item in candidate_matching
                 )
             ):
                 continue
             try:
-                evidence = self._finalize_leftover_wait_deferral_budget_recovery_receipt(
-                    attempt=attempt,
-                    exhausting_reasons=exhausting_reasons,
+                budget = self._verified_blocked_leftover_wait_retry_budget(
+                    attempt,
+                    task,
+                )
+                evidence = (
+                    self._finalize_leftover_wait_deferral_budget_recovery_receipt(
+                        attempt=attempt,
+                        blocked_retry_budget=budget,
+                    )
                 )
                 outcome = self.recover_blocked_leftover_wait_deferral_budget_retry(
                     attempt,
@@ -89693,6 +90808,67 @@ class DatabaseImplementationDaemon:
                     DATABASE_PORTAL_POOLED_WORKTREE_CREATE_SOURCE_REASON,
                 )
 
+                if reason == "portal_provider_failed" and (
+                    self._automatic_claim_forbidden(task)
+                ):
+                    # A landed-output proposal is an automatic retry
+                    # authority.  Manual/review-only tasks must remain
+                    # blocked rather than falling through to the generic
+                    # provider-candidate rearm below.
+                    continue
+                if reason == "portal_provider_failed" and callable(
+                    self._landed_completion_recovery_fn
+                ):
+                    try:
+                        raw_recovery = self._landed_completion_recovery_fn(
+                            attempt
+                        )
+                        if raw_recovery is not None:
+                            recovery = (
+                                self._verified_landed_completion_recovery_receipt(
+                                    attempt,
+                                    raw_recovery,
+                                    task=task,
+                                )
+                            )
+                            coordination = (
+                                self._reconcile_failed_attempt_coordination(
+                                    attempt
+                                )
+                            )
+                            outcome = self._persist_task_retry_state(
+                                attempt,
+                                reason=(
+                                    "landed_completion_requires_fresh_validation"
+                                ),
+                                backoff_ms=0,
+                                evidence_source=(
+                                    "landed_completion_revalidation:"
+                                    + str(recovery["proof_id"])
+                                ),
+                                coordination_evidence=coordination,
+                                landed_completion_recovery_evidence=recovery,
+                            )
+                            outcome["coordination"] = coordination
+                            outcome[
+                                "landed_completion_recovery_evidence"
+                            ] = recovery
+                            outcomes.append(outcome)
+                            continue
+                    except Exception as exc:
+                        logger.warning(
+                            "landed completion recovery not admitted for %s: "
+                            "%s: %s",
+                            attempt.attempt_id,
+                            type(exc).__name__,
+                            str(exc)[:512],
+                        )
+                        # A callback error or a non-None proposal which fails
+                        # exact proof/persistence checks is not authority for
+                        # the weaker generic rearm.  Only an explicit None
+                        # result may use that compatibility path.
+                        continue
+
                 dedicated_recovery_pending = bool(
                     (
                         reason
@@ -89758,17 +90934,25 @@ class DatabaseImplementationDaemon:
                     if isinstance(task_body, Mapping)
                     else None
                 )
-                evidence_source = (
-                    str(receipt.get("evidence_source") or "")
-                    if isinstance(receipt, Mapping)
-                    else ""
-                )
                 operation = (
                     str(receipt.get("operation") or "")
                     if isinstance(receipt, Mapping)
                     else ""
                 )
+                evidence_source = (
+                    str(receipt.get("evidence_source") or "")
+                    if isinstance(receipt, Mapping)
+                    else ""
+                )
                 if (
+                    operation
+                    == "database_portal_landed_completion_revalidation"
+                ):
+                    self._verified_landed_completion_revalidation_state(
+                        attempt,
+                        task,
+                    )
+                elif (
                     operation
                     == "database_portal_protected_path_retry_recovery"
                 ):
