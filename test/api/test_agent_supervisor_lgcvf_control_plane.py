@@ -143,6 +143,99 @@ def _add_sealed_stage_zero_gitlinks(
     return object_id
 
 
+def _source_binding_fixture_git(cwd: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        (
+            "/usr/bin/git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            *arguments,
+        ),
+        cwd=cwd,
+        env={
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+            "LANG": "C.UTF-8",
+            "PATH": "/usr/bin:/bin",
+        },
+        capture_output=True,
+        check=True,
+        text=True,
+        timeout=30,
+    )
+    return completed.stdout.strip()
+
+
+def _descendant_source_binding_fixture(
+    tmp_path: Path,
+) -> tuple[Path, dict[str, Any], str, str]:
+    """Create a clean exact gitlink whose nested HEAD advances its planning base."""
+
+    repository = tmp_path / "descendant-source-binding"
+    nested = repository / "ipfs_datasets_py"
+    branch = "lgcvf-source-binding-test"
+
+    repository.mkdir()
+    _source_binding_fixture_git(repository, "init", "-q", "-b", branch)
+    _source_binding_fixture_git(
+        repository, "config", "user.email", "fixture@example.invalid"
+    )
+    _source_binding_fixture_git(
+        repository, "config", "user.name", "LGCVF Fixture"
+    )
+    _source_binding_fixture_git(
+        repository, "commit", "--allow-empty", "-qm", "source binding base"
+    )
+    accelerator_ancestor = _source_binding_fixture_git(
+        repository, "rev-parse", "HEAD"
+    )
+
+    nested.mkdir()
+    _source_binding_fixture_git(nested, "init", "-q", "-b", "planning")
+    _source_binding_fixture_git(
+        nested, "config", "user.email", "fixture@example.invalid"
+    )
+    _source_binding_fixture_git(nested, "config", "user.name", "LGCVF Fixture")
+    (nested / "datasets.txt").write_text("planning\n", encoding="utf-8")
+    _source_binding_fixture_git(nested, "add", "datasets.txt")
+    _source_binding_fixture_git(nested, "commit", "-qm", "planning revision")
+    planning_revision = _source_binding_fixture_git(nested, "rev-parse", "HEAD")
+    (nested / "datasets.txt").write_text("planning\nprogress\n", encoding="utf-8")
+    _source_binding_fixture_git(nested, "add", "datasets.txt")
+    _source_binding_fixture_git(
+        nested, "commit", "-qm", "admitted descendant progress"
+    )
+    nested_head = _source_binding_fixture_git(nested, "rev-parse", "HEAD")
+
+    _source_binding_fixture_git(repository, "add", "ipfs_datasets_py")
+    _source_binding_fixture_git(
+        repository, "commit", "-qm", "bind descendant datasets head"
+    )
+    config = {
+        "source_binding": {
+            "accelerator_required_ancestor": accelerator_ancestor,
+            "accelerator_required_branch": branch,
+            "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+            "ipfs_datasets_planning_revision": planning_revision,
+        }
+    }
+    assert (
+        _source_binding_fixture_git(
+            repository, "status", "--porcelain=v1", "--untracked-files=all"
+        )
+        == ""
+    )
+    assert (
+        _source_binding_fixture_git(
+            nested, "status", "--porcelain=v1", "--untracked-files=all"
+        )
+        == ""
+    )
+    return repository, config, planning_revision, nested_head
+
+
 def _sealed_materializer_script(tmp_path: Path) -> Path:
     """Build a minimal clean tracked checkout for exact isolated guard tests."""
 
@@ -295,6 +388,60 @@ def _unit_test_recovery_runtime_mode(monkeypatch: pytest.MonkeyPatch) -> None:
         "_require_isolated_recovery_runtime",
         lambda: None,
     )
+
+
+def test_recovery_source_binding_admits_exact_gitlink_descendant(
+    tmp_path: Path,
+) -> None:
+    repository, config, planning_revision, nested_head = (
+        _descendant_source_binding_fixture(tmp_path)
+    )
+
+    source = materializer._project_source_binding(  # noqa: SLF001
+        config,
+        root=repository,
+        require_clean=True,
+    )
+
+    assert nested_head != planning_revision
+    assert source["datasets_gitlink"] == nested_head
+    assert source["datasets_head"] == nested_head
+    assert source["datasets_planning_revision"] == planning_revision
+    assert source["datasets_planning_revision_is_ancestor"] is True
+    source_body = dict(source)
+    source_root = source_body.pop("source_forest_root")
+    assert source_root == materializer.content_identity(source_body)
+
+
+def test_recovery_source_binding_rejects_unrelated_nested_history(
+    tmp_path: Path,
+) -> None:
+    repository, config, planning_revision, _nested_head = (
+        _descendant_source_binding_fixture(tmp_path)
+    )
+    nested = repository / "ipfs_datasets_py"
+    _source_binding_fixture_git(
+        nested, "checkout", "-q", "--orphan", "unrelated-history"
+    )
+    (nested / "datasets.txt").write_text("unrelated\n", encoding="utf-8")
+    _source_binding_fixture_git(nested, "add", "datasets.txt")
+    _source_binding_fixture_git(nested, "commit", "-qm", "unrelated revision")
+    unrelated_head = _source_binding_fixture_git(nested, "rev-parse", "HEAD")
+    _source_binding_fixture_git(repository, "add", "ipfs_datasets_py")
+    _source_binding_fixture_git(
+        repository, "commit", "-qm", "bind unrelated datasets head"
+    )
+
+    assert unrelated_head != planning_revision
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="planning revision is not an ancestor of HEAD",
+    ):
+        materializer._project_source_binding(  # noqa: SLF001
+            config,
+            root=repository,
+            require_clean=True,
+        )
 
 
 def _population() -> tuple[dict[str, Any], dict[str, Any]]:

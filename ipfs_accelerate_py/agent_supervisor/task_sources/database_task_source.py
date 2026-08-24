@@ -106,6 +106,10 @@ class TaskSourceUnknownOutcomeError(
 ):
     """A remote owner effect requires exact post-restart reconciliation."""
 
+    def __init__(self, message: str, *, request_id: str = "") -> None:
+        self.request_id = str(request_id or "")
+        super().__init__(message)
+
 
 class TaskSourceBoundsError(DatabaseTaskSourceError, IntentRepositoryBoundsError):
     """A query or population bound was exceeded."""
@@ -397,6 +401,14 @@ def _cas_result_from_dict(payload: Mapping[str, Any]) -> CASResult:
 
 
 def _raise_typed_owner_error(exc: QuackOwnerCommandRemoteError) -> None:
+    if exc.code in {
+        "command_timeout_unknown_outcome",
+        "read_replica_refresh_unknown_outcome",
+    }:
+        raise TaskSourceUnknownOutcomeError(
+            exc.message,
+            request_id=exc.request_id,
+        ) from exc
     if exc.code == "conflict":
         raise TaskSourceConflictError(exc.message) from exc
     if exc.code == "completion_refused":

@@ -502,7 +502,7 @@ DuckDB repository owns all later task transitions.
 
 ## LGCVF-113 Independently qualify the focused and adversarial test deliverables
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -524,7 +524,7 @@ DuckDB repository owns all later task transitions.
 
 ## LGCVF-120 Run the preregistered paired hermetic benchmark
 
-- Status: completed
+- Status: todo
 - Completion: auto
 - Is schedulable: true
 - Review only: false

@@ -942,6 +942,7 @@ class TypedStateOwnerGateway:
         store_id: str,
         identity: Mapping[str, Any],
         catalog: Mapping[str, OwnerOperation] | None = None,
+        transaction_lock: Any | None = None,
     ) -> None:
         self._connection = connection
         self.socket_path = Path(socket_path)
@@ -952,7 +953,16 @@ class TypedStateOwnerGateway:
         self._listener: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
-        self._transaction_lock = threading.Lock()
+        self._transaction_lock = (
+            threading.RLock() if transaction_lock is None else transaction_lock
+        )
+        if any(
+            not callable(getattr(self._transaction_lock, name, None))
+            for name in ("acquire", "release", "__enter__", "__exit__")
+        ):
+            raise TypeError(
+                "transaction_lock must provide acquire, release, and context entry"
+            )
         self._clients: set[threading.Thread] = set()
         self._channels: set[socket.socket] = set()
         self._clients_lock = threading.Lock()
@@ -1356,7 +1366,10 @@ class TypedStateOwnerGateway:
             "grant_expiry_required": True,
             "kernel_peer_credentials_required": True,
             "typed_event_wait_bound": self._event_wait_handler is not None,
-            "typed_event_wait_maximum_seconds": MAX_REMOTE_EVENT_WAIT_SECONDS,
+            # Owner status is canonical DAG-JSON and therefore float-free.
+            "typed_event_wait_maximum_seconds": int(
+                MAX_REMOTE_EVENT_WAIT_SECONDS
+            ),
             "commit_observer_bound": self._commit_observer is not None,
             "last_observer_error_type": self._last_observer_error_type,
             "last_error_type": self._last_error_type,

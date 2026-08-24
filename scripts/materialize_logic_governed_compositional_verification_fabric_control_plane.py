@@ -3338,9 +3338,40 @@ def _project_source_binding(
         raise MaterializationError("ipfs_datasets_py nested worktree is dirty")
     datasets_head = _git(datasets, "rev-parse", "HEAD")
     datasets_tree = _git(datasets, "rev-parse", "HEAD^{tree}")
-    expected_datasets = str(binding.get("ipfs_datasets_planning_revision") or "")
-    if datasets_head != expected_datasets:
-        raise MaterializationError("ipfs_datasets_py HEAD differs from the configured revision")
+    datasets_planning_revision = str(
+        binding.get("ipfs_datasets_planning_revision") or ""
+    )
+    if not datasets_planning_revision:
+        raise MaterializationError(
+            "ipfs_datasets_py planning revision is required"
+        )
+    try:
+        resolved_planning_revision = _git(
+            datasets,
+            "rev-parse",
+            "--verify",
+            f"{datasets_planning_revision}^{{commit}}",
+        )
+    except MaterializationError as exc:
+        raise MaterializationError(
+            "ipfs_datasets_py planning revision is not a valid commit"
+        ) from exc
+    if resolved_planning_revision != datasets_planning_revision:
+        raise MaterializationError(
+            "ipfs_datasets_py planning revision is not an exact commit identity"
+        )
+    try:
+        _git(
+            datasets,
+            "merge-base",
+            "--is-ancestor",
+            datasets_planning_revision,
+            datasets_head,
+        )
+    except MaterializationError as exc:
+        raise MaterializationError(
+            "ipfs_datasets_py planning revision is not an ancestor of HEAD"
+        ) from exc
     relative = datasets.relative_to(root).as_posix()
     gitlink = _git(root, "ls-tree", head, "--", relative).split()
     if (
@@ -3358,6 +3389,8 @@ def _project_source_binding(
         "datasets_gitlink": datasets_head,
         "datasets_head": datasets_head,
         "datasets_tree": datasets_tree,
+        "datasets_planning_revision": datasets_planning_revision,
+        "datasets_planning_revision_is_ancestor": True,
         "datasets_path": relative,
         "nested_repository_count": 1,
         "worktrees_clean": not accelerator_dirty and not datasets_dirty,

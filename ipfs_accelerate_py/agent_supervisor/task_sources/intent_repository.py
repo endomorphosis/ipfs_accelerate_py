@@ -1070,6 +1070,63 @@ class IntentRepository:
         finally:
             connection.close()
 
+    def recover_idempotent_owner_command(
+        self,
+        *,
+        request_id: str,
+        command: str,
+        command_payload: Mapping[str, Any],
+        store_id: str,
+        store_generation: str,
+    ) -> Mapping[str, Any] | None:
+        """Return an exact durable owner-command result without executing it."""
+
+        if not self.uses_bound_connection:
+            raise IntentRepositoryError(
+                "idempotent owner command recovery requires a bound owner connection"
+            )
+        rid = _identifier(request_id, noun="request_id")
+        command_name = _identifier(command, noun="owner command")
+        store = str(store_id or "").strip()
+        if not store or "\x00" in store or len(store.encode("utf-8")) > MAX_ID_BYTES:
+            raise IntentRepositoryError("store_id is empty or exceeds its bound")
+        generation = _identifier(store_generation, noun="store_generation")
+        payload_map = _mapping(command_payload, noun="owner command payload")
+        command_id = content_identity(
+            {"command": command_name, "payload": payload_map}
+        )
+        idempotency_key = f"quack-owner-command:{rid}"
+        with self._connection(write=False) as connection:
+            prior = connection.execute(
+                """
+                SELECT command_kind, command_id, store_id, result_digest,
+                       body_json
+                FROM idempotency_records
+                WHERE idempotency_key = ?
+                """,
+                [idempotency_key],
+            ).fetchone()
+        if prior is None:
+            return None
+        body = _decode_json(prior[4], noun="owner command idempotency body")
+        if not isinstance(body, Mapping):
+            raise IntentRepositoryIntegrityError(
+                "owner command idempotency body is malformed"
+            )
+        result = body.get("result")
+        if (
+            str(prior[0]) != command_name
+            or str(prior[1]) != command_id
+            or str(prior[2]) != store
+            or body.get("store_generation") != generation
+            or not isinstance(result, Mapping)
+            or str(prior[3]) != content_identity(dict(result))
+        ):
+            raise IntentRepositoryConflictError(
+                "owner command request identity was reused with stale bindings"
+            )
+        return MappingProxyType(dict(result))
+
     def run_idempotent_owner_command(
         self,
         *,
