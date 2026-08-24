@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -84,6 +85,7 @@ def _protected_effect_launch_context(
         "--ignore-user-config",
         "--ignore-rules",
         "--ephemeral",
+        "--json",
         "-s",
         "workspace-write",
         "-C",
@@ -179,13 +181,19 @@ def _protected_effect_launch_context(
         uid_gid,
         "--workdir",
         workspace,
+        "--log-driver=json-file",
+        "--log-opt",
+        "max-size=16m",
+        "--log-opt",
+        "max-file=2",
     ]
     for override in overrides:
         create_argv.extend(["--env", override])
     for mount in mount_receipt:
         create_argv.extend(["--mount", mount])
     inner = list(provider_argv)
-    inner[6] = "danger-full-access"
+    inner[inner.index("-s") + 1] = "danger-full-access"
+    capacity_log_nonce = "sha256:" + "7" * 64
     create_argv.extend(
         [
             image_id,
@@ -194,6 +202,12 @@ def _protected_effect_launch_context(
                 f"{name}={value}"
                 for name, value in sorted(container_environment.items())
             ],
+            "/opt/ipfs-task-tools/bin/python",
+            "-I",
+            "-c",
+            llm_router.AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_WRAPPER,
+            llm_router.AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_SENTINEL_SCHEMA,
+            capacity_log_nonce,
             *inner,
         ]
     )
@@ -1566,6 +1580,84 @@ def test_real_non_codex_signature_binds_the_complete_scoped_invocation(
         invocation.control_plane.as_dict()
     )
     assert len(_canonical(outcome_route)) < 4096
+
+
+def test_codex_capacity_receipt_is_body_free_and_bound_to_exact_route(
+    tmp_path: Path,
+) -> None:
+    _repository, _key, route, _invocation = _reviewed_route(tmp_path)
+    primary = llm_router.build_agent_implementation_failure_receipt(
+        probe_stderr_text="not signed in",
+        nonce="c" * 64,
+        model="grok-4.6",
+        probe_returncode=41,
+    )
+    decision_id = llm_router._content_addressed_mapping(
+        {"decision": "capacity-test"},
+        identity_field="decision_id",
+    )
+    observed_at_ms = int(
+        datetime(2026, 8, 24, tzinfo=timezone.utc).timestamp() * 1000
+    )
+    reset_at_ms = int(
+        datetime(2026, 8, 31, 0, 42, tzinfo=timezone.utc).timestamp()
+        * 1000
+    )
+    terminal_error = json.dumps(
+        {
+            "type": "error",
+            "message": (
+                "You've hit your usage limit. Try again at "
+                "Aug 31st, 2026 12:42 AM."
+            ),
+        },
+        separators=(",", ":"),
+    )
+
+    capacity = llm_router.build_agent_implementation_codex_capacity_receipt(
+        receipt=primary,
+        route=route,
+        fallback_returncode=17,
+        decision_id=decision_id,
+        terminal_error_record=terminal_error,
+        observed_at_ms=observed_at_ms,
+    )
+
+    assert capacity["retry_not_before_ms"] == reset_at_ms
+    assert capacity["attempt_consumed"] is True
+    assert capacity["candidate_activity_observed"] is False
+    assert "usage limit" not in json.dumps(capacity).lower()
+    assert llm_router.valid_agent_implementation_codex_capacity_receipt(
+        capacity,
+        receipt=primary,
+        route=route,
+        fallback_returncode=17,
+        decision_id=decision_id,
+    )
+    tampered = dict(capacity)
+    tampered["candidate_activity_observed"] = True
+    tampered["receipt_id"] = llm_router._content_addressed_mapping(
+        tampered,
+        identity_field="receipt_id",
+    )
+    assert not llm_router.valid_agent_implementation_codex_capacity_receipt(
+        tampered,
+        receipt=primary,
+        route=route,
+        fallback_returncode=17,
+        decision_id=decision_id,
+    )
+    with pytest.raises(ValueError):
+        llm_router.build_agent_implementation_codex_capacity_receipt(
+            receipt=primary,
+            route=route,
+            fallback_returncode=17,
+            decision_id=decision_id,
+            terminal_error_record=(
+                '{"type":"item.completed","message":"usage limit"}'
+            ),
+            observed_at_ms=observed_at_ms,
+        )
 
 
 def test_scoped_native_quota_requires_live_lifecycle_signed_evidence(

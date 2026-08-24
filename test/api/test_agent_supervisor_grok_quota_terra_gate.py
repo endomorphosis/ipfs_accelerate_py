@@ -153,6 +153,7 @@ def _terra_fallback_command(
         "--ignore-user-config",
         "--ignore-rules",
         "--ephemeral",
+        "--json",
         "-s",
         "workspace-write",
         "-C",
@@ -163,6 +164,21 @@ def _terra_fallback_command(
         f'model_reasoning_effort="{reasoning_effort}"',
         "-",
     ]
+
+
+def _codex_capacity_log_start(nonce: str) -> str:
+    return json.dumps(
+        {
+            "schema": (
+                grok_cli_runner.
+                AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_SENTINEL_SCHEMA
+            ),
+            "type": "runner.capacity.start",
+            "log_nonce": nonce,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 def _seal_auth_or_quota_route(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1048,7 +1064,10 @@ def test_native_quota_verifier_rejects_workspace_traversal_alias(
 
 def test_quota_fallback_command_rejects_model_or_effort_drift() -> None:
     valid = _terra_fallback_command("/usr/local/bin/codex", "/repo")
-    assert grok_cli_runner._parse_codex_fallback_command(json.dumps(valid)) == valid
+    assert grok_cli_runner._parse_codex_fallback_command(
+        json.dumps(valid),
+        expected_fallback_reasoning_effort="high",
+    ) == valid
     model_drift = list(valid)
     model_drift[model_drift.index("-m") + 1] = "gpt-5.6-sol"
     effort_drift = list(valid)
@@ -1058,7 +1077,10 @@ def test_quota_fallback_command_rejects_model_or_effort_drift() -> None:
     effort_drift[effort_idx] = 'model_reasoning_effort="low"'
     for drifted in (model_drift, effort_drift):
         with pytest.raises(ValueError):
-            grok_cli_runner._parse_codex_fallback_command(json.dumps(drifted))
+            grok_cli_runner._parse_codex_fallback_command(
+                json.dumps(drifted),
+                expected_fallback_reasoning_effort="high",
+            )
 
 
 def test_quota_fallback_rejects_workspace_codex_executable(tmp_path: Path) -> None:
@@ -1815,6 +1837,10 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     assert "--network=bridge" in command
     assert "--runtime=runc" in command
     assert "--entrypoint=/usr/bin/env" in command
+    assert "--log-driver=json-file" in command
+    assert command.count("--log-opt") == 2
+    assert "max-size=16m" in command
+    assert "max-file=2" in command
     assert "--cap-drop=ALL" in command
     assert "--security-opt=no-new-privileges" in command
     assert "--device" not in command
@@ -1857,14 +1883,119 @@ def test_docker_codex_boundary_transforms_only_validated_sandbox(
     assert not any("/home/" in mount for mount in mounts)
 
     inner = command[command.index(image) + 1 :]
-    expected_inner = list(fallback)
-    expected_inner[expected_inner.index("-s") + 1] = "danger-full-access"
+    expected_provider = list(fallback)
+    expected_provider[expected_provider.index("-s") + 1] = (
+        "danger-full-access"
+    )
     expected_environment = [
         f"{name}={value}" for name, value in sorted(child_env.items())
     ]
-    assert inner == ["-i", *expected_environment, *expected_inner]
+    assert inner[: 2 + len(expected_environment)] == [
+        "-i",
+        *expected_environment,
+        str(grok_cli_runner._CODEX_TASK_TOOLCHAIN_PYTHON),
+    ]
+    assert inner[2 + len(expected_environment) : 5 + len(expected_environment)] == [
+        "-I",
+        "-c",
+        grok_cli_runner.AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_WRAPPER,
+    ]
+    assert inner[5 + len(expected_environment)] == (
+        grok_cli_runner.AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_SENTINEL_SCHEMA
+    )
+    assert re.fullmatch(
+        r"sha256:[0-9a-f]{64}",
+        inner[6 + len(expected_environment)],
+    )
+    capacity_log_nonce = inner[6 + len(expected_environment)]
+    assert grok_cli_runner._recorded_codex_capacity_log_nonce(
+        {"command_receipt": {"create_argv": command}}
+    ) == capacity_log_nonce
+    assert inner[7 + len(expected_environment) :] == expected_provider
     assert not any("/home/barberb" in item for item in command)
     assert "--dangerously-bypass-approvals-and-sandbox" not in inner
+
+
+def test_codex_capacity_capture_accepts_complete_no_candidate_jsonl() -> None:
+    nonce = "sha256:" + "8" * 64
+    terminal = json.dumps(
+        {
+            "type": "error",
+            "message": (
+                "You've hit your usage limit. Try again at "
+                "Aug 31st, 2026 12:42 AM."
+            ),
+        },
+        separators=(",", ":"),
+    )
+    stream = "\n".join(
+        (
+            _codex_capacity_log_start(nonce),
+            '{"type":"thread.started","thread_id":"thread:1"}',
+            '{"type":"turn.started"}',
+            terminal,
+            '{"type":"turn.failed","error":{"message":"usage limit"}}',
+            "",
+        )
+    )
+    capture = grok_cli_runner._CodexTerminalCapacityCapture(
+        expected_log_nonce=nonce
+    )
+    for chunk in (stream[:17], stream[17:103], stream[103:]):
+        capture.feed(chunk)
+
+    assert capture.finish() == terminal
+
+
+@pytest.mark.parametrize(
+    "records",
+    (
+        (lambda nonce: ['{"type":"error","message":"usage limit"}']),
+        (
+            lambda nonce: [
+                _codex_capacity_log_start("sha256:" + "9" * 64),
+                '{"type":"error","message":"usage limit"}',
+            ]
+        ),
+        (
+            lambda nonce: [
+                _codex_capacity_log_start(nonce),
+                '{"type":"item.completed","item":{"type":"command_execution"}}',
+                '{"type":"error","message":"usage limit"}',
+            ]
+        ),
+        (
+            lambda nonce: [
+                _codex_capacity_log_start(nonce),
+                '{"type":"error","message":"usage limit"}',
+                '{"type":"error","message":"usage limit"}',
+            ]
+        ),
+        (
+            lambda nonce: [
+                _codex_capacity_log_start(nonce),
+                '{"type":"error","type":"error","message":"usage limit"}',
+            ]
+        ),
+    ),
+    ids=(
+        "missing-stream-start",
+        "foreign-stream-start",
+        "candidate-activity",
+        "duplicate-terminal",
+        "duplicate-json-key",
+    ),
+)
+def test_codex_capacity_capture_fails_closed_for_incomplete_or_active_stream(
+    records,
+) -> None:
+    nonce = "sha256:" + "8" * 64
+    capture = grok_cli_runner._CodexTerminalCapacityCapture(
+        expected_log_nonce=nonce
+    )
+    capture.feed("\n".join(records(nonce)) + "\n")
+
+    assert capture.finish() == ""
 
 
 def test_docker_grok_create_is_followed_by_attached_exact_container_start(

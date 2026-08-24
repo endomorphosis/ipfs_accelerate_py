@@ -23,6 +23,7 @@ import re
 import shlex
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
@@ -47,6 +48,12 @@ DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA: Final[str] = (
 DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/database-portal-validation-retry-seed@1"
 )
+DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/database-portal-capacity-retry@1"
+)
+DATABASE_PORTAL_CAPACITY_RETRY_SEED_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/database-portal-capacity-retry-seed@1"
+)
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
     {"completed", "complete", "done"}
 )
@@ -59,6 +66,7 @@ _ROOT_REPOSITORY_AUTHORITY: Final[str] = "ipfs_accelerate_py"
 _MAX_REPOSITORY_PATH_BYTES: Final[int] = 1024
 _MAX_TASK_IDENTITY_BYTES: Final[int] = 4096
 _MAX_DATABASE_PORTAL_BACKOFF_SECONDS: Final[int] = 86_400
+_MAX_DATABASE_PORTAL_CAPACITY_BACKOFF_SECONDS: Final[int] = 31 * 86_400
 _MAX_DATABASE_PORTAL_TASK_ATTEMPTS: Final[int] = 10_000
 _MAX_DATABASE_PORTAL_EVENT_BYTES: Final[int] = 64 * 1024 * 1024
 _MAX_DATABASE_PORTAL_EVENTS: Final[int] = 4096
@@ -253,6 +261,36 @@ class DatabasePortalValidationRetry(DatabasePortalBridgeError):
         self.retry_receipt = value
 
 
+class DatabasePortalCapacityRetry(DatabasePortalBridgeError):
+    """One exactly proved post-dispatch dual-provider capacity retry."""
+
+    def __init__(self, receipt: Mapping[str, Any]) -> None:
+        value = dict(receipt)
+        backoff_seconds = value.get("backoff_seconds")
+        if (
+            value.get("schema") != DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA
+            or value.get("disposition") != "retry"
+            or value.get("reason") != "dual_provider_capacity_exhausted"
+            or value.get("attempt_consumed") is not True
+            or value.get("provider_dispatched") is not True
+            or isinstance(backoff_seconds, bool)
+            or not isinstance(backoff_seconds, int)
+            or backoff_seconds < 0
+            or backoff_seconds
+            > _MAX_DATABASE_PORTAL_CAPACITY_BACKOFF_SECONDS
+        ):
+            raise ValueError("capacity retry receipt has an invalid disposition")
+        super().__init__("dual_provider_capacity_exhausted")
+        self.reason = "dual_provider_capacity_exhausted"
+        self.backoff_seconds = int(backoff_seconds)
+        self.retry_not_before_ms = int(
+            value.get("retry_not_before_ms") or 0
+        )
+        self.attempt_consumed = True
+        self.provider_dispatched = True
+        self.retry_receipt = value
+
+
 @dataclass(frozen=True)
 class DatabasePortalAttemptPaths:
     """Private, non-authoritative paths for one database task attempt."""
@@ -290,6 +328,24 @@ def _canonical_json(value: Any) -> bytes:
 
 def _sha256_bytes(value: bytes) -> str:
     return f"sha256:{hashlib.sha256(value).hexdigest()}"
+
+
+def _content_addressed_record(
+    value: Mapping[str, Any],
+    *,
+    identity_field: str,
+) -> str:
+    body = {
+        key: item for key, item in value.items() if key != identity_field
+    }
+    encoded = json.dumps(
+        body,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return _sha256_bytes(encoded)
 
 
 def _sha256_file(path: Path) -> str:
@@ -2524,6 +2580,306 @@ class DatabasePortalExecutionBridge:
             int(raw_backoff),
         )
 
+    def _capacity_retry_receipt(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+        implementation: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Bind one exact protected capacity proof to this database claim."""
+
+        if not paths.events.is_file():
+            return None
+        try:
+            events = self._verified_event_chain(paths)
+        except DatabasePortalBridgeError:
+            return None
+        event_matches = [
+            (index, event)
+            for index, event in enumerate(events)
+            if event.get("type")
+            == "implementation_post_dispatch_capacity_retry"
+            and event.get("task_id")
+            == str(binding.get("task_alias") or "")
+            and event.get("canonical_task_cid") == str(attempt.task_cid)
+            and isinstance(event.get("post_dispatch_capacity_retry"), Mapping)
+        ]
+        if len(event_matches) != 1:
+            return None
+        authoritative_index, authoritative = event_matches[0]
+        trailing = events[authoritative_index + 1 :]
+        if (
+            len(trailing) > 1
+            or any(event.get("type") != "daemon_pass" for event in trailing)
+            or any(
+                str(event.get("active_task_id") or "")
+                not in {"", str(binding.get("task_alias") or "")}
+                for event in trailing
+            )
+        ):
+            # A later task/implementation disposition supersedes this event;
+            # an old capacity rejection must never override later success.
+            return None
+        closed_fields = (
+            "task_id",
+            "canonical_task_cid",
+            "attempt",
+            "returncode",
+            "retryable",
+            "deferred",
+            "attempt_consumed",
+            "provider_dispatched",
+            "typed_deferral_slot_consumed",
+            "reason",
+            "failure_class",
+            "providers",
+            "post_dispatch_capacity_retry",
+            "quota_probe_receipt",
+            "route_outcome",
+            "codex_capacity_receipt",
+        )
+        if (
+            implementation.get("post_dispatch_capacity_retry") is not None
+            and any(
+                implementation.get(name) != authoritative.get(name)
+                for name in closed_fields
+            )
+        ):
+            return None
+        proof = authoritative.get("post_dispatch_capacity_retry")
+        primary = authoritative.get("quota_probe_receipt")
+        outcome = authoritative.get("route_outcome")
+        capacity = authoritative.get("codex_capacity_receipt")
+        if not all(
+            isinstance(item, Mapping)
+            for item in (proof, primary, outcome, capacity)
+        ):
+            return None
+        proof = dict(proof)
+        primary = dict(primary)
+        outcome = dict(outcome)
+        capacity = dict(capacity)
+        proof_fields = {
+            "schema",
+            "task_id",
+            "attempt",
+            "task_revision_cid",
+            "logical_attempt_id",
+            "invocation_binding_id",
+            "route_id",
+            "decision_id",
+            "primary_receipt_id",
+            "route_outcome_id",
+            "capacity_receipt_id",
+            "fallback_provider_id",
+            "fallback_model_id",
+            "fallback_reasoning_effort",
+            "fallback_returncode",
+            "provider_dispatched",
+            "attempt_consumed",
+            "observed_at_ms",
+            "retry_not_before_ms",
+            "proof_id",
+        }
+        capacity_fields = {
+            "schema",
+            "source",
+            "failure_class",
+            "reason_code",
+            "primary_receipt_id",
+            "nonce",
+            "route_id",
+            "invocation_binding_id",
+            "logical_attempt_id",
+            "fallback_provider_id",
+            "fallback_model_id",
+            "fallback_reasoning_effort",
+            "fallback_returncode",
+            "outcome_decision",
+            "decision_id",
+            "provider_dispatched",
+            "candidate_activity_observed",
+            "attempt_consumed",
+            "completion_authority",
+            "observed_at_ms",
+            "retry_not_before_ms",
+            "evidence_kind",
+            "evidence_sha256",
+            "evidence_bytes",
+            "evidence_overflow",
+            "receipt_id",
+        }
+        portal_attempt = authoritative.get("attempt")
+        returncode = authoritative.get("returncode")
+        route_plan = outcome.get("route_plan")
+        observed_at_ms = capacity.get("observed_at_ms")
+        retry_not_before_ms = capacity.get("retry_not_before_ms")
+        if (
+            authoritative.get("retryable") is not True
+            or authoritative.get("deferred") is not False
+            or authoritative.get("reason")
+            != "provider_capacity_exhausted"
+            or authoritative.get("failure_class")
+            != "dual_provider_capacity_exhausted"
+            or authoritative.get("providers") != ["grok", "codex"]
+            or authoritative.get("attempt_consumed") is not True
+            or authoritative.get("provider_dispatched") is not True
+            or authoritative.get("typed_deferral_slot_consumed") is not False
+            or isinstance(returncode, bool)
+            or not isinstance(returncode, int)
+            or returncode == 0
+            or isinstance(portal_attempt, bool)
+            or not isinstance(portal_attempt, int)
+            or portal_attempt < 1
+            or portal_attempt > self.max_task_attempts
+            or set(proof) != proof_fields
+            or proof.get("schema")
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "post-dispatch-capacity-retry-proof@1"
+            )
+            or proof.get("proof_id")
+            != _sha256_bytes(
+                _canonical_json(
+                    {
+                        key: value
+                        for key, value in proof.items()
+                        if key != "proof_id"
+                    }
+                )
+            )
+            or proof.get("task_id")
+            != str(binding.get("task_alias") or "")
+            or proof.get("attempt") != portal_attempt
+            or proof.get("task_revision_cid") != str(attempt.task_cid)
+            or proof.get("provider_dispatched") is not True
+            or proof.get("attempt_consumed") is not True
+            or set(capacity) != capacity_fields
+            or capacity.get("schema")
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "codex-terminal-capacity-receipt@1"
+            )
+            or capacity.get("source") != "grok_cli_runner"
+            or capacity.get("failure_class") != "usage_limit"
+            or capacity.get("reason_code") != "codex_usage_limit_reached"
+            or capacity.get("provider_dispatched") is not True
+            or capacity.get("candidate_activity_observed") is not False
+            or capacity.get("attempt_consumed") is not True
+            or capacity.get("completion_authority") is not False
+            or capacity.get("evidence_overflow") is not False
+            or capacity.get("fallback_provider_id") != "codex"
+            or capacity.get("fallback_model_id") != "gpt-5.6-terra"
+            or capacity.get("fallback_reasoning_effort")
+            not in {"medium", "high"}
+            or capacity.get("fallback_returncode") != returncode
+            or capacity.get("outcome_decision") != "fallback_failed"
+            or capacity.get("receipt_id")
+            != _content_addressed_record(
+                capacity,
+                identity_field="receipt_id",
+            )
+            or outcome.get("outcome_id")
+            != _content_addressed_record(outcome, identity_field="outcome_id")
+            or primary.get("receipt_id")
+            != _content_addressed_record(primary, identity_field="receipt_id")
+            or not isinstance(route_plan, Mapping)
+            or route_plan.get("fallback_provider_id") != "codex"
+            or route_plan.get("fallback_model_id") != "gpt-5.6-terra"
+            or route_plan.get("fallback_reasoning_effort")
+            != capacity.get("fallback_reasoning_effort")
+            or outcome.get("decision") != "fallback_failed"
+            or outcome.get("fallback_dispatched") is not True
+            or outcome.get("fallback_returncode") != returncode
+            or outcome.get("fallback_capacity_receipt") != capacity
+            or outcome.get("preflight_receipt_id")
+            != primary.get("receipt_id")
+            or proof.get("primary_receipt_id")
+            != primary.get("receipt_id")
+            or proof.get("route_outcome_id") != outcome.get("outcome_id")
+            or proof.get("capacity_receipt_id")
+            != capacity.get("receipt_id")
+            or proof.get("logical_attempt_id")
+            != capacity.get("logical_attempt_id")
+            or proof.get("invocation_binding_id")
+            != capacity.get("invocation_binding_id")
+            or outcome.get("invocation_binding_id")
+            != capacity.get("invocation_binding_id")
+            or proof.get("route_id") != capacity.get("route_id")
+            or route_plan.get("route_id") != capacity.get("route_id")
+            or proof.get("decision_id") != capacity.get("decision_id")
+            or outcome.get("decision_id") != capacity.get("decision_id")
+            or proof.get("fallback_provider_id") != "codex"
+            or proof.get("fallback_model_id") != "gpt-5.6-terra"
+            or proof.get("fallback_reasoning_effort")
+            != capacity.get("fallback_reasoning_effort")
+            or proof.get("fallback_returncode") != returncode
+            or proof.get("observed_at_ms") != observed_at_ms
+            or proof.get("retry_not_before_ms") != retry_not_before_ms
+            or isinstance(observed_at_ms, bool)
+            or not isinstance(observed_at_ms, int)
+            or observed_at_ms <= 0
+            or isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or (
+                retry_not_before_ms != 0
+                and not (
+                    observed_at_ms < retry_not_before_ms
+                    <= observed_at_ms
+                    + _MAX_DATABASE_PORTAL_CAPACITY_BACKOFF_SECONDS * 1000
+                )
+            )
+        ):
+            return None
+        now_ms = int(time.time() * 1000)
+        if retry_not_before_ms:
+            backoff_seconds = min(
+                _MAX_DATABASE_PORTAL_CAPACITY_BACKOFF_SECONDS,
+                max(0, (retry_not_before_ms - now_ms + 999) // 1000),
+            )
+        else:
+            backoff_seconds = min(
+                _MAX_DATABASE_PORTAL_BACKOFF_SECONDS,
+                max(15 * 60, 15 * 60 * (2 ** min(portal_attempt - 1, 6))),
+            )
+        receipt: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA,
+            "disposition": "retry",
+            "reason": "dual_provider_capacity_exhausted",
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(binding.get("task_alias") or ""),
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "portal_attempt": portal_attempt,
+            "ordinary_retry_generation": portal_attempt,
+            "max_task_attempts": int(self.max_task_attempts),
+            "remaining_task_attempts": int(
+                self.max_task_attempts - portal_attempt
+            ),
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+            "backoff_seconds": int(backoff_seconds),
+            "retry_not_before_ms": retry_not_before_ms,
+            "binding_id": str(binding.get("binding_id") or ""),
+            "events_digest": _sha256_file(paths.events),
+            "event_stream_id": str(authoritative.get("stream_id") or ""),
+            "implementation_event_id": str(
+                authoritative.get("event_id") or ""
+            ),
+            "post_dispatch_capacity_proof": proof,
+            "primary_receipt": primary,
+            "route_outcome": outcome,
+            "codex_capacity_receipt": capacity,
+        }
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        return receipt
+
     @staticmethod
     def _looks_like_validation_retry(
         implementation: Mapping[str, Any],
@@ -3079,6 +3435,7 @@ class DatabasePortalExecutionBridge:
             or seed.get("max_task_attempts") != self.max_task_attempts
             or isinstance(source_attempt_number, bool)
             or not isinstance(source_attempt_number, int)
+            or source_attempt_number <= 0
             or isinstance(target_attempt_number, bool)
             or not isinstance(target_attempt_number, int)
             or target_attempt_number < 1
@@ -3225,6 +3582,297 @@ class DatabasePortalExecutionBridge:
             "portal_attempt": source_portal_attempt,
         }
 
+    def _capacity_retry_seed_from_record(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+    ) -> dict[str, Any] | None:
+        """Verify the exact capacity receipt carried by a successor claim."""
+
+        body = dict(getattr(record, "body", {}) or {})
+        status_receipt = body.get("completion_receipt")
+        if not isinstance(status_receipt, Mapping):
+            return None
+        seed = status_receipt.get("capacity_retry_seed")
+        if seed is None:
+            return None
+        if (
+            status_receipt.get("operation") != "database_claim"
+            or status_receipt.get("attempt_id") != str(attempt.attempt_id)
+            or status_receipt.get("claim_id") != str(attempt.claim_id)
+            or status_receipt.get("attempt_number")
+            != int(attempt.attempt_number)
+            or status_receipt.get("fencing_token")
+            != int(attempt.fencing_token)
+            or status_receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or status_receipt.get("lease_id")
+            != str(getattr(attempt, "lease_id", "") or "")
+            or not isinstance(seed, Mapping)
+        ):
+            raise DatabasePortalBridgeError(
+                "database claim carries a malformed capacity retry seed"
+            )
+        value = dict(seed)
+        receipt_id = value.pop("receipt_id", None)
+        source_attempt_number = seed.get("attempt_number")
+        target_attempt_number = getattr(attempt, "attempt_number", 0)
+        source_portal_attempt = seed.get("portal_attempt")
+        capacity = seed.get("codex_capacity_receipt")
+        proof = seed.get("post_dispatch_capacity_proof")
+        primary = seed.get("primary_receipt")
+        outcome = seed.get("route_outcome")
+        expected_seed_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "task_cid",
+            "task_alias",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "attempt_number",
+            "fencing_token",
+            "fence_epoch",
+            "portal_attempt",
+            "ordinary_retry_generation",
+            "max_task_attempts",
+            "remaining_task_attempts",
+            "attempt_consumed",
+            "provider_dispatched",
+            "backoff_seconds",
+            "retry_not_before_ms",
+            "binding_id",
+            "events_digest",
+            "event_stream_id",
+            "implementation_event_id",
+            "post_dispatch_capacity_proof",
+            "primary_receipt",
+            "route_outcome",
+            "codex_capacity_receipt",
+            "receipt_id",
+        }
+        if (
+            set(seed) != expected_seed_fields
+            or seed.get("schema") != DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA
+            or seed.get("disposition") != "retry"
+            or seed.get("reason") != "dual_provider_capacity_exhausted"
+            or seed.get("task_cid") != str(attempt.task_cid)
+            or seed.get("task_alias")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or seed.get("attempt_consumed") is not True
+            or seed.get("provider_dispatched") is not True
+            or seed.get("max_task_attempts") != self.max_task_attempts
+            or isinstance(source_attempt_number, bool)
+            or not isinstance(source_attempt_number, int)
+            or isinstance(target_attempt_number, bool)
+            or not isinstance(target_attempt_number, int)
+            or target_attempt_number <= 0
+            or str(seed.get("attempt_id") or "")
+            == str(attempt.attempt_id)
+            or str(seed.get("claim_id") or "")
+            == str(attempt.claim_id)
+            or str(seed.get("lease_id") or "")
+            == str(getattr(attempt, "lease_id", "") or "")
+            or status_receipt.get("capacity_retry_source_attempt_id")
+            != str(seed.get("attempt_id") or "")
+            or isinstance(source_portal_attempt, bool)
+            or not isinstance(source_portal_attempt, int)
+            or not 1 <= source_portal_attempt < self.max_task_attempts
+            or seed.get("ordinary_retry_generation")
+            != source_portal_attempt
+            or seed.get("remaining_task_attempts")
+            != self.max_task_attempts - source_portal_attempt
+            or not all(
+                isinstance(item, Mapping)
+                for item in (proof, primary, outcome, capacity)
+            )
+            or capacity.get("fallback_provider_id") != "codex"
+            or capacity.get("fallback_model_id") != "gpt-5.6-terra"
+            or capacity.get("attempt_consumed") is not True
+            or capacity.get("provider_dispatched") is not True
+            or proof.get("task_revision_cid") != str(attempt.task_cid)
+            or proof.get("task_id")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or proof.get("attempt") != source_portal_attempt
+            or proof.get("proof_id")
+            != _sha256_bytes(
+                _canonical_json(
+                    {
+                        key: item
+                        for key, item in proof.items()
+                        if key != "proof_id"
+                    }
+                )
+            )
+            or proof.get("primary_receipt_id")
+            != primary.get("receipt_id")
+            or proof.get("route_outcome_id") != outcome.get("outcome_id")
+            or proof.get("capacity_receipt_id")
+            != capacity.get("receipt_id")
+            or proof.get("invocation_binding_id")
+            != capacity.get("invocation_binding_id")
+            or proof.get("route_id") != capacity.get("route_id")
+            or proof.get("decision_id") != capacity.get("decision_id")
+            or outcome.get("fallback_capacity_receipt") != capacity
+            or outcome.get("invocation_binding_id")
+            != capacity.get("invocation_binding_id")
+            or outcome.get("decision_id") != capacity.get("decision_id")
+            or capacity.get("receipt_id")
+            != _content_addressed_record(
+                capacity, identity_field="receipt_id"
+            )
+            or outcome.get("outcome_id")
+            != _content_addressed_record(outcome, identity_field="outcome_id")
+            or primary.get("receipt_id")
+            != _content_addressed_record(primary, identity_field="receipt_id")
+            or receipt_id != _sha256_bytes(_canonical_json(value))
+        ):
+            raise DatabasePortalBridgeError(
+                "database claim capacity retry seed failed verification"
+            )
+        return dict(seed)
+
+    def _initialize_capacity_retry_seed(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> Mapping[str, Any] | None:
+        """Seed the prior ordinary Portal attempt counter exactly once."""
+
+        seed = self._capacity_retry_seed_from_record(
+            attempt=attempt,
+            record=record,
+        )
+        if seed is None:
+            return None
+        alias = str(binding.get("task_alias") or "")
+        task_cid = str(attempt.task_cid)
+        source_portal_attempt = int(seed["portal_attempt"])
+        seed_body = {
+            "schema": DATABASE_PORTAL_CAPACITY_RETRY_SEED_SCHEMA,
+            "task_id": alias,
+            "canonical_task_cid": task_cid,
+            "source_database_attempt_id": str(seed.get("attempt_id") or ""),
+            "target_database_attempt_id": str(attempt.attempt_id),
+            "target_claim_id": str(attempt.claim_id),
+            "source_retry_receipt_id": str(seed.get("receipt_id") or ""),
+            "portal_attempt": source_portal_attempt,
+            "capacity_retry_receipt": dict(seed),
+            "completion_authoritative": False,
+        }
+        seed_body["seed_id"] = _sha256_bytes(_canonical_json(seed_body))
+        existing_seed_event: Mapping[str, Any] | None = None
+        existing_events: list[dict[str, Any]] = []
+        seed_event_index = -1
+        if paths.events.exists():
+            existing_events = self._verified_event_chain(paths)
+            for index, event in enumerate(existing_events):
+                if (
+                    event.get("type")
+                    == "database_portal_capacity_retry_seeded"
+                    and event.get("seed_id") == seed_body["seed_id"]
+                ):
+                    existing_seed_event = event
+                    seed_event_index = index
+                    break
+            if existing_seed_event is None:
+                raise DatabasePortalBridgeError(
+                    "Portal event stream predates its required capacity seed"
+                )
+            if (
+                sum(
+                    event.get("type")
+                    == "database_portal_capacity_retry_seeded"
+                    and event.get("target_database_attempt_id")
+                    == str(attempt.attempt_id)
+                    for event in existing_events
+                )
+                != 1
+                or any(
+                    existing_seed_event.get(key) != value
+                    for key, value in seed_body.items()
+                )
+            ):
+                raise DatabasePortalBridgeError(
+                    "Portal capacity retry seed event conflicts with its claim"
+                )
+        else:
+            existing_seed_event = append_jsonl_event(
+                paths.events,
+                "database_portal_capacity_retry_seeded",
+                seed_body,
+            )
+        state_seed = {
+            "implementation_attempts": {alias: source_portal_attempt},
+            "implementation_attempts_by_cid": {
+                task_cid: source_portal_attempt,
+            },
+            "last_implementation_task_id": alias,
+            "last_implementation_task_cid": task_cid,
+            "last_implementation_returncode": 1,
+        }
+        if paths.state.exists():
+            try:
+                current_state = json.loads(paths.state.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise DatabasePortalBridgeError(
+                    "Portal capacity retry seed state is unreadable"
+                ) from exc
+            exact_seed_state = bool(
+                isinstance(current_state, Mapping)
+                and all(
+                    current_state.get(key) == value
+                    for key, value in state_seed.items()
+                )
+            )
+            target_portal_attempt = source_portal_attempt + 1
+            started = [
+                event
+                for event in existing_events[seed_event_index + 1 :]
+                if event.get("type") == "implementation_started"
+                and event.get("task_id") == alias
+                and event.get("canonical_task_cid") == task_cid
+                and event.get("attempt") == target_portal_attempt
+            ]
+            progressed_adoptable_state = bool(
+                isinstance(current_state, Mapping)
+                and len(started) == 1
+                and current_state.get("implementation_attempts")
+                == {alias: target_portal_attempt}
+                and current_state.get("implementation_attempts_by_cid")
+                == {task_cid: target_portal_attempt}
+                and current_state.get("active_task_id") == alias
+                and current_state.get("active_task_cid") == task_cid
+                and current_state.get("active_attempt")
+                == target_portal_attempt
+                and current_state.get("implementation_in_progress") is True
+                and current_state.get("last_implementation_task_id") == alias
+                and current_state.get("last_implementation_task_cid")
+                == task_cid
+                and current_state.get("last_implementation_returncode") is None
+                and not current_state.get("last_implementation_finished_at")
+            )
+            if not exact_seed_state and not progressed_adoptable_state:
+                raise DatabasePortalBridgeError(
+                    "Portal capacity retry seed state conflicts with its receipt"
+                )
+        else:
+            _atomic_write(
+                paths.state,
+                json.dumps(state_seed, indent=2, sort_keys=True).encode("utf-8")
+                + b"\n",
+            )
+        return {
+            "seed_id": str(seed_body["seed_id"]),
+            "seed_event_id": str(existing_seed_event.get("event_id") or ""),
+            "source_retry_receipt_id": str(seed.get("receipt_id") or ""),
+            "portal_attempt": source_portal_attempt,
+        }
+
     def _acceptance_receipt(
         self,
         *,
@@ -3276,12 +3924,61 @@ class DatabasePortalExecutionBridge:
 
         record = self._record_for_attempt(self.task_source, attempt)
         paths, binding = self._ensure_attempt_projection(attempt, record)
-        self._initialize_validation_retry_seed(
+        projection = self._verify_projection(paths, binding)
+        if (
+            _projection_status(projection) in _TERMINAL_STATUSES
+            and self._has_completion_event(
+                paths,
+                str(binding.get("task_alias") or ""),
+            )
+        ):
+            return self._acceptance_receipt(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+                summaries=(),
+            )
+        # A prior process can die after Portal durably appends its terminal
+        # retry event but before the outer database attempt commits ``failed``.
+        # Replay that exact event before seed initialization or provider work;
+        # an advanced attempt-local state must never cause a second dispatch.
+        if paths.events.is_file():
+            recovered_capacity = self._capacity_retry_receipt(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+                implementation={},
+            )
+            if recovered_capacity is not None:
+                if recovered_capacity.get("remaining_task_attempts") == 0:
+                    raise DatabasePortalBridgeError(
+                        "portal_retry_budget_exhausted"
+                    )
+                raise DatabasePortalCapacityRetry(recovered_capacity)
+            recovered_validation = self._validation_retry_receipt(
+                attempt=attempt,
+                paths=paths,
+                binding=binding,
+                implementation=None,
+            )
+            if recovered_validation is not None:
+                raise DatabasePortalValidationRetry(recovered_validation)
+        validation_seed = self._initialize_validation_retry_seed(
             attempt=attempt,
             record=record,
             paths=paths,
             binding=binding,
         )
+        capacity_seed = self._initialize_capacity_retry_seed(
+            attempt=attempt,
+            record=record,
+            paths=paths,
+            binding=binding,
+        )
+        if validation_seed is not None and capacity_seed is not None:
+            raise DatabasePortalBridgeError(
+                "database claim carries conflicting retry seeds"
+            )
         summaries: list[Mapping[str, Any]] = []
         daemon = self.portal_factory(
             paths,
@@ -3319,6 +4016,24 @@ class DatabasePortalExecutionBridge:
                         backoff_seconds=backoff_seconds,
                     )
                 implementation = raw_result.get("implementation_result")
+                capacity_retry_receipt = self._capacity_retry_receipt(
+                    attempt=attempt,
+                    paths=paths,
+                    binding=binding,
+                    implementation=(
+                        implementation
+                        if isinstance(implementation, Mapping)
+                        else {}
+                    ),
+                )
+                if capacity_retry_receipt is not None:
+                    if capacity_retry_receipt.get("remaining_task_attempts") == 0:
+                        raise DatabasePortalBridgeError(
+                            "portal_retry_budget_exhausted"
+                        )
+                    raise DatabasePortalCapacityRetry(
+                        capacity_retry_receipt
+                    )
                 if (
                     isinstance(implementation, Mapping)
                     and self._looks_like_validation_retry(implementation)
@@ -3838,6 +4553,8 @@ class DatabasePortalExecutionBridge:
 
 __all__ = (
     "DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA",
+    "DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA",
+    "DATABASE_PORTAL_CAPACITY_RETRY_SEED_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA",
@@ -3845,6 +4562,7 @@ __all__ = (
     "DatabasePortalAttemptPaths",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeError",
+    "DatabasePortalCapacityRetry",
     "DatabasePortalExecutionBridge",
     "DatabasePortalValidationRetry",
     "PortalDaemonFactory",
