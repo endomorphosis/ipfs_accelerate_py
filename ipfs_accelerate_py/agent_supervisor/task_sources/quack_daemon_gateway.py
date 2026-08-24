@@ -668,13 +668,18 @@ class QuackDaemonCanonicalOwnerOperationHandler:
             str(row[0])
             for row in connection.execute(
                 "SELECT task_cid FROM tasks ORDER BY ordinal, task_cid LIMIT ?",
-                [limit],
+                [limit + 1],
             ).fetchall()
         ]
+        if len(task_cids) > limit:
+            raise QuackDaemonGatewayError(
+                "task population exceeds the bounded single-command projection"
+            )
         records = [cls._task_record(connection, task_cid) for task_cid in task_cids]
         return {
             "tasks": [record for record in records if record is not None],
             "revision": int(transaction.load_generation().revision),
+            "task_count": len(task_cids),
             "next_cursor": "",
         }
 
@@ -723,11 +728,16 @@ class QuackDaemonCanonicalOwnerOperationHandler:
             record = cls._task_record(connection, key)
             if record is not None:
                 selected.append(record)
-            if len(selected) >= limit:
+            if len(selected) > limit:
                 break
+        if len(selected) > limit:
+            raise QuackDaemonGatewayError(
+                "ready task population exceeds the bounded single-command projection"
+            )
         return {
             "tasks": selected,
             "revision": int(transaction.load_generation().revision),
+            "task_count": len(selected),
             "next_cursor": "",
         }
 
@@ -1751,10 +1761,20 @@ class _GatewayRecord:
 
 
 class _GatewayTaskPage:
-    __slots__ = ("tasks",)
+    __slots__ = ("next_cursor", "revision", "task_count", "tasks")
 
-    def __init__(self, records: Sequence[Mapping[str, Any]]) -> None:
+    def __init__(
+        self,
+        records: Sequence[Mapping[str, Any]],
+        *,
+        revision: int | None = None,
+        task_count: int | None = None,
+        next_cursor: str = "",
+    ) -> None:
         self.tasks = tuple(_GatewayRecord(record) for record in records)
+        self.revision = revision
+        self.task_count = len(self.tasks) if task_count is None else int(task_count)
+        self.next_cursor = str(next_cursor or "")
 
 
 class _OwnerProxy:
@@ -1789,13 +1809,27 @@ class QuackDaemonTaskSourceProxy(_OwnerProxy):
 
     def list_tasks(self, *, limit: int) -> _GatewayTaskPage:
         result = self._call("task.list", {"limit": int(limit)})
-        records = result.get("tasks", ()) if isinstance(result, Mapping) else result
-        return _GatewayTaskPage(tuple(records or ()))
+        if not isinstance(result, Mapping):
+            return _GatewayTaskPage(tuple(result or ()))
+        records = tuple(result.get("tasks", ()) or ())
+        return _GatewayTaskPage(
+            records,
+            revision=int(result["revision"]),
+            task_count=int(result.get("task_count", len(records))),
+            next_cursor=str(result.get("next_cursor") or ""),
+        )
 
     def ready_tasks(self, *, limit: int) -> _GatewayTaskPage:
         result = self._call("task.ready", {"limit": int(limit)})
-        records = result.get("tasks", ()) if isinstance(result, Mapping) else result
-        return _GatewayTaskPage(tuple(records or ()))
+        if not isinstance(result, Mapping):
+            return _GatewayTaskPage(tuple(result or ()))
+        records = tuple(result.get("tasks", ()) or ())
+        return _GatewayTaskPage(
+            records,
+            revision=int(result["revision"]),
+            task_count=int(result.get("task_count", len(records))),
+            next_cursor=str(result.get("next_cursor") or ""),
+        )
 
     def get(self, task_cid: str) -> _GatewayRecord | None:
         result = self._call("task.get", {"task_cid": task_cid})
