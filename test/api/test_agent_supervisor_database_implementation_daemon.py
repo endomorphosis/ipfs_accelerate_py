@@ -21,6 +21,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from ipfs_accelerate_py.agent_implementation_route import (
@@ -30,6 +31,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_repository_id,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
+    DatabaseCoordinationConflictError,
     DatabaseCoordinationError,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
@@ -1365,16 +1367,16 @@ def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(
 @pytest.mark.parametrize(
     ("mutation", "error_type"),
     [
-        ("foreign_operation", DatabaseImplementationConflictError),
+        ("foreign_operation", None),
         ("missing_seed", DatabaseImplementationAuthorityError),
         ("wrong_seed_receipt", DatabaseImplementationAuthorityError),
     ],
 )
-def test_terminal_portal_reconciliation_rejects_foreign_retrying_projection(
+def test_terminal_portal_reconciliation_handles_retrying_projection_contract(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     mutation: str,
-    error_type: type[Exception],
+    error_type: type[Exception] | None,
 ) -> None:
     def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
         raise DatabasePortalBridgeError("portal_provider_failed")
@@ -1420,13 +1422,24 @@ def test_terminal_portal_reconciliation_rejects_foreign_retrying_projection(
             )
 
         monkeypatch.setattr(daemon.task_source, "get", projected_get)
-        with pytest.raises(error_type):
-            daemon.reconcile_terminal_portal_failures()
+        if error_type is None:
+            # A generic owner/board retry may legitimately replace the
+            # validation-recovery receipt.  The historical terminal attempt
+            # is observation-only in that case: do not crash the lane and do
+            # not perform another control transition.
+            assert daemon.reconcile_terminal_portal_failures() == []
+            durable = original_get(attempt.task_cid)
+            assert durable is not None
+            assert durable.status == "retrying"
+            assert durable.revision == persisted.revision
+        else:
+            with pytest.raises(error_type):
+                daemon.reconcile_terminal_portal_failures()
     finally:
         daemon.close()
 
 
-def test_terminal_portal_recovery_projection_rejects_newer_fence(
+def test_terminal_portal_recovery_projection_observes_newer_fence(
     tmp_path: Path,
 ) -> None:
     now = {"ms": 1_000}
@@ -1467,8 +1480,14 @@ def test_terminal_portal_recovery_projection_rejects_newer_fence(
         assert newer is not None
         assert newer.fencing_token > attempt.fencing_token
 
-        with pytest.raises(DatabaseCoordinationError):
-            daemon.reconcile_terminal_portal_failures()
+        reconciled = daemon.reconcile_terminal_portal_failures()
+        assert len(reconciled) == 1
+        assert reconciled[0]["changed"] is False
+        assert reconciled[0]["reason"] == (
+            "failed_attempt_coordination_superseded"
+        )
+        assert reconciled[0]["successor_claim_id"] == newer.claim_id
+        assert reconciled[0]["successor_attempt_id"] == newer.attempt_id
         unchanged = daemon.task_source.get(attempt.task_cid)
         assert unchanged is not None
         assert unchanged.status == "retrying"
@@ -1685,6 +1704,7 @@ def test_typed_portal_deferral_budget_blocks_before_fourth_dispatch(
 
 def test_exhausted_supersession_with_admitted_repair_survives_reconciliation(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = {"ms": 1_000}
     repo, base_head, base_tree = _git_recovery_repo(tmp_path)
@@ -1744,6 +1764,35 @@ def test_exhausted_supersession_with_admitted_repair_survives_reconciliation(
         )
         assert rearmed.task.status == "retrying"
 
+        # Model a lane-local shared-CAS loser: it advanced the same-task fence
+        # after the exhausted claim expired, but never inserted a newer daemon
+        # attempt or replaced the canonical supersession receipt.  The
+        # coordinator must keep rejecting mutation through the old fence while
+        # restart reconciliation may observe its exact terminal history.
+        failed_attempt = daemon._latest_failed_attempts()[0]
+        assert failed_attempt.task_cid == task_cid
+        old_claim = daemon.coordinator.get_task_claim(failed_attempt.claim_id)
+        assert old_claim is not None
+        now["ms"] = 7_000
+        daemon.coordinator.expire_task_claim(old_claim, now_ms=now["ms"])
+        newer_claim = daemon.coordinator.claim_ready_task(
+            owner_session_id="session:typed-budget-cas-loser",
+            lease_ms=5_000,
+            now_ms=now["ms"],
+        )
+        assert newer_claim is not None
+        assert newer_claim.task_cid == task_cid
+        assert newer_claim.fencing_token > old_claim.fencing_token
+        newer_lease = daemon.coordinator.get_lease(newer_claim.lease_id)
+        assert newer_lease is not None
+        daemon.coordinator.release(
+            newer_lease,
+            reason="shared_board_claim_conflict",
+            now_ms=now["ms"],
+        )
+        with pytest.raises(DatabaseCoordinationError, match="latest"):
+            daemon.coordinator.expire_task_claim(old_claim, now_ms=now["ms"])
+
         # A later unrelated accepted commit is permitted: the admitted repair
         # remains an ancestor and still reproduces its exact tree.
         current_head, _current_tree = _git_commit(
@@ -1762,7 +1811,49 @@ def test_exhausted_supersession_with_admitted_repair_survives_reconciliation(
         assert reconciled[0]["reason"] == (
             "typed_portal_deferral_budget_superseded"
         )
+        assert reconciled[0]["coordination"]["historical_expired"] is True
+        assert reconciled[0]["coordination"]["expired_now"] is False
         assert daemon.task_source.get(task_cid).status == "retrying"
+
+        successor_projection = (
+            daemon.coordinator.get_task_claim_successor_projection(
+                task_cid=failed_attempt.task_cid,
+                after_fencing_token=failed_attempt.fencing_token,
+                after_fence_epoch=failed_attempt.fence_epoch,
+            )
+        )
+        assert successor_projection is not None
+        malformed_successor = json.loads(json.dumps(successor_projection))
+        malformed_successor["lease"]["attempt_id"] = "attempt:foreign"
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                daemon.coordinator,
+                "get_task_claim_successor_projection",
+                lambda **_kwargs: malformed_successor,
+            )
+            with pytest.raises(
+                DatabaseImplementationConflictError,
+                match="coordination successor does not reproduce",
+            ):
+                daemon._reconcile_failed_attempt_coordination(failed_attempt)
+
+        expired_lease = daemon.coordinator.get_lease(failed_attempt.lease_id)
+        assert expired_lease is not None
+        malformed_lease = expired_lease.to_dict()
+        malformed_lease["attempt_id"] = "attempt:foreign"
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                daemon.coordinator,
+                "get_lease",
+                lambda _lease_id: SimpleNamespace(
+                    to_dict=lambda: malformed_lease
+                ),
+            )
+            with pytest.raises(
+                DatabaseImplementationConflictError,
+                match="expired failed execution authority does not reproduce",
+            ):
+                daemon._reconcile_failed_attempt_coordination(failed_attempt)
 
         # An authoritative later completion remains immutable even though the
         # historical failed attempt and exhausted observation are retained.
@@ -2406,7 +2497,7 @@ def test_retry_reconciliation_repairs_retrying_without_queue(
 
         assert len(repaired) == 1
         assert repaired[0]["status"] == "retrying"
-        assert repaired[0]["changed"] is False
+        assert repaired[0]["changed"] is True
         entry = daemon.task_source.get_queue_entry(failed_attempt.task_cid)
         assert entry is not None
         assert entry.retry_not_before_ms == 301_000
@@ -2414,8 +2505,9 @@ def test_retry_reconciliation_repairs_retrying_without_queue(
         daemon.close()
 
 
-def test_retry_reconciliation_rejects_superseded_coordination_fence(
+def test_retry_reconciliation_skips_superseded_coordination_fence(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     now = {"ms": 1_000}
     daemon = _open_daemon(
@@ -2449,13 +2541,219 @@ def test_retry_reconciliation_rejects_superseded_coordination_fence(
         )
         assert replacement is not None
         assert replacement.fencing_token > failed_attempt.fencing_token
+        replacement_lease = daemon.coordinator.get_lease(replacement.lease_id)
+        assert replacement_lease is not None
+        daemon.coordinator.release(
+            replacement_lease,
+            reason="shared_board_claim_conflict",
+            now_ms=now["ms"],
+        )
 
-        with pytest.raises(DatabaseCoordinationError):
-            daemon.reconcile_terminal_retry_states()
+        with pytest.raises(DatabaseCoordinationError, match="latest"):
+            daemon.coordinator.expire_task_claim(old_claim, now_ms=now["ms"])
+
+        reconciliations = daemon.reconcile_terminal_retry_states()
+        assert len(reconciliations) == 1
+        reconciliation = reconciliations[0]
+        assert reconciliation["changed"] is False
+        assert reconciliation["status"] == "in_progress"
+        assert reconciliation["reason"] == (
+            "failed_attempt_coordination_superseded"
+        )
+        assert reconciliation["successor_claim_id"] == replacement.claim_id
+        assert reconciliation["successor_attempt_id"] == replacement.attempt_id
+        assert reconciliation["coordination"][
+            "superseded_by_newer_fence"
+        ] is True
 
         control = daemon.task_source.get(failed_attempt.task_cid)
         assert control is not None
         assert control.status == "in_progress"
+        control_revision = control.revision
+        assert daemon.task_source.get_queue_entry(failed_attempt.task_cid) is None
+
+        # Observation-only reconciliation is stable across owner passes and
+        # must not advertise a write on every restart loop.
+        monkeypatch.setattr(daemon, "claim_next", lambda: None)
+        for _ in range(2):
+            observed = daemon.run_once()
+            assert observed["write_count"] == 0
+            assert observed["unchanged"] is True
+            repeated = observed["terminal_retry_reconciliations"]
+            assert len(repeated) == 1
+            assert repeated[0]["changed"] is False
+            assert repeated[0]["successor_claim_id"] == replacement.claim_id
+            unchanged = daemon.task_source.get(failed_attempt.task_cid)
+            assert unchanged is not None
+            assert unchanged.status == "in_progress"
+            assert unchanged.revision == control_revision
+            assert daemon.task_source.get_queue_entry(
+                failed_attempt.task_cid
+            ) is None
+
+        # Prepared-completion recovery uses completed/succeeded rather than
+        # released/succeeded.  That coherent successor is equally conclusive.
+        with daemon.coordinator._lock:  # noqa: SLF001 - focused projection fixture
+            connection = daemon.coordinator._require()  # noqa: SLF001
+            daemon.coordinator._begin(connection)  # noqa: SLF001
+            connection.execute(
+                "UPDATE task_claims SET state = ?, revision = revision + 1 "
+                "WHERE claim_id = ?",
+                ["completed", replacement.claim_id],
+            )
+            connection.execute(
+                "UPDATE fenced_leases SET state = ?, revision = revision + 1 "
+                "WHERE lease_id = ?",
+                ["completed", replacement.lease_id],
+            )
+            connection.execute(
+                "UPDATE task_attempts SET status = ?, revision = revision + 1 "
+                "WHERE attempt_id = ?",
+                ["succeeded", replacement.attempt_id],
+            )
+            daemon.coordinator._commit_if_idle(connection)  # noqa: SLF001
+        completed_projection = (
+            daemon.coordinator.get_task_claim_successor_projection(
+                task_cid=failed_attempt.task_cid,
+                after_fencing_token=failed_attempt.fencing_token,
+                after_fence_epoch=failed_attempt.fence_epoch,
+            )
+        )
+        assert completed_projection is not None
+        assert completed_projection["claim"]["state"] == "completed"
+        assert completed_projection["lease"]["state"] == "completed"
+        assert completed_projection["attempt"]["status"] == "succeeded"
+        completed_successor = daemon._failed_attempt_coordination_successor(
+            failed_attempt
+        )
+        assert completed_successor is not None
+        assert completed_successor["claim_state"] == "completed"
+        assert completed_successor["coordination_attempt_status"] == "succeeded"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "reconciliation_kind",
+    ("retrying_without_queue", "typed_budget", "terminal_portal"),
+)
+def test_failed_attempt_persistence_race_proves_successor_without_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reconciliation_kind: str,
+) -> None:
+    now = {"ms": 1_000}
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:persistence-race:{reconciliation_kind}",
+        lease_ms=5_000,
+        max_task_attempts=1,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed_attempt = daemon.claim_next()
+        assert failed_attempt is not None
+        failed_attempt = daemon.commit_phase(failed_attempt, "context")
+        if reconciliation_kind == "typed_budget":
+            reason = "typed_deferral"
+            typed_deferral = daemon._typed_deferral_receipt(
+                failed_attempt,
+                reason=reason,
+            )
+            body = {
+                "reason": reason,
+                "portal_retryable_failure": True,
+                "portal_terminal_failure": False,
+                "deferred": True,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "typed_deferral_slot_consumed": True,
+                "backoff_seconds": 300,
+                "typed_deferral": typed_deferral,
+            }
+        elif reconciliation_kind == "terminal_portal":
+            body = {
+                "reason": "portal_provider_failed",
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            }
+        else:
+            body = {
+                "reason": "typed_deferral",
+                "portal_retryable_failure": True,
+                "backoff_seconds": 300,
+            }
+        failed_attempt = daemon.commit_phase(
+            failed_attempt,
+            "failed",
+            body=body,
+        )
+        if reconciliation_kind == "retrying_without_queue":
+            control = daemon.task_source.get(failed_attempt.task_cid)
+            assert control is not None
+            daemon._cas_task_status_database(
+                failed_attempt.task_cid,
+                expected_revision=int(control.revision),
+                new_status="retrying",
+                receipt={"operation": "simulated_cas_before_queue_crash"},
+            )
+
+        before = daemon.task_source.get(failed_attempt.task_cid)
+        assert before is not None
+        assert daemon.task_source.get_queue_entry(failed_attempt.task_cid) is None
+        original_execute = daemon.coordinator.execute_with_task_fence
+        successor: dict[str, Any] = {}
+
+        def advance_fence_before_transition(
+            claim: Any,
+            callback: Any,
+            **kwargs: Any,
+        ) -> Any:
+            if not successor:
+                now["ms"] = 7_000
+                daemon.coordinator.expire_task_claim(
+                    claim,
+                    now_ms=now["ms"],
+                )
+                replacement = daemon.coordinator.claim_ready_task(
+                    owner_session_id="session:persistence-race:successor",
+                    lease_ms=5_000,
+                    now_ms=now["ms"],
+                )
+                assert replacement is not None
+                replacement_lease = daemon.coordinator.get_lease(
+                    replacement.lease_id
+                )
+                assert replacement_lease is not None
+                daemon.coordinator.release(
+                    replacement_lease,
+                    reason="shared_board_claim_conflict",
+                    now_ms=now["ms"],
+                )
+                successor.update(replacement.to_dict())
+            return original_execute(claim, callback, **kwargs)
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "execute_with_task_fence",
+            advance_fence_before_transition,
+        )
+        outcomes = (
+            daemon.reconcile_terminal_portal_failures()
+            if reconciliation_kind == "terminal_portal"
+            else daemon.reconcile_terminal_retry_states()
+        )
+
+        assert len(outcomes) == 1
+        assert outcomes[0]["changed"] is False
+        assert outcomes[0]["reason"] == "failed_attempt_coordination_superseded"
+        assert outcomes[0]["successor_claim_id"] == successor["claim_id"]
+        assert outcomes[0]["successor_attempt_id"] == successor["attempt_id"]
+        after = daemon.task_source.get(failed_attempt.task_cid)
+        assert after is not None
+        assert after.status == before.status
+        assert after.revision == before.revision
         assert daemon.task_source.get_queue_entry(failed_attempt.task_cid) is None
     finally:
         daemon.close()
@@ -3815,6 +4113,13 @@ def test_exact_repair_evidence_rearms_only_matching_blocked_task(
 
         def lose_cas_response(*args: object, **kwargs: object) -> None:
             del args, kwargs
+            with pytest.raises(
+                DatabaseCoordinationConflictError,
+                match="must not re-enter",
+            ):
+                daemon.coordinator.claim_ready_task(
+                    owner_session_id="session:illicit-recovery-successor",
+                )
             raise RuntimeError("fixture crash between queue and control CAS")
 
         monkeypatch.setattr(
@@ -3833,6 +4138,14 @@ def test_exact_repair_evidence_rearms_only_matching_blocked_task(
         assert queue_after_partial_write is not None
         queue_attempt_after_partial_write = queue_after_partial_write.attempt
         assert daemon.task_source.get(failed.task_cid).status == "blocked"
+        assert (
+            daemon.coordinator.get_task_claim_successor_projection(
+                task_cid=failed.task_cid,
+                after_fencing_token=failed.fencing_token,
+                after_fence_epoch=failed.fence_epoch,
+            )
+            is None
+        )
         daemon.close()
         daemon = _open_daemon(
             tmp_path,

@@ -123,6 +123,10 @@ from ..merge.checkout_lock import (
     serialized_lock_update,
     update_checkout_mutation_lease,
 )
+from ..merge.database_coordination import (
+    DatabaseCoordinationExpiredError,
+    DatabaseCoordinationStaleFenceError,
+)
 from ..merge.worktree_lifecycle import (
     DEFAULT_LEASE_SECONDS,
     DEFAULT_STARTUP_GRACE_SECONDS,
@@ -73663,6 +73667,10 @@ class DatabaseImplementationDaemon:
         """Recheck the exact live fence or exact latest expired fence."""
 
         evidence = dict(coordination_evidence or {})
+        if evidence.get("superseded_by_newer_fence") is True:
+            raise DatabaseImplementationConflictError(
+                "retry transition authority was superseded by a newer task fence"
+            )
         if evidence.get("claim_state") == "expired":
             if (
                 str(evidence.get("claim_id") or "") != attempt.claim_id
@@ -73689,6 +73697,69 @@ class DatabaseImplementationDaemon:
                 f"retryable attempt {attempt.attempt_id} has no live claim"
             )
         self._protect_attempt_claim(attempt, claim)
+
+    def _execute_with_retry_transition_authority(
+        self,
+        attempt: DatabaseTaskAttempt,
+        coordination_evidence: Mapping[str, Any] | None,
+        callback: Callable[[], Any],
+    ) -> Any:
+        """Execute queue/control projection under one stable task fence."""
+
+        evidence = dict(coordination_evidence or {})
+        if evidence.get("superseded_by_newer_fence") is True:
+            raise DatabaseImplementationConflictError(
+                "retry transition authority was superseded by a newer task fence"
+            )
+        # The live provider-failure path still owns the accepted claim and has
+        # no reconciliation receipt yet.  The exact claim read and fenced
+        # precheck below are its authority proof.
+        claim_state = str(evidence.get("claim_state") or "accepted")
+        expected_attempt_status = (
+            "expired" if claim_state == "expired" else "running"
+        )
+        expected_lease_state = (
+            "expired" if claim_state == "expired" else "accepted"
+        )
+        if claim_state not in {"accepted", "expired"}:
+            raise DatabaseImplementationAuthorityError(
+                "retry transition has no accepted or expired coordination proof"
+            )
+        claim = self.coordinator.get_task_claim(attempt.claim_id)
+        if claim is None:
+            raise DatabaseImplementationAuthorityError(
+                f"retryable attempt {attempt.attempt_id} has no coordination claim"
+            )
+        to_dict = getattr(claim, "to_dict", None)
+        claim_identity = to_dict() if callable(to_dict) else None
+        expected_identity = {
+            "task_cid": attempt.task_cid,
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        if not isinstance(claim_identity, Mapping) or any(
+            claim_identity.get(key) != expected
+            for key, expected in expected_identity.items()
+        ):
+            raise DatabaseImplementationConflictError(
+                "retry transition claim does not match its failed attempt"
+            )
+        execute = getattr(self.coordinator, "execute_with_task_fence", None)
+        if not callable(execute):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator cannot execute a task-fenced retry transition"
+            )
+        return execute(
+            claim,
+            callback,
+            expected_attempt_status=expected_attempt_status,
+            expected_lease_state=expected_lease_state,
+        )
 
     def _verified_validation_retry_recovery_state(
         self,
@@ -73899,28 +73970,35 @@ class DatabaseImplementationDaemon:
                     "validation retry recovery found a foreign queue entry"
                 )
             if existing_entry is None:
-                self._protect_retry_transition_authority(
+                queue_receipt_dict: dict[str, Any] = {}
+
+                def repair_missing_queue() -> Any:
+                    nonlocal existing_entry, queue_receipt_dict
+                    queue_receipt = record_queue_backoff(
+                        task_cid=attempt.task_cid,
+                        delay_ms=delay_ms,
+                        reason=queue_reason,
+                    )
+                    existing_entry = get_queue_entry(attempt.task_cid)
+                    if existing_entry is None:
+                        raise DatabaseImplementationAuthorityError(
+                            "retry queue repair produced no canonical entry"
+                        )
+                    queue_receipt_dict = queue_receipt.to_dict()
+                    return queue_receipt
+
+                self._execute_with_retry_transition_authority(
                     attempt,
                     coordination_evidence,
+                    repair_missing_queue,
                 )
-                queue_receipt = record_queue_backoff(
-                    task_cid=attempt.task_cid,
-                    delay_ms=delay_ms,
-                    reason=queue_reason,
-                )
-                existing_entry = get_queue_entry(attempt.task_cid)
-                if existing_entry is None:
-                    raise DatabaseImplementationAuthorityError(
-                        "retry queue repair produced no canonical entry"
-                    )
-                queue_receipt_dict = queue_receipt.to_dict()
             else:
                 queue_receipt_dict = {}
             return {
                 "task_cid": attempt.task_cid,
                 "attempt_id": attempt.attempt_id,
                 "status": "retrying",
-                "changed": False,
+                "changed": bool(queue_receipt_dict),
                 "backoff_seconds": delay_seconds,
                 "backoff_ms": delay_ms,
                 "retry_not_before_ms": int(
@@ -73942,81 +74020,84 @@ class DatabaseImplementationDaemon:
         # Persist the cooldown before exposing retrying as ready.  A crash
         # between the two stores therefore fails closed as an in-progress but
         # cooled task; restart reconciliation will finish the exact CAS.
-        queue_entry = get_queue_entry(attempt.task_cid)
-        queue_reused = (
-            queue_entry is not None
-            and str(getattr(queue_entry, "reason", "") or "") == queue_reason
-        )
-        if queue_reused:
-            queue_receipt_dict: dict[str, Any] = {}
-        else:
-            self._protect_retry_transition_authority(
-                attempt,
-                coordination_evidence,
-            )
-            queue_receipt = record_queue_backoff(
-                task_cid=attempt.task_cid,
-                delay_ms=delay_ms,
-                reason=queue_reason,
-            )
-            queue_receipt_dict = queue_receipt.to_dict()
+        queue_entry: Any | None = None
+        queue_reused = False
+        queue_receipt_dict: dict[str, Any] = {}
+
+        def project_retry_state() -> Any:
+            nonlocal queue_entry, queue_reused, queue_receipt_dict
             queue_entry = get_queue_entry(attempt.task_cid)
-        if queue_entry is None:
-            raise DatabaseImplementationAuthorityError(
-                "task cooldown write produced no canonical queue entry"
+            queue_reused = (
+                queue_entry is not None
+                and str(getattr(queue_entry, "reason", "") or "")
+                == queue_reason
             )
-        self._protect_retry_transition_authority(
+            if not queue_reused:
+                queue_receipt = record_queue_backoff(
+                    task_cid=attempt.task_cid,
+                    delay_ms=delay_ms,
+                    reason=queue_reason,
+                )
+                queue_receipt_dict = queue_receipt.to_dict()
+                queue_entry = get_queue_entry(attempt.task_cid)
+            if queue_entry is None:
+                raise DatabaseImplementationAuthorityError(
+                    "task cooldown write produced no canonical queue entry"
+                )
+            return self._cas_task_status_database(
+                attempt.task_cid,
+                expected_revision=int(task.revision),
+                new_status="retrying",
+                receipt={
+                    "operation": (
+                        "database_portal_validation_retry_recovery"
+                        if blocked_recovery
+                        else "database_portal_validation_retry"
+                        if validation_retry_evidence is not None
+                        else "database_portal_retry"
+                    ),
+                    "attempt_id": attempt.attempt_id,
+                    "claim_id": attempt.claim_id,
+                    "lease_id": attempt.lease_id,
+                    "owner_session_id": attempt.owner_session_id,
+                    "fencing_token": int(attempt.fencing_token),
+                    "fence_epoch": int(attempt.fence_epoch),
+                    "attempt_number": int(attempt.attempt_number),
+                    "execution_phase": attempt.committed_phase,
+                    "execution_revision": int(attempt.revision),
+                    "execution_finished_at_ms": attempt.finished_at_ms,
+                    "reason": reason_text,
+                    "backoff_seconds": delay_seconds,
+                    "backoff_ms": delay_ms,
+                    "retry_not_before_ms": int(queue_entry.retry_not_before_ms),
+                    "evidence_source": evidence_source,
+                    "queue_reason": queue_reason,
+                    "queue_reused": queue_reused,
+                    "queue_receipt": queue_receipt_dict,
+                    "coordination": dict(coordination_evidence or {}),
+                    **(
+                        {
+                            "validation_retry_seed": dict(
+                                validation_retry_evidence
+                            )
+                        }
+                        if validation_retry_evidence is not None
+                        else {}
+                    ),
+                    "control_expected_status": task_status,
+                    "control_expected_revision": int(task.revision),
+                },
+                evidence_digests=(
+                    [str(validation_retry_evidence["events_digest"])]
+                    if validation_retry_evidence is not None
+                    else None
+                ),
+            )
+
+        cas_result = self._execute_with_retry_transition_authority(
             attempt,
             coordination_evidence,
-        )
-        cas_result = self._cas_task_status_database(
-            attempt.task_cid,
-            expected_revision=int(task.revision),
-            new_status="retrying",
-            receipt={
-                "operation": (
-                    "database_portal_validation_retry_recovery"
-                    if blocked_recovery
-                    else "database_portal_validation_retry"
-                    if validation_retry_evidence is not None
-                    else "database_portal_retry"
-                ),
-                "attempt_id": attempt.attempt_id,
-                "claim_id": attempt.claim_id,
-                "lease_id": attempt.lease_id,
-                "owner_session_id": attempt.owner_session_id,
-                "fencing_token": int(attempt.fencing_token),
-                "fence_epoch": int(attempt.fence_epoch),
-                "attempt_number": int(attempt.attempt_number),
-                "execution_phase": attempt.committed_phase,
-                "execution_revision": int(attempt.revision),
-                "execution_finished_at_ms": attempt.finished_at_ms,
-                "reason": reason_text,
-                "backoff_seconds": delay_seconds,
-                "backoff_ms": delay_ms,
-                "retry_not_before_ms": int(queue_entry.retry_not_before_ms),
-                "evidence_source": evidence_source,
-                "queue_reason": queue_reason,
-                "queue_reused": queue_reused,
-                "queue_receipt": queue_receipt_dict,
-                "coordination": dict(coordination_evidence or {}),
-                **(
-                    {
-                        "validation_retry_seed": dict(
-                            validation_retry_evidence
-                        )
-                    }
-                    if validation_retry_evidence is not None
-                    else {}
-                ),
-                "control_expected_status": task_status,
-                "control_expected_revision": int(task.revision),
-            },
-            evidence_digests=(
-                [str(validation_retry_evidence["events_digest"])]
-                if validation_retry_evidence is not None
-                else None
-            ),
+            project_retry_state,
         )
         to_dict = getattr(cas_result, "to_dict", None)
         if not callable(to_dict):
@@ -74068,32 +74149,32 @@ class DatabaseImplementationDaemon:
                 f"terminal attempt {attempt.attempt_id} cannot block control "
                 f"task from {status!r}"
             )
-        self._protect_retry_transition_authority(
+        cas_result = self._execute_with_retry_transition_authority(
             attempt,
             coordination_evidence,
-        )
-        cas_result = self._cas_task_status_database(
-            attempt.task_cid,
-            expected_revision=int(task.revision),
-            new_status="blocked",
-            receipt={
-                "operation": "database_portal_terminal_failure",
-                "attempt_id": attempt.attempt_id,
-                "attempt_number": int(attempt.attempt_number),
-                "claim_id": attempt.claim_id,
-                "lease_id": attempt.lease_id,
-                "owner_session_id": attempt.owner_session_id,
-                "fencing_token": int(attempt.fencing_token),
-                "fence_epoch": int(attempt.fence_epoch),
-                "execution_phase": attempt.committed_phase,
-                "execution_revision": int(attempt.revision),
-                "execution_finished_at_ms": attempt.finished_at_ms,
-                "reason": str(reason or "portal_terminal_failure")[:1024],
-                "retryable": False,
-                "coordination": dict(coordination_evidence or {}),
-                "control_expected_status": status,
-                "control_expected_revision": int(task.revision),
-            },
+            lambda: self._cas_task_status_database(
+                attempt.task_cid,
+                expected_revision=int(task.revision),
+                new_status="blocked",
+                receipt={
+                    "operation": "database_portal_terminal_failure",
+                    "attempt_id": attempt.attempt_id,
+                    "attempt_number": int(attempt.attempt_number),
+                    "claim_id": attempt.claim_id,
+                    "lease_id": attempt.lease_id,
+                    "owner_session_id": attempt.owner_session_id,
+                    "fencing_token": int(attempt.fencing_token),
+                    "fence_epoch": int(attempt.fence_epoch),
+                    "execution_phase": attempt.committed_phase,
+                    "execution_revision": int(attempt.revision),
+                    "execution_finished_at_ms": attempt.finished_at_ms,
+                    "reason": str(reason or "portal_terminal_failure")[:1024],
+                    "retryable": False,
+                    "coordination": dict(coordination_evidence or {}),
+                    "control_expected_status": status,
+                    "control_expected_revision": int(task.revision),
+                },
+            ),
         )
         to_dict = getattr(cas_result, "to_dict", None)
         if not callable(to_dict):
@@ -74943,70 +75024,138 @@ class DatabaseImplementationDaemon:
             )
 
         coordination = self._reconcile_failed_attempt_coordination(latest)
-        self._protect_retry_transition_authority(latest, coordination)
-        queue_entry = get_queue_entry(task_cid)
-        queue_reused = (
-            queue_entry is not None
-            and str(getattr(queue_entry, "reason", "") or "")
-            == queue_reason
-        )
-        if queue_reused:
-            queue_receipt_dict: dict[str, Any] = {}
-        else:
-            queue_receipt = record_queue_backoff(
-                task_cid=task_cid,
-                delay_ms=0,
-                reason=queue_reason,
-            )
-            queue_receipt_dict = queue_receipt.to_dict()
-            queue_entry = get_queue_entry(task_cid)
-        if (
-            queue_entry is None
-            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
-        ):
-            raise DatabaseImplementationAuthorityError(
-                "post-merge recovery queue write did not reproduce"
-            )
-        self._protect_retry_transition_authority(latest, coordination)
-        qualification_control_fields = (
-            {
-                "repair_commit": qualified_target_commit,
-                "repair_receipt_id": qualification_receipt_id,
-                "repair_evidence_id": evidence_id,
-            }
-            if qualification_kind == "repair"
-            else {
-                "source_repair_commit": str(
-                    qualification_receipt["source_repair_commit"]
-                ),
-                "source_repair_receipt_id": str(
-                    qualification_receipt["source_repair_receipt_id"]
-                ),
-                "qualified_target_commit": qualified_target_commit,
-                "requalification_receipt_id": qualification_receipt_id,
-                "requalification_evidence_id": evidence_id,
-            }
-        )
-        cas_result = self._cas_task_status_database(
-            task_cid,
-            expected_revision=int(task.revision),
-            new_status="retrying",
-            receipt={
-                "operation": (
-                    "database_post_merge_declared_outputs_"
-                    + qualification_kind
-                    + "_recovery"
-                ),
-                "attempt_id": latest.attempt_id,
+
+        def superseded_recovery(
+            outcome: Mapping[str, Any],
+        ) -> dict[str, Any]:
+            return {
+                "schema": DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": False,
+                "changed": False,
+                "status": status,
+                "reason": "failed_attempt_coordination_superseded",
+                "task_cid": task_cid,
+                "task_alias": str(raw["task_alias"]),
                 "request_id": str(raw["request_id"]),
-                "qualified_target_commit": qualified_target_commit,
-                "qualification_receipt_id": qualification_receipt_id,
-            },
-            evidence_digests=[
-                qualification_receipt_id,
-                evidence_id,
-            ],
+                "successor_claim_id": str(
+                    outcome.get("successor_claim_id") or ""
+                ),
+                "successor_attempt_id": str(
+                    outcome.get("successor_attempt_id") or ""
+                ),
+                "coordination": dict(outcome.get("coordination") or {}),
+                "write_count": 0,
+            }
+
+        superseded = self._superseded_failed_attempt_reconciliation(
+            latest,
+            status=status,
+            coordination=coordination,
         )
+        if superseded is not None:
+            return superseded_recovery(superseded)
+
+        queue_entry: Any | None = None
+        queue_reused = False
+        queue_receipt_dict: dict[str, Any] = {}
+
+        def project_recovery() -> dict[str, Any]:
+            nonlocal queue_entry, queue_reused, queue_receipt_dict
+            queue_entry = get_queue_entry(task_cid)
+            queue_reused = (
+                queue_entry is not None
+                and str(getattr(queue_entry, "reason", "") or "")
+                == queue_reason
+            )
+            if not queue_reused:
+                queue_receipt = record_queue_backoff(
+                    task_cid=task_cid,
+                    delay_ms=0,
+                    reason=queue_reason,
+                )
+                queue_receipt_dict = queue_receipt.to_dict()
+                queue_entry = get_queue_entry(task_cid)
+            if (
+                queue_entry is None
+                or str(getattr(queue_entry, "reason", "") or "")
+                != queue_reason
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "post-merge recovery queue write did not reproduce"
+                )
+            qualification_control_fields = (
+                {
+                    "repair_commit": qualified_target_commit,
+                    "repair_receipt_id": qualification_receipt_id,
+                    "repair_evidence_id": evidence_id,
+                }
+                if qualification_kind == "repair"
+                else {
+                    "source_repair_commit": str(
+                        qualification_receipt["source_repair_commit"]
+                    ),
+                    "source_repair_receipt_id": str(
+                        qualification_receipt["source_repair_receipt_id"]
+                    ),
+                    "qualified_target_commit": qualified_target_commit,
+                    "requalification_receipt_id": qualification_receipt_id,
+                    "requalification_evidence_id": evidence_id,
+                }
+            )
+            return {
+                "cas_result": self._cas_task_status_database(
+                    task_cid,
+                    expected_revision=int(task.revision),
+                    new_status="retrying",
+                    receipt={
+                        "operation": (
+                            "database_post_merge_declared_outputs_"
+                            + qualification_kind
+                            + "_recovery"
+                        ),
+                        "attempt_id": latest.attempt_id,
+                        "attempt_number": int(latest.attempt_number),
+                        "claim_id": latest.claim_id,
+                        "lease_id": latest.lease_id,
+                        "owner_session_id": latest.owner_session_id,
+                        "fencing_token": int(latest.fencing_token),
+                        "fence_epoch": int(latest.fence_epoch),
+                        "execution_phase": latest.committed_phase,
+                        "execution_revision": int(latest.revision),
+                        "execution_finished_at_ms": latest.finished_at_ms,
+                        "request_id": str(raw["request_id"]),
+                        "candidate_commit": str(raw["candidate_commit"]),
+                        "source_binding_id": str(raw["source_binding_id"]),
+                        "source_projection_immutable_digest": str(
+                            raw["source_projection_immutable_digest"]
+                        ),
+                        "queue_reason": queue_reason,
+                        "queue_receipt": dict(queue_receipt_dict),
+                        "coordination": dict(coordination),
+                        "control_expected_status": status,
+                        "control_expected_revision": int(task.revision),
+                        **qualification_control_fields,
+                    },
+                    evidence_digests=[
+                        qualification_receipt_id,
+                        evidence_id,
+                    ],
+                )
+            }
+
+        transition = self._persist_failed_attempt_transition(
+            latest,
+            status=status,
+            transition=lambda: self._execute_with_retry_transition_authority(
+                latest,
+                coordination,
+                project_recovery,
+            ),
+        )
+        if transition.get("reason") == "failed_attempt_coordination_superseded":
+            return superseded_recovery(transition)
+        cas_result = transition.get("cas_result")
         to_dict = getattr(cas_result, "to_dict", None)
         if not callable(to_dict):
             raise DatabaseImplementationDaemonError(
@@ -75405,39 +75554,41 @@ class DatabaseImplementationDaemon:
                 f"exhausted attempt {attempt.attempt_id} cannot block control "
                 f"task from {status!r}"
             )
-        self._protect_retry_transition_authority(
+        queue_entry = self.task_source.get_queue_entry(attempt.task_cid)
+        cas_result = self._execute_with_retry_transition_authority(
             attempt,
             coordination_evidence,
-        )
-        queue_entry = self.task_source.get_queue_entry(attempt.task_cid)
-        cas_result = self._cas_task_status_database(
-            attempt.task_cid,
-            expected_revision=int(task.revision),
-            new_status="blocked",
-            receipt={
-                "operation": (
-                    "database_portal_typed_deferral_budget_exhausted"
-                ),
-                "attempt_id": attempt.attempt_id,
-                "attempt_number": int(attempt.attempt_number),
-                "claim_id": attempt.claim_id,
-                "lease_id": attempt.lease_id,
-                "owner_session_id": attempt.owner_session_id,
-                "fencing_token": int(attempt.fencing_token),
-                "fence_epoch": int(attempt.fence_epoch),
-                "execution_phase": attempt.committed_phase,
-                "execution_revision": int(attempt.revision),
-                "execution_finished_at_ms": attempt.finished_at_ms,
-                "reason": "typed_portal_deferral_budget_exhausted",
-                "retryable": False,
-                "attempt_consumed": False,
-                "typed_deferral_slot_consumed": True,
-                "retry_budget": dict(budget),
-                "prior_queue_entry_preserved_inactive": queue_entry is not None,
-                "coordination": dict(coordination_evidence or {}),
-                "control_expected_status": status,
-                "control_expected_revision": int(task.revision),
-            },
+            lambda: self._cas_task_status_database(
+                attempt.task_cid,
+                expected_revision=int(task.revision),
+                new_status="blocked",
+                receipt={
+                    "operation": (
+                        "database_portal_typed_deferral_budget_exhausted"
+                    ),
+                    "attempt_id": attempt.attempt_id,
+                    "attempt_number": int(attempt.attempt_number),
+                    "claim_id": attempt.claim_id,
+                    "lease_id": attempt.lease_id,
+                    "owner_session_id": attempt.owner_session_id,
+                    "fencing_token": int(attempt.fencing_token),
+                    "fence_epoch": int(attempt.fence_epoch),
+                    "execution_phase": attempt.committed_phase,
+                    "execution_revision": int(attempt.revision),
+                    "execution_finished_at_ms": attempt.finished_at_ms,
+                    "reason": "typed_portal_deferral_budget_exhausted",
+                    "retryable": False,
+                    "attempt_consumed": False,
+                    "typed_deferral_slot_consumed": True,
+                    "retry_budget": dict(budget),
+                    "prior_queue_entry_preserved_inactive": (
+                        queue_entry is not None
+                    ),
+                    "coordination": dict(coordination_evidence or {}),
+                    "control_expected_status": status,
+                    "control_expected_revision": int(task.revision),
+                },
+            ),
         )
         to_dict = getattr(cas_result, "to_dict", None)
         if not callable(to_dict):
@@ -76231,6 +76382,116 @@ class DatabaseImplementationDaemon:
             and DATABASE_PORTAL_BINDING_CHANGED_RESUME_REASON in reason
         )
 
+    def _failed_attempt_coordination_successor(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any] | None:
+        """Verify one exact later same-task coordination fence, if present."""
+
+        get_successor = getattr(
+            self.coordinator,
+            "get_task_claim_successor_projection",
+            None,
+        )
+        if not callable(get_successor):
+            return None
+        raw = get_successor(
+            task_cid=attempt.task_cid,
+            after_fencing_token=int(attempt.fencing_token),
+            after_fence_epoch=int(attempt.fence_epoch),
+        )
+        if raw is None:
+            return None
+        if not isinstance(raw, Mapping) or set(raw) != {
+            "task_cid",
+            "after_fencing_token",
+            "after_fence_epoch",
+            "claim",
+            "attempt",
+            "lease",
+        }:
+            raise DatabaseImplementationAuthorityError(
+                "coordinator returned a malformed failed-attempt successor"
+            )
+        claim = raw.get("claim")
+        successor_attempt = raw.get("attempt")
+        lease = raw.get("lease")
+        if not all(
+            isinstance(item, Mapping)
+            for item in (claim, successor_attempt, lease)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "failed-attempt successor has no exact claim/attempt/lease triple"
+            )
+        assert isinstance(claim, Mapping)
+        assert isinstance(successor_attempt, Mapping)
+        assert isinstance(lease, Mapping)
+        claim_state = str(claim.get("state") or "")
+        attempt_status = str(successor_attempt.get("status") or "")
+        allowed_attempt_states = {
+            "accepted": {"running"},
+            "expired": {"expired"},
+            "released": {"released", "succeeded"},
+            "completed": {"succeeded"},
+        }
+        successor_token = claim.get("fencing_token")
+        successor_epoch = claim.get("fence_epoch")
+        successor_attempt_number = claim.get("attempt_number")
+        mismatch = (
+            raw.get("task_cid") != attempt.task_cid
+            or raw.get("after_fencing_token") != int(attempt.fencing_token)
+            or raw.get("after_fence_epoch") != int(attempt.fence_epoch)
+            or isinstance(successor_token, bool)
+            or not isinstance(successor_token, int)
+            or successor_token <= int(attempt.fencing_token)
+            or isinstance(successor_epoch, bool)
+            or not isinstance(successor_epoch, int)
+            or successor_epoch <= int(attempt.fence_epoch)
+            or isinstance(successor_attempt_number, bool)
+            or not isinstance(successor_attempt_number, int)
+            or successor_attempt_number <= int(attempt.attempt_number)
+            or claim.get("task_cid") != attempt.task_cid
+            or successor_attempt.get("task_cid") != attempt.task_cid
+            or lease.get("task_cid") != attempt.task_cid
+            or lease.get("lease_kind") != "task"
+            or lease.get("scope_key") != f"task:{attempt.task_cid}"
+            or lease.get("scope") != attempt.task_cid
+            or lease.get("mode") != "exclusive"
+            or claim.get("claim_id") != lease.get("claim_id")
+            or claim.get("attempt_id") != successor_attempt.get("attempt_id")
+            or claim.get("attempt_id") != lease.get("attempt_id")
+            or claim.get("attempt_number")
+            != successor_attempt.get("attempt_number")
+            or claim.get("attempt_number") != lease.get("attempt_number")
+            or claim.get("lease_id") != lease.get("lease_id")
+            or claim.get("owner_session_id")
+            != successor_attempt.get("owner_session_id")
+            or claim.get("owner_session_id") != lease.get("owner_session_id")
+            or successor_token != successor_attempt.get("fencing_token")
+            or successor_token != lease.get("fencing_token")
+            or successor_epoch != successor_attempt.get("fence_epoch")
+            or successor_epoch != lease.get("fence_epoch")
+            or claim.get("expires_at_ms") != lease.get("expires_at_ms")
+            or claim_state != str(lease.get("state") or "")
+            or attempt_status not in allowed_attempt_states.get(claim_state, set())
+        )
+        if mismatch:
+            raise DatabaseImplementationConflictError(
+                "failed-attempt coordination successor does not reproduce"
+            )
+        return {
+            "claim_id": str(claim.get("claim_id") or ""),
+            "attempt_id": str(claim.get("attempt_id") or ""),
+            "attempt_number": int(successor_attempt_number),
+            "lease_id": str(claim.get("lease_id") or ""),
+            "owner_session_id": str(claim.get("owner_session_id") or ""),
+            "fencing_token": int(successor_token),
+            "fence_epoch": int(successor_epoch),
+            "claim_state": claim_state,
+            "lease_state": str(lease.get("state") or ""),
+            "coordination_attempt_status": attempt_status,
+        }
+
     def _reconcile_failed_attempt_coordination(
         self,
         attempt: DatabaseTaskAttempt,
@@ -76321,12 +76582,113 @@ class DatabaseImplementationDaemon:
                 "retryable failed attempt has incompatible coordination state "
                 f"{claim_state!r}"
             )
+        if claim_state == "expired":
+            # Expiry is durable execution history, not present mutation
+            # authority.  Once a later same-task claim advances token_history,
+            # DatabaseCoordinator.expire_task_claim must reject this old fence
+            # as stale even though it is already expired.  Reconciliation may
+            # still *observe* that history, but only after reproducing the
+            # exact claim/attempt/lease triple in its terminal state.  Any
+            # later queue or control CAS independently revalidates latest-fence
+            # authority and therefore remains fail closed.
+            coordination_attempt_status = str(
+                attempt_identity.get("status") or ""
+            )
+            get_lease = getattr(self.coordinator, "get_lease", None)
+            if not callable(get_lease):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator cannot verify an expired failed task lease"
+                )
+            historical_lease = get_lease(attempt.lease_id)
+            to_dict = getattr(historical_lease, "to_dict", None)
+            if historical_lease is None or not callable(to_dict):
+                raise DatabaseImplementationAuthorityError(
+                    f"failed attempt {attempt.attempt_id} has no exact expired lease"
+                )
+            lease_identity = to_dict()
+            if not isinstance(lease_identity, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "coordinator returned a malformed expired task lease"
+                )
+            expected_lease_identity = {
+                "lease_id": attempt.lease_id,
+                "lease_kind": "task",
+                "scope_key": f"task:{attempt.task_cid}",
+                "scope": attempt.task_cid,
+                "mode": "exclusive",
+                "task_cid": attempt.task_cid,
+                "claim_id": attempt.claim_id,
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "owner_session_id": attempt.owner_session_id,
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
+                "expires_at_ms": expires_at_ms,
+                "state": "expired",
+            }
+            lease_mismatches = [
+                key
+                for key, expected in expected_lease_identity.items()
+                if lease_identity.get(key) != expected
+            ]
+            if (
+                coordination_attempt_status != "expired"
+                or expires_at_ms > now
+                or lease_mismatches
+            ):
+                details = (
+                    ": " + ", ".join(lease_mismatches)
+                    if lease_mismatches
+                    else ""
+                )
+                raise DatabaseImplementationConflictError(
+                    "expired failed execution authority does not reproduce"
+                    + details
+                )
+            successor = self._failed_attempt_coordination_successor(attempt)
+            return {
+                "claim_id": attempt.claim_id,
+                "attempt_id": attempt.attempt_id,
+                "attempt_number": int(attempt.attempt_number),
+                "lease_state": "expired",
+                "claim_state": "expired",
+                "claim_revision": int(getattr(claim, "revision", 0) or 0),
+                "coordination_attempt_status": coordination_attempt_status,
+                "coordination_attempt_revision": int(
+                    attempt_identity.get("revision") or 0
+                ),
+                "expires_at_ms": expires_at_ms,
+                "observed_at_ms": now,
+                "expired_now": False,
+                "historical_expired": True,
+                "superseded_by_newer_fence": successor is not None,
+                "successor": successor or {},
+            }
         expire_claim = getattr(self.coordinator, "expire_task_claim", None)
         if not callable(expire_claim):
             raise DatabaseImplementationAuthorityError(
                 "coordinator cannot expire an exact failed task claim"
             )
-        lease = expire_claim(claim, now_ms=now)
+        try:
+            lease = expire_claim(claim, now_ms=now)
+        except DatabaseCoordinationStaleFenceError:
+            # Close the read/expire race narrowly: only the coordinator's
+            # stale-fence type is eligible, and only when a fresh read shows
+            # that this exact claim reached durable expiry.  The recursive
+            # pass then reproduces the complete historical triple and any
+            # strictly newer same-task fence before returning a no-op marker.
+            refreshed_claim = self.coordinator.get_task_claim(attempt.claim_id)
+            refreshed_state = str(
+                getattr(
+                    getattr(refreshed_claim, "state", ""),
+                    "value",
+                    getattr(refreshed_claim, "state", ""),
+                )
+                or ""
+            )
+            if refreshed_claim is None or refreshed_state != "expired":
+                raise
+            return self._reconcile_failed_attempt_coordination(attempt)
         lease_state = str(
             getattr(getattr(lease, "state", ""), "value", lease.state) or ""
         )
@@ -76371,6 +76733,91 @@ class DatabaseImplementationDaemon:
             "observed_at_ms": now,
             "expired_now": claim_state == "accepted",
         }
+
+    @staticmethod
+    def _superseded_failed_attempt_reconciliation(
+        attempt: DatabaseTaskAttempt,
+        *,
+        status: str,
+        coordination: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Return a structured no-op only for a proved later task fence."""
+
+        successor = coordination.get("successor")
+        if (
+            coordination.get("historical_expired") is not True
+            or coordination.get("superseded_by_newer_fence") is not True
+            or not isinstance(successor, Mapping)
+            or successor.get("fencing_token") is None
+            or int(successor.get("fencing_token") or 0)
+            <= int(attempt.fencing_token)
+            or successor.get("fence_epoch") is None
+            or int(successor.get("fence_epoch") or 0)
+            <= int(attempt.fence_epoch)
+            or int(successor.get("attempt_number") or 0)
+            <= int(attempt.attempt_number)
+        ):
+            return None
+        return {
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "status": str(status or ""),
+            "changed": False,
+            "reason": "failed_attempt_coordination_superseded",
+            "successor_claim_id": str(successor.get("claim_id") or ""),
+            "successor_attempt_id": str(successor.get("attempt_id") or ""),
+            "coordination": dict(coordination),
+        }
+
+    def _fresh_superseded_failed_attempt_reconciliation(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        status: str,
+    ) -> dict[str, Any] | None:
+        """Re-read authority after a stale transition and prove a successor."""
+
+        coordination = self._reconcile_failed_attempt_coordination(attempt)
+        return self._superseded_failed_attempt_reconciliation(
+            attempt,
+            status=status,
+            coordination=coordination,
+        )
+
+    def _persist_failed_attempt_transition(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        status: str,
+        transition: Callable[[], dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Persist, or turn a lost fence into a freshly proved no-op."""
+
+        try:
+            return transition()
+        except (
+            DatabaseCoordinationExpiredError,
+            DatabaseCoordinationStaleFenceError,
+        ):
+            outcome = self._fresh_superseded_failed_attempt_reconciliation(
+                attempt,
+                status=status,
+            )
+            if outcome is None:
+                raise
+            return outcome
+
+    @staticmethod
+    def _reconciliation_outcome_count(
+        outcomes: Iterable[Mapping[str, Any]],
+    ) -> int:
+        """Count durable progress without counting observation-only no-ops."""
+
+        return sum(
+            1
+            for outcome in outcomes
+            if outcome.get("changed") is not False
+        )
 
     def reconcile_terminal_retry_states(self) -> list[dict[str, Any]]:
         """Finish retry control transitions left incomplete by a crash.
@@ -76454,12 +76901,31 @@ class DatabaseImplementationDaemon:
                 coordination = self._reconcile_failed_attempt_coordination(
                     attempt
                 )
-                outcome = self._persist_typed_deferral_budget_exhausted(
-                    attempt,
-                    budget=budget,
-                    coordination_evidence=coordination,
+                superseded_outcome = (
+                    self._superseded_failed_attempt_reconciliation(
+                        attempt,
+                        status=status,
+                        coordination=coordination,
+                    )
                 )
-                outcome["coordination"] = coordination
+                if superseded_outcome is not None:
+                    outcomes.append(superseded_outcome)
+                    continue
+                outcome = self._persist_failed_attempt_transition(
+                    attempt,
+                    status=status,
+                    transition=lambda: (
+                        self._persist_typed_deferral_budget_exhausted(
+                            attempt,
+                            budget=budget,
+                            coordination_evidence=coordination,
+                        )
+                    ),
+                )
+                if outcome.get("reason") != (
+                    "failed_attempt_coordination_superseded"
+                ):
+                    outcome["coordination"] = coordination
                 outcomes.append(outcome)
                 continue
             if status == "retrying":
@@ -76476,27 +76942,59 @@ class DatabaseImplementationDaemon:
                     coordination = self._reconcile_failed_attempt_coordination(
                         attempt
                     )
-                    outcome = self._persist_task_retry_state(
-                        attempt,
-                        reason=str(evidence["reason"]),
-                        backoff_ms=int(evidence["backoff_ms"]),
-                        evidence_source=str(evidence["evidence_source"]),
-                        coordination_evidence=coordination,
+                    superseded_outcome = (
+                        self._superseded_failed_attempt_reconciliation(
+                            attempt,
+                            status=status,
+                            coordination=coordination,
+                        )
                     )
-                    outcome["coordination"] = coordination
+                    if superseded_outcome is not None:
+                        outcomes.append(superseded_outcome)
+                        continue
+                    outcome = self._persist_failed_attempt_transition(
+                        attempt,
+                        status=status,
+                        transition=lambda: self._persist_task_retry_state(
+                            attempt,
+                            reason=str(evidence["reason"]),
+                            backoff_ms=int(evidence["backoff_ms"]),
+                            evidence_source=str(evidence["evidence_source"]),
+                            coordination_evidence=coordination,
+                        ),
+                    )
+                    if outcome.get("reason") != (
+                        "failed_attempt_coordination_superseded"
+                    ):
+                        outcome["coordination"] = coordination
                     outcomes.append(outcome)
                 continue
             if status != "in_progress":
                 continue
             coordination = self._reconcile_failed_attempt_coordination(attempt)
-            outcome = self._persist_task_retry_state(
+            superseded_outcome = self._superseded_failed_attempt_reconciliation(
                 attempt,
-                reason=str(evidence["reason"]),
-                backoff_ms=int(evidence["backoff_ms"]),
-                evidence_source=str(evidence["evidence_source"]),
-                coordination_evidence=coordination,
+                status=status,
+                coordination=coordination,
             )
-            outcome["coordination"] = coordination
+            if superseded_outcome is not None:
+                outcomes.append(superseded_outcome)
+                continue
+            outcome = self._persist_failed_attempt_transition(
+                attempt,
+                status=status,
+                transition=lambda: self._persist_task_retry_state(
+                    attempt,
+                    reason=str(evidence["reason"]),
+                    backoff_ms=int(evidence["backoff_ms"]),
+                    evidence_source=str(evidence["evidence_source"]),
+                    coordination_evidence=coordination,
+                ),
+            )
+            if outcome.get("reason") != (
+                "failed_attempt_coordination_superseded"
+            ):
+                outcome["coordination"] = coordination
             outcomes.append(outcome)
         return outcomes
 
@@ -76554,19 +77052,45 @@ class DatabaseImplementationDaemon:
                         attempt,
                         task,
                     )
-                self._reconcile_failed_attempt_coordination(attempt)
+                coordination = self._reconcile_failed_attempt_coordination(
+                    attempt
+                )
+                superseded_outcome = (
+                    self._superseded_failed_attempt_reconciliation(
+                        attempt,
+                        status=status,
+                        coordination=coordination,
+                    )
+                )
+                if superseded_outcome is not None:
+                    outcomes.append(superseded_outcome)
                 continue
             if status != "in_progress":
                 raise DatabaseImplementationConflictError(
                     f"terminal Portal failure cannot reconcile control status {status!r}"
                 )
             coordination = self._reconcile_failed_attempt_coordination(attempt)
-            outcome = self._persist_terminal_portal_failure(
+            superseded_outcome = self._superseded_failed_attempt_reconciliation(
                 attempt,
-                reason=reason,
-                coordination_evidence=coordination,
+                status=status,
+                coordination=coordination,
             )
-            outcome["coordination"] = coordination
+            if superseded_outcome is not None:
+                outcomes.append(superseded_outcome)
+                continue
+            outcome = self._persist_failed_attempt_transition(
+                attempt,
+                status=status,
+                transition=lambda: self._persist_terminal_portal_failure(
+                    attempt,
+                    reason=reason,
+                    coordination_evidence=coordination,
+                ),
+            )
+            if outcome.get("reason") != (
+                "failed_attempt_coordination_superseded"
+            ):
+                outcome["coordination"] = coordination
             outcomes.append(outcome)
         return outcomes
 
@@ -77027,10 +77551,16 @@ class DatabaseImplementationDaemon:
         reconciliation_write_count = (
             merge_quarantine_write_count
             + rearm_write_count
-            + len(completion_reconciliations)
-            + len(expired_attempt_reconciliations)
-            + len(terminal_portal_reconciliations)
-            + len(terminal_retry_reconciliations)
+            + self._reconciliation_outcome_count(completion_reconciliations)
+            + self._reconciliation_outcome_count(
+                expired_attempt_reconciliations
+            )
+            + self._reconciliation_outcome_count(
+                terminal_portal_reconciliations
+            )
+            + self._reconciliation_outcome_count(
+                terminal_retry_reconciliations
+            )
             + post_merge_recovery_write_count
         )
         # Prefer resume of this session's running attempts (crash recovery).
