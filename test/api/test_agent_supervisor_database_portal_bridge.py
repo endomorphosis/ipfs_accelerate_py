@@ -7,6 +7,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    database_portal_bridge as database_portal_bridge_module,
+)
 from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     ContextCompilationReceipt,
 )
@@ -2885,9 +2888,21 @@ def test_post_merge_rearm_endpoints_fail_closed_on_invalid_payloads(
             daemon.preauthorize_post_merge_declared_output_recovery({})
         with pytest.raises(
             DatabaseImplementationAuthorityError,
+            match="preauthorization source is invalid",
+        ):
+            daemon.preauthorize_false_completed_merge_recovery({})
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
             match="recovery schema is invalid",
         ):
             daemon.recover_blocked_post_merge_declared_outputs(
+                {"schema": "not-a-recovery-schema"}
+            )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="reintegration receipt is malformed",
+        ):
+            daemon.recover_blocked_false_completed_merge(
                 {"schema": "not-a-recovery-schema"}
             )
         captured: list[object] = []
@@ -2899,6 +2914,61 @@ def test_post_merge_rearm_endpoints_fail_closed_on_invalid_payloads(
         assert result["reason"] == "no_recoverable_post_merge_request"
     finally:
         daemon.close()
+
+
+def test_false_completion_recheck_reuses_observation_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lease recheck must reproduce the discovery receipt byte-for-byte."""
+
+    bridge = object.__new__(DatabasePortalExecutionBridge)
+    request = SimpleNamespace(
+        status="completed",
+        metadata={},
+        request_id="request:false-completion",
+        canonical_task_id="task:false-completion",
+        canonical_task_key="task:false-completion",
+        dedupe_key="dedupe:false-completion",
+        commit_sha="a" * 40,
+        target_repository_id="repository:false-completion",
+        target_branch="main",
+    )
+    observation = {
+        "false_completion_observation": {
+            "observed_target_commit": "b" * 40,
+            "completed_claim_generation": 2,
+            "completed_finished_at_hex": (50.0).hex(),
+            "completed_row_digest": "sha256:" + "c" * 64,
+        },
+        "false_completion_observation_id": "observation:false-completion",
+    }
+    observed_times = iter((100.0, 200.0))
+    monkeypatch.setattr(
+        database_portal_bridge_module.time,
+        "time",
+        lambda: next(observed_times),
+    )
+
+    selected = bridge._false_completion_queue_recovery_receipt(
+        request,
+        observation,
+    )
+    assert selected is not None
+    rechecked = bridge._false_completion_queue_recovery_receipt(
+        request,
+        observation,
+        observed_at=float(selected["observed_at"]),
+    )
+    assert rechecked == selected
+    assert rechecked["receipt_cid"] == selected["receipt_cid"]
+
+    independently_observed = bridge._false_completion_queue_recovery_receipt(
+        request,
+        observation,
+    )
+    assert independently_observed is not None
+    assert independently_observed["observed_at"] == 200.0
+    assert independently_observed["receipt_cid"] != selected["receipt_cid"]
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")

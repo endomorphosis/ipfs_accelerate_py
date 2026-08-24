@@ -14689,6 +14689,104 @@ class PortalImplementationDaemon:
             )
             return {}
 
+    def _admitted_shared_merge_completions(
+        self,
+    ) -> tuple[set[str], dict[str, set[str]]]:
+        """Return only completed queue rows proven on the current target.
+
+        ``completed`` is a durable queue stage, not a merge observation.  A
+        crash or an incorrect historical shortcut can leave such a row while
+        its candidate is absent from the target.  Recheck each bounded row
+        through the canonical merge train integration predicate before it may
+        suppress reconciliation or project task completion.
+        """
+
+        completed_requests = getattr(
+            self.merge_queue,
+            "completed_requests",
+            None,
+        )
+        if not callable(completed_requests):
+            return set(), {}
+        try:
+            requests: list[Any] = []
+            before_request_id = ""
+            # One configured board is bounded to 8,192 tasks.  Scan that
+            # complete bound so an older valid completion cannot disappear
+            # merely because newer queue history exists.  The per-page queue
+            # limit remains 256 and every row still needs current-tree proof.
+            for _page in range(32):
+                batch = tuple(
+                    completed_requests(
+                        limit=256,
+                        before_request_id=before_request_id,
+                        ordered_by_request_id=True,
+                    )
+                )
+                requests.extend(batch)
+                if len(batch) < 256:
+                    break
+                before_request_id = str(batch[-1].request_id)
+            from ..merge.merge_train import MergeTrain
+
+            target_branch = (
+                self.resolved_merge_target_branch
+                or self._main_branch_name()
+            )
+            train = MergeTrain(
+                repo_root=self.repo_root,
+                queue=self.merge_queue,
+                target_branch=target_branch,
+                max_attempts=int(
+                    getattr(self.merge_queue, "max_attempts", 3)
+                ),
+            )
+            admitted = tuple(
+                request
+                for request in requests
+                if train.completed_request_is_integrated(request)
+            )
+        except Exception as exc:
+            self._record_event(
+                "shared_merge_receipts_unavailable",
+                {
+                    "query": "admitted_completed_requests",
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                },
+            )
+            return set(), {}
+
+        canonical_task_cids = {
+            str(request.canonical_task_id)
+            for request in admitted
+            if str(request.canonical_task_id)
+        }
+        bindings: dict[str, set[str]] = {}
+        for request in admitted:
+            metadata = (
+                request.metadata
+                if isinstance(request.metadata, Mapping)
+                else {}
+            )
+            raw_bindings = metadata.get("completion_task_cids")
+            if (
+                metadata.get("schema")
+                != "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+                or not isinstance(raw_bindings, Mapping)
+                or str(raw_bindings.get(request.task_id) or "")
+                != str(request.canonical_task_id or "")
+            ):
+                continue
+            for task_id, task_cid in raw_bindings.items():
+                normalized_id = str(task_id).strip()
+                normalized_cid = str(task_cid).strip()
+                if normalized_id and normalized_cid:
+                    bindings.setdefault(normalized_id, set()).add(
+                        normalized_cid
+                    )
+        return canonical_task_cids, bindings
+
     @staticmethod
     def _canonical_representative_task_ids(
         tasks: Sequence[PortalTask],
@@ -19845,12 +19943,10 @@ class PortalImplementationDaemon:
         shared_active_merge_cids = self._shared_merge_queue_task_cids(
             "active_canonical_task_ids"
         )
-        shared_completed_merge_cids = self._shared_merge_queue_task_cids(
-            "completed_canonical_task_ids"
-        )
-        shared_completed_task_bindings = (
-            self._shared_completed_task_cid_bindings()
-        )
+        (
+            shared_completed_merge_cids,
+            shared_completed_task_bindings,
+        ) = self._admitted_shared_merge_completions()
         shared_active_merge_cids.difference_update(shared_completed_merge_cids)
         declared_task_ids = {task.task_id for task in tasks}
         manual_completion_authority_required_task_ids = set(
@@ -71937,9 +72033,17 @@ DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-requalification-recovery@1"
 )
+DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-false-completion-reintegration-recovery@1"
+)
 DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-recovery-preauthorization@1"
+)
+DATABASE_FALSE_COMPLETION_RECOVERY_PREAUTHORIZATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-false-completion-recovery-preauthorization@1"
 )
 DATABASE_POST_MERGE_DECLARED_OUTPUTS_MISSING_REASON = (
     "post_merge_declared_outputs_missing"
@@ -71961,6 +72065,13 @@ POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA = (
 POST_MERGE_DECLARED_OUTPUT_REQUALIFICATION_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor."
     "post-merge-declared-output-requalification@1"
+)
+FALSE_COMPLETION_REINTEGRATION_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "false-completion-reintegration-receipt@1"
+)
+FALSE_COMPLETION_OBSERVATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/false-completion-observation@1"
 )
 DATABASE_INVALID_METADATA_MERGE_SETTLEMENT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -73775,6 +73886,687 @@ class DatabaseImplementationDaemon:
             result
         )
         return result
+
+    @staticmethod
+    def _verified_false_completion_observation(
+        value: Any,
+        *,
+        observation_id: Any,
+        request_id: Any,
+        task_id: Any,
+        task_cid: Any,
+        candidate_commit: Any,
+    ) -> dict[str, Any]:
+        """Validate the immutable event/Git observation used by both gates."""
+
+        if not isinstance(value, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "false-completion recovery observation is malformed"
+            )
+        observation = dict(value)
+        expected_fields = {
+            "schema",
+            "request_id",
+            "task_id",
+            "task_cid",
+            "candidate_commit",
+            "candidate_tree",
+            "historical_target_commit",
+            "completed_claim_generation",
+            "completed_finished_at_hex",
+            "completed_row_digest",
+            "observed_target_commit",
+            "proposal_event_id",
+            "handoff_event_id",
+            "enqueue_event_id",
+            "finished_event_id",
+            "train_receipt_digest",
+            "validation_proof_digest",
+        }
+        try:
+            finished_at = float.fromhex(
+                str(observation.get("completed_finished_at_hex") or "")
+            )
+        except (TypeError, ValueError):
+            finished_at = 0.0
+        if (
+            set(observation) != expected_fields
+            or observation.get("schema")
+            != FALSE_COMPLETION_OBSERVATION_SCHEMA
+            or content_identity(observation) != observation_id
+            or observation.get("request_id") != request_id
+            or observation.get("task_id") != task_id
+            or observation.get("task_cid") != task_cid
+            or observation.get("candidate_commit") != candidate_commit
+            or any(
+                re.fullmatch(r"[0-9a-f]{40}", str(observation.get(field) or ""))
+                is None
+                for field in (
+                    "candidate_commit",
+                    "candidate_tree",
+                    "historical_target_commit",
+                    "observed_target_commit",
+                )
+            )
+            or any(
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}",
+                    str(observation.get(field) or ""),
+                )
+                is None
+                for field in (
+                    "completed_row_digest",
+                    "proposal_event_id",
+                    "handoff_event_id",
+                    "enqueue_event_id",
+                    "finished_event_id",
+                    "train_receipt_digest",
+                )
+            )
+            or re.fullmatch(
+                r"baguqeera[a-z2-7]{52}",
+                str(observation.get("validation_proof_digest") or ""),
+            )
+            is None
+            or isinstance(observation.get("completed_claim_generation"), bool)
+            or not isinstance(
+                observation.get("completed_claim_generation"), int
+            )
+            or int(observation["completed_claim_generation"]) < 0
+            or not math.isfinite(finished_at)
+            or finished_at <= 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "false-completion recovery observation is invalid"
+            )
+        return observation
+
+    def preauthorize_false_completed_merge_recovery(
+        self,
+        source: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Authorize replay of one exact queue completion that never landed.
+
+        This grants no task transition and no provider retry.  It only proves
+        that the current blocked task, latest failed attempt, and immutable
+        database-Portal projection are still the identities named by the
+        merge-train recovery request.  The train remains responsible for
+        validating and integrating the candidate under its consumer lease.
+        """
+
+        self._require_execution_authority(
+            "false completed merge recovery preauthorization"
+        )
+        raw = dict(source)
+        expected_fields = {
+            "schema",
+            "request_id",
+            "task_cid",
+            "task_alias",
+            "candidate_commit",
+            "source_attempt_id",
+            "source_claim_id",
+            "source_lease_id",
+            "source_fencing_token",
+            "source_fence_epoch",
+            "source_binding_id",
+            "source_projection_immutable_digest",
+            "false_completion_observation",
+            "false_completion_observation_id",
+        }
+        if (
+            set(raw) != expected_fields
+            or raw.get("schema")
+            != DATABASE_FALSE_COMPLETION_RECOVERY_PREAUTHORIZATION_SCHEMA
+            or any(
+                not isinstance(raw.get(field), str)
+                or not str(raw.get(field) or "")
+                for field in (
+                    "request_id",
+                    "task_cid",
+                    "task_alias",
+                    "source_attempt_id",
+                    "source_claim_id",
+                    "source_lease_id",
+                )
+            )
+            or re.fullmatch(
+                r"[0-9a-f]{40}", str(raw.get("candidate_commit") or "")
+            )
+            is None
+            or any(
+                isinstance(raw.get(field), bool)
+                or not isinstance(raw.get(field), int)
+                or int(raw[field]) < 0
+                for field in ("source_fencing_token", "source_fence_epoch")
+            )
+            or any(
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", str(raw.get(field) or "")
+                )
+                is None
+                for field in (
+                    "source_binding_id",
+                    "source_projection_immutable_digest",
+                )
+            )
+            or re.fullmatch(
+                r"baguqeera[a-z2-7]{52}",
+                str(raw.get("false_completion_observation_id") or ""),
+            )
+            is None
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "false-completion recovery preauthorization source is invalid"
+            )
+        observation = self._verified_false_completion_observation(
+            raw.get("false_completion_observation"),
+            observation_id=raw.get("false_completion_observation_id"),
+            request_id=raw.get("request_id"),
+            task_id=raw.get("task_alias"),
+            task_cid=raw.get("task_cid"),
+            candidate_commit=raw.get("candidate_commit"),
+        )
+        task_cid = str(raw["task_cid"])
+        task = self.task_source.get(task_cid)
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(task_cid)
+        if (
+            task is None
+            or latest is None
+            or str(getattr(task, "task_cid", "") or "") != task_cid
+            or str(getattr(task, "task_alias", "") or "")
+            != str(raw["task_alias"])
+            or self._automatic_claim_forbidden(task)
+            or not self._post_merge_source_matches_latest(raw, latest)
+            or str(getattr(task, "status", "") or "").strip().lower()
+            != "blocked"
+            or self._canonical_portal_failure_reason(
+                self._terminal_portal_failure_reason(latest)
+            )
+            != "portal_provider_failed"
+        ):
+            raise DatabaseImplementationConflictError(
+                "false-completion recovery no longer matches the latest "
+                "blocked Portal attempt"
+            )
+        task_body = getattr(task, "body", None)
+        terminal = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        if (
+            not isinstance(terminal, Mapping)
+            or terminal.get("operation") != "database_portal_terminal_failure"
+            or terminal.get("attempt_id") != latest.attempt_id
+            or terminal.get("claim_id") != latest.claim_id
+            or terminal.get("lease_id") != latest.lease_id
+            or terminal.get("fencing_token") != int(latest.fencing_token)
+            or terminal.get("fence_epoch") != int(latest.fence_epoch)
+            or terminal.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or terminal.get("execution_revision") != int(latest.revision)
+            or terminal.get("execution_finished_at_ms")
+            != latest.finished_at_ms
+            or self._canonical_portal_failure_reason(
+                terminal.get("reason")
+            )
+            != "portal_provider_failed"
+            or terminal.get("retryable") is not False
+        ):
+            raise DatabaseImplementationConflictError(
+                "false-completion recovery found no exact terminal control "
+                "projection"
+            )
+        queue = self._merge_queue
+        get_request = getattr(queue, "get", None)
+        request = get_request(str(raw["request_id"])) if callable(get_request) else None
+        request_status = str(getattr(request, "status", "") or "")
+        request_metadata = getattr(request, "metadata", None)
+        exact_revival = False
+        if request_status in {"pending", "processing"} and isinstance(
+            request_metadata, Mapping
+        ):
+            revivals = request_metadata.get("false_completion_revivals")
+            latest_revival = (
+                revivals[-1]
+                if isinstance(revivals, list) and revivals
+                else None
+            )
+            recovery_receipt = (
+                latest_revival.get("recovery_receipt")
+                if isinstance(latest_revival, Mapping)
+                else None
+            )
+            try:
+                from ..merge.merge_queue import (
+                    validate_false_completion_recovery_receipt,
+                )
+
+                recovery_id = (
+                    validate_false_completion_recovery_receipt(
+                        recovery_receipt
+                    )
+                    if isinstance(recovery_receipt, Mapping)
+                    else ""
+                )
+            except (TypeError, RuntimeError):
+                recovery_id = ""
+            exact_revival = bool(
+                recovery_id
+                and latest_revival.get("recovery_receipt_id") == recovery_id
+                and recovery_receipt.get("observer_id")
+                == raw.get("false_completion_observation_id")
+                and recovery_receipt.get("request_id")
+                == raw.get("request_id")
+                and recovery_receipt.get("candidate_commit")
+                == raw.get("candidate_commit")
+                and recovery_receipt.get("canonical_task_id")
+                == raw.get("task_cid")
+                and (
+                    request_status != "processing"
+                    or (
+                        str(getattr(request, "consumer_id", "") or "").startswith(
+                            "merge-train:"
+                        )
+                        and bool(
+                            str(getattr(request, "claim_token", "") or "")
+                        )
+                    )
+                )
+            )
+        if (
+            request is None
+            or (
+                request_status != "completed"
+                and not exact_revival
+            )
+            or str(getattr(request, "task_id", "") or "")
+            != str(raw["task_alias"])
+            or str(getattr(request, "canonical_task_id", "") or "")
+            != task_cid
+            or str(getattr(request, "commit_sha", "") or "")
+            != str(raw["candidate_commit"])
+        ):
+            raise DatabaseImplementationConflictError(
+                "false-completion recovery queue row changed before admission"
+            )
+        result = {**raw, "authorized": True, "task_status": "blocked"}
+        result["authorization_id"] = self._database_portal_evidence_digest(
+            result
+        )
+        return result
+
+    def recover_blocked_false_completed_merge(
+        self,
+        evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Rearm a blocked task after its existing candidate really lands.
+
+        The source provider is never invoked by this recovery.  The receipt
+        must bind the historical false queue completion, the exact candidate
+        validation proof, and a fresh integration observation on the current
+        target.  The next database attempt can therefore consume the admitted
+        queue completion deterministically.
+        """
+
+        self._require_execution_authority(
+            "false completed merge reintegration recovery"
+        )
+        raw = dict(evidence)
+        evidence_id = str(raw.pop("evidence_id", "") or "")
+        expected_fields = {
+            "schema",
+            "request_id",
+            "task_cid",
+            "task_alias",
+            "candidate_commit",
+            "source_attempt_id",
+            "source_claim_id",
+            "source_lease_id",
+            "source_fencing_token",
+            "source_fence_epoch",
+            "source_binding_id",
+            "source_projection_immutable_digest",
+            "false_completion_observation",
+            "false_completion_observation_id",
+            "reintegration_receipt",
+        }
+        receipt = raw.get("reintegration_receipt")
+        if not isinstance(receipt, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "false-completion reintegration receipt is malformed"
+            )
+        receipt_value = dict(receipt)
+        receipt_id = str(receipt_value.pop("receipt_id", "") or "")
+        receipt_fields = {
+            "schema",
+            "request_id",
+            "task_id",
+            "task_cid",
+            "candidate_commit",
+            "candidate_tree",
+            "historical_target_commit",
+            "reintegration_target_commit",
+            "reintegration_target_tree",
+            "integration_mode",
+            "validation_proof_digest",
+            "false_completion_observation_id",
+        }
+        observation = self._verified_false_completion_observation(
+            raw.get("false_completion_observation"),
+            observation_id=raw.get("false_completion_observation_id"),
+            request_id=raw.get("request_id"),
+            task_id=raw.get("task_alias"),
+            task_cid=raw.get("task_cid"),
+            candidate_commit=raw.get("candidate_commit"),
+        )
+        git_id = r"[0-9a-f]{40}"
+        if (
+            set(raw) != expected_fields
+            or raw.get("schema")
+            != DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA
+            or set(receipt_value) != receipt_fields
+            or receipt_value.get("schema")
+            != FALSE_COMPLETION_REINTEGRATION_RECEIPT_SCHEMA
+            or receipt_id != content_identity(receipt_value)
+            or receipt_value.get("request_id") != raw.get("request_id")
+            or receipt_value.get("task_id") != raw.get("task_alias")
+            or receipt_value.get("task_cid") != raw.get("task_cid")
+            or receipt_value.get("candidate_commit")
+            != raw.get("candidate_commit")
+            or receipt_value.get("false_completion_observation_id")
+            != raw.get("false_completion_observation_id")
+            or receipt_value.get("candidate_tree")
+            != observation.get("candidate_tree")
+            or receipt_value.get("historical_target_commit")
+            != observation.get("historical_target_commit")
+            or receipt_value.get("validation_proof_digest")
+            != observation.get("validation_proof_digest")
+            or receipt_value.get("integration_mode")
+            not in {"candidate_ancestor", "declared_outputs_match"}
+            or any(
+                re.fullmatch(git_id, str(receipt_value.get(field) or ""))
+                is None
+                for field in (
+                    "candidate_commit",
+                    "candidate_tree",
+                    "historical_target_commit",
+                    "reintegration_target_commit",
+                    "reintegration_target_tree",
+                )
+            )
+            or any(
+                re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", str(value or "")
+                )
+                is None
+                for value in (
+                    raw.get("source_binding_id"),
+                    raw.get("source_projection_immutable_digest"),
+                    evidence_id,
+                )
+            )
+            or any(
+                re.fullmatch(r"baguqeera[a-z2-7]{52}", str(value or ""))
+                is None
+                for value in (
+                    raw.get("false_completion_observation_id"),
+                    receipt_value.get("validation_proof_digest"),
+                    receipt_id,
+                )
+            )
+            or evidence_id != self._database_portal_evidence_digest(raw)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "false-completion reintegration evidence is invalid"
+            )
+
+        queue = self._merge_queue
+        get_request = getattr(queue, "get", None)
+        request = get_request(str(raw["request_id"])) if callable(get_request) else None
+        metadata = getattr(request, "metadata", None)
+        validation = (
+            metadata.get("validation_proof")
+            if isinstance(metadata, Mapping)
+            else None
+        )
+        candidate = str(raw["candidate_commit"])
+        candidate_tree = str(receipt_value["candidate_tree"])
+        if (
+            request is None
+            or str(getattr(request, "status", "") or "") != "completed"
+            or str(getattr(request, "task_id", "") or "")
+            != str(raw["task_alias"])
+            or str(getattr(request, "canonical_task_id", "") or "")
+            != str(raw["task_cid"])
+            or str(getattr(request, "commit_sha", "") or "") != candidate
+            or not isinstance(metadata, Mapping)
+            or metadata.get("candidate_tree") != candidate_tree
+            or metadata.get("implementation_commit") != candidate
+            or not isinstance(validation, Mapping)
+            or validation.get("passed") is not True
+            or validation.get("returncode") != 0
+            or validation.get("target_commit") != candidate
+            or validation.get("target_tree") != candidate_tree
+            or content_identity(dict(validation))
+            != receipt_value.get("validation_proof_digest")
+        ):
+            raise DatabaseImplementationConflictError(
+                "false-completion reintegration lost its exact queue or "
+                "validation identity"
+            )
+        revivals = metadata.get("false_completion_revivals")
+        latest_revival = (
+            revivals[-1]
+            if isinstance(revivals, list) and revivals
+            else None
+        )
+        queue_recovery_receipt = (
+            latest_revival.get("recovery_receipt")
+            if isinstance(latest_revival, Mapping)
+            else None
+        )
+        try:
+            from ..merge.merge_queue import (
+                validate_false_completion_recovery_receipt,
+            )
+
+            queue_recovery_id = (
+                validate_false_completion_recovery_receipt(
+                    queue_recovery_receipt
+                )
+                if isinstance(queue_recovery_receipt, Mapping)
+                else ""
+            )
+        except (TypeError, RuntimeError):
+            queue_recovery_id = ""
+        try:
+            observed_finished_at = float.fromhex(
+                str(observation["completed_finished_at_hex"])
+            )
+        except (TypeError, ValueError):
+            observed_finished_at = 0.0
+        if (
+            not queue_recovery_id
+            or latest_revival.get("recovery_receipt_id")
+            != queue_recovery_id
+            or queue_recovery_receipt.get("observer_id")
+            != raw.get("false_completion_observation_id")
+            or queue_recovery_receipt.get("request_id")
+            != raw.get("request_id")
+            or queue_recovery_receipt.get("candidate_commit") != candidate
+            or queue_recovery_receipt.get("completed_claim_generation")
+            != observation.get("completed_claim_generation")
+            or float(queue_recovery_receipt.get("completed_finished_at") or 0)
+            != observed_finished_at
+            or queue_recovery_receipt.get("completed_row_digest")
+            != observation.get("completed_row_digest")
+            or queue_recovery_receipt.get("observed_target_commit")
+            != observation.get("observed_target_commit")
+        ):
+            raise DatabaseImplementationConflictError(
+                "false-completion reintegration lost its admitted revival proof"
+            )
+        if self._merge_repo_root is None or not self._merge_target_branch:
+            raise DatabaseImplementationAuthorityError(
+                "false-completion reintegration has no bound repository target"
+            )
+
+        def git(*argv: str) -> str:
+            result = subprocess.run(
+                ["git", *argv],
+                cwd=self._merge_repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                raise DatabaseImplementationAuthorityError(
+                    "false-completion reintegration Git proof is unavailable"
+                )
+            return result.stdout.strip()
+
+        target = git(
+            "rev-parse",
+            "--verify",
+            f"{self._merge_target_branch}^{{commit}}",
+        )
+        target_tree = git("rev-parse", "--verify", f"{target}^{{tree}}")
+        if (
+            target != receipt_value.get("reintegration_target_commit")
+            or target_tree != receipt_value.get("reintegration_target_tree")
+            or git("rev-parse", "--verify", f"{candidate}^{{tree}}")
+            != candidate_tree
+        ):
+            raise DatabaseImplementationConflictError(
+                "false-completion reintegration target changed before task CAS"
+            )
+        historical = str(receipt_value["historical_target_commit"])
+        historical_ancestry = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", historical, target],
+            cwd=self._merge_repo_root,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        ).returncode
+        candidate_historical_ancestry = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", candidate, historical],
+            cwd=self._merge_repo_root,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        ).returncode
+        from ..merge.merge_train import MergeTrain
+
+        train = MergeTrain(
+            repo_root=self._merge_repo_root,
+            queue=queue,
+            target_branch=self._merge_target_branch,
+            max_attempts=int(getattr(queue, "max_attempts", 3)),
+        )
+        if (
+            historical_ancestry != 0
+            or candidate_historical_ancestry != 1
+            or not train.completed_request_is_integrated(request)
+        ):
+            raise DatabaseImplementationConflictError(
+                "false-completion reintegration is not proven on the current target"
+            )
+
+        task_cid = str(raw["task_cid"])
+        task = self.task_source.get(task_cid)
+        latest = {
+            item.task_cid: item for item in self._latest_failed_attempts()
+        }.get(task_cid)
+        if (
+            task is None
+            or latest is None
+            or str(getattr(task, "task_alias", "") or "")
+            != str(raw["task_alias"])
+            or self._automatic_claim_forbidden(task)
+            or not self._post_merge_source_matches_latest(raw, latest)
+            or self._canonical_portal_failure_reason(
+                self._terminal_portal_failure_reason(latest)
+            )
+            != "portal_provider_failed"
+        ):
+            raise DatabaseImplementationConflictError(
+                "false-completion reintegration no longer matches the latest "
+                "failed task"
+            )
+        status = str(getattr(task, "status", "") or "").strip().lower()
+        evidence_source = (
+            "false_completed_candidate_reintegrated:" + evidence_id
+        )
+        if status == "retrying":
+            body = getattr(task, "body", None)
+            control = (
+                body.get("completion_receipt")
+                if isinstance(body, Mapping)
+                else None
+            )
+            if (
+                not isinstance(control, Mapping)
+                or control.get("operation")
+                != "database_portal_false_completion_reintegration_retry_recovery"
+                or control.get("attempt_id") != latest.attempt_id
+                or control.get("evidence_source") != evidence_source
+                or control.get("false_completion_reintegration_seed")
+                != dict(evidence)
+            ):
+                raise DatabaseImplementationConflictError(
+                    "false-completion reintegration retry projection is foreign"
+                )
+            return {
+                "schema": DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": True,
+                "changed": False,
+                "status": "retrying",
+                "task_cid": task_cid,
+                "request_id": str(raw["request_id"]),
+                "candidate_commit": candidate,
+                "reintegration_target_commit": target,
+                "reintegration_receipt_id": receipt_id,
+                "evidence_id": evidence_id,
+                "write_count": 0,
+            }
+        if status != "blocked":
+            raise DatabaseImplementationConflictError(
+                "false-completion reintegration requires blocked control state"
+            )
+        coordination = self._reconcile_failed_attempt_coordination(latest)
+        outcome = self._persist_task_retry_state(
+            latest,
+            reason="false_completed_candidate_reintegrated",
+            backoff_ms=0,
+            evidence_source=evidence_source,
+            coordination_evidence=coordination,
+            false_completion_reintegration_evidence=dict(evidence),
+            allow_blocked_recovery=True,
+        )
+        outcome.update(
+            {
+                "schema": DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
+                "attempted": True,
+                "recovered": True,
+                "request_id": str(raw["request_id"]),
+                "candidate_commit": candidate,
+                "reintegration_target_commit": target,
+                "reintegration_receipt_id": receipt_id,
+                "evidence_id": evidence_id,
+                "coordination": coordination,
+                "write_count": (
+                    1
+                    + (0 if outcome.get("queue_reused") is True else 1)
+                ),
+            }
+        )
+        return outcome
 
     def recover_blocked_post_merge_declared_outputs(
         self,
@@ -79388,6 +80180,8 @@ class DatabaseImplementationDaemon:
         | None = None,
         pooled_worktree_create_recovery_evidence: Mapping[str, Any]
         | None = None,
+        false_completion_reintegration_evidence: Mapping[str, Any]
+        | None = None,
         allow_blocked_recovery: bool = False,
     ) -> dict[str, Any]:
         """Project one exact failed attempt into canonical retry authority."""
@@ -79400,6 +80194,7 @@ class DatabaseImplementationDaemon:
             validation_retry_seed_conflict_recovery_evidence is not None,
             leftover_wait_deferral_budget_recovery_evidence is not None,
             pooled_worktree_create_recovery_evidence is not None,
+            false_completion_reintegration_evidence is not None,
         ]
         if sum(recovery_authorities) > 1:
             raise DatabaseImplementationAuthorityError(
@@ -79504,6 +80299,7 @@ class DatabaseImplementationDaemon:
                     or leftover_wait_deferral_budget_recovery_evidence
                     is not None
                     or pooled_worktree_create_recovery_evidence is not None
+                    or false_completion_reintegration_evidence is not None
                 )
                 and existing_entry is not None
                 and str(getattr(existing_entry, "reason", "") or "")
@@ -79553,6 +80349,7 @@ class DatabaseImplementationDaemon:
                 or validation_retry_seed_conflict_recovery_evidence is not None
                 or leftover_wait_deferral_budget_recovery_evidence is not None
                 or pooled_worktree_create_recovery_evidence is not None
+                or false_completion_reintegration_evidence is not None
                 or allow_blocked_recovery
             )
         )
@@ -79619,6 +80416,8 @@ class DatabaseImplementationDaemon:
                     if leftover_wait_deferral_budget_recovery_evidence is not None
                     else "database_portal_pooled_worktree_create_retry_recovery"
                     if pooled_worktree_create_recovery_evidence is not None
+                    else "database_portal_false_completion_reintegration_retry_recovery"
+                    if false_completion_reintegration_evidence is not None
                     else "database_portal_validation_retry_recovery"
                     if blocked_recovery
                     else "database_portal_validation_retry"
@@ -79710,6 +80509,15 @@ class DatabaseImplementationDaemon:
                     if pooled_worktree_create_recovery_evidence is not None
                     else {}
                 ),
+                **(
+                    {
+                        "false_completion_reintegration_seed": dict(
+                            false_completion_reintegration_evidence
+                        ),
+                    }
+                    if false_completion_reintegration_evidence is not None
+                    else {}
+                ),
                 "control_expected_status": task_status,
                 "control_expected_revision": int(task.revision),
             },
@@ -79755,6 +80563,10 @@ class DatabaseImplementationDaemon:
                     str(pooled_worktree_create_recovery_evidence["receipt_id"])
                 ]
                 if pooled_worktree_create_recovery_evidence is not None
+                else [
+                    str(false_completion_reintegration_evidence["evidence_id"])
+                ]
+                if false_completion_reintegration_evidence is not None
                 else None
             ),
         )
@@ -81513,8 +82325,25 @@ class DatabaseImplementationDaemon:
                 )
             status = str(task.status or "").strip().lower()
             if status == "retrying":
-                self._verified_pooled_worktree_create_recovery_state(attempt, task)
-                self._reconcile_failed_attempt_coordination(attempt)
+                task_body = getattr(task, "body", None)
+                receipt = (
+                    task_body.get("completion_receipt")
+                    if isinstance(task_body, Mapping)
+                    else None
+                )
+                # ``portal_provider_failed`` is a historical broad reason.
+                # Only the exact typed pooled-worktree recovery owns this
+                # reconciliation branch; another admitted recovery may have
+                # already moved the same blocked attempt to retrying.
+                if (
+                    isinstance(receipt, Mapping)
+                    and receipt.get("operation")
+                    == "database_portal_pooled_worktree_create_retry_recovery"
+                ):
+                    self._verified_pooled_worktree_create_recovery_state(
+                        attempt, task
+                    )
+                    self._reconcile_failed_attempt_coordination(attempt)
                 continue
             if status != "blocked":
                 continue
@@ -83789,6 +84618,24 @@ class DatabaseImplementationDaemon:
                         task,
                     )
                 elif (
+                    operation
+                    == "database_portal_false_completion_reintegration_retry_recovery"
+                ):
+                    seed = (
+                        receipt.get("false_completion_reintegration_seed")
+                        if isinstance(receipt, Mapping)
+                        else None
+                    )
+                    if not isinstance(seed, Mapping):
+                        raise DatabaseImplementationAuthorityError(
+                            "false-completion reintegration retry has no typed seed"
+                        )
+                    replay = self.recover_blocked_false_completed_merge(seed)
+                    if replay.get("changed") is not False:
+                        raise DatabaseImplementationConflictError(
+                            "false-completion reintegration replay mutated control"
+                        )
+                elif (
                     evidence_source
                     not in {
                         "portal_candidate_retry",
@@ -84500,10 +85347,7 @@ class DatabaseImplementationDaemon:
                 isinstance(exc, DatabasePortalBridgeError)
                 and not isinstance(exc, DatabasePortalValidationRetry)
                 and not recovery_owned_terminal_failure
-                and (
-                    not isinstance(exc, DatabasePortalBridgeDeferred)
-                    or self._is_protected_checkout_setup_block(str(exc))
-                )
+                and self._is_protected_checkout_setup_block(str(exc))
             ):
                 # Typed Portal setup/recovery failures (for example
                 # external_protected_checkout_recovery_required) are raised
@@ -84515,25 +85359,35 @@ class DatabaseImplementationDaemon:
                 task = self.task_source.get(attempt.task_cid)
                 if task is None:
                     raise
-                self._retire_stale_running_attempt(attempt, task)
-                self._requeue_unimplemented_control_task(task)
-                return {
-                    "resumed": True,
-                    "retryable": True,
-                    "portal_retryable_failure": True,
-                    "reason": str(exc).replace(" ", "_") or "portal_setup_retryable",
-                    "attempt_id": attempt.attempt_id,
-                    "task_alias": attempt.task_alias,
-                    "status": "failed",
-                }
-            if not isinstance(
-                exc,
-                (DatabasePortalBridgeDeferred, DatabasePortalValidationRetry),
-            ) and not recovery_owned_terminal_failure:
-                # Generic Portal/provider failures carry no retry authority.
-                # The durable callback-start intent prevents a cold restart
-                # from invoking the same unknown outcome again.
-                raise
+                declared_outputs = self._task_declared_output_paths(task)
+                if (
+                    self.repo_root is not None
+                    and declared_outputs
+                    and not self._task_outputs_landed_on_target(task)
+                ):
+                    self._retire_stale_running_attempt(attempt, task)
+                    requeued = self._requeue_unimplemented_control_task(task)
+                    if requeued is None:
+                        raise DatabaseImplementationConflictError(
+                            "protected-checkout setup block did not requeue its "
+                            "declared missing outputs"
+                        )
+                    return {
+                        "resumed": True,
+                        "retryable": True,
+                        "portal_retryable_failure": True,
+                        "reason": (
+                            str(exc).replace(" ", "_")
+                            or "portal_setup_retryable"
+                        ),
+                        "attempt_id": attempt.attempt_id,
+                        "task_alias": attempt.task_alias,
+                        "status": "failed",
+                    }
+                # Without exact missing-output evidence, preserve the generic
+                # fail-closed path below.  It records an immutable terminal
+                # receipt before canonical reconciliation may authorize a
+                # retry; an output-less task must never remain in_progress.
             deferred = isinstance(exc, DatabasePortalBridgeDeferred)
             validation_retry = isinstance(
                 exc,

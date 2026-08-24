@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -9,7 +11,15 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_repository_id,
 )
-from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue, MergeRequest
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
+    FALSE_COMPLETION_RECOVERY_RECEIPT_SCHEMA,
+    _FALSE_COMPLETION_REVIVAL_CAPABILITY,
+    MergeQueue,
+    MergeQueueFenceError,
+    MergeRequest,
+    completed_request_digest,
+    false_completion_recovery_receipt_cid,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     MergeResolverRegistry,
     conflict_fingerprint,
@@ -39,6 +49,34 @@ def _repo(tmp_path: Path) -> Path:
     _git(repo, "add", "base.txt")
     _git(repo, "commit", "-m", "base")
     return repo
+
+
+def _false_completion_recovery_receipt(
+    completed: MergeRequest,
+    *,
+    observed_target_commit: str,
+) -> dict[str, object]:
+    receipt: dict[str, object] = {
+        "schema": FALSE_COMPLETION_RECOVERY_RECEIPT_SCHEMA,
+        "request_id": completed.request_id,
+        "canonical_task_id": completed.canonical_task_id,
+        "canonical_task_key": completed.canonical_task_key,
+        "dedupe_key": completed.dedupe_key,
+        "candidate_commit": completed.commit_sha,
+        "target_repository_id": completed.target_repository_id,
+        "target_branch": completed.target_branch,
+        "observed_target_commit": observed_target_commit,
+        "candidate_integrated": False,
+        "completed_claim_generation": completed.claim_generation,
+        "completed_finished_at": completed.finished_at,
+        "completed_row_digest": completed_request_digest(completed),
+        "observation_method": "git_merge_base_is_ancestor",
+        "observer_id": "test:merge-train:false-completion-recovery",
+        "observed_at": completed.finished_at + 1.0,
+        "reason": "exact candidate is absent from the target",
+    }
+    receipt["receipt_cid"] = false_completion_recovery_receipt_cid(receipt)
+    return receipt
 
 
 def test_queue_deduplicates_canonical_task_and_commit_across_lanes(tmp_path: Path) -> None:
@@ -324,6 +362,530 @@ def test_train_callback_runs_when_root_candidate_is_already_merged(tmp_path: Pat
     assert result["merge_result"]["nested_handoff"] == "completed"
     assert callbacks == [request.request_id]
     assert queue.get(request.request_id).status == "completed"  # type: ignore[union-attr]
+
+
+def test_portal_projection_does_not_equate_existing_path_with_candidate_blob(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    base = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/aseh-001")
+    (repo / "base.txt").write_text("candidate revision\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "candidate declared output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/aseh-001",
+        task_id="ASEH-001",
+        canonical_task_id="canonical-aseh-001",
+        commit_sha=candidate,
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            "todo_path": str(tmp_path / "task-projection.md"),
+            "baseline_ref": base,
+            "completion_task_cids": {
+                "ASEH-001": "canonical-aseh-001",
+            },
+            "manual_completion_authority_task_ids": [],
+            "manual_completion_authority_epoch_id": "",
+            "task": {"outputs": ["base.txt"]},
+        },
+    )
+    callbacks: list[str] = []
+
+    def merge_candidate(claimed: MergeRequest) -> dict[str, object]:
+        callbacks.append(claimed.request_id)
+        _git(repo, "merge", "--ff-only", candidate)
+        return {
+            "merged": True,
+            "target_commit": candidate,
+            "merge_commit": candidate,
+        }
+
+    result = MergeTrain(
+        repo,
+        queue,
+        merge_callback=merge_candidate,
+    ).run_once()
+
+    assert result is not None
+    assert result["status"] == "merged"
+    assert callbacks == [request.request_id]
+    assert _git(repo, "show", "main:base.txt") == "candidate revision"
+
+
+def test_portal_projection_shortcut_requires_exact_candidate_tree_entry(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/aseh-001",
+        task_id="ASEH-001",
+        canonical_task_id="canonical-aseh-001",
+        commit_sha=candidate,
+        metadata={
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+            "todo_path": str(tmp_path / "task-projection.md"),
+            "completion_task_cids": {
+                "ASEH-001": "canonical-aseh-001",
+            },
+            "manual_completion_authority_task_ids": [],
+            "manual_completion_authority_epoch_id": "",
+            "task": {"outputs": ["base.txt"]},
+        },
+    )
+    callbacks: list[str] = []
+
+    train = MergeTrain(
+        repo,
+        queue,
+        merge_callback=lambda claimed: callbacks.append(claimed.request_id)
+        or {"merged": True},
+    )
+    assert (
+        train.completed_request_is_integrated(
+            replace(request, commit_sha="HEAD")
+        )
+        is False
+    )
+    result = train.run_once()
+
+    assert result is not None
+    assert result["status"] == "already_merged"
+    assert result["reason"] == "declared_outputs_already_on_target"
+    assert result["mutation_short_circuited"] is True
+    assert callbacks == []
+
+
+def test_completed_queue_row_is_not_task_completion_before_integration(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """## REF-041R Qualify terminal queue bookkeeping
+
+- Status: todo
+- Completion: manual
+- Outputs: base.txt
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "task projection")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    target_branch = "agent/ref-041r-board"
+    _git(repo, "switch", "-c", target_branch)
+    branch_name = "implementation/ref-041r"
+    _git(repo, "switch", "-c", branch_name)
+    (repo / "base.txt").write_text(
+        "candidate revision\n",
+        encoding="utf-8",
+    )
+    _git(repo, "commit", "-am", "REF-041R: candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", target_branch)
+
+    state_dir = tmp_path / "state"
+    queue = MergeQueue(tmp_path / "queue")
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        merge_queue=queue,
+        merge_target_branch=target_branch,
+    )
+    [task] = daemon._load_tasks()
+    request, _enqueue_result = daemon._enqueue_merge_candidate(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+    )
+    claimed = queue.dequeue(consumer_id="seed-false-terminal-row")
+    assert claimed is not None and claimed.request_id == request.request_id
+    queue.complete(claimed)
+    assert task.canonical_task_cid in queue.completed_canonical_task_ids()
+
+    completed_cids, completed_bindings = (
+        daemon._admitted_shared_merge_completions()
+    )
+    assert completed_cids == set()
+    assert completed_bindings == {}
+
+    _git(repo, "merge", "--ff-only", candidate)
+    completed_cids, completed_bindings = (
+        daemon._admitted_shared_merge_completions()
+    )
+    assert completed_cids == {task.canonical_task_cid}
+    assert completed_bindings == {
+        task.task_id: {task.canonical_task_cid},
+    }
+
+
+def test_integrated_pending_validation_row_is_not_completion_authority(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(tmp_path / "queue")
+    request = queue.enqueue(
+        branch_name="implementation/pending-validation",
+        task_id="PENDING-VALIDATION",
+        canonical_task_id="canonical-pending-validation",
+        commit_sha=candidate,
+        metadata={
+            "completion": {
+                "status": "integrated_pending_validation",
+                "accepted": False,
+                "acceptance_pending": True,
+            },
+        },
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+    )
+
+    assert (
+        MergeTrain(repo, queue).completed_request_is_integrated(request)
+        is False
+    )
+
+
+def test_queue_false_completion_revival_is_exact_audited_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    now = [10.0]
+    queue = MergeQueue(
+        tmp_path / "queue",
+        clock=lambda: now[0],
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/false-completion",
+        task_id="FALSE-COMPLETION",
+        canonical_task_id="canonical-false-completion",
+        canonical_task_key="canonical-false-completion",
+        commit_sha="a" * 40,
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:seed-false-completion")
+    assert claimed is not None
+    queue.complete(
+        claimed,
+        metadata={"status": "merged", "accepted": True},
+    )
+    completed = queue.get(request.request_id)
+    assert completed is not None and completed.status == "completed"
+    recovery_receipt = _false_completion_recovery_receipt(
+        completed,
+        observed_target_commit=_git(repo, "rev-parse", "refs/heads/main"),
+    )
+    foreign = replace(
+        completed,
+        metadata={**completed.metadata, "target_branch": "foreign"},
+    )
+    train = MergeTrain(repo, queue)
+
+    now[0] = 20.0
+    with pytest.raises(
+        MergeQueueFenceError,
+        match="requires merge-train consumer authority",
+    ):
+        queue.revive_false_completed(
+            completed,
+            recovery_receipt=recovery_receipt,
+        )
+    with train._consumer_lease() as acquired:
+        assert acquired is True
+        with pytest.raises(MergeQueueFenceError, match="identity differs"):
+            queue.revive_false_completed(
+                foreign,
+                recovery_receipt=recovery_receipt,
+                _consumer_capability=_FALSE_COMPLETION_REVIVAL_CAPABILITY,
+            )
+        stale_generation = replace(
+            completed,
+            claim_generation=completed.claim_generation - 1,
+        )
+        with pytest.raises(
+            MergeQueueFenceError,
+            match="does not bind the supplied completed row",
+        ):
+            queue.revive_false_completed(
+                stale_generation,
+                recovery_receipt=recovery_receipt,
+                _consumer_capability=_FALSE_COMPLETION_REVIVAL_CAPABILITY,
+            )
+        tampered_receipt = {
+            **recovery_receipt,
+            "reason": "tampered after content identification",
+        }
+        with pytest.raises(MergeQueueFenceError, match="content id is invalid"):
+            queue.revive_false_completed(
+                completed,
+                recovery_receipt=tampered_receipt,
+                _consumer_capability=_FALSE_COMPLETION_REVIVAL_CAPABILITY,
+            )
+        revived = queue.revive_false_completed(
+            completed,
+            recovery_receipt=recovery_receipt,
+            _consumer_capability=_FALSE_COMPLETION_REVIVAL_CAPABILITY,
+        )
+        repeated = queue.revive_false_completed(
+            completed,
+            recovery_receipt=recovery_receipt,
+            _consumer_capability=_FALSE_COMPLETION_REVIVAL_CAPABILITY,
+        )
+        different_proof = {
+            **recovery_receipt,
+            "reason": "a different observation must not replay",
+        }
+        different_proof["receipt_cid"] = (
+            false_completion_recovery_receipt_cid(different_proof)
+        )
+        with pytest.raises(
+            MergeQueueFenceError,
+            match="pending request is not this false-completion revival",
+        ):
+            queue.revive_false_completed(
+                completed,
+                recovery_receipt=different_proof,
+                _consumer_capability=_FALSE_COMPLETION_REVIVAL_CAPABILITY,
+            )
+
+    assert revived.status == repeated.status == "pending"
+    assert revived.claim_generation == completed.claim_generation + 1
+    assert repeated.claim_generation == revived.claim_generation
+    assert repeated.metadata["completion"] == {
+        "accepted": True,
+        "status": "merged",
+    }
+    revivals = repeated.metadata["false_completion_revivals"]
+    assert len(revivals) == 1
+    revival = revivals[0]
+    assert revival["at"] == 20.0
+    assert revival["reason"] == recovery_receipt["reason"]
+    assert revival["recovery_receipt_id"] == recovery_receipt["receipt_cid"]
+    assert revival["recovery_receipt"] == recovery_receipt
+    assert revival["previous_completed_row_digest"] == completed_request_digest(
+        completed
+    )
+    assert revival["previous_finished_at"] == completed.finished_at == 10.0
+    assert revival["previous_claim_generation"] == completed.claim_generation
+    assert revival["previous_failure_count"] == completed.failure_count
+    assert revival["previous_failure_reason"] == completed.failure_reason
+    assert revival["previous_completion"] == {
+        "accepted": True,
+        "status": "merged",
+    }
+
+
+def test_train_recovers_one_exact_false_completion_through_existing_gates(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    base = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/false-completion")
+    (repo / "recovered.txt").write_text("recovered\n", encoding="utf-8")
+    _git(repo, "add", "recovered.txt")
+    _git(repo, "commit", "-m", "false completion candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/false-completion",
+        task_id="FALSE-COMPLETION",
+        canonical_task_id="canonical-false-completion",
+        canonical_task_key="canonical-false-completion",
+        commit_sha=candidate,
+        metadata={"baseline_ref": base, "changed_submodule_paths": []},
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:seed-false-completion")
+    assert claimed is not None
+    queue.complete(
+        claimed,
+        metadata={"status": "merged", "accepted": True},
+    )
+    completed = queue.get(request.request_id)
+    assert completed is not None and completed.status == "completed"
+    recovery_receipt = _false_completion_recovery_receipt(
+        completed,
+        observed_target_commit=_git(repo, "rev-parse", "refs/heads/main"),
+    )
+    predicate_calls: list[str] = []
+    context_events: list[str] = []
+    after_results: list[str] = []
+    train = MergeTrain(repo, queue)
+    # The historical false terminal came from this shortcut.  The admitted
+    # revival must pass through ordinary integration instead of repeating it.
+    train._portal_projection_invalid_metadata_already_on_target = (
+        lambda _request: True
+    )
+
+    def predicate(row: MergeRequest) -> bool:
+        predicate_calls.append(row.request_id)
+        return row.canonical_task_id == "canonical-false-completion"
+
+    @contextmanager
+    def processor_context(selected_train: MergeTrain):
+        assert selected_train is train
+        context_events.append("entered")
+        try:
+            yield
+        finally:
+            context_events.append("exited")
+
+    result = train.recover_one_false_completion(
+        request_id=request.request_id,
+        request_filter=predicate,
+        recovery_receipt=recovery_receipt,
+        processor_context=processor_context,
+        after_process=lambda _claimed, outcome: after_results.append(
+            str(outcome.get("status") or "")
+        ),
+    )
+
+    assert result is not None and result["status"] == "merged"
+    assert predicate_calls == [request.request_id, request.request_id]
+    assert context_events == ["entered", "exited"]
+    assert after_results == ["merged"]
+    settled = queue.get(request.request_id)
+    assert settled is not None and settled.status == "completed"
+    assert len(settled.metadata["false_completion_revivals"]) == 1
+    target = _git(repo, "rev-parse", "refs/heads/main")
+    assert _git(repo, "merge-base", "--is-ancestor", candidate, target) == ""
+    assert _git(repo, "show", f"{target}:recovered.txt") == "recovered"
+
+
+def test_train_denies_false_completion_recovery_when_candidate_is_integrated(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/already-integrated",
+        task_id="ALREADY-INTEGRATED",
+        canonical_task_id="canonical-already-integrated",
+        canonical_task_key="canonical-already-integrated",
+        commit_sha=candidate,
+        metadata={"changed_submodule_paths": []},
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:seed-integrated")
+    assert claimed is not None
+    queue.complete(
+        claimed,
+        metadata={"status": "merged", "accepted": True},
+    )
+    completed = queue.get(request.request_id)
+    assert completed is not None and completed.status == "completed"
+    recovery_receipt = _false_completion_recovery_receipt(
+        completed,
+        observed_target_commit=_git(repo, "rev-parse", "refs/heads/main"),
+    )
+
+    result = MergeTrain(repo, queue).recover_one_false_completion(
+        request_id=request.request_id,
+        request_filter=lambda _row: True,
+        recovery_receipt=recovery_receipt,
+    )
+
+    assert result is None
+    durable = queue.get(request.request_id)
+    assert durable is not None and durable.status == "completed"
+    assert "false_completion_revivals" not in durable.metadata
+
+
+def test_train_denies_false_completion_when_negative_git_observation_is_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    base = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/unknown-observation")
+    (repo / "candidate.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "candidate.txt")
+    _git(repo, "commit", "-m", "candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=checkout_repository_id(repo),
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/unknown-observation",
+        task_id="UNKNOWN-OBSERVATION",
+        canonical_task_id="canonical-unknown-observation",
+        canonical_task_key="canonical-unknown-observation",
+        commit_sha=candidate,
+        metadata={"baseline_ref": base, "changed_submodule_paths": []},
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:seed-unknown")
+    assert claimed is not None
+    queue.complete(claimed, metadata={"status": "merged", "accepted": True})
+    completed = queue.get(request.request_id)
+    assert completed is not None
+    receipt = _false_completion_recovery_receipt(
+        completed,
+        observed_target_commit=_git(repo, "rev-parse", "refs/heads/main"),
+    )
+    train = MergeTrain(repo, queue)
+    original_git = train._git
+
+    def unknown_ancestry(*arguments: str) -> subprocess.CompletedProcess[str]:
+        if arguments[:2] == ("merge-base", "--is-ancestor"):
+            return subprocess.CompletedProcess(
+                ["git", *arguments],
+                128,
+                "",
+                "synthetic Git observation failure",
+            )
+        return original_git(*arguments)
+
+    monkeypatch.setattr(train, "_git", unknown_ancestry)
+    result = train.recover_one_false_completion(
+        request_id=request.request_id,
+        request_filter=lambda _row: True,
+        recovery_receipt=receipt,
+    )
+
+    assert result is None
+    durable = queue.get(request.request_id)
+    assert durable is not None and durable.status == "completed"
+    assert "false_completion_revivals" not in durable.metadata
 
 
 def test_train_immediately_recovers_a_claim_abandoned_by_dead_consumer(tmp_path: Path) -> None:

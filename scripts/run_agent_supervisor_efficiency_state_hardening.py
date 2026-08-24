@@ -51,6 +51,70 @@ POPULATION_SCHEMA: Final = (
 BOOTSTRAP_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/aseh-bootstrap@1"
 )
+REPAIR_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/aseh-bootstrap-repair-transition@1"
+)
+REPAIR_TRANSITION_TASK_ID: Final = "ASEH-BOOTSTRAP-002"
+REPAIR_TRANSITION_BASE_HEAD: Final = (
+    "6b1bbc34510fde1e11760c7eef520369dafdd3b5"
+)
+REPAIR_TRANSITION_CHANGED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py",
+    "ipfs_accelerate_py/agent_supervisor/merge/merge_train.py",
+    "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/database_portal_bridge.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_board_scheduler.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    "test/api/test_agent_supervisor_database_portal_bridge.py",
+    "test/api/test_agent_supervisor_merge_train.py",
+)
+REPAIR_TRANSITION_VALIDATIONS: Final = (
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_merge_train.py", "-k",
+        (
+            "portal_projection or "
+            "completed_queue_row_is_not_task_completion or "
+            "integrated_pending_validation or false_completion"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_configured_board_scheduler.py", "-k",
+        (
+            "non_dumpable_root_omitted_by_profile_scan or "
+            "opaque_detached_child_before_root_term_exit"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py", "-k",
+        (
+            "blocked_reconciliation or canonical_merge_suffix or "
+            "repair_transition or offline_continuity_replay"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_database_portal_bridge.py", "-k",
+        (
+            "post_merge_rearm_endpoints_fail_closed or "
+            "false_completion_recheck_reuses_observation_timestamp"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_database_implementation_daemon.py",
+        "-k",
+        (
+            "reconcile_rearms_blocked_portal_provider_failed or "
+            "reconcile_rearms_blocked_checkout_contention or "
+            "portal_setup_error_requeues"
+        ),
+    ),
+)
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
         "schema", "source_head", "repository_tree_id", "plan_root_cid",
@@ -58,6 +122,18 @@ BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
         "snapshot", "integrity", "initial_ready_task_ids",
         "bootstrap_validation", "recovered_after_interrupted_materialization",
         "authority", "ducklake_projection", "bootstrap_receipt_id",
+    }
+)
+REPAIR_TRANSITION_RECEIPT_FIELDS: Final = frozenset(
+    {
+        "schema", "task_id", "stable_identity", "program_id",
+        "bootstrap_receipt_id", "plan_root_cid", "repository_tree_id",
+        "base_head", "base_tree", "repair_head", "repair_tree",
+        "changed_paths", "patch_digest", "dependencies",
+        "owning_repository", "risk_class", "authority_requirement",
+        "validation_results", "terminal_success_criteria",
+        "terminal_non_success_criteria", "semantic_corpus_changed",
+        "database_mutated", "authorized_at", "receipt_cid",
     }
 )
 DUCKLAKE_SCHEMA: Final = (
@@ -233,6 +309,25 @@ def _bootstrap_receipt_id(payload: Mapping[str, Any]) -> str:
     return receipt_id
 
 
+def _repair_transition_receipt_id(payload: Mapping[str, Any]) -> str:
+    """Validate the one bounded bootstrap-repair transition receipt."""
+
+    if (
+        payload.get("schema") != REPAIR_TRANSITION_SCHEMA
+        or set(payload) != REPAIR_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+    ):
+        raise OperatorError("bootstrap repair transition schema is invalid")
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError("bootstrap repair transition CID is invalid")
+    return receipt_id
+
+
 def _run(
     argv: Sequence[str],
     *,
@@ -245,9 +340,10 @@ def _run(
     )
 
 
-def _git(*args: str, cwd: Path = ROOT) -> str:
+def _git(*args: str, cwd: Path | None = None) -> str:
+    repository = ROOT if cwd is None else cwd
     completed = subprocess.run(
-        ("git", *args), cwd=cwd, text=True, capture_output=True,
+        ("git", *args), cwd=repository, text=True, capture_output=True,
         check=False, timeout=60,
     )
     if completed.returncode != 0:
@@ -255,6 +351,71 @@ def _git(*args: str, cwd: Path = ROOT) -> str:
             f"git {' '.join(args)} failed: {completed.stderr[-1000:]}"
         )
     return completed.stdout.strip()
+
+
+def _git_bytes(*args: str, cwd: Path | None = None) -> bytes:
+    repository = ROOT if cwd is None else cwd
+    completed = subprocess.run(
+        ("git", *args), cwd=repository, capture_output=True, check=False,
+        timeout=60,
+    )
+    if completed.returncode != 0:
+        stderr = completed.stderr.decode("utf-8", errors="replace")
+        raise OperatorError(f"git {' '.join(args)} failed: {stderr[-1000:]}")
+    return completed.stdout
+
+
+def _git_changed_paths(base: str, target: str) -> tuple[str, ...]:
+    payload = _git_bytes("diff", "--name-only", "-z", base, target, "--")
+    values = payload.split(b"\0")
+    if values and values[-1] == b"":
+        values.pop()
+    paths: list[str] = []
+    for raw in values:
+        try:
+            path = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise OperatorError("Git changed path is not UTF-8") from exc
+        candidate = Path(path)
+        if (
+            not path
+            or candidate.is_absolute()
+            or ".." in candidate.parts
+            or path != candidate.as_posix()
+        ):
+            raise OperatorError("Git changed path is unsafe")
+        paths.append(path)
+    if len(paths) != len(set(paths)):
+        raise OperatorError("Git changed path list contains duplicates")
+    return tuple(paths)
+
+
+def _git_patch_digest(base: str, target: str) -> str:
+    return _identity(
+        _git_bytes(
+            "diff", "--binary", "--full-index", "--no-ext-diff",
+            base, target, "--",
+        )
+    )
+
+
+def _run_repair_transition_validations() -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for command in REPAIR_TRANSITION_VALIDATIONS:
+        completed = _run(command, timeout=900)
+        result = {
+            "argv": list(command),
+            "returncode": int(completed.returncode),
+            "stdout_digest": _identity(completed.stdout.encode("utf-8")),
+            "stderr_digest": _identity(completed.stderr.encode("utf-8")),
+        }
+        results.append(result)
+        if completed.returncode != 0:
+            raise OperatorError(
+                "bootstrap repair transition validation failed: "
+                + " ".join(command)
+            )
+    return results
 
 
 def _safe_path(value: str, *, field: str) -> Path:
@@ -297,6 +458,14 @@ def _paths(board: Any) -> dict[str, Path]:
             str(raw.get("evidence") or f"{board.runtime_paths['root']}/evidence"),
             field="runtime_paths.evidence",
         ),
+        "merge_queue": _safe_path(
+            str(
+                raw.get("merge_queue")
+                or board.runtime_paths.get("merge_queue")
+                or f"{board.runtime_paths['root']}/merge-queue"
+            ),
+            field="runtime_paths.merge_queue",
+        ),
         "ducklake_catalog": _safe_path(
             str(ducklake.get("catalog_path") or f"{board.runtime_paths['root']}/ducklake/catalog.duckdb"),
             field="ducklake_projection_program.catalog_path",
@@ -321,6 +490,11 @@ def _paths(board: Any) -> dict[str, Path]:
     )
     result["ducklake_receipt"] = (
         result["evidence"] / "bootstrap" / "ducklake-history-projection.json"
+    )
+    result["repair_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-transition.json"
     )
     result["status_receipt"] = (
         result["evidence"] / "control-plane" / "live-status.json"
@@ -883,6 +1057,40 @@ def _offline_database_guard(paths: Mapping[str, Path]) -> Any:
             handle.close()
 
 
+@contextmanager
+def _offline_merge_queue_guard(paths: Mapping[str, Path]) -> Any:
+    """Freeze the existing merge queue for one read-only continuity view."""
+
+    queue_dir = paths["merge_queue"]
+    database = queue_dir / "merge_queue.duckdb"
+    consumer_lock = queue_dir / "train" / "consumer.lock"
+    database_lock = database.with_name(f".{database.name}.lock")
+    if not database.is_file():
+        raise OperatorError("canonical merge queue database is absent")
+    handles: list[Any] = []
+    try:
+        for path in (consumer_lock, database_lock):
+            if not path.is_file():
+                raise OperatorError(
+                    f"canonical merge queue lock is absent: {path.name}"
+                )
+            handle = path.open("rb")
+            handles.append(handle)
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise OperatorError(
+                    "offline merge queue access refused while a lane is live"
+                ) from exc
+        yield database
+    finally:
+        for handle in reversed(handles):
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                handle.close()
+
+
 def _immutable_goal_record(value: Mapping[str, Any]) -> dict[str, Any]:
     """Project the immutable semantic identity of one admitted goal."""
 
@@ -1133,6 +1341,7 @@ def _verify_materialized_source(
     population: Mapping[str, Any],
     config: Mapping[str, Any],
     require_initial_frontier: bool = True,
+    projection_matches_events: bool | None = None,
 ) -> tuple[dict[str, Any], list[str], dict[str, Any]]:
     """Prove the bounded projection and its admitted-event replay agree."""
 
@@ -1142,7 +1351,12 @@ def _verify_materialized_source(
         str(item["task_alias"]): str(item["task_cid"])
         for item in expected_tasks
     }
-    if source.projection_matches_events() is not True:
+    projection_matches = (
+        source.projection_matches_events()
+        if projection_matches_events is None
+        else projection_matches_events
+    )
+    if projection_matches is not True:
         raise OperatorError("materialized projection differs from admitted events")
     snapshot = source.snapshot().to_dict()
     page = source.list_tasks(limit=100)
@@ -1316,6 +1530,181 @@ def _verify_materialized_source(
     return snapshot, ready, integrity
 
 
+def _verify_materialized_source_from_bootstrap(
+    source: Any,
+    *,
+    bootstrap: Mapping[str, Any],
+    projection_matches_events: bool | None = None,
+) -> tuple[dict[str, Any], list[str], dict[str, Any], dict[str, tuple[str, ...]]]:
+    """Verify live lifecycle state without reminting the sealed task corpus."""
+
+    sealed = bootstrap.get("integrity")
+    if not isinstance(sealed, Mapping):
+        raise OperatorError("bootstrap integrity is absent")
+    sealed_task_cids = sealed.get("task_cids")
+    sealed_dependencies = sealed.get("task_dependencies")
+    sealed_owners = sealed.get("task_owner_bindings")
+    sealed_authority = sealed.get("task_authority_spec_cids")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (
+            sealed_task_cids, sealed_dependencies, sealed_owners,
+            sealed_authority,
+        )
+    ):
+        raise OperatorError("bootstrap task corpus is incomplete")
+    expected_aliases = list(sealed_task_cids)
+    projection_matches = (
+        source.projection_matches_events()
+        if projection_matches_events is None
+        else projection_matches_events
+    )
+    if projection_matches is not True:
+        raise OperatorError("materialized projection differs from admitted events")
+    snapshot = source.snapshot().to_dict()
+    page = source.list_tasks(limit=100)
+    if page.next_cursor:
+        raise OperatorError("materialized task population exceeds its sealed bound")
+    if [item.task_alias for item in page.tasks] != expected_aliases:
+        raise OperatorError("materialized task order/aliases differ from bootstrap")
+    for item in page.tasks:
+        alias = item.task_alias
+        if item.task_cid != sealed_task_cids.get(alias):
+            raise OperatorError(f"materialized task identity differs: {alias}")
+        if tuple(sorted(item.dependencies)) != tuple(
+            sorted(sealed_dependencies.get(alias) or ())
+        ):
+            raise OperatorError(f"materialized dependency edges differ: {alias}")
+        observed_owner = {
+            key: item.body.get(key)
+            for key in (
+                "owning_repository", "base_revision",
+                "base_repository_tree_id", "source_forest_cid",
+                "owner_source_identity",
+            )
+        }
+        if observed_owner != sealed_owners.get(alias):
+            raise OperatorError(f"materialized owner binding differs: {alias}")
+
+    plan_projection = source.plan_projection(
+        task_cids=[str(sealed_task_cids[alias]) for alias in expected_aliases]
+    )
+    authority = _task_authority_spec_cids(plan_projection)
+    if authority != sealed_authority:
+        raise OperatorError("materialized task authority differs from bootstrap")
+    objective_record = _objective_record_from_projection(plan_projection)
+    if objective_record != sealed.get("objective_record"):
+        raise OperatorError("materialized objective authority differs from bootstrap")
+
+    transient_outputs: dict[str, tuple[str, ...]] = {}
+    projected_tasks = plan_projection.get("tasks")
+    if not isinstance(projected_tasks, list):
+        raise OperatorError("materialized plan projection lacks tasks")
+    for task in projected_tasks:
+        if not isinstance(task, Mapping):
+            raise OperatorError("materialized plan task is malformed")
+        alias = str(task.get("task_alias") or "")
+        outputs = task.get("outputs")
+        if alias not in sealed_task_cids or not isinstance(outputs, list):
+            raise OperatorError("materialized task outputs are malformed")
+        paths: list[str] = []
+        for output in outputs:
+            if not isinstance(output, Mapping):
+                raise OperatorError("materialized task output is malformed")
+            path = str(output.get("path") or "").strip()
+            if not path or path in paths:
+                raise OperatorError("materialized task output path is invalid")
+            paths.append(path)
+        transient_outputs[alias] = tuple(paths)
+    if set(transient_outputs) != set(expected_aliases):
+        raise OperatorError("materialized task output corpus differs")
+
+    sealed_goals = sealed.get("goal_records")
+    if not isinstance(sealed_goals, Mapping):
+        raise OperatorError("bootstrap goal corpus is absent")
+    goal_records: dict[str, dict[str, Any]] = {}
+    for alias, expected in sealed_goals.items():
+        if not isinstance(expected, Mapping):
+            raise OperatorError("bootstrap goal record is malformed")
+        observed = source.get_goal(str(expected.get("goal_cid") or ""))
+        if not isinstance(observed, Mapping):
+            raise OperatorError(f"materialized goal is missing: {alias}")
+        record = _immutable_goal_record(observed)
+        if record != expected:
+            raise OperatorError(f"materialized goal differs: {alias}")
+        goal_records[str(alias)] = record
+    observed_edges = sorted(
+        (dict(item) for item in source.list_goal_edges(limit=100)),
+        key=_goal_edge_sort_key,
+    )
+    if observed_edges != sealed.get("goal_edges"):
+        raise OperatorError("materialized goal edges differ from bootstrap")
+    sealed_plan = sealed.get("plan_record")
+    if not isinstance(sealed_plan, Mapping):
+        raise OperatorError("bootstrap plan record is absent")
+    observed_plan = source.get_plan(str(sealed_plan.get("plan_cid") or ""))
+    if (
+        not isinstance(observed_plan, Mapping)
+        or _immutable_plan_record(observed_plan) != sealed_plan
+    ):
+        raise OperatorError("materialized plan root differs from bootstrap")
+
+    for field in (
+        "task_count", "goal_count", "dependency_count", "objective_count",
+        "plan_count",
+    ):
+        if int(snapshot.get(field, -1)) != int(sealed.get(field, -2)):
+            raise OperatorError(f"materialized {field} differs from bootstrap")
+    ready = [item.task_alias for item in source.ready_tasks(limit=100).tasks]
+    if len(ready) != len(set(ready)) or not set(ready).issubset(expected_aliases):
+        raise OperatorError("materialized ready frontier is not task-corpus bound")
+    integrity = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/aseh-integrity@1",
+        "projection_matches_events": True,
+        "projection_cid": snapshot["projection_cid"],
+        "event_cursor": snapshot["event_cursor"],
+        "task_statuses": {
+            item.task_alias: str(item.status or "").lower()
+            for item in page.tasks
+        },
+        "task_revisions": {
+            item.task_alias: int(item.revision) for item in page.tasks
+        },
+        "task_cids": {
+            item.task_alias: item.task_cid for item in page.tasks
+        },
+        "task_owner_bindings": {
+            item.task_alias: {
+                key: item.body.get(key)
+                for key in (
+                    "owning_repository", "base_revision",
+                    "base_repository_tree_id", "source_forest_cid",
+                    "owner_source_identity",
+                )
+            }
+            for item in page.tasks
+        },
+        "task_dependencies": {
+            item.task_alias: list(item.dependencies) for item in page.tasks
+        },
+        "task_authority_spec_cids": authority,
+        "objective_record": objective_record,
+        "goal_records": dict(goal_records),
+        "goal_edges": observed_edges,
+        "plan_record": _immutable_plan_record(observed_plan),
+        **{
+            field: int(snapshot[field])
+            for field in (
+                "task_count", "goal_count", "dependency_count",
+                "objective_count", "plan_count",
+            )
+        },
+    }
+    integrity["integrity_receipt_id"] = _identity(integrity)
+    _admit_current_projection_against_bootstrap(bootstrap, snapshot, integrity)
+    return snapshot, ready, integrity, transient_outputs
+
+
 _IMMUTABLE_SNAPSHOT_FIELDS = (
     "source_schema",
     "schema_version",
@@ -1429,6 +1818,247 @@ def _admit_current_projection_against_bootstrap(
         or integrity.get("projection_cid") != snapshot.get("projection_cid")
     ):
         raise OperatorError("current event cursor regressed or diverged")
+
+
+def _read_completed_merge_requests(database: Path) -> tuple[Any, ...]:
+    """Read the authoritative queue under the caller's offline queue locks."""
+
+    from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeRequest
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        connect_duckdb_with_policy,
+    )
+
+    import duckdb
+
+    connection = connect_duckdb_with_policy(duckdb, database, read_only=True)
+    try:
+        cursor = connection.execute(
+            """SELECT request_id, branch_name, task_id, priority, lane_id,
+                      enqueued_at, attempt, metadata_json, commit_sha,
+                      canonical_task_id, canonical_task_key, status,
+                      claimed_at, consumer_id, failure_count, failure_reason,
+                      claim_token, claim_generation, retry_not_before
+                 FROM merge_requests
+                WHERE status='completed'
+                ORDER BY request_id"""
+        )
+        rows = cursor.fetchall()
+        columns = [str(item[0]) for item in cursor.description]
+    finally:
+        connection.close()
+    if len(rows) > 256:
+        raise OperatorError("completed merge population exceeds continuity bound")
+    requests: list[Any] = []
+    for row in rows:
+        values = dict(zip(columns, row, strict=True))
+        try:
+            metadata = json.loads(str(values.pop("metadata_json") or "{}"))
+        except json.JSONDecodeError as exc:
+            raise OperatorError("completed merge metadata is invalid") from exc
+        if not isinstance(metadata, dict):
+            raise OperatorError("completed merge metadata is not an object")
+        requests.append(MergeRequest.from_dict({**values, "metadata": metadata}))
+    return tuple(requests)
+
+
+def _git_tree_entry(commit: str, path: str) -> bytes:
+    return _git_bytes("ls-tree", "-z", commit, "--", f":(literal){path}")
+
+
+def _admit_canonical_merge_suffix(
+    board: Any,
+    *,
+    base_head: str,
+    target_head: str,
+    bootstrap: Mapping[str, Any],
+    integrity: Mapping[str, Any],
+    task_outputs: Mapping[str, Sequence[str]],
+    completed_requests: Sequence[Any],
+) -> dict[str, Any]:
+    """Prove every first-parent advance is one exact admitted queue merge."""
+
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        checkout_repository_id,
+    )
+    from ipfs_accelerate_py.agent_supervisor.merge.merge_train import (
+        integrated_candidate_handoff_proof,
+    )
+
+    base = str(base_head or "").strip().casefold()
+    target = str(target_head or "").strip().casefold()
+    if _git("rev-parse", "--verify", f"{base}^{{commit}}") != base:
+        raise OperatorError("continuity base commit is unavailable")
+    if _git("merge-base", "--is-ancestor", base, target) != "":
+        # Successful merge-base --is-ancestor emits no output.
+        raise OperatorError("continuity ancestry command returned output")
+    protected = frozenset(str(path) for path in board.protected_paths)
+    repository_id = checkout_repository_id(ROOT)
+    statuses = integrity.get("task_statuses")
+    revisions = integrity.get("task_revisions")
+    task_cids = integrity.get("task_cids")
+    sealed_revisions = bootstrap.get("integrity", {}).get("task_revisions")
+    if not all(
+        isinstance(value, Mapping)
+        for value in (statuses, revisions, task_cids, sealed_revisions)
+    ):
+        raise OperatorError("continuity task lifecycle evidence is incomplete")
+
+    raw_suffix = _git(
+        "rev-list", "--first-parent", "--reverse", f"{base}..{target}"
+    )
+    commits = tuple(item for item in raw_suffix.splitlines() if item)
+    previous = base
+    admitted: list[dict[str, Any]] = []
+    used_requests: set[str] = set()
+    for integration_commit in commits:
+        parent_fields = _git(
+            "show", "-s", "--format=%P", integration_commit
+        ).split()
+        if len(parent_fields) != 2 or parent_fields[0] != previous:
+            raise OperatorError(
+                "continuity suffix contains a non-canonical integration commit"
+            )
+        candidate = parent_fields[1].casefold()
+        matches = [
+            request
+            for request in completed_requests
+            if str(request.commit_sha or "").strip().casefold() == candidate
+            and str(request.request_id or "") not in used_requests
+        ]
+        if len(matches) != 1:
+            raise OperatorError(
+                "continuity integration lacks one completed queue request"
+            )
+        request = matches[0]
+        metadata = request.metadata
+        alias = str(request.task_id or "").strip()
+        task_cid = str(request.canonical_task_id or "").strip()
+        if (
+            request.status != "completed"
+            or metadata.get("schema")
+            != "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+            or metadata.get("target_binding_schema")
+            != "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+            or str(metadata.get("target_repository_id") or "") != repository_id
+            or str(metadata.get("target_branch") or "")
+            != board.merge_target_branch
+            or task_cids.get(alias) != task_cid
+            or request.canonical_task_key != task_cid
+            or statuses.get(alias) not in COMPLETED_STATUSES
+            or type(revisions.get(alias)) is not int
+            or int(revisions[alias]) <= int(sealed_revisions.get(alias, -1))
+            or metadata.get("completion_task_cids") != {alias: task_cid}
+        ):
+            raise OperatorError("continuity queue/task authority binding differs")
+        completion = metadata.get("completion")
+        if isinstance(completion, Mapping) and (
+            completion.get("accepted") is False
+            or completion.get("acceptance_pending") is True
+            or str(completion.get("status") or "")
+            == "integrated_pending_validation"
+        ):
+            raise OperatorError("continuity merge acceptance is not admitted")
+
+        validation = metadata.get("validation_proof")
+        candidate_tree = _git("rev-parse", f"{candidate}^{{tree}}")
+        if (
+            not isinstance(validation, Mapping)
+            or validation.get("passed") is not True
+            or str(validation.get("target_commit") or "").casefold()
+            != candidate
+            or str(validation.get("target_tree") or "").casefold()
+            != candidate_tree
+            or str(metadata.get("candidate_tree") or "").casefold()
+            != candidate_tree
+            or str(metadata.get("repository_tree_id") or "")
+            != f"git-tree:{candidate_tree}"
+        ):
+            raise OperatorError("continuity candidate validation binding differs")
+        task = metadata.get("task")
+        expected_outputs = tuple(str(path) for path in task_outputs.get(alias, ()))
+        declared_outputs = (
+            tuple(str(path) for path in task.get("outputs") or ())
+            if isinstance(task, Mapping)
+            else ()
+        )
+        if not expected_outputs or declared_outputs != expected_outputs:
+            raise OperatorError("continuity declared outputs differ from task authority")
+        output_set = frozenset(expected_outputs)
+        if output_set & protected:
+            raise OperatorError("continuity task attempts protected-path mutation")
+        baseline_ref = str(metadata.get("baseline_ref") or "").casefold()
+        if (
+            re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", baseline_ref)
+            is None
+            or _git("rev-parse", "--verify", f"{baseline_ref}^{{commit}}")
+            != baseline_ref
+        ):
+            raise OperatorError(
+                "continuity candidate baseline is not an exact commit"
+            )
+        # Parallel candidates may share an older baseline, but it must be an
+        # immutable ancestor of both the validated candidate and the target
+        # state onto which that candidate was integrated.
+        _git("merge-base", "--is-ancestor", baseline_ref, candidate)
+        _git("merge-base", "--is-ancestor", baseline_ref, previous)
+        candidate_paths = _git_changed_paths(baseline_ref, candidate)
+        landed_paths = _git_changed_paths(previous, integration_commit)
+        if (
+            not candidate_paths
+            or not set(candidate_paths).issubset(output_set)
+            or not set(landed_paths).issubset(output_set)
+            or not set(landed_paths).issubset(set(candidate_paths))
+            or set(landed_paths) & protected
+        ):
+            raise OperatorError("continuity merge changed out-of-scope paths")
+        # A merge may have no target-relative change for an output already
+        # present with identical bytes, so path-set equality is too strict.
+        # Nevertheless every path changed by the validated candidate must
+        # have its exact tree entry (mode, type, and object ID) in the
+        # integration commit; a partial/ours merge cannot be admitted.
+        for path in candidate_paths:
+            if _git_tree_entry(candidate, path) != _git_tree_entry(
+                integration_commit, path
+            ):
+                raise OperatorError(
+                    "continuity merge output differs from validated candidate"
+                )
+        proof = integrated_candidate_handoff_proof(
+            ROOT,
+            candidate_commit=candidate,
+            target_commit=integration_commit,
+            changed_submodule_paths=metadata.get("changed_submodule_paths"),
+        )
+        if proof.get("passed") is not True:
+            raise OperatorError("continuity candidate handoff is not integrated")
+        integration_tree = _git("rev-parse", f"{integration_commit}^{{tree}}")
+        admitted.append(
+            {
+                "request_id": str(request.request_id),
+                "task_alias": alias,
+                "task_cid": task_cid,
+                "candidate_commit": candidate,
+                "candidate_tree": candidate_tree,
+                "integration_commit": integration_commit,
+                "integration_tree": integration_tree,
+                "changed_paths": list(landed_paths),
+            }
+        )
+        used_requests.add(str(request.request_id))
+        previous = integration_commit
+    if previous != target:
+        raise OperatorError("continuity suffix does not end at the current target")
+    result = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "aseh-canonical-merge-suffix@1"
+        ),
+        "base_head": base,
+        "target_head": target,
+        "target_tree": _git("rev-parse", f"{target}^{{tree}}"),
+        "integrations": admitted,
+    }
+    return {**result, "receipt_cid": _identity(result)}
 
 
 def _recovered_control_receipt(
@@ -1607,16 +2237,373 @@ def materialize(config_path: Path) -> dict[str, Any]:
     }
 
 
+def _validate_repair_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only the exact single-commit ASEH-BOOTSTRAP-002 repair."""
+
+    receipt_id = _repair_transition_receipt_id(receipt)
+    base = str(receipt.get("base_head") or "").casefold()
+    repair = str(receipt.get("repair_head") or "").casefold()
+    expected_stable_identity = (
+        f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R1"
+    )
+    expected_authority = (
+        "the operator explicitly directed the bootstrap engineering agent "
+        "to repair the existing canonical handoff and resume through it"
+    )
+    if (
+        base != REPAIR_TRANSITION_BASE_HEAD
+        or re.fullmatch(r"[0-9a-f]{40}", repair) is None
+        or receipt.get("stable_identity") != expected_stable_identity
+        or receipt.get("bootstrap_receipt_id")
+        != bootstrap.get("bootstrap_receipt_id")
+        or receipt.get("plan_root_cid") != bootstrap.get("plan_root_cid")
+        or receipt.get("repository_tree_id")
+        != bootstrap.get("repository_tree_id")
+        or receipt.get("changed_paths")
+        != list(REPAIR_TRANSITION_CHANGED_PATHS)
+        or receipt.get("dependencies")
+        != ["ASEH-BOOTSTRAP-001", "ASEH-000"]
+        or receipt.get("owning_repository") != "ipfs_accelerate_py"
+        or receipt.get("risk_class")
+        != "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+        or receipt.get("authority_requirement") != expected_authority
+        or type(receipt.get("authorized_at")) not in {int, float}
+        or float(receipt["authorized_at"]) <= 0.0
+    ):
+        raise OperatorError("bootstrap repair transition authority differs")
+    parents = _git("show", "-s", "--format=%P", repair).split()
+    if parents != [base]:
+        raise OperatorError("bootstrap repair must be one exact child commit")
+    base_tree = _git("rev-parse", f"{base}^{{tree}}")
+    repair_tree = _git("rev-parse", f"{repair}^{{tree}}")
+    if (
+        receipt.get("base_tree") != base_tree
+        or receipt.get("repair_tree") != repair_tree
+        or _git_changed_paths(base, repair) != REPAIR_TRANSITION_CHANGED_PATHS
+        or receipt.get("patch_digest") != _git_patch_digest(base, repair)
+    ):
+        raise OperatorError("bootstrap repair transition Git proof differs")
+    forest = bootstrap.get("source_forest")
+    by_owner = forest.get("by_owner") if isinstance(forest, Mapping) else None
+    if not isinstance(by_owner, Mapping):
+        raise OperatorError("bootstrap source forest owner binding is absent")
+    for owner, path in (
+        ("ipfs_datasets_py", "ipfs_datasets_py"),
+        ("ipfs_kit_py", "ipfs_kit_py"),
+    ):
+        expected = by_owner.get(owner)
+        if (
+            not isinstance(expected, Mapping)
+            or _git("rev-parse", f"{repair}:{path}")
+            != expected.get("commit")
+        ):
+            raise OperatorError("bootstrap repair changed a sibling authority")
+    stored_results = receipt.get("validation_results")
+    if (
+        not isinstance(stored_results, list)
+        or len(stored_results) != len(REPAIR_TRANSITION_VALIDATIONS)
+    ):
+        raise OperatorError("bootstrap repair validation receipt differs")
+    for stored, command in zip(
+        stored_results, REPAIR_TRANSITION_VALIDATIONS, strict=True
+    ):
+        if (
+            not isinstance(stored, Mapping)
+            or set(stored)
+            != {"argv", "returncode", "stdout_digest", "stderr_digest"}
+            or stored.get("argv") != list(command)
+            or stored.get("returncode") != 0
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(stored.get("stdout_digest") or "")
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(stored.get("stderr_digest") or "")
+            )
+            is None
+        ):
+            raise OperatorError("bootstrap repair validation receipt differs")
+    if rerun_validations:
+        validation_results = _run_repair_transition_validations()
+        if [item["argv"] for item in validation_results] != [
+            item.get("argv")
+            for item in stored_results
+        ]:
+            raise OperatorError("bootstrap repair validation commands differ")
+    result = {
+        "schema": REPAIR_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "base_head": base,
+        "base_tree": base_tree,
+        "repair_head": repair,
+        "repair_tree": repair_tree,
+        "changed_paths": list(REPAIR_TRANSITION_CHANGED_PATHS),
+        "patch_digest": str(receipt.get("patch_digest") or ""),
+        "receipt_cid": receipt_id,
+    }
+    return result
+
+
+def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
+    """Replay projections on a private clone, never on authoritative bytes."""
+
+    import shutil
+    import tempfile
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    def identity(path: Path) -> tuple[int, int, int, int, int]:
+        value = path.stat()
+        return (
+            int(value.st_dev),
+            int(value.st_ino),
+            int(value.st_size),
+            int(value.st_mtime_ns),
+            int(value.st_ctime_ns),
+        )
+
+    database_before = identity(database)
+    wal = Path(f"{database}.wal")
+    wal_before = identity(wal) if wal.is_file() else None
+    with tempfile.TemporaryDirectory(prefix="aseh-event-replay-") as raw:
+        clone = Path(raw) / database.name
+        shutil.copy2(database, clone)
+        if wal_before is not None:
+            shutil.copy2(wal, Path(f"{clone}.wal"))
+        if identity(database) != database_before:
+            raise OperatorError("control database changed during private replay copy")
+        if (identity(wal) if wal.is_file() else None) != wal_before:
+            raise OperatorError("control database WAL changed during private replay copy")
+        with DatabaseTaskSource(
+            clone,
+            owner_id="aseh-private-event-replay",
+            install_schema=False,
+        ) as replay:
+            return replay.projection_matches_events() is True
+
+
+@contextmanager
+def _read_only_database_task_source(
+    database: Path,
+    *,
+    owner_id: str,
+    repository_tree_id: str,
+    plan_root_cid: str,
+) -> Any:
+    """Bind DatabaseTaskSource reads to one policy-locked read-only handle."""
+
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        connect_duckdb_with_policy,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+        open_intent_repository,
+    )
+
+    import duckdb
+
+    connection = connect_duckdb_with_policy(duckdb, database, read_only=True)
+    source: DatabaseTaskSource | None = None
+    try:
+        intent = open_intent_repository(
+            database,
+            bound_connection=connection,
+            owner_id=owner_id,
+            install_schema=False,
+        )
+        source = DatabaseTaskSource(
+            intent=intent,
+            owner_id=owner_id,
+            repository_tree_id=repository_tree_id,
+            plan_root_cid=plan_root_cid,
+        )
+        yield source
+    finally:
+        if source is not None:
+            source.close()
+        connection.close()
+
+
+def _read_continuity_state(
+    board: Any,
+    paths: Mapping[str, Path],
+    bootstrap: Mapping[str, Any],
+) -> tuple[
+    dict[str, Any],
+    list[str],
+    dict[str, Any],
+    dict[str, tuple[str, ...]],
+    tuple[Any, ...],
+]:
+    """Take one mutually excluded read-only DB and merge-queue snapshot."""
+
+    with _offline_database_guard(paths):
+        with _offline_merge_queue_guard(paths) as queue_database:
+            projection_matches = _projection_matches_events_on_disposable_copy(
+                paths["database"]
+            )
+            with _read_only_database_task_source(
+                paths["database"],
+                owner_id="aseh-launch-continuity:read-only",
+                repository_tree_id=str(bootstrap["repository_tree_id"]),
+                plan_root_cid=str(bootstrap["plan_root_cid"]),
+            ) as source:
+                snapshot, ready, integrity, outputs = (
+                    _verify_materialized_source_from_bootstrap(
+                        source,
+                        bootstrap=bootstrap,
+                        projection_matches_events=projection_matches,
+                    )
+                )
+            requests = _read_completed_merge_requests(queue_database)
+    return snapshot, ready, integrity, outputs, requests
+
+
+def authorize_repair_transition(config_path: Path) -> dict[str, Any]:
+    """Authorize the one user-directed bootstrap repair after it is committed."""
+
+    board, _config = _load(config_path)
+    paths = _paths(board)
+    population = _population(board, _config)
+    head = str(population["source_head"])
+    if head == REPAIR_TRANSITION_BASE_HEAD:
+        raise OperatorError("bootstrap repair transition has not been committed")
+    bootstrap = _secure_runtime_json(
+        paths["bootstrap_receipt"], max_bytes=STATUS_RECEIPT_MAX_BYTES
+    )
+    bootstrap_id = _bootstrap_receipt_id(bootstrap)
+    if paths["repair_transition_receipt"].is_file():
+        prior = _secure_runtime_json(
+            paths["repair_transition_receipt"],
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        advanced = prior.get("repair_head") != head
+        _validate_repair_transition(
+            prior, bootstrap=bootstrap, rerun_validations=not advanced
+        )
+        # Replaying authorization after legitimate board progress remains
+        # useful, but only after the same strict current-head continuity gate
+        # used by launch admits every intervening canonical task merge.
+        current_admission = None
+        if advanced:
+            repair_head = str(prior.get("repair_head") or "").casefold()
+            _git("merge-base", "--is-ancestor", repair_head, head)
+            current_admission = _admit_materialized_launch(
+                board, _config, paths
+            )
+            admitted_repair = current_admission.get("repair_transition")
+            admitted_continuity = current_admission.get(
+                "canonical_continuity"
+            )
+            if (
+                not isinstance(admitted_repair, Mapping)
+                or admitted_repair.get("repair_head") != repair_head
+                or not isinstance(admitted_continuity, Mapping)
+                or "repair_to_current" not in admitted_continuity
+            ):
+                raise OperatorError(
+                    "current admission does not retain the repair transition"
+                )
+        result = {
+            "schema": OPERATOR_SCHEMA,
+            "command": "authorize-repair-transition",
+            "ok": True,
+            "idempotent_replay": True,
+            "repair_transition_receipt": prior,
+        }
+        if current_admission is not None:
+            result["current_admission_cid"] = current_admission["admission_cid"]
+            result["runtime_source_head"] = current_admission[
+                "runtime_source_head"
+            ]
+        return result
+    snapshot, _ready, integrity, outputs, requests = _read_continuity_state(
+        board, paths, bootstrap
+    )
+    base_proof = _admit_canonical_merge_suffix(
+        board,
+        base_head=str(bootstrap["source_head"]),
+        target_head=REPAIR_TRANSITION_BASE_HEAD,
+        bootstrap=bootstrap,
+        integrity=integrity,
+        task_outputs=outputs,
+        completed_requests=requests,
+    )
+    if not base_proof["integrations"]:
+        raise OperatorError("bootstrap repair base lacks a canonical merge suffix")
+    parents = _git("show", "-s", "--format=%P", head).split()
+    if parents != [REPAIR_TRANSITION_BASE_HEAD]:
+        raise OperatorError("bootstrap repair must be one child of the exact base")
+    if _git_changed_paths(REPAIR_TRANSITION_BASE_HEAD, head) != (
+        REPAIR_TRANSITION_CHANGED_PATHS
+    ):
+        raise OperatorError("bootstrap repair changed-path set differs")
+    validation_results = _run_repair_transition_validations()
+    receipt = {
+        "schema": REPAIR_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R1",
+        "program_id": PROGRAM,
+        "bootstrap_receipt_id": bootstrap_id,
+        "plan_root_cid": bootstrap["plan_root_cid"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "base_head": REPAIR_TRANSITION_BASE_HEAD,
+        "base_tree": _git(
+            "rev-parse", f"{REPAIR_TRANSITION_BASE_HEAD}^{{tree}}"
+        ),
+        "repair_head": head,
+        "repair_tree": _git("rev-parse", f"{head}^{{tree}}"),
+        "changed_paths": list(REPAIR_TRANSITION_CHANGED_PATHS),
+        "patch_digest": _git_patch_digest(REPAIR_TRANSITION_BASE_HEAD, head),
+        "dependencies": ["ASEH-BOOTSTRAP-001", "ASEH-000"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            "the operator explicitly directed the bootstrap engineering agent "
+            "to repair the existing canonical handoff and resume through it"
+        ),
+        "validation_results": validation_results,
+        "terminal_success_criteria": (
+            "False merge completion is rejected, exact blocked recovery is "
+            "bounded, opaque managed roots are fenced, and immutable ASEH "
+            "DuckDB task/plan identities remain unchanged."
+        ),
+        "terminal_non_success_criteria": (
+            "Any other base, child, path, patch, sibling identity, validation "
+            "result, task corpus, database mutation, or queue proof is rejected."
+        ),
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": time.time(),
+    }
+    receipt["receipt_cid"] = _identity(receipt)
+    _atomic_json(paths["repair_transition_receipt"], receipt)
+    return {
+        "schema": OPERATOR_SCHEMA,
+        "command": "authorize-repair-transition",
+        "ok": True,
+        "idempotent_replay": False,
+        "authoritative_event_cursor": snapshot["event_cursor"],
+        "canonical_base_suffix": base_proof,
+        "repair_transition_receipt": receipt,
+    }
+
+
 def _admit_materialized_launch(
     board: Any,
     config: Mapping[str, Any],
     paths: Mapping[str, Path],
 ) -> dict[str, Any]:
     """Rebind the offline task store to the exact current sealed source."""
-
-    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
-        DatabaseTaskSource,
-    )
 
     population = _population(board, config)
     bootstrap = _secure_runtime_json(
@@ -1630,33 +2617,85 @@ def _admit_materialized_launch(
         "source_forest": population["source_forest"],
         "source_identities": population["source_identities"],
     }
-    if any(bootstrap.get(name) != value for name, value in expected_fields.items()):
-        raise OperatorError(
-            "bootstrap receipt differs from the exact current source forest"
-        )
-    with _offline_database_guard(paths):
-        with DatabaseTaskSource(
-            paths["database"],
-            owner_id="aseh-launch-admission:read-only",
-            install_schema=False,
-            repository_tree_id=population["repository_tree_id"],
-            plan_root_cid=population["plan_root_cid"],
-        ) as source:
-            snapshot, ready, integrity = _verify_materialized_source(
-                source,
-                population=population,
-                config=config,
-                require_initial_frontier=False,
-            )
-    _admit_current_projection_against_bootstrap(
-        bootstrap, snapshot, integrity
+    exact_bootstrap = not any(
+        bootstrap.get(name) != value for name, value in expected_fields.items()
     )
+    continuity: dict[str, Any] = {}
+    repair_transition: dict[str, Any] = {}
+    if exact_bootstrap:
+        with _offline_database_guard(paths):
+            projection_matches = _projection_matches_events_on_disposable_copy(
+                paths["database"]
+            )
+            with _read_only_database_task_source(
+                paths["database"],
+                owner_id="aseh-launch-admission:read-only",
+                repository_tree_id=population["repository_tree_id"],
+                plan_root_cid=population["plan_root_cid"],
+            ) as source:
+                snapshot, ready, integrity = _verify_materialized_source(
+                    source,
+                    population=population,
+                    config=config,
+                    require_initial_frontier=False,
+                    projection_matches_events=projection_matches,
+                )
+        _admit_current_projection_against_bootstrap(
+            bootstrap, snapshot, integrity
+        )
+    else:
+        repair_receipt_path = paths.get("repair_transition_receipt")
+        if (
+            not isinstance(repair_receipt_path, Path)
+            or not repair_receipt_path.is_file()
+        ):
+            raise OperatorError(
+                "bootstrap receipt differs from the exact current source "
+                "forest and no repair transition is admitted"
+            )
+        repair_receipt = _secure_runtime_json(
+            repair_receipt_path,
+            max_bytes=STATUS_RECEIPT_MAX_BYTES,
+        )
+        repair_transition = _validate_repair_transition(
+            repair_receipt, bootstrap=bootstrap, rerun_validations=True
+        )
+        snapshot, ready, integrity, outputs, requests = _read_continuity_state(
+            board, paths, bootstrap
+        )
+        base_proof = _admit_canonical_merge_suffix(
+            board,
+            base_head=str(bootstrap["source_head"]),
+            target_head=REPAIR_TRANSITION_BASE_HEAD,
+            bootstrap=bootstrap,
+            integrity=integrity,
+            task_outputs=outputs,
+            completed_requests=requests,
+        )
+        current_proof = _admit_canonical_merge_suffix(
+            board,
+            base_head=str(repair_transition["repair_head"]),
+            target_head=str(population["source_head"]),
+            bootstrap=bootstrap,
+            integrity=integrity,
+            task_outputs=outputs,
+            completed_requests=requests,
+        )
+        continuity = {
+            "bootstrap_to_repair_base": base_proof,
+            "repair_to_current": current_proof,
+        }
     admission = {
-        "source_head": population["source_head"],
-        "repository_tree_id": population["repository_tree_id"],
-        "source_forest_cid": population["source_forest"]["forest_cid"],
-        "plan_root_cid": population["plan_root_cid"],
+        "source_head": bootstrap["source_head"],
+        "repository_tree_id": bootstrap["repository_tree_id"],
+        "source_forest_cid": bootstrap["source_forest"]["forest_cid"],
+        "runtime_source_head": population["source_head"],
+        "runtime_repository_tree_id": population["repository_tree_id"],
+        "runtime_source_forest_cid": population["source_forest"]["forest_cid"],
+        "plan_root_cid": bootstrap["plan_root_cid"],
         "bootstrap_receipt_id": receipt_id,
+        "repair_transition": repair_transition,
+        "canonical_continuity": continuity,
         "projection_cid": snapshot["projection_cid"],
         "event_cursor": snapshot["event_cursor"],
         "ready_task_ids": list(ready),
@@ -3455,6 +4494,39 @@ def _health_receipt(
         and (ready_count or active_count or delayed_frontier_admitted or terminal)
         and (admission_progress or not require_authoritative_progress)
     )
+    blocked_recovery_window_seconds = min(
+        stale_seconds,
+        max(30.0, startup_grace),
+    )
+    blocked_recovery_admitted = bool(
+        blocked_count > 0
+        and dependency_deadlock
+        and not terminal
+        and not lane_stalled
+        and not failure
+        and now - last_progress_at <= blocked_recovery_window_seconds
+        and owner_ready
+        and scheduler_alive
+        and broker_ready
+        and broker_samples_authenticated
+        and owner_identity_admitted
+        and task_authority_pair["admitted"] is True
+        and source_identity_admitted
+        and task_corpus_admitted
+        and semantic_corpus_admitted
+        and frontier_admitted
+        and task_count == expected_tasks
+        and goal_count == expected_goals
+        and dependency_count == expected_dependencies
+        and objective_count == expected_objectives == 1
+        and plan_count == expected_plans == 1
+        # Fresh wrappers may not have replaced stale lane receipts yet on the
+        # first post-launch samples.  The separate last-progress bound and
+        # initial-health grace still cap this exception; after startup, a
+        # fresh authenticated lane census is mandatory again.
+        and (lane_fresh or startup_active)
+        and (admission_progress or not require_authoritative_progress)
+    )
     lane_active_worker_count = (
         sum(int(item["active_worker_count"]) for item in lanes)
         if lanes
@@ -3478,6 +4550,10 @@ def _health_receipt(
         "startup_grace_active": startup_active,
         "lane_heartbeat_fresh": lane_fresh,
         "health_without_lane_admitted": health_without_lane_admitted,
+        "blocked_recovery_admitted": blocked_recovery_admitted,
+        "blocked_recovery_window_seconds": (
+            blocked_recovery_window_seconds
+        ),
         "lane_stalled_without_active_worker": lane_stalled,
         "lane_active_worker_count": lane_active_worker_count,
         "owner_ready": owner_ready,
@@ -3535,6 +4611,15 @@ def _await_initial_health(
         ),
     )
     deadline = time.monotonic() + timeout
+    blocked_recovery_started_at: float | None = None
+    blocked_recovery_grace = min(
+        30.0,
+        max(
+            5.0,
+            3.0
+            * float(board.payload.get("check_interval_seconds") or 10.0),
+        ),
+    )
     while time.monotonic() < deadline:
         if shutdown_requested.is_set():
             raise OperatorStopRequested(
@@ -3563,10 +4648,21 @@ def _await_initial_health(
         )
         _atomic_json(paths["status_receipt"], receipt)
         if receipt.get("blocked") is True or receipt.get("stuck") is True:
+            if receipt.get("blocked_recovery_admitted") is True:
+                if blocked_recovery_started_at is None:
+                    blocked_recovery_started_at = time.monotonic()
+                if (
+                    time.monotonic() - blocked_recovery_started_at
+                    <= blocked_recovery_grace
+                ):
+                    first = second
+                    continue
             _record_control_failure(
                 paths, failure, failure_event,
                 reason_code=(
-                    "authoritative_board_blocked"
+                    "authoritative_blocked_recovery_grace_exhausted"
+                    if blocked_recovery_started_at is not None
+                    else "authoritative_board_blocked"
                     if receipt.get("blocked") is True
                     else "authoritative_board_stuck"
                 ),
@@ -3613,6 +4709,15 @@ def _post_admission_health_action(
     """Return a bounded fail/stop/continue decision for an admitted launch."""
 
     if receipt.get("blocked") is True:
+        if receipt.get("blocked_recovery_admitted") is True:
+            next_edges = unhealthy_edges + 1
+            if next_edges <= 2:
+                return "continue", "", next_edges
+            return (
+                "fail",
+                "authoritative_blocked_recovery_grace_exhausted",
+                next_edges,
+            )
         return "fail", "authoritative_board_blocked", unhealthy_edges
     if receipt.get("stuck") is True:
         return "fail", "authoritative_board_stuck", unhealthy_edges
@@ -3934,6 +5039,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("materialize")
+    commands.add_parser("authorize-repair-transition")
     commands.add_parser("preflight")
     run = commands.add_parser("run")
     run.add_argument("--implement", action=argparse.BooleanOptionalAction, default=True)
@@ -3944,6 +5050,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "materialize":
             payload = materialize(args.config)
+            code = 0
+        elif args.command == "authorize-repair-transition":
+            payload = authorize_repair_transition(args.config)
             code = 0
         elif args.command == "preflight":
             code, payload = preflight(args.config)

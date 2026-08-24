@@ -75,7 +75,12 @@ from ..core.wrapper_utils import (
 )
 from ..merge.checkout_lock import serialized_lock_update
 from ..proof.formal_verification_contracts import content_identity
-from ..todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker
+from ..todo_daemon.core import (
+    pid_alive,
+    read_pid_file,
+    remove_runtime_marker,
+    terminate_pid_tree,
+)
 
 OutputFn = Callable[[str], None]
 PLAN_BOUND_LAUNCH_GATE_MARKER = "--run-plan-bound-launch-gate"
@@ -6705,25 +6710,104 @@ def _terminate_managed_process(
         return False, ()
     adapter = LinuxProcessAdapter()
     tree = adapter.snapshot(profile)
-    if not tree.members:
-        return True, ()
-    root_ids = {item.pid for item in tree.roots}
+    stored_identity = getattr(
+        process,
+        "_agent_supervisor_process_identity",
+        None,
+    )
     process_member = next(
         (item for item in tree.members if item.pid == process.pid), None
     )
+
+    # Credential-bearing supervisors deliberately become non-dumpable after
+    # launch.  Linux then denies the lifecycle adapter's /proc/<pid>/environ
+    # scan even to the same-UID parent, so an empty/partial profile snapshot is
+    # not proof that the direct Popen child exited.  Reattach only the exact
+    # birth identity captured by start_track; a bare numeric PID is never
+    # promoted into signal authority.
+    omitted_live_root = process.poll() is None and process_member is None
+    if omitted_live_root:
+        if not isinstance(stored_identity, ProcessIdentity):
+            return False, tuple(item.pid for item in tree.members)
+        if (
+            stored_identity.pid != process.pid
+            or stored_identity.profile_id != profile.profile_id
+            or stored_identity.run_id != profile.run_id
+        ):
+            raise ProcessIdentityMismatch(
+                "managed Popen birth identity does not match its lifecycle profile"
+            )
+        if not adapter.identity_alive(stored_identity):
+            # poll() still reports an unreaped direct child, but the immutable
+            # PID/start-time identity cannot be observed.  This is UNKNOWN,
+            # never a successful fence.
+            return False, tuple(item.pid for item in tree.members)
+        tree = replace(
+            tree,
+            members=(*tree.members, stored_identity),
+            tree_id="",
+        )
+        process_member = stored_identity
+
+    if not tree.members:
+        return process.poll() is not None, ()
+    root_ids = {item.pid for item in tree.roots}
     if process_member is not None and process.pid not in root_ids:
         raise ProcessIdentityMismatch(
             "managed Popen does not identify the marker-bound tree root"
         )
     member_pids = tuple(item.pid for item in tree.members)
+
+    if omitted_live_root:
+        # An opaque root cannot safely receive a cooperative TERM before the
+        # complete tree is fenced.  Its handler can exit while leaving a
+        # detached, independently grouped daemon behind; after reparenting,
+        # neither a marker scan nor a parent walk can rediscover that daemon.
+        # Freeze and repeatedly discover the exact PID/start-time tree first,
+        # then kill every captured group/member before capacity is released.
+        if not terminate_pid_tree(
+            stored_identity.pid,
+            grace_seconds=max(0.0, grace_seconds),
+            freeze_first=True,
+            require_gone=True,
+            owned_process_group_id=stored_identity.process_group_id,
+            expected_root_start_time_ticks=(
+                stored_identity.start_time_ticks
+            ),
+        ):
+            return False, member_pids
+        try:
+            process.wait(timeout=max(1.0, grace_seconds))
+        except (ChildProcessError, OSError, subprocess.TimeoutExpired):
+            pass
+
+    # Finish any exact members captured before the cooperative root signal.
+    # This is also the ordinary visible-tree path.
     adapter.terminate(
         tree,
         grace_seconds=grace_seconds,
-        deadline_ms=max(1, int(max(0.0, grace_seconds) * 1000) + 1_000),
+        deadline_ms=max(
+            1,
+            int(max(0.0, grace_seconds) * 1000) + 1_000,
+        ),
     )
+    try:
+        process.wait(timeout=max(1.0, grace_seconds))
+    except (ChildProcessError, OSError, subprocess.TimeoutExpired):
+        pass
+
     deadline = time.monotonic() + max(0.1, grace_seconds) + 1.0
     while time.monotonic() < deadline:
-        if not any(adapter.identity_alive(item) for item in tree.members):
+        exact_root_alive = bool(
+            isinstance(stored_identity, ProcessIdentity)
+            and stored_identity.pid == process.pid
+            and adapter.identity_alive(stored_identity)
+        )
+        if (
+            process.poll() is not None
+            and not exact_root_alive
+            and not any(adapter.identity_alive(item) for item in tree.members)
+        ):
             if not adapter.snapshot(profile).members:
                 return True, member_pids
         time.sleep(0.02)

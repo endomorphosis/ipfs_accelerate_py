@@ -52,11 +52,14 @@ from .checkout_lock import (
     read_checkout_mutation_lease,
 )
 from .merge_queue import (
+    _FALSE_COMPLETION_REVIVAL_CAPABILITY,
     MAX_MERGE_QUEUE_DEFERRAL_SECONDS,
     MAX_MERGE_QUEUE_RECORDED_DEFERRALS,
     MergeQueue,
     MergeQueueFenceError,
     MergeRequest,
+    completed_request_digest,
+    validate_false_completion_recovery_receipt,
 )
 
 MergeCallback = Callable[[MergeRequest], Mapping[str, Any]]
@@ -3218,12 +3221,21 @@ class MergeTrain:
             == {task_id: task_cid}
         )
 
-    def _quarantined_portal_outputs_present_on_target(
+    def _portal_declared_outputs_match_candidate_on_target(
         self,
         request: MergeRequest,
     ) -> bool:
-        """Return whether every declared output blob exists on the target."""
+        """Prove every declared candidate output is exact on the target.
 
+        Path presence alone is not integration evidence: a prior task attempt
+        can leave the same declared paths at different blob revisions.  Bind
+        the recovery shortcut to each candidate tree entry's mode, type, and
+        object identity so changed bytes or executable bits must pass through
+        the canonical merge callback.
+        """
+
+        if not self._request_matches_exact_target(request):
+            return False
         metadata = (
             request.metadata if isinstance(request.metadata, Mapping) else {}
         )
@@ -3237,14 +3249,76 @@ class MergeTrain:
         ]
         if not outputs:
             return False
+        candidate = str(request.commit_sha or "").strip().casefold()
         target = self._target_commit()
-        if not target:
+        if (
+            len(candidate) not in {40, 64}
+            or any(
+                character not in "0123456789abcdef"
+                for character in candidate
+            )
+            or not target
+        ):
+            return False
+        resolved_candidate = self._git(
+            "rev-parse",
+            "--verify",
+            f"{candidate}^{{commit}}",
+        )
+        if (
+            resolved_candidate.returncode != 0
+            or resolved_candidate.stdout.strip().casefold() != candidate
+        ):
             return False
         for path in outputs:
-            probe = self._git("cat-file", "-e", f"{target}:{path}")
-            if probe.returncode != 0:
+            literal_pathspec = f":(literal){path}"
+            candidate_entry = self._git(
+                "ls-tree", "-z", candidate, "--", literal_pathspec
+            )
+            target_entry = self._git(
+                "ls-tree", "-z", target, "--", literal_pathspec
+            )
+            if (
+                candidate_entry.returncode != 0
+                or target_entry.returncode != 0
+                or not candidate_entry.stdout
+                or candidate_entry.stdout.count("\0") != 1
+                or target_entry.stdout != candidate_entry.stdout
+            ):
                 return False
         return True
+
+    def completed_request_is_integrated(self, request: MergeRequest) -> bool:
+        """Qualify one terminal queue row against the current exact target.
+
+        A queue status is bookkeeping, not integration authority.  Consumers
+        may admit it only when the candidate handoff is in target history or
+        when the narrowly scoped database-Portal projection has exact
+        candidate tree entries at every declared output.
+        """
+
+        metadata = (
+            request.metadata if isinstance(request.metadata, Mapping) else {}
+        )
+        completion = metadata.get("completion")
+        if isinstance(completion, Mapping) and (
+            completion.get("accepted") is False
+            or completion.get("acceptance_pending") is True
+            or str(completion.get("status") or "")
+            == "integrated_pending_validation"
+        ):
+            return False
+        return bool(
+            self._quarantined_candidate_is_integrated(request)
+            or (
+                self._request_is_database_portal_projection_candidate(
+                    request
+                )
+                and self._portal_declared_outputs_match_candidate_on_target(
+                    request
+                )
+            )
+        )
 
     def _quarantine_may_auto_recover(self, request: MergeRequest, **kwargs: Any) -> bool:
         if not self._quarantine_auto_recovery_allowed(request, **kwargs):
@@ -3253,7 +3327,9 @@ class MergeTrain:
             return True
         return (
             self._request_is_database_portal_projection_candidate(request)
-            and self._quarantined_portal_outputs_present_on_target(request)
+            and self._portal_declared_outputs_match_candidate_on_target(
+                request
+            )
         )
 
     @staticmethod
@@ -3311,7 +3387,9 @@ class MergeTrain:
             and self._request_has_invalid_completion_authority_metadata(
                 request
             )
-            and self._quarantined_portal_outputs_present_on_target(request)
+            and self._portal_declared_outputs_match_candidate_on_target(
+                request
+            )
         )
 
     @staticmethod
@@ -3334,6 +3412,81 @@ class MergeTrain:
             )
             and latest.get("previous_failure_reason")
             not in MergeTrain._quarantine_denial_reasons(request)
+        )
+
+    @staticmethod
+    def _pending_request_is_false_completion_revival(
+        request: MergeRequest,
+        recovery_receipt: Mapping[str, Any],
+    ) -> bool:
+        """Return whether ``request`` is the exact crash-resumable revival."""
+
+        receipt_payload = dict(recovery_receipt)
+        receipt_cid = validate_false_completion_recovery_receipt(
+            receipt_payload
+        )
+        revivals = request.metadata.get("false_completion_revivals")
+        if not isinstance(revivals, list) or not revivals:
+            return False
+        latest = revivals[-1]
+        recovery_identity = (
+            latest.get("recovery_identity")
+            if isinstance(latest, Mapping)
+            else None
+        )
+        return bool(
+            request.status == "pending"
+            and isinstance(recovery_identity, Mapping)
+            and latest.get("recovery_receipt_id") == receipt_cid
+            and latest.get("recovery_receipt") == receipt_payload
+            and recovery_identity
+            == {
+                "request_id": request.request_id,
+                "dedupe_key": request.dedupe_key,
+                "candidate_commit": request.commit_sha,
+                "canonical_task_id": request.canonical_task_id,
+                "target_repository_id": request.target_repository_id,
+                "target_branch": request.target_branch,
+            }
+        )
+
+    @staticmethod
+    def _request_has_admitted_false_completion_revival(
+        request: MergeRequest,
+    ) -> bool:
+        """Recognize the append-only receipt written by the queue CAS.
+
+        Such a request must pass through the ordinary callback and validation
+        path.  Reapplying the historical declared-output shortcut would merely
+        recreate the false completion that the typed revival disproved.
+        """
+
+        revivals = request.metadata.get("false_completion_revivals")
+        if not isinstance(revivals, list) or not revivals:
+            return False
+        latest = revivals[-1]
+        receipt = (
+            latest.get("recovery_receipt")
+            if isinstance(latest, Mapping)
+            else None
+        )
+        if not isinstance(receipt, Mapping):
+            return False
+        try:
+            receipt_cid = validate_false_completion_recovery_receipt(receipt)
+        except (TypeError, MergeQueueFenceError):
+            return False
+        return bool(
+            latest.get("recovery_receipt_id") == receipt_cid
+            and latest.get("recovery_receipt") == dict(receipt)
+            and receipt.get("request_id") == request.request_id
+            and receipt.get("dedupe_key") == request.dedupe_key
+            and receipt.get("candidate_commit") == request.commit_sha
+            and receipt.get("canonical_task_id")
+            == request.canonical_task_id
+            and receipt.get("target_repository_id")
+            == request.target_repository_id
+            and receipt.get("target_branch") == request.target_branch
         )
 
     def _recover_integrated_quarantines(self) -> int:
@@ -3538,6 +3691,190 @@ class MergeTrain:
                 # Queue settlement, exact target requalification, and any
                 # external retry CAS can now be joined while no other merge
                 # train is able to advance the target.
+                after_process(claimed, result)
+            return result
+
+    def recover_one_false_completion(
+        self,
+        *,
+        request_id: str,
+        request_filter: Callable[[MergeRequest], bool],
+        recovery_receipt: Mapping[str, Any],
+        processor_context: Callable[["MergeTrain"], Any] | None = None,
+        after_process: Callable[
+            [MergeRequest, Mapping[str, Any]], Any
+        ]
+        | None = None,
+    ) -> dict[str, Any] | None:
+        """Requalify and process one exact false completion under the lease.
+
+        This method performs no discovery scan.  After acquiring the singleton
+        merge-train consumer lease, it re-reads the exact durable row, requires
+        caller-supplied recovery authority, proves that the candidate is not
+        integrated into the current exact target, revives only that completed
+        row, and claims only the resulting pending request.  A crash after
+        revival is resumed from the append-only revival identity on the next
+        call.  Candidate processing then uses the ordinary preflight,
+        validation, merge, evidence, and queue-settlement gates.
+        """
+
+        exact_request_id = str(request_id or "").strip()
+        if not exact_request_id:
+            raise ValueError("false-completion recovery requires request_id")
+        if not callable(request_filter):
+            raise TypeError("false-completion recovery requires a predicate")
+        receipt_payload = dict(recovery_receipt)
+        validate_false_completion_recovery_receipt(receipt_payload)
+        if str(receipt_payload["request_id"]) != exact_request_id:
+            raise MergeQueueFenceError(
+                "false-completion recovery receipt request differs"
+            )
+        get_request = getattr(self.queue, "get", None)
+        revive = getattr(self.queue, "revive_false_completed", None)
+        exact_claim = getattr(self.queue, "claim_pending_request", None)
+        if not all(
+            callable(operation)
+            for operation in (get_request, revive, exact_claim)
+        ):
+            return None
+
+        with self._consumer_lease() as acquired:
+            if not acquired:
+                return None
+            self._recover_abandoned_claims()
+            self._cleanup_abandoned_worktrees()
+
+            request = get_request(exact_request_id)
+            if (
+                not isinstance(request, MergeRequest)
+                or request.request_id != exact_request_id
+                or not self._request_matches_exact_target(request)
+            ):
+                return None
+
+            receipt_identity = (
+                str(receipt_payload["request_id"]),
+                str(receipt_payload["canonical_task_id"]),
+                str(receipt_payload["canonical_task_key"]),
+                str(receipt_payload["dedupe_key"]),
+                str(receipt_payload["candidate_commit"]),
+                str(receipt_payload["target_repository_id"]),
+                str(receipt_payload["target_branch"]),
+            )
+            request_identity = (
+                request.request_id,
+                request.canonical_task_id,
+                request.canonical_task_key,
+                request.dedupe_key,
+                request.commit_sha,
+                request.target_repository_id,
+                request.target_branch,
+            )
+            if receipt_identity != request_identity:
+                return None
+            if not request_filter(request):
+                return None
+
+            selected: MergeRequest | None = None
+            if request.status == "completed":
+                # Only the original terminal row needs a negative ancestry
+                # proof.  A crash after revival may leave the exact pending
+                # row behind after its callback landed the candidate; that
+                # row must be allowed through ordinary reconciliation rather
+                # than revived or executed as a new provider attempt.
+                observed_target = str(
+                    receipt_payload["observed_target_commit"]
+                )
+                current_target = self._target_commit()
+                candidate_verified = self._git(
+                    "rev-parse",
+                    "--verify",
+                    f"{request.commit_sha}^{{commit}}",
+                )
+                target_verified = self._git(
+                    "rev-parse",
+                    "--verify",
+                    f"{observed_target}^{{commit}}",
+                )
+                ancestry = self._git(
+                    "merge-base",
+                    "--is-ancestor",
+                    request.commit_sha,
+                    observed_target,
+                )
+                if (
+                    not current_target
+                    or current_target != observed_target
+                    or candidate_verified.returncode != 0
+                    or candidate_verified.stdout.strip()
+                    != request.commit_sha
+                    or target_verified.returncode != 0
+                    or target_verified.stdout.strip() != observed_target
+                    # Git documents 1 as the exact negative result.  An
+                    # invocation failure (>=2) is unknown and must fail closed.
+                    or ancestry.returncode != 1
+                ):
+                    return None
+                if (
+                    int(
+                        receipt_payload["completed_claim_generation"]
+                    )
+                    != request.claim_generation
+                    or float(receipt_payload["completed_finished_at"])
+                    != request.finished_at
+                    or str(receipt_payload["completed_row_digest"])
+                    != completed_request_digest(request)
+                ):
+                    return None
+                revived = revive(
+                    request,
+                    recovery_receipt=receipt_payload,
+                    _consumer_capability=(
+                        _FALSE_COMPLETION_REVIVAL_CAPABILITY
+                    ),
+                )
+                if (
+                    isinstance(revived, MergeRequest)
+                    and revived.status == "pending"
+                    and self._request_matches_exact_target(revived)
+                    and request_filter(revived)
+                ):
+                    selected = revived
+            elif self._pending_request_is_false_completion_revival(
+                request,
+                receipt_payload,
+            ):
+                selected = request
+            if selected is None:
+                return None
+
+            claimed = exact_claim(
+                selected.request_id,
+                consumer_id=self.owner_id,
+            )
+            if not isinstance(claimed, MergeRequest):
+                return None
+
+            def process_claimed() -> dict[str, Any]:
+                if (
+                    self.preflight_callback is not None
+                    or self.post_merge_validation is not None
+                    or self.post_merge_evidence is not None
+                ):
+                    target = self._target_commit()
+                    preflight = self._run_preflight(
+                        claimed,
+                        target_commit=target,
+                    )
+                    return self._process_after_preflight(claimed, preflight)
+                return self._process_claimed(claimed)
+
+            if processor_context is None:
+                result = process_claimed()
+            else:
+                with processor_context(self):
+                    result = process_claimed()
+            if after_process is not None:
                 after_process(claimed, result)
             return result
 
@@ -3754,8 +4091,13 @@ class MergeTrain:
                 details={"target_branch": self.target_branch},
                 started_at=started_at,
             )
-        if self._portal_projection_invalid_metadata_already_on_target(
-            request
+        if (
+            self._portal_projection_invalid_metadata_already_on_target(
+                request
+            )
+            and not self._request_has_admitted_false_completion_revival(
+                request
+            )
         ):
             # Empty cross-board authority metadata cannot complete a foreign
             # board, but the declared outputs are already on this target.

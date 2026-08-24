@@ -251,6 +251,33 @@ def _materialize_one_task(path: Path) -> None:
         )
 
 
+def test_aseh_offline_continuity_replay_never_mutates_authoritative_db(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "control.duckdb"
+    _materialize_one_task(database)
+    before = database.read_bytes()
+    before_stat = database.stat()
+
+    assert (
+        aseh_operator._projection_matches_events_on_disposable_copy(database)
+        is True
+    )
+    with aseh_operator._read_only_database_task_source(
+        database,
+        owner_id="aseh-test-read-only",
+        repository_tree_id="tree:aseh-bootstrap-test",
+        plan_root_cid="",
+    ) as source:
+        assert source.intent.uses_bound_connection is True
+        assert source.snapshot().task_count == 1
+
+    after_stat = database.stat()
+    assert database.read_bytes() == before
+    assert after_stat.st_size == before_stat.st_size
+    assert after_stat.st_mtime_ns == before_stat.st_mtime_ns
+
+
 def _sealed_memfd(value: str) -> int:
     flags = int(getattr(os, "MFD_CLOEXEC", 0x0001)) | int(
         getattr(os, "MFD_ALLOW_SEALING", 0x0002)
@@ -2733,6 +2760,137 @@ def test_aseh_health_zero_frontier_dependency_deadlock_is_blocked_and_stuck(
     assert receipt["healthy"] is False
 
 
+def test_aseh_health_gives_exact_blocked_reconciliation_a_bounded_window(
+    tmp_path: Path,
+) -> None:
+    now = time.time()
+    board, paths, before = _aseh_health_fixture(
+        tmp_path,
+        status="blocked",
+        revision=2,
+        event_cursor=11,
+        ready=False,
+        observed_at=now - 0.25,
+        lane_mtime_ns=int((now - 0.25) * 1_000_000_000),
+    )
+    _board, _paths, current = _aseh_health_fixture(
+        tmp_path,
+        status="blocked",
+        revision=2,
+        event_cursor=11,
+        ready=False,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    before["authority"]["blocked_count"] = 1  # type: ignore[index]
+    current["authority"]["blocked_count"] = 1  # type: ignore[index]
+
+    receipt = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 0.5,
+        last_progress_at=now - 0.25,
+        failure={},
+    )
+
+    assert receipt["blocked"] is True
+    assert receipt["stuck"] is True
+    assert receipt["healthy"] is False
+    assert receipt["blocked_recovery_admitted"] is True
+    edges = 0
+    for _index in range(2):
+        action, reason, edges = (
+            aseh_operator._post_admission_health_action(
+                receipt,
+                prior_available=True,
+                current_available=True,
+                unhealthy_edges=edges,
+            )
+        )
+        assert (action, reason) == ("continue", "")
+    assert aseh_operator._post_admission_health_action(
+        receipt,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=edges,
+    ) == (
+        "fail",
+        "authoritative_blocked_recovery_grace_exhausted",
+        3,
+    )
+
+    current["authority"]["objective_record"]["title"] = (  # type: ignore[index]
+        "unsealed mutation"
+    )
+    rejected = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 0.5,
+        last_progress_at=now - 0.25,
+        failure={},
+    )
+    assert rejected["blocked_recovery_admitted"] is False
+    assert aseh_operator._post_admission_health_action(
+        rejected,
+        prior_available=True,
+        current_available=True,
+        unhealthy_edges=0,
+    )[:2] == ("fail", "authoritative_board_blocked")
+
+
+def test_aseh_health_blocked_reconciliation_allows_startup_lane_refresh(
+    tmp_path: Path,
+) -> None:
+    now = time.time()
+    board, paths, before = _aseh_health_fixture(
+        tmp_path,
+        status="blocked",
+        revision=2,
+        event_cursor=11,
+        ready=False,
+        observed_at=now - 0.25,
+        lane_mtime_ns=int((now - 100.0) * 1_000_000_000),
+    )
+    _board, _paths, current = _aseh_health_fixture(
+        tmp_path,
+        status="blocked",
+        revision=2,
+        event_cursor=11,
+        ready=False,
+        observed_at=now,
+        lane_mtime_ns=int((now - 100.0) * 1_000_000_000),
+    )
+    for sample in (before, current):
+        sample["authority"]["blocked_count"] = 1  # type: ignore[index]
+        sample["lanes"][0]["fresh"] = False  # type: ignore[index]
+        sample["lanes"][0]["watchdog_admissible"] = False  # type: ignore[index]
+
+    startup = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 0.5,
+        last_progress_at=now - 0.25,
+        failure={},
+    )
+    assert startup["startup_grace_active"] is True
+    assert startup["lane_heartbeat_fresh"] is False
+    assert startup["blocked_recovery_admitted"] is True
+
+    after_startup = aseh_operator._health_receipt(
+        board,
+        paths,
+        samples=(before, current),
+        launched_at=now - 2.0,
+        last_progress_at=now - 0.25,
+        failure={},
+    )
+    assert after_startup["startup_grace_active"] is False
+    assert after_startup["blocked_recovery_admitted"] is False
+
+
 def test_aseh_health_admits_exact_delayed_retry_frontier(
     tmp_path: Path,
 ) -> None:
@@ -3077,6 +3235,261 @@ def test_aseh_stale_bootstrap_is_rejected_before_owner_build(
     with pytest.raises(aseh_operator.OperatorError, match="source forest"):
         aseh_operator.run_supervisor(board.config_path, implement=True, duration=1)
     assert owner_built is False
+
+
+def test_aseh_canonical_merge_suffix_admits_only_exact_two_parent_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+        checkout_repository_id,
+    )
+    from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeRequest
+
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ("git", *args), cwd=tmp_path, text=True, capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+
+    git("init", "-b", "main")
+    git("config", "user.email", "aseh-continuity@example.invalid")
+    git("config", "user.name", "ASEH Continuity")
+    (tmp_path / "base.txt").write_text("base\n", encoding="utf-8")
+    git("add", "base.txt")
+    git("commit", "-m", "sealed base")
+    base = git("rev-parse", "HEAD")
+    git("checkout", "-b", "candidate")
+    (tmp_path / "output.txt").write_text("admitted\n", encoding="utf-8")
+    git("add", "output.txt")
+    git("commit", "-m", "ASEH-000 exact output")
+    candidate = git("rev-parse", "HEAD")
+    candidate_tree = git("rev-parse", "HEAD^{tree}")
+    git("checkout", "main")
+    git("merge", "--no-ff", "--no-edit", "candidate")
+    integrated = git("rev-parse", "HEAD")
+
+    monkeypatch.setattr(aseh_operator, "ROOT", tmp_path)
+    task_cid = "task:aseh-continuity"
+    board = SimpleNamespace(
+        protected_paths=("protected.py",),
+        merge_target_branch="main",
+    )
+    bootstrap = {
+        "integrity": {"task_revisions": {"ASEH-000": 1}}
+    }
+    integrity = {
+        "task_statuses": {"ASEH-000": "completed"},
+        "task_revisions": {"ASEH-000": 3},
+        "task_cids": {"ASEH-000": task_cid},
+    }
+    metadata = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+        "target_binding_schema": (
+            "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+        ),
+        "target_repository_id": checkout_repository_id(tmp_path),
+        "target_branch": "main",
+        "candidate_tree": candidate_tree,
+        "repository_tree_id": f"git-tree:{candidate_tree}",
+        "baseline_ref": base,
+        "changed_submodule_paths": [],
+        "completion_task_cids": {"ASEH-000": task_cid},
+        "task": {"outputs": ["output.txt"]},
+        "validation_proof": {
+            "passed": True,
+            "target_commit": candidate,
+            "target_tree": candidate_tree,
+        },
+    }
+    request = MergeRequest(
+        request_id="request:aseh-continuity",
+        branch_name="candidate",
+        task_id="ASEH-000",
+        priority="P1",
+        lane_id="lane-0",
+        enqueued_at=1.0,
+        metadata=metadata,
+        commit_sha=candidate,
+        canonical_task_id=task_cid,
+        canonical_task_key=task_cid,
+        status="completed",
+    )
+    proof = aseh_operator._admit_canonical_merge_suffix(
+        board,
+        base_head=base,
+        target_head=integrated,
+        bootstrap=bootstrap,
+        integrity=integrity,
+        task_outputs={"ASEH-000": ("output.txt",)},
+        completed_requests=(request,),
+    )
+    assert proof["integrations"][0]["candidate_commit"] == candidate
+    assert proof["integrations"][0]["changed_paths"] == ["output.txt"]
+
+    metadata["baseline_ref"] = "HEAD"
+    with pytest.raises(aseh_operator.OperatorError, match="exact commit"):
+        aseh_operator._admit_canonical_merge_suffix(
+            board,
+            base_head=base,
+            target_head=integrated,
+            bootstrap=bootstrap,
+            integrity=integrity,
+            task_outputs={"ASEH-000": ("output.txt",)},
+            completed_requests=(request,),
+        )
+    metadata["baseline_ref"] = base
+
+    git("checkout", "-b", "omitted-candidate-output", base)
+    git("merge", "--no-ff", "-s", "ours", "--no-edit", "candidate")
+    omitted = git("rev-parse", "HEAD")
+    with pytest.raises(aseh_operator.OperatorError, match="output differs"):
+        aseh_operator._admit_canonical_merge_suffix(
+            board,
+            base_head=base,
+            target_head=omitted,
+            bootstrap=bootstrap,
+            integrity=integrity,
+            task_outputs={"ASEH-000": ("output.txt",)},
+            completed_requests=(request,),
+        )
+    git("checkout", "main")
+
+    metadata["candidate_tree"] = "0" * 40
+    with pytest.raises(aseh_operator.OperatorError, match="validation binding"):
+        aseh_operator._admit_canonical_merge_suffix(
+            board,
+            base_head=base,
+            target_head=integrated,
+            bootstrap=bootstrap,
+            integrity=integrity,
+            task_outputs={"ASEH-000": ("output.txt",)},
+            completed_requests=(request,),
+        )
+    metadata["candidate_tree"] = candidate_tree
+
+    protected_board = SimpleNamespace(
+        protected_paths=("output.txt",),
+        merge_target_branch="main",
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="protected-path"):
+        aseh_operator._admit_canonical_merge_suffix(
+            protected_board,
+            base_head=base,
+            target_head=integrated,
+            bootstrap=bootstrap,
+            integrity=integrity,
+            task_outputs={"ASEH-000": ("output.txt",)},
+            completed_requests=(request,),
+        )
+
+    (tmp_path / "arbitrary.txt").write_text("escape\n", encoding="utf-8")
+    git("add", "arbitrary.txt")
+    git("commit", "-m", "arbitrary child")
+    arbitrary = git("rev-parse", "HEAD")
+    with pytest.raises(aseh_operator.OperatorError, match="non-canonical"):
+        aseh_operator._admit_canonical_merge_suffix(
+            board,
+            base_head=base,
+            target_head=arbitrary,
+            bootstrap=bootstrap,
+            integrity=integrity,
+            task_outputs={"ASEH-000": ("output.txt",)},
+            completed_requests=(request,),
+        )
+
+
+def test_aseh_repair_transition_receipt_is_closed_and_non_mutating() -> None:
+    receipt = {
+        "schema": aseh_operator.REPAIR_TRANSITION_SCHEMA,
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": "agent-supervisor-efficiency/ASEH-BOOTSTRAP-002",
+        "program_id": aseh_operator.PROGRAM,
+        "bootstrap_receipt_id": "sha256:" + ("1" * 64),
+        "plan_root_cid": "plan:sealed",
+        "repository_tree_id": "tree:sealed",
+        "base_head": aseh_operator.REPAIR_TRANSITION_BASE_HEAD,
+        "base_tree": "2" * 40,
+        "repair_head": "3" * 40,
+        "repair_tree": "4" * 40,
+        "changed_paths": list(aseh_operator.REPAIR_TRANSITION_CHANGED_PATHS),
+        "patch_digest": "sha256:" + ("5" * 64),
+        "dependencies": ["ASEH-BOOTSTRAP-001", "ASEH-000"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": "explicit bootstrap repair authority",
+        "validation_results": [],
+        "terminal_success_criteria": "exact repair",
+        "terminal_non_success_criteria": "all drift rejected",
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    assert aseh_operator._repair_transition_receipt_id(receipt) == (
+        receipt["receipt_cid"]
+    )
+    receipt["database_mutated"] = True
+    with pytest.raises(aseh_operator.OperatorError, match="schema"):
+        aseh_operator._repair_transition_receipt_id(receipt)
+
+
+def test_aseh_repair_authorization_replay_rejects_head_regression(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bootstrap_path = tmp_path / "bootstrap.json"
+    repair_path = tmp_path / "repair.json"
+    bootstrap_path.touch()
+    repair_path.touch()
+    board = object()
+    config: dict[str, object] = {}
+    paths = {
+        "bootstrap_receipt": bootstrap_path,
+        "repair_transition_receipt": repair_path,
+    }
+    bootstrap = {"bootstrap_receipt_id": "bootstrap:sealed"}
+    prior = {"repair_head": "a" * 40}
+    launch_called = False
+
+    monkeypatch.setattr(aseh_operator, "_load", lambda _path: (board, config))
+    monkeypatch.setattr(aseh_operator, "_paths", lambda _board: paths)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_population",
+        lambda _board, _config: {"source_head": "b" * 40},
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_secure_runtime_json",
+        lambda path, **_kwargs: bootstrap if path == bootstrap_path else prior,
+    )
+    monkeypatch.setattr(
+        aseh_operator, "_bootstrap_receipt_id", lambda _payload: "bootstrap:sealed"
+    )
+    monkeypatch.setattr(
+        aseh_operator,
+        "_validate_repair_transition",
+        lambda *_args, **_kwargs: {},
+    )
+
+    def reject_regression(*args: str, **_kwargs: object) -> str:
+        assert args[:2] == ("merge-base", "--is-ancestor")
+        raise aseh_operator.OperatorError("repair is not an ancestor")
+
+    def launch(*_args: object, **_kwargs: object) -> dict[str, object]:
+        nonlocal launch_called
+        launch_called = True
+        return {}
+
+    monkeypatch.setattr(aseh_operator, "_git", reject_regression)
+    monkeypatch.setattr(aseh_operator, "_admit_materialized_launch", launch)
+
+    with pytest.raises(aseh_operator.OperatorError, match="not an ancestor"):
+        aseh_operator.authorize_repair_transition(tmp_path / "board.json")
+    assert launch_called is False
 
 
 def test_aseh_scheduler_uses_only_complete_live_owner_generation_binding(

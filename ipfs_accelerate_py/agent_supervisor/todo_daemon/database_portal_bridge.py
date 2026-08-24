@@ -24,6 +24,7 @@ import shlex
 import stat
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
@@ -291,15 +292,33 @@ _DATABASE_POST_MERGE_REQUALIFICATION_RECOVERY_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-requalification-recovery@1"
 )
+_DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-false-completion-reintegration-recovery@1"
+)
 _DATABASE_POST_MERGE_RECOVERY_PREAUTHORIZATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-post-merge-declared-output-recovery-preauthorization@1"
+)
+_DATABASE_FALSE_COMPLETION_RECOVERY_PREAUTHORIZATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-false-completion-recovery-preauthorization@1"
+)
+_FALSE_COMPLETION_OBSERVATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/false-completion-observation@1"
+)
+_FALSE_COMPLETION_REINTEGRATION_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "false-completion-reintegration-receipt@1"
 )
 _POST_MERGE_RECOVERY_CURSOR_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "post-merge-declared-output-recovery-cursor@1"
 )
 _POST_MERGE_RECOVERY_CURSOR_STAGES: Final[tuple[str, ...]] = (
+    "false_completed_requests",
+    "false_pending_requests",
+    "false_processing_requests",
     "completed_requests",
     "pending_requests",
     "quarantined_requests",
@@ -2288,11 +2307,21 @@ class DatabasePortalExecutionBridge:
     def _owned_post_merge_recovery_projection(
         self,
         request: Any,
+        *,
+        allow_false_completion: bool = False,
     ) -> _DatabasePortalRecoveryProjection | None:
         """Prove that one eligible request came from this lane's sealed attempt."""
 
-        if self.merge_queue is None or not self._request_has_missing_output_recovery_lineage(
+        missing_output_lineage = self._request_has_missing_output_recovery_lineage(
             request
+        )
+        if self.merge_queue is None or (
+            not missing_output_lineage
+            and not (
+                allow_false_completion
+                and str(getattr(request, "status", "") or "")
+                in {"completed", "pending", "processing"}
+            )
         ):
             return None
         metadata = getattr(request, "metadata", None)
@@ -2398,6 +2427,468 @@ class DatabasePortalExecutionBridge:
             task_status=task_status,
         )
 
+    def _false_completed_merge_observation(
+        self,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+        *,
+        allow_integrated_replay: bool = False,
+    ) -> dict[str, Any] | None:
+        """Prove one historical ``already_merged`` shortcut was false.
+
+        The proof is intentionally attempt-local and bounded.  It binds the
+        proposal, post-commit handoff, queue enqueue, and terminal Portal
+        event to the same candidate, then checks the immutable target named by
+        the old train receipt.  A queue status alone is never sufficient.
+        """
+
+        from ..proof.formal_verification_contracts import content_identity
+
+        from ..merge.merge_queue import (
+            completed_request_digest,
+            validate_false_completion_recovery_receipt,
+        )
+
+        status = str(getattr(request, "status", "") or "")
+        metadata = getattr(request, "metadata", None)
+        if status not in {"completed", "pending", "processing"} or not isinstance(
+            metadata, Mapping
+        ):
+            return None
+        revival_receipt: Mapping[str, Any] | None = None
+        revivals = metadata.get("false_completion_revivals")
+        if isinstance(revivals, list) and revivals:
+            latest_revival = revivals[-1]
+            candidate_receipt = (
+                latest_revival.get("recovery_receipt")
+                if isinstance(latest_revival, Mapping)
+                else None
+            )
+            if not isinstance(candidate_receipt, Mapping):
+                return None
+            try:
+                validate_false_completion_recovery_receipt(candidate_receipt)
+            except (TypeError, ValueError, RuntimeError):
+                return None
+            revival_receipt = candidate_receipt
+        elif status != "completed":
+            # Only an exact append-only revival receipt authorizes a pending
+            # or processing row.  Ordinary queue work is outside this repair.
+            return None
+        task_id = str(getattr(request, "task_id", "") or "")
+        task_cid = str(getattr(request, "canonical_task_id", "") or "")
+        candidate = str(getattr(request, "commit_sha", "") or "")
+        candidate_tree = str(metadata.get("candidate_tree") or "")
+        request_id = str(getattr(request, "request_id", "") or "")
+        validation = metadata.get("validation_proof")
+        results = validation.get("results") if isinstance(validation, Mapping) else None
+        if (
+            re.fullmatch(r"[0-9a-f]{40}", candidate) is None
+            or re.fullmatch(r"[0-9a-f]{40}", candidate_tree) is None
+            or metadata.get("implementation_commit") != candidate
+            or not isinstance(validation, Mapping)
+            or validation.get("passed") is not True
+            or validation.get("returncode") != 0
+            or validation.get("target_commit") != candidate
+            or validation.get("target_tree") != candidate_tree
+            or not isinstance(results, list)
+            or not results
+            or any(
+                not isinstance(result, Mapping)
+                or result.get("returncode") != 0
+                for result in results
+            )
+        ):
+            return None
+        try:
+            events = self._verified_event_chain(projection.paths)
+        except DatabasePortalBridgeError:
+            return None
+        proposal: Mapping[str, Any] | None = None
+        handoff: Mapping[str, Any] | None = None
+        enqueue: Mapping[str, Any] | None = None
+        finished: Mapping[str, Any] | None = None
+        for event in events:
+            if (
+                event.get("type") == "implementation_proposal_validated"
+                and event.get("accepted") is True
+                and event.get("attempted") is True
+                and str(event.get("task_id") or "") == task_id
+                and str(event.get("canonical_task_cid") or "") == task_cid
+            ):
+                proposal = event
+            elif (
+                event.get("type")
+                == "implementation_candidate_handoff_verified"
+                and event.get("phase") == "post_commit"
+                and event.get("allowed") is True
+                and str(event.get("task_id") or "") == task_id
+                and str(event.get("canonical_task_cid") or "") == task_cid
+                and event.get("implementation_commit") == candidate
+                and event.get("final_tree") == candidate_tree
+                and event.get("collection_error") == ""
+                and event.get("reasons") == []
+            ):
+                handoff = event
+            elif (
+                event.get("type") == "merge_candidate_enqueued"
+                and event.get("queued") is True
+                and event.get("reason") == "merge_queued"
+                and event.get("request_id") == request_id
+                and event.get("task_id") == task_id
+                and event.get("canonical_task_cid") == task_cid
+                and event.get("implementation_commit") == candidate
+                and event.get("target_branch") == self.merge_target_branch
+            ):
+                enqueue = event
+            elif (
+                event.get("type") == "implementation_finished"
+                and event.get("task_id") == task_id
+                and event.get("canonical_task_cid") == task_cid
+                and event.get("implementation_commit") == candidate
+            ):
+                merge_result = event.get("merge_result")
+                train_result = (
+                    merge_result.get("train_result")
+                    if isinstance(merge_result, Mapping)
+                    else None
+                )
+                board_completion = event.get("board_completion")
+                event_validation = event.get("validation_result")
+                event_handoff = (
+                    event_validation.get("candidate_handoff")
+                    if isinstance(event_validation, Mapping)
+                    else None
+                )
+                post_handoff = (
+                    event_handoff.get("post_commit")
+                    if isinstance(event_handoff, Mapping)
+                    else None
+                )
+                if (
+                    event.get("provider_dispatched") is True
+                    and event.get("attempt_consumed") is True
+                    and isinstance(merge_result, Mapping)
+                    and merge_result.get("request_id") == request_id
+                    and merge_result.get("implementation_commit") == candidate
+                    and merge_result.get("reason") == "already_merged"
+                    and merge_result.get("merged") is True
+                    and merge_result.get("queued") is False
+                    and isinstance(train_result, Mapping)
+                    and train_result.get("request_id") == request_id
+                    and train_result.get("task_id") == task_id
+                    and train_result.get("canonical_task_id") == task_cid
+                    and train_result.get("commit_sha") == candidate
+                    and train_result.get("status") == "already_merged"
+                    and train_result.get("already_merged") is True
+                    and train_result.get("merged") is False
+                    and train_result.get("integrated") is True
+                    and train_result.get("mutation_short_circuited") is True
+                    and train_result.get("reason")
+                    == "declared_outputs_already_on_target"
+                    and train_result.get("target_branch")
+                    == self.merge_target_branch
+                    and isinstance(board_completion, Mapping)
+                    and board_completion.get("complete") is False
+                    and board_completion.get("pending_merge") is False
+                    and board_completion.get("reason")
+                    == "declared_outputs_missing_or_untracked"
+                    and isinstance(post_handoff, Mapping)
+                    and post_handoff.get("allowed") is True
+                    and post_handoff.get("implementation_commit") == candidate
+                    and post_handoff.get("final_tree") == candidate_tree
+                ):
+                    finished = event
+        if not all(
+            isinstance(value, Mapping)
+            for value in (proposal, handoff, enqueue, finished)
+        ):
+            return None
+        assert proposal is not None
+        assert handoff is not None
+        assert enqueue is not None
+        assert finished is not None
+        if not (
+            int(proposal["sequence"])
+            < int(handoff["sequence"])
+            < int(enqueue["sequence"])
+            < int(finished["sequence"])
+        ):
+            return None
+        train_result = finished["merge_result"]["train_result"]
+        historical_target = str(train_result.get("target_commit") or "")
+        if re.fullmatch(r"[0-9a-f]{40}", historical_target) is None:
+            return None
+
+        def git(*argv: str) -> subprocess.CompletedProcess[str]:
+            assert self.repository_root is not None
+            return subprocess.run(
+                ["git", *argv],
+                cwd=self.repository_root,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+
+        if self.repository_root is None:
+            return None
+        candidate_resolved = git(
+            "rev-parse", "--verify", f"{candidate}^{{commit}}"
+        )
+        historical_resolved = git(
+            "rev-parse", "--verify", f"{historical_target}^{{commit}}"
+        )
+        current_target = git(
+            "rev-parse", "--verify", f"{self.merge_target_branch}^{{commit}}"
+        )
+        candidate_tree_result = git(
+            "rev-parse", "--verify", f"{candidate}^{{tree}}"
+        )
+        historical_to_current = git(
+            "merge-base",
+            "--is-ancestor",
+            historical_target,
+            current_target.stdout.strip(),
+        )
+        candidate_to_historical = git(
+            "merge-base", "--is-ancestor", candidate, historical_target
+        )
+        candidate_to_current = git(
+            "merge-base",
+            "--is-ancestor",
+            candidate,
+            current_target.stdout.strip(),
+        )
+        if (
+            candidate_resolved.returncode != 0
+            or candidate_resolved.stdout.strip() != candidate
+            or historical_resolved.returncode != 0
+            or historical_resolved.stdout.strip() != historical_target
+            or current_target.returncode != 0
+            or candidate_tree_result.returncode != 0
+            or candidate_tree_result.stdout.strip() != candidate_tree
+            or historical_to_current.returncode != 0
+            or candidate_to_historical.returncode != 1
+            or candidate_to_current.returncode
+            != (0 if allow_integrated_replay else 1)
+        ):
+            return None
+        task_payload = metadata.get("task")
+        outputs = task_payload.get("outputs") if isinstance(task_payload, Mapping) else None
+        if (
+            not isinstance(outputs, list)
+            or not outputs
+            or any(
+                not isinstance(path, str)
+                or not path
+                or path.startswith("/")
+                or ".." in PurePosixPath(path).parts
+                for path in outputs
+            )
+        ):
+            return None
+        output_mismatch = False
+        for path in outputs:
+            candidate_entry = git(
+                "ls-tree", "-z", candidate, "--", f":(literal){path}"
+            )
+            historical_entry = git(
+                "ls-tree", "-z", historical_target, "--", f":(literal){path}"
+            )
+            if (
+                candidate_entry.returncode != 0
+                or candidate_entry.stdout.count("\0") != 1
+                or historical_entry.returncode != 0
+            ):
+                return None
+            if historical_entry.stdout != candidate_entry.stdout:
+                output_mismatch = True
+        if not output_mismatch:
+            return None
+        if revival_receipt is None:
+            completed_claim_generation = int(
+                getattr(request, "claim_generation", 0) or 0
+            )
+            completed_finished_at = float(
+                getattr(request, "finished_at", 0) or 0
+            )
+            try:
+                completed_row_id = completed_request_digest(request)
+            except (TypeError, ValueError, RuntimeError):
+                return None
+            observed_target_commit = current_target.stdout.strip()
+        else:
+            if (
+                revival_receipt.get("request_id") != request_id
+                or revival_receipt.get("candidate_commit") != candidate
+                or revival_receipt.get("canonical_task_id") != task_cid
+                or revival_receipt.get("dedupe_key")
+                != str(getattr(request, "dedupe_key", "") or "")
+                or revival_receipt.get("target_repository_id")
+                != str(getattr(request, "target_repository_id", "") or "")
+                or revival_receipt.get("target_branch")
+                != self.merge_target_branch
+                or revival_receipt.get("candidate_integrated") is not False
+            ):
+                return None
+            completed_claim_generation = int(
+                revival_receipt["completed_claim_generation"]
+            )
+            completed_finished_at = float(
+                revival_receipt["completed_finished_at"]
+            )
+            completed_row_id = str(revival_receipt["completed_row_digest"])
+            observed_target_commit = str(
+                revival_receipt["observed_target_commit"]
+            )
+            # Before the ordinary merge path runs, no target movement may
+            # invalidate the observation used to revive this row.
+            if (
+                not allow_integrated_replay
+                and current_target.stdout.strip() != observed_target_commit
+            ):
+                return None
+        observation = {
+            "schema": _FALSE_COMPLETION_OBSERVATION_SCHEMA,
+            "request_id": request_id,
+            "task_id": task_id,
+            "task_cid": task_cid,
+            "candidate_commit": candidate,
+            "candidate_tree": candidate_tree,
+            "historical_target_commit": historical_target,
+            "completed_claim_generation": completed_claim_generation,
+            "completed_finished_at_hex": completed_finished_at.hex(),
+            "completed_row_digest": completed_row_id,
+            "observed_target_commit": observed_target_commit,
+            "proposal_event_id": str(proposal.get("event_id") or ""),
+            "handoff_event_id": str(handoff.get("event_id") or ""),
+            "enqueue_event_id": str(enqueue.get("event_id") or ""),
+            "finished_event_id": str(finished.get("event_id") or ""),
+            "train_receipt_digest": _sha256_bytes(
+                _canonical_json(train_result)
+            ),
+            "validation_proof_digest": content_identity(dict(validation)),
+        }
+        observation_id = content_identity(observation)
+        if (
+            revival_receipt is not None
+            and revival_receipt.get("observer_id") != observation_id
+        ):
+            return None
+        return {
+            "false_completion_observation": observation,
+            "false_completion_observation_id": observation_id,
+        }
+
+    def _false_completion_queue_recovery_receipt(
+        self,
+        request: Any,
+        observation: Mapping[str, Any],
+        *,
+        observed_at: float | None = None,
+    ) -> dict[str, Any] | None:
+        """Return the exact queue revival receipt, replaying it after a crash.
+
+        ``observed_at`` is supplied only by the lease-protected recheck of an
+        already constructed receipt.  Initial discovery always samples the
+        wall clock here so observation time cannot be backdated to the old
+        queue completion.
+        """
+
+        from ..merge.merge_queue import (
+            FALSE_COMPLETION_RECOVERY_RECEIPT_SCHEMA,
+            false_completion_recovery_receipt_cid,
+            validate_false_completion_recovery_receipt,
+        )
+
+        metadata = getattr(request, "metadata", None)
+        status = str(getattr(request, "status", "") or "")
+        observation_body = observation.get("false_completion_observation")
+        observation_id = str(
+            observation.get("false_completion_observation_id") or ""
+        )
+        if not isinstance(metadata, Mapping) or not isinstance(
+            observation_body, Mapping
+        ):
+            return None
+        revivals = metadata.get("false_completion_revivals")
+        if isinstance(revivals, list) and revivals:
+            latest = revivals[-1]
+            stored = (
+                latest.get("recovery_receipt")
+                if isinstance(latest, Mapping)
+                else None
+            )
+            if not isinstance(stored, Mapping):
+                return None
+            try:
+                validate_false_completion_recovery_receipt(stored)
+            except (TypeError, ValueError, RuntimeError):
+                return None
+            if (
+                stored.get("observer_id") != observation_id
+                or stored.get("request_id")
+                != str(getattr(request, "request_id", "") or "")
+            ):
+                return None
+            return dict(stored)
+        if status != "completed":
+            return None
+        receipt: dict[str, Any] = {
+            "schema": FALSE_COMPLETION_RECOVERY_RECEIPT_SCHEMA,
+            "request_id": str(getattr(request, "request_id", "") or ""),
+            "canonical_task_id": str(
+                getattr(request, "canonical_task_id", "") or ""
+            ),
+            "canonical_task_key": str(
+                getattr(request, "canonical_task_key", "") or ""
+            ),
+            "dedupe_key": str(getattr(request, "dedupe_key", "") or ""),
+            "candidate_commit": str(
+                getattr(request, "commit_sha", "") or ""
+            ),
+            "target_repository_id": str(
+                getattr(request, "target_repository_id", "") or ""
+            ),
+            "target_branch": str(
+                getattr(request, "target_branch", "") or ""
+            ),
+            "observed_target_commit": str(
+                observation_body.get("observed_target_commit") or ""
+            ),
+            "candidate_integrated": False,
+            "completed_claim_generation": observation_body.get(
+                "completed_claim_generation"
+            ),
+            "completed_finished_at": observation_body.get(
+                "completed_finished_at_hex"
+            ),
+            "completed_row_digest": str(
+                observation_body.get("completed_row_digest") or ""
+            ),
+            "observation_method": "git_merge_base_is_ancestor",
+            "observer_id": observation_id,
+            "observed_at": (
+                time.time() if observed_at is None else observed_at
+            ),
+            "reason": "verified_false_declared_outputs_already_on_target",
+        }
+        try:
+            receipt["completed_finished_at"] = float.fromhex(
+                str(receipt["completed_finished_at"] or "")
+            )
+        except (TypeError, ValueError):
+            return None
+        receipt["receipt_cid"] = false_completion_recovery_receipt_cid(
+            receipt
+        )
+        try:
+            validate_false_completion_recovery_receipt(receipt)
+        except (TypeError, ValueError, RuntimeError):
+            return None
+        return receipt
+
     def _preauthorize_post_merge_recovery(
         self,
         request: Any,
@@ -2447,6 +2938,197 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError(
                 "database post-merge preauthorization is invalid"
             )
+
+    def _preauthorize_false_completed_merge_recovery(
+        self,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+        observation: Mapping[str, Any],
+        *,
+        preauthorize: Callable[[Mapping[str, Any]], Mapping[str, Any]],
+        evidence_digest: Callable[[Mapping[str, Any]], str],
+    ) -> None:
+        """Require database authority before reviving a false completion."""
+
+        binding = projection.binding
+        source: dict[str, Any] = {
+            "schema": _DATABASE_FALSE_COMPLETION_RECOVERY_PREAUTHORIZATION_SCHEMA,
+            "request_id": str(getattr(request, "request_id", "") or ""),
+            "task_cid": str(getattr(request, "canonical_task_id", "") or ""),
+            "task_alias": str(getattr(request, "task_id", "") or ""),
+            "candidate_commit": str(getattr(request, "commit_sha", "") or ""),
+            "source_attempt_id": str(binding.get("attempt_id") or ""),
+            "source_claim_id": str(binding.get("claim_id") or ""),
+            "source_lease_id": str(binding.get("lease_id") or ""),
+            "source_fencing_token": binding.get("fencing_token"),
+            "source_fence_epoch": binding.get("fence_epoch"),
+            "source_binding_id": str(binding.get("binding_id") or ""),
+            "source_projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "false_completion_observation": dict(
+                observation["false_completion_observation"]
+            ),
+            "false_completion_observation_id": str(
+                observation["false_completion_observation_id"]
+            ),
+        }
+        result = preauthorize(source)
+        if not isinstance(result, Mapping):
+            raise DatabasePortalBridgeError(
+                "false-completion preauthorization returned a non-object"
+            )
+        verified = dict(result)
+        authorization_id = str(verified.pop("authorization_id", "") or "")
+        expected = {**source, "authorized": True, "task_status": "blocked"}
+        if (
+            projection.task_status != "blocked"
+            or verified != expected
+            or authorization_id != evidence_digest(expected)
+        ):
+            raise DatabasePortalBridgeError(
+                "false-completion preauthorization is invalid"
+            )
+
+    def _false_completion_reintegration_evidence(
+        self,
+        request: Any,
+        projection: _DatabasePortalRecoveryProjection,
+        observation: Mapping[str, Any],
+        train_result: Mapping[str, Any],
+        *,
+        train: Any,
+        evidence_digest: Callable[[Mapping[str, Any]], str],
+    ) -> dict[str, Any] | None:
+        """Compile a current-target integration into the DuckDB recovery CAS."""
+
+        from ..proof.formal_verification_contracts import content_identity
+
+        if self.repository_root is None or self.merge_queue is None:
+            return None
+        metadata = getattr(request, "metadata", None)
+        validation = (
+            metadata.get("validation_proof")
+            if isinstance(metadata, Mapping)
+            else None
+        )
+        observation_body = observation.get("false_completion_observation")
+        observation_id = str(
+            observation.get("false_completion_observation_id") or ""
+        )
+        candidate = str(getattr(request, "commit_sha", "") or "")
+        candidate_tree = (
+            str(metadata.get("candidate_tree") or "")
+            if isinstance(metadata, Mapping)
+            else ""
+        )
+        if (
+            str(getattr(request, "status", "") or "") != "completed"
+            or not isinstance(validation, Mapping)
+            or validation.get("passed") is not True
+            or validation.get("returncode") != 0
+            or validation.get("target_commit") != candidate
+            or validation.get("target_tree") != candidate_tree
+            or not isinstance(observation_body, Mapping)
+            or content_identity(dict(observation_body)) != observation_id
+            or observation_body.get("candidate_commit") != candidate
+            or train_result.get("integrated") is not True
+            or train_result.get("request_id")
+            != str(getattr(request, "request_id", "") or "")
+            or train_result.get("commit_sha") != candidate
+            or train.completed_request_is_integrated(request) is not True
+        ):
+            return None
+
+        def git(*argv: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                ["git", *argv],
+                cwd=self.repository_root,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+
+        target = git(
+            "rev-parse", "--verify", f"{self.merge_target_branch}^{{commit}}"
+        )
+        target_commit = target.stdout.strip()
+        target_tree = git(
+            "rev-parse", "--verify", f"{target_commit}^{{tree}}"
+        )
+        candidate_tree_result = git(
+            "rev-parse", "--verify", f"{candidate}^{{tree}}"
+        )
+        historical = str(
+            observation_body.get("historical_target_commit") or ""
+        )
+        candidate_to_target = git(
+            "merge-base", "--is-ancestor", candidate, target_commit
+        )
+        historical_to_target = git(
+            "merge-base", "--is-ancestor", historical, target_commit
+        )
+        candidate_to_historical = git(
+            "merge-base", "--is-ancestor", candidate, historical
+        )
+        if (
+            target.returncode != 0
+            or target_tree.returncode != 0
+            or candidate_tree_result.returncode != 0
+            or target_tree.stdout.strip() == ""
+            or candidate_tree_result.stdout.strip() != candidate_tree
+            or candidate_to_target.returncode != 0
+            or historical_to_target.returncode != 0
+            or candidate_to_historical.returncode != 1
+        ):
+            return None
+        receipt: dict[str, Any] = {
+            "schema": _FALSE_COMPLETION_REINTEGRATION_RECEIPT_SCHEMA,
+            "request_id": str(getattr(request, "request_id", "") or ""),
+            "task_id": str(getattr(request, "task_id", "") or ""),
+            "task_cid": str(
+                getattr(request, "canonical_task_id", "") or ""
+            ),
+            "candidate_commit": candidate,
+            "candidate_tree": candidate_tree,
+            "historical_target_commit": historical,
+            "reintegration_target_commit": target_commit,
+            "reintegration_target_tree": target_tree.stdout.strip(),
+            "integration_mode": "candidate_ancestor",
+            "validation_proof_digest": content_identity(dict(validation)),
+            "false_completion_observation_id": observation_id,
+        }
+        receipt["receipt_id"] = content_identity(receipt)
+        binding = projection.binding
+        evidence: dict[str, Any] = {
+            "schema": _DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
+            "request_id": str(getattr(request, "request_id", "") or ""),
+            "task_cid": str(
+                getattr(request, "canonical_task_id", "") or ""
+            ),
+            "task_alias": str(getattr(request, "task_id", "") or ""),
+            "candidate_commit": candidate,
+            "source_attempt_id": str(binding.get("attempt_id") or ""),
+            "source_claim_id": str(binding.get("claim_id") or ""),
+            "source_lease_id": str(binding.get("lease_id") or ""),
+            "source_fencing_token": binding.get("fencing_token"),
+            "source_fence_epoch": binding.get("fence_epoch"),
+            "source_binding_id": str(binding.get("binding_id") or ""),
+            "source_projection_immutable_digest": str(
+                binding.get("projection_immutable_digest") or ""
+            ),
+            "false_completion_observation": dict(observation_body),
+            "false_completion_observation_id": observation_id,
+            "reintegration_receipt": receipt,
+        }
+        evidence_id = evidence_digest(evidence)
+        if re.fullmatch(
+            r"sha256:[0-9a-f]{64}", str(evidence_id or "")
+        ) is None:
+            return None
+        evidence["evidence_id"] = str(evidence_id)
+        return evidence
 
     def _post_merge_recovery_evidence(
         self,
@@ -6730,10 +7412,22 @@ class DatabasePortalExecutionBridge:
             "preauthorize_post_merge_declared_output_recovery",
             None,
         )
+        recover_false_completion = getattr(
+            database_daemon,
+            "recover_blocked_false_completed_merge",
+            None,
+        )
+        preauthorize_false_completion = getattr(
+            database_daemon,
+            "preauthorize_false_completed_merge_recovery",
+            None,
+        )
         if (
             not callable(digest)
             or not callable(recover)
             or not callable(preauthorize)
+            or not callable(recover_false_completion)
+            or not callable(preauthorize_false_completion)
         ):
             raise DatabasePortalBridgeError(
                 "database daemon lacks post-merge recovery authority"
@@ -6842,13 +7536,214 @@ class DatabasePortalExecutionBridge:
                 (),
             )
 
+        false_completed_page = self.merge_queue.completed_requests(
+            limit=_POST_MERGE_RECOVERY_SCAN_LIMIT,
+            before_request_id=cursors["false_completed_requests"],
+            ordered_by_request_id=True,
+        )
+
+        def replay_integrated_false_completion() -> Mapping[str, Any] | None:
+            """Finish a crash-separated queue-settlement / DuckDB CAS pair."""
+
+            for snapshot in false_completed_page:
+                metadata = getattr(snapshot, "metadata", None)
+                if (
+                    not isinstance(metadata, Mapping)
+                    or not metadata.get("false_completion_revivals")
+                ):
+                    continue
+                current = self.merge_queue.get(
+                    str(getattr(snapshot, "request_id", "") or "")
+                )
+                projection = (
+                    self._owned_post_merge_recovery_projection(
+                        current,
+                        allow_false_completion=True,
+                    )
+                    if current is not None
+                    else None
+                )
+                if (
+                    current is None
+                    or projection is None
+                    or train.completed_request_is_integrated(current) is not True
+                ):
+                    continue
+                observation = self._false_completed_merge_observation(
+                    current,
+                    projection,
+                    allow_integrated_replay=True,
+                )
+                if observation is None:
+                    continue
+                if projection.task_status == "blocked":
+                    try:
+                        self._preauthorize_false_completed_merge_recovery(
+                            current,
+                            projection,
+                            observation,
+                            preauthorize=preauthorize_false_completion,
+                            evidence_digest=digest,
+                        )
+                    except Exception as exc:
+                        if not _is_implementation_conflict(exc):
+                            raise
+                        continue
+                elif projection.task_status != "retrying":
+                    continue
+                evidence = self._false_completion_reintegration_evidence(
+                    current,
+                    projection,
+                    observation,
+                    {
+                        "integrated": True,
+                        "request_id": str(
+                            getattr(current, "request_id", "") or ""
+                        ),
+                        "commit_sha": str(
+                            getattr(current, "commit_sha", "") or ""
+                        ),
+                    },
+                    train=train,
+                    evidence_digest=digest,
+                )
+                if evidence is None:
+                    continue
+                try:
+                    result = recover_false_completion(evidence)
+                except Exception as exc:
+                    if not _is_implementation_conflict(exc):
+                        raise
+                    continue
+                if not isinstance(result, Mapping):
+                    raise DatabasePortalBridgeError(
+                        "false-completion replay returned a non-object"
+                    )
+                return dict(result)
+            return None
+
+        if false_completed_page:
+            acquired, false_replay = train.run_under_consumer_lease(
+                replay_integrated_false_completion
+            )
+            if not acquired:
+                return None
+            if false_replay is not None:
+                replay_request_id = str(
+                    false_replay.get("request_id") or ""
+                )
+                replay_index = next(
+                    (
+                        index
+                        for index, item in enumerate(false_completed_page)
+                        if str(getattr(item, "request_id", "") or "")
+                        == replay_request_id
+                    ),
+                    -1,
+                )
+                if replay_index >= 0:
+                    self._advance_post_merge_recovery_cursor(
+                        cursors,
+                        "false_completed_requests",
+                        false_completed_page[: replay_index + 1],
+                    )
+                return dict(false_replay)
+
         selected: Any = None
         selected_projection: _DatabasePortalRecoveryProjection | None = None
+        selected_mode = ""
+        selected_false_observation: dict[str, Any] | None = None
+        selected_false_receipt: dict[str, Any] | None = None
+
+        false_pages: tuple[tuple[str, Sequence[Any]], ...] = (
+            (
+                "false_completed_requests",
+                false_completed_page,
+            ),
+            (
+                "false_pending_requests",
+                self.merge_queue.pending_requests(
+                    limit=_POST_MERGE_RECOVERY_SCAN_LIMIT,
+                    after_request_id=cursors["false_pending_requests"],
+                ),
+            ),
+            (
+                "false_processing_requests",
+                self.merge_queue.processing_requests(
+                    limit=_POST_MERGE_RECOVERY_SCAN_LIMIT,
+                    after_request_id=cursors["false_processing_requests"],
+                ),
+            ),
+        )
+        for cursor_stage, page in false_pages:
+            owned_conflict = False
+            for request in page:
+                projection = self._owned_post_merge_recovery_projection(
+                    request,
+                    allow_false_completion=True,
+                )
+                if projection is None:
+                    continue
+                observation = self._false_completed_merge_observation(
+                    request,
+                    projection,
+                    allow_integrated_replay=(
+                        str(getattr(request, "status", "") or "")
+                        in {"pending", "processing"}
+                        and train.completed_request_is_integrated(request)
+                        is True
+                    ),
+                )
+                recovery_receipt = (
+                    self._false_completion_queue_recovery_receipt(
+                        request,
+                        observation,
+                    )
+                    if observation is not None
+                    else None
+                )
+                if observation is None or recovery_receipt is None:
+                    continue
+                try:
+                    self._preauthorize_false_completed_merge_recovery(
+                        request,
+                        projection,
+                        observation,
+                        preauthorize=preauthorize_false_completion,
+                        evidence_digest=digest,
+                    )
+                except Exception as exc:
+                    if not _is_implementation_conflict(exc):
+                        raise
+                    owned_conflict = True
+                    _LOG.warning(
+                        "false-completion recovery preauthorization conflict "
+                        "request_id=%s task_id=%s: %s",
+                        getattr(request, "request_id", ""),
+                        getattr(request, "task_id", ""),
+                        exc,
+                    )
+                    continue
+                selected = request
+                selected_projection = projection
+                selected_mode = "false_completion"
+                selected_false_observation = observation
+                selected_false_receipt = recovery_receipt
+                break
+            if selected is None and not owned_conflict:
+                self._advance_post_merge_recovery_cursor(
+                    cursors,
+                    cursor_stage,
+                    page,
+                )
+            if selected is not None:
+                break
+
         for snapshot_name in (
             "pending_requests",
             "quarantined_requests",
             "processing_requests",
-        ):
+        ) if selected is None else ():
             snapshot = getattr(self.merge_queue, snapshot_name)
             page = snapshot(
                 limit=_POST_MERGE_RECOVERY_SCAN_LIMIT,
@@ -6882,6 +7777,7 @@ class DatabasePortalExecutionBridge:
                     continue
                 selected = request
                 selected_projection = projection
+                selected_mode = "declared_output_repair"
                 break
             if selected is None and not owned_conflict:
                 self._advance_post_merge_recovery_cursor(
@@ -6904,16 +7800,58 @@ class DatabasePortalExecutionBridge:
                 != selected_request_id
             ):
                 return False
-            projection = self._owned_post_merge_recovery_projection(request)
+            projection = self._owned_post_merge_recovery_projection(
+                request,
+                allow_false_completion=(
+                    selected_mode == "false_completion"
+                ),
+            )
             if projection is None:
                 return False
             try:
-                self._preauthorize_post_merge_recovery(
-                    request,
-                    projection,
-                    preauthorize=preauthorize,
-                    evidence_digest=digest,
-                )
+                if selected_mode == "false_completion":
+                    observation = self._false_completed_merge_observation(
+                        request,
+                        projection,
+                        allow_integrated_replay=(
+                            str(getattr(request, "status", "") or "")
+                            in {"pending", "processing"}
+                            and train.completed_request_is_integrated(request)
+                            is True
+                        ),
+                    )
+                    receipt = (
+                        self._false_completion_queue_recovery_receipt(
+                            request,
+                            observation,
+                            observed_at=(
+                                float(selected_false_receipt["observed_at"])
+                                if selected_false_receipt is not None
+                                else None
+                            ),
+                        )
+                        if observation is not None
+                        else None
+                    )
+                    if (
+                        observation != selected_false_observation
+                        or receipt != selected_false_receipt
+                    ):
+                        return False
+                    self._preauthorize_false_completed_merge_recovery(
+                        request,
+                        projection,
+                        observation,
+                        preauthorize=preauthorize_false_completion,
+                        evidence_digest=digest,
+                    )
+                else:
+                    self._preauthorize_post_merge_recovery(
+                        request,
+                        projection,
+                        preauthorize=preauthorize,
+                        evidence_digest=digest,
+                    )
             except Exception as exc:
                 if not _is_implementation_conflict(exc):
                     raise
@@ -6924,7 +7862,12 @@ class DatabasePortalExecutionBridge:
         def configured_processor(recovery_train: Any) -> Any:
             current = self.merge_queue.get(selected_request_id)
             current_projection = (
-                self._owned_post_merge_recovery_projection(current)
+                self._owned_post_merge_recovery_projection(
+                    current,
+                    allow_false_completion=(
+                        selected_mode == "false_completion"
+                    ),
+                )
                 if current is not None
                 else None
             )
@@ -6938,12 +7881,46 @@ class DatabasePortalExecutionBridge:
             # Conflicts may be ``__main__.DatabaseImplementationConflictError``
             # when the daemon is launched with ``-m``; the caller catches them
             # by type name.
-            self._preauthorize_post_merge_recovery(
-                current,
-                current_projection,
-                preauthorize=preauthorize,
-                evidence_digest=digest,
-            )
+            if selected_mode == "false_completion":
+                current_observation = self._false_completed_merge_observation(
+                    current,
+                    current_projection,
+                    allow_integrated_replay=(
+                        str(getattr(current, "status", "") or "")
+                        in {"pending", "processing"}
+                        and train.completed_request_is_integrated(current)
+                        is True
+                    ),
+                )
+                current_receipt = (
+                    self._false_completion_queue_recovery_receipt(
+                        current,
+                        current_observation,
+                    )
+                    if current_observation is not None
+                    else None
+                )
+                if (
+                    current_observation != selected_false_observation
+                    or current_receipt != selected_false_receipt
+                ):
+                    raise DatabasePortalBridgeError(
+                        "false-completion recovery lost its revival proof"
+                    )
+                self._preauthorize_false_completed_merge_recovery(
+                    current,
+                    current_projection,
+                    current_observation,
+                    preauthorize=preauthorize_false_completion,
+                    evidence_digest=digest,
+                )
+            else:
+                self._preauthorize_post_merge_recovery(
+                    current,
+                    current_projection,
+                    preauthorize=preauthorize,
+                    evidence_digest=digest,
+                )
             portal = self.portal_factory(
                 current_projection.paths,
                 str(getattr(current, "task_id", "") or ""),
@@ -7060,10 +8037,44 @@ class DatabasePortalExecutionBridge:
             nonlocal database_result
             completed = self.merge_queue.get(selected_request_id)
             projection = (
-                self._owned_post_merge_recovery_projection(completed)
+                self._owned_post_merge_recovery_projection(
+                    completed,
+                    allow_false_completion=(
+                        selected_mode == "false_completion"
+                    ),
+                )
                 if completed is not None
                 else None
             )
+            if selected_mode == "false_completion":
+                evidence = (
+                    self._false_completion_reintegration_evidence(
+                        completed,
+                        projection,
+                        selected_false_observation,
+                        _train_result,
+                        train=train,
+                        evidence_digest=digest,
+                    )
+                    if completed is not None
+                    and projection is not None
+                    and selected_false_observation is not None
+                    else None
+                )
+                if evidence is None:
+                    return
+                try:
+                    result = recover_false_completion(evidence)
+                except Exception as exc:
+                    if not _is_implementation_conflict(exc):
+                        raise
+                    return
+                if not isinstance(result, Mapping):
+                    raise DatabasePortalBridgeError(
+                        "false-completion recovery returned a non-object"
+                    )
+                database_result = dict(result)
+                return
             if completed is not None and projection is not None:
                 try:
                     self._preauthorize_post_merge_recovery(
@@ -7100,13 +8111,23 @@ class DatabasePortalExecutionBridge:
             database_result = dict(result)
 
         try:
-            train_result = train.recover_one_integrated_quarantine(
-                request_filter=exact_owned_request,
-                request_id=selected_request_id,
-                processor_context=configured_processor,
-                after_process=rearm_after_queue_settlement,
-                allow_post_merge_declared_output_recovery=True,
-            )
+            if selected_mode == "false_completion":
+                assert selected_false_receipt is not None
+                train_result = train.recover_one_false_completion(
+                    request_filter=exact_owned_request,
+                    request_id=selected_request_id,
+                    recovery_receipt=selected_false_receipt,
+                    processor_context=configured_processor,
+                    after_process=rearm_after_queue_settlement,
+                )
+            else:
+                train_result = train.recover_one_integrated_quarantine(
+                    request_filter=exact_owned_request,
+                    request_id=selected_request_id,
+                    processor_context=configured_processor,
+                    after_process=rearm_after_queue_settlement,
+                    allow_post_merge_declared_output_recovery=True,
+                )
         except Exception as exc:
             if not _is_implementation_conflict(exc):
                 raise
@@ -7116,10 +8137,18 @@ class DatabasePortalExecutionBridge:
         if train_result is None:
             return None
         return {
-            "schema": _DATABASE_POST_MERGE_RECOVERY_SCHEMA,
+            "schema": (
+                _DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA
+                if selected_mode == "false_completion"
+                else _DATABASE_POST_MERGE_RECOVERY_SCHEMA
+            ),
             "attempted": True,
             "recovered": False,
-            "reason": "post_merge_repair_not_completed",
+            "reason": (
+                "false_completion_reintegration_not_completed"
+                if selected_mode == "false_completion"
+                else "post_merge_repair_not_completed"
+            ),
             "request_id": str(getattr(selected, "request_id", "") or ""),
             "merge_status": str(
                 train_result.get("status")

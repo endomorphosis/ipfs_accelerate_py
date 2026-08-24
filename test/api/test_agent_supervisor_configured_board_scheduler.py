@@ -2967,6 +2967,322 @@ def test_receipt_coordinator_preidentity_failure_never_claims_unproved_fence() -
     )
 
 
+@pytest.mark.skipif(
+    os.name != "posix" or not Path("/proc").is_dir(),
+    reason="non-dumpable lifecycle fencing requires Linux /proc",
+)
+def test_multi_runner_fences_non_dumpable_root_omitted_by_profile_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live opaque direct child is never mistaken for an empty tree."""
+
+    read_gate, write_gate = os.pipe()
+    ready_path = tmp_path / "opaque-wrapper.ready"
+    descendant_path = tmp_path / "opaque-descendant.pid"
+    child_script = """
+import ctypes
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
+
+gate = int(sys.argv[1])
+os.read(gate, 1)
+os.close(gate)
+libc = ctypes.CDLL(None, use_errno=True)
+if libc.prctl(4, 0, 0, 0, 0) != 0 or libc.prctl(3, 0, 0, 0, 0) != 0:
+    raise SystemExit(91)
+descendant = subprocess.Popen(
+    [
+        sys.executable,
+        "-c",
+        "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)",
+    ],
+    stdin=subprocess.DEVNULL,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+    start_new_session=True,
+)
+Path(sys.argv[3]).write_text(str(descendant.pid), encoding="ascii")
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+Path(sys.argv[2]).write_text("ready\\n", encoding="ascii")
+while True:
+    time.sleep(60)
+"""
+    command = (
+        sys.executable,
+        "-c",
+        child_script,
+        str(read_gate),
+        str(ready_path),
+        str(descendant_path),
+    )
+    state_root = tmp_path / "opaque-state"
+    profile = multi_runner_module.LifecycleProfile(
+        target_id="supervisor-track:test-opaque-wrapper",
+        run_id=f"test-opaque-{_test_lifecycle_token(tmp_path, 'opaque-root')}",
+        configuration_root="test-opaque-configuration",
+        repository_root=str(tmp_path.resolve()),
+        state_root=str(state_root.resolve()),
+        run_root=str((state_root / "run").resolve()),
+        argv=command,
+        cwd=str(tmp_path.resolve()),
+    )
+    process = _spawn_test_process(
+        command,
+        cwd=tmp_path,
+        env=profile.launch_environment(0),
+        pass_fds=(read_gate,),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    os.close(read_gate)
+    descendant_pid = 0
+    try:
+        identity = _capture_test_process_identity(process, profile)
+        process._agent_supervisor_lifecycle_profile = profile
+        process._agent_supervisor_process_identity = identity
+        os.write(write_gate, b"x")
+        os.close(write_gate)
+        write_gate = -1
+
+        deadline = time.monotonic() + 5.0
+        while not ready_path.is_file() and process.poll() is None:
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.01)
+        assert ready_path.is_file(), f"opaque wrapper exited {process.poll()}"
+        descendant_pid = int(descendant_path.read_text(encoding="ascii"))
+
+        original_environ = multi_runner_module.LinuxProcessAdapter._environ
+        opaque_pids = {process.pid, descendant_pid}
+
+        def omit_opaque_member(pid: int) -> dict[str, str]:
+            if pid in opaque_pids:
+                raise PermissionError("non-dumpable lifecycle member")
+            return original_environ(pid)
+
+        monkeypatch.setattr(
+            multi_runner_module.LinuxProcessAdapter,
+            "_environ",
+            staticmethod(omit_opaque_member),
+        )
+        assert not multi_runner_module.LinuxProcessAdapter().snapshot(
+            profile
+        ).members
+
+        strict_calls: list[tuple[int, dict[str, Any]]] = []
+        strict_fence = multi_runner_module.terminate_pid_tree
+
+        def record_strict_fence(pid: int, **kwargs: Any) -> bool:
+            strict_calls.append((pid, dict(kwargs)))
+            return strict_fence(pid, **kwargs)
+
+        monkeypatch.setattr(
+            multi_runner_module,
+            "terminate_pid_tree",
+            record_strict_fence,
+        )
+        fenced, member_pids = multi_runner_module._terminate_managed_process(
+            process,
+            grace_seconds=0.1,
+        )
+
+        assert fenced is True
+        assert member_pids == (process.pid,)
+        assert process.poll() is not None
+        assert not multi_runner_module.pid_alive(descendant_pid)
+        assert strict_calls == [
+            (
+                process.pid,
+                {
+                    "grace_seconds": 0.1,
+                    "freeze_first": True,
+                    "require_gone": True,
+                    "owned_process_group_id": identity.process_group_id,
+                    "expected_root_start_time_ticks": identity.start_time_ticks,
+                },
+            )
+        ]
+    finally:
+        if write_gate >= 0:
+            os.close(write_gate)
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5.0)
+        if descendant_pid and multi_runner_module.pid_alive(descendant_pid):
+            try:
+                os.killpg(descendant_pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError):
+                pass
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not Path("/proc").is_dir(),
+    reason="non-dumpable lifecycle fencing requires Linux /proc",
+)
+def test_multi_runner_fences_opaque_detached_child_before_root_term_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An opaque cooperative root cannot detach work during TERM shutdown."""
+
+    read_gate, write_gate = os.pipe()
+    ready_path = tmp_path / "cooperative-opaque-wrapper.ready"
+    descendant_path = tmp_path / "cooperative-opaque-descendant.pid"
+    child_script = """
+import ctypes
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
+
+gate = int(sys.argv[1])
+os.read(gate, 1)
+os.close(gate)
+libc = ctypes.CDLL(None, use_errno=True)
+if libc.prctl(4, 0, 0, 0, 0) != 0 or libc.prctl(3, 0, 0, 0, 0) != 0:
+    raise SystemExit(91)
+descendant = subprocess.Popen(
+    [
+        sys.executable,
+        "-c",
+        "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)",
+    ],
+    stdin=subprocess.DEVNULL,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+    start_new_session=True,
+)
+Path(sys.argv[3]).write_text(str(descendant.pid), encoding="ascii")
+def raise_exit(*_args):
+    raise SystemExit(0)
+
+signal.signal(signal.SIGTERM, raise_exit)
+Path(sys.argv[2]).write_text("ready\\n", encoding="ascii")
+while True:
+    time.sleep(60)
+"""
+    command = (
+        sys.executable,
+        "-c",
+        child_script,
+        str(read_gate),
+        str(ready_path),
+        str(descendant_path),
+    )
+    state_root = tmp_path / "cooperative-opaque-state"
+    profile = multi_runner_module.LifecycleProfile(
+        target_id="supervisor-track:test-cooperative-opaque-wrapper",
+        run_id=(
+            "test-cooperative-opaque-"
+            + _test_lifecycle_token(tmp_path, "cooperative-opaque-root")
+        ),
+        configuration_root="test-cooperative-opaque-configuration",
+        repository_root=str(tmp_path.resolve()),
+        state_root=str(state_root.resolve()),
+        run_root=str((state_root / "run").resolve()),
+        argv=command,
+        cwd=str(tmp_path.resolve()),
+    )
+    process = _spawn_test_process(
+        command,
+        cwd=tmp_path,
+        env=profile.launch_environment(0),
+        pass_fds=(read_gate,),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    os.close(read_gate)
+    descendant_pid = 0
+    try:
+        identity = _capture_test_process_identity(process, profile)
+        process._agent_supervisor_lifecycle_profile = profile
+        process._agent_supervisor_process_identity = identity
+        os.write(write_gate, b"x")
+        os.close(write_gate)
+        write_gate = -1
+
+        deadline = time.monotonic() + 5.0
+        while not ready_path.is_file() and process.poll() is None:
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.01)
+        assert ready_path.is_file(), f"opaque wrapper exited {process.poll()}"
+        descendant_pid = int(descendant_path.read_text(encoding="ascii"))
+
+        original_environ = multi_runner_module.LinuxProcessAdapter._environ
+        opaque_pids = {process.pid, descendant_pid}
+
+        def omit_opaque_member(pid: int) -> dict[str, str]:
+            if pid in opaque_pids:
+                raise PermissionError("non-dumpable lifecycle member")
+            return original_environ(pid)
+
+        monkeypatch.setattr(
+            multi_runner_module.LinuxProcessAdapter,
+            "_environ",
+            staticmethod(omit_opaque_member),
+        )
+        assert not multi_runner_module.LinuxProcessAdapter().snapshot(
+            profile
+        ).members
+
+        strict_calls: list[tuple[int, dict[str, Any]]] = []
+        strict_fence = multi_runner_module.terminate_pid_tree
+
+        def record_strict_fence(pid: int, **kwargs: Any) -> bool:
+            strict_calls.append((pid, dict(kwargs)))
+            return strict_fence(pid, **kwargs)
+
+        monkeypatch.setattr(
+            multi_runner_module,
+            "terminate_pid_tree",
+            record_strict_fence,
+        )
+        fenced, member_pids = multi_runner_module._terminate_managed_process(
+            process,
+            grace_seconds=0.1,
+        )
+
+        assert fenced is True
+        assert member_pids == (process.pid,)
+        assert process.poll() is not None
+        assert not multi_runner_module.pid_alive(descendant_pid)
+        assert strict_calls == [
+            (
+                process.pid,
+                {
+                    "grace_seconds": 0.1,
+                    "freeze_first": True,
+                    "require_gone": True,
+                    "owned_process_group_id": identity.process_group_id,
+                    "expected_root_start_time_ticks": identity.start_time_ticks,
+                },
+            )
+        ]
+    finally:
+        if write_gate >= 0:
+            os.close(write_gate)
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5.0)
+        if descendant_pid and multi_runner_module.pid_alive(descendant_pid):
+            try:
+                os.killpg(descendant_pid, signal.SIGKILL)
+            except (OSError, ProcessLookupError):
+                pass
+
+
 def test_v3_materializer_uses_canonical_ready_and_attempt_admissible_set(
     tmp_path: Path,
 ) -> None:
