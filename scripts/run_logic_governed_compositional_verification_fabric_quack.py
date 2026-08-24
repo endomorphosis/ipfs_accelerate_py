@@ -925,12 +925,49 @@ def _tracked_runtime_inventory(
         except ValueError as exc:
             raise SuccessorOperatorError(f"{noun} inventory is malformed") from exc
         relative_path = Path(relative)
-        if (
-            object_type != "blob"
-            or mode not in {"100644", "100755"}
-            or relative_path.is_absolute()
-            or ".." in relative_path.parts
-        ):
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            raise SuccessorOperatorError(f"{noun} contains an unsafe tracked object")
+        if object_type == "commit" and mode == "160000":
+            gitlink_path = repository / relative_path
+            metadata_status = os.lstat(gitlink_path)
+            with os.scandir(gitlink_path) as entries:
+                gitlink_is_empty = next(entries, None) is None
+            if (
+                not stat.S_ISDIR(metadata_status.st_mode)
+                or stat.S_ISLNK(metadata_status.st_mode)
+                or metadata_status.st_uid != os.geteuid()
+                or not gitlink_is_empty
+            ):
+                raise SuccessorOperatorError(
+                    f"{noun} uninitialized gitlink custody differs"
+                )
+            observed.append((relative_path.as_posix(), mode, expected_oid))
+            continue
+        if object_type == "blob" and mode == "120000":
+            link_path = repository / relative_path
+            metadata_status = os.lstat(link_path)
+            target_text = os.readlink(link_path)
+            target_bytes = os.fsencode(target_text)
+            digest = hashlib.sha1(usedforsecurity=False)
+            digest.update(f"blob {len(target_bytes)}\0".encode("ascii"))
+            digest.update(target_bytes)
+            try:
+                (link_path.parent / target_text).resolve(strict=True).relative_to(
+                    repository.resolve(strict=True)
+                )
+            except (OSError, ValueError) as exc:
+                raise SuccessorOperatorError(
+                    f"{noun} tracked link escapes its repository"
+                ) from exc
+            if (
+                not stat.S_ISLNK(metadata_status.st_mode)
+                or metadata_status.st_uid != os.geteuid()
+                or digest.hexdigest() != expected_oid
+            ):
+                raise SuccessorOperatorError(f"{noun} tracked link differs from HEAD")
+            observed.append((relative_path.as_posix(), mode, expected_oid))
+            continue
+        if object_type != "blob" or mode not in {"100644", "100755"}:
             raise SuccessorOperatorError(f"{noun} contains an unsafe tracked object")
         observed_oid = _regular_git_blob_oid(
             repository / relative_path, noun=f"{noun} tracked object"
