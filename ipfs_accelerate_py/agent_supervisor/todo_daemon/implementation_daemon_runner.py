@@ -1352,11 +1352,6 @@ def bind_database_portal_execution_from_args(
         task_header_prefix=parsed.task_prefix,
         max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
     )
-    binder(
-        provider_fn=bridge.run_provider,
-        effect_fn=bridge.apply_effect,
-        validation_fn=bridge.validate_effect,
-    )
     consumed_recovery_binder = getattr(
         daemon,
         "bind_superseded_consumed_attempt_recovery",
@@ -1367,7 +1362,33 @@ def bind_database_portal_execution_from_args(
             "production database daemon does not expose consumed-attempt "
             "recovery binding"
         )
+    protected_recovery_binder = getattr(
+        daemon,
+        "bind_protected_preservation_recovery",
+        None,
+    )
+    if not callable(protected_recovery_binder):
+        raise RuntimeError(
+            "production database daemon does not expose protected-preservation "
+            "recovery binding"
+        )
+    protected_recovery = getattr(
+        bridge,
+        "recover_protected_path_preservation",
+        None,
+    )
+    if not callable(protected_recovery):
+        raise RuntimeError(
+            "database Portal bridge does not expose protected-preservation "
+            "recovery"
+        )
+    binder(
+        provider_fn=bridge.run_provider,
+        effect_fn=bridge.apply_effect,
+        validation_fn=bridge.validate_effect,
+    )
     consumed_recovery_binder(bridge.recover_consumed_attempt_retry)
+    protected_recovery_binder(protected_recovery)
     if recovery_queue is not None:
         recovery_binder = getattr(daemon, "bind_post_merge_recovery", None)
         if not callable(recovery_binder):

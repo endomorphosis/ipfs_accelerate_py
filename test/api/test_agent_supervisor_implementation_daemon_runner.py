@@ -950,6 +950,12 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             callbacks["consumed_attempt_recovery"] = callback
 
         @staticmethod
+        def bind_protected_preservation_recovery(
+            callback: object,
+        ) -> None:
+            callbacks["protected_preservation_recovery"] = callback
+
+        @staticmethod
         def bind_merge_train_recovery(**values: object) -> None:
             callbacks["merge_train_recovery"] = values
 
@@ -1011,6 +1017,10 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
     assert callable(callbacks["post_merge_recovery"])
     assert callbacks["post_merge_recovery"]() is None
     assert callable(callbacks["consumed_attempt_recovery"])
+    assert callable(callbacks["protected_preservation_recovery"])
+    assert callbacks["protected_preservation_recovery"] == (
+        bridge.recover_protected_path_preservation
+    )
     assert callbacks["merge_train_recovery"] == {
         "merge_queue": bridge.merge_queue,
         "repo_root": repo,
@@ -1028,6 +1038,126 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
     )
     assert portal.kwargs["merge_queue"] is bridge.merge_queue
     assert portal.kwargs["merge_target_branch"] == "main"
+
+
+def test_database_runner_requires_protected_preservation_daemon_binding(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+
+    class MissingProtectedBinderDaemon:
+        task_source = object()
+
+        @staticmethod
+        def bind_execution_callbacks(**_values: object) -> None:
+            calls.append("execution")
+
+        @staticmethod
+        def bind_superseded_consumed_attempt_recovery(
+            _callback: object,
+        ) -> None:
+            calls.append("consumed")
+
+    parsed = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded_exclusive",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--todo-path",
+            str(tmp_path / "board.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "lane-0",
+            "--implement",
+            "--once",
+        ]
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="does not expose protected-preservation recovery binding",
+    ):
+        bind_database_portal_execution_from_args(
+            MissingProtectedBinderDaemon(),
+            parsed,
+            repo_root=tmp_path,
+            portal_daemon_class=object,
+        )
+
+    # Validate every required recovery API before installing a partial set of
+    # production execution callbacks.
+    assert calls == []
+
+
+def test_database_runner_requires_protected_preservation_bridge_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        database_portal_bridge as bridge_module,
+    )
+
+    calls: list[str] = []
+
+    class BindingDaemon:
+        task_source = object()
+
+        @staticmethod
+        def bind_execution_callbacks(**_values: object) -> None:
+            calls.append("execution")
+
+        @staticmethod
+        def bind_superseded_consumed_attempt_recovery(
+            _callback: object,
+        ) -> None:
+            calls.append("consumed")
+
+        @staticmethod
+        def bind_protected_preservation_recovery(
+            _callback: object,
+        ) -> None:
+            calls.append("protected")
+
+    monkeypatch.setattr(
+        bridge_module.DatabasePortalExecutionBridge,
+        "recover_protected_path_preservation",
+        None,
+    )
+    parsed = parse_args(
+        [
+            "--task-source-kind",
+            "duckdb",
+            "--authority-mode",
+            "embedded_exclusive",
+            "--database-path",
+            str(tmp_path / "control.duckdb"),
+            "--todo-path",
+            str(tmp_path / "board.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "lane-0",
+            "--implement",
+            "--once",
+        ]
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="bridge does not expose protected-preservation recovery",
+    ):
+        bind_database_portal_execution_from_args(
+            BindingDaemon(),
+            parsed,
+            repo_root=tmp_path,
+            portal_daemon_class=object,
+        )
+
+    assert calls == []
 
 
 def test_idle_daemon_pass_logging_is_compact_and_throttled(caplog):
