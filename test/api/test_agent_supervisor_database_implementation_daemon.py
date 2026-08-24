@@ -1716,6 +1716,71 @@ def test_restart_reconciles_exhausted_typed_deferral_without_new_claim(
         replacement.close()
 
 
+def test_exhausted_typed_deferral_yields_to_later_terminal_control_cas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=300,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:typed-budget-terminal-precedence",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=2,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        initial = daemon.run_once()
+        task_cid = str(initial["claimed_task_cid"])
+        now["ms"] = 301_001
+
+        def crash_before_block(*_args: object, **_kwargs: object) -> object:
+            raise RuntimeError("simulated crash before exhausted control CAS")
+
+        monkeypatch.setattr(
+            daemon,
+            "_persist_typed_deferral_budget_exhausted",
+            crash_before_block,
+        )
+        interrupted = daemon.run_once()
+        assert "simulated crash" in interrupted["implementation_result"][
+            "fail_error"
+        ]
+
+        control = daemon.task_source.get(task_cid)
+        assert control is not None
+        validation_digest = "sha256:" + ("a" * 64)
+        daemon.task_source.record_validation_result(
+            task_cid=task_cid,
+            outcome="passed",
+            evidence_digest=validation_digest,
+            argv=("python3", "-m", "pytest", "-q"),
+            attempt_id=str(interrupted["attempt_id"]),
+        )
+        completed = daemon._cas_task_status_database(
+            task_cid,
+            expected_revision=int(control.revision),
+            new_status="completed",
+            receipt={"operation": "simulated_external_completion"},
+            evidence_digests=(validation_digest,),
+        )
+        assert completed.task.status == "completed"
+
+        monkeypatch.undo()
+        assert daemon.reconcile_terminal_retry_states() == []
+        assert daemon.task_source.get(task_cid).status == "completed"
+    finally:
+        daemon.close()
+
+
 def test_exhaustion_blocks_already_retrying_task_and_bounds_evidence_preview(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

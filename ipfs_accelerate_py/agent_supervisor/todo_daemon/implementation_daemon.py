@@ -76156,6 +76156,11 @@ class DatabaseImplementationDaemon:
                 )
             budget = evidence.get("typed_deferral_budget")
             if isinstance(budget, Mapping) and budget.get("exhausted") is True:
+                # A later authoritative terminal CAS supersedes this immutable
+                # failed-attempt history.  Reconciliation must not regress the
+                # task or crash the lane after another actor completes it.
+                if status in IMPLEMENTATION_TASK_TERMINAL_STATUSES:
+                    continue
                 if status == "blocked":
                     continue
                 if status not in {"in_progress", "retrying"}:
