@@ -435,6 +435,137 @@ def test_board_source_binding_is_read_from_exact_git_tree_blob(repo_root: Path) 
     assert binding["canonical_json_cid"] == lifecycle._eaaef_source_cid(_board(repo_root))
 
 
+def _current_head_forest(repo_root: Path) -> dict[str, Any]:
+    return _sealed_forest(accelerator_commit=lifecycle._git(repo_root, "rev-parse", "HEAD"))
+
+
+def _fresh_trust_roots() -> dict[str, Any]:
+    value = {
+        "schema": lifecycle.EAAEF_FRESH_TRUST_SCHEMA,
+        "remote_reviewer_dids": ["did:key:z" + "A" * 20],
+        "plan_r2_capability_reviewer_dids": ["did:key:z" + "B" * 20],
+        "operator_dids": ["did:key:z" + "C" * 20],
+        "security_reviewer_dids": ["did:key:z" + "D" * 20],
+    }
+    value["trust_bundle_cid"] = lifecycle._cid(value)
+    return value
+
+
+def test_preflight_accepts_current_head_over_tracked_predecessor_policy(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    forest = _current_head_forest(repo_root)
+    observed: list[str] = []
+    monkeypatch.setattr(
+        lifecycle,
+        "inspect_current_repository_forest",
+        lambda _root: forest,
+    )
+
+    def verify_current_authority(
+        _authority: Mapping[str, Any],
+        *,
+        population: lifecycle.CompiledEAAEFPopulation,
+        trust_roots: Mapping[str, Any],
+        now_ms: int | None = None,
+    ) -> object:
+        del trust_roots, now_ms
+        observed.append(population.source_forest_root)
+        return object()
+
+    monkeypatch.setattr(
+        lifecycle,
+        "verify_fresh_authority_bundle",
+        verify_current_authority,
+    )
+    result = lifecycle.preflight_reconciliation(
+        repo_root,
+        authority={"fresh": True},
+        trust_roots={"independent": True},
+        owner=_FakeOwner(str(forest["source_forest_root"])),
+    )
+
+    assert result["valid"] is True
+    assert result["stale_bindings"] == []
+    assert observed == [forest["source_forest_root"]]
+    assert result["population"]["source_head"] == forest["source_head"]
+
+
+def test_changed_forest_rejects_stale_external_authority(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prior_forest = _sealed_forest()
+    current_forest = _current_head_forest(repo_root)
+    assert prior_forest["source_forest_root"] != current_forest["source_forest_root"]
+    monkeypatch.setattr(
+        lifecycle,
+        "inspect_current_repository_forest",
+        lambda _root: current_forest,
+    )
+    stale_authorization = {
+        "board_namespace": lifecycle.EAAEF_BOARD_NAMESPACE,
+        "source_head": prior_forest["source_head"],
+        "source_tree": prior_forest["source_tree"],
+        "source_generation_cid": prior_forest["source_forest_root"],
+        "new_plan": {},
+    }
+    authority = lifecycle.assemble_fresh_authority_bundle(
+        authorization=stale_authorization,
+        plan_r2_operational_capability={},
+        plan_r2_remote_owner_capability={},
+    )
+
+    result = lifecycle.preflight_reconciliation(
+        repo_root,
+        authority=authority,
+        trust_roots=_fresh_trust_roots(),
+        owner=_FakeOwner(str(current_forest["source_forest_root"])),
+        now_ms=1,
+    )
+
+    assert result["valid"] is False
+    assert result["stale_bindings"] == []
+    assert any(
+        blocker.startswith(
+            "fresh_authority_rejected:EAAEFReconciliationIdentityError:"
+            "Plan-R2 authorization is stale or belongs to another source"
+        )
+        for blocker in result["blockers"]
+    )
+
+
+def test_historical_tracked_host_admission_is_ignored(
+    repo_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    forest = _current_head_forest(repo_root)
+    original_json_object = lifecycle._json_object
+    historical_path = (repo_root / lifecycle.EAAEF_ADMISSION_BUNDLE_PATH).resolve()
+    monkeypatch.setattr(
+        lifecycle,
+        "inspect_current_repository_forest",
+        lambda _root: forest,
+    )
+
+    def reject_historical_read(
+        path: Path,
+        *,
+        noun: str,
+        maximum_bytes: int = 32 * 1024 * 1024,
+    ) -> dict[str, Any]:
+        assert Path(path).resolve() != historical_path
+        return original_json_object(path, noun=noun, maximum_bytes=maximum_bytes)
+
+    monkeypatch.setattr(lifecycle, "_json_object", reject_historical_read)
+    result = lifecycle.preflight_reconciliation(repo_root)
+
+    assert "historical_host_admission" not in result["stale_bindings"]
+    assert all("historical_host_admission" not in item for item in result["blockers"])
+    assert "scheduler_source_policy" not in result["stale_bindings"]
+
+
 def test_prepare_materializes_offline_contracts_and_stops_before_authority(
     repo_root: Path,
     tmp_path: Path,

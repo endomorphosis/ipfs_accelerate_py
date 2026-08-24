@@ -319,6 +319,29 @@ _BOARD_SOURCE_FIELDS: Final = frozenset(
         "declared_board_cid",
     }
 )
+_SCHEDULER_SOURCE_POLICY_FIELDS: Final = frozenset(
+    {
+        "accelerator_required_ancestor",
+        "accelerator_required_branch",
+        "changed_revision_requires_fresh_reconciliation_and_plan_revision",
+        "ipfs_accelerate_planning_revision",
+        "ipfs_accelerate_planning_tree",
+        "ipfs_datasets_planning_revision",
+        "ipfs_datasets_planning_tree",
+        "ipfs_datasets_submodule_path",
+        "ipfs_kit_planning_revision",
+        "ipfs_kit_planning_tree",
+        "ipfs_kit_submodule_path",
+        "mcp_plus_plus_planning_revision",
+        "mcp_plus_plus_planning_tree",
+        "mcp_plus_plus_submodule_path",
+        "record_recursive_repository_forest_at_launch",
+        "require_clean_nested_worktree_at_task_start",
+        "require_initialized_gitlinks",
+        "require_superproject_gitlink_equals_nested_head",
+        "source_forest_root",
+    }
+)
 
 
 class EAAEFReconciliationError(RuntimeError):
@@ -805,6 +828,122 @@ def _require_trusted_current_forest(
             "caller-held repository forest differs from the trusted current Git inspection"
         )
     return observed
+
+
+def _require_scheduler_source_policy(
+    repo_root: str | Path,
+    *,
+    config: Mapping[str, Any],
+    forest: Mapping[str, Any],
+) -> None:
+    """Verify the tracked predecessor policy without treating it as a live seal.
+
+    The scheduler config was committed with the planning predecessor, so its
+    head, tree, and forest root necessarily become historical when this module
+    advances.  The durable policy is that the current accelerator descends
+    from that reviewed minimum, the predecessor identities remain internally
+    coherent, and all current gitlinks satisfy the strict forest policy.  The
+    separately sealed current forest and fresh signed Plan-R2 authority bind
+    the launch source; this tracked predecessor never substitutes for either.
+    """
+
+    root = Path(repo_root).resolve(strict=True)
+    sealed = _require_sealed_forest(forest)
+    raw_binding = config.get("source_binding")
+    if not isinstance(raw_binding, Mapping):
+        raise EAAEFReconciliationIdentityError("scheduler source policy is absent")
+    binding = dict(raw_binding)
+    if set(binding) != _SCHEDULER_SOURCE_POLICY_FIELDS:
+        raise EAAEFReconciliationIdentityError("scheduler source policy shape differs")
+
+    expected_paths = {
+        "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+        "ipfs_kit_submodule_path": "ipfs_kit_py",
+        "mcp_plus_plus_submodule_path": "ipfs_accelerate_py/mcplusplus",
+    }
+    expected_guards = {
+        "changed_revision_requires_fresh_reconciliation_and_plan_revision": True,
+        "record_recursive_repository_forest_at_launch": True,
+        "require_clean_nested_worktree_at_task_start": True,
+        "require_initialized_gitlinks": True,
+        "require_superproject_gitlink_equals_nested_head": True,
+    }
+    if any(binding.get(field_name) != value for field_name, value in expected_paths.items()):
+        raise EAAEFReconciliationIdentityError("scheduler required gitlink paths differ")
+    if any(binding.get(field_name) is not value for field_name, value in expected_guards.items()):
+        raise EAAEFReconciliationIdentityError("scheduler required gitlink guards differ")
+    if (
+        not isinstance(binding.get("accelerator_required_branch"), str)
+        or not str(binding["accelerator_required_branch"]).strip()
+    ):
+        raise EAAEFReconciliationIdentityError("scheduler predecessor branch is malformed")
+
+    accelerator_revision = str(binding.get("ipfs_accelerate_planning_revision") or "")
+    required_ancestor = str(binding.get("accelerator_required_ancestor") or "")
+    if not _GIT_OID_RE.fullmatch(accelerator_revision) or required_ancestor != accelerator_revision:
+        raise EAAEFReconciliationIdentityError("scheduler minimum predecessor differs")
+
+    predecessor_members = (
+        (
+            "ipfs_accelerate_py",
+            root,
+            accelerator_revision,
+            str(binding.get("ipfs_accelerate_planning_tree") or ""),
+        ),
+        (
+            "ipfs_datasets_py",
+            root / expected_paths["ipfs_datasets_submodule_path"],
+            str(binding.get("ipfs_datasets_planning_revision") or ""),
+            str(binding.get("ipfs_datasets_planning_tree") or ""),
+        ),
+        (
+            "ipfs_kit_py",
+            root / expected_paths["ipfs_kit_submodule_path"],
+            str(binding.get("ipfs_kit_planning_revision") or ""),
+            str(binding.get("ipfs_kit_planning_tree") or ""),
+        ),
+        (
+            "Mcp-Plus-Plus",
+            root / expected_paths["mcp_plus_plus_submodule_path"],
+            str(binding.get("mcp_plus_plus_planning_revision") or ""),
+            str(binding.get("mcp_plus_plus_planning_tree") or ""),
+        ),
+    )
+    planned_repositories: dict[str, dict[str, str]] = {}
+    for name, repository, revision, tree in predecessor_members:
+        if not _GIT_OID_RE.fullmatch(revision) or not _GIT_OID_RE.fullmatch(tree):
+            raise EAAEFReconciliationIdentityError(
+                f"scheduler predecessor identity is malformed: {name}"
+            )
+        try:
+            observed_tree = _git(repository, "rev-parse", f"{revision}^{{tree}}")
+        except EAAEFReconciliationIdentityError as exc:
+            raise EAAEFReconciliationIdentityError(
+                f"scheduler predecessor is unavailable: {name}"
+            ) from exc
+        if observed_tree != tree:
+            raise EAAEFReconciliationIdentityError(f"scheduler predecessor tree differs: {name}")
+        planned_repositories[name] = {"commit": revision, "tree": tree}
+
+    predecessor_forest = {
+        "schema": "ExternalAgentSourceForest@1",
+        "repositories": planned_repositories,
+    }
+    if binding.get("source_forest_root") != _eaaef_source_cid(predecessor_forest):
+        raise EAAEFReconciliationIdentityError("scheduler predecessor forest differs")
+
+    try:
+        _git(
+            root,
+            "merge-base",
+            "--is-ancestor",
+            required_ancestor,
+            str(sealed["source_head"]),
+        )
+    except EAAEFReconciliationIdentityError as exc:
+        raise EAAEFReconciliationIdentityError(
+            "current accelerator source is outside the scheduler minimum ancestry"
+        ) from exc
 
 
 @dataclass(frozen=True)
@@ -3185,25 +3324,14 @@ def preflight_reconciliation(
         except EAAEFReconciliationError as exc:
             blockers.append(str(exc))
         else:
-            binding = config.get("source_binding")
-            if not isinstance(binding, Mapping) or (
-                binding.get("source_forest_root") != population.source_forest_root
-                or binding.get("ipfs_accelerate_planning_revision") != population.source_head
-                or binding.get("ipfs_accelerate_planning_tree") != population.source_tree
-            ):
-                stale_bindings.append("scheduler_source_binding")
-        try:
-            old_admission = _json_object(
-                root / EAAEF_ADMISSION_BUNDLE_PATH,
-                noun="historical EAAEF admission bundle",
-            )
-        except EAAEFReconciliationError:
-            old_admission = {}
-        if old_admission and (
-            old_admission.get("source_head") != population.source_head
-            or old_admission.get("source_tree") != population.source_tree
-        ):
-            stale_bindings.append("historical_host_admission")
+            try:
+                _require_scheduler_source_policy(
+                    root,
+                    config=config,
+                    forest=selected_forest,
+                )
+            except EAAEFReconciliationError:
+                stale_bindings.append("scheduler_source_policy")
         if authority is None:
             blockers.append("fresh_independently_signed_plan_r2_authority_absent")
         elif trust_roots is None:
