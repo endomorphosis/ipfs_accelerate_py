@@ -25,12 +25,17 @@ from types import SimpleNamespace
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    acquire_checkout_mutation_lease,
     board_scoped_checkout_mutation_lock_path,
     checkout_lock_metadata,
+    checkout_mutation_lease_state,
     checkout_mutation_lock_path,
+    read_checkout_mutation_lease,
 )
+from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
 from ipfs_accelerate_py.agent_supervisor.merge.database_coordination import (
     DatabaseCoordinationError,
+    DatabaseCoordinationStaleFenceError,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     DATABASE_PROGRAM_JSON_ENV,
@@ -64,6 +69,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalCandidateRetry,
+    DatabasePortalDeterministicReconciliationDeferred,
     DatabasePortalValidationRetry,
     database_portal_consumed_no_progress_fingerprint,
     database_portal_task_contract_digest,
@@ -79,6 +85,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     ATTEMPT_PHASE_VALIDATION,
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
+    DATABASE_PROVIDER_CALLBACK_DEFERRED_SCHEMA,
     DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA,
     DATABASE_TASK_ATTEMPT_INTERFACE,
     DatabaseImplementationAuthorityError,
@@ -206,6 +213,10 @@ def _open_daemon(
     merge_target_ref: str = "HEAD",
     task_prefix: str = "",
     board_namespace: str = "",
+    deterministic_reconciliation_fn: Callable[
+        [DatabaseTaskAttempt, dict[str, object]], dict[str, object]
+    ]
+    | None = None,
 ) -> DatabaseImplementationDaemon:
     database_path = control_path or (tmp_path / "control.duckdb")
     coordination_path = tmp_path / "coordination.duckdb"
@@ -263,6 +274,7 @@ def _open_daemon(
         provider_fn=provider_fn or default_provider,
         effect_fn=effect,
         validation_fn=validation,
+        deterministic_reconciliation_fn=deterministic_reconciliation_fn,
         require_real_execution=True,
         clock_ms=clock_ms,
         repo_root=repo_root,
@@ -833,6 +845,7 @@ def test_apmc_bootstrap_completions_unlock_exact_frontier_across_lane_sidecars(
             owner_session_id=f"apmc-lane-{lane}",
             authority_mode="embedded",
             task_source_kind="duckdb",
+            require_real_execution=True,
         )
         try:
             assert set(daemon.sync_ready_tasks_into_coordination()) == ready
@@ -1005,6 +1018,7 @@ def test_conflicting_local_completion_refuses_coordination_drift(
 
 def test_portal_deferral_refreshes_failed_revision_and_releases_exact_lease(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider_calls: list[str] = []
 
@@ -1012,9 +1026,14 @@ def test_portal_deferral_refreshes_failed_revision_and_releases_exact_lease(
         provider_calls.append(attempt.attempt_id)
         if len(provider_calls) == 1:
             raise DatabasePortalBridgeDeferred(
-                "validation_project_dependency_preflight_failed"
+                "validation_project_dependency_preflight_failed",
+                backoff_seconds=0,
             )
-        return {"status": "ok", "task_cid": attempt.task_cid}
+        return {
+            "status": "ok",
+            "accepted": True,
+            "task_cid": attempt.task_cid,
+        }
 
     daemon = _open_daemon(
         tmp_path,
@@ -1027,9 +1046,24 @@ def test_portal_deferral_refreshes_failed_revision_and_releases_exact_lease(
         attempt = daemon.claim_next()
         assert attempt is not None
 
+        original_release = daemon.coordinator.release
+        release_calls: list[str] = []
+
+        def release_then_lose_response(*args: object, **kwargs: object) -> None:
+            original_release(*args, **kwargs)
+            release_calls.append(str(kwargs.get("reason") or ""))
+            raise RuntimeError("simulated release response loss")
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "release",
+            release_then_lose_response,
+        )
         result = daemon._resume_attempt_without_process_crash(attempt)
+        monkeypatch.setattr(daemon.coordinator, "release", original_release)
 
         assert provider_calls == [attempt.attempt_id]
+        assert release_calls == ["portal_retry_state_persisted"]
         assert result["status"] == "failed"
         assert "fail_error" not in result
         failed = daemon.get_attempt(attempt.attempt_id)
@@ -1062,6 +1096,121 @@ def test_portal_deferral_refreshes_failed_revision_and_releases_exact_lease(
         assert resumed["resumed"] is True
         assert resumed["status"] == "succeeded"
         assert provider_calls == [attempt.attempt_id, retry.attempt_id]
+    finally:
+        daemon.close()
+
+
+def test_portal_failure_lease_release_response_loss_accepts_exact_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def defer_provider(
+        _attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=0,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-release-response-loss",
+        provider_fn=defer_provider,
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        original_release = daemon.coordinator.release
+        released_lease_ids: list[str] = []
+
+        def release_then_lose_response(lease: object, **kwargs: object) -> None:
+            released = original_release(lease, **kwargs)
+            released_lease_ids.append(released.lease_id)
+            raise RuntimeError("simulated release response loss")
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "release",
+            release_then_lose_response,
+        )
+
+        result = daemon._resume_attempt_without_process_crash(attempt)
+
+        assert result["status"] == "failed"
+        assert "fail_error" not in result
+        assert released_lease_ids == [attempt.lease_id]
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert next(
+            row["state"]
+            for row in projection["task_claims"]
+            if row["claim_id"] == attempt.claim_id
+        ) == "released"
+        assert next(
+            row["state"]
+            for row in projection["fenced_leases"]
+            if row["lease_id"] == attempt.lease_id
+        ) == "released"
+    finally:
+        daemon.close()
+
+
+def test_portal_failure_lease_release_stale_fence_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def defer_provider(
+        _attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=0,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:portal-release-stale-fence",
+        provider_fn=defer_provider,
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+
+        def reject_stale_fence(_lease: object, **_kwargs: object) -> None:
+            raise DatabaseCoordinationStaleFenceError(
+                "simulated stale fence on release"
+            )
+
+        monkeypatch.setattr(
+            daemon.coordinator,
+            "release",
+            reject_stale_fence,
+        )
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="exact fenced claim was not released",
+        ):
+            daemon._resume_attempt_without_process_crash(attempt)
+
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        projection = daemon.coordinator.coordination_registry_projection()
+        assert next(
+            row["state"]
+            for row in projection["task_claims"]
+            if row["claim_id"] == attempt.claim_id
+        ) == "accepted"
+        assert next(
+            row["state"]
+            for row in projection["fenced_leases"]
+            if row["lease_id"] == attempt.lease_id
+        ) == "accepted"
     finally:
         daemon.close()
 
@@ -2338,6 +2487,177 @@ def test_neutral_blocked_claim_release_replays_after_crash(
         assert provider_calls == [attempt.attempt_id]
     finally:
         restarted.close()
+
+
+def test_provider_callback_pre_dispatch_deferral_is_durable_and_replayed(
+    tmp_path: Path,
+) -> None:
+    provider_calls: list[str] = []
+
+    def defer_before_dispatch(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        deferred = DatabasePortalBridgeDeferred(
+            "provider_capacity_deferred",
+            backoff_seconds=45,
+        )
+        assert deferred.provider_dispatched is False
+        assert deferred.attempt_consumed is False
+        raise deferred
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:durable-provider-deferral",
+        provider_fn=defer_before_dispatch,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        attempt = daemon.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)
+        key = f"provider:{attempt.attempt_id}"
+
+        with pytest.raises(DatabasePortalBridgeDeferred) as first_deferral:
+            daemon.run_provider(attempt)
+        assert first_deferral.value.provider_dispatched is False
+        assert first_deferral.value.attempt_consumed is False
+        assert provider_calls == [attempt.attempt_id]
+
+        recorded = daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=key,
+        )
+        assert recorded is not None
+        assert recorded["schema"] == DATABASE_PROVIDER_CALLBACK_DEFERRED_SCHEMA
+        assert recorded["schema"] != DATABASE_PROVIDER_CALLBACK_UNKNOWN_SCHEMA
+        assert recorded["callback_state"] == "returned_pre_dispatch_deferral"
+        assert recorded["provider_effect_state"] == "not_dispatched"
+        assert recorded["accepted"] is False
+        assert recorded["attempt_consumed"] is False
+        assert recorded["provider_dispatched"] is False
+        assert recorded["reason"] == "provider_capacity_deferred"
+        assert recorded["backoff_seconds"] == 45
+        assert recorded["attempt_id"] == attempt.attempt_id
+        assert recorded["claim_id"] == attempt.claim_id
+        assert recorded["lease_id"] == attempt.lease_id
+        assert recorded["owner_session_id"] == attempt.owner_session_id
+        assert recorded["fencing_token"] == attempt.fencing_token
+        assert recorded["fence_epoch"] == attempt.fence_epoch
+        assert recorded["task_cid"] == attempt.task_cid
+        assert recorded["idempotency_key"] == key
+        assert str(recorded["receipt_id"]).startswith("sha256:")
+
+        with pytest.raises(DatabasePortalBridgeDeferred) as replayed:
+            daemon.run_provider(attempt)
+        assert replayed.value.reason == "provider_capacity_deferred"
+        assert replayed.value.backoff_seconds == 45
+        assert replayed.value.provider_dispatched is False
+        assert replayed.value.attempt_consumed is False
+        assert provider_calls == [attempt.attempt_id]
+        assert daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=key,
+        ) == recorded
+        persisted = daemon.get_attempt(attempt.attempt_id)
+        assert persisted is not None
+        assert persisted.committed_phase == ATTEMPT_PHASE_CONTEXT
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_type", "message"),
+    [
+        (
+            "invalid_receipt",
+            DatabaseImplementationAuthorityError,
+            "provider callback deferral evidence is malformed",
+        ),
+        (
+            "foreign_claim",
+            DatabaseImplementationConflictError,
+            "provider callback deferral does not match the exact attempt",
+        ),
+    ],
+)
+def test_provider_callback_deferred_replay_rejects_untrusted_evidence(
+    tmp_path: Path,
+    mutation: str,
+    error_type: type[Exception],
+    message: str,
+) -> None:
+    provider_calls: list[str] = []
+
+    def defer_before_dispatch(
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeDeferred(
+            "provider_capacity_deferred",
+            backoff_seconds=45,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:untrusted-provider-deferral:{mutation}",
+        provider_fn=defer_before_dispatch,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        attempt = daemon.commit_phase(attempt, ATTEMPT_PHASE_CONTEXT)
+        key = f"provider:{attempt.attempt_id}"
+        with pytest.raises(DatabasePortalBridgeDeferred):
+            daemon.run_provider(attempt)
+        recorded = daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=key,
+        )
+        assert recorded is not None
+
+        tampered = dict(recorded)
+        if mutation == "invalid_receipt":
+            tampered["receipt_id"] = "sha256:" + "0" * 64
+        else:
+            tampered["claim_id"] = "claim:foreign"
+            unsigned = dict(tampered)
+            unsigned.pop("receipt_id")
+            tampered["receipt_id"] = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    unsigned,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+        daemon._require_connection().execute(
+            """
+            UPDATE provider_invocations
+            SET result_json = ?
+            WHERE attempt_id = ? AND idempotency_key = ?
+            """,
+            [
+                json.dumps(
+                    tampered,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                    default=str,
+                ),
+                attempt.attempt_id,
+                key,
+            ],
+        )
+
+        with pytest.raises(error_type, match=message):
+            daemon.run_provider(attempt)
+        assert provider_calls == [attempt.attempt_id]
+        persisted = daemon.get_attempt(attempt.attempt_id)
+        assert persisted is not None
+        assert persisted.committed_phase == ATTEMPT_PHASE_CONTEXT
+    finally:
+        daemon.close()
 
 
 def test_provider_callback_hard_crash_abstains_after_cold_restart(
@@ -4994,6 +5314,9 @@ def test_reconcile_rearms_blocked_portal_provider_failed(tmp_path: Path) -> None
         attempt = daemon.get_attempt(failed_result["attempt_id"])
         assert attempt is not None
         assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+        released = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert released is not None
+        assert released.state.value == "released"
 
         outcomes = daemon.reconcile_terminal_portal_failures()
         assert len(outcomes) == 1
@@ -5025,6 +5348,9 @@ def test_reconcile_rearms_blocked_checkout_contention(tmp_path: Path) -> None:
         attempt = daemon.get_attempt(failed_result["attempt_id"])
         assert attempt is not None
         assert daemon.task_source.get(attempt.task_cid).status == "blocked"
+        released = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert released is not None
+        assert released.state.value == "released"
 
         outcomes = daemon.reconcile_terminal_portal_failures()
         assert len(outcomes) == 1
@@ -5595,6 +5921,652 @@ def test_post_merge_recovery_settles_before_claiming_next_task(
         next_pass = daemon.run_once()
         assert next_pass["selection_idle_reason"] == "no_ready_tasks"
         assert claims == ["claim"]
+    finally:
+        daemon.close()
+
+
+def _false_completion_deterministic_settlement(
+    attempt: DatabaseTaskAttempt,
+    admitted: dict[str, object],
+) -> dict[str, object]:
+    evidence_digest = "sha256:" + "e" * 64
+    portal_receipt = {
+        "accepted": True,
+        "attempt_id": attempt.attempt_id,
+        "task_cid": attempt.task_cid,
+        "evidence_digest": evidence_digest,
+        "receipt_id": "sha256:" + "f" * 64,
+    }
+    settlement: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "false-completion-deterministic-settlement@1"
+        ),
+        "accepted": True,
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "fencing_token": int(attempt.fencing_token),
+        "fence_epoch": int(attempt.fence_epoch),
+        "claim_authority_id": admitted["authority_id"],
+        "reintegration_evidence_id": admitted[
+            "reintegration_evidence_id"
+        ],
+        "target_commit": admitted["target_commit"],
+        "target_tree": admitted["target_tree"],
+        "preserved_unknown_receipt_id": admitted[
+            "preserved_unknown_receipt_id"
+        ],
+        "provider_dispatched": False,
+        "effect_executed": False,
+        "route": "deterministic_current_tree_declared_validation",
+        "validation_result": {
+            "outcome": "passed",
+            "evidence_digest": evidence_digest,
+            "argv": ["focused-current-tree-validation"],
+            "provider_dispatched": False,
+            "effect_executed": False,
+        },
+        "portal_acceptance_receipt": portal_receipt,
+    }
+    settlement["receipt_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            settlement,
+            separators=(",", ":"),
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    return settlement
+
+
+def _false_completion_test_authority(
+    attempt: DatabaseTaskAttempt,
+    *,
+    target_commit: str,
+    target_tree: str,
+) -> dict[str, object]:
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "false-completion-deterministic-claim-authority@1"
+        ),
+        "task_cid": attempt.task_cid,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "fencing_token": int(attempt.fencing_token),
+        "fence_epoch": int(attempt.fence_epoch),
+        "source_attempt_id": "attempt:source",
+        "reintegration_evidence_id": "sha256:" + "b" * 64,
+        "request_id": "request:integrated",
+        "candidate_commit": "1" * 40,
+        "target_commit": target_commit,
+        "target_tree": target_tree,
+        "preserved_unknown_receipt_id": "sha256:" + "c" * 64,
+        "provider_dispatch_policy": "forbidden",
+        "effect_execution_policy": "forbidden",
+        "authority_id": "sha256:" + "d" * 64,
+    }
+
+
+def test_false_completion_claim_settles_without_provider_or_effect(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    settlement_calls: list[str] = []
+    repo = _git_repo(tmp_path)
+    target_commit = subprocess.run(
+        ["git", "rev-parse", "main^{commit}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    target_tree = subprocess.run(
+        ["git", "rev-parse", f"{target_commit}^{{tree}}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    authority: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "false-completion-deterministic-claim-authority@1"
+        ),
+        "task_cid": "task:cid:001",
+        "attempt_id": "",
+        "claim_id": "",
+        "lease_id": "",
+        "fencing_token": 0,
+        "fence_epoch": 0,
+        "source_attempt_id": "attempt:source",
+        "reintegration_evidence_id": "sha256:" + "b" * 64,
+        "request_id": "request:integrated",
+        "candidate_commit": "1" * 40,
+        "target_commit": target_commit,
+        "target_tree": target_tree,
+        "preserved_unknown_receipt_id": "sha256:" + "c" * 64,
+        "provider_dispatch_policy": "forbidden",
+        "effect_execution_policy": "forbidden",
+        "authority_id": "sha256:" + "d" * 64,
+    }
+
+    def deterministic_settlement(
+        attempt: DatabaseTaskAttempt,
+        admitted: dict[str, object],
+    ) -> dict[str, object]:
+        settlement_calls.append(attempt.attempt_id)
+        assert dict(admitted) == authority
+        return _false_completion_deterministic_settlement(attempt, admitted)
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-completion-deterministic-settlement",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        deterministic_reconciliation_fn=deterministic_settlement,
+        repo_root=repo,
+        board_namespace="aseh-test",
+    )
+    try:
+        merge_queue = SimpleNamespace(
+            queue_dir=tmp_path / "merge-queue",
+            max_attempts=3,
+        )
+        daemon.bind_merge_train_recovery(
+            merge_queue=merge_queue,
+            repo_root=repo,
+            merge_target_branch="main",
+        )
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        authority.update(
+            attempt_id=attempt.attempt_id,
+            claim_id=attempt.claim_id,
+            lease_id=attempt.lease_id,
+            fencing_token=int(attempt.fencing_token),
+            fence_epoch=int(attempt.fence_epoch),
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_false_completion_deterministic_claim_authority",
+            lambda current: (
+                dict(authority)
+                if current.attempt_id == attempt.attempt_id
+                else None
+            ),
+        )
+        original_complete_attempt = daemon.complete_attempt
+        settlement_fences: list[dict[str, object]] = []
+
+        def complete_while_fenced(
+            current: DatabaseTaskAttempt,
+            **kwargs: object,
+        ) -> DatabaseTaskAttempt:
+            lock_path = board_scoped_checkout_mutation_lock_path(
+                repo,
+                "aseh-test",
+            )
+            lease = read_checkout_mutation_lease(lock_path)
+            assert lease is not None
+            assert checkout_mutation_lease_state(lease) == "current"
+            assert lease.metadata["operation"] == (
+                "database_false_completion_settlement"
+            )
+            contender = MergeTrain(
+                repo_root=repo,
+                queue=merge_queue,
+                target_branch="main",
+                max_attempts=3,
+            )
+            target_lease_acquired, _ = contender.run_under_consumer_lease(
+                lambda: "unexpected"
+            )
+            competing_checkout, reason, _owner, _waited = (
+                acquire_checkout_mutation_lease(
+                    lock_path,
+                    checkout_lock_metadata(
+                        kind="merge",
+                        repo_root=repo,
+                        task_id="competing-settlement",
+                        branch="main",
+                    ),
+                    owner_active=lambda _metadata: True,
+                    timeout_seconds=0.0,
+                )
+            )
+            assert target_lease_acquired is False
+            assert competing_checkout is None
+            assert reason == "lock_exists"
+            settlement_fences.append(
+                {
+                    "checkout_lease_id": lease.lease_id,
+                    "target_consumer_contended": True,
+                }
+            )
+            return original_complete_attempt(current, **kwargs)
+
+        monkeypatch.setattr(
+            daemon,
+            "complete_attempt",
+            complete_while_fenced,
+        )
+
+        result = daemon.resume_attempt(attempt)
+
+        assert result["status"] == "succeeded"
+        assert result["provider_dispatched"] is False
+        assert result["effect_executed"] is False
+        assert result["route"] == (
+            "deterministic_current_tree_declared_validation"
+        )
+        assert provider_calls == []
+        assert effect_calls == []
+        assert settlement_calls == [attempt.attempt_id]
+        assert len(settlement_fences) == 1
+        assert read_checkout_mutation_lease(
+            board_scoped_checkout_mutation_lock_path(repo, "aseh-test")
+        ) is None
+        assert daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        ) is None
+        assert daemon.effect_claim_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"effect:{attempt.attempt_id}",
+        ) is None
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "completed"
+        phases = {
+            item["phase"]: item["body"]
+            for item in daemon.phase_history(attempt.attempt_id)
+        }
+        assert phases[ATTEMPT_PHASE_PROVIDER]["provider_dispatched"] is False
+        assert phases[ATTEMPT_PHASE_EFFECT]["effect_executed"] is False
+        assert phases[ATTEMPT_PHASE_VALIDATION]["outcome"] == "passed"
+        settlement_id = result["settlement_receipt_id"]
+        assert phases[ATTEMPT_PHASE_CONTEXT][
+            "deterministic_reconciliation"
+        ]["receipt_id"] == settlement_id
+        assert phases[ATTEMPT_PHASE_PROVIDER][
+            "settlement_receipt_id"
+        ] == settlement_id
+        assert phases[ATTEMPT_PHASE_EFFECT][
+            "settlement_receipt_id"
+        ] == settlement_id
+        assert phases[ATTEMPT_PHASE_VALIDATION][
+            "deterministic_settlement"
+        ]["receipt_id"] == settlement_id
+        assert task.body["completion_receipt"]["validation"][
+            "deterministic_settlement"
+        ]["receipt_id"] == settlement_id
+        assert task.body["completion_receipt"]["validation"][
+            "deterministic_settlement"
+        ]["preserved_unknown_receipt_id"] == authority[
+            "preserved_unknown_receipt_id"
+        ]
+
+        replay = daemon.resume_attempt(attempt.attempt_id)
+        assert replay["resumed"] is False
+        assert replay["reason"] == "attempt_succeeded"
+        assert settlement_calls == [attempt.attempt_id]
+    finally:
+        daemon.close()
+
+
+def test_false_completion_target_consumer_contention_is_typed_and_replayable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    settlement_calls: list[str] = []
+    repo = _git_repo(tmp_path)
+    target_commit = subprocess.run(
+        ["git", "rev-parse", "main^{commit}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    target_tree = subprocess.run(
+        ["git", "rev-parse", f"{target_commit}^{{tree}}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    merge_queue = SimpleNamespace(
+        queue_dir=tmp_path / "merge-queue",
+        max_attempts=3,
+    )
+
+    def deterministic_settlement(
+        attempt: DatabaseTaskAttempt,
+        admitted: dict[str, object],
+    ) -> dict[str, object]:
+        settlement_calls.append(attempt.attempt_id)
+        return _false_completion_deterministic_settlement(attempt, admitted)
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-completion-target-consumer-contention",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        deterministic_reconciliation_fn=deterministic_settlement,
+        repo_root=repo,
+        board_namespace="aseh-test",
+    )
+    try:
+        daemon.bind_merge_train_recovery(
+            merge_queue=merge_queue,
+            repo_root=repo,
+            merge_target_branch="main",
+        )
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        authority = _false_completion_test_authority(
+            attempt,
+            target_commit=target_commit,
+            target_tree=target_tree,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_false_completion_deterministic_claim_authority",
+            lambda current: (
+                dict(authority)
+                if current.attempt_id == attempt.attempt_id
+                else None
+            ),
+        )
+        incumbent = MergeTrain(
+            repo_root=repo,
+            queue=merge_queue,
+            target_branch="main",
+            max_attempts=3,
+        )
+        with incumbent._consumer_lease() as acquired:
+            assert acquired is True
+            with pytest.raises(
+                DatabasePortalDeterministicReconciliationDeferred
+            ) as raised:
+                daemon.resume_attempt(attempt)
+
+        assert raised.value.reason == (
+            "deterministic_reconciliation_checkout_contended"
+        )
+        assert raised.value.source_reason == (
+            "merge_train_consumer_lease_contended"
+        )
+        assert provider_calls == []
+        assert effect_calls == []
+        assert settlement_calls == [attempt.attempt_id]
+        phases = daemon.phase_history(attempt.attempt_id)
+        assert [item["phase"] for item in phases] == [
+            "claimed",
+            ATTEMPT_PHASE_CONTEXT,
+        ]
+        assert read_checkout_mutation_lease(
+            board_scoped_checkout_mutation_lock_path(repo, "aseh-test")
+        ) is None
+
+        replay = daemon.resume_attempt(attempt.attempt_id)
+        assert replay["status"] == "succeeded"
+        assert replay["provider_dispatched"] is False
+        assert replay["effect_executed"] is False
+        assert settlement_calls == [attempt.attempt_id]
+    finally:
+        daemon.close()
+
+
+def test_false_completion_target_advance_before_fenced_cas_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    repo = _git_repo(tmp_path)
+    target_commit = subprocess.run(
+        ["git", "rev-parse", "main^{commit}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    target_tree = subprocess.run(
+        ["git", "rev-parse", f"{target_commit}^{{tree}}"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    merge_queue = SimpleNamespace(
+        queue_dir=tmp_path / "merge-queue",
+        max_attempts=3,
+    )
+
+    def advance_target_during_validation(
+        attempt: DatabaseTaskAttempt,
+        admitted: dict[str, object],
+    ) -> dict[str, object]:
+        (repo / "README.md").write_text("target advanced\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "add", "README.md"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "advance target during validation"],
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return _false_completion_deterministic_settlement(attempt, admitted)
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-completion-target-advance",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        deterministic_reconciliation_fn=advance_target_during_validation,
+        repo_root=repo,
+        board_namespace="aseh-test",
+    )
+    try:
+        daemon.bind_merge_train_recovery(
+            merge_queue=merge_queue,
+            repo_root=repo,
+            merge_target_branch="main",
+        )
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        authority = _false_completion_test_authority(
+            attempt,
+            target_commit=target_commit,
+            target_tree=target_tree,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_false_completion_deterministic_claim_authority",
+            lambda current: (
+                dict(authority)
+                if current.attempt_id == attempt.attempt_id
+                else None
+            ),
+        )
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="settlement target changed",
+        ):
+            daemon.resume_attempt(attempt)
+
+        assert provider_calls == []
+        assert effect_calls == []
+        assert daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        ) is None
+        assert daemon.effect_claim_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"effect:{attempt.attempt_id}",
+        ) is None
+        phases = daemon.phase_history(attempt.attempt_id)
+        assert [item["phase"] for item in phases] == [
+            "claimed",
+            ATTEMPT_PHASE_CONTEXT,
+        ]
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "in_progress"
+        assert read_checkout_mutation_lease(
+            board_scoped_checkout_mutation_lock_path(repo, "aseh-test")
+        ) is None
+        probe = MergeTrain(
+            repo_root=repo,
+            queue=merge_queue,
+            target_branch="main",
+            max_attempts=3,
+        )
+        target_lease_acquired, observed = probe.run_under_consumer_lease(
+            lambda: "released"
+        )
+        assert target_lease_acquired is True
+        assert observed == "released"
+    finally:
+        daemon.close()
+
+
+def test_false_completion_deferral_preserves_zero_provider_retry_lineage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider_calls: list[str] = []
+    effect_calls: list[str] = []
+    seed = {
+        "schema": DATABASE_FALSE_COMPLETION_REINTEGRATION_RECOVERY_SCHEMA,
+        "evidence_id": "sha256:" + "b" * 64,
+    }
+
+    def defer(
+        _attempt: DatabaseTaskAttempt,
+        _authority: dict[str, object],
+    ) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "deterministic_reconciliation_checkout_contended",
+            backoff_seconds=0,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:false-completion-deterministic-deferral",
+        provider_calls=provider_calls,
+        effect_calls=effect_calls,
+        deterministic_reconciliation_fn=defer,
+        max_task_attempts=2,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+
+        def authority(current: DatabaseTaskAttempt) -> dict[str, object]:
+            return {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "false-completion-deterministic-claim-authority@1"
+                ),
+                "task_cid": current.task_cid,
+                "attempt_id": current.attempt_id,
+                "claim_id": current.claim_id,
+                "lease_id": current.lease_id,
+                "fencing_token": int(current.fencing_token),
+                "fence_epoch": int(current.fence_epoch),
+                "source_attempt_id": "attempt:source",
+                "reintegration_evidence_id": seed["evidence_id"],
+                "request_id": "request:integrated",
+                "candidate_commit": "1" * 40,
+                "target_commit": "2" * 40,
+                "target_tree": "3" * 40,
+                "preserved_unknown_receipt_id": "",
+                "provider_dispatch_policy": "forbidden",
+                "effect_execution_policy": "forbidden",
+                "authority_id": "sha256:" + "d" * 64,
+            }
+
+        def retry_material(
+            current: DatabaseTaskAttempt,
+        ) -> dict[str, object]:
+            refreshed = daemon.get_attempt(current.attempt_id)
+            assert refreshed is not None
+            task = daemon.task_source.get(refreshed.task_cid)
+            assert task is not None
+            return {
+                "attempt": refreshed,
+                "task": task,
+                "control": dict(task.body.get("completion_receipt") or {}),
+                "seed": dict(seed),
+                "preserved_unknown_provider_outcome": None,
+            }
+
+        monkeypatch.setattr(
+            daemon,
+            "_false_completion_deterministic_claim_authority",
+            authority,
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_false_completion_claim_retry_material",
+            retry_material,
+        )
+
+        result = daemon.run_once()
+        implementation = result["implementation_result"]
+        attempt = daemon.get_attempt(result["attempt_id"])
+        assert attempt is not None
+
+        assert implementation["deterministic_reconciliation"] is True
+        assert implementation["status"] == "retrying"
+        assert implementation["provider_dispatched"] is False
+        assert implementation["effect_executed"] is False
+        assert provider_calls == []
+        assert effect_calls == []
+        assert daemon.provider_invocation_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"provider:{attempt.attempt_id}",
+        ) is None
+        assert daemon.effect_claim_recorded(
+            attempt.attempt_id,
+            idempotency_key=f"effect:{attempt.attempt_id}",
+        ) is None
+        [failed] = [
+            phase
+            for phase in daemon.phase_history(attempt.attempt_id)
+            if phase["phase"] == ATTEMPT_PHASE_FAILED
+        ]
+        assert failed["body"]["provider_dispatched"] is False
+        assert failed["body"]["effect_executed"] is False
+        assert failed["body"]["typed_deferral"]["reason"] == (
+            "deterministic_reconciliation_checkout_contended"
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        released_claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert released_claim is not None
+        assert str(released_claim.state.value) == "released"
+        receipt = task.body["completion_receipt"]
+        assert receipt["operation"] == (
+            "database_portal_false_completion_reintegration_retry_recovery"
+        )
+        assert receipt["false_completion_reintegration_seed"] == seed
+        assert "preserved_unknown_provider_outcome" not in receipt
     finally:
         daemon.close()
 
@@ -6832,6 +7804,98 @@ def test_already_in_progress_control_task_creates_no_execution_attempt(
         source.close()
 
 
+def test_same_status_control_replay_rejects_foreign_receipt_without_mutation(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:foreign-same-status-receipt",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        foreign_receipt = {
+            "operation": "competing_lane_claim",
+            "claim_id": "claim:foreign",
+        }
+        daemon.task_source.compare_and_set_status(
+            task.task_cid,
+            task.revision,
+            "in_progress",
+            foreign_receipt,
+        )
+        before = daemon.task_source.get(task.task_cid)
+        assert before is not None
+        before_body = dict(before.body)
+
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="same-status control replay has foreign receipt authority",
+        ):
+            daemon._cas_task_status_database(
+                task.task_cid,
+                expected_revision=int(before.revision),
+                new_status="in_progress",
+                receipt={
+                    "operation": "database_claim",
+                    "claim_id": "claim:local",
+                },
+            )
+
+        after = daemon.task_source.get(task.task_cid)
+        assert after is not None
+        assert after.status == before.status == "in_progress"
+        assert after.revision == before.revision
+        assert dict(after.body) == before_body
+        assert after.body.get("completion_receipt") == foreign_receipt
+    finally:
+        daemon.close()
+
+
+def test_same_status_control_replay_accepts_exact_receipt_without_revision_change(
+    tmp_path: Path,
+) -> None:
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:exact-same-status-receipt",
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        task = daemon.task_source.get("task:cid:001")
+        assert task is not None
+        receipt = {
+            "operation": "database_claim",
+            "claim_id": "claim:exact",
+        }
+        daemon.task_source.compare_and_set_status(
+            task.task_cid,
+            task.revision,
+            "in_progress",
+            receipt,
+        )
+        before = daemon.task_source.get(task.task_cid)
+        assert before is not None
+        before_body = dict(before.body)
+
+        replayed = daemon._cas_task_status_database(
+            task.task_cid,
+            expected_revision=int(before.revision),
+            new_status="in_progress",
+            receipt=receipt,
+        )
+
+        assert getattr(replayed, "changed", False) is False
+        after = daemon.task_source.get(task.task_cid)
+        assert after is not None
+        assert after.status == before.status == "in_progress"
+        assert after.revision == before.revision
+        assert dict(after.body) == before_body
+        assert after.body.get("completion_receipt") == receipt
+    finally:
+        daemon.close()
+
+
 def test_authoritative_cas_race_creates_no_execution_attempt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -6932,14 +7996,14 @@ def test_portal_bridge_failure_requeues_exact_claim_for_later_reclaim(
         )
         assert initial_claim is not None
         assert initial_coordination_attempt is not None
-        assert initial_claim.state.value == "accepted"
-        assert initial_coordination_attempt.status.value == "running"
+        assert initial_claim.state.value == "released"
+        assert initial_coordination_attempt.status.value == "released"
         control_after_failure = daemon.task_source.get(first_attempt.task_cid)
         assert control_after_failure is not None
         assert control_after_failure.status == "retrying"
         assert daemon.list_running_attempts() == []
 
-        now["ms"] = 6_001
+        now["ms"] = 2_001
         second_pass = daemon.run_once()
         second_result = second_pass["implementation_result"]
         assert second_result["status"] == "succeeded"
@@ -6948,9 +8012,9 @@ def test_portal_bridge_failure_requeues_exact_claim_for_later_reclaim(
         assert second_attempt["attempt_number"] == 2
         assert second_attempt["fencing_token"] > first_attempt.fencing_token
         assert len(provider_attempts) == 2
-        expired_claim = daemon.coordinator.get_task_claim(first_attempt.claim_id)
-        assert expired_claim is not None
-        assert expired_claim.state.value == "expired"
+        released_claim = daemon.coordinator.get_task_claim(first_attempt.claim_id)
+        assert released_claim is not None
+        assert released_claim.state.value == "released"
         final_control = daemon.task_source.get(first_attempt.task_cid)
         assert final_control is not None
         assert final_control.status == "completed"

@@ -3283,6 +3283,155 @@ while True:
                 pass
 
 
+def test_multi_runner_stop_tracks_starts_every_lane_before_waiting_for_slow_lane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One slow exact tree cannot delay termination of a later lane."""
+
+    def track(name: str) -> multi_runner_module.SupervisorTrack:
+        return multi_runner_module.SupervisorTrack(
+            name=name,
+            script_path=tmp_path / f"{name}.py",
+            log_path=tmp_path / f"{name}.log",
+            supervisor_pid_path=tmp_path / f"{name}.pid",
+            daemon_pid_path=tmp_path / f"{name}.daemon.pid",
+        )
+
+    slow = track("slow-lane")
+    fast = track("fast-lane")
+    slow_process = SimpleNamespace(pid=710001)
+    fast_process = SimpleNamespace(pid=710002)
+    slow_entered = threading.Event()
+    fast_entered = threading.Event()
+    slow_observed_fast_lane: list[bool] = []
+    worker_names: dict[int, str] = {}
+
+    def terminate(process: Any, *, grace_seconds: float):
+        assert grace_seconds == 30.0
+        worker_names[process.pid] = threading.current_thread().name
+        if process.pid == slow_process.pid:
+            slow_entered.set()
+            slow_observed_fast_lane.append(fast_entered.wait(timeout=1.0))
+            return False, (process.pid,)
+        assert slow_entered.wait(timeout=1.0)
+        fast_entered.set()
+        return True, (process.pid,)
+
+    removed_markers: list[tuple[Path, int]] = []
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_terminate_managed_process",
+        terminate,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_remove_stale_pid_marker_if_unchanged",
+        lambda path, pid: removed_markers.append((path, pid)) or True,
+    )
+    messages: list[str] = []
+
+    result = multi_runner_module.stop_tracks(
+        (slow, fast),
+        {
+            slow.name: slow_process,
+            fast.name: fast_process,
+        },
+        repo_root=tmp_path,
+        grace_seconds=30.0,
+        output=messages.append,
+    )
+
+    assert slow_observed_fast_lane == [True]
+    assert worker_names.keys() == {slow_process.pid, fast_process.pid}
+    assert all(
+        name.startswith("agent-supervisor-stop")
+        for name in worker_names.values()
+    )
+    assert result == {
+        "stopped_pids": [fast_process.pid],
+        "stopped_count": 1,
+        "all_trees_fenced": False,
+        "removed_runtime_markers": [str(fast.supervisor_pid_path)],
+    }
+    assert removed_markers == [
+        (fast.supervisor_pid_path, fast_process.pid),
+    ]
+    assert len(messages) == 2
+    assert messages[0].endswith(
+        " stopping supervisor wrapper and managed daemons"
+    )
+    assert messages[1].endswith(
+        " could not verify complete shutdown for slow-lane "
+        f"pid={slow_process.pid}"
+    )
+
+
+def test_multi_runner_stop_tracks_isolates_identity_failure_between_lanes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unverifiable lane never grants PID authority or aborts peer fencing."""
+
+    tracks = tuple(
+        multi_runner_module.SupervisorTrack(
+            name=name,
+            script_path=tmp_path / f"{name}.py",
+            log_path=tmp_path / f"{name}.log",
+            supervisor_pid_path=tmp_path / f"{name}.pid",
+            daemon_pid_path=tmp_path / f"{name}.daemon.pid",
+        )
+        for name in ("identity-failure", "verified-peer")
+    )
+    failed_process = SimpleNamespace(pid=720001)
+    peer_process = SimpleNamespace(pid=720002)
+    observed: list[int] = []
+
+    def terminate(process: Any, *, grace_seconds: float):
+        assert grace_seconds == 0.25
+        observed.append(process.pid)
+        if process.pid == failed_process.pid:
+            raise multi_runner_module.ProcessIdentityMismatch(
+                "test immutable identity mismatch"
+            )
+        return True, (process.pid,)
+
+    removed_markers: list[tuple[Path, int]] = []
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_terminate_managed_process",
+        terminate,
+    )
+    monkeypatch.setattr(
+        multi_runner_module,
+        "_remove_stale_pid_marker_if_unchanged",
+        lambda path, pid: removed_markers.append((path, pid)) or True,
+    )
+    messages: list[str] = []
+
+    result = multi_runner_module.stop_tracks(
+        tracks,
+        {
+            tracks[0].name: failed_process,
+            tracks[1].name: peer_process,
+        },
+        repo_root=tmp_path,
+        grace_seconds=0.25,
+        output=messages.append,
+    )
+
+    assert set(observed) == {failed_process.pid, peer_process.pid}
+    assert result["all_trees_fenced"] is False
+    assert result["stopped_pids"] == [peer_process.pid]
+    assert removed_markers == [
+        (tracks[1].supervisor_pid_path, peer_process.pid),
+    ]
+    assert messages[-1].endswith(
+        " could not verify complete shutdown for identity-failure "
+        f"pid={failed_process.pid} error_type=ProcessIdentityMismatch"
+    )
+
+
 def test_v3_materializer_uses_canonical_ready_and_attempt_admissible_set(
     tmp_path: Path,
 ) -> None:

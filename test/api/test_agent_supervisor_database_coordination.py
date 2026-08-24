@@ -1823,6 +1823,25 @@ def test_released_same_key_retry_creates_new_claim(tmp_path: Path) -> None:
             idempotency_key="released-response",
         )
         coordinator.release(claim.as_fenced_lease(), reason="abandoned")
+        released = coordinator.get_task_claim(claim.claim_id)
+        assert released is not None
+        verified = coordinator.protect_task_claim(
+            released,
+            expected_task_cid=claim.task_cid,
+            expected_attempt_id=claim.attempt_id,
+            expected_owner_session_id=claim.owner_session_id,
+            expected_fencing_token=claim.fencing_token,
+            expected_fence_epoch=claim.fence_epoch,
+            expected_attempt_status=AttemptStatus.RELEASED,
+            expected_lease_state=LeaseState.RELEASED,
+        )
+        assert verified.state is LeaseState.RELEASED
+        with pytest.raises(ValueError, match="requires a released attempt"):
+            coordinator.protect_task_claim(
+                released,
+                expected_attempt_status=AttemptStatus.RUNNING,
+                expected_lease_state=LeaseState.RELEASED,
+            )
 
         replacement = coordinator.claim_task(
             task_cid=claim.task_cid,
@@ -1833,6 +1852,12 @@ def test_released_same_key_retry_creates_new_claim(tmp_path: Path) -> None:
         assert replacement.attempt_id != claim.attempt_id
         assert replacement.attempt_number == claim.attempt_number + 1
         assert replacement.fencing_token > claim.fencing_token
+        with pytest.raises(DatabaseCoordinationStaleFenceError):
+            coordinator.protect_task_claim(
+                released,
+                expected_attempt_status=AttemptStatus.RELEASED,
+                expected_lease_state=LeaseState.RELEASED,
+            )
     finally:
         coordinator.close()
 

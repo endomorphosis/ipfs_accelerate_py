@@ -3811,7 +3811,11 @@ class DatabaseCoordinator:
                 connection,
                 lease_id=lease_id,
                 scope_key=scope_key,
-                event_type="protected_task_write",
+                event_type=(
+                    "protected_task_write"
+                    if expected_lease_state is LeaseState.ACCEPTED
+                    else "verified_released_task_claim"
+                ),
                 fencing_token=token,
                 fence_epoch=epoch,
                 observed_at_ms=now,
@@ -4571,6 +4575,7 @@ class DatabaseCoordinator:
         expected_fencing_token: int | None = None,
         expected_fence_epoch: int | None = None,
         expected_attempt_status: AttemptStatus | str = AttemptStatus.RUNNING,
+        expected_lease_state: LeaseState | str = LeaseState.ACCEPTED,
         allow_logically_completed: bool = False,
         now_ms: int | None = None,
     ) -> FencedLease:
@@ -4579,8 +4584,11 @@ class DatabaseCoordinator:
         Unlike :meth:`protect_write`, this validates the task claim, fenced
         lease, and task-attempt projections together.  The caller-provided
         identity must name the same task, claim, attempt, owner, lease, token,
-        and epoch in all three rows.  Expired, released, completed, or taken-
-        over attempts fail closed.
+        and epoch in all three rows.  Live writes require the default
+        ``accepted`` state.  Retry reconciliation may explicitly verify an
+        immutable ``released`` claim, but that check does not reactivate the
+        lease or authorize another provider/effect execution.  Expired,
+        completed, or taken-over attempts fail closed.
         """
 
         identity = self._task_claim_identity(claim)
@@ -4609,6 +4617,22 @@ class DatabaseCoordinator:
             if isinstance(expected_attempt_status, AttemptStatus)
             else AttemptStatus(str(expected_attempt_status).strip().lower())
         )
+        lease_state = (
+            expected_lease_state
+            if isinstance(expected_lease_state, LeaseState)
+            else LeaseState(str(expected_lease_state).strip().lower())
+        )
+        if lease_state not in {LeaseState.ACCEPTED, LeaseState.RELEASED}:
+            raise ValueError(
+                "task claim protection only admits accepted or released state"
+            )
+        if (
+            lease_state is LeaseState.RELEASED
+            and status is not AttemptStatus.RELEASED
+        ):
+            raise ValueError(
+                "released task claim protection requires a released attempt"
+            )
         now = self._now_ms() if now_ms is None else _nonneg_int(int(now_ms), "now_ms")
         with self._lock:
             connection = self._require()
@@ -4621,6 +4645,7 @@ class DatabaseCoordinator:
                     expected_attempt_status=status,
                     allow_logically_completed=bool(allow_logically_completed),
                     record_event=True,
+                    expected_lease_state=lease_state,
                 )
                 self._commit_if_idle(connection)
                 return lease

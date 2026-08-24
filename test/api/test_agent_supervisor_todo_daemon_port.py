@@ -12224,6 +12224,64 @@ def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path)
     assert state.task_statuses["ACCEL-003"] == "ready"
 
 
+def test_database_deterministic_reconciliation_ignores_stale_merge_completion(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Revalidate an earlier integrated candidate
+
+- Status: completed
+- Completion: artifact
+- Priority: P0
+- Track: ops
+- Depends on:
+- Outputs:
+- Validation: python -c 'raise SystemExit(0)'
+- Acceptance: Current-tree validation must run before completion.
+- Database deterministic reconciliation schema: ipfs_accelerate_py/agent-supervisor/false-completion-reconciliation-projection@1
+""",
+        encoding="utf-8",
+    )
+    queue = MergeQueue(repo / "merge-queue")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        merge_queue=queue,
+    )
+    [task] = parse_task_file(todo_path, "## ACCEL-")
+    request = queue.enqueue(
+        branch_name="implementation/accel-001",
+        task_id=task.task_id,
+        canonical_task_id=daemon._canonical_ref(task),
+        commit_sha="a" * 40,
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:test")
+    assert claimed is not None and claimed.request_id == request.request_id
+    queue.complete(claimed)
+    daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
+    daemon._successfully_merged_task_ids = lambda: {task.task_id}  # type: ignore[method-assign]
+
+    result = daemon.run_once()
+    [projected] = parse_task_file(todo_path, "## ACCEL-")
+    state = TodoTaskState.load(daemon.state_path)
+
+    assert result["shared_completed_task_ids"] == []
+    assert result["deterministic_reconciliation_task_ids"] == [task.task_id]
+    assert result["merged_status_repair"] == {}
+    assert projected.status == "completed"
+    assert state.task_statuses[task.task_id] == "ready"
+    assert state.completed_task_ids == []
+
+
 def test_bundle_runtime_taskboard_preserves_reviewed_shard_digest_on_shared_completion(
     tmp_path,
 ):

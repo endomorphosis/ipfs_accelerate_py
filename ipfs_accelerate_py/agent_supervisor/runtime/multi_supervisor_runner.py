@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping, MutableMapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -6822,31 +6823,88 @@ def stop_tracks(
     grace_seconds: float = 10.0,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
-    """Stop exact marker-bound wrapper trees and verify no descendants remain."""
+    """Stop exact marker-bound wrapper trees and verify no descendants remain.
+
+    Lane shutdowns run concurrently so the bounded grace consumed by one slow
+    or unverifiable tree cannot delay cooperative termination of another lane.
+    Each worker still delegates exclusively to the existing lifecycle-profile
+    and immutable process-birth checks in ``_terminate_managed_process``; an
+    exception never becomes authority to signal a bare PID.
+    """
 
     stopped: list[int] = []
     removed_runtime_markers: list[str] = []
     all_fenced = True
     _emit(output, "stopping supervisor wrapper and managed daemons")
+
+    # Submit every exact managed tree before waiting for any one result.  The
+    # previous serialized loop let one lane consume the caller's shutdown
+    # window while later lanes had not even received cooperative termination.
+    # A dedicated worker per bounded configured lane keeps the wall-clock
+    # bound at the slowest lane rather than the sum of all lane grace periods.
+    termination_results: dict[
+        str,
+        tuple[bool, tuple[int, ...], str],
+    ] = {}
+    managed = [
+        (track, process)
+        for track in tracks
+        if (process := processes.get(track.name)) is not None
+    ]
+    if managed:
+        with ThreadPoolExecutor(
+            max_workers=len(managed),
+            thread_name_prefix="agent-supervisor-stop",
+        ) as executor:
+            pending = [
+                (
+                    track,
+                    executor.submit(
+                        _terminate_managed_process,
+                        process,
+                        grace_seconds=grace_seconds,
+                    ),
+                )
+                for track, process in managed
+            ]
+            for track, future in pending:
+                try:
+                    fenced, member_pids = future.result()
+                except Exception as exc:
+                    # Preserve fail-closed lifecycle semantics while allowing
+                    # every independently identified lane to finish fencing.
+                    termination_results[track.name] = (
+                        False,
+                        (),
+                        type(exc).__name__,
+                    )
+                else:
+                    termination_results[track.name] = (
+                        bool(fenced),
+                        tuple(member_pids),
+                        "",
+                    )
+
     for track in tracks:
         process = processes.get(track.name)
-        fenced, member_pids = _terminate_managed_process(
-            process,
-            grace_seconds=grace_seconds,
+        fenced, member_pids, error_type = termination_results.get(
+            track.name,
+            (True, (), ""),
         )
         if fenced:
             stopped.extend(member_pids)
         elif process is not None:
             all_fenced = False
+            error_suffix = (
+                f" error_type={error_type}" if error_type else ""
+            )
             _emit(
                 output,
-                f"could not verify complete shutdown for {track.name} pid={process.pid}",
+                (
+                    "could not verify complete shutdown for "
+                    f"{track.name} pid={process.pid}{error_suffix}"
+                ),
             )
-        if process is not None:
-            try:
-                process.wait(timeout=max(0.1, grace_seconds))
-            except subprocess.TimeoutExpired:
-                pass
         if fenced and process is not None:
             resolved = track.resolve(repo_root)
             if _remove_stale_pid_marker_if_unchanged(
