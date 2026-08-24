@@ -1181,10 +1181,6 @@ QUACK_OWNER_COMMAND_MAX_AGE_MS = 300_000
 QUACK_OWNER_COMMAND_TIMEOUT_SECONDS = 210.0
 _QUACK_OWNER_REQUEST_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _QUACK_OWNER_WRITER_RE = re.compile(r"^supervisor-process:[1-9][0-9]{0,19}$")
-_QUACK_OWNER_PENDING_FILE_RE = re.compile(
-    r"^(?P<request_id>[0-9a-f]{32})\.(?:request|processing|done)\.json$"
-)
-QUACK_OWNER_COMMAND_MAX_DIRECTORY_ENTRIES = 4_096
 
 _QUACK_OWNER_COMMAND_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS: (
@@ -1614,49 +1610,6 @@ def _read_quack_owner_command_response(path: Path) -> Mapping[str, Any]:
         os.close(descriptor)
 
 
-def _discover_pending_quack_owner_request_id(
-    target: Path,
-    *,
-    command: str,
-    payload: Mapping[str, Any],
-    store_id: str,
-    store_generation: str,
-) -> str:
-    """Reuse an exact unresolved command identity across caller/owner restarts."""
-
-    entries = tuple(target.iterdir())
-    if len(entries) > QUACK_OWNER_COMMAND_MAX_DIRECTORY_ENTRIES:
-        raise DuckDBConnectionPolicyError(
-            "quack owner command inbox population exceeds its bound"
-        )
-    command_id = content_identity({"command": command, "payload": dict(payload)})
-    for path in sorted(entries, key=lambda item: item.name):
-        match = _QUACK_OWNER_PENDING_FILE_RE.fullmatch(path.name)
-        if match is None:
-            continue
-        try:
-            candidate = _read_quack_owner_command_response(path)
-        except DuckDBConnectionPolicyError:
-            continue
-        if (
-            candidate.get("store_id") != store_id
-            or candidate.get("store_generation") != store_generation
-            or candidate.get("command") != command
-        ):
-            continue
-        if path.name.endswith(".done.json"):
-            if candidate.get("command_id") == command_id:
-                return match.group("request_id")
-            continue
-        if (
-            candidate.get("schema") == QUACK_OWNER_COMMAND_REQUEST_SCHEMA
-            and candidate.get("request_id") == match.group("request_id")
-            and candidate.get("payload") == dict(payload)
-        ):
-            return match.group("request_id")
-    return ""
-
-
 def submit_quack_owner_command(
     command: str,
     payload: Mapping[str, Any],
@@ -1705,13 +1658,12 @@ def submit_quack_owner_command(
         raise DuckDBConnectionPolicyError(
             "quack owner command request_id must be 32 lowercase hexadecimal characters"
         )
-    request_id = requested_id or _discover_pending_quack_owner_request_id(
-        target,
-        command=command_name,
-        payload=command_payload,
-        store_id=store_id,
-        store_generation=store_generation,
-    ) or uuid.uuid4().hex
+    # An idempotency identity represents one logical caller operation, not
+    # merely a command/payload pair.  Inferring it from an unresolved inbox
+    # entry lets independent concurrent callers adopt and replay one another's
+    # result.  Callers that are retrying an unknown outcome must retain and
+    # explicitly resubmit the request_id returned on that outcome.
+    request_id = requested_id or uuid.uuid4().hex
     request_path = target / f"{request_id}.request.json"
     done_path = target / f"{request_id}.done.json"
     token = resolve_quack_attach_token()

@@ -946,8 +946,43 @@ def test_owner_command_timeout_preserves_stable_request_identity(
                 "reason": "timeout-regression",
             },
             timeout_seconds=0.05,
+            request_id=request_id,
         )
     assert retried.value.request_id == request_id
+
+
+def test_owner_command_independent_calls_receive_distinct_request_ids(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inbox = tmp_path / "mutations"
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_MUTATION_DIR", str(inbox))
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", "timeout-test-token")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "/state/control.duckdb")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
+    payload = {
+        "task_cid": "task:test",
+        "delay_ms": 1,
+        "reason": "independent-call-regression",
+    }
+
+    request_ids: list[str] = []
+    for _ in range(2):
+        with pytest.raises(
+            duckdb_state_module.QuackOwnerCommandRemoteError,
+            match="timed out waiting",
+        ) as raised:
+            duckdb_state_module.submit_quack_owner_command(
+                duckdb_state_module.QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
+                payload,
+                timeout_seconds=0.05,
+            )
+        request_ids.append(raised.value.request_id)
+
+    assert len(set(request_ids)) == 2
+    assert {
+        path.name for path in inbox.glob("*.request.json")
+    } == {f"{request_id}.request.json" for request_id in request_ids}
 
 
 def test_authenticated_bundle_is_atomic_and_exact_replay_is_idempotent(tmp_path: Path) -> None:

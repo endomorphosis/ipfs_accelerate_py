@@ -988,7 +988,6 @@ def _tracked_runtime_inventory(
         ),
         noun=f"{noun} ignored inventory",
     )
-    quarantined_pycache = 0
     for raw in ignored.split("\0"):
         if not raw:
             continue
@@ -1010,12 +1009,10 @@ def _tracked_runtime_inventory(
             raise SuccessorOperatorError(
                 f"{noun} contains an ignored executable or data object"
             )
-        quarantined_pycache += 1
     inventory_root = "sha256:" + hashlib.sha256(_canonical_bytes(observed)).hexdigest()
     return {
         "tracked_object_count": len(observed),
         "tracked_inventory_root": inventory_root,
-        "ignored_pycache_quarantined": quarantined_pycache,
     }
 
 
@@ -1160,6 +1157,7 @@ def _candidate_runtime_continuity(root: Path) -> dict[str, Any]:
         "python_bytecode_quarantine": {
             "enabled": True,
             "ephemeral": True,
+            "ignored_worktree_pycache": "quarantined_not_imported",
             "outside_candidate_root": True,
             "private": True,
         },

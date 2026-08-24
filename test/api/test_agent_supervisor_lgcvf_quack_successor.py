@@ -456,7 +456,21 @@ def test_tracked_runtime_inventory_hashes_bytes_and_rejects_ignored_source(
         noun="test runtime",
     )
     assert receipt["tracked_object_count"] == 1
+    assert "ignored_pycache_quarantined" not in receipt
     assert "pycache_prefix" not in receipt
+
+    ignored_pycache = package / "__pycache__" / "module.cpython-312.pyc"
+    ignored_pycache.parent.mkdir()
+    ignored_pycache.write_bytes(b"quarantined bytecode is never imported")
+    assert (
+        operator._tracked_runtime_inventory(
+            repository,
+            head=head,
+            pathspecs=("package",),
+            noun="test runtime",
+        )
+        == receipt
+    )
 
     probe = """
 import importlib.util
