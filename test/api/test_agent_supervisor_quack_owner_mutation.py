@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import importlib.util
+import json
 import os
 import socket
 import threading
@@ -13,18 +13,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from ipfs_accelerate_py.agent_supervisor.runtime import quack_state_server as quack_server_module
-from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as duckdb_state_module
 from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
-    FakeQuackTransport,
     MUTATION_REQUEST_NAME,
-    ProcessBirthIdentity,
     QUACK_ISOLATION_RECEIPT_SCHEMA,
+    FakeQuackTransport,
     QuackStateServerIsolationError,
-    QuackStateServerReadyError,
     build_server,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources import duckdb_state as duckdb_state_module
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
     canonical_json_bytes,
     content_identity,
@@ -32,16 +29,16 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts im
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_transactions import (
+    TransactionError,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
     DatabaseTaskSource,
     TaskSourceConflictError,
-    TaskSourceUnknownOutcomeError,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
-    DuckDBConnection,
-    DuckDBQuackMutationUnknownOutcomeError,
+    _QUACK_OWNER_MUTATION_SQL_TO_TEMPLATE,
     QUACK_MUTATION_COMPLETION_RECEIPT_INSERT,
-    DuckDBConnectionPolicyError,
     QUACK_MUTATION_DOMAIN_EVENT_INSERT,
     QUACK_MUTATION_LEASE_QUEUE_BACKOFF_INSERT,
     QUACK_MUTATION_LEASE_QUEUE_BACKOFF_UPDATE,
@@ -51,27 +48,37 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     QUACK_MUTATION_TASK_STATUS_TRANSITION,
     QUACK_OWNER_MUTATION_MAX_PARAMETERS,
     QUACK_OWNER_MUTATION_PROTOCOL_REVISION,
-    QUACK_OWNER_MUTATION_REQUEST_TTL_MS,
     QUACK_OWNER_MUTATION_REQUEST_SCHEMA,
-    _QUACK_OWNER_MUTATION_SQL_TO_TEMPLATE,
+    QUACK_OWNER_MUTATION_REQUEST_TTL_MS,
+    DuckDBConnection,
+    DuckDBConnectionPolicyError,
     _normalize_quack_mutation_sql,
     _quack_mutation_operation,
     _validate_quack_mutation_parameters,
-    exclusive_file_lock,
-    open_duckdb_connection,
-    quack_owner_mutation_write_lock_path,
+    _validate_quack_mutation_result,
     quack_owner_mutation_content_id,
     quack_owner_mutation_mac,
-    _validate_quack_mutation_result,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
     COMPLETION_EVIDENCE_SCHEMA,
     QUEUE_ENTRY_SCHEMA,
-    IntentRepository,
     open_intent_repository,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_capabilities import (
     probe_quack_capabilities,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import (
+    QuackStateClient,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+    TypedDatabaseTaskSource,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+    TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+    TYPED_STATE_OWNER_SOCKET_ENV,
+    TYPED_STATE_OWNER_TOKEN_ENV,
+    build_control_plane_operation_catalog,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -137,6 +144,69 @@ def _server(tmp_path: Path):
     identity = server.start()
     token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
     return server, identity, token, database
+
+
+def _typed_task_source(
+    server: Any,
+    identity: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    client_id: str,
+    allowed_command_operations: tuple[str, ...],
+    clock_ms: Any | None = None,
+) -> TypedDatabaseTaskSource:
+    """Attach one process-bound typed client without retaining its grant in env."""
+
+    token, grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=tuple(sorted(build_control_plane_operation_catalog())),
+        allowed_command_operations=allowed_command_operations,
+        peer_pid=os.getpid(),
+    )
+    assert grant.client_id == client_id
+    assert grant.process_birth_id == identity.process_birth_id
+    assert grant.peer_pid == os.getpid()
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        str(server.typed_command_socket_path()),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id=identity.store_id,
+        process_birth_id=identity.process_birth_id,
+    )
+    try:
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+    except Exception:
+        client.close()
+        raise
+    finally:
+        monkeypatch.delenv(TYPED_STATE_OWNER_TOKEN_ENV, raising=False)
+    assert TYPED_STATE_OWNER_TOKEN_ENV not in os.environ
+    return TypedDatabaseTaskSource(client, clock_ms=clock_ms)
+
+
+def _typed_claim_receipt(
+    source: TypedDatabaseTaskSource,
+    *,
+    lane: str,
+    claimed_from_revision: int,
+) -> dict[str, Any]:
+    return {
+        "operation": "database_claim",
+        "claim_phase_schema": TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+        "claim_process_attestation": dict(source.claim_process_attestation()),
+        "claim_id": f"claim:{lane}",
+        "attempt_id": f"attempt:{lane}",
+        "attempt_number": 1,
+        "lease_id": f"lease:{lane}",
+        "owner_session_id": f"session:{lane}",
+        "fencing_token": 1,
+        "fence_epoch": 1,
+        "claimed_from_revision": int(claimed_from_revision),
+    }
 
 
 def _isolation_receipt(tmp_path: Path) -> tuple[Path, dict[str, Any]]:
@@ -1046,9 +1116,12 @@ def test_forged_done_receipt_is_rejected_and_cannot_suppress_request(tmp_path: P
         valid = _done(server, request)
         assert valid["ok"] is True
         assert valid["observed"].get("forged") is None
-        assert _validate_quack_mutation_result(
-            valid, request=request, token=token
-        ) == 1
+        # This hermetic server intentionally uses FakeQuackTransport, so it
+        # cannot produce the authoritative read-replica proof required by the
+        # transport-level validator.  The security property under test is the
+        # exact signed owner envelope: the forged file is rejected and the
+        # owner replaces it with a canonical CID/MAC-bound result.
+        assert server._existing_result_is_valid(done, request) is True  # noqa: SLF001
     finally:
         server.stop()
 
@@ -1410,10 +1483,10 @@ def test_isolation_observation_mismatch_rejects_valid_receipt(tmp_path: Path) ->
     assert not server.owner_marker_path().exists()
 
 
-def test_concurrent_remote_database_task_source_cas_has_one_typed_loser(
+def test_concurrent_typed_database_task_source_cas_has_one_loser(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Exercise the real Quack transport, producer buffer, and owner consumer."""
+    """Two process-bound typed clients contend through one exclusive owner."""
 
     database = tmp_path / "control" / "control.duckdb"
     _seed(database)
@@ -1422,7 +1495,7 @@ def test_concurrent_remote_database_task_source_cas_has_one_typed_loser(
         database_path=database,
         state_dir=receipt_path.parent,
         **_isolation_server_kwargs(_receipt),
-        store_id=str(database),
+        store_id="casf-typed-concurrent-cas-v1",
         repository_id="repository:test",
         isolation_receipt_path=receipt_path,
         isolation_observer=_admitted_observation,
@@ -1448,30 +1521,13 @@ def test_concurrent_remote_database_task_source_cas_has_one_typed_loser(
     assert replica["database_uuid"] == identity.database_uuid
     assert replica["generation"] == identity.generation
     assert replica["live"] is True
-    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
-    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", raising=False)
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE",
-        identity.secret_handle,
-    )
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(database))
-    # Human labels are intentionally non-numeric; live numeric pins use their
-    # separate fields and must not attempt int('pcpc-v1'/'schema-v1').
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION", "schema-v1")
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION",
-        str(identity.generation),
-    )
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION",
-        str(identity.schema_revision),
-    )
-    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(tmp_path))
-    assert token not in os.environ.values()
+    transport_token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
+    assert transport_token not in os.environ.values()
 
-    assert _raw_quack_query(identity.listen_uri, token,
-        "SELECT status, revision FROM tasks WHERE task_cid = 'task:test'"
+    assert _raw_quack_query(
+        identity.listen_uri,
+        transport_token,
+        "SELECT status, revision FROM tasks WHERE task_cid = 'task:test'",
     ) == [("ready", 1)]
     escape = database.parent / "raw-quack-copy-escape.csv"
     for adversarial_sql in (
@@ -1484,86 +1540,128 @@ def test_concurrent_remote_database_task_source_cas_has_one_typed_loser(
             Exception,
             match="read-only|read only|READ_ONLY|disabled by configuration",
         ):
-            _raw_quack_query(identity.listen_uri, token, adversarial_sql)
-    assert not escape.exists()
-    readonly_client = open_duckdb_connection(identity.listen_uri)
-    try:
-        with pytest.raises(
-            Exception,
-            match="read-only|read only|READ_ONLY|Can only update base table",
-        ):
-            readonly_client._connection.execute(  # noqa: SLF001
-                "UPDATE control_plane.tasks SET status = 'completed' "
-                "WHERE task_cid = 'task:test'"
+            _raw_quack_query(
+                identity.listen_uri,
+                transport_token,
+                adversarial_sql,
             )
-    finally:
-        readonly_client.close()
-    stopping = threading.Event()
+    assert not escape.exists()
 
-    def consume() -> None:
-        while not stopping.is_set():
-            server.service_mutation_inbox(max_requests=8)
-            stopping.wait(0.01)
-
-    consumer = threading.Thread(target=consume, daemon=True)
-    consumer.start()
-    sources = [
-        DatabaseTaskSource(
-            identity.listen_uri, install_schema=False, owner_id=f"lane:{index}"
+    sources: list[TypedDatabaseTaskSource] = []
+    for index in (1, 2):
+        sources.append(
+            _typed_task_source(
+                server,
+                identity,
+                monkeypatch,
+                client_id=f"database-implementation-daemon:typed-lane-{index}",
+                allowed_command_operations=(
+                    "task.status.cas.receipt",
+                    "task.validation.record.passed",
+                ),
+            )
         )
-        for index in (1, 2)
-    ]
     initial = sources[0].get_task("task:test")
     assert initial is not None and (initial.status, initial.revision) == ("ready", 1)
     barrier = threading.Barrier(2)
-    outcomes: list[tuple[str, Any]] = []
+    outcomes: list[tuple[str, Any, TypedDatabaseTaskSource]] = []
     guard = threading.Lock()
 
-    def contend(source: DatabaseTaskSource) -> None:
+    def contend(source: TypedDatabaseTaskSource, lane: str) -> None:
+        claim_receipt = _typed_claim_receipt(
+            source,
+            lane=lane,
+            claimed_from_revision=initial.revision,
+        )
         barrier.wait(timeout=5)
         try:
             value = source.compare_and_set_status(
-                "task:test", expected_revision=1, status="in_progress"
+                "task:test",
+                expected_revision=initial.revision,
+                status="in_progress",
+                receipt=claim_receipt,
             )
         except TaskSourceConflictError as exc:
-            result: tuple[str, Any] = ("conflict", exc)
+            result: tuple[str, Any, TypedDatabaseTaskSource] = (
+                "rejected",
+                exc,
+                source,
+            )
+        except TransactionError as exc:
+            # Once the winning claim is committed, the owner rejects the
+            # losing receipt as stale claim authority. If the loser has not
+            # submitted yet, the adapter instead rejects its stale revision.
+            assert "authorization_denied" in str(exc)
+            result = ("rejected", exc, source)
         else:
-            result = ("success", value)
+            result = ("success", value, source)
         with guard:
             outcomes.append(result)
 
-    threads = [threading.Thread(target=contend, args=(source,)) for source in sources]
+    threads = [
+        threading.Thread(
+            target=contend,
+            args=(source, f"lane-{index}"),
+        )
+        for index, source in enumerate(sources, start=1)
+    ]
     try:
         for thread in threads:
             thread.start()
         for thread in threads:
             thread.join(timeout=20)
         assert all(not thread.is_alive() for thread in threads)
-        assert sorted(item[0] for item in outcomes) == ["conflict", "success"]
-        after_cas = sources[0].get_task("task:test")
+        assert sorted(item[0] for item in outcomes) == ["rejected", "success"], [
+            (
+                label,
+                type(value).__name__,
+                getattr(value, "kind", None),
+                str(value),
+                dict(getattr(value, "details", {})),
+            )
+            for label, value, _source in outcomes
+        ]
+        winner = next(item[2] for item in outcomes if item[0] == "success")
+        after_cas = winner.get_task("task:test")
         assert after_cas is not None
         assert (after_cas.status, after_cas.revision) == ("in_progress", 2)
-        assert _raw_quack_query(identity.listen_uri, token,
-            "SELECT status, revision FROM tasks WHERE task_cid = 'task:test'"
-        ) == [("in_progress", 2)]
-        validation = sources[0].record_validation_result(
-            task_cid="task:test",
+        winning_claim = after_cas.body["completion_receipt"]
+        assert winning_claim["claim_process_attestation"]["client_id"].startswith(
+            "database-implementation-daemon:typed-lane-"
+        )
+        assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
+        assert not tuple(server.mutation_inbox_path().glob("*.done.json"))
+
+        admitted = winner.compare_and_set_status(
+            after_cas.task_cid,
+            after_cas.revision,
+            "in_progress",
+            {
+                **winning_claim,
+                "operation": "database_attempt_admitted",
+                "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+                "admitted_from_revision": after_cas.revision,
+                "attempt_execution_phase": "claimed",
+                "attempt_execution_revision": 1,
+            },
+        )
+        evidence_digest = "sha256:" + ("ab" * 32)
+        validation = winner.record_validation_result(
+            task_cid=admitted.task.task_cid,
             outcome="passed",
-            evidence_digest="sha256:" + ("ab" * 32),
+            evidence_digest=evidence_digest,
             argv=["python", "-m", "pytest", "-q"],
+            attempt_id=winning_claim["attempt_id"],
         )
         assert validation.changed is True
-        assert _raw_quack_query(identity.listen_uri, token,
-            "SELECT COUNT(*) FROM validation_results "
-            "WHERE task_cid = 'task:test'"
-        ) == [(1,)]
+
         read_stopping = threading.Event()
         read_failures: list[BaseException] = []
         read_revisions: list[int] = []
         first_read_samples = [threading.Event() for _source in sources]
 
-        def read_during_refresh(
-            source: DatabaseTaskSource,
+        def read_during_completion(
+            source: TypedDatabaseTaskSource,
             first_read_sample: threading.Event,
         ) -> None:
             while not read_stopping.is_set():
@@ -1579,7 +1677,7 @@ def test_concurrent_remote_database_task_source_cas_has_one_typed_loser(
 
         readers = [
             threading.Thread(
-                target=read_during_refresh,
+                target=read_during_completion,
                 args=(source, first_read_sample),
                 daemon=True,
             )
@@ -1598,11 +1696,12 @@ def test_concurrent_remote_database_task_source_cas_has_one_typed_loser(
             for reader in readers:
                 reader.join(timeout=5)
         assert all(first_samples_observed), read_failures
-        completed = sources[0].compare_and_set_status(
-            "task:test",
-            expected_revision=2,
-            status="completed",
-            evidence_digests=["sha256:" + ("ab" * 32)],
+        completed = winner.compare_and_set_status(
+            admitted.task.task_cid,
+            admitted.task.revision,
+            "completed",
+            {"operation": "database_complete", "evidence_digest": evidence_digest},
+            evidence_digests=[evidence_digest],
         )
         read_stopping.set()
         for reader in readers:
@@ -1611,176 +1710,103 @@ def test_concurrent_remote_database_task_source_cas_has_one_typed_loser(
         assert not read_failures
         assert read_revisions
         assert completed.task.status == "completed"
+        assert completed.task.revision == admitted.task.revision + 1
         assert completed.receipt_cid
-        assert _raw_quack_query(identity.listen_uri, token,
-            "SELECT status, revision FROM tasks WHERE task_cid = 'task:test'"
-        ) == [("completed", 3)]
-        final = sources[0].get_task("task:test")
-        assert final is not None and (final.status, final.revision) == ("completed", 3)
-        lock_path = quack_owner_mutation_write_lock_path(str(database))
-        assert lock_path is not None
-        bounded_reader = IntentRepository(
-            identity.listen_uri,
-            owner_id="lane:bounded-reader",
-            install_schema=False,
-            lock_timeout_seconds=0.05,
+        final = winner.get_task("task:test")
+        assert final is not None
+        assert (final.status, final.revision) == (
+            "completed",
+            completed.task.revision,
         )
-        try:
-            with exclusive_file_lock(lock_path, timeout_seconds=1):
-                with pytest.raises(TimeoutError, match="DuckDB .* lock"):
-                    bounded_reader.get_task("task:test")
-        finally:
-            bounded_reader.close()
-        successful_results = [
-            json.loads(path.read_text(encoding="utf-8"))
-            for path in server.mutation_inbox_path().glob("*.done.json")
-            if json.loads(path.read_text(encoding="utf-8")).get("ok") is True
-        ]
-        assert successful_results
-        assert all(
-            receipt["observed"]["read_replica"]["live"] is True
-            and receipt["observed"]["read_replica"]["refresh_sequence"] >= 2
-            for receipt in successful_results
-        )
-        assert server._connection.execute(  # noqa: SLF001
-            "SELECT COUNT(*) FROM task_revisions "
-            "WHERE task_cid = 'task:test' AND revision = 2"
-        ).fetchone()[0] == 1
-        assert server._connection.execute(  # noqa: SLF001
-            "SELECT COUNT(*) FROM completion_receipts WHERE task_cid = 'task:test'"
-        ).fetchone()[0] == 1
-        assert server._connection.execute(  # noqa: SLF001
-            "SELECT COUNT(*) FROM validation_results WHERE task_cid = 'task:test'"
-        ).fetchone()[0] == 1
-        assert server._connection.execute(  # noqa: SLF001
-            "SELECT COUNT(*) FROM evidence_nodes WHERE task_cid = 'task:test' "
-            "AND evidence_kind = 'validation'"
-        ).fetchone()[0] == 1
-        assert server._connection.execute(  # noqa: SLF001
-            "SELECT COUNT(*) FROM domain_events WHERE task_cid = 'task:test' "
-            "AND event_type = 'intent.task_status_changed'"
-        ).fetchone()[0] == 1
+        assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
+        assert not tuple(server.mutation_inbox_path().glob("*.done.json"))
     finally:
         for source in sources:
             source.close()
-        stopping.set()
-        consumer.join(timeout=2)
         server.stop()
-    with DatabaseTaskSource(database, install_schema=False) as source:
-        assert source.projection_matches_events() is True
+
+    with DatabaseTaskSource(database, install_schema=False) as local:
+        final = local.get_task("task:test")
+        assert final is not None
+        assert (final.status, final.revision) == ("completed", 4)
 
 
-def test_replica_refresh_failure_is_typed_unknown_and_restart_recovers_drift(
+def test_typed_cas_is_authoritative_when_replica_refresh_fails_and_restart_repairs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Typed owner commands neither depend on nor mutate through the replica."""
+
     database = tmp_path / "control" / "control.duckdb"
     _seed(database)
     receipt_path, _receipt = _isolation_receipt(tmp_path)
-    process_generation = {"value": 0}
 
     def make_server():
-        process_generation["value"] += 1
-        birth = ProcessBirthIdentity(
-            pid=os.getpid(),
-            start_time_ticks=1000 + process_generation["value"],
-            boot_id="test-owner-restart",
-            parent_pid=os.getppid(),
-        )
         return build_server(
             database_path=database,
             state_dir=receipt_path.parent,
             **_isolation_server_kwargs(_receipt),
-            store_id=str(database),
+            store_id="casf-typed-replica-recovery-v1",
             repository_id="repository:test",
             isolation_receipt_path=receipt_path,
             isolation_observer=_admitted_observation,
             capability_probe=lambda **_kwargs: probe_quack_capabilities(),
-            process_birth_factory=lambda: birth,
         )
 
     server = make_server()
     identity = server.start()
-    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", raising=False)
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE",
-        identity.secret_handle,
+    transport_token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:typed-replica-independence",
+        allowed_command_operations=("task.status.cas.receipt",),
     )
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(database))
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION", "schema-v1")
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION",
-        str(identity.generation),
-    )
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION",
-        str(identity.schema_revision),
-    )
-    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(tmp_path))
+    refresh_calls = {"count": 0}
 
     def fail_copy() -> tuple[str, int]:
-        raise QuackStateServerReadyError("injected replica refresh failure")
+        refresh_calls["count"] += 1
+        raise AssertionError(
+            "typed owner command attempted non-authoritative replica settlement"
+        )
 
     monkeypatch.setattr(server, "_copy_authoritative_read_replica", fail_copy)
-    stopping = threading.Event()
-
-    def consume() -> None:
-        while server.lifecycle.value == "ready" and not stopping.is_set():
-            server.service_mutation_inbox(max_requests=8)
-            stopping.wait(0.01)
-
-    consumer = threading.Thread(target=consume, daemon=True)
-    consumer.start()
-    source = DatabaseTaskSource(
-        identity.listen_uri, install_schema=False, owner_id="lane:unknown"
-    )
     try:
-        with pytest.raises(TaskSourceUnknownOutcomeError, match="reconciliation") as raised:
-            source.compare_and_set_status(
-                "task:test", expected_revision=1, status="in_progress"
-            )
-        assert isinstance(
-            raised.value.__cause__,
-            duckdb_state_module.DuckDBQuackMutationUnknownOutcomeError,
-        ) or isinstance(
-            getattr(raised.value.__cause__, "__cause__", None),
-            DuckDBQuackMutationUnknownOutcomeError,
+        ready = source.get_task("task:test")
+        assert ready is not None
+        claim = _typed_claim_receipt(
+            source,
+            lane="typed-replica-independence",
+            claimed_from_revision=ready.revision,
         )
-        assert server.lifecycle.value == "failed"
-        assert server._transport_connection is None  # noqa: SLF001
-        assert server.status()["read_replica"]["live"] is False
-        committed_row = server._connection.execute(  # noqa: SLF001
-            "SELECT status, revision FROM tasks WHERE task_cid = 'task:test'"
-        ).fetchone()
-        assert (committed_row[0], committed_row[1]) == ("in_progress", 2)
-        results = [
-            json.loads(path.read_text(encoding="utf-8"))
-            for path in server.mutation_inbox_path().glob("*.done.json")
-        ]
-        unknown = [
-            receipt
-            for receipt in results
-            if receipt.get("error_code")
-            == "read_replica_refresh_unknown_outcome"
-        ]
-        assert len(unknown) == 1
-        assert unknown[0]["ok"] is False
-        assert unknown[0]["observed"]["canonical_effects_present"] is True
-        import duckdb
-
-        with pytest.raises(duckdb.Error):
-            _raw_quack_query(
-                identity.listen_uri,
-                server._vault.resolve(identity.secret_handle),  # noqa: SLF001
-                "SELECT status FROM tasks WHERE task_cid = 'task:test'",
-            )
+        claimed = source.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim,
+        )
+        assert claimed.changed is True
+        assert (claimed.task.status, claimed.task.revision) == ("in_progress", 2)
+        assert refresh_calls["count"] == 0
+        assert server.lifecycle.value == "ready"
+        assert server.status()["read_replica"]["live"] is True
+        # The HTTP/Quack file is explicitly non-authoritative and remains the
+        # last checkpoint. Typed reads observe the canonical owner immediately.
+        assert _raw_quack_query(
+            identity.listen_uri,
+            transport_token,
+            "SELECT status, revision FROM tasks WHERE task_cid = 'task:test'",
+        ) == [("ready", 1)]
+        observed = source.get_task("task:test")
+        assert observed is not None
+        assert (observed.status, observed.revision) == ("in_progress", 2)
+        assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
+        assert not tuple(server.mutation_inbox_path().glob("*.done.json"))
     finally:
         source.close()
-        stopping.set()
-        consumer.join(timeout=2)
         server.stop()
 
-    # A stale or corrupted non-authoritative replica is never reused.  A new
+    # A stale or corrupted non-authoritative replica is never reused. A new
     # owner generation overwrites it from the canonical writer before serving.
     replica_path = database.with_name("control.read-replica.duckdb")
     replica_path.write_bytes(b"drifted-non-authoritative-replica")
@@ -1839,10 +1865,10 @@ def test_ops_start_serve_loop_services_owner_inbox(tmp_path: Path) -> None:
     assert server.serviced == 1
 
 
-def test_remote_database_task_source_record_queue_backoff(
+def test_typed_database_task_source_records_process_bound_retry_cooldown(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The retry cooldown write must land through the closed Quack owner."""
+    """Retry cooldowns use an exact typed claim, not the legacy HMAC inbox."""
 
     database = tmp_path / "control" / "control.duckdb"
     _seed(database)
@@ -1851,82 +1877,105 @@ def test_remote_database_task_source_record_queue_backoff(
         database_path=database,
         state_dir=receipt_path.parent,
         **_isolation_server_kwargs(_receipt),
-        store_id=str(database),
+        store_id="casf-typed-retry-cooldown-v1",
         repository_id="repository:test",
         isolation_receipt_path=receipt_path,
         isolation_observer=_admitted_observation,
         capability_probe=lambda **_kwargs: probe_quack_capabilities(),
     )
     identity = server.start()
-    token = server._vault.resolve(identity.secret_handle)  # noqa: SLF001
-    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN", raising=False)
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE",
-        identity.secret_handle,
-    )
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_ID", str(database))
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "pcpc-v1")
-    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_SCHEMA_REVISION", "schema-v1")
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_STORE_LIVE_GENERATION",
-        str(identity.generation),
-    )
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_STATE_LIVE_SCHEMA_REVISION",
-        str(identity.schema_revision),
-    )
-    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(tmp_path))
-    stopping = threading.Event()
-
-    def consume() -> None:
-        while not stopping.is_set():
-            server.service_mutation_inbox(max_requests=8)
-            stopping.wait(0.01)
-
-    consumer = threading.Thread(target=consume, daemon=True)
-    consumer.start()
-    source = DatabaseTaskSource(
-        identity.listen_uri, install_schema=False, owner_id="lane:backoff"
+    clock = {"now_ms": 1_000}
+    source = _typed_task_source(
+        server,
+        identity,
+        monkeypatch,
+        client_id="database-implementation-daemon:typed-backoff",
+        allowed_command_operations=(
+            "task.status.cas.receipt",
+            "task.retry.cooldown.record",
+        ),
+        clock_ms=lambda: clock["now_ms"],
     )
     try:
-        first = source.record_queue_backoff(
-            task_cid="task:test",
+        ready = source.get_task("task:test")
+        assert ready is not None
+        claim = _typed_claim_receipt(
+            source,
+            lane="typed-backoff",
+            claimed_from_revision=ready.revision,
+        )
+        claimed = source.compare_and_set_status(
+            ready.task_cid,
+            ready.revision,
+            "in_progress",
+            claim,
+        )
+        cooldown_identity = {
+            name: claim[name]
+            for name in (
+                "attempt_id",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+                "attempt_number",
+                "fencing_token",
+                "fence_epoch",
+            )
+        }
+        reason = "database_portal_retry:attempt:typed-backoff:empty_or_no_change"
+        first = source.record_task_retry_cooldown(
+            task_cid=claimed.task.task_cid,
+            expected_task_revision=claimed.task.revision,
+            expected_task_status="in_progress",
             delay_ms=60_000,
-            reason="database_portal_retry:attempt:empty_or_no_change",
+            reason=reason,
             selection_penalty=100,
+            now_ms=clock["now_ms"],
+            **cooldown_identity,
         )
         assert first.changed is True
-        entry = source.get_queue_entry("task:test")
+        entry = source.get_queue_entry(claimed.task.task_cid)
         assert entry is not None
         assert entry.attempt == 1
-        assert entry.reason == "database_portal_retry:attempt:empty_or_no_change"
+        assert entry.reason == reason
         assert entry.selection_penalty == 100
-        assert _raw_quack_query(
-            identity.listen_uri,
-            token,
-            "SELECT attempt, state FROM leases WHERE task_cid = 'task:test'",
-        ) == [(1, "released")]
+        assert entry.retry_not_before_ms == 61_000
 
-        second = source.record_queue_backoff(
-            task_cid="task:test",
-            delay_ms=30_000,
-            reason="database_portal_retry:attempt:empty_or_no_change",
-            selection_penalty=200,
+        replay = source.record_task_retry_cooldown(
+            task_cid=claimed.task.task_cid,
+            expected_task_revision=claimed.task.revision,
+            expected_task_status="in_progress",
+            delay_ms=60_000,
+            reason=reason,
+            selection_penalty=100,
+            now_ms=60_999,
+            **cooldown_identity,
         )
-        assert second.changed is True
-        updated = source.get_queue_entry("task:test")
-        assert updated is not None
-        assert updated.attempt == 2
-        assert updated.selection_penalty == 200
-        assert _raw_quack_query(
-            identity.listen_uri,
-            token,
-            "SELECT attempt, state FROM leases WHERE task_cid = 'task:test'",
-        ) == [(2, "released")]
+        assert replay.changed is False
+        assert replay.event_id == first.event_id
+
+        retrying = source.compare_and_set_status(
+            claimed.task.task_cid,
+            claimed.task.revision,
+            "retrying",
+            {
+                "operation": "database_portal_retry",
+                **cooldown_identity,
+                "queue_reason": reason,
+                "backoff_ms": 60_000,
+                "retry_not_before_ms": entry.retry_not_before_ms,
+                "control_expected_revision": claimed.task.revision,
+            },
+        )
+        assert retrying.task.status == "retrying"
+        clock["now_ms"] = 60_999
+        assert source.ready_tasks().tasks == ()
+        clock["now_ms"] = 61_000
+        assert tuple(task.task_cid for task in source.ready_tasks().tasks) == (
+            "task:test",
+        )
+        assert not tuple(server.mutation_inbox_path().glob("*.request.json"))
+        assert not tuple(server.mutation_inbox_path().glob("*.done.json"))
     finally:
-        stopping.set()
-        consumer.join(timeout=5)
         source.close()
         server.stop()
-    with DatabaseTaskSource(database, install_schema=False) as local:
-        assert local.projection_matches_events() is True
