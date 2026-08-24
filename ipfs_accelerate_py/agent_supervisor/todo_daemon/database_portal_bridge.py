@@ -309,7 +309,7 @@ _MAX_POST_MERGE_RECOVERY_CURSOR_BYTES: Final[int] = 64 * 1024
 _POST_MERGE_COMPLETION_STATUSES: Final[frozenset[str]] = frozenset(
     {"merged", "already_merged", "deduplicated", "completed"}
 )
-_DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
+DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
     {
         "schema",
         "interface",
@@ -333,6 +333,14 @@ _DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
         "projection_authority",
         "binding_id",
     }
+)
+
+# Backward-compatible private alias for the local verifier.  The public
+# constant is also consumed by the implementation supervisor so the producer,
+# verifier, and source-reload quiescence proof cannot silently drift onto
+# different exact-field schemas.
+_DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS = (
+    DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS
 )
 
 
@@ -7275,6 +7283,7 @@ class DatabasePortalExecutionBridge:
 
 
 __all__ = (
+    "DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS",
     "DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA",
     "DATABASE_PORTAL_CONSUMED_NO_PROGRESS_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",

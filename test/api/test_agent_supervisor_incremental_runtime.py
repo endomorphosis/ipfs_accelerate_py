@@ -11,6 +11,8 @@ from dataclasses import asdict
 from hashlib import sha256
 from pathlib import Path
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.objectives import objective_graph
 from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     CodebaseScanInventory,
@@ -1507,6 +1509,111 @@ def test_nonpooled_provider_exit_finalizes_preserved_worktree_lifecycle(
         )
         is None
     )
+
+
+def test_rotated_database_portal_attempt_reclaims_exact_dead_worker_before_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # This regression exercises the raw-command route.  Keep it independent
+    # from supervisor tests which may configure one or more sealed-route
+    # fields in the process environment.
+    route_fields = {
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+        "IPFS_ACCELERATE_AGENT_GROK_MODEL",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_PROVIDER",
+        "IPFS_ACCELERATE_AGENT_CODEX_MODEL",
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_FALLBACK_TRIGGER",
+        "IPFS_ACCELERATE_AGENT_CODEX_REASONING_EFFORT",
+    }
+    for name in tuple(os.environ):
+        if name not in route_fields and not name.startswith(
+            "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_ROUTE_"
+        ):
+            continue
+        monkeypatch.delenv(name, raising=False)
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    attempt_root = tmp_path / "state" / "database_portal_attempts"
+    old_state_dir = attempt_root / ("1" * 24)
+    new_state_dir = attempt_root / ("2" * 24)
+    daemon = PortalImplementationDaemon(
+        todo_path=new_state_dir / "task-projection.md",
+        state_path=new_state_dir / "portal-task-state.json",
+        strategy_path=new_state_dir / "strategy.json",
+        events_path=new_state_dir / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=_python_c("raise SystemExit(7)"),
+        use_ephemeral_worktree=True,
+        worktree_root=tmp_path / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="INC-RELOAD-ROTATED",
+        title="Recover a source-reloaded database Portal attempt",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+        canonical_task_key="task/v1/inc-reload-rotated",
+        canonical_task_cid="cid:inc-reload-rotated",
+    )
+    old_workspace = tmp_path / "worktrees" / "old-worker"
+    old = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=1,
+        lane_id="source-reloaded-worker",
+        workspace_path=old_workspace,
+        branch="implementation/inc-reload-rotated-old",
+        merge_target=daemon._main_branch_name(),
+        state_dir=str(old_state_dir),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 31,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    old = daemon.worktree_lifecycle.mark_active(
+        old_workspace,
+        lease_id=old.lease_id,
+        expected_fence=old.fence,
+    )
+    daemon._active_provider_capacity_backoff = (  # type: ignore[method-assign]
+        lambda: {}
+    )
+
+    result = daemon._run_implementation(task, PortalTaskState())
+
+    assert result.get("returncode") == 7, json.dumps(result, indent=2)
+    assert result.get("reason") != "worktree_lifecycle_claim_exists"
+    recovered = daemon.worktree_lifecycle.load_workspace(old_workspace)
+    assert recovered is not None
+    assert recovered.state is WorkspaceLifecycleState.TERMINAL
+    assert recovered.fence == old.fence + 1
+    assert recovered.terminal_reason == (
+        "dead_task_attempt_reclaimed_before_retry"
+    )
+    events = [
+        json.loads(line)
+        for line in (new_state_dir / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    reclaim = next(
+        event
+        for event in events
+        if event.get("type")
+        == "worktree_lifecycle_dead_task_attempt_reclaimed"
+    )
+    assert reclaim["task_id"] == task.task_id
+    assert reclaim["canonical_task_cid"] == task.canonical_task_cid
+    assert reclaim["workspace_path"] == str(old_workspace.resolve())
 
 
 def test_missing_pooled_workspace_is_discarded_after_setup_race(

@@ -291,6 +291,246 @@ def test_controlled_restart_reclaims_only_dead_same_lane_owner(
     assert store.load_workspace(live_workspace).is_nonterminal
 
 
+def test_retry_reclaims_exact_dead_owner_across_rotated_attempt_state_dir(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=21_600.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    attempt_root = tmp_path / "state" / "database_portal_attempts"
+    old_state = attempt_root / ("a" * 24)
+    new_state = attempt_root / ("b" * 24)
+    old_workspace = tmp_path / "worktrees" / "old"
+    old = store.begin_preparing(
+        task_id="ROTATED-RETRY",
+        canonical_task_cid="cid:rotated-retry",
+        attempt=1,
+        lane_id="old-worker",
+        workspace_path=old_workspace,
+        branch="implementation/rotated-retry-old",
+        merge_target="main",
+        state_dir=str(old_state),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 23,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    old = store.mark_active(
+        old_workspace,
+        lease_id=old.lease_id,
+        expected_fence=old.fence,
+    )
+    replacement_workspace = tmp_path / "worktrees" / "replacement"
+
+    with pytest.raises(
+        DuplicateAttemptError,
+        match="task/attempt claim lease has not expired",
+    ):
+        store.begin_preparing(
+            task_id=old.task_id,
+            canonical_task_cid=old.canonical_task_cid,
+            attempt=old.attempt,
+            lane_id="new-worker",
+            workspace_path=replacement_workspace,
+            branch="implementation/rotated-retry-new",
+            merge_target="main",
+            state_dir=str(new_state),
+        )
+
+    terminal = store.reclaim_exact_dead_task_attempt_for_retry(
+        task_id=old.task_id,
+        canonical_task_cid=old.canonical_task_cid,
+        attempt=old.attempt,
+        merge_target=old.merge_target,
+        expected_state_dir=new_state,
+    )
+
+    assert terminal is not None
+    assert terminal.state is WorkspaceLifecycleState.TERMINAL
+    assert terminal.fence == old.fence + 1
+    assert terminal.owner == old.owner
+    assert terminal.lease_id == old.lease_id
+    assert terminal.workspace_path == old.workspace_path
+    assert terminal.branch == old.branch
+    assert terminal.repo_root == old.repo_root
+    assert terminal.state_dir == old.state_dir
+    assert terminal.expires_at == clock.now
+    assert store.load_workspace(old_workspace) == terminal
+    assert store.load_task_attempt(
+        canonical_task_cid=old.canonical_task_cid,
+        task_id=old.task_id,
+        attempt=old.attempt,
+    ) == terminal
+
+    replacement = store.begin_preparing(
+        task_id=old.task_id,
+        canonical_task_cid=old.canonical_task_cid,
+        attempt=old.attempt,
+        lane_id="new-worker",
+        workspace_path=replacement_workspace,
+        branch="implementation/rotated-retry-new",
+        merge_target="main",
+        state_dir=str(new_state),
+    )
+    assert replacement.state is WorkspaceLifecycleState.PREPARING
+    assert store.load_workspace(old_workspace) == terminal
+    assert store.load_workspace(replacement_workspace) == replacement
+
+
+@pytest.mark.parametrize("owner_kind", ["alive", "unknown"])
+def test_retry_reclaim_never_uses_expiry_or_state_rotation_as_death_proof(
+    tmp_path: Path,
+    owner_kind: str,
+) -> None:
+    clock = FakeClock(1_000.0)
+    proc_root = tmp_path / "missing-proc" if owner_kind == "unknown" else None
+    store = _store(
+        tmp_path,
+        lease_seconds=10.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+        proc_root=proc_root,
+    )
+    attempt_root = tmp_path / "state" / "database_portal_attempts"
+    old_state = attempt_root / ("c" * 24)
+    new_state = attempt_root / ("d" * 24)
+    workspace = tmp_path / "worktrees" / "live"
+    live = store.begin_preparing(
+        task_id="LIVE-ROTATED-RETRY",
+        canonical_task_cid="cid:live-rotated-retry",
+        attempt=1,
+        lane_id="live-worker",
+        workspace_path=workspace,
+        branch="implementation/live-rotated-retry",
+        merge_target="main",
+        state_dir=str(old_state),
+        owner=(
+            ProcessBirthIdentity(
+                pid=1,
+                start_time_ticks=1,
+                boot_id="unknown-boot",
+            )
+            if owner_kind == "unknown"
+            else None
+        ),
+    )
+    live = store.mark_active(
+        workspace,
+        lease_id=live.lease_id,
+        expected_fence=live.fence,
+    )
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=live.canonical_task_cid,
+        task_id=live.task_id,
+        attempt=live.attempt,
+    )
+    before_record = record_path.read_bytes()
+    before_index = index_path.read_bytes()
+    clock.advance(11.0)
+
+    with pytest.raises(
+        OwnershipError,
+        match=("still alive" if owner_kind == "alive" else "unknown"),
+    ):
+        store.reclaim_exact_dead_task_attempt_for_retry(
+            task_id=live.task_id,
+            canonical_task_cid=live.canonical_task_cid,
+            attempt=live.attempt,
+            merge_target=live.merge_target,
+            expected_state_dir=new_state,
+        )
+
+    assert record_path.read_bytes() == before_record
+    assert index_path.read_bytes() == before_index
+    assert store.load_workspace(workspace) == live
+
+
+def test_retry_reclaim_rejects_nonpositive_attempt(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+
+    with pytest.raises(
+        WorktreeLifecycleError,
+        match="retry lifecycle identity is incomplete",
+    ):
+        store.reclaim_exact_dead_task_attempt_for_retry(
+            task_id="ZERO-ATTEMPT",
+            canonical_task_cid="cid:zero-attempt",
+            attempt=0,
+            merge_target="main",
+            expected_state_dir=tmp_path / "state" / ("a" * 24),
+        )
+
+
+@pytest.mark.parametrize("mismatch", ["state_scope", "merge_target", "index"])
+def test_retry_reclaim_preserves_unprovable_dead_authority(
+    tmp_path: Path,
+    mismatch: str,
+) -> None:
+    store = _store(
+        tmp_path,
+        lease_seconds=21_600.0,
+        startup_grace_seconds=0.0,
+    )
+    attempt_root = tmp_path / "state" / "database_portal_attempts"
+    old_state = attempt_root / ("e" * 24)
+    new_state = attempt_root / ("f" * 24)
+    workspace = tmp_path / "worktrees" / "dead"
+    dead = store.begin_preparing(
+        task_id="UNPROVABLE-RETRY",
+        canonical_task_cid="cid:unprovable-retry",
+        attempt=2,
+        lane_id="dead-worker",
+        workspace_path=workspace,
+        branch="implementation/unprovable-retry",
+        merge_target="main",
+        state_dir=str(old_state),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 29,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    dead = store.mark_active(
+        workspace,
+        lease_id=dead.lease_id,
+        expected_fence=dead.fence,
+    )
+    record_path = store.workspace_path_for(workspace)
+    index_path = store.task_index_path_for(
+        canonical_task_cid=dead.canonical_task_cid,
+        task_id=dead.task_id,
+        attempt=dead.attempt,
+    )
+    if mismatch == "index":
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+        payload["fence"] = dead.fence + 1
+        index_path.write_text(json.dumps(payload), encoding="utf-8")
+    before_record = record_path.read_bytes()
+    before_index = index_path.read_bytes()
+
+    with pytest.raises(WorktreeLifecycleError):
+        store.reclaim_exact_dead_task_attempt_for_retry(
+            task_id=dead.task_id,
+            canonical_task_cid=dead.canonical_task_cid,
+            attempt=dead.attempt,
+            merge_target=("release" if mismatch == "merge_target" else "main"),
+            expected_state_dir=(
+                tmp_path / "foreign-state" / ("0" * 24)
+                if mismatch == "state_scope"
+                else new_state
+            ),
+        )
+
+    assert record_path.read_bytes() == before_record
+    assert index_path.read_bytes() == before_index
+
+
 def test_exact_dead_owner_adoption_does_not_wait_for_lease_expiry(
     tmp_path: Path,
 ) -> None:
