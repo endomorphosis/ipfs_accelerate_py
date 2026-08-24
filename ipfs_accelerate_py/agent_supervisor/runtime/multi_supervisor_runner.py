@@ -6467,6 +6467,18 @@ def stop_tracks(
             process,
             grace_seconds=grace_seconds,
         )
+        if process is not None:
+            try:
+                process.wait(timeout=max(0.1, grace_seconds))
+            except subprocess.TimeoutExpired:
+                pass
+            # A marker-bound tree snapshot can become empty while the exact
+            # wrapper Popen remains alive (for example, after a child changes
+            # its lifecycle-visible environment).  The wrapper is still
+            # signal authority and its PID marker must not be retired.  Bind
+            # the successful fence result to both observations.
+            if process.poll() is None:
+                fenced = False
         if fenced:
             stopped.extend(member_pids)
         elif process is not None:
@@ -6475,11 +6487,6 @@ def stop_tracks(
                 output,
                 f"could not verify complete shutdown for {track.name} pid={process.pid}",
             )
-        if process is not None:
-            try:
-                process.wait(timeout=max(0.1, grace_seconds))
-            except subprocess.TimeoutExpired:
-                pass
         if fenced and process is not None:
             resolved = track.resolve(repo_root)
             if _remove_stale_pid_marker_if_unchanged(
