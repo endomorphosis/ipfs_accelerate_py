@@ -42,6 +42,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+    canonical_json_bytes as task_body_canonical_json_bytes,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
     install_control_plane_schema,
     install_datasets_authoritative_operational_schema,
@@ -57,6 +60,12 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
     COMPLETED_STATUSES as TASK_SOURCE_COMPLETED_STATUSES,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    MAX_BODY_BYTES as MAX_TASK_BODY_BYTES,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon_runner as daemon_runner,
@@ -5328,8 +5337,15 @@ def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
         daemon.close()
 
 
+@pytest.mark.parametrize(
+    "path_count",
+    (2, 192),
+    ids=("ordinary", "bounded-large-receipt"),
+)
 def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_count: int,
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -5345,12 +5361,31 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
         check=True,
     )
     (repo / "inventory").mkdir()
-    (repo / "inventory" / "result.json").write_text(
-        '{"result":true}\n', encoding="utf-8"
-    )
-    (repo / "inventory" / "summary.json").write_text(
-        '{"summary":true}\n', encoding="utf-8"
-    )
+    if path_count == 2:
+        changed_paths = [
+            "inventory/result.json",
+            "inventory/summary.json",
+        ]
+    else:
+        long_directory = "a" * 240
+        changed_paths = [
+            (
+                f"inventory/{long_directory}/{index:03d}-"
+                + "b" * 238
+                + ".json"
+            )
+            for index in range(path_count)
+        ]
+        assert all(
+            490 <= len(path.encode("utf-8")) <= 500
+            for path in changed_paths
+        )
+    changed_paths = sorted(changed_paths)
+    declared_paths = list(reversed(changed_paths))
+    for relative in changed_paths:
+        output_path = repo / relative
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text('{"result":true}\n', encoding="utf-8")
     subprocess.run(["git", "add", "--", "inventory"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-qm", "candidate"], cwd=repo, check=True)
     candidate_commit = subprocess.run(
@@ -5391,10 +5426,7 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
                 {
                     "implementation_commit": candidate_commit,
                     "rescue_branch": rescue_branch,
-                    "changed_paths": [
-                        "inventory/result.json",
-                        "inventory/summary.json",
-                    ],
+                    "changed_paths": changed_paths,
                 }
             )
             receipt.pop("receipt_id")
@@ -5438,10 +5470,64 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
     try:
         population = _population(1)
         population["tasks"][0]["outputs"] = [
-            {"path": "inventory/summary.json"},
-            {"path": "inventory/result.json"},
+            {"path": path}
+            for path in declared_paths
         ]
         daemon.materialize_population(population)
+        initial_task = daemon.task_source.get("task:cid:001")
+        assert initial_task is not None
+        route_binding = {
+            "policy_id": "policy:successor-route-test",
+            "task_revision": int(initial_task.revision),
+            "task_cid": initial_task.task_cid,
+            "task_alias": initial_task.task_alias,
+        }
+
+        def bind_test_route(_source: object, task: object) -> Mapping[str, object]:
+            assert getattr(task, "task_cid", "") == initial_task.task_cid
+            return dict(route_binding)
+
+        def validate_test_route(
+            _source: object,
+            value: Mapping[str, object],
+            *,
+            task: object,
+            allow_claim_revision: bool = False,
+        ) -> Mapping[str, object]:
+            if dict(value) != route_binding:
+                raise ValueError("rotated test execution route")
+            task_revision = int(getattr(task, "revision", 0) or 0)
+            if task_revision != route_binding["task_revision"]:
+                if not allow_claim_revision:
+                    raise ValueError("advanced test route was not admitted")
+                task_body = getattr(task, "body", None)
+                receipt = (
+                    task_body.get("completion_receipt")
+                    if isinstance(task_body, Mapping)
+                    else None
+                )
+                if (
+                    not isinstance(receipt, Mapping)
+                    or dict(
+                        receipt.get("execution_route_binding") or {}
+                    )
+                    != route_binding
+                ):
+                    raise ValueError("advanced test task lost its route")
+            return dict(route_binding)
+
+        monkeypatch.setattr(
+            type(daemon.task_source),
+            "execution_route_binding_for_task",
+            bind_test_route,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            type(daemon.task_source),
+            "validate_execution_route_binding",
+            validate_test_route,
+            raising=False,
+        )
         holder["bridge"] = DatabasePortalExecutionBridge(
             task_source=daemon.task_source,
             attempt_root=tmp_path / "portal-attempts",
@@ -5479,23 +5565,331 @@ def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
             check=True,
         )
 
+        if path_count == 2:
+            history_projection = (
+                daemon.task_source.task_revision_history_projection(
+                    target.task_cid
+                )
+            )
+            history_receipts = [
+                revision["body"]["completion_receipt"]
+                for revision in history_projection["revisions"]
+                if isinstance(revision.get("body"), Mapping)
+                and isinstance(
+                    revision["body"].get("completion_receipt"),
+                    Mapping,
+                )
+            ]
+            route_fields = {
+                "execution_route_binding",
+                "execution_route_policy_id",
+                "execution_route_origin_revision",
+            }
+            routed_receipts = [
+                receipt
+                for receipt in history_receipts
+                if receipt.get("attempt_id")
+                in {source.attempt_id, target.attempt_id}
+                and set(receipt) & route_fields
+            ]
+            assert len(routed_receipts) >= 3
+            assert all(
+                set(receipt) & route_fields == route_fields
+                for receipt in routed_receipts
+            )
+            assert all(
+                {
+                    field: receipt[field]
+                    for field in route_fields
+                }
+                == {
+                    field: routed_receipts[0][field]
+                    for field in route_fields
+                }
+                for receipt in routed_receipts[1:]
+            )
+
+            revisions = json.loads(
+                json.dumps(history_projection["revisions"])
+            )
+            source_retry_index = next(
+                index
+                for index, revision in enumerate(revisions)
+                if isinstance(revision.get("body"), Mapping)
+                and isinstance(
+                    revision["body"].get("completion_receipt"),
+                    Mapping,
+                )
+                and revision["body"]["completion_receipt"].get("operation")
+                in {
+                    "database_portal_validation_retry",
+                    "database_portal_validation_retry_recovery",
+                }
+            )
+            claim_index = next(
+                index
+                for index, revision in enumerate(revisions)
+                if isinstance(revision.get("body"), Mapping)
+                and isinstance(
+                    revision["body"].get("completion_receipt"),
+                    Mapping,
+                )
+                and revision["body"]["completion_receipt"].get("operation")
+                == "database_claim"
+                and revision["body"]["completion_receipt"].get("attempt_id")
+                == target.attempt_id
+            )
+            terminal_index = next(
+                index
+                for index, revision in enumerate(revisions)
+                if isinstance(revision.get("body"), Mapping)
+                and isinstance(
+                    revision["body"].get("completion_receipt"),
+                    Mapping,
+                )
+                and revision["body"]["completion_receipt"].get("operation")
+                == "database_portal_terminal_failure"
+                and revision["body"]["completion_receipt"].get("attempt_id")
+                == target.attempt_id
+            )
+            source_retry_revision = revisions[source_retry_index][
+                "revision"
+            ]
+            claim_revision = revisions[claim_index]["revision"]
+            terminal_revision = revisions[terminal_index]["revision"]
+            assert claim_revision == source_retry_revision + 1
+            assert terminal_revision == claim_revision + 1
+
+            reservation = json.loads(json.dumps(revisions[claim_index]))
+            reservation_receipt = reservation["body"][
+                "completion_receipt"
+            ]
+            reservation_receipt.update(
+                {
+                    "operation": "database_claim",
+                    "claimed_from_revision": source_retry_revision,
+                    "claim_phase_schema": (
+                        implementation_daemon_module
+                        .TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                    ),
+                    "claim_process_attestation": {
+                        "schema": "typed-claim-process@test",
+                        "grant_id": "grant:test",
+                        "client_id": "client:test",
+                        "process_birth_id": "birth:test",
+                        "pid": 1,
+                        "uid": 0,
+                        "start_time_ticks": 1,
+                        "boot_id": "boot:test",
+                        "parent_pid": 0,
+                    },
+                }
+            )
+            reservation["revision"] = source_retry_revision + 1
+
+            admission = json.loads(json.dumps(reservation))
+            admission_receipt = admission["body"]["completion_receipt"]
+            admission_receipt.update(
+                {
+                    "operation": "database_attempt_admitted",
+                    "claim_phase_schema": (
+                        implementation_daemon_module
+                        .TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                    ),
+                    "admitted_from_revision": source_retry_revision + 1,
+                    "attempt_execution_phase": "claimed",
+                    "attempt_execution_revision": 1,
+                }
+            )
+            admission["revision"] = source_retry_revision + 2
+
+            typed_terminal = json.loads(
+                json.dumps(revisions[terminal_index])
+            )
+            typed_terminal["revision"] = source_retry_revision + 3
+            typed_terminal["body"]["completion_receipt"][
+                "control_expected_revision"
+            ] = source_retry_revision + 2
+            typed_revisions = (
+                revisions[:claim_index]
+                + [reservation, admission, typed_terminal]
+                + revisions[terminal_index + 1 :]
+            )
+
+            def history_projection_for(
+                projected_revisions: list[dict[str, object]],
+            ) -> dict[str, object]:
+                projection = {
+                    "schema": history_projection["schema"],
+                    "task_cid": history_projection["task_cid"],
+                    "revisions": projected_revisions,
+                }
+                projection["projection_cid"] = content_identity(projection)
+                return projection
+
+            typed_projection = history_projection_for(typed_revisions)
+            typed_blocked = replace(
+                blocked,
+                revision=source_retry_revision + 3,
+                body=dict(typed_terminal["body"]),
+            )
+            with monkeypatch.context() as typed_patch:
+                typed_patch.setattr(
+                    type(daemon.task_source),
+                    "task_revision_history_projection",
+                    lambda _source, _task_cid: typed_projection,
+                )
+                verified_typed = (
+                    daemon._verified_validation_retry_successor_authority(
+                        target,
+                        typed_blocked,
+                    )
+                )
+            assert verified_typed["recovery_receipt"][
+                "target_claim_control_revision"
+            ] == source_retry_revision + 2
+
+            for corrupt in ("partial", "rotated"):
+                corrupted_revisions = json.loads(
+                    json.dumps(typed_revisions)
+                )
+                corrupted_receipt = corrupted_revisions[
+                    source_retry_index
+                ]["body"]["completion_receipt"]
+                if corrupt == "partial":
+                    corrupted_receipt.pop("execution_route_policy_id")
+                else:
+                    corrupted_receipt[
+                        "execution_route_origin_revision"
+                    ] += 1
+                corrupted_projection = history_projection_for(
+                    corrupted_revisions
+                )
+                with monkeypatch.context() as route_patch:
+                    route_patch.setattr(
+                        type(daemon.task_source),
+                        "task_revision_history_projection",
+                        lambda _source, _task_cid, value=corrupted_projection: value,
+                    )
+                    with pytest.raises(
+                        (
+                            DatabaseImplementationAuthorityError,
+                            DatabaseImplementationConflictError,
+                        )
+                    ):
+                        daemon._verified_validation_retry_successor_authority(
+                            target,
+                            typed_blocked,
+                        )
+
+        if path_count == 192:
+            # A rejected size admission must happen before the predecessor
+            # queue is rewritten.  Use a deliberately tiny bound to exercise
+            # that ordering, then restore the production bound for recovery.
+            task_before_preflight = daemon.task_source.get(target.task_cid)
+            queue_before_preflight = daemon.task_source.get_queue_entry(
+                target.task_cid
+            )
+            assert task_before_preflight is not None
+            assert queue_before_preflight is not None
+            monkeypatch.setattr(
+                implementation_daemon_module,
+                "_MAX_TASK_BODY_BYTES",
+                1,
+            )
+            assert daemon.reconcile_terminal_portal_failures() == []
+            task_after_preflight = daemon.task_source.get(target.task_cid)
+            queue_after_preflight = daemon.task_source.get_queue_entry(
+                target.task_cid
+            )
+            assert task_after_preflight is not None
+            assert queue_after_preflight is not None
+            assert task_after_preflight.revision == task_before_preflight.revision
+            assert task_body_canonical_json_bytes(
+                dict(task_after_preflight.body)
+            ) == task_body_canonical_json_bytes(
+                dict(task_before_preflight.body)
+            )
+            assert queue_after_preflight.to_dict() == (
+                queue_before_preflight.to_dict()
+            )
+            monkeypatch.setattr(
+                implementation_daemon_module,
+                "_MAX_TASK_BODY_BYTES",
+                MAX_TASK_BODY_BYTES,
+            )
+
         outcomes = daemon.reconcile_terminal_portal_failures()
         assert len(outcomes) == 1
         recovered = daemon.task_source.get(target.task_cid)
         assert recovered is not None and recovered.status == "retrying"
         recovery_receipt = recovered.body["completion_receipt"]
-        assert len(json.dumps(recovery_receipt).encode("utf-8")) < 262_144
+        assert (
+            len(task_body_canonical_json_bytes(dict(recovered.body)))
+            < MAX_TASK_BODY_BYTES
+        )
         assert recovery_receipt["operation"] == (
             "database_portal_validation_retry_successor_recovery"
         )
+        assert recovery_receipt["queue_receipt"] == {}
         recovery = recovery_receipt[
             "validation_retry_successor_recovery"
         ]
         assert recovery["source_attempt_id"] == source.attempt_id
         assert recovery["target_attempt_id"] == target.attempt_id
-        assert recovery["bridge_order_repair_proof"][
-            "preserved_commit_verified"
-        ] is True
+        compact_proof = recovery["bridge_order_repair_proof"]
+        assert compact_proof["preserved_commit_verified"] is True
+        assert "scoped_outputs" not in compact_proof
+        assert "changed_paths" not in compact_proof
+        assert compact_proof["path_count"] == path_count
+
+        def ordered_path_digest(paths: list[str]) -> str:
+            return "sha256:" + hashlib.sha256(
+                task_body_canonical_json_bytes(paths)
+            ).hexdigest()
+
+        assert compact_proof["scoped_outputs_ordered_digest"] == (
+            ordered_path_digest(declared_paths)
+        )
+        assert compact_proof["changed_paths_ordered_digest"] == (
+            ordered_path_digest(changed_paths)
+        )
+        assert compact_proof["exact_output_set_digest"] == (
+            ordered_path_digest(sorted(changed_paths))
+        )
+
+        # Reconstruct the former full proof exactly: its retained proof_id
+        # still commits to both ordered arrays even though persistence now
+        # carries only bounded digest/count evidence.
+        legacy_proof = {
+            key: value
+            for key, value in compact_proof.items()
+            if key
+            not in {
+                "path_count",
+                "scoped_outputs_ordered_digest",
+                "changed_paths_ordered_digest",
+                "exact_output_set_digest",
+            }
+        }
+        legacy_proof["scoped_outputs"] = declared_paths
+        legacy_proof["changed_paths"] = changed_paths
+        legacy_proof_body = dict(legacy_proof)
+        legacy_proof_id = legacy_proof_body.pop("proof_id")
+        assert legacy_proof_id == "sha256:" + hashlib.sha256(
+            task_body_canonical_json_bytes(legacy_proof_body)
+        ).hexdigest()
+        if path_count == 192:
+            legacy_receipt = json.loads(json.dumps(recovery_receipt))
+            legacy_receipt[
+                "validation_retry_successor_recovery"
+            ]["bridge_order_repair_proof"] = legacy_proof
+            legacy_task_body = dict(recovered.body)
+            legacy_task_body["completion_receipt"] = legacy_receipt
+            assert (
+                len(task_body_canonical_json_bytes(legacy_task_body))
+                > MAX_TASK_BODY_BYTES
+            )
         assert daemon.reconcile_terminal_portal_failures() == []
 
         now["ms"] = 13_000

@@ -190,6 +190,14 @@ from ..task_sources.database_task_source import (
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
 )
 from ..task_sources.persistent_task_queue import PersistentTaskQueue
+from ..task_sources.control_plane_contracts import (
+    canonical_json_bytes as _task_body_canonical_json_bytes,
+)
+from ..task_sources.intent_repository import (
+    INTENT_EVENT_SCHEMA as _INTENT_EVENT_SCHEMA,
+    MAX_BODY_BYTES as _MAX_TASK_BODY_BYTES,
+    IntentEventType as _IntentEventType,
+)
 from ..task_sources.task_identity import (
     TaskIdentity,
     canonical_content_cid,
@@ -76123,6 +76131,7 @@ _DATABASE_PORTAL_VALIDATION_RETRY_ORDER_REPAIR_SCHEMA = (
 _DATABASE_PORTAL_VALIDATION_RETRY_SEED_FAILURE_REASON = (
     "database claim validation retry seed failed verification"
 )
+_MAX_TASK_RETRY_NOT_BEFORE_MS = (1 << 63) - 1
 _TASK_REVISION_HISTORY_PROJECTION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-revision-history-projection@1"
 )
@@ -85204,6 +85213,7 @@ class DatabaseImplementationDaemon:
         ).encode("utf-8")
         scoped_outputs = order_repair.get("scoped_outputs")
         changed_paths = order_repair.get("changed_paths")
+        seed_changed_paths = seed.get("changed_paths")
         if (
             order_repair.get("schema")
             != _DATABASE_PORTAL_VALIDATION_RETRY_ORDER_REPAIR_SCHEMA
@@ -85235,6 +85245,7 @@ class DatabaseImplementationDaemon:
             or not isinstance(changed_paths, list)
             or not changed_paths
             or len(set(changed_paths)) != len(changed_paths)
+            or changed_paths != seed_changed_paths
             or len(changed_paths) != len(scoped_outputs)
             or set(changed_paths) != set(scoped_outputs)
             or changed_paths == scoped_outputs
@@ -85257,6 +85268,38 @@ class DatabaseImplementationDaemon:
             raise DatabaseImplementationAuthorityError(
                 "validation retry successor Portal replay proof failed verification"
             )
+
+        # The bridge proof is checked in full above, including both ordered
+        # path lists and their exact relationship to the verified retry seed.
+        # Persist only a deterministic commitment to those potentially large
+        # lists.  ``proof_id`` remains the identity of the original full
+        # bridge proof, while the three SHA-256 commitments make its order and
+        # exact set independently visible without duplicating task outputs in
+        # the bounded control body.
+        def path_list_digest(paths: Sequence[str]) -> str:
+            return "sha256:" + hashlib.sha256(
+                _task_body_canonical_json_bytes(list(paths))
+            ).hexdigest()
+
+        compact_order_repair = {
+            key: value
+            for key, value in order_repair.items()
+            if key not in {"scoped_outputs", "changed_paths"}
+        }
+        compact_order_repair.update(
+            {
+                "path_count": len(scoped_outputs),
+                "scoped_outputs_ordered_digest": path_list_digest(
+                    scoped_outputs
+                ),
+                "changed_paths_ordered_digest": path_list_digest(
+                    changed_paths
+                ),
+                "exact_output_set_digest": path_list_digest(
+                    sorted(scoped_outputs)
+                ),
+            }
+        )
 
         evidence = {
             "schema": (
@@ -85310,7 +85353,7 @@ class DatabaseImplementationDaemon:
             "target_phase_history_digest": self._database_portal_evidence_digest(
                 {"phases": target_history}
             ),
-            "bridge_order_repair_proof": order_repair,
+            "bridge_order_repair_proof": compact_order_repair,
         }
         evidence["receipt_id"] = self._database_portal_evidence_digest(evidence)
         if (
@@ -86589,7 +86632,7 @@ class DatabaseImplementationDaemon:
             )
             or receipt.get("queue_reason") != queue_reason
             or not isinstance(receipt.get("queue_reused"), bool)
-            or not isinstance(receipt.get("queue_receipt"), Mapping)
+            or receipt.get("queue_receipt") != {}
             or not isinstance(coordination, Mapping)
             or coordination.get("attempt_id") != attempt.attempt_id
             or coordination.get("claim_id") != attempt.claim_id
@@ -87062,6 +87105,275 @@ class DatabaseImplementationDaemon:
                 reason=queue_reason,
             )
 
+        route_fields = {
+            "execution_route_binding",
+            "execution_route_policy_id",
+            "execution_route_origin_revision",
+        }
+        task_body = getattr(task, "body", None)
+        prior_control_receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        prior_route_fields = (
+            set(prior_control_receipt) & route_fields
+            if isinstance(prior_control_receipt, Mapping)
+            else set()
+        )
+        if prior_route_fields not in (set(), route_fields):
+            raise DatabaseImplementationAuthorityError(
+                "retry control receipt carries partial execution-route lineage"
+            )
+        retry_route_lineage: dict[str, Any] = {}
+        if prior_route_fields:
+            route_binding = prior_control_receipt.get(
+                "execution_route_binding"
+            )
+            validate_route = getattr(
+                self.task_source,
+                "validate_execution_route_binding",
+                None,
+            )
+            if not isinstance(route_binding, Mapping) or not callable(
+                validate_route
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "retry control receipt has no typed execution-route boundary"
+                )
+            try:
+                normalized_route = dict(
+                    validate_route(
+                        route_binding,
+                        task=task,
+                        allow_claim_revision=True,
+                    )
+                )
+            except Exception as exc:
+                raise DatabaseImplementationAuthorityError(
+                    "retry control receipt has an invalid execution route"
+                ) from exc
+            retry_route_lineage = {
+                "execution_route_binding": normalized_route,
+                "execution_route_policy_id": normalized_route.get("policy_id"),
+                "execution_route_origin_revision": normalized_route.get(
+                    "task_revision"
+                ),
+            }
+            if any(
+                prior_control_receipt.get(field) != value
+                for field, value in retry_route_lineage.items()
+            ):
+                raise DatabaseImplementationAuthorityError(
+                    "retry control receipt changed its execution-route lineage"
+                )
+
+        def retry_control_receipt(
+            *,
+            retry_not_before_ms: int,
+            queue_reused: bool,
+            queue_receipt: Mapping[str, Any],
+        ) -> dict[str, Any]:
+            # The canonical queue row, reason, and deadline are independently
+            # rechecked. For successor repair, the variable event receipt adds
+            # no authority and would defeat a before-write body-size proof.
+            durable_queue_receipt = (
+                {}
+                if validation_retry_successor_evidence is not None
+                else dict(queue_receipt)
+            )
+            return {
+                "operation": (
+                    "database_portal_landed_completion_revalidation"
+                    if landed_completion_recovery_evidence is not None
+                    else "database_portal_validation_retry_successor_recovery"
+                    if validation_retry_successor_evidence is not None
+                    else "database_portal_protected_path_retry_recovery"
+                    if protected_path_recovery_evidence is not None
+                    else "database_portal_external_protected_checkout_retry_recovery"
+                    if external_protected_checkout_recovery_evidence is not None
+                    else "database_portal_inflight_process_retry_recovery"
+                    if inflight_process_recovery_evidence is not None
+                    else "database_portal_validation_retry_seed_conflict_retry_recovery"
+                    if validation_retry_seed_conflict_recovery_evidence is not None
+                    else "database_portal_leftover_wait_deferral_budget_retry_recovery"
+                    if leftover_wait_deferral_budget_recovery_evidence is not None
+                    else "database_portal_pooled_worktree_create_retry_recovery"
+                    if pooled_worktree_create_recovery_evidence is not None
+                    else "database_portal_inflight_deferral_unstall"
+                    if inflight_deferral_unstall_evidence is not None
+                    else "database_portal_validation_retry_recovery"
+                    if blocked_recovery
+                    else "database_portal_validation_retry"
+                    if validation_retry_evidence is not None
+                    else "database_portal_retry"
+                ),
+                "attempt_id": attempt.attempt_id,
+                "claim_id": attempt.claim_id,
+                "lease_id": attempt.lease_id,
+                "owner_session_id": attempt.owner_session_id,
+                "fencing_token": int(attempt.fencing_token),
+                "fence_epoch": int(attempt.fence_epoch),
+                "attempt_number": int(attempt.attempt_number),
+                "execution_phase": attempt.committed_phase,
+                "execution_revision": int(attempt.revision),
+                "execution_finished_at_ms": attempt.finished_at_ms,
+                "reason": reason_text,
+                "backoff_seconds": delay_seconds,
+                "backoff_ms": delay_ms,
+                "retry_not_before_ms": int(retry_not_before_ms),
+                "evidence_source": evidence_source,
+                "queue_reason": queue_reason,
+                "queue_reused": bool(queue_reused),
+                "queue_receipt": durable_queue_receipt,
+                "coordination": dict(coordination_evidence or {}),
+                **retry_route_lineage,
+                **(
+                    {
+                        "validation_retry_seed": dict(
+                            validation_retry_evidence
+                        )
+                    }
+                    if validation_retry_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "validation_retry_seed": dict(
+                            validation_retry_successor_evidence[
+                                "validation_retry_evidence"
+                            ]
+                        ),
+                        "validation_retry_successor_recovery": dict(
+                            validation_retry_successor_evidence[
+                                "recovery_receipt"
+                            ]
+                        ),
+                    }
+                    if validation_retry_successor_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "protected_path_recovery_seed": dict(
+                            protected_path_recovery_evidence
+                        ),
+                        "protected_path_recovery_budget": dict(
+                            protected_path_recovery_budget or {}
+                        ),
+                    }
+                    if protected_path_recovery_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "external_protected_checkout_recovery_seed": dict(
+                            external_protected_checkout_recovery_evidence
+                        ),
+                    }
+                    if external_protected_checkout_recovery_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "inflight_process_recovery_seed": dict(
+                            inflight_process_recovery_evidence
+                        ),
+                    }
+                    if inflight_process_recovery_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "validation_retry_seed_conflict_recovery_seed": dict(
+                            validation_retry_seed_conflict_recovery_evidence
+                        ),
+                    }
+                    if validation_retry_seed_conflict_recovery_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "leftover_wait_deferral_budget_recovery_seed": dict(
+                            leftover_wait_deferral_budget_recovery_evidence
+                        ),
+                    }
+                    if leftover_wait_deferral_budget_recovery_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "pooled_worktree_create_recovery_seed": dict(
+                            pooled_worktree_create_recovery_evidence
+                        ),
+                    }
+                    if pooled_worktree_create_recovery_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "inflight_deferral_unstall_seed": dict(
+                            inflight_deferral_unstall_evidence
+                        )
+                    }
+                    if inflight_deferral_unstall_evidence is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "landed_completion_recovery_seed": dict(
+                            landed_completion_recovery_evidence
+                        )
+                    }
+                    if landed_completion_recovery_evidence is not None
+                    else {}
+                ),
+                "control_expected_status": task_status,
+                "control_expected_revision": int(task.revision),
+            }
+
+        def preflight_task_body(receipt: Mapping[str, Any]) -> tuple[int, int]:
+            prospective_body = dict(getattr(task, "body", {}) or {})
+            prospective_body["completion_receipt"] = dict(receipt)
+            encoded = _task_body_canonical_json_bytes(prospective_body)
+            if len(encoded) > _MAX_TASK_BODY_BYTES:
+                raise DatabaseImplementationAuthorityError(
+                    "retry control task body exceeds the canonical "
+                    f"{_MAX_TASK_BODY_BYTES}-byte bound"
+                )
+            # IntentRepository.cas_task_status separately appends a
+            # TASK_STATUS_CHANGED event whose nested body carries the same
+            # receipt.  Its two UTC timestamps are fixed-width and owner_id is
+            # a safe identifier bounded to 512 bytes, so these placeholders
+            # conservatively cover the exact owner-side envelope without an
+            # authority read or mutation.
+            recorded_at = "9999-12-31T23:59:59Z"
+            status_event_body = {
+                "task_cid": attempt.task_cid,
+                "task_alias": str(getattr(task, "task_alias", "") or ""),
+                "goal_cid": str(getattr(task, "goal_cid", "") or ""),
+                "previous_status": task_status,
+                "status": "retrying",
+                "revision": int(task.revision) + 1,
+                "receipt": dict(receipt),
+                "recorded_at": recorded_at,
+            }
+            event_envelope = {
+                "schema": _INTENT_EVENT_SCHEMA,
+                "event_type": _IntentEventType.TASK_STATUS_CHANGED.value,
+                "subject_id": attempt.task_cid,
+                "body": status_event_body,
+                "recorded_at": recorded_at,
+                "owner_id": "x" * 512,
+            }
+            event_encoding = _task_body_canonical_json_bytes(event_envelope)
+            if len(event_encoding) > _MAX_TASK_BODY_BYTES:
+                raise DatabaseImplementationAuthorityError(
+                    "retry control status event exceeds the canonical "
+                    f"{_MAX_TASK_BODY_BYTES}-byte bound"
+                )
+            return len(encoded), len(event_encoding)
+
         if task_status == "retrying":
             if validation_retry_successor_evidence is not None:
                 self._verified_validation_retry_successor_recovery_state(
@@ -87216,6 +87528,31 @@ class DatabaseImplementationDaemon:
 
         if (
             task_status == "blocked"
+            and validation_retry_successor_evidence is not None
+        ):
+            recovery_receipt = validation_retry_successor_evidence.get(
+                "recovery_receipt"
+            )
+            if not isinstance(recovery_receipt, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "validation retry successor evidence has no recovery receipt"
+                )
+            verified_successor = (
+                self._verified_validation_retry_successor_authority(
+                    attempt,
+                    task,
+                    expected_recovery_receipt=recovery_receipt,
+                )
+            )
+            if verified_successor != dict(
+                validation_retry_successor_evidence
+            ):
+                raise DatabaseImplementationConflictError(
+                    "validation retry successor evidence changed before retry"
+                )
+
+        if (
+            task_status == "blocked"
             and landed_completion_recovery_evidence is not None
         ):
             verified_landed_recovery = (
@@ -87252,6 +87589,23 @@ class DatabaseImplementationDaemon:
             queue_entry is not None
             and str(getattr(queue_entry, "reason", "") or "") == queue_reason
         )
+        if (
+            validation_retry_successor_evidence is not None
+            and (
+                callable(record_task_retry_cooldown)
+                or not queue_reused
+            )
+        ):
+            # The queue owner persists a non-negative DuckDB BIGINT deadline.
+            # Preflight its maximum-width representation before either the
+            # typed owner or legacy queue path can mutate the cooldown.
+            preflight_task_body(
+                retry_control_receipt(
+                    retry_not_before_ms=_MAX_TASK_RETRY_NOT_BEFORE_MS,
+                    queue_reused=False,
+                    queue_receipt={},
+                )
+            )
         if callable(record_task_retry_cooldown):
             self._protect_retry_transition_authority(
                 attempt,
@@ -87279,158 +87633,22 @@ class DatabaseImplementationDaemon:
             attempt,
             coordination_evidence,
         )
+        control_receipt = retry_control_receipt(
+            retry_not_before_ms=int(queue_entry.retry_not_before_ms),
+            queue_reused=queue_reused,
+            queue_receipt=queue_receipt_dict,
+        )
+        if queue_reused or validation_retry_successor_evidence is None:
+            # With no prospective successor queue mutation, this is the exact
+            # body sent to the owner CAS.  Other retry modes retain their
+            # historical queue-event projection and are checked here before
+            # the status mutation.
+            preflight_task_body(control_receipt)
         cas_result = self._cas_task_status_database(
             attempt.task_cid,
             expected_revision=int(task.revision),
             new_status="retrying",
-            receipt={
-                "operation": (
-                    "database_portal_landed_completion_revalidation"
-                    if landed_completion_recovery_evidence is not None
-                    else "database_portal_validation_retry_successor_recovery"
-                    if validation_retry_successor_evidence is not None
-                    else "database_portal_protected_path_retry_recovery"
-                    if protected_path_recovery_evidence is not None
-                    else "database_portal_external_protected_checkout_retry_recovery"
-                    if external_protected_checkout_recovery_evidence is not None
-                    else "database_portal_inflight_process_retry_recovery"
-                    if inflight_process_recovery_evidence is not None
-                    else "database_portal_validation_retry_seed_conflict_retry_recovery"
-                    if validation_retry_seed_conflict_recovery_evidence is not None
-                    else "database_portal_leftover_wait_deferral_budget_retry_recovery"
-                    if leftover_wait_deferral_budget_recovery_evidence is not None
-                    else "database_portal_pooled_worktree_create_retry_recovery"
-                    if pooled_worktree_create_recovery_evidence is not None
-                    else "database_portal_inflight_deferral_unstall"
-                    if inflight_deferral_unstall_evidence is not None
-                    else "database_portal_validation_retry_recovery"
-                    if blocked_recovery
-                    else "database_portal_validation_retry"
-                    if validation_retry_evidence is not None
-                    else "database_portal_retry"
-                ),
-                "attempt_id": attempt.attempt_id,
-                "claim_id": attempt.claim_id,
-                "lease_id": attempt.lease_id,
-                "owner_session_id": attempt.owner_session_id,
-                "fencing_token": int(attempt.fencing_token),
-                "fence_epoch": int(attempt.fence_epoch),
-                "attempt_number": int(attempt.attempt_number),
-                "execution_phase": attempt.committed_phase,
-                "execution_revision": int(attempt.revision),
-                "execution_finished_at_ms": attempt.finished_at_ms,
-                "reason": reason_text,
-                "backoff_seconds": delay_seconds,
-                "backoff_ms": delay_ms,
-                "retry_not_before_ms": int(queue_entry.retry_not_before_ms),
-                "evidence_source": evidence_source,
-                "queue_reason": queue_reason,
-                "queue_reused": queue_reused,
-                "queue_receipt": queue_receipt_dict,
-                "coordination": dict(coordination_evidence or {}),
-                **(
-                    {
-                        "validation_retry_seed": dict(
-                            validation_retry_evidence
-                        )
-                    }
-                    if validation_retry_evidence is not None
-                    else {}
-                ),
-                **(
-                    {
-                        "validation_retry_seed": dict(
-                            validation_retry_successor_evidence[
-                                "validation_retry_evidence"
-                            ]
-                        ),
-                        "validation_retry_successor_recovery": dict(
-                            validation_retry_successor_evidence[
-                                "recovery_receipt"
-                            ]
-                        ),
-                    }
-                    if validation_retry_successor_evidence is not None
-                    else {}
-                ),
-                **(
-                    {
-                        "protected_path_recovery_seed": dict(
-                            protected_path_recovery_evidence
-                        ),
-                        "protected_path_recovery_budget": dict(
-                            protected_path_recovery_budget or {}
-                        ),
-                    }
-                    if protected_path_recovery_evidence is not None
-                    else {}
-                ),
-                **(
-                    {
-                        "external_protected_checkout_recovery_seed": dict(
-                            external_protected_checkout_recovery_evidence
-                        ),
-                    }
-                    if external_protected_checkout_recovery_evidence is not None
-                    else {}
-                ),
-                **(
-                    {
-                        "inflight_process_recovery_seed": dict(
-                            inflight_process_recovery_evidence
-                        ),
-                    }
-                    if inflight_process_recovery_evidence is not None
-                    else {}
-                ),
-                **(
-                    {
-                        "validation_retry_seed_conflict_recovery_seed": dict(
-                            validation_retry_seed_conflict_recovery_evidence
-                        ),
-                    }
-                    if validation_retry_seed_conflict_recovery_evidence is not None
-                    else {}
-                ),
-                **(
-                    {
-                        "leftover_wait_deferral_budget_recovery_seed": dict(
-                            leftover_wait_deferral_budget_recovery_evidence
-                        ),
-                    }
-                    if leftover_wait_deferral_budget_recovery_evidence is not None
-                    else {}
-                ),
-                **(
-                    {
-                        "pooled_worktree_create_recovery_seed": dict(
-                            pooled_worktree_create_recovery_evidence
-                        ),
-                    }
-                    if pooled_worktree_create_recovery_evidence is not None
-                    else {}
-                ),
-                **(
-                    {
-                        "inflight_deferral_unstall_seed": dict(
-                            inflight_deferral_unstall_evidence
-                        )
-                    }
-                    if inflight_deferral_unstall_evidence is not None
-                    else {}
-                ),
-                **(
-                    {
-                        "landed_completion_recovery_seed": dict(
-                            landed_completion_recovery_evidence
-                        )
-                    }
-                    if landed_completion_recovery_evidence is not None
-                    else {}
-                ),
-                "control_expected_status": task_status,
-                "control_expected_revision": int(task.revision),
-            },
+            receipt=control_receipt,
             evidence_digests=(
                 [str(validation_retry_evidence["events_digest"])]
                 if validation_retry_evidence is not None
