@@ -2870,8 +2870,9 @@ def test_build_grok_quota_routed_agent_command_embeds_terra_shape(
         grok_bin="/usr/bin/grok",
         codex_bin="/usr/local/bin/codex",
     )
-    assert command[:3] == [
+    assert command[:4] == [
         "/usr/bin/python3",
+        "-B",
         "-m",
         "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
     ]

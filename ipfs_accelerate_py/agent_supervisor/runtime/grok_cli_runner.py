@@ -659,10 +659,18 @@ def build_grok_quota_routed_agent_command(
         else ""
     )
     runner = str(accepted_runner_path or "").strip()
+    # The installed-module route imports from the candidate worktree.  Keep
+    # those supervisor imports from writing ``__pycache__`` after the runner
+    # seals its workspace fingerprint.  The accepted descriptor route stays
+    # under its existing isolated-interpreter argv contract.
     runner_argv = (
         ["-I", runner]
         if runner
-        else ["-m", "ipfs_accelerate_py.agent_supervisor.grok_cli_runner"]
+        else [
+            "-B",
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        ]
     )
     if runner and (not Path(runner).is_absolute() or not Path(runner).is_file()):
         raise ValueError("accepted Grok runner must be an absolute file")
