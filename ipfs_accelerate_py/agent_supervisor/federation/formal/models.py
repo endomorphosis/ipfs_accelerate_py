@@ -30,6 +30,7 @@ from ...proof.prover_matrix_registry import ProverMatrixSnapshot
 from ...self_improvement.supervisor_state_model import (
     GeneratedSupervisorStateModel,
     ModelCheckBounds,
+    ModelCheckReceipt,
     ModelCheckerTool,
     ModelCheckStatus,
     SupervisorStateModelChecker,
@@ -1685,6 +1686,8 @@ def run_external_model_checks(
         raise FederationFormalError("suite must be FederationFormalSuite")
     if not isinstance(matrix, ProverMatrixSnapshot):
         raise FederationFormalError("matrix must be ProverMatrixSnapshot")
+    if checker is not None and not isinstance(checker, SupervisorStateModelChecker):
+        raise FederationFormalError("checker must be SupervisorStateModelChecker")
     engine = checker or SupervisorStateModelChecker()
     results: list[ExternalModelCheckReceipt] = []
     for scenario in suite.scenarios:
@@ -1735,11 +1738,45 @@ def run_external_model_checks(
                     )
                 )
                 continue
-            receipt = engine.check(
-                scenario.generated_model,
-                tool=tool,
-                executable=entry.executable_path,
-            )
+            try:
+                receipt = engine.check(
+                    scenario.generated_model,
+                    tool=tool,
+                    executable=entry.executable_path,
+                )
+                if not isinstance(receipt, ModelCheckReceipt):
+                    raise FederationFormalError(
+                        "checker returned an untyped model-check receipt"
+                    )
+                if receipt.tool is not tool:
+                    raise FederationFormalError(
+                        "checker receipt tool does not match the requested tool"
+                    )
+                if receipt.model.artifact_identity != scenario.generated_model.artifact_identity:
+                    raise FederationFormalError(
+                        "checker receipt does not bind the generated scenario model"
+                    )
+            except Exception as exc:
+                # The matrix establishes that the executable was qualified,
+                # not that this particular invocation completed.  Without a
+                # typed checker receipt we cannot bind a run to this exact
+                # model, so preserve the failure as non-execution rather than
+                # manufacturing an executable result or letting a provider
+                # exception turn into an ambiguous caller-side outcome.
+                results.append(
+                    ExternalModelCheckReceipt(
+                        **common,
+                        status=ExternalCheckStatus.NOT_RUN,
+                        ran=False,
+                        matrix_entry_state=entry.highest_state.value,
+                        model_check_receipt_id="",
+                        reason=(
+                            "qualified checker did not produce a typed receipt: "
+                            f"{type(exc).__name__}"
+                        ),
+                    )
+                )
+                continue
             results.append(
                 ExternalModelCheckReceipt(
                     **common,
