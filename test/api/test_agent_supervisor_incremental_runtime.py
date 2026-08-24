@@ -1556,6 +1556,8 @@ def test_rotated_dead_active_attempt_with_stale_no_dispatch_event_stays_fenced(
         worktree_root=tmp_path / "worktrees",
         worktree_pool_enabled=False,
     )
+    clock_now = [1_000.0]
+    daemon.worktree_lifecycle.clock = lambda: clock_now[0]
     task = PortalTask(
         task_id="INC-RELOAD-ROTATED",
         title="Recover a source-reloaded database Portal attempt",
@@ -1639,6 +1641,8 @@ def test_rotated_dead_active_attempt_with_stale_no_dispatch_event_stays_fenced(
     index_before = index_path.read_bytes()
     event_before = old_events.read_bytes()
     log_before = old_log.read_bytes()
+    assert daemon.worktree_lifecycle.lease_seconds == 21_600.0
+    clock_now[0] = old.expires_at + 1.0
     daemon._active_provider_capacity_backoff = (  # type: ignore[method-assign]
         lambda: {}
     )

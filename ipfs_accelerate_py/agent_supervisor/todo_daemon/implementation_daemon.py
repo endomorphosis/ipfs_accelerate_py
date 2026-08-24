@@ -24752,6 +24752,7 @@ class PortalImplementationDaemon:
                 branch=branch_name,
                 merge_target=target_branch,
                 state_dir=str(self.state_path.parent.resolve()),
+                allow_replace_stale=False,
             )
             self._active_worktree_lifecycle = lifecycle_record
             baseline_ref = self._create_seeded_worktree(
@@ -34565,6 +34566,10 @@ class PortalImplementationDaemon:
                     branch=branch_name,
                     merge_target=self._main_branch_name(),
                     state_dir=str(self.state_path.parent.resolve()),
+                    # Expiry proves neither provider-effect absence nor child
+                    # quiescence. Portal retries may replace only a terminal
+                    # task-attempt claim, never an ambiguous nonterminal one.
+                    allow_replace_stale=False,
                 )
                 self._active_worktree_lifecycle = lifecycle_record
             except DuplicateAttemptError as exc:
