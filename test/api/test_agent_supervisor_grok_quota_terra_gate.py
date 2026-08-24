@@ -11,6 +11,7 @@ import subprocess
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import quote
 
 import pytest
 from ipfs_accelerate_py import llm_router
@@ -56,8 +57,12 @@ def _write_native_session_home(
     updates: list[dict[str, object]],
     *,
     session_id: str = _NATIVE_SESSION_ID,
+    workspace: Path | None = None,
 ) -> Path:
-    session = grok_home / "sessions" / session_id
+    session_root = grok_home / "sessions"
+    if workspace is not None:
+        session_root /= quote(str(workspace.resolve(strict=True)), safe="")
+    session = session_root / session_id
     session.mkdir(parents=True)
     (session / "updates.jsonl").write_text(
         "".join(json.dumps(item, sort_keys=True) + "\n" for item in updates),
@@ -66,7 +71,14 @@ def _write_native_session_home(
     (session / "summary.json").write_text(
         json.dumps(
             {
-                "info": {"id": session_id},
+                "info": {
+                    "id": session_id,
+                    **(
+                        {"cwd": str(workspace.resolve(strict=True))}
+                        if workspace is not None
+                        else {}
+                    ),
+                },
                 "current_model_id": "grok-4.6",
                 "grok_home": str(grok_home),
             },
@@ -841,9 +853,15 @@ def test_typed_preflight_probe_overflow_is_measured_fail_closed(
     )
 
 
+@pytest.mark.parametrize(
+    "workspace_namespaced",
+    (False, True),
+    ids=("legacy-flat-session", "grok-1.0.5-workspace-session"),
+)
 def test_independent_quota_verifier_uses_isolated_os_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    workspace_namespaced: bool,
 ) -> None:
     captured: dict[str, object] = {}
     verifier_home = tmp_path / "verifier-home"
@@ -874,6 +892,7 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
                 _spending_limit_terminal(session_id=session_id),
             ],
             session_id=session_id,
+            workspace=(Path(kwargs["cwd"]) if workspace_namespaced else None),
         )
         return subprocess.CompletedProcess(command, 23)
 
@@ -900,6 +919,59 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
     assert evidence is not None
     assert captured["env"]["PWD"] == str(captured["cwd"])
     assert "OLDPWD" not in captured["env"]
+
+
+@pytest.mark.parametrize(
+    "drift",
+    ("summary-cwd", "ambiguous-layout", "workspace-symlink"),
+)
+def test_workspace_namespaced_quota_evidence_rejects_binding_drift(
+    tmp_path: Path,
+    drift: str,
+) -> None:
+    workspace = tmp_path / "verifier" / "workspace"
+    workspace.mkdir(parents=True)
+    grok_home = tmp_path / "verifier-home"
+    updates = [_spending_limit_retry(), _spending_limit_terminal()]
+    _write_native_session_home(
+        grok_home,
+        updates,
+        workspace=workspace,
+    )
+    namespace = quote(str(workspace.resolve(strict=True)), safe="")
+    session = grok_home / "sessions" / namespace / _NATIVE_SESSION_ID
+    verifier_workspace = workspace
+    if drift == "summary-cwd":
+        summary_path = session / "summary.json"
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        summary["info"]["cwd"] = str(tmp_path / "other-workspace")
+        summary_path.write_text(
+            json.dumps(summary, sort_keys=True),
+            encoding="utf-8",
+        )
+    elif drift == "ambiguous-layout":
+        _write_native_session_home(grok_home, updates)
+    else:
+        verifier_workspace = tmp_path / "workspace-link"
+        verifier_workspace.symlink_to(workspace, target_is_directory=True)
+
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text="Grok Build usage balance exhausted",
+        nonce="1" * 64,
+        model="grok-4.6",
+        probe_returncode=41,
+        primary_dispatched=False,
+    )
+    assert (
+        llm_router.validate_agent_implementation_quota_evidence(
+            grok_home=grok_home,
+            expected_session_id=_NATIVE_SESSION_ID,
+            verifier_returncode=23,
+            failure_receipt=receipt,
+            verifier_workspace=verifier_workspace,
+        )
+        is None
+    )
 
 
 def test_quota_fallback_command_rejects_model_or_effort_drift() -> None:

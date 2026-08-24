@@ -27,6 +27,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 _AGENT_IMPLEMENTATION_PROVIDER_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
@@ -3283,7 +3284,58 @@ def validate_agent_implementation_quota_evidence(
         uuid.UUID(expected_session_id)
     except ValueError:
         return None
-    record = home / "sessions" / expected_session_id / "updates.jsonl"
+
+    workspace_resolved: Path | None = None
+    direct_record = home / "sessions" / expected_session_id / "updates.jsonl"
+    namespaced_record: Path | None = None
+    if verifier_workspace is not None:
+        raw_workspace = Path(verifier_workspace)
+        if not raw_workspace.is_absolute() or ".." in raw_workspace.parts:
+            return None
+        try:
+            workspace_resolved = raw_workspace.resolve(strict=True)
+            workspace_metadata = workspace_resolved.stat()
+        except OSError:
+            return None
+        if raw_workspace != workspace_resolved or not stat_module.S_ISDIR(
+            workspace_metadata.st_mode
+        ):
+            return None
+        workspace_namespace = quote(str(workspace_resolved), safe="")
+        if (
+            not workspace_namespace
+            or Path(workspace_namespace).name != workspace_namespace
+        ):
+            return None
+        namespaced_record = (
+            home
+            / "sessions"
+            / workspace_namespace
+            / expected_session_id
+            / "updates.jsonl"
+        )
+        record_candidates = (namespaced_record, direct_record)
+    else:
+        record_candidates = (direct_record,)
+
+    def record_presence() -> tuple[bool, ...] | None:
+        present: list[bool] = []
+        for candidate in record_candidates:
+            try:
+                candidate.lstat()
+            except FileNotFoundError:
+                present.append(False)
+            except OSError:
+                return None
+            else:
+                present.append(True)
+        return tuple(present)
+
+    initial_presence = record_presence()
+    if initial_presence is None or sum(initial_presence) != 1:
+        return None
+    record = record_candidates[initial_presence.index(True)]
+    selected_namespaced_record = record == namespaced_record
     try:
         home_resolved = home.resolve(strict=True)
         transcript_read = _read_stable_agent_implementation_evidence_file(
@@ -3420,13 +3472,20 @@ def validate_agent_implementation_quota_evidence(
         )
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
         return None
+    final_presence = record_presence()
     if (
-        final_update_type != "turn_completed"
+        final_presence is None
+        or final_presence != initial_presence
+        or final_update_type != "turn_completed"
         or not observed_models.issubset({expected_model})
         or retry_failure_count != 1
         or user_message_count > 1
         or not isinstance(summary_info, dict)
         or summary_info.get("id") != recorded_session_id
+        or (
+            selected_namespaced_record
+            and summary_info.get("cwd") != str(workspace_resolved)
+        )
         or summary.get("current_model_id") != expected_model
         or summary_home != home_resolved
         or latest_failure not in _AGENT_IMPLEMENTATION_NATIVE_QUOTA_FAILURES
@@ -7285,4 +7344,3 @@ def decide_agent_implementation_fallback(
         reason_code="independent_quota_not_confirmed",
         verifier_status="not_confirmed",
     )
-
