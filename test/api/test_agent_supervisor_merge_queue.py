@@ -4,6 +4,7 @@ import fcntl
 import hashlib
 import json
 import os
+import threading
 from dataclasses import replace
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MergeQueueFullError,
     MergeQueueIntegrityError,
     MergeRequest,
+    hold_merge_queue_settlement,
     read_merge_queue_settlement,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
@@ -288,7 +290,6 @@ def test_read_merge_queue_settlement_rejects_unknown_state_and_active_overflow(
 
 def test_read_merge_queue_settlement_fails_closed_on_missing_or_busy_lock(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     missing_lock_path = tmp_path / "missing-lock"
     missing_lock_queue = _bound_queue(missing_lock_path)
@@ -308,13 +309,8 @@ def test_read_merge_queue_settlement_fails_closed_on_missing_or_busy_lock(
     descriptor = os.open(lock_path, os.O_RDONLY)
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        monkeypatch.setattr(
-            merge_queue_module,
-            "_MERGE_QUEUE_SETTLEMENT_LOCK_TIMEOUT_SECONDS",
-            0.0,
-        )
         with pytest.raises(MergeQueueIntegrityError, match="busy"):
-            _settlement(busy_path)
+            _settlement(busy_path, lock_timeout_seconds=0.0)
     finally:
         fcntl.flock(descriptor, fcntl.LOCK_UN)
         os.close(descriptor)
@@ -337,6 +333,58 @@ def test_read_merge_queue_settlement_fails_closed_on_read_error(
     )
     with pytest.raises(MergeQueueIntegrityError, match="could not be read"):
         _settlement(queue_path)
+
+
+@pytest.mark.parametrize(
+    "timeout",
+    (True, -0.01, float("nan"), float("inf"), 5.01, "0"),
+)
+def test_merge_queue_settlement_rejects_invalid_lock_timeout(
+    tmp_path: Path,
+    timeout: object,
+) -> None:
+    queue_path = tmp_path / "queue"
+    _bound_queue(queue_path)
+
+    with pytest.raises(ValueError, match="lock_timeout_seconds"):
+        _settlement(queue_path, lock_timeout_seconds=timeout)
+
+
+def test_hold_merge_queue_settlement_retains_writer_lock_through_callback(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = _bound_queue(queue_path)
+    started = threading.Event()
+    finished = threading.Event()
+    failures: list[BaseException] = []
+
+    def enqueue_while_guarded() -> None:
+        started.set()
+        try:
+            _enqueue(queue, 0)
+        except BaseException as exc:  # pragma: no cover - asserted below
+            failures.append(exc)
+        finally:
+            finished.set()
+
+    writer = threading.Thread(target=enqueue_while_guarded, daemon=True)
+    with hold_merge_queue_settlement(
+        queue_path,
+        target_repository_id=_SETTLEMENT_REPOSITORY_ID,
+        target_branch=_SETTLEMENT_BRANCH,
+        lock_timeout_seconds=0.0,
+    ) as receipt:
+        assert receipt["settled"] is True
+        writer.start()
+        assert started.wait(timeout=1.0)
+        assert finished.wait(timeout=0.1) is False
+
+    writer.join(timeout=5.0)
+    assert writer.is_alive() is False
+    assert failures == []
+    assert finished.is_set()
+    assert _settlement(queue_path)["active_count"] == 1
 
 
 def _legacy_request(

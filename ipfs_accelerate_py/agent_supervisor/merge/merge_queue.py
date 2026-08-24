@@ -223,8 +223,21 @@ def _settlement_regular_file_identity(path: Path, *, label: str) -> dict[str, in
     }
 
 
+def _merge_queue_settlement_lock_timeout(value: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("lock_timeout_seconds must be a finite number")
+    timeout = float(value)
+    if not math.isfinite(timeout) or timeout < 0 or timeout > 5.0:
+        raise ValueError("lock_timeout_seconds must be between 0 and 5 seconds")
+    return timeout
+
+
 @contextmanager
-def _locked_existing_merge_queue_store(lock_path: Path) -> Iterator[None]:
+def _locked_existing_merge_queue_store(
+    lock_path: Path,
+    *,
+    timeout_seconds: float,
+) -> Iterator[None]:
     """Lock an existing queue without creating or modifying its lock file."""
 
     expected = _settlement_regular_file_identity(lock_path, label="lock")
@@ -240,7 +253,7 @@ def _locked_existing_merge_queue_store(lock_path: Path) -> Iterator[None]:
             "merge queue settlement lock could not be opened"
         ) from exc
     acquired = False
-    deadline = time.monotonic() + _MERGE_QUEUE_SETTLEMENT_LOCK_TIMEOUT_SECONDS
+    deadline = time.monotonic() + timeout_seconds
     try:
         opened = os.fstat(descriptor)
         if (
@@ -291,14 +304,15 @@ def _strict_settlement_metadata(value: str) -> dict[str, Any]:
     return decoded
 
 
-def read_merge_queue_settlement(
+def _read_merge_queue_settlement_under_lock(
     queue_dir: Path | str,
     *,
     target_repository_id: str,
     target_branch: str,
     max_active_ids: int = 256,
+    expected_database: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
-    """Read one content-addressed, fail-closed merge settlement snapshot.
+    """Read one content-addressed settlement while the queue lock is held.
 
     This is the operator/goal-authority read path.  It opens only a pre-existing
     local DuckDB store and lock file, takes one bounded read-only transaction,
@@ -344,7 +358,6 @@ def read_merge_queue_settlement(
             "merge queue settlement directory must be an existing real directory"
         )
     database_path = directory / "merge_queue.duckdb"
-    lock_path = directory / ".merge_queue.duckdb.lock"
     wal_path = directory / "merge_queue.duckdb.wal"
     initial_database = _settlement_regular_file_identity(
         database_path,
@@ -357,6 +370,10 @@ def read_merge_queue_settlement(
     if wal_path.exists() or wal_path.is_symlink():
         raise MergeQueueIntegrityError(
             "merge queue settlement database has an outstanding write-ahead log"
+        )
+    if expected_database is not None and dict(expected_database) != initial_database:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement database identity changed before lock"
         )
 
     status_counts: dict[str, int] = {
@@ -371,7 +388,14 @@ def read_merge_queue_settlement(
     connection: Any | None = None
     transaction_open = False
     try:
-        with _locked_existing_merge_queue_store(lock_path):
+        def read_locked_snapshot() -> None:
+            nonlocal connection
+            nonlocal final_database
+            nonlocal max_claim_generation
+            nonlocal max_updated_at
+            nonlocal row_count
+            nonlocal transaction_open
+
             locked_database = _settlement_regular_file_identity(
                 database_path,
                 label="database",
@@ -644,6 +668,8 @@ def read_merge_queue_settlement(
                 raise MergeQueueIntegrityError(
                     "merge queue settlement database changed during read"
                 )
+
+        read_locked_snapshot()
     except MergeQueueIntegrityError:
         raise
     except Exception as exc:
@@ -685,6 +711,8 @@ def read_merge_queue_settlement(
             "generation": metadata_by_key.get("store_generation"),
         },
         "row_count": row_count,
+        "max_updated_at": max_updated_at,
+        "max_claim_generation": max_claim_generation,
         "status_counts": status_counts,
         "active_count": len(active_requests),
         "active_request_ids": [
@@ -694,6 +722,114 @@ def read_merge_queue_settlement(
     }
     receipt["receipt_cid"] = _settlement_content_id(receipt)
     return receipt
+
+
+@contextmanager
+def hold_merge_queue_settlement(
+    queue_dir: Path | str,
+    *,
+    target_repository_id: str,
+    target_branch: str,
+    max_active_ids: int = 256,
+    lock_timeout_seconds: float = _MERGE_QUEUE_SETTLEMENT_LOCK_TIMEOUT_SECONDS,
+) -> Iterator[dict[str, Any]]:
+    """Yield a queue settlement receipt while retaining its writer lock.
+
+    The guard is the authorization form of the settlement API: callers may
+    perform their compare-and-swap while the yielded receipt remains protected
+    from queue writers.  The database identity is checked again before the
+    lock is released, including when the guarded operation raises.
+    """
+
+    timeout = _merge_queue_settlement_lock_timeout(lock_timeout_seconds)
+    directory = Path(queue_dir)
+    try:
+        directory_details = directory.lstat()
+    except OSError as exc:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement directory is unavailable"
+        ) from exc
+    if not stat.S_ISDIR(directory_details.st_mode):
+        raise MergeQueueIntegrityError(
+            "merge queue settlement directory must be an existing real directory"
+        )
+    database_path = directory / "merge_queue.duckdb"
+    lock_path = directory / ".merge_queue.duckdb.lock"
+    wal_path = directory / "merge_queue.duckdb.wal"
+    initial_database = _settlement_regular_file_identity(
+        database_path,
+        label="database",
+    )
+    if initial_database["size_bytes"] <= 0:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement database must not be empty"
+        )
+    if wal_path.exists() or wal_path.is_symlink():
+        raise MergeQueueIntegrityError(
+            "merge queue settlement database has an outstanding write-ahead log"
+        )
+
+    with _locked_existing_merge_queue_store(
+        lock_path,
+        timeout_seconds=timeout,
+    ):
+        receipt = _read_merge_queue_settlement_under_lock(
+            directory,
+            target_repository_id=target_repository_id,
+            target_branch=target_branch,
+            max_active_ids=max_active_ids,
+            expected_database=initial_database,
+        )
+        expected_database = {
+            key: receipt["database"][key]
+            for key in (
+                "device",
+                "inode",
+                "size_bytes",
+                "modified_ns",
+                "changed_ns",
+            )
+        }
+        try:
+            yield receipt
+        finally:
+            observed_database = _settlement_regular_file_identity(
+                database_path,
+                label="database",
+            )
+            if observed_database != expected_database:
+                raise MergeQueueIntegrityError(
+                    "merge queue settlement database changed while guarded"
+                )
+            if wal_path.exists() or wal_path.is_symlink():
+                raise MergeQueueIntegrityError(
+                    "merge queue settlement database changed while guarded"
+                )
+
+
+def read_merge_queue_settlement(
+    queue_dir: Path | str,
+    *,
+    target_repository_id: str,
+    target_branch: str,
+    max_active_ids: int = 256,
+    lock_timeout_seconds: float = _MERGE_QUEUE_SETTLEMENT_LOCK_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    """Return a convenience snapshot without retaining the queue guard.
+
+    Use :func:`hold_merge_queue_settlement` when a receipt authorizes a later
+    mutation; the context manager keeps the queue immutable through that
+    mutation and closes the read-to-CAS race.
+    """
+
+    with hold_merge_queue_settlement(
+        queue_dir,
+        target_repository_id=target_repository_id,
+        target_branch=target_branch,
+        max_active_ids=max_active_ids,
+        lock_timeout_seconds=lock_timeout_seconds,
+    ) as receipt:
+        return receipt
 
 
 @dataclass(frozen=True)
