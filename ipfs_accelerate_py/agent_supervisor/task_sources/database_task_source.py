@@ -2007,6 +2007,39 @@ class DatabaseTaskSource:
 
         return self._intent.completion_evidence_projection(task_cids=task_cids)
 
+    def goal_authority_projection(
+        self,
+        specification: Mapping[str, Any],
+        *,
+        root_gate_context: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
+        """Return the exact read-only goal authority projection.
+
+        ``specification`` is constructed from the sealed board by the VRIF
+        operator.  Supplying it here grants no mutation authority; Quack
+        clients remain read-only and population mismatches fail closed.
+        """
+
+        return self._intent.goal_authority_projection(
+            specification,
+            root_gate_context=root_gate_context,
+        )
+
+    def reconcile_goal_completion_authority(
+        self,
+        specification: Mapping[str, Any],
+        *,
+        root_completion_gate: Mapping[str, Any] | None = None,
+        root_gate_current_validator: Any = None,
+    ) -> Mapping[str, Any]:
+        """Run the owner-only atomic goal reconciliation surface."""
+
+        return self._intent.reconcile_goal_completion_authority(
+            specification,
+            root_completion_gate=root_completion_gate,
+            root_gate_current_validator=root_gate_current_validator,
+        )
+
     def plan_revision_projection_cid(self) -> str:
         """Return the full plan projection CID used for revision verification."""
 
