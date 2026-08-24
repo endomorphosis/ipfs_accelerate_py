@@ -2997,6 +2997,44 @@ def _grok_cli_command(
     return command
 
 
+def _grok_cli_trusted_failure_command(
+    *,
+    workspace_path: Path,
+    model: str,
+) -> list[str]:
+    """Build the physical Grok adapter required by the ordered route.
+
+    ``provider_fallback_runner`` accepts quota evidence only through the
+    private descriptor it gives this exact packaged adapter.  The newer
+    module runner owns a different sealed-route protocol, so placing its
+    ``-m`` command inside the outer runner would silently lose the trusted
+    terminal failure receipt and make quota fallback unreachable.
+    """
+
+    grok = _grok_binary()
+    if not grok:
+        raise RuntimeError("grok CLI is not installed")
+    runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
+    if not runner_path.is_file():
+        raise RuntimeError(f"packaged Grok adapter missing at {runner_path}")
+    max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip()
+    return [
+        sys.executable,
+        str(runner_path),
+        "--workspace",
+        str(workspace_path.resolve()),
+        "--model",
+        str(model).strip(),
+        "--max-turns",
+        max_turns if max_turns.isdigit() else "100000",
+        "--mode",
+        "agent",
+        "--require-terminal-quota-frame",
+        "--grok-bin",
+        grok,
+    ]
+
+
 def _copilot_has_auth() -> bool:
     """Return whether the local Copilot CLI has non-interactive auth available."""
 
@@ -65386,6 +65424,55 @@ class PortalImplementationDaemon:
                 f"invalid sealed implementation route: {exc}",
                 backoff_seconds=300,
             ) from exc
+        if route_plan and not route_plan.permits_authentication_unavailable:
+            if self.implementation_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects explicit implementation "
+                    "command override",
+                    backoff_seconds=300,
+                )
+            if os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip():
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects ambient "
+                    "IMPLEMENTATION_DAEMON_COMMAND override",
+                    backoff_seconds=300,
+                )
+            if declared_provider in GROK_IMPLEMENTATION_PROVIDER_NAMES:
+                if _grok_cli_available() and _grok_binary():
+                    return
+                raise ImplementationRetryDeferred(
+                    "explicit Grok-only task requires authenticated Grok CLI",
+                    backoff_seconds=300,
+                )
+            if declared_provider and declared_provider != "auto":
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects task provider override",
+                    backoff_seconds=300,
+                )
+            if self._task_declares_independent_codex_review(task):
+                raise ImplementationRetryDeferred(
+                    "Codex implementation fallback cannot implement a task "
+                    "that requires independent Codex review",
+                    backoff_seconds=300,
+                )
+            codex = shutil.which("codex")
+            if not codex:
+                raise ImplementationRetryDeferred(
+                    "sealed quota-only route requires the Codex CLI fallback",
+                    backoff_seconds=300,
+                )
+            # Quota-only routing must run the primary agent before quota can
+            # authorize fallback.  A ``grok models`` network probe can itself
+            # return quota exhaustion, but that pre-dispatch response is not
+            # terminal-correlated provider evidence.  Admit only from local
+            # binary/auth construction here; the packaged adapter emits the
+            # trusted receipt after the real Grok process terminates.
+            if not (_grok_binary() and _grok_cli_available()):
+                raise ImplementationRetryDeferred(
+                    "sealed quota-only route requires a ready Grok primary",
+                    backoff_seconds=300,
+                )
+            return
         if route_plan and route_plan.permits_authentication_unavailable:
             if self.implementation_command:
                 raise ImplementationRetryDeferred(
@@ -66162,6 +66249,99 @@ class PortalImplementationDaemon:
                 f"invalid sealed implementation route: {exc}",
                 backoff_seconds=300,
             ) from exc
+        if route_plan and not route_plan.permits_authentication_unavailable:
+            if self.implementation_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects explicit implementation "
+                    "command override",
+                    backoff_seconds=300,
+                )
+            if env_command:
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects ambient "
+                    "IMPLEMENTATION_DAEMON_COMMAND override",
+                    backoff_seconds=300,
+                )
+            configured_policy = os.environ.get(
+                PROVIDER_FALLBACK_POLICY_ENV,
+                "",
+            ).strip().lower().replace("-", "_")
+            if configured_policy not in {
+                "",
+                GROK_QUOTA_ONLY_FALLBACK_POLICY,
+            }:
+                raise ImplementationRetryDeferred(
+                    "sealed quota-only Grok/Codex route rejects fallback "
+                    "policy drift",
+                    backoff_seconds=300,
+                )
+            if declared_provider in GROK_IMPLEMENTATION_PROVIDER_NAMES:
+                return _grok_cli_command(
+                    workspace_path=workspace_path,
+                    model_override=route_plan.primary_model_id,
+                    enable_codex_fallback=False,
+                )
+            if declared_provider and declared_provider != "auto":
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route rejects task provider override",
+                    backoff_seconds=300,
+                )
+            if self._task_declares_independent_codex_review(task):
+                raise ImplementationRetryDeferred(
+                    "Codex implementation fallback cannot implement a task "
+                    "that requires independent Codex review",
+                    backoff_seconds=300,
+                )
+            codex = shutil.which("codex")
+            if not codex:
+                raise ImplementationRetryDeferred(
+                    "sealed quota-only route requires the Codex CLI fallback",
+                    backoff_seconds=300,
+                )
+            # Do not turn a pre-dispatch ``grok models`` quota response into
+            # fallback authority.  Only the real primary process, supervised
+            # by the packaged adapter below, may mint trusted terminal quota.
+            if not (_grok_binary() and _grok_cli_available()):
+                raise ImplementationRetryDeferred(
+                    "sealed quota-only route requires a ready Grok primary",
+                    backoff_seconds=300,
+                )
+            codex_context_window = (
+                self._implementation_provider_context_window_for_task(task)[0]
+                if task is not None
+                else None
+            )
+            route_receipt_path: Path | None = None
+            if task is not None and attempt > 0:
+                route_receipt_path = (
+                    self._ensure_provider_route_receipt_dir(task)
+                    / f"provider-route-{attempt}.json"
+                )
+                _prepare_provider_route_receipt(route_receipt_path)
+            return _ordered_provider_fallback_command(
+                workspace_path=workspace_path,
+                primary_provider="grok",
+                primary_command=_grok_cli_trusted_failure_command(
+                    workspace_path=workspace_path,
+                    model=route_plan.primary_model_id,
+                ),
+                fallback_provider="codex",
+                fallback_command=_codex_implementation_command(
+                    codex=str(codex),
+                    workspace_path=workspace_path,
+                    repository_root=self.repo_root,
+                    codex_context_window=codex_context_window,
+                    model_override=route_plan.fallback_model_id,
+                    reasoning_effort_override=(
+                        route_plan.fallback_reasoning_effort
+                    ),
+                ),
+                fallback_policy=GROK_QUOTA_ONLY_FALLBACK_POLICY,
+                route_receipt_path=route_receipt_path,
+                route_task_id=(task.task_id if task is not None else ""),
+                route_attempt=(attempt if attempt > 0 else None),
+                route_stage="implementation",
+            )
         if route_plan and route_plan.permits_authentication_unavailable:
             if self.implementation_command:
                 raise ImplementationRetryDeferred(
@@ -89987,10 +90167,6 @@ except (OSError, ValueError, subprocess.SubprocessError):
     _IMPORTED_CONTROL_PLANE_TEMP_ROOT = None
 
 
-if __name__ == "__main__":
-    main()
-
-
 # --- merged from origin/main ---
 
 def _configured_provider_fallback_policy() -> str:
@@ -90394,3 +90570,7 @@ def _validated_provider_route_receipt(
     ):
         raise RuntimeError("provider route receipt binding is invalid")
     return dict(payload)
+
+
+if __name__ == "__main__":
+    main()

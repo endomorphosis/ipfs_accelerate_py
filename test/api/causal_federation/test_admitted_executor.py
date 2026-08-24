@@ -6,7 +6,6 @@ import hashlib
 import importlib.util
 import json
 import os
-import shlex
 import shutil
 import signal
 import socket
@@ -3529,6 +3528,60 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         database_program=program,
         merge_target_branch=temporary_branch,
     )
+    provider_bin = tmp_path / "provider-bin"
+    provider_bin.mkdir()
+    fake_grok = provider_bin / "grok"
+    fake_grok.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "workspace = Path(args[args.index('--cwd') + 1])\n"
+        "output = workspace / 'data/casf-model-provider-output.txt'\n"
+        "output.parent.mkdir(parents=True, exist_ok=True)\n"
+        "output.write_text('model provider dispatched\\n', encoding='utf-8')\n"
+        "print(json.dumps({'type': 'assistant', 'message': 'completed'}))\n",
+        encoding="utf-8",
+    )
+    fake_grok.chmod(0o700)
+    fallback_marker = tmp_path / "unexpected-codex-fallback"
+    fake_codex = provider_bin / "codex"
+    fake_codex.write_text(
+        "#!/usr/bin/env python3\n"
+        "from pathlib import Path\n"
+        f"Path({str(fallback_marker)!r}).write_text('called\\n', encoding='utf-8')\n"
+        "raise SystemExit(97)\n",
+        encoding="utf-8",
+    )
+    fake_codex.chmod(0o700)
+    configured_executor_environment = operator._executor_environment
+
+    def _hermetic_executor_environment(
+        selected_board: Any,
+        route: Mapping[str, Any],
+        *,
+        owner_identity: Mapping[str, Any],
+    ) -> dict[str, str]:
+        environment = configured_executor_environment(
+            selected_board,
+            route,
+            owner_identity=owner_identity,
+        )
+        environment["IPFS_ACCELERATE_AGENT_GROK_BIN"] = str(fake_grok)
+        environment["XAI_API_KEY"] = "hermetic-casf-test-credential"
+        environment["PATH"] = (
+            str(provider_bin)
+            + os.pathsep
+            + str(environment.get("PATH") or "")
+        )
+        return environment
+
+    monkeypatch.setattr(
+        operator,
+        "_executor_environment",
+        _hermetic_executor_environment,
+    )
     paths = operator._runtime_paths(managed_board)
     paths["owner_socket"] = server.typed_command_socket_path()
 
@@ -3558,15 +3611,6 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         }
     )
     initial_generation = observer_client.load_generation()
-    provider_command = (
-        f"{shlex.quote(sys.executable)} -c "
-        + shlex.quote(
-            "from pathlib import Path; "
-            "output = Path('data/casf-model-provider-output.txt'); "
-            "output.parent.mkdir(parents=True, exist_ok=True); "
-            "output.write_text('model provider dispatched\\n', encoding='utf-8')"
-        )
-    )
     supervisor: subprocess.Popen[Any] | None = None
     supervisor_birth: Mapping[str, Any] | None = None
     broker: Any = None
@@ -3578,7 +3622,6 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
             paths=paths,
             owner_identity=identity.to_dict(),
             execution_route_policy=managed_route_policy,
-            implementation_command=provider_command,
         )
         deadline = time.monotonic() + 240.0
         deterministic = None
@@ -3774,6 +3817,7 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
         _contains_provider_disposition(item, True)
         for item in evidence.get("CASF-MANAGED-MODEL", [])
     ), diagnostic_text
+    assert not fallback_marker.exists(), diagnostic_text
 
 
 def test_launch_modes_are_unambiguous_and_no_change_remains_explicit() -> None:
