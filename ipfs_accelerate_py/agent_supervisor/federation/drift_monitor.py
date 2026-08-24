@@ -11,6 +11,7 @@ Evidence: ``casf/drift-report@1``
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -495,6 +496,23 @@ def _finding(
     )
 
 
+def _append_finding(
+    findings: list[DriftFinding],
+    finding: DriftFinding,
+) -> None:
+    """Append bounded evidence instead of constructing an oversized report.
+
+    A hostile but individually valid event batch can create several findings
+    per event (notably one per causal parent).  Do not let that turn a
+    read-only observation into unbounded memory use.  A typed bounds failure
+    is fail-closed and leaves no partially trustworthy report behind.
+    """
+
+    if len(findings) >= MAX_DRIFT_FINDINGS:
+        raise FederationBoundsError("drift finding bound exceeded")
+    findings.append(finding)
+
+
 class FederationDriftMonitor:
     """Compare exact roots and event windows without any stateful effect."""
 
@@ -664,16 +682,19 @@ class FederationDriftMonitor:
         )
         for kind, code, subject, prior, current in comparisons:
             if prior != current:
-                findings.append(_finding(kind, code, subject, prior, current))
+                _append_finding(
+                    findings, _finding(kind, code, subject, prior, current)
+                )
         if observed.event_watermark < expected.event_watermark:
-            findings.append(
+            _append_finding(
+                findings,
                 _finding(
                     DriftKind.EVENT,
                     "event_watermark_regressed",
                     "event_watermark",
                     expected.event_watermark,
                     observed.event_watermark,
-                )
+                ),
             )
 
     def _compare_events(
@@ -684,16 +705,18 @@ class FederationDriftMonitor:
         findings: list[DriftFinding],
     ) -> None:
         expected = self._baseline
+        watermark_span = observed.event_watermark - expected.event_watermark
         if not events:
             if observed.event_watermark > expected.event_watermark:
-                findings.append(
+                _append_finding(
+                    findings,
                     _finding(
                         DriftKind.EVENT,
                         "event_watermark_advance_unobserved",
                         "event_watermark",
                         expected.event_watermark,
                         observed.event_watermark,
-                    )
+                    ),
                 )
             return
 
@@ -703,45 +726,65 @@ class FederationDriftMonitor:
         sequences = tuple(item.global_sequence for item in ordered)
         event_ids = tuple(item.event_id for item in ordered)
         duplicate_ids = sorted(
-            {event_id for event_id in event_ids if event_ids.count(event_id) > 1}
+            event_id for event_id, count in Counter(event_ids).items() if count > 1
         )
         for event_id in duplicate_ids:
-            findings.append(
+            _append_finding(
+                findings,
                 _finding(
                     DriftKind.EVENT,
                     "duplicate_event_id",
                     event_id,
                     "unique",
                     "duplicate",
-                )
+                ),
             )
         duplicate_sequences = sorted(
-            {sequence for sequence in sequences if sequences.count(sequence) > 1}
+            sequence
+            for sequence, count in Counter(sequences).items()
+            if count > 1
         )
         for sequence in duplicate_sequences:
-            findings.append(
+            _append_finding(
+                findings,
                 _finding(
                     DriftKind.EVENT,
                     "duplicate_global_sequence",
                     f"global_sequence:{sequence}",
                     "unique",
                     "duplicate",
-                )
+                ),
             )
 
-        expected_sequences = tuple(
-            range(expected.event_watermark + 1, observed.event_watermark + 1)
-        )
-        if sequences != expected_sequences:
-            findings.append(
+        if watermark_span > MAX_DRIFT_EVENTS:
+            # Never materialize an attacker-controlled integer range.  The
+            # bounded input contract makes an exact observation impossible,
+            # so this window is conclusively drifted rather than truncated.
+            _append_finding(
+                findings,
                 _finding(
                     DriftKind.EVENT,
-                    "event_range_not_exact",
+                    "event_window_exceeds_observation_bound",
                     "event_range",
-                    _compact_sequence(expected_sequences),
-                    _compact_sequence(sequences),
-                )
+                    f"at_most:{MAX_DRIFT_EVENTS}",
+                    watermark_span,
+                ),
             )
+        else:
+            expected_sequences = tuple(
+                range(expected.event_watermark + 1, observed.event_watermark + 1)
+            )
+            if sequences != expected_sequences:
+                _append_finding(
+                    findings,
+                    _finding(
+                        DriftKind.EVENT,
+                        "event_range_not_exact",
+                        "event_range",
+                        _compact_sequence(expected_sequences),
+                        _compact_sequence(sequences),
+                    ),
+                )
 
         available_parents = set(known_parents)
         for event in ordered:
@@ -752,14 +795,15 @@ class FederationDriftMonitor:
                 ("tree_id", observed.repository_tree_id, event.tree_id),
             ):
                 if expected_value != observed_value:
-                    findings.append(
+                    _append_finding(
+                        findings,
                         _finding(
                             DriftKind.EVENT,
                             f"event_{field_name}_changed",
                             event.event_id,
                             expected_value,
                             observed_value,
-                        )
+                        ),
                     )
             missing_parents = tuple(
                 parent
@@ -767,14 +811,15 @@ class FederationDriftMonitor:
                 if parent not in available_parents
             )
             for parent in missing_parents:
-                findings.append(
+                _append_finding(
+                    findings,
                     _finding(
                         DriftKind.CAUSAL,
                         "event_causal_parent_missing",
                         event.event_id,
                         parent,
                         "missing",
-                    )
+                    ),
                 )
             available_parents.add(event.event_id)
 

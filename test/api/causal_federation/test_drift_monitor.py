@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from ipfs_accelerate_py.agent_supervisor.federation.contracts import (
     FederationBinding,
+    FederationBoundsError,
     FederationContractError,
     UnknownNormativeFieldError,
 )
@@ -236,6 +237,52 @@ def test_watermark_regression_and_unobserved_advance_fail_closed() -> None:
     assert {item.code for item in advanced.findings} == {
         "event_watermark_advance_unobserved"
     }
+
+
+def test_oversized_event_window_is_reported_without_materializing_it() -> None:
+    """A bounded observer must not allocate an arbitrary watermark span."""
+
+    baseline = _roots()
+    observed = replace(baseline, event_watermark=2**63 - 1)
+    report = FederationDriftMonitor(baseline).observe(
+        observed,
+        events=(_event(2**63 - 1),),
+        observed_at=NOW,
+    )
+
+    finding = next(
+        item
+        for item in report.findings
+        if item.code == "event_window_exceeds_observation_bound"
+    )
+    assert finding.expected == "at_most:4096"
+    assert finding.observed == str(2**63 - 1 - baseline.event_watermark)
+
+
+def test_finding_volume_limit_fails_closed_before_creating_a_report() -> None:
+    """Adversarial causal-parent vectors cannot create an oversized receipt."""
+
+    baseline = _roots()
+    event_count = 64
+    events = tuple(
+        _event(
+            baseline.event_watermark + offset,
+            tenant_id="tenant:other",
+            parents=tuple(f"parent:{offset}:{parent}" for parent in range(256)),
+        )
+        for offset in range(1, event_count + 1)
+    )
+    observed = replace(
+        baseline,
+        event_watermark=baseline.event_watermark + event_count,
+    )
+
+    with pytest.raises(FederationBoundsError, match="drift finding bound exceeded"):
+        FederationDriftMonitor(baseline).observe(
+            observed,
+            events=events,
+            observed_at=NOW,
+        )
 
 
 def test_report_identity_is_deterministic_and_current_tree_validated() -> None:
