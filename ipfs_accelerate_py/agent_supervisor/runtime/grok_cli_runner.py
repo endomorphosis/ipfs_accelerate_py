@@ -81,6 +81,9 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     ValidationRuntimeError,
 )
 from ipfs_accelerate_py.llm_router import (
+    AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_SENTINEL_SCHEMA,
+    AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_WRAPPER,
+    AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_PREFIX,
     AGENT_IMPLEMENTATION_CODEX_IMAGE_ID,
     AGENT_IMPLEMENTATION_CODEX_IMAGE_LABEL,
     AGENT_IMPLEMENTATION_ROUTE_OUTCOME_PREFIX,
@@ -121,6 +124,14 @@ GROK_QUOTA_RECEIPT_SCHEMA = (
 )
 MAX_GROK_ERROR_BYTES = 128 * 1024
 _SCOPED_ROUTE_MAX_AGE_MS = 5 * 60 * 1000
+_CODEX_CAPACITY_CAPTURE_MAX_LINE_BYTES = 64 * 1024
+_CODEX_CAPACITY_CAPTURE_MAX_STREAM_BYTES = 8 * 1024 * 1024
+
+
+def _new_codex_capacity_log_nonce() -> str:
+    """Return an unguessable stream-start witness kept out of provider state."""
+
+    return "sha256:" + secrets.token_hex(32)
 
 
 def _agent_prompt_cid(prompt: str) -> str:
@@ -649,6 +660,7 @@ def build_grok_quota_routed_agent_command(
             "--ignore-user-config",
             "--ignore-rules",
             "--ephemeral",
+            "--json",
             "-s",
             "workspace-write",
             "-C",
@@ -2782,6 +2794,7 @@ def _docker_codex_fallback_command(
     cidfile: Path,
     docker_bin: str,
     isolation_image: str,
+    capacity_log_nonce: str | None = None,
 ) -> list[str]:
     """Wrap the pinned Codex fallback in a host-write-confined container."""
 
@@ -2796,6 +2809,9 @@ def _docker_codex_fallback_command(
         or not container_name.startswith("ipfs-accelerate-codex-")
     ):
         raise ValueError("Codex fallback container name is invalid")
+    log_nonce = capacity_log_nonce or _new_codex_capacity_log_nonce()
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", log_nonce) is None:
+        raise ValueError("Codex fallback capacity log nonce is invalid")
     source_auth = _validated_codex_auth_path(
         source_auth=source_auth,
         workspace=workspace,
@@ -2862,6 +2878,11 @@ def _docker_codex_fallback_command(
         f"{os.getuid()}:{os.getgid()}",
         "--workdir",
         str(workspace),
+        "--log-driver=json-file",
+        "--log-opt",
+        "max-size=16m",
+        "--log-opt",
+        "max-file=2",
     ]
     for override in _CODEX_DOCKER_IMAGE_ENV_OVERRIDES:
         command.extend(["--env", override])
@@ -2901,7 +2922,20 @@ def _docker_codex_fallback_command(
     environment_assignments = [
         f"{name}={value}" for name, value in sorted(expected_environment.items())
     ]
-    command.extend([image, "-i", *environment_assignments, *inner])
+    command.extend(
+        [
+            image,
+            "-i",
+            *environment_assignments,
+            str(_CODEX_TASK_TOOLCHAIN_PYTHON),
+            "-I",
+            "-c",
+            AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_WRAPPER,
+            AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_SENTINEL_SCHEMA,
+            log_nonce,
+            *inner,
+        ]
+    )
     return command
 
 
@@ -2914,6 +2948,7 @@ def _run_codex_quota_fallback_in_docker(
     base_env: dict[str, str],
     pre_effect_validator: Callable[[], None] | None = None,
     effect_claim: Callable[[Mapping[str, object]], None] | None = None,
+    capacity_evidence: Callable[[int, str], None] | None = None,
     effect_terminal: Callable[[int], None] | None = None,
 ) -> int:
     """Run Codex only inside the available pinned external sandbox."""
@@ -2953,6 +2988,7 @@ def _run_codex_quota_fallback_in_docker(
             raise ValueError(
                 "Codex fallback task-toolchain image is not pinned locally"
             )
+        capacity_log_nonce = _new_codex_capacity_log_nonce()
         command = _docker_codex_fallback_command(
             codex_command=codex_command,
             workspace=workspace,
@@ -2963,6 +2999,7 @@ def _run_codex_quota_fallback_in_docker(
             cidfile=docker_lease.cidfile,
             docker_bin=docker_bin,
             isolation_image=isolation_image,
+            capacity_log_nonce=capacity_log_nonce,
         )
         if pre_effect_validator is not None:
             # Validate the route before the final auth check so an auth swap
@@ -3108,9 +3145,12 @@ def _run_codex_quota_fallback_in_docker(
         )
         if process.stdin is None or process.stdout is None or process.stderr is None:
             raise RuntimeError("Codex fallback process pipes were not created")
+        capacity_capture = _CodexTerminalCapacityCapture(
+            expected_log_nonce=capacity_log_nonce
+        )
         stdout_thread = threading.Thread(
             target=_stream_provider_pipe_without_reserved_records,
-            args=(process.stdout, sys.stdout),
+            args=(process.stdout, sys.stdout, capacity_capture),
             daemon=True,
         )
         stderr_thread = threading.Thread(
@@ -3128,6 +3168,9 @@ def _run_codex_quota_fallback_in_docker(
         returncode = int(process.wait())
         stdout_thread.join()
         stderr_thread.join()
+        terminal_capacity_record = capacity_capture.finish()
+        if capacity_evidence is not None:
+            capacity_evidence(returncode, terminal_capacity_record)
         if effect_terminal is not None:
             # Persist the exact terminal outcome while Docker still retains
             # inspectable exit evidence.  Cleanup is released only after the
@@ -3593,6 +3636,151 @@ def _wait_for_recorded_codex_effect(
         return effect_returncode
 
 
+def _recorded_codex_capacity_log_nonce(
+    launch_receipt: Mapping[str, object],
+) -> str:
+    """Recover the exact unguessable stream-start witness from sealed argv."""
+
+    command_receipt = launch_receipt.get("command_receipt")
+    create_argv = (
+        command_receipt.get("create_argv")
+        if isinstance(command_receipt, Mapping)
+        else None
+    )
+    if not isinstance(create_argv, list) or any(
+        not isinstance(item, str) for item in create_argv
+    ):
+        return ""
+    wrapper_indexes = [
+        index
+        for index, item in enumerate(create_argv)
+        if item == AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_WRAPPER
+    ]
+    if len(wrapper_indexes) != 1:
+        return ""
+    index = wrapper_indexes[0]
+    if (
+        index < 3
+        or index + 2 >= len(create_argv)
+        or create_argv[index - 3 : index]
+        != [str(_CODEX_TASK_TOOLCHAIN_PYTHON), "-I", "-c"]
+        or create_argv[index + 1]
+        != AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_SENTINEL_SCHEMA
+    ):
+        return ""
+    nonce = create_argv[index + 2]
+    return nonce if re.fullmatch(r"sha256:[0-9a-f]{64}", nonce) else ""
+
+
+def _recorded_codex_terminal_capacity_evidence(
+    launch_receipt: Mapping[str, object],
+) -> str:
+    """Reproduce bounded stdout evidence from the exact retained effect."""
+
+    docker_bin = _docker_isolation_binary()
+    container_name = str(launch_receipt.get("container_name") or "")
+    container_id = str(launch_receipt.get("container_id") or "")
+    if (
+        not docker_bin
+        or _docker_runtime_receipt_identity(docker_bin)
+        != launch_receipt.get("runtime_id")
+        or _DOCKER_CONTAINER_NAME_RE.fullmatch(container_name) is None
+        or not container_name.startswith("ipfs-accelerate-codex-")
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", container_id) is None
+    ):
+        return ""
+    capacity_log_nonce = _recorded_codex_capacity_log_nonce(launch_receipt)
+    if not capacity_log_nonce:
+        return ""
+    capture = _CodexTerminalCapacityCapture(
+        expected_log_nonce=capacity_log_nonce
+    )
+    stream_state: dict[str, tuple[int, str, bool]] = {}
+    with tempfile.TemporaryDirectory(
+        prefix="asref-codex-capacity-docker-config-"
+    ) as config_root:
+        command = [
+            docker_bin,
+            f"--host={_DOCKER_LOCAL_HOST}",
+            "--config",
+            config_root,
+            "container",
+            "logs",
+            container_id.removeprefix("sha256:"),
+        ]
+        try:
+            process = subprocess.Popen(
+                command,
+                env=_docker_control_env(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except OSError:
+            return ""
+        assert process.stdout is not None
+        assert process.stderr is not None
+
+        def drain(name: str, source, *, authoritative: bool) -> None:
+            digest = hashlib.sha256()
+            total = 0
+            valid_utf8 = True
+            decoder = codecs.getincrementaldecoder("utf-8")("strict")
+            while True:
+                chunk = source.read(16 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+                total += len(chunk)
+                if authoritative and valid_utf8:
+                    try:
+                        decoded = decoder.decode(chunk, final=False)
+                    except UnicodeDecodeError:
+                        valid_utf8 = False
+                    else:
+                        capture.feed(decoded)
+            if authoritative and valid_utf8:
+                try:
+                    capture.feed(decoder.decode(b"", final=True))
+                except UnicodeDecodeError:
+                    valid_utf8 = False
+            source.close()
+            stream_state[name] = (total, digest.hexdigest(), valid_utf8)
+
+        stdout_thread = threading.Thread(
+            target=drain,
+            args=("stdout", process.stdout),
+            kwargs={"authoritative": True},
+            daemon=True,
+        )
+        stderr_thread = threading.Thread(
+            target=drain,
+            args=("stderr", process.stderr),
+            kwargs={"authoritative": False},
+            daemon=True,
+        )
+        stdout_thread.start()
+        stderr_thread.start()
+        try:
+            returncode = int(process.wait(timeout=120.0))
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            returncode = 124
+        stdout_thread.join()
+        stderr_thread.join()
+    stdout_state = stream_state.get("stdout", (0, "", False))
+    stderr_state = stream_state.get("stderr", (0, "", False))
+    if (
+        returncode != 0
+        or not stdout_state[2]
+        or stdout_state[0] > _CODEX_CAPACITY_CAPTURE_MAX_STREAM_BYTES
+        or stderr_state[0] > _CODEX_CAPACITY_CAPTURE_MAX_STREAM_BYTES
+    ):
+        return ""
+    return capture.finish()
+
+
 def _start_recorded_codex_effect(
     launch_receipt: Mapping[str, object],
     *,
@@ -3687,7 +3875,7 @@ def _validate_codex_quota_fallback_reasoning_effort(value: object) -> str:
 def _parse_codex_fallback_command(
     raw: str,
     *,
-    expected_fallback_reasoning_effort: str = (
+    expected_fallback_reasoning_effort: str | None = (
         DEFAULT_CODEX_QUOTA_FALLBACK_REASONING_EFFORT
     ),
 ) -> list[str]:
@@ -3749,6 +3937,7 @@ def _validate_codex_quota_fallback_command(
         "--ignore-user-config": 0,
         "--ignore-rules": 0,
         "--ephemeral": 0,
+        "--json": 0,
     }
     option_values: dict[str, list[str]] = {
         "-C": [],
@@ -3778,6 +3967,8 @@ def _validate_codex_quota_fallback_command(
         raise ValueError("Codex quota fallback must be ephemeral exactly once")
     if flag_counts["--ignore-rules"] != 1:
         raise ValueError("Codex quota fallback must ignore rules exactly once")
+    if flag_counts["--json"] != 1:
+        raise ValueError("Codex quota fallback must emit JSONL exactly once")
     if option_values["-s"] != ["workspace-write"]:
         raise ValueError("Codex quota fallback sandbox is not exactly workspace-write")
     if option_values["-m"] != [CODEX_QUOTA_FALLBACK_MODEL]:
@@ -3964,9 +4155,125 @@ def _stream_pipe(
         destination.flush()
 
 
+class _CodexTerminalCapacityCapture:
+    """Bounded parser for a no-candidate Codex JSONL capacity rejection."""
+
+    def __init__(self, *, expected_log_nonce: str) -> None:
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", expected_log_nonce) is None:
+            raise ValueError("Codex capacity capture log nonce is invalid")
+        self._expected_log_nonce = expected_log_nonce
+        self._line = ""
+        self._invalid = False
+        self._finished = False
+        self._saw_log_start = False
+        self._terminal_error = ""
+        self._saw_turn_failure = False
+        self._stream_bytes = 0
+
+    @staticmethod
+    def _unique_json(
+        pairs: Sequence[tuple[str, object]],
+    ) -> dict[str, object]:
+        value: dict[str, object] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate Codex JSONL key")
+            value[key] = item
+        return value
+
+    def _observe_line(self, raw: str) -> None:
+        if self._invalid or not raw.strip():
+            return
+        if (
+            "\r" in raw
+            or "\x00" in raw
+            or "\ufffd" in raw
+            or len(raw.encode("utf-8"))
+            > _CODEX_CAPACITY_CAPTURE_MAX_LINE_BYTES
+        ):
+            self._invalid = True
+            return
+        try:
+            record = json.loads(raw, object_pairs_hook=self._unique_json)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            self._invalid = True
+            return
+        if not isinstance(record, dict):
+            self._invalid = True
+            return
+        record_type = record.get("type")
+        if not self._saw_log_start:
+            if (
+                set(record) != {"schema", "type", "log_nonce"}
+                or record.get("schema")
+                != AGENT_IMPLEMENTATION_CODEX_CAPACITY_LOG_SENTINEL_SCHEMA
+                or record_type != "runner.capacity.start"
+                or record.get("log_nonce") != self._expected_log_nonce
+            ):
+                self._invalid = True
+                return
+            self._saw_log_start = True
+            return
+        if record_type in {"thread.started", "turn.started"}:
+            if self._terminal_error or self._saw_turn_failure:
+                self._invalid = True
+            return
+        if record_type == "error":
+            if self._terminal_error or self._saw_turn_failure:
+                self._invalid = True
+                return
+            # The route receipt builder applies the exact message and field
+            # shape check. Retain only this one bounded runner-observed line.
+            self._terminal_error = raw
+            return
+        if record_type == "turn.failed":
+            if not self._terminal_error or self._saw_turn_failure:
+                self._invalid = True
+                return
+            self._saw_turn_failure = True
+            return
+        # item.*, turn.completed, and every unknown record can represent
+        # candidate/tool activity. They permanently deny capacity retry.
+        self._invalid = True
+
+    def feed(self, chunk: str) -> None:
+        if self._finished:
+            self._invalid = True
+            return
+        self._stream_bytes += len(chunk.encode("utf-8"))
+        if self._stream_bytes > _CODEX_CAPACITY_CAPTURE_MAX_STREAM_BYTES:
+            self._invalid = True
+        pieces = chunk.split("\n")
+        for index, piece in enumerate(pieces):
+            self._line += piece
+            if len(self._line.encode("utf-8")) > (
+                _CODEX_CAPACITY_CAPTURE_MAX_LINE_BYTES
+            ):
+                self._invalid = True
+                self._line = ""
+            if index < len(pieces) - 1:
+                self._observe_line(self._line)
+                self._line = ""
+
+    def finish(self) -> str:
+        if not self._finished:
+            if self._line:
+                self._observe_line(self._line)
+            self._line = ""
+            self._finished = True
+        if (
+            self._invalid
+            or not self._saw_log_start
+            or not self._terminal_error
+        ):
+            return ""
+        return self._terminal_error
+
+
 def _stream_provider_pipe_without_reserved_records(
     source: TextIO,
     destination: TextIO,
+    capture: _CodexTerminalCapacityCapture | None = None,
 ) -> None:
     """Tee provider output while escaping runner-reserved record prefixes."""
 
@@ -3974,6 +4281,7 @@ def _stream_provider_pipe_without_reserved_records(
         GROK_FAILURE_RECEIPT_PREFIX,
         GROK_ROUTE_OUTCOME_PREFIX,
         AGENT_IMPLEMENTATION_ROUTE_OUTCOME_PREFIX,
+        AGENT_IMPLEMENTATION_CODEX_CAPACITY_RECEIPT_PREFIX,
     )
     maximum_prefix = max(map(len, reserved))
     prefix_buffer = ""
@@ -4023,6 +4331,8 @@ def _stream_provider_pipe_without_reserved_records(
                 flush_prefix(line_complete=True)
             destination.flush()
             return
+        if capture is not None:
+            capture.feed(chunk)
         parts = sanitized(chunk).split("\n")
         for index, piece in enumerate(parts):
             line_complete = index < len(parts) - 1
@@ -4629,8 +4939,10 @@ def _run_protected_effect_recovery(
         ProviderAttemptStoreError,
     )
     from ipfs_accelerate_py.llm_router import (
+        build_agent_implementation_codex_capacity_receipt,
         build_agent_implementation_route_outcome,
         parse_agent_implementation_effect_authorization_context,
+        render_agent_implementation_codex_capacity_receipt,
         render_agent_implementation_route_outcome,
         valid_agent_implementation_route_outcome,
         verify_agent_implementation_sealed_control_plane,
@@ -4739,6 +5051,14 @@ def _run_protected_effect_recovery(
             _release_recorded_codex_effect_cleanup(
                 reservation.effect_launch_receipt
             )
+            capacity_receipt = outcome.get("fallback_capacity_receipt", {})
+            if isinstance(capacity_receipt, Mapping) and capacity_receipt:
+                print(
+                    render_agent_implementation_codex_capacity_receipt(
+                        capacity_receipt
+                    ),
+                    file=sys.stderr,
+                )
             print(render_agent_implementation_route_outcome(outcome), file=sys.stderr)
             return returncode
 
@@ -4803,6 +5123,27 @@ def _run_protected_effect_recovery(
             dispatched = True
         else:
             raise ValueError("protected effect recovery inspection is invalid")
+        capacity_receipt: dict[str, object] = {}
+        if dispatched and returncode != 0:
+            terminal_error_record = (
+                _recorded_codex_terminal_capacity_evidence(
+                    active.effect_launch_receipt
+                )
+            )
+            if terminal_error_record:
+                try:
+                    capacity_receipt = (
+                        build_agent_implementation_codex_capacity_receipt(
+                            receipt=context.failure_receipt,
+                            route=context.route,
+                            fallback_returncode=returncode,
+                            decision_id=context.decision.content_id,
+                            terminal_error_record=terminal_error_record,
+                            observed_at_ms=int(time.time() * 1000),
+                        )
+                    )
+                except ValueError:
+                    capacity_receipt = {}
         outcome = build_agent_implementation_route_outcome(
             receipt=context.failure_receipt,
             route=context.route,
@@ -4823,6 +5164,7 @@ def _run_protected_effect_recovery(
                 if quarantined_repair
                 else None
             ),
+            fallback_capacity_receipt=capacity_receipt,
         )
         terminal = store.complete(
             active,
@@ -4831,6 +5173,13 @@ def _run_protected_effect_recovery(
             completion_capability=adopted.completion_capability,
         )
         _release_recorded_codex_effect_cleanup(terminal.effect_launch_receipt)
+        if capacity_receipt:
+            print(
+                render_agent_implementation_codex_capacity_receipt(
+                    capacity_receipt
+                ),
+                file=sys.stderr,
+            )
         print(render_agent_implementation_route_outcome(outcome), file=sys.stderr)
         return returncode
     except (OSError, TypeError, ValueError, ProviderAttemptStoreError) as exc:
@@ -4846,6 +5195,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
     )
     from ipfs_accelerate_py.llm_router import (
         LLMRouterError,
+        build_agent_implementation_codex_capacity_receipt,
         build_agent_implementation_effect_authorization_context,
         build_agent_implementation_route_outcome,
         build_grok_cli_command,
@@ -4855,6 +5205,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         find_grok_cli,
         parse_agent_implementation_effect_authorization_context,
         render_agent_implementation_route_outcome,
+        render_agent_implementation_codex_capacity_receipt,
         resolve_agent_implementation_route,
         resolve_agent_implementation_route_binding,
         valid_agent_implementation_route_outcome,
@@ -4865,7 +5216,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         codex_fallback_command = _parse_codex_fallback_command(
             str(args.codex_fallback_command_json),
             expected_fallback_reasoning_effort=(
-                args.codex_fallback_reasoning_effort
+                args.codex_fallback_reasoning_effort or None
             ),
         )
     except ValueError as exc:
@@ -5135,6 +5486,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
             fallback_returncode: int | None,
             decision_id: str = "",
             reservation: ProviderAttemptReservation | None = None,
+            fallback_capacity_receipt: Mapping[str, object] | None = None,
         ) -> dict[str, object]:
             if active_route.invocation_binding is not None:
                 return build_agent_implementation_route_outcome(
@@ -5179,6 +5531,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                         if reservation
                         else {}
                     ),
+                    fallback_capacity_receipt=fallback_capacity_receipt,
                 )
             return build_grok_route_outcome(
                 receipt=receipt,
@@ -5197,7 +5550,22 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 "ipfs_accelerate_py.agent_supervisor."
                 "protected-route-outcome@1"
             ):
-                return render_agent_implementation_route_outcome(outcome)
+                rendered = render_agent_implementation_route_outcome(outcome)
+                capacity_receipt = outcome.get(
+                    "fallback_capacity_receipt", {}
+                )
+                if (
+                    isinstance(capacity_receipt, Mapping)
+                    and capacity_receipt
+                ):
+                    return (
+                        render_agent_implementation_codex_capacity_receipt(
+                            capacity_receipt
+                        )
+                        + "\n"
+                        + rendered
+                    )
+                return rendered
             return render_grok_route_outcome(outcome)
         try:
             _validate_codex_quota_fallback_command(
@@ -5502,6 +5870,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
         attempt_reservation: ProviderAttemptReservation | None = None
         completion_capability = ""
         completed_terminal_outcome: dict[str, object] | None = None
+        captured_capacity_receipt: dict[str, object] = {}
 
         invocation_binding = route_plan.invocation_binding
         if invocation_binding is not None:
@@ -5678,6 +6047,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 fallback_dispatched=True,
                 fallback_returncode=returncode,
                 reservation=attempt_reservation,
+                fallback_capacity_receipt=captured_capacity_receipt,
             )
             attempt_reservation = attempt_store.complete(
                 attempt_reservation,
@@ -5686,6 +6056,45 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 completion_capability=completion_capability,
             )
             completed_terminal_outcome = terminal_outcome
+
+        def capture_codex_capacity_evidence(
+            returncode: int,
+            terminal_error_record: str,
+        ) -> None:
+            """Seal only a runner-observed, no-candidate Codex rejection."""
+
+            nonlocal captured_capacity_receipt
+            captured_capacity_receipt = {}
+            if (
+                invocation_binding is None
+                or effect_decision is None
+                or attempt_reservation is None
+                or returncode == 0
+                or not terminal_error_record
+            ):
+                return
+            recorded_terminal_error = (
+                _recorded_codex_terminal_capacity_evidence(
+                    attempt_reservation.effect_launch_receipt
+                )
+            )
+            if recorded_terminal_error != terminal_error_record:
+                return
+            try:
+                captured_capacity_receipt = (
+                    build_agent_implementation_codex_capacity_receipt(
+                        receipt=preflight_receipt,
+                        route=outcome_route,
+                        fallback_returncode=returncode,
+                        decision_id=effect_decision.content_id,
+                        terminal_error_record=terminal_error_record,
+                        observed_at_ms=int(time.time() * 1000),
+                    )
+                )
+            except ValueError:
+                # Unproven/malformed output is an ordinary terminal provider
+                # failure, never a capacity retry.
+                captured_capacity_receipt = {}
 
         def adopt_started_effect(
             reservation: ProviderAttemptReservation,
@@ -5790,6 +6199,27 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 raise ProviderAttemptStoreError(
                     "effect adoption receipt is invalid"
                 )
+            adopted_capacity_receipt: dict[str, object] = {}
+            if fallback_dispatched and fallback_returncode != 0:
+                terminal_error_record = (
+                    _recorded_codex_terminal_capacity_evidence(
+                        attempt_reservation.effect_launch_receipt
+                    )
+                )
+                if terminal_error_record:
+                    try:
+                        adopted_capacity_receipt = (
+                            build_agent_implementation_codex_capacity_receipt(
+                                receipt=preflight_receipt,
+                                route=outcome_route,
+                                fallback_returncode=fallback_returncode,
+                                decision_id=attempt_reservation.decision_id,
+                                terminal_error_record=terminal_error_record,
+                                observed_at_ms=int(time.time() * 1000),
+                            )
+                        )
+                    except ValueError:
+                        adopted_capacity_receipt = {}
             terminal_outcome = route_outcome_record(
                 active_route=outcome_route,
                 receipt=preflight_receipt,
@@ -5801,6 +6231,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 fallback_dispatched=fallback_dispatched,
                 fallback_returncode=fallback_returncode,
                 reservation=attempt_reservation,
+                fallback_capacity_receipt=adopted_capacity_receipt,
             )
             attempt_reservation = attempt_store.complete(
                 attempt_reservation,
@@ -5921,6 +6352,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 base_env=os.environ.copy(),
                 pre_effect_validator=validate_effect_boundary,
                 effect_claim=claim_provider_effect,
+                capacity_evidence=(
+                    capture_codex_capacity_evidence
+                    if invocation_binding is not None
+                    else None
+                ),
                 effect_terminal=(
                     complete_provider_effect
                     if invocation_binding is not None
@@ -5942,6 +6378,7 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 fallback_dispatched=True,
                 fallback_returncode=fallback_returncode,
                 reservation=attempt_reservation,
+                fallback_capacity_receipt=captured_capacity_receipt,
             )
             print(
                 render_route_outcome_record(terminal_outcome),
@@ -6447,7 +6884,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--codex-fallback-reasoning-effort",
-        default=DEFAULT_CODEX_QUOTA_FALLBACK_REASONING_EFFORT,
+        default="",
         choices=tuple(sorted(CODEX_QUOTA_FALLBACK_REASONING_EFFORTS)),
         help="Exact closed reasoning effort bound into the Codex fallback argv.",
     )

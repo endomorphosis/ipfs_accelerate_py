@@ -65,9 +65,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon_runner as daemon_runner,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
+    DatabasePortalCapacityRetry,
     DatabasePortalValidationRetry,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -232,10 +234,12 @@ def _open_daemon(
     lease_ms: int = 60_000,
     max_task_attempts: int = 0,
     clock_ms: Callable[[], int] | None = None,
+    lane: str = "",
 ) -> DatabaseImplementationDaemon:
     database_path = tmp_path / "control.duckdb"
-    coordination_path = tmp_path / "coordination.duckdb"
-    execution_path = tmp_path / "execution.duckdb"
+    suffix = f"-{lane}" if lane else ""
+    coordination_path = tmp_path / f"coordination{suffix}.duckdb"
+    execution_path = tmp_path / f"execution{suffix}.duckdb"
 
     def default_provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
         if provider_calls is not None:
@@ -422,6 +426,151 @@ def _validation_retry_receipt(
     }
     receipt["receipt_id"] = daemon._database_portal_evidence_digest(receipt)
     return receipt
+
+
+def _capacity_retry_receipt(
+    daemon: DatabaseImplementationDaemon,
+    attempt: DatabaseTaskAttempt,
+) -> dict[str, object]:
+    digest = daemon._database_portal_evidence_digest
+    primary: dict[str, object] = {
+        "schema": "fixture/grok-failure@1",
+        "nonce": "4" * 64,
+    }
+    primary["receipt_id"] = digest(primary)
+    route_id = "route:capacity-test"
+    invocation_id = "sha256:" + "2" * 64
+    logical_id = "sha256:" + "1" * 64
+    decision_id = "sha256:" + "3" * 64
+    observed_at_ms = 1_000_000
+    retry_not_before_ms = 2_000_000
+    returncode = 17
+    capacity: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "codex-terminal-capacity-receipt@1"
+        ),
+        "source": "grok_cli_runner",
+        "failure_class": "usage_limit",
+        "reason_code": "codex_usage_limit_reached",
+        "primary_receipt_id": primary["receipt_id"],
+        "nonce": primary["nonce"],
+        "route_id": route_id,
+        "invocation_binding_id": invocation_id,
+        "logical_attempt_id": logical_id,
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_reasoning_effort": "high",
+        "fallback_returncode": returncode,
+        "outcome_decision": "fallback_failed",
+        "decision_id": decision_id,
+        "provider_dispatched": True,
+        "candidate_activity_observed": False,
+        "attempt_consumed": True,
+        "completion_authority": False,
+        "observed_at_ms": observed_at_ms,
+        "retry_not_before_ms": retry_not_before_ms,
+        "evidence_kind": "codex_jsonl_terminal_error",
+        "evidence_sha256": "sha256:" + "5" * 64,
+        "evidence_bytes": 100,
+        "evidence_overflow": False,
+    }
+    capacity["receipt_id"] = digest(capacity)
+    outcome: dict[str, object] = {
+        "route_plan": {
+            "route_id": route_id,
+            "fallback_provider_id": "codex",
+            "fallback_model_id": "gpt-5.6-terra",
+            "fallback_reasoning_effort": "high",
+        },
+        "preflight_receipt_id": primary["receipt_id"],
+        "invocation_binding_id": invocation_id,
+        "decision": "fallback_failed",
+        "decision_id": decision_id,
+        "fallback_dispatched": True,
+        "fallback_returncode": returncode,
+        "fallback_capacity_receipt": capacity,
+    }
+    outcome["outcome_id"] = digest(outcome)
+    proof: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "post-dispatch-capacity-retry-proof@1"
+        ),
+        "task_id": attempt.task_alias,
+        "attempt": 1,
+        "task_revision_cid": attempt.task_cid,
+        "logical_attempt_id": logical_id,
+        "invocation_binding_id": invocation_id,
+        "route_id": route_id,
+        "decision_id": decision_id,
+        "primary_receipt_id": primary["receipt_id"],
+        "route_outcome_id": outcome["outcome_id"],
+        "capacity_receipt_id": capacity["receipt_id"],
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_reasoning_effort": "high",
+        "fallback_returncode": returncode,
+        "provider_dispatched": True,
+        "attempt_consumed": True,
+        "observed_at_ms": observed_at_ms,
+        "retry_not_before_ms": retry_not_before_ms,
+    }
+    proof["proof_id"] = digest(proof)
+    receipt: dict[str, object] = {
+        "schema": DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA,
+        "disposition": "retry",
+        "reason": "dual_provider_capacity_exhausted",
+        "task_cid": attempt.task_cid,
+        "task_alias": attempt.task_alias,
+        "attempt_id": attempt.attempt_id,
+        "claim_id": attempt.claim_id,
+        "lease_id": attempt.lease_id,
+        "attempt_number": attempt.attempt_number,
+        "fencing_token": attempt.fencing_token,
+        "fence_epoch": attempt.fence_epoch,
+        "portal_attempt": 1,
+        "ordinary_retry_generation": 1,
+        "max_task_attempts": daemon.max_task_attempts,
+        "remaining_task_attempts": daemon.max_task_attempts - 1,
+        "attempt_consumed": True,
+        "provider_dispatched": True,
+        "backoff_seconds": 1_000,
+        "retry_not_before_ms": retry_not_before_ms,
+        "binding_id": "sha256:" + "6" * 64,
+        "events_digest": "sha256:" + "7" * 64,
+        "event_stream_id": "event-log:capacity-retry",
+        "implementation_event_id": "sha256:" + "8" * 64,
+        "post_dispatch_capacity_proof": proof,
+        "primary_receipt": primary,
+        "route_outcome": outcome,
+        "codex_capacity_receipt": capacity,
+    }
+    receipt["receipt_id"] = digest(receipt)
+    return receipt
+
+
+def _rehash_capacity_retry_receipt(
+    daemon: DatabaseImplementationDaemon,
+    receipt: dict[str, object],
+) -> dict[str, object]:
+    value = json.loads(json.dumps(receipt))
+    digest = daemon._database_portal_evidence_digest
+    capacity = value["codex_capacity_receipt"]
+    capacity.pop("receipt_id", None)
+    capacity["receipt_id"] = digest(capacity)
+    outcome = value["route_outcome"]
+    outcome["fallback_capacity_receipt"] = capacity
+    outcome.pop("outcome_id", None)
+    outcome["outcome_id"] = digest(outcome)
+    proof = value["post_dispatch_capacity_proof"]
+    proof["capacity_receipt_id"] = capacity["receipt_id"]
+    proof["route_outcome_id"] = outcome["outcome_id"]
+    proof.pop("proof_id", None)
+    proof["proof_id"] = digest(proof)
+    value.pop("receipt_id", None)
+    value["receipt_id"] = digest(value)
+    return value
 
 
 def test_interface_identities() -> None:
@@ -1306,6 +1455,94 @@ def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
         assert claim_receipt["lease_id"] == successor.lease_id
     finally:
         daemon.close()
+
+
+def test_typed_capacity_retry_crosses_lanes_without_refunding_attempt(
+    tmp_path: Path,
+) -> None:
+    holder: dict[str, DatabaseImplementationDaemon] = {}
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        receipt = _capacity_retry_receipt(holder["daemon"], attempt)
+        raise DatabasePortalCapacityRetry(receipt)
+
+    first = _open_daemon(
+        tmp_path,
+        session="session:capacity-lane-a",
+        provider_fn=provider,
+        max_task_attempts=3,
+        clock_ms=lambda: 1_000_000,
+        lane="a",
+    )
+    holder["daemon"] = first
+    try:
+        first.materialize_population(_population(1))
+        result = first.run_once()
+        implementation = result["implementation_result"]
+        assert implementation["portal_retryable_failure"] is True
+        assert implementation["portal_terminal_failure"] is False
+        assert implementation["deferred"] is False
+        assert implementation["attempt_consumed"] is True
+        assert implementation["provider_dispatched"] is True
+        assert implementation["typed_deferral_slot_consumed"] is False
+        assert implementation["retry_state"]["status"] == "retrying"
+
+        source = first.get_attempt(result["attempt_id"])
+        assert source is not None
+        evidence = first._terminal_retry_evidence(source)
+        assert evidence is not None
+        assert evidence["typed_deferral_budget"] is None
+        seed = evidence["typed_capacity_retry"]
+        assert seed["portal_attempt"] == 1
+        assert seed["remaining_task_attempts"] == 2
+        task = first.task_source.get(source.task_cid)
+        assert task is not None
+        assert task.status == "retrying"
+        assert task.body["completion_receipt"]["capacity_retry_seed"] == seed
+
+        # Recomputed nested and top-level tampering must fail semantic
+        # verification even when every content identity is internally valid.
+        forged = json.loads(json.dumps(seed))
+        forged["codex_capacity_receipt"]["source"] = "untrusted_runner"
+        forged = _rehash_capacity_retry_receipt(first, forged)
+        with pytest.raises(DatabaseImplementationAuthorityError):
+            first._verified_capacity_retry_receipt(source, forged)
+        shortened = json.loads(json.dumps(seed))
+        shortened["retry_not_before_ms"] = 0
+        shortened.pop("receipt_id")
+        shortened["receipt_id"] = first._database_portal_evidence_digest(
+            shortened
+        )
+        with pytest.raises(DatabaseImplementationAuthorityError):
+            first._verified_capacity_retry_receipt(source, shortened)
+    finally:
+        first.close()
+
+    # Lane B has a fresh coordination/execution journal, so source attempt
+    # 1 is intentionally absent.  The exact shared control receipt authorizes
+    # the handoff, and its private attempt counter can also restart at 1.
+    second = _open_daemon(
+        tmp_path,
+        session="session:capacity-lane-b",
+        max_task_attempts=3,
+        clock_ms=lambda: 2_000_001,
+        lane="b",
+    )
+    try:
+        assert second.get_attempt(source.attempt_id) is None
+        successor = second.claim_next()
+        assert successor is not None
+        assert successor.attempt_number == 1
+        claimed = second.task_source.get(source.task_cid)
+        assert claimed is not None
+        claim_receipt = claimed.body["completion_receipt"]
+        assert claim_receipt["operation"] == "database_claim"
+        assert claim_receipt["capacity_retry_source_attempt_id"] == (
+            source.attempt_id
+        )
+        assert claim_receipt["capacity_retry_seed"] == seed
+    finally:
+        second.close()
 
 
 def test_blocked_generic_validation_failure_has_idempotent_typed_recovery(

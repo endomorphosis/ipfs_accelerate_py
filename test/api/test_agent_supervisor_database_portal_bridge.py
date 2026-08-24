@@ -23,10 +23,12 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations i
     duckdb_available,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
+    DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
+    DatabasePortalCapacityRetry,
     DatabasePortalExecutionBridge,
     DatabasePortalValidationRetry,
     _is_implementation_conflict,
@@ -420,6 +422,161 @@ class _ValidationFailurePortal:
         return {"implementation_result": implementation}
 
 
+def _capacity_record_id(value: dict[str, object], field: str) -> str:
+    body = {key: item for key, item in value.items() if key != field}
+    encoded = json.dumps(
+        body,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _capacity_event_payload(
+    task_alias: str,
+    *,
+    portal_attempt: int = 1,
+) -> dict[str, object]:
+    task_cid = "task:cid:004"
+    logical_attempt_id = "sha256:" + "1" * 64
+    invocation_binding_id = "sha256:" + "2" * 64
+    decision_id = "sha256:" + "3" * 64
+    route_id = "route:test"
+    returncode = 17
+    observed_at_ms = 1_000_000
+    retry_not_before_ms = 2_000_000
+    primary: dict[str, object] = {
+        "schema": "fixture/grok-failure@1",
+        "nonce": "4" * 64,
+    }
+    primary["receipt_id"] = _capacity_record_id(primary, "receipt_id")
+    capacity: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "codex-terminal-capacity-receipt@1"
+        ),
+        "source": "grok_cli_runner",
+        "failure_class": "usage_limit",
+        "reason_code": "codex_usage_limit_reached",
+        "primary_receipt_id": primary["receipt_id"],
+        "nonce": primary["nonce"],
+        "route_id": route_id,
+        "invocation_binding_id": invocation_binding_id,
+        "logical_attempt_id": logical_attempt_id,
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_reasoning_effort": "high",
+        "fallback_returncode": returncode,
+        "outcome_decision": "fallback_failed",
+        "decision_id": decision_id,
+        "provider_dispatched": True,
+        "candidate_activity_observed": False,
+        "attempt_consumed": True,
+        "completion_authority": False,
+        "observed_at_ms": observed_at_ms,
+        "retry_not_before_ms": retry_not_before_ms,
+        "evidence_kind": "codex_jsonl_terminal_error",
+        "evidence_sha256": "sha256:" + "5" * 64,
+        "evidence_bytes": 100,
+        "evidence_overflow": False,
+    }
+    capacity["receipt_id"] = _capacity_record_id(capacity, "receipt_id")
+    outcome: dict[str, object] = {
+        "route_plan": {
+            "route_id": route_id,
+            "fallback_provider_id": "codex",
+            "fallback_model_id": "gpt-5.6-terra",
+            "fallback_reasoning_effort": "high",
+        },
+        "preflight_receipt_id": primary["receipt_id"],
+        "invocation_binding_id": invocation_binding_id,
+        "decision": "fallback_failed",
+        "decision_id": decision_id,
+        "fallback_dispatched": True,
+        "fallback_returncode": returncode,
+        "fallback_capacity_receipt": capacity,
+    }
+    outcome["outcome_id"] = _capacity_record_id(outcome, "outcome_id")
+    proof: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "post-dispatch-capacity-retry-proof@1"
+        ),
+        "task_id": task_alias,
+        "attempt": portal_attempt,
+        "task_revision_cid": task_cid,
+        "logical_attempt_id": logical_attempt_id,
+        "invocation_binding_id": invocation_binding_id,
+        "route_id": route_id,
+        "decision_id": decision_id,
+        "primary_receipt_id": primary["receipt_id"],
+        "route_outcome_id": outcome["outcome_id"],
+        "capacity_receipt_id": capacity["receipt_id"],
+        "fallback_provider_id": "codex",
+        "fallback_model_id": "gpt-5.6-terra",
+        "fallback_reasoning_effort": "high",
+        "fallback_returncode": returncode,
+        "provider_dispatched": True,
+        "attempt_consumed": True,
+        "observed_at_ms": observed_at_ms,
+        "retry_not_before_ms": retry_not_before_ms,
+    }
+    proof["proof_id"] = _capacity_record_id(proof, "proof_id")
+    return {
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "attempt": portal_attempt,
+        "returncode": returncode,
+        "retryable": True,
+        "deferred": False,
+        "attempt_consumed": True,
+        "provider_dispatched": True,
+        "typed_deferral_slot_consumed": False,
+        "reason": "provider_capacity_exhausted",
+        "failure_class": "dual_provider_capacity_exhausted",
+        "providers": ["grok", "codex"],
+        "post_dispatch_capacity_retry": proof,
+        "quota_probe_receipt": primary,
+        "route_outcome": outcome,
+        "codex_capacity_receipt": capacity,
+    }
+
+
+class _CapacityFailurePortal:
+    def __init__(
+        self,
+        paths: object,
+        task_alias: str,
+        *,
+        calls: list[int],
+        portal_attempt: int = 1,
+    ) -> None:
+        self.paths = paths
+        self.task_alias = task_alias
+        self.calls = calls
+        self.portal_attempt = portal_attempt
+
+    def run_once(self) -> dict[str, object]:
+        self.calls.append(self.portal_attempt)
+        implementation = _capacity_event_payload(
+            self.task_alias,
+            portal_attempt=self.portal_attempt,
+        )
+        append_jsonl_event(
+            self.paths.events,
+            "implementation_post_dispatch_capacity_retry",
+            implementation,
+        )
+        append_jsonl_event(
+            self.paths.events,
+            "daemon_pass",
+            {"active_task_id": self.task_alias},
+        )
+        return {"implementation_result": implementation}
+
+
 def test_bridge_propagates_typed_pre_dispatch_cooldown(tmp_path: Path) -> None:
     class DeferredPortal:
         def __init__(self) -> None:
@@ -743,10 +900,303 @@ def test_bridge_classifies_only_preserved_authoritative_validation_failure(
     projected_task = portal._load_tasks()[0]
     projected_state = PortalTaskState.load(successor_paths.state)
     assert portal._task_attempt(projected_state, projected_task) == 2
+
+    # A successor process can die after Portal charges attempt 2 and records
+    # its start.  The sealed seed plus exact in-flight state must remain
+    # adoptable instead of being mistaken for seed corruption.
+    progressed = dict(state)
+    progressed.update(
+        {
+            "implementation_attempts": {source.task_alias: 2},
+            "implementation_attempts_by_cid": {source.task_cid: 2},
+            "active_task_id": source.task_alias,
+            "active_task_cid": source.task_cid,
+            "active_attempt": 2,
+            "implementation_in_progress": True,
+            "last_implementation_task_id": source.task_alias,
+            "last_implementation_task_cid": source.task_cid,
+            "last_implementation_returncode": None,
+            "last_implementation_finished_at": "",
+        }
+    )
+    successor_paths.state.write_text(
+        json.dumps(progressed, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    append_jsonl_event(
+        successor_paths.events,
+        "implementation_started",
+        {
+            "task_id": source.task_alias,
+            "canonical_task_cid": source.task_cid,
+            "attempt": 2,
+            "provider_dispatched": False,
+        },
+    )
+    progressed_calls: list[str] = []
+
+    class InspectProgressedPortal:
+        def run_once(self) -> dict[str, object]:
+            progressed_calls.append("adopt")
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "reason": "stop_after_progressed_seed_inspection",
+                }
+            }
+
+    progressed_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "successor-attempts",
+        portal_factory=lambda _paths, _alias: InspectProgressedPortal(),
+        max_passes=1,
+        max_task_attempts=3,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="stop_after_progressed_seed_inspection",
+    ):
+        progressed_bridge.run_provider(successor)
+    assert progressed_calls == ["adopt"]
     authority = portal._prior_seed_proposal_authority(projected_task)
     assert authority["ok"] is True
     assert authority["database_validation_retry_seed"] is True
     assert authority["authorized_paths"] == ["inventory/result.json"]
+
+
+def test_bridge_capacity_retry_replays_without_dispatch_and_seeds_successor(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    calls: list[int] = []
+    attempt_root = tmp_path / "attempts"
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=attempt_root,
+        portal_factory=lambda paths, alias: _CapacityFailurePortal(
+            paths,
+            alias,
+            calls=calls,
+        ),
+        max_passes=1,
+        max_task_attempts=3,
+    )
+    source = _attempt(attempt_number=189)
+
+    with pytest.raises(DatabasePortalCapacityRetry) as caught:
+        bridge.run_provider(source)
+    retry = caught.value.retry_receipt
+    assert calls == [1]
+    assert retry["schema"] == DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA
+    assert retry["portal_attempt"] == 1
+    assert retry["remaining_task_attempts"] == 2
+    assert retry["attempt_consumed"] is True
+    assert retry["provider_dispatched"] is True
+
+    # Response loss after the durable Portal event must replay the exact
+    # receipt before constructing a provider or advancing attempt state.
+    replay = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "capacity replay dispatched the provider"
+        ),
+        max_passes=1,
+        max_task_attempts=3,
+    )
+    with pytest.raises(DatabasePortalCapacityRetry) as replayed:
+        replay.run_provider(source)
+    assert replayed.value.retry_receipt == retry
+    assert calls == [1]
+
+    successor = DatabaseTaskAttempt(
+        attempt_id="attempt:002",
+        claim_id="claim:002",
+        task_cid=source.task_cid,
+        task_alias=source.task_alias,
+        # Coordination attempt numbers are lane-local; the shared CAS receipt,
+        # not a numeric comparison with lane A's 189, orders this handoff.
+        attempt_number=1,
+        owner_session_id="session:successor-lane",
+        fencing_token=1,
+        fence_epoch=1,
+        lease_id="lease:002",
+        committed_phase="claimed",
+        status="running",
+        started_at_ms=2,
+    )
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            "operation": "database_claim",
+            "attempt_id": successor.attempt_id,
+            "claim_id": successor.claim_id,
+            "attempt_number": successor.attempt_number,
+            "fencing_token": successor.fencing_token,
+            "fence_epoch": successor.fence_epoch,
+            "lease_id": successor.lease_id,
+            "capacity_retry_source_attempt_id": source.attempt_id,
+            "capacity_retry_seed": retry,
+        },
+    }
+    record.revision += 1
+    observed: dict[str, object] = {}
+
+    class InspectCapacitySeedPortal:
+        def __init__(self, paths: object) -> None:
+            self.paths = paths
+
+        def run_once(self) -> dict[str, object]:
+            observed["paths"] = self.paths
+            observed["state"] = json.loads(
+                self.paths.state.read_text(encoding="utf-8")
+            )
+            observed["events"] = [
+                json.loads(line)
+                for line in self.paths.events.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "reason": "stop_after_capacity_seed_inspection",
+                }
+            }
+
+    successor_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        # A new root models a successor lane with no source attempt files.
+        attempt_root=tmp_path / "successor-attempts",
+        portal_factory=lambda paths, _alias: InspectCapacitySeedPortal(paths),
+        max_passes=1,
+        max_task_attempts=3,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="stop_after_capacity_seed_inspection",
+    ):
+        successor_bridge.run_provider(successor)
+    state = observed["state"]
+    assert isinstance(state, dict)
+    assert state["implementation_attempts"][source.task_alias] == 1
+    assert state["implementation_attempts_by_cid"][source.task_cid] == 1
+    events = observed["events"]
+    assert isinstance(events, list)
+    assert events[0]["type"] == "database_portal_capacity_retry_seeded"
+    assert events[0]["source_retry_receipt_id"] == retry["receipt_id"]
+    successor_paths = observed["paths"]
+    portal = PortalImplementationDaemon(
+        todo_path=successor_paths.task_projection,
+        state_path=successor_paths.state,
+        strategy_path=successor_paths.strategy,
+        events_path=successor_paths.events,
+        repo_root=tmp_path,
+        task_header_prefix="LGSWF-",
+        max_task_attempts=3,
+    )
+    projected_task = portal._load_tasks()[0]
+    projected_state = PortalTaskState.load(successor_paths.state)
+    assert portal._task_attempt(projected_state, projected_task) == 2
+
+
+def test_bridge_capacity_at_attempt_cap_is_terminal_and_replay_safe(
+    tmp_path: Path,
+) -> None:
+    calls: list[int] = []
+    attempt_root = tmp_path / "attempts"
+    record = _record()
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=attempt_root,
+        portal_factory=lambda paths, alias: _CapacityFailurePortal(
+            paths,
+            alias,
+            calls=calls,
+            portal_attempt=3,
+        ),
+        max_passes=1,
+        max_task_attempts=3,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError) as caught:
+        bridge.run_provider(_attempt())
+    assert not isinstance(caught.value, DatabasePortalCapacityRetry)
+    assert str(caught.value) == "portal_retry_budget_exhausted"
+    assert calls == [3]
+
+    replay = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "exhausted capacity replay dispatched the provider"
+        ),
+        max_passes=1,
+        max_task_attempts=3,
+    )
+    with pytest.raises(DatabasePortalBridgeError) as replayed:
+        replay.run_provider(_attempt())
+    assert not isinstance(replayed.value, DatabasePortalCapacityRetry)
+    assert str(replayed.value) == "portal_retry_budget_exhausted"
+    assert calls == [3]
+
+
+def test_bridge_stale_capacity_event_cannot_override_later_disposition(
+    tmp_path: Path,
+) -> None:
+    record = _record()
+    source = _attempt()
+    calls: list[int] = []
+    attempt_root = tmp_path / "attempts"
+    first = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=attempt_root,
+        portal_factory=lambda paths, alias: _CapacityFailurePortal(
+            paths,
+            alias,
+            calls=calls,
+        ),
+        max_passes=1,
+        max_task_attempts=3,
+    )
+    with pytest.raises(DatabasePortalCapacityRetry):
+        first.run_provider(source)
+    append_jsonl_event(
+        first._paths(source).events,
+        "implementation_finished",
+        {
+            "task_id": source.task_alias,
+            "canonical_task_cid": source.task_cid,
+            "attempt": 2,
+            "returncode": 0,
+            "attempt_consumed": True,
+            "provider_dispatched": True,
+        },
+    )
+
+    class LaterDispositionPortal:
+        def run_once(self) -> dict[str, object]:
+            return {
+                "implementation_result": {
+                    "returncode": 1,
+                    "reason": "later_disposition_observed",
+                }
+            }
+
+    replay = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, _alias: LaterDispositionPortal(),
+        max_passes=1,
+        max_task_attempts=3,
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="later_disposition_observed",
+    ) as caught:
+        replay.run_provider(source)
+    assert not isinstance(caught.value, DatabasePortalCapacityRetry)
+    assert calls == [1]
 
 
 @pytest.mark.parametrize(
