@@ -5539,6 +5539,36 @@ def test_quack_preprojection_recovery_supersedes_only_expired_same_task_queue_li
         assert verified["receipt"]["superseded_queue_lineage"] == lineage
         assert daemon.reconcile_terminal_portal_failures() == []
 
+        preserved_body = json.loads(json.dumps(dict(task.body)))
+        preserved_body["unknown_callback_reopen_count"] = 1
+        preserved_body["completion_receipt"][
+            "unknown_callback_reopen_count"
+        ] = 1
+        preserved_task = SimpleNamespace(
+            status=task.status,
+            revision=task.revision,
+            body=preserved_body,
+        )
+        verified = (
+            daemon._verified_quack_preprojection_transport_recovery_state(
+                second_attempt,
+                preserved_task,
+            )
+        )
+        assert verified["receipt"]["unknown_callback_reopen_count"] == 1
+
+        preserved_body["completion_receipt"][
+            "unknown_callback_reopen_count"
+        ] = 2
+        with pytest.raises(
+            DatabaseImplementationConflictError,
+            match="control state is not exact",
+        ):
+            daemon._verified_quack_preprojection_transport_recovery_state(
+                second_attempt,
+                preserved_task,
+            )
+
         tampered_body = json.loads(json.dumps(dict(task.body)))
         tampered_body["completion_receipt"][
             "superseded_queue_lineage"
@@ -5574,6 +5604,38 @@ def test_quack_preprojection_recovery_supersedes_only_expired_same_task_queue_li
             )
     finally:
         daemon.close()
+
+
+def test_recovery_control_receipts_bind_only_exact_preserved_reopen_count(
+) -> None:
+    exact = DatabaseImplementationDaemon._control_receipt_fields_are_exact
+
+    assert exact({}, {"operation": "recovery"}, {"operation"}) is True
+    assert exact(
+        {"unknown_callback_reopen_count": 2},
+        {"operation": "recovery", "unknown_callback_reopen_count": 2},
+        {"operation"},
+    ) is True
+    assert exact(
+        {"unknown_callback_reopen_count": 2},
+        {"operation": "recovery"},
+        {"operation"},
+    ) is False
+    assert exact(
+        {"unknown_callback_reopen_count": 2},
+        {"operation": "recovery", "unknown_callback_reopen_count": 3},
+        {"operation"},
+    ) is False
+    assert exact(
+        {"unknown_callback_reopen_count": True},
+        {"operation": "recovery", "unknown_callback_reopen_count": True},
+        {"operation"},
+    ) is False
+    assert exact(
+        {},
+        {"operation": "recovery", "foreign": True},
+        {"operation"},
+    ) is False
 
 
 def test_quack_preprojection_recovery_rejects_live_or_current_queue_lineage(

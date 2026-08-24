@@ -81407,7 +81407,11 @@ class DatabaseImplementationDaemon:
         if has_superseded_queue_lineage:
             expected_control_fields.add("superseded_queue_lineage")
         if (
-            set(control) != expected_control_fields
+            not self._control_receipt_fields_are_exact(
+                task_body,
+                control,
+                expected_control_fields,
+            )
             or superseded_queue_lineage_invalid
             or isinstance(task_revision, bool)
             or not isinstance(task_revision, int)
@@ -81454,6 +81458,40 @@ class DatabaseImplementationDaemon:
             "queue_reason": queue_reason,
             "execution_boundary": execution_boundary,
         }
+
+    @staticmethod
+    def _control_receipt_fields_are_exact(
+        task_body: Mapping[str, Any],
+        receipt: Mapping[str, Any],
+        expected_fields: set[str],
+    ) -> bool:
+        """Admit only the one store-preserved lifecycle receipt extension.
+
+        ``IntentRepository`` carries the monotonic unknown-callback reopen
+        counter into every later status receipt.  Closed recovery verifiers
+        must therefore bind that counter to the task body while continuing to
+        reject every other undeclared field.  JSON booleans and coerced
+        numeric strings are deliberately not integer evidence.
+        """
+
+        field = "unknown_callback_reopen_count"
+        body_has_count = field in task_body
+        receipt_has_count = field in receipt
+        admitted_fields = set(expected_fields)
+        if body_has_count != receipt_has_count:
+            return False
+        if body_has_count:
+            body_count = task_body.get(field)
+            receipt_count = receipt.get(field)
+            if (
+                type(body_count) is not int
+                or type(receipt_count) is not int
+                or body_count < 0
+                or receipt_count != body_count
+            ):
+                return False
+            admitted_fields.add(field)
+        return set(receipt) == admitted_fields
 
     def _verified_validation_retry_recovery_state(
         self,
@@ -81510,7 +81548,11 @@ class DatabaseImplementationDaemon:
             "control_expected_status",
             "control_expected_revision",
         }
-        if set(receipt) != expected_fields:
+        if not self._control_receipt_fields_are_exact(
+            task_body,
+            receipt,
+            expected_fields,
+        ):
             raise DatabaseImplementationAuthorityError(
                 "validation retry recovery control receipt has unknown or "
                 "missing fields"
@@ -81660,7 +81702,11 @@ class DatabaseImplementationDaemon:
             "control_expected_status",
             "control_expected_revision",
         }
-        if set(receipt) != expected_fields:
+        if not self._control_receipt_fields_are_exact(
+            task_body,
+            receipt,
+            expected_fields,
+        ):
             raise DatabaseImplementationAuthorityError(
                 "protected-path recovery control receipt has unknown or "
                 "missing fields"
@@ -81829,7 +81875,11 @@ class DatabaseImplementationDaemon:
             "control_expected_status",
             "control_expected_revision",
         }
-        if set(receipt) != expected_fields:
+        if not self._control_receipt_fields_are_exact(
+            task_body,
+            receipt,
+            expected_fields,
+        ):
             raise DatabaseImplementationAuthorityError(
                 "external checkout recovery control receipt has unknown or "
                 "missing fields"
@@ -81983,7 +82033,11 @@ class DatabaseImplementationDaemon:
             "control_expected_status",
             "control_expected_revision",
         }
-        if set(receipt) != expected_fields:
+        if not self._control_receipt_fields_are_exact(
+            task_body,
+            receipt,
+            expected_fields,
+        ):
             raise DatabaseImplementationAuthorityError(
                 "inflight-process recovery control receipt has unknown or "
                 "missing fields"
@@ -82135,7 +82189,11 @@ class DatabaseImplementationDaemon:
             "control_expected_status",
             "control_expected_revision",
         }
-        if set(receipt) != expected_fields:
+        if not self._control_receipt_fields_are_exact(
+            task_body,
+            receipt,
+            expected_fields,
+        ):
             raise DatabaseImplementationAuthorityError(
                 "validation-retry seed-conflict recovery control receipt has "
                 "unknown or missing fields"
@@ -84033,7 +84091,11 @@ class DatabaseImplementationDaemon:
             "control_expected_status",
             "control_expected_revision",
         }
-        if set(receipt) != expected_fields:
+        if not self._control_receipt_fields_are_exact(
+            task_body,
+            receipt,
+            expected_fields,
+        ):
             raise DatabaseImplementationAuthorityError(
                 "leftover-wait deferral-budget recovery control receipt has "
                 "unknown or missing fields"
@@ -84484,7 +84546,11 @@ class DatabaseImplementationDaemon:
             "control_expected_status",
             "control_expected_revision",
         }
-        if set(receipt) != expected_fields:
+        if not self._control_receipt_fields_are_exact(
+            task_body,
+            receipt,
+            expected_fields,
+        ):
             raise DatabaseImplementationAuthorityError(
                 "pooled-worktree create recovery control receipt has unknown or "
                 "missing fields"
