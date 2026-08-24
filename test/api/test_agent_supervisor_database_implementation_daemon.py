@@ -5450,6 +5450,147 @@ def test_reconcile_recovers_exact_quack_preprojection_transport_failure(
         daemon.close()
 
 
+def test_quack_preprojection_recovery_supersedes_only_expired_same_task_queue_lineage(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    quack_uri = "quack:127.0.0.1:45123"
+    source_reason = (
+        "IO Error: Failed to send message: IO Error: Could not connect to "
+        "server error for HTTP POST to 'http://127.0.0.1:45123/quack'"
+    )
+    calls = 0
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise DatabasePortalBridgeDeferred(
+                "worktree_lifecycle_claim_exists",
+                backoff_seconds=0,
+            )
+        raise duckdb.IOException(source_reason)
+
+    now = {"ms": 10_000}
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:quack-stale-queue-lineage",
+        provider_fn=provider,
+        max_task_attempts=4,
+        clock_ms=lambda: now["ms"],
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(database_path=quack_uri),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    daemon._quack_uri = quack_uri
+    daemon._quack_preprojection_transport_recovery_fn = (
+        bridge.recover_quack_preprojection_transport_failure
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.run_once()
+        first_attempt = daemon.get_attempt(first["attempt_id"])
+        assert first_attempt is not None
+        first_queue = daemon.task_source.get_queue_entry(
+            first_attempt.task_cid
+        )
+        assert first_queue is not None
+        assert first_queue.reason.startswith(
+            f"database_portal_retry:{first_attempt.attempt_id}:"
+        )
+
+        now["ms"] += 1
+        second = daemon.run_once()
+        second_attempt = daemon.get_attempt(second["attempt_id"])
+        assert second_attempt is not None
+        assert second_attempt.attempt_number > first_attempt.attempt_number
+        assert daemon.task_source.get(second_attempt.task_cid).status == "blocked"
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        recovered = outcomes[0]
+        assert recovered["changed"] is True
+        lineage = recovered["superseded_queue_lineage"]
+        assert lineage["task_cid"] == second_attempt.task_cid
+        assert lineage["prior_attempt_id"] == first_attempt.attempt_id
+        assert lineage["successor_attempt_id"] == second_attempt.attempt_id
+        assert lineage["prior_state"] == "released"
+        replacement = daemon.task_source.get_queue_entry(
+            second_attempt.task_cid
+        )
+        assert replacement is not None
+        assert replacement.reason.startswith(
+            f"database_portal_retry:{second_attempt.attempt_id}:"
+        )
+        task = daemon.task_source.get(second_attempt.task_cid)
+        assert task is not None and task.status == "retrying"
+        assert task.body["completion_receipt"][
+            "superseded_queue_lineage"
+        ] == lineage
+    finally:
+        daemon.close()
+
+
+def test_quack_preprojection_recovery_rejects_live_or_current_queue_lineage(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    quack_uri = "quack:127.0.0.1:45123"
+    source_reason = (
+        "IO Error: Failed to send message: IO Error: Could not connect to "
+        "server error for HTTP POST to 'http://127.0.0.1:45123/quack'"
+    )
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise duckdb.IOException(source_reason)
+
+    now = {"ms": 20_000}
+    daemon = _open_daemon(
+        tmp_path / "lane",
+        session="session:quack-live-queue-lineage",
+        provider_fn=provider,
+        max_task_attempts=4,
+        clock_ms=lambda: now["ms"],
+    )
+    bridge = DatabasePortalExecutionBridge(
+        task_source=SimpleNamespace(database_path=quack_uri),
+        attempt_root=tmp_path / "attempts",
+        portal_factory=lambda _paths, _alias: None,
+    )
+    daemon._quack_uri = quack_uri
+    daemon._quack_preprojection_transport_recovery_fn = (
+        bridge.recover_quack_preprojection_transport_failure
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        failed = daemon.run_once()
+        attempt = daemon.get_attempt(failed["attempt_id"])
+        assert attempt is not None
+        daemon.task_source.record_queue_backoff(
+            task_cid=attempt.task_cid,
+            delay_ms=60_000,
+            reason=(
+                f"database_portal_retry:{attempt.attempt_id}:"
+                "foreign_live_lineage"
+            ),
+        )
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        assert outcomes[0]["changed"] is False
+        assert outcomes[0]["error"] == (
+            "typed recovery found a foreign queue entry"
+        )
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "blocked"
+    finally:
+        daemon.close()
+
+
 def test_quack_preprojection_recovery_rejects_a_committed_provider_outcome(
     tmp_path: Path,
 ) -> None:

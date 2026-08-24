@@ -1735,7 +1735,9 @@ def test_aseh_status_sample_rejects_replica_generation_change_during_query(
     before = json.loads(json.dumps(sample["owner_status"]))
     after = json.loads(json.dumps(before))
     after["read_replica"]["refresh_sequence"] += 1
-    observations = iter((before, after) * 3)
+    observations = iter(
+        (before, after) * aseh_operator.STATUS_REPLICA_STABILITY_ATTEMPTS
+    )
     server = SimpleNamespace(status=lambda: next(observations))
     scheduler = SimpleNamespace(pid=os.getpid(), poll=lambda: None)
     broker_calls = []
@@ -1760,7 +1762,9 @@ def test_aseh_status_sample_rejects_replica_generation_change_during_query(
     assert observed["owner_status"]["read_replica"]["refresh_sequence"] == (
         after["read_replica"]["refresh_sequence"]
     )
-    assert len(broker_calls) == 3
+    assert len(broker_calls) == (
+        aseh_operator.STATUS_REPLICA_STABILITY_ATTEMPTS
+    )
 
 
 def test_aseh_status_sample_retries_the_whole_query_until_replica_is_stable(
@@ -1801,6 +1805,110 @@ def test_aseh_status_sample_retries_the_whole_query_until_replica_is_stable(
     assert observed["owner_status"]["read_replica"]["refresh_sequence"] == (
         after["read_replica"]["refresh_sequence"]
     )
+
+
+@pytest.mark.parametrize(
+    "failure_kind",
+    ("endpoint_refused", "replica_replaced"),
+)
+def test_aseh_status_sample_retries_exact_owner_publication_races(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_kind: str,
+) -> None:
+    import duckdb
+
+    now = time.time()
+    board, paths, sample = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    quack_uri = "quack:127.0.0.1:45123"
+    board.resolved_database_program = lambda: SimpleNamespace(
+        quack_endpoint=quack_uri
+    )
+    owner_status = json.loads(json.dumps(sample["owner_status"]))
+    observations = iter((owner_status, owner_status) * 2)
+    server = SimpleNamespace(status=lambda: next(observations))
+    scheduler = SimpleNamespace(pid=os.getpid(), poll=lambda: None)
+    calls = 0
+
+    def query(*_args: object, **_kwargs: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            if failure_kind == "endpoint_refused":
+                raise duckdb.IOException(
+                    "IO Error: Failed to send message: IO Error: Could not "
+                    "connect to server error for HTTP POST to "
+                    "'http://127.0.0.1:45123/quack'"
+                )
+            raise aseh_operator.OperatorError(
+                "published replica changed during shadow copy"
+            )
+        return {"available": True}
+
+    monkeypatch.setattr(aseh_operator, "_broker_status_query", query)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_lane_status_observations",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        aseh_operator, "STATUS_REPLICA_RETRY_DELAY_SECONDS", 0
+    )
+
+    observed = aseh_operator._status_sample(
+        board, paths, server, scheduler
+    )
+
+    assert observed["authority"] == {"available": True}
+    assert calls == 2
+
+
+def test_aseh_status_sample_does_not_retry_foreign_replica_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = time.time()
+    board, paths, sample = _aseh_health_fixture(
+        tmp_path,
+        observed_at=now,
+        lane_mtime_ns=int(now * 1_000_000_000),
+    )
+    board.resolved_database_program = lambda: SimpleNamespace(
+        quack_endpoint="quack:127.0.0.1:45123"
+    )
+    owner_status = json.loads(json.dumps(sample["owner_status"]))
+    observations = iter((owner_status, owner_status))
+    server = SimpleNamespace(status=lambda: next(observations))
+    scheduler = SimpleNamespace(pid=os.getpid(), poll=lambda: None)
+    calls = 0
+
+    def query(*_args: object, **_kwargs: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        raise aseh_operator.OperatorError(
+            "published replica file identity is unsafe"
+        )
+
+    monkeypatch.setattr(aseh_operator, "_broker_status_query", query)
+    monkeypatch.setattr(
+        aseh_operator,
+        "_lane_status_observations",
+        lambda *_args, **_kwargs: [],
+    )
+
+    observed = aseh_operator._status_sample(
+        board, paths, server, scheduler
+    )
+
+    assert observed["authority"]["available"] is False
+    assert observed["authority"]["error"] == (
+        "published replica file identity is unsafe"
+    )
+    assert calls == 1
 
 
 def test_aseh_external_status_binds_receipt_to_current_owner_incarnation(
@@ -4105,6 +4213,59 @@ def test_aseh_repair_parallel_blocked_startup_transition_is_closed_and_chained(
         )
 
 
+def test_aseh_repair_quack_publication_contention_transition_is_closed_and_chained(
+) -> None:
+    receipt = {
+        "schema": (
+            aseh_operator.REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_SCHEMA
+        ),
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R7"
+        ),
+        "program_id": aseh_operator.PROGRAM,
+        "transition_revision": 7,
+        "bootstrap_receipt_id": "sha256:" + ("a" * 64),
+        "previous_receipt_cid": "sha256:" + ("b" * 64),
+        "plan_root_cid": "plan:sealed",
+        "repository_tree_id": "tree:sealed",
+        "base_head": "1" * 40,
+        "base_tree": "2" * 40,
+        "repair_head": "3" * 40,
+        "repair_tree": "4" * 40,
+        "changed_paths": list(
+            aseh_operator.REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": "sha256:" + ("5" * 64),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R6"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            aseh_operator.REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_AUTHORITY
+        ),
+        "validation_results": [],
+        "terminal_success_criteria": "bounded automatic recovery",
+        "terminal_non_success_criteria": "all drift rejected",
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    assert (
+        aseh_operator._repair_quack_publication_contention_transition_receipt_id(
+            receipt
+        )
+        == receipt["receipt_cid"]
+    )
+
+    receipt["previous_receipt_cid"] = "sha256:" + ("c" * 64)
+    with pytest.raises(aseh_operator.OperatorError, match="CID"):
+        aseh_operator._repair_quack_publication_contention_transition_receipt_id(
+            receipt
+        )
+
+
 def test_aseh_repair_runtime_hardening_transition_rejects_wrong_parent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4247,7 +4408,7 @@ def test_aseh_repair_clean_launch_transition_publication_is_create_only(
     ) == first
 
 
-def test_aseh_repair_parallel_blocked_startup_transition_is_active_admission_base(
+def test_aseh_repair_quack_publication_contention_transition_is_active_admission_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4258,6 +4419,7 @@ def test_aseh_repair_parallel_blocked_startup_transition_is_active_admission_bas
     runtime_hardening_path = tmp_path / "repair-r4.json"
     quack_recovery_path = tmp_path / "repair-r5.json"
     parallel_startup_path = tmp_path / "repair-r6.json"
+    publication_contention_path = tmp_path / "repair-r7.json"
     database_path = tmp_path / "control.duckdb"
     for path in (
         bootstrap_path,
@@ -4267,6 +4429,7 @@ def test_aseh_repair_parallel_blocked_startup_transition_is_active_admission_bas
         runtime_hardening_path,
         quack_recovery_path,
         parallel_startup_path,
+        publication_contention_path,
         database_path,
     ):
         path.touch()
@@ -4281,6 +4444,9 @@ def test_aseh_repair_parallel_blocked_startup_transition_is_active_admission_bas
         "repair_quack_recovery_transition_receipt": quack_recovery_path,
         "repair_parallel_blocked_startup_transition_receipt": (
             parallel_startup_path
+        ),
+        "repair_quack_publication_contention_transition_receipt": (
+            publication_contention_path
         ),
         "database": database_path,
     }
@@ -4298,12 +4464,14 @@ def test_aseh_repair_parallel_blocked_startup_transition_is_active_admission_bas
     r4_receipt = {"revision": 4}
     r5_receipt = {"revision": 5}
     r6_receipt = {"revision": 6}
+    r7_receipt = {"revision": 7}
     r3_head = aseh_operator.REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD
     r4_head = "4" * 40
     r5_head = "5" * 40
     r6_head = "6" * 40
+    r7_head = "7" * 40
     population = {
-        "source_head": r6_head,
+        "source_head": r7_head,
         "repository_tree_id": "tree:runtime",
         "plan_root_cid": "plan:sealed",
         "source_forest": {"forest_cid": "forest:runtime"},
@@ -4343,6 +4511,12 @@ def test_aseh_repair_parallel_blocked_startup_transition_is_active_admission_bas
         "transition_revision": 6,
         "receipt_cid": "receipt:r6",
     }
+    r7 = {
+        "base_head": r6_head,
+        "repair_head": r7_head,
+        "transition_revision": 7,
+        "receipt_cid": "receipt:r7",
+    }
     payloads = {
         bootstrap_path: bootstrap,
         repair_path: r1_receipt,
@@ -4351,6 +4525,7 @@ def test_aseh_repair_parallel_blocked_startup_transition_is_active_admission_bas
         runtime_hardening_path: r4_receipt,
         quack_recovery_path: r5_receipt,
         parallel_startup_path: r6_receipt,
+        publication_contention_path: r7_receipt,
     }
     suffix_calls: list[tuple[str, str]] = []
 
@@ -4399,6 +4574,11 @@ def test_aseh_repair_parallel_blocked_startup_transition_is_active_admission_bas
     )
     monkeypatch.setattr(
         aseh_operator,
+        "_validate_repair_quack_publication_contention_transition",
+        lambda *_args, **_kwargs: r7,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
         "_read_continuity_state",
         lambda *_args, **_kwargs: (
             {"projection_cid": "projection:current", "event_cursor": 79},
@@ -4437,12 +4617,12 @@ def test_aseh_repair_parallel_blocked_startup_transition_is_active_admission_bas
         object(), {}, paths
     )
 
-    assert admission["repair_transition"] == r6
+    assert admission["repair_transition"] == r7
     assert [
         item.get("transition_revision", 1)
         for item in admission["repair_transition_chain"]
-    ] == [1, 2, 3, 4, 5, 6]
-    assert suffix_calls[-1] == (r6_head, r6_head)
+    ] == [1, 2, 3, 4, 5, 6, 7]
+    assert suffix_calls[-1] == (r7_head, r7_head)
     assert admission["canonical_continuity"][
         "followup_to_clean_launch"
     ] == r3
@@ -4455,6 +4635,9 @@ def test_aseh_repair_parallel_blocked_startup_transition_is_active_admission_bas
     assert admission["canonical_continuity"][
         "quack_recovery_to_parallel_blocked_startup"
     ] == r6
+    assert admission["canonical_continuity"][
+        "parallel_blocked_startup_to_quack_publication_contention"
+    ] == r7
 
 
 def test_aseh_repair_authorization_replay_rejects_head_regression(

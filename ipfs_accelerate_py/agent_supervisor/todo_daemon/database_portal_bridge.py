@@ -8565,13 +8565,28 @@ class DatabasePortalExecutionBridge:
                 paths,
                 str(binding.get("task_alias") or attempt.task_cid),
             )
-        except FileNotFoundError as exc:
+        except Exception as exc:
             # Construction happens before Portal can cross its provider-launch
-            # boundary.  Type only this narrow factory exception as a known
-            # pre-dispatch deferral; FileNotFoundError from ``run_once`` is not
-            # caught here and therefore remains outcome-unknown.
+            # boundary.  Type only the known missing-source exception and
+            # DuckDB's exact endpoint-bound Quack refusal as pre-dispatch
+            # deferrals.  Every other exception, and every exception from
+            # ``run_once`` below, remains outcome-unknown/fail-closed.
+            if isinstance(exc, FileNotFoundError):
+                raise DatabasePortalBridgeDeferred(
+                    "portal_factory_source_missing",
+                    backoff_seconds=30,
+                ) from exc
+            from ..task_sources.duckdb_state import (
+                quack_transport_error_is_unavailable,
+                reset_quack_transport_cache,
+            )
+
+            quack_uri = getattr(self.task_source, "database_path", "")
+            if not quack_transport_error_is_unavailable(exc, uri=quack_uri):
+                raise
+            reset_quack_transport_cache(quack_uri)
             raise DatabasePortalBridgeDeferred(
-                "portal_factory_source_missing",
+                "quack_transport_unavailable",
                 backoff_seconds=30,
             ) from exc
         if daemon is None or not callable(getattr(daemon, "run_once", None)):

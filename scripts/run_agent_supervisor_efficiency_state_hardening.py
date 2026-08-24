@@ -394,6 +394,55 @@ REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_VALIDATIONS: Final = (
         "-k", "reconcile_recovers_exact_quack_preprojection_transport_failure",
     ),
 )
+REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-quack-publication-contention-transition@1"
+)
+REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_BASE_HEAD: Final = (
+    "386fd3626e210495f99116637c96ed43035901fa"
+)
+REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_CHANGED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+    "database_portal_bridge.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+    "implementation_daemon.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    "test/api/test_agent_supervisor_database_implementation_daemon.py",
+    "test/api/test_agent_supervisor_database_portal_bridge.py",
+)
+REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_VALIDATIONS: Final = (
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k", (
+            "repair_quack_publication_contention_transition "
+            "or status_sample_retries_exact_owner_publication_races "
+            "or status_sample_does_not_retry_foreign_replica_failures "
+            "or health_admits_parallel_blocked_recovery_only_during_startup"
+        ),
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_database_portal_bridge.py",
+        "-k", "quack_refusal_during_portal_construction",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_database_implementation_daemon.py",
+        "-k", (
+            "quack_preprojection_recovery_supersedes_only_expired_same_task_queue_lineage "
+            "or quack_preprojection_recovery_rejects_live_or_current_queue_lineage "
+            "or reconcile_recovers_exact_quack_preprojection_transport_failure"
+        ),
+    ),
+)
+REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to fix "
+    "the existing supervisor so exact Quack replica-publication races defer "
+    "and recover automatically without weakening single-writer, identity, "
+    "CAS, fencing, validation, or unknown-outcome gates"
+)
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
         "schema", "source_head", "repository_tree_id", "plan_root_cid",
@@ -452,6 +501,9 @@ REPAIR_QUACK_RECOVERY_TRANSITION_RECEIPT_FIELDS: Final = (
 REPAIR_PARALLEL_BLOCKED_STARTUP_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS
 )
+REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS
+)
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
     {
         "schema", "base_head", "base_tree", "target_head", "target_tree",
@@ -487,7 +539,8 @@ LIVE_STATUS_SCHEMA: Final = (
 OWNER_LOCK_SUFFIX: Final = ".state-owner.lock"
 OWNER_MARKER_SUFFIX: Final = ".state-owner.json"
 STATUS_SAMPLE_INTERVAL_SECONDS: Final = 0.5
-STATUS_REPLICA_STABILITY_ATTEMPTS: Final = 3
+STATUS_REPLICA_STABILITY_ATTEMPTS: Final = 8
+STATUS_REPLICA_RETRY_DELAY_SECONDS: Final = 0.05
 STATUS_RECEIPT_MAX_BYTES: Final = 1_048_576
 LIVE_REPLAY_MAX_BYTES: Final = 1_073_741_824
 LIVE_REPLAY_IO_TIMEOUT_SECONDS: Final = 60.0
@@ -837,6 +890,34 @@ def _repair_parallel_blocked_startup_transition_receipt_id(
     return receipt_id
 
 
+def _repair_quack_publication_contention_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-7 Quack publication receipt."""
+
+    if (
+        payload.get("schema")
+        != REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 7
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+    ):
+        raise OperatorError(
+            "bootstrap repair Quack-publication-contention schema is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair Quack-publication-contention CID is invalid"
+        )
+    return receipt_id
+
+
 def _run(
     argv: Sequence[str],
     *,
@@ -1062,6 +1143,36 @@ def _run_repair_parallel_blocked_startup_transition_validations(
     return results
 
 
+def _run_repair_quack_publication_contention_transition_validations(
+) -> list[dict[str, Any]]:
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError(
+            "bootstrap repair Quack-publication-contention validation "
+            "requires a clean checkout"
+        )
+    results: list[dict[str, Any]] = []
+    for command in REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_VALIDATIONS:
+        completed = _run(command, timeout=900)
+        result = {
+            "argv": list(command),
+            "returncode": int(completed.returncode),
+            "stdout_digest": _identity(completed.stdout.encode("utf-8")),
+            "stderr_digest": _identity(completed.stderr.encode("utf-8")),
+        }
+        results.append(result)
+        if completed.returncode != 0:
+            raise OperatorError(
+                "bootstrap repair Quack-publication-contention validation "
+                "failed: " + " ".join(command)
+            )
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError(
+            "bootstrap repair Quack-publication-contention validation "
+            "dirtied the checkout"
+        )
+    return results
+
+
 def _safe_path(value: str, *, field: str) -> Path:
     candidate = (ROOT / value).resolve()
     try:
@@ -1164,6 +1275,11 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-parallel-blocked-startup-transition.json"
+    )
+    result["repair_quack_publication_contention_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-quack-publication-contention-transition.json"
     )
     result["status_receipt"] = (
         result["evidence"] / "control-plane" / "live-status.json"
@@ -3943,6 +4059,161 @@ def _validate_repair_parallel_blocked_startup_transition(
     }
 
 
+def _validate_repair_quack_publication_contention_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 7 chained to immutable startup recovery."""
+
+    receipt_id = _repair_quack_publication_contention_transition_receipt_id(
+        receipt
+    )
+    previous_receipt_id = (
+        _repair_parallel_blocked_startup_transition_receipt_id(
+            previous_receipt
+        )
+    )
+    if (
+        receipt.get("stable_identity")
+        != f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R7"
+        or receipt.get("previous_receipt_cid") != previous_receipt_id
+        or receipt.get("bootstrap_receipt_id")
+        != bootstrap.get("bootstrap_receipt_id")
+        or receipt.get("plan_root_cid") != bootstrap.get("plan_root_cid")
+        or receipt.get("repository_tree_id")
+        != bootstrap.get("repository_tree_id")
+        or receipt.get("base_head")
+        != REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_BASE_HEAD
+        or receipt.get("changed_paths")
+        != list(REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_CHANGED_PATHS)
+        or receipt.get("dependencies")
+        != ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R6"]
+        or receipt.get("owning_repository") != "ipfs_accelerate_py"
+        or receipt.get("risk_class")
+        != "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+        or receipt.get("authority_requirement")
+        != REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_AUTHORITY
+        or type(receipt.get("authorized_at")) not in {int, float}
+        or float(receipt["authorized_at"]) <= 0.0
+    ):
+        raise OperatorError(
+            "bootstrap repair Quack-publication-contention authority differs"
+        )
+    repair = str(receipt.get("repair_head") or "").strip().casefold()
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", repair) is None
+        or _git("show", "-s", "--format=%P", repair).split()
+        != [REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_BASE_HEAD]
+    ):
+        raise OperatorError(
+            "bootstrap repair Quack-publication-contention must be one exact "
+            "child"
+        )
+    base_tree = _git(
+        "rev-parse",
+        f"{REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_BASE_HEAD}^{{tree}}",
+    )
+    repair_tree = _git("rev-parse", f"{repair}^{{tree}}")
+    if (
+        receipt.get("base_tree") != base_tree
+        or receipt.get("repair_tree") != repair_tree
+        or _git_changed_paths(
+            REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_BASE_HEAD,
+            repair,
+        )
+        != REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_CHANGED_PATHS
+        or receipt.get("patch_digest")
+        != _git_patch_digest(
+            REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_BASE_HEAD,
+            repair,
+        )
+    ):
+        raise OperatorError(
+            "bootstrap repair Quack-publication-contention Git proof differs"
+        )
+    forest = bootstrap.get("source_forest")
+    by_owner = forest.get("by_owner") if isinstance(forest, Mapping) else None
+    if not isinstance(by_owner, Mapping):
+        raise OperatorError("bootstrap source forest owner binding is absent")
+    for owner, path in (
+        ("ipfs_datasets_py", "ipfs_datasets_py"),
+        ("ipfs_kit_py", "ipfs_kit_py"),
+    ):
+        expected = by_owner.get(owner)
+        if (
+            not isinstance(expected, Mapping)
+            or _git("rev-parse", f"{repair}:{path}")
+            != expected.get("commit")
+        ):
+            raise OperatorError(
+                "bootstrap repair Quack-publication-contention changed a "
+                "sibling"
+            )
+    stored_results = receipt.get("validation_results")
+    if (
+        not isinstance(stored_results, list)
+        or len(stored_results)
+        != len(REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_VALIDATIONS)
+    ):
+        raise OperatorError(
+            "bootstrap repair Quack-publication-contention validation differs"
+        )
+    for stored, command in zip(
+        stored_results,
+        REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_VALIDATIONS,
+        strict=True,
+    ):
+        if (
+            not isinstance(stored, Mapping)
+            or set(stored)
+            != {"argv", "returncode", "stdout_digest", "stderr_digest"}
+            or stored.get("argv") != list(command)
+            or stored.get("returncode") != 0
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(stored.get("stdout_digest") or ""),
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(stored.get("stderr_digest") or ""),
+            )
+            is None
+        ):
+            raise OperatorError(
+                "bootstrap repair Quack-publication-contention validation "
+                "differs"
+            )
+    if rerun_validations:
+        rerun = (
+            _run_repair_quack_publication_contention_transition_validations()
+        )
+        if [item["argv"] for item in rerun] != [
+            item.get("argv") for item in stored_results
+        ]:
+            raise OperatorError(
+                "bootstrap repair Quack-publication-contention commands differ"
+            )
+    return {
+        "schema": REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 7,
+        "base_head": REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_BASE_HEAD,
+        "base_tree": base_tree,
+        "repair_head": repair,
+        "repair_tree": repair_tree,
+        "changed_paths": list(
+            REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": str(receipt.get("patch_digest") or ""),
+        "previous_receipt_cid": previous_receipt_id,
+        "receipt_cid": receipt_id,
+    }
+
+
 def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
     """Replay projections on a private clone, never on authoritative bytes."""
 
@@ -4302,6 +4573,211 @@ def authorize_repair_transition(config_path: Path) -> dict[str, Any]:
                                 ),
                                 head,
                             )
+                            publication_path = paths.get(
+                                "repair_quack_publication_contention_transition_receipt"
+                            )
+                            if (
+                                isinstance(publication_path, Path)
+                                and publication_path.is_file()
+                            ):
+                                publication = _secure_runtime_json(
+                                    publication_path,
+                                    max_bytes=STATUS_RECEIPT_MAX_BYTES,
+                                )
+                                publication_transition = (
+                                    _validate_repair_quack_publication_contention_transition(
+                                        publication,
+                                        bootstrap=bootstrap,
+                                        previous_receipt=parallel_startup,
+                                        rerun_validations=(
+                                            publication.get("repair_head")
+                                            == head
+                                        ),
+                                    )
+                                )
+                                _git(
+                                    "merge-base",
+                                    "--is-ancestor",
+                                    str(publication_transition["repair_head"]),
+                                    head,
+                                )
+                                current_admission = _admit_materialized_launch(
+                                    board, _config, paths
+                                )
+                                admitted_repair = current_admission.get(
+                                    "repair_transition"
+                                )
+                                admitted_continuity = current_admission.get(
+                                    "canonical_continuity"
+                                )
+                                if (
+                                    not isinstance(admitted_repair, Mapping)
+                                    or admitted_repair.get("repair_head")
+                                    != publication_transition["repair_head"]
+                                    or not isinstance(
+                                        admitted_continuity, Mapping
+                                    )
+                                    or "repair_to_current"
+                                    not in admitted_continuity
+                                ):
+                                    raise OperatorError(
+                                        "current admission does not retain the "
+                                        "Quack-publication-contention repair "
+                                        "transition"
+                                    )
+                                return {
+                                    "schema": OPERATOR_SCHEMA,
+                                    "command": "authorize-repair-transition",
+                                    "ok": True,
+                                    "idempotent_replay": True,
+                                    "repair_transition_receipt": publication,
+                                    "repair_transition_chain": [
+                                        prior,
+                                        followup,
+                                        clean_launch,
+                                        runtime_hardening,
+                                        quack_recovery,
+                                        parallel_startup,
+                                        publication,
+                                    ],
+                                    "current_admission_cid": current_admission[
+                                        "admission_cid"
+                                    ],
+                                    "runtime_source_head": current_admission[
+                                        "runtime_source_head"
+                                    ],
+                                }
+                            if parallel_startup.get("repair_head") != head:
+                                parents = _git(
+                                    "show", "-s", "--format=%P", head
+                                ).split()
+                                if parents != [
+                                    REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_BASE_HEAD
+                                ]:
+                                    raise OperatorError(
+                                        "bootstrap repair Quack-publication-"
+                                        "contention must be one child of the "
+                                        "exact revision-6 repair"
+                                    )
+                                if _git_changed_paths(
+                                    REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_BASE_HEAD,
+                                    head,
+                                ) != (
+                                    REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_CHANGED_PATHS
+                                ):
+                                    raise OperatorError(
+                                        "bootstrap repair Quack-publication-"
+                                        "contention changed-path set differs"
+                                    )
+                                validation_results = (
+                                    _run_repair_quack_publication_contention_transition_validations()
+                                )
+                                receipt = {
+                                    "schema": (
+                                        REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_SCHEMA
+                                    ),
+                                    "task_id": REPAIR_TRANSITION_TASK_ID,
+                                    "stable_identity": (
+                                        f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}"
+                                        "@ASEH-PLAN-R7"
+                                    ),
+                                    "program_id": PROGRAM,
+                                    "transition_revision": 7,
+                                    "bootstrap_receipt_id": bootstrap_id,
+                                    "previous_receipt_cid": (
+                                        parallel_startup_transition[
+                                            "receipt_cid"
+                                        ]
+                                    ),
+                                    "plan_root_cid": bootstrap[
+                                        "plan_root_cid"
+                                    ],
+                                    "repository_tree_id": bootstrap[
+                                        "repository_tree_id"
+                                    ],
+                                    "base_head": (
+                                        REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_BASE_HEAD
+                                    ),
+                                    "base_tree": _git(
+                                        "rev-parse",
+                                        REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_BASE_HEAD
+                                        + "^{tree}",
+                                    ),
+                                    "repair_head": head,
+                                    "repair_tree": _git(
+                                        "rev-parse", f"{head}^{{tree}}"
+                                    ),
+                                    "changed_paths": list(
+                                        REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_CHANGED_PATHS
+                                    ),
+                                    "patch_digest": _git_patch_digest(
+                                        REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_BASE_HEAD,
+                                        head,
+                                    ),
+                                    "dependencies": [
+                                        "ASEH-BOOTSTRAP-002@ASEH-PLAN-R6"
+                                    ],
+                                    "owning_repository": (
+                                        "ipfs_accelerate_py"
+                                    ),
+                                    "risk_class": (
+                                        "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+                                    ),
+                                    "authority_requirement": (
+                                        REPAIR_QUACK_PUBLICATION_CONTENTION_TRANSITION_AUTHORITY
+                                    ),
+                                    "validation_results": validation_results,
+                                    "terminal_success_criteria": (
+                                        "Exact owner replica-publication races "
+                                        "are retried without health loss, exact "
+                                        "pre-dispatch Quack refusal is deferred, "
+                                        "and only expired same-task prior queue "
+                                        "lineage is superseded through canonical "
+                                        "owner CAS without provider dispatch or "
+                                        "a second writer."
+                                    ),
+                                    "terminal_non_success_criteria": (
+                                        "Any foreign authentication, schema, "
+                                        "policy, or endpoint failure; live or "
+                                        "current queue lineage; unknown provider "
+                                        "or external-effect outcome; identity or "
+                                        "sibling drift; second writer; database "
+                                        "mutation during validation; or validation "
+                                        "failure is rejected."
+                                    ),
+                                    "semantic_corpus_changed": False,
+                                    "database_mutated": False,
+                                    "authorized_at": time.time(),
+                                }
+                                receipt["receipt_cid"] = _identity(receipt)
+                                _validate_repair_quack_publication_contention_transition(
+                                    receipt,
+                                    bootstrap=bootstrap,
+                                    previous_receipt=parallel_startup,
+                                    rerun_validations=False,
+                                )
+                                if not isinstance(publication_path, Path):
+                                    raise OperatorError(
+                                        "bootstrap repair Quack-publication-"
+                                        "contention path is absent"
+                                    )
+                                _atomic_json_create(publication_path, receipt)
+                                return {
+                                    "schema": OPERATOR_SCHEMA,
+                                    "command": "authorize-repair-transition",
+                                    "ok": True,
+                                    "idempotent_replay": False,
+                                    "repair_transition_receipt": receipt,
+                                    "repair_transition_chain": [
+                                        prior,
+                                        followup,
+                                        clean_launch,
+                                        runtime_hardening,
+                                        quack_recovery,
+                                        parallel_startup,
+                                        receipt,
+                                    ],
+                                }
                             current_admission = _admit_materialized_launch(
                                 board, _config, paths
                             )
@@ -5236,6 +5712,9 @@ def _admit_materialized_launch(
             runtime_hardening_transition: dict[str, Any] | None = None
             quack_recovery_transition: dict[str, Any] | None = None
             parallel_blocked_startup_transition: dict[str, Any] | None = None
+            quack_publication_contention_transition: (
+                dict[str, Any] | None
+            ) = None
             clean_launch_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
@@ -5349,6 +5828,42 @@ def _admit_materialized_launch(
                             active_transition = (
                                 parallel_blocked_startup_transition
                             )
+                            publication_path = paths.get(
+                                "repair_quack_publication_contention_transition_receipt"
+                            )
+                            if (
+                                isinstance(publication_path, Path)
+                                and publication_path.is_file()
+                            ):
+                                publication_receipt = _secure_runtime_json(
+                                    publication_path,
+                                    max_bytes=STATUS_RECEIPT_MAX_BYTES,
+                                )
+                                quack_publication_contention_transition = (
+                                    _validate_repair_quack_publication_contention_transition(
+                                        publication_receipt,
+                                        bootstrap=bootstrap,
+                                        previous_receipt=(
+                                            parallel_startup_receipt
+                                        ),
+                                        rerun_validations=True,
+                                    )
+                                )
+                                if (
+                                    quack_publication_contention_transition[
+                                        "base_head"
+                                    ]
+                                    != parallel_blocked_startup_transition[
+                                        "repair_head"
+                                    ]
+                                ):
+                                    raise OperatorError(
+                                        "Quack-publication-contention repair "
+                                        "does not extend revision 6"
+                                    )
+                                active_transition = (
+                                    quack_publication_contention_transition
+                                )
             current_proof = _admit_canonical_merge_suffix(
                 board,
                 base_head=str(active_transition["repair_head"]),
@@ -5372,6 +5887,10 @@ def _admit_materialized_launch(
                 repair_transition_chain.append(
                     parallel_blocked_startup_transition
                 )
+            if quack_publication_contention_transition is not None:
+                repair_transition_chain.append(
+                    quack_publication_contention_transition
+                )
             continuity = {
                 "bootstrap_to_repair_base": base_proof,
                 "initial_repair_to_followup_base": followup_base,
@@ -5393,6 +5912,10 @@ def _admit_materialized_launch(
                 continuity["quack_recovery_to_parallel_blocked_startup"] = (
                     parallel_blocked_startup_transition
                 )
+            if quack_publication_contention_transition is not None:
+                continuity[
+                    "parallel_blocked_startup_to_quack_publication_contention"
+                ] = quack_publication_contention_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
@@ -6576,11 +7099,39 @@ def _status_sample(
     authority: dict[str, Any] = {}
     for attempt in range(STATUS_REPLICA_STABILITY_ATTEMPTS):
         owner_status_before = server.status()
+        retryable_publication_race = False
         try:
             authority = _broker_status_query(
                 board, paths, owner_status=owner_status_before
             )
         except Exception as exc:
+            # A canonical typed owner publishes each committed task mutation by
+            # briefly withdrawing the read-only Quack endpoint, replacing the
+            # exact replica, and rebinding the same owner identity.  Concurrent
+            # health reads may therefore observe either DuckDB's exact
+            # endpoint-bound refusal or a local byte-identity race.  Neither is
+            # status evidence.  Retry the *whole* query from a fresh owner
+            # status, while leaving every foreign/policy/schema error fail
+            # closed and never manufacturing an available sample.
+            from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+                quack_transport_error_is_unavailable,
+                reset_quack_transport_cache,
+            )
+
+            program = board.resolved_database_program()
+            quack_uri = str(getattr(program, "quack_endpoint", "") or "")
+            transport_refresh = quack_transport_error_is_unavailable(
+                exc, uri=quack_uri
+            )
+            local_replica_refresh = type(exc) is OperatorError and str(exc) in {
+                "published replica changed during shadow copy",
+                "published replica bytes differ from owner status",
+            }
+            retryable_publication_race = bool(
+                transport_refresh or local_replica_refresh
+            )
+            if transport_refresh:
+                reset_quack_transport_cache(quack_uri)
             authority = {
                 "available": False,
                 "error_type": type(exc).__name__,
@@ -6595,6 +7146,12 @@ def _status_sample(
             }
         owner_status_after = server.status()
         if authority.get("available") is not True:
+            if (
+                retryable_publication_race
+                and attempt + 1 < STATUS_REPLICA_STABILITY_ATTEMPTS
+            ):
+                time.sleep(STATUS_REPLICA_RETRY_DELAY_SECONDS)
+                continue
             break
         try:
             stable_replica = bool(

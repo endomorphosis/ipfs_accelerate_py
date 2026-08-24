@@ -82390,6 +82390,58 @@ class DatabaseImplementationDaemon:
         # between the two stores therefore fails closed as an in-progress but
         # cooled task; restart reconciliation will finish the exact CAS.
         queue_entry = get_queue_entry(attempt.task_cid)
+        stale_same_task_queue_lineage = False
+        superseded_queue_lineage: dict[str, Any] = {}
+        if (
+            quack_preprojection_transport_recovery_evidence is not None
+            and queue_entry is not None
+            and str(getattr(queue_entry, "reason", "") or "")
+            != queue_reason
+        ):
+            prior_reason = str(
+                getattr(queue_entry, "reason", "") or ""
+            ).strip()
+            prior_match = re.fullmatch(
+                r"database_portal_retry:(attempt:[0-9a-f]{32}):.{1,1024}",
+                prior_reason,
+            )
+            prior_attempt = (
+                self.get_attempt(prior_match.group(1))
+                if prior_match is not None
+                else None
+            )
+            stale_same_task_queue_lineage = bool(
+                str(getattr(queue_entry, "task_cid", "") or "")
+                == attempt.task_cid
+                and str(getattr(queue_entry, "state", "") or "").lower()
+                == "released"
+                and int(
+                    getattr(queue_entry, "retry_not_before_ms", 0) or 0
+                )
+                <= self._now_ms()
+                and prior_attempt is not None
+                and prior_attempt.task_cid == attempt.task_cid
+                and prior_attempt.attempt_id != attempt.attempt_id
+                and prior_attempt.status == "failed"
+                and prior_attempt.committed_phase == ATTEMPT_PHASE_FAILED
+                and int(prior_attempt.attempt_number)
+                < int(attempt.attempt_number)
+            )
+            if stale_same_task_queue_lineage:
+                assert prior_attempt is not None
+                superseded_queue_lineage = {
+                    "task_cid": attempt.task_cid,
+                    "prior_attempt_id": prior_attempt.attempt_id,
+                    "prior_attempt_number": int(prior_attempt.attempt_number),
+                    "prior_reason": prior_reason,
+                    "prior_retry_not_before_ms": int(
+                        getattr(queue_entry, "retry_not_before_ms", 0) or 0
+                    ),
+                    "prior_state": "released",
+                    "successor_attempt_id": attempt.attempt_id,
+                    "successor_attempt_number": int(attempt.attempt_number),
+                    "observed_at_ms": self._now_ms(),
+                }
         if (
             (
                 protected_path_recovery_evidence is not None
@@ -82398,6 +82450,7 @@ class DatabaseImplementationDaemon:
             and queue_entry is not None
             and str(getattr(queue_entry, "reason", "") or "")
             != queue_reason
+            and not stale_same_task_queue_lineage
         ):
             raise DatabaseImplementationConflictError(
                 "typed recovery found a foreign queue entry"
@@ -82475,6 +82528,11 @@ class DatabaseImplementationDaemon:
                 "queue_reason": queue_reason,
                 "queue_reused": queue_reused,
                 "queue_receipt": queue_receipt_dict,
+                **(
+                    {"superseded_queue_lineage": superseded_queue_lineage}
+                    if superseded_queue_lineage
+                    else {}
+                ),
                 "coordination": dict(coordination_evidence or {}),
                 **(
                     {
@@ -82657,6 +82715,7 @@ class DatabaseImplementationDaemon:
             "evidence_source": evidence_source,
             "queue_reused": queue_reused,
             "queue_receipt": queue_receipt_dict,
+            "superseded_queue_lineage": superseded_queue_lineage,
             "control_previous_status": task_status,
             "control_previous_revision": int(task.revision),
             "control_new_status": "retrying",

@@ -2639,6 +2639,68 @@ def test_bridge_defers_portal_factory_source_missing_before_dispatch(
     assert factory_calls == ["LGSWF-004"]
 
 
+def test_bridge_defers_exact_quack_refusal_during_portal_construction(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    quack_uri = "quack:127.0.0.1:45123"
+    task_source = _TaskSource(_record())
+    task_source.database_path = quack_uri
+    factory_calls: list[str] = []
+
+    def refusing_factory(_paths: object, alias: str) -> object:
+        factory_calls.append(alias)
+        raise duckdb.IOException(
+            "IO Error: Failed to send message: IO Error: Could not connect "
+            "to server error for HTTP POST to "
+            "'http://127.0.0.1:45123/quack'"
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=tmp_path / "attempts",
+        portal_factory=refusing_factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(DatabasePortalBridgeDeferred) as caught:
+        bridge.run_provider(_attempt())
+
+    assert caught.value.reason == "quack_transport_unavailable"
+    assert caught.value.backoff_seconds == 30
+    assert caught.value.provider_dispatched is False
+    assert caught.value.attempt_consumed is False
+    assert factory_calls == ["LGSWF-004"]
+
+
+def test_bridge_rejects_foreign_quack_refusal_during_portal_construction(
+    tmp_path: Path,
+) -> None:
+    import duckdb
+
+    task_source = _TaskSource(_record())
+    task_source.database_path = "quack:127.0.0.1:45123"
+
+    def refusing_factory(_paths: object, _alias: str) -> object:
+        raise duckdb.IOException(
+            "IO Error: Failed to send message: IO Error: Could not connect "
+            "to server error for HTTP POST to "
+            "'http://127.0.0.1:45124/quack'"
+        )
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=tmp_path / "attempts",
+        portal_factory=refusing_factory,
+        max_passes=1,
+    )
+
+    with pytest.raises(duckdb.IOException) as caught:
+        bridge.run_provider(_attempt())
+    assert not isinstance(caught.value, DatabasePortalBridgeDeferred)
+
+
 @pytest.mark.parametrize(
     ("provider_dispatched", "attempt_consumed", "deferred"),
     [
