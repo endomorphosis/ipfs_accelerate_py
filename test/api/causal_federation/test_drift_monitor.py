@@ -15,6 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.federation.contracts import (
 from ipfs_accelerate_py.agent_supervisor.federation.drift_monitor import (
     DRIFT_REPORT_SCHEMA,
     FEDERATION_DRIFT_MONITOR_INTERFACE,
+    MAX_DRIFT_FINDINGS,
     DriftKind,
     DriftMonitorError,
     FederationDriftMonitor,
@@ -150,6 +151,16 @@ def test_binding_projects_only_the_exact_repository_tree() -> None:
             causal_graph_root="causal:current",
             event_watermark=10,
             repository_tree_id="tree:stale",
+        )
+
+    with pytest.raises(DriftMonitorError, match="canonical CASF program"):
+        FederationDriftRoots.from_binding(
+            replace(_binding(), program_id="foreign-federation-program"),
+            federation_id="federation:test",
+            schema_root="schema:current",
+            event_catalog_root=closed_event_catalog_root(),
+            causal_graph_root="causal:current",
+            event_watermark=10,
         )
 
 
@@ -327,6 +338,18 @@ def test_wire_contracts_are_closed_and_reject_forged_evidence() -> None:
         type(report).from_dict({**report.to_dict(), "status": "drifted"})
     with pytest.raises(DriftMonitorError, match="authority must be false"):
         type(report).from_dict({**report.to_dict(), "authority": True})
+
+    drifted = produce_drift_report(
+        roots,
+        replace(roots, schema_root="schema:changed"),
+        observed_at=NOW,
+    )
+    oversized = drifted.to_dict()
+    oversized["findings"] = [drifted.findings[0].to_dict()] * (
+        MAX_DRIFT_FINDINGS + 1
+    )
+    with pytest.raises(FederationBoundsError, match="drift finding bound exceeded"):
+        type(report).from_dict(oversized)
 
 
 def test_monitor_rejects_non_sequence_event_inputs() -> None:

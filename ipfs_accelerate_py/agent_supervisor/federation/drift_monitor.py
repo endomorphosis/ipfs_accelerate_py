@@ -23,6 +23,7 @@ from .contracts import (
     FederationBinding,
     FederationBoundsError,
     FederationContractError,
+    PROGRAM_ID,
     UnknownNormativeFieldError,
     _identifier,
     _integer,
@@ -187,6 +188,10 @@ class FederationDriftRoots:
 
         if not isinstance(binding, FederationBinding):
             raise DriftMonitorError("binding must be a FederationBinding")
+        if binding.program_id != PROGRAM_ID:
+            raise DriftMonitorError(
+                "binding program_id is not the canonical CASF program"
+            )
         selected_repository = (
             binding.repository_ids[0]
             if repository_id is None
@@ -443,10 +448,13 @@ class DriftReport:
             "DriftReport.event_range",
             ("start", "end", "count"),
         )
-        findings = tuple(
-            DriftFinding.from_dict(item)
-            for item in _closed_sequence(values["findings"], "findings")
-        )
+        finding_payloads = _closed_sequence(values["findings"], "findings")
+        # The wire input is attacker-controlled evidence.  Bound it before
+        # constructing immutable finding records so a forged receipt cannot
+        # turn validation into an unbounded allocation.
+        if len(finding_payloads) > MAX_DRIFT_FINDINGS:
+            raise FederationBoundsError("drift finding bound exceeded")
+        findings = tuple(DriftFinding.from_dict(item) for item in finding_payloads)
         for field in (
             "authority",
             "production_state_changed",
