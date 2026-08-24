@@ -522,6 +522,127 @@ def test_strict_restart_requeues_pre_provider_out_of_home_attempt(
         home.close()
 
 
+def test_strict_restart_quarantines_pre_provider_attempt_at_configured_cap(
+    tmp_path: Path,
+) -> None:
+    control_path = tmp_path / "control.duckdb"
+    lane_path = tmp_path / "lane-0"
+    first = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:strict-attempt-cap",
+        max_task_attempts=4,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=False,
+    )
+    try:
+        first.materialize_population(_population(1))
+        first.sync_ready_tasks_into_coordination()
+        for expected_attempt_number in range(1, 4):
+            prior = first.coordinator.claim_ready_task(
+                owner_session_id="session:strict-attempt-cap",
+            )
+            assert prior is not None
+            assert prior.attempt_number == expected_attempt_number
+            first.coordinator.release(
+                prior.as_fenced_lease(),
+                reason="seed configured strict attempt cap",
+            )
+        attempt = first.claim_next()
+        assert attempt is not None
+        assert attempt.attempt_number == 4
+        assert _alias_home(attempt.task_alias, 2) == 1
+    finally:
+        first.close()
+
+    provider_calls: list[str] = []
+    restarted = _open_daemon(
+        lane_path,
+        control_path=control_path,
+        session="session:strict-attempt-cap",
+        provider_calls=provider_calls,
+        max_task_attempts=4,
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+    )
+    try:
+        implementation = restarted.run_once()["implementation_result"]
+        assert implementation["reason"] == "strict_resume_not_admitted"
+        assert implementation["task_requeued"] is False
+        assert implementation["task_quarantined"] is True
+        assert provider_calls == []
+        task = restarted.task_source.get(attempt.task_cid)
+        assert task is not None and task.status == "quarantined"
+        receipt = task.body["completion_receipt"]
+        assert receipt["operation"] == "database_strict_resume_quarantine"
+        assert receipt["max_task_attempts"] == 4
+        assert receipt["attempt_budget_exhausted"] is True
+        assert restarted.claim_next() is None
+        attempts = restarted.coordinator.coordination_registry_projection()[
+            "task_attempts"
+        ]
+        assert len(attempts) == 4
+        assert max(int(row["attempt_number"]) for row in attempts) == 4
+    finally:
+        restarted.close()
+
+
+def test_strict_resume_accepts_exact_legacy_fenced_retry(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    provider_calls: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:strict-rotated-retry",
+        provider_calls=provider_calls,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+        strict_task_sharding=True,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        first = daemon.claim_next()
+        assert first is not None and first.attempt_number == 1
+        assert provider_calls == []
+
+        now["ms"] = 7_000
+        second = daemon.claim_next()
+        assert second is not None and second.attempt_number == 2
+        assert provider_calls == []
+
+        task = daemon.task_source.get(second.task_cid)
+        assert task is not None and task.status == "in_progress"
+        receipt = task.body["completion_receipt"]
+        assert receipt["claim_id"] == first.claim_id
+        assert receipt.get("claim_phase_schema", "") == ""
+        assert receipt["claimed_from_revision"] + 1 == task.revision
+        projection = daemon.coordinator.coordination_registry_projection()
+        local_task = next(
+            row for row in projection["tasks"] if row["task_cid"] == task.task_cid
+        )
+        assert local_task["body"]["authoritative_revision"] == receipt[
+            "claimed_from_revision"
+        ] + 1
+        assert local_task["body"]["authoritative_status"] == "in_progress"
+        assert daemon._shared_retry_binding_matches_attempt(
+            task,
+            second,
+            local_task_body=local_task["body"],
+            local_projection=projection,
+        ) is True
+        assert daemon._strict_resume_admission_result(second) is None
+
+        result = daemon.resume_attempt(second)
+        assert result["resumed"] is True
+        assert result["status"] == "succeeded"
+        assert provider_calls == [second.task_cid]
+    finally:
+        daemon.close()
+
+
 def test_strict_restart_quarantines_effect_committed_out_of_home_attempt(
     tmp_path: Path,
 ) -> None:
@@ -3152,6 +3273,7 @@ def test_fenced_retry_cannot_bypass_dependency_reopen_after_local_claim(
         session="session:fenced-retry-dependency",
         lease_ms=5_000,
         clock_ms=lambda: now["ms"],
+        strict_task_sharding=True,
     )
     dependency_cid = "task:cid:retry-dependency"
     dependent_cid = "task:cid:retry-dependent"
@@ -3317,6 +3439,21 @@ def test_fenced_retry_cannot_bypass_dependency_reopen_after_local_claim(
                 "fence_epoch": converged_retry.fence_epoch,
             }
             assert refreshed_receipt["claimed_from_revision"] == 2
+            current = daemon.task_source.get(converged_retry.task_cid)
+            assert current is not None
+            projection = daemon.coordinator.coordination_registry_projection()
+            local_task = next(
+                row
+                for row in projection["tasks"]
+                if row["task_cid"] == converged_retry.task_cid
+            )
+            assert daemon._shared_retry_binding_matches_attempt(
+                current,
+                converged_retry,
+                local_task_body=local_task["body"],
+                local_projection=projection,
+            ) is True
+            assert daemon._strict_resume_admission_result(converged_retry) is None
         else:
             # Lease expiry without a replacement claim still fails closed:
             # the original in-progress cursor is the only live attempt.

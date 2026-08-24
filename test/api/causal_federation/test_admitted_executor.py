@@ -814,6 +814,7 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
         store_id=identity.store_id,
         process_birth_id=identity.process_birth_id,
     )
+    clock = {"now_ms": 1_000}
     adapter: TypedDatabaseTaskSource | None = None
     daemon: DatabaseImplementationDaemon | None = None
     try:
@@ -842,13 +843,14 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             task_source=adapter,
             close_task_source=False,
             lease_ms=5_000,
-            clock_ms=lambda: 1_000,
+            clock_ms=lambda: clock["now_ms"],
             provider_fn=lambda _attempt: {"status": "ok", "accepted": True},
             effect_fn=lambda _attempt, _provider: {"status": "applied"},
             validation_fn=lambda _attempt, _effect: {
                 "outcome": "passed",
                 "evidence_digest": "sha256:" + "a" * 64,
             },
+            strict_task_sharding=True,
             require_real_execution=True,
         ).open()
         promote = daemon._promote_typed_attempt_admission
@@ -919,18 +921,59 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
             promote,
         )
         context_attempt = daemon.commit_phase(running[0], "context")
+        daemon._require_typed_attempt_admission(context_attempt)
+        admitted = adapter.get(running[0].task_cid)
+        assert admitted is not None
+        admitted_receipt = admitted.body["completion_receipt"]
+        assert admitted_receipt["admitted_from_revision"] == (
+            admitted_receipt["claimed_from_revision"] + 1
+        )
+        assert admitted.revision == admitted_receipt["admitted_from_revision"] + 1
+        assert daemon._strict_resume_admission_result(context_attempt) is None
+
+        clock["now_ms"] = 7_000
+        retry_attempt = daemon.claim_next()
+        assert retry_attempt is not None
+        assert retry_attempt.attempt_number == running[0].attempt_number + 1
+        rotated = adapter.get(retry_attempt.task_cid)
+        assert rotated is not None
+        rotated_receipt = rotated.body["completion_receipt"]
+        assert rotated_receipt["operation"] == "database_attempt_admitted"
+        assert rotated_receipt["claim_phase_schema"] == (
+            TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        )
+        assert rotated_receipt["claim_id"] == retry_attempt.claim_id
+        assert rotated_receipt["admitted_from_revision"] == (
+            rotated_receipt["claimed_from_revision"] + 1
+        )
+        assert rotated.revision == rotated_receipt["admitted_from_revision"] + 1
+        projection = daemon.coordinator.coordination_registry_projection()
+        local_task = next(
+            row
+            for row in projection["tasks"]
+            if row["task_cid"] == retry_attempt.task_cid
+        )
+        assert local_task["body"]["authoritative_revision"] == (
+            rotated_receipt["claimed_from_revision"]
+        )
+        assert local_task["body"]["authoritative_status"] == "in_progress"
+        assert daemon._shared_retry_binding_matches_attempt(
+            rotated,
+            retry_attempt,
+            local_task_body=local_task["body"],
+            local_projection=projection,
+        ) is True
+        assert daemon._strict_resume_admission_result(retry_attempt) is None
+        retry_context = daemon.commit_phase(retry_attempt, "context")
         _updated, _result, duplicated = daemon.run_provider(
-            context_attempt,
+            retry_context,
             provider_fn=lambda attempt: provider_calls.append(
                 attempt.attempt_id
             )
             or {"status": "ok", "accepted": True},
         )
         assert duplicated is False
-        assert provider_calls == [running[0].attempt_id]
-        admitted = adapter.get(running[0].task_cid)
-        assert admitted is not None
-        admitted_receipt = admitted.body["completion_receipt"]
+        assert provider_calls == [retry_attempt.attempt_id]
         assert admitted_receipt["operation"] == "database_attempt_admitted"
         assert admitted_receipt["claim_phase_schema"] == (
             TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
@@ -939,19 +982,19 @@ def test_typed_daemon_promotes_local_attempt_before_provider(
         assert admitted_receipt["attempt_execution_phase"] == ATTEMPT_PHASE_CLAIMED
         assert admitted_receipt["attempt_execution_revision"] == 1
         assert context_attempt.revision > running[0].revision
-        admitted_revision = admitted.revision
+        admitted_revision = rotated.revision
         with pytest.raises(
             QuackClientError,
             match="exact typed reservation",
         ):
             adapter.recover_dead_claim_reservation(
-                admitted.task_cid,
+                rotated.task_cid,
                 expected_task_revision=admitted_revision,
-                now_ms=1_000,
+                now_ms=clock["now_ms"],
             )
-        admitted_after_rejection = adapter.get(admitted.task_cid)
-        assert admitted_after_rejection == admitted
-        assert adapter._retry_cooldown_row(admitted.task_cid) is None
+        admitted_after_rejection = adapter.get(rotated.task_cid)
+        assert admitted_after_rejection == rotated
+        assert adapter._retry_cooldown_row(rotated.task_cid) is None
     finally:
         if daemon is not None:
             daemon.close()
