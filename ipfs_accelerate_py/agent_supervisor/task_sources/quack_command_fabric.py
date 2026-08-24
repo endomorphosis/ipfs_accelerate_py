@@ -2255,7 +2255,14 @@ class QuackCommandFabric:
     def _plan_r2_rows(result: Any) -> list[tuple[Any, ...]]:
         fetchall = getattr(result, "fetchall", None)
         rows = list(fetchall() or ()) if callable(fetchall) else []
-        return [tuple(row) for row in rows]
+        return [
+            (
+                tuple(row[name] for name in row)
+                if isinstance(row, Mapping)
+                else tuple(row)
+            )
+            for row in rows
+        ]
 
     @classmethod
     def _plan_r2_one(cls, result: Any, *, noun: str) -> tuple[Any, ...]:
@@ -2438,7 +2445,12 @@ class QuackCommandFabric:
         transaction: Any,
         *,
         store_id: str,
+        owner_status: str = "running",
     ) -> dict[str, Any]:
+        if type(owner_status) is not str or owner_status not in {"ready", "running"}:
+            raise QuackCommandFabricStateError(
+                "Plan-R2 owner status is outside the closed vocabulary"
+            )
         connection = cls._plan_r2_connection(transaction)
         generation = transaction.load_generation()
         server_row = cls._plan_r2_one(
@@ -2448,9 +2460,9 @@ class QuackCommandFabric:
                 FROM state_servers AS s
                 JOIN server_epochs AS e ON e.server_id = s.server_id
                 WHERE s.store_id = ? AND s.generation = ?
-                  AND s.status = 'running' AND e.ended_at IS NULL
+                  AND s.status = ? AND e.ended_at IS NULL
                 """,
-                [store_id, generation.generation],
+                [store_id, generation.generation, owner_status],
             ),
             noun="live Plan-R2 owner epoch",
         )

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import threading
 import time
 from collections.abc import Mapping
 from types import MappingProxyType
@@ -109,7 +108,6 @@ _PRIVATE_RECEIPT_FIELDS: Final = EAAEF_TYPED_OWNER_PUBLIC_RECEIPT_FIELDS | {
     "daemon_operation",
     "daemon_operation_intent_cid",
 }
-_LOCK_TYPE = type(threading.Lock())
 _SERVICE_FACTORY_TOKEN = object()
 
 
@@ -237,6 +235,7 @@ class EAAEFTypedOwnerCommandService:
     INTERFACE: ClassVar[str] = EAAEF_TYPED_OWNER_COMMAND_SERVICE_INTERFACE
     SCHEMA: ClassVar[str] = EAAEF_TYPED_OWNER_COMMAND_SERVICE_SCHEMA
     __slots__ = (
+        "_owner_gateway",
         "_connection",
         "_transaction_lock",
         "_admission",
@@ -250,23 +249,25 @@ class EAAEFTypedOwnerCommandService:
         self,
         token: object,
         *,
-        connection: Any,
-        transaction_lock: Any,
+        owner_gateway: Any,
         admission: VerifiedEAAEFLaneRuntimeAdmissionV2,
     ) -> None:
         if token is not _SERVICE_FACTORY_TOKEN:
             raise TypeError(
                 "typed owner EAAEF services come from the owner-local binder"
             )
+        # Import locally to keep the generic typed-owner module independent of
+        # the EAAEF adapter at import time.  Exact type identity matters here:
+        # accepting a connection and lock pair from a caller would merely move
+        # multi-owner authority behind a narrower-looking API.
+        from .typed_state_owner import TypedStateOwnerGateway
+
         if (
             type(admission) is not VerifiedEAAEFLaneRuntimeAdmissionV2
-            or type(transaction_lock) is not _LOCK_TYPE
-            or not callable(getattr(connection, "execute", None))
-            or not callable(getattr(connection, "commit", None))
-            or not callable(getattr(connection, "rollback", None))
+            or type(owner_gateway) is not TypedStateOwnerGateway
         ):
             raise EAAEFTypedOwnerServiceError(
-                "owner service requires one exact admission, owner lock, and open connection"
+                "owner service requires one exact admission and typed owner gateway"
             )
         try:
             checked = admission.reverify(now_ms=time.time_ns() // 1_000_000)
@@ -275,11 +276,33 @@ class EAAEFTypedOwnerCommandService:
                 "owner service lane admission failed source re-verification"
             ) from exc
         capability = checked.operational_capability
+        policy = _policy_from_capability(capability)
+        identity = owner_gateway.identity
+        if (
+            owner_gateway.store_id != policy.store_id
+            or str(identity.get("store_id") or "") != policy.store_id
+            or int(identity.get("generation") or 0) != policy.owner_generation
+            or int(identity.get("fence_epoch") or 0) != policy.fence_epoch
+        ):
+            raise EAAEFTypedOwnerServiceError(
+                "typed owner identity differs from EAAEF operational authority"
+            )
+        connection = owner_gateway._connection  # noqa: SLF001 - owner-local bind
+        transaction_lock = owner_gateway._transaction_lock  # noqa: SLF001
+        if (
+            not callable(getattr(connection, "execute", None))
+            or not callable(getattr(connection, "commit", None))
+            or not callable(getattr(connection, "rollback", None))
+        ):
+            raise EAAEFTypedOwnerServiceError(
+                "typed owner gateway has no open operational connection"
+            )
+        self._owner_gateway = owner_gateway
         self._connection = connection
         self._transaction_lock = transaction_lock
         self._admission = checked
         self._capability = capability
-        self._policy = _policy_from_capability(capability)
+        self._policy = policy
         self._handler = _handler_from_capability(capability)
         self._closed = False
 
@@ -290,6 +313,44 @@ class EAAEFTypedOwnerCommandService:
     @property
     def operational_capability_cid(self) -> str:
         return str(self._capability["capability_cid"])
+
+    @property
+    def authority_bindings(self) -> Mapping[str, Any]:
+        """Return the immutable R1 authority that a later Plan-R2 must join."""
+
+        return MappingProxyType(
+            {
+                "board_namespace": str(self._capability["board_namespace"]),
+                "source_head": str(self._capability["source_head"]),
+                "source_tree": str(self._capability["source_tree"]),
+                "source_generation_cid": str(
+                    self._capability["configuration_root"]
+                ),
+                "bootstrap_admission_cid": str(
+                    self._capability["bootstrap_admission_receipt_cid"]
+                ),
+                "r1_launch_capsule_cid": str(
+                    self._capability["configured_board_capsule_cid"]
+                ),
+                "quack_command_fabric_qualification_cid": str(
+                    self._capability["command_fabric_qualification_cid"]
+                ),
+                "owner_principal_did": self._policy.owner_principal_did,
+                "shard_id": self._policy.shard_id,
+                "store_id": self._policy.store_id,
+                "owner_generation": self._policy.owner_generation,
+                "fence": self._policy.fence_epoch,
+                "active_plan_root_cid": str(
+                    self._capability["active_plan_root_cid"]
+                ),
+                "active_plan_revision": int(
+                    self._capability["active_plan_revision"]
+                ),
+                "active_plan_revision_cid": str(
+                    self._admission["active_plan_revision_cid"]
+                ),
+            }
+        )
 
     def _require_open(self) -> None:
         if self._closed:
@@ -430,10 +491,10 @@ class EAAEFTypedOwnerCommandService:
     ) -> Mapping[str, Any] | None:
         """Adopt one durable receipt without reopening expired authority."""
 
-        self._require_open()
         intent, operation, intent_cid = self._checked_intent(envelope)
         del intent
         with self._transaction_lock:
+            self._require_open()
             receipt = self._lookup_private_receipt(envelope)
         if receipt is None:
             return None
@@ -449,9 +510,9 @@ class EAAEFTypedOwnerCommandService:
     ) -> Mapping[str, Any]:
         """Verify and atomically apply one exact EAAEF operation."""
 
-        self._require_open()
         intent, operation, intent_cid = self._checked_intent(envelope)
         with self._transaction_lock:
+            self._require_open()
             prior = self._lookup_private_receipt(envelope)
             if prior is not None:
                 return self._public_receipt(
@@ -615,7 +676,8 @@ class EAAEFTypedOwnerCommandService:
     def close(self) -> None:
         """Retire only the adapter; the outer owner retains its resources."""
 
-        self._closed = True
+        with self._transaction_lock:
+            self._closed = True
 
     def evidence(self) -> Mapping[str, Any]:
         return MappingProxyType(
@@ -633,6 +695,11 @@ class EAAEFTypedOwnerCommandService:
                 "operation_count": 31,
                 "admission_cid": self.admission_cid,
                 "operational_capability_cid": self.operational_capability_cid,
+                "owner_catalog_id": self._owner_gateway.catalog_id,
+                "owner_server_id": str(
+                    self._owner_gateway.identity.get("server_id") or ""
+                ),
+                "bound_by_typed_state_owner_gateway": True,
                 "borrows_open_connection": True,
                 "shares_owner_transaction_lock": True,
                 "opens_database": False,
@@ -646,16 +713,32 @@ class EAAEFTypedOwnerCommandService:
 
 def bind_eaaef_typed_owner_command_service(
     *,
-    connection: Any,
-    transaction_lock: Any,
+    owner_server: Any,
     admission: VerifiedEAAEFLaneRuntimeAdmissionV2,
 ) -> EAAEFTypedOwnerCommandService:
-    """Bind the closed service to resources already owned by CASF."""
+    """Bind only through a live READY server holding its exclusive lease."""
+
+    from ..runtime.quack_state_server import QuackStateServer
+
+    if type(owner_server) is not QuackStateServer:
+        raise EAAEFTypedOwnerServiceError(
+            "EAAEF service binding requires the exact Quack state owner"
+        )
+    return owner_server.bind_eaaef_typed_owner_command_service(
+        admission=admission
+    )
+
+
+def _bind_eaaef_typed_owner_command_service_from_gateway(
+    *,
+    owner_gateway: Any,
+    admission: VerifiedEAAEFLaneRuntimeAdmissionV2,
+) -> EAAEFTypedOwnerCommandService:
+    """Private half of the owner-rooted binder; accepts no raw resources."""
 
     return EAAEFTypedOwnerCommandService(
         _SERVICE_FACTORY_TOKEN,
-        connection=connection,
-        transaction_lock=transaction_lock,
+        owner_gateway=owner_gateway,
         admission=admission,
     )
 

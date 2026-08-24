@@ -1,23 +1,35 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+    OwnerLiveness,
+)
 from ipfs_accelerate_py.agent_supervisor.runtime import (
     eaaef_bootstrap_gateway as runtime,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+    FakeQuackTransport,
+    build_server,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources import (
     eaaef_typed_owner_service as owner_service,
 )
-from ipfs_accelerate_py.agent_supervisor.task_sources.quack_command_authorization import (
-    AuthorizedStateCommand,
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+    CommandKind,
+    StateCommand,
 )
-from ipfs_accelerate_py.agent_supervisor.task_sources.quack_command_fabric import (
-    QuackCommandFabric,
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+    open_duckdb_connection,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.eaaef_operational_schema import (
+    install_eaaef_operational_schema,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.quack_daemon_gateway import (
     QuackDaemonGatewayError,
@@ -25,10 +37,16 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.quack_daemon_gateway impor
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     TypedStateOwnerConnection,
+    TypedStateOwnerGateway,
+    TypedStateOwnerRemoteError,
+)
+from test.api.causal_federation.test_bootstrap_runtime import (
+    _capability as _quack_capability,
 )
 from test.api.test_eaaef_bootstrap_gateway_launch import (
     NOW_MS,
     _client,
+    _signed_capability,
 )
 from test.api.test_eaaef_lane_gateway_runtime import (
     _admission_bundle,
@@ -47,6 +65,25 @@ def _intent(
             operation="task.ready",
             arguments={"limit": limit},
         )
+    )
+
+
+def _owner_gateway(
+    connection: object,
+    capability: dict[str, object],
+    socket_path: Path,
+) -> TypedStateOwnerGateway:
+    return TypedStateOwnerGateway(
+        connection=connection,
+        socket_path=socket_path,
+        store_id=str(capability["store_id"]),
+        identity={
+            "server_id": "server:eaaef-owner-test",
+            "store_id": capability["store_id"],
+            "database_uuid": "12345678-1234-4234-8234-123456789abc",
+            "generation": capability["owner_generation"],
+            "fence_epoch": capability["fence_epoch"],
+        },
     )
 
 
@@ -78,9 +115,9 @@ def _bind_service(
         "eaaef_borrowed_transaction.time.time_ns",
         lambda: NOW_MS * 1_000_000,
     )
-    service = owner_service.bind_eaaef_typed_owner_command_service(
-        connection=connection,
-        transaction_lock=threading.Lock(),
+    gateway = _owner_gateway(connection, capability, tmp_path / "owner.sock")
+    service = owner_service._bind_eaaef_typed_owner_command_service_from_gateway(  # noqa: SLF001
+        owner_gateway=gateway,
         admission=admission,
     )
     return service, connection, admission, capability, context
@@ -132,6 +169,24 @@ def test_owner_local_service_rolls_back_replays_and_ignores_stale_authority_for_
         assert evidence["local_sidecar_enabled"] is False
         assert evidence["downstream_catalog_enabled"] is False
         assert evidence["production_admitted"] is False
+        assert (  # noqa: SLF001 - same-boundary qualification
+            service._connection is service._owner_gateway._connection
+        )
+        assert (  # noqa: SLF001 - same-boundary qualification
+            service._transaction_lock
+            is service._owner_gateway._transaction_lock
+        )
+        with pytest.raises(TypeError):
+            owner_service.bind_eaaef_typed_owner_command_service(
+                owner_gateway=service._owner_gateway,  # noqa: SLF001
+                admission=_admission,
+            )
+        with pytest.raises(TypeError):
+            owner_service.bind_eaaef_typed_owner_command_service(
+                connection=connection,
+                transaction_lock=threading.Lock(),
+                admission=_admission,
+            )
 
         merge_path = context["artifact_paths"]["merge"]
         merge_path.write_text("{}", encoding="ascii")
@@ -156,52 +211,91 @@ def test_owner_local_service_rolls_back_replays_and_ignores_stale_authority_for_
         connection.close()
 
 
-def test_typed_transport_drives_gateway_without_database_or_quack_client_open(
+def test_real_quack_owner_socket_drives_gateway_without_reopen(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    service, connection, admission, capability, context = _bind_service(
-        tmp_path, monkeypatch
+    capability_bundle = _signed_capability(
+        owner_bindings={
+            "store_id": "eaaef-real-owner-wire-v1",
+            "owner_generation": 1,
+            "fence_epoch": 1,
+        }
+    )
+    admission, capability, context = _admission_bundle(
+        tmp_path / "authority",
+        capability_bundle=capability_bundle,
+    )
+    database = tmp_path / "operational.duckdb"
+    _provision_operational(database, capability)
+    with open_duckdb_connection(database) as seed:
+        seed.execute("DELETE FROM state_servers")
+        seed.execute("DELETE FROM server_epochs")
+        seed.execute("DELETE FROM store_generations")
+    monkeypatch.setattr(
+        owner_service.time,
+        "time_ns",
+        lambda: NOW_MS * 1_000_000,
     )
     monkeypatch.setattr(
         runtime.time,
         "time_ns",
         lambda: NOW_MS * 1_000_000,
     )
-
-    def forbidden(*_args: object, **_kwargs: object) -> object:
-        pytest.fail("typed EAAEF transport attempted a legacy client or database open")
-
-    monkeypatch.setattr(runtime.QuackCommandClient, "append", forbidden)
-    monkeypatch.setattr(runtime.QuackReadClient, "list_recent_receipts", forbidden)
-    monkeypatch.setattr(QuackCommandFabric, "__init__", forbidden)
-    import duckdb
-
-    monkeypatch.setattr(duckdb, "connect", forbidden)
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state."
-        "open_duckdb_connection",
-        forbidden,
+        "ipfs_accelerate_py.agent_supervisor.task_sources."
+        "eaaef_borrowed_transaction.time.time_ns",
+        lambda: NOW_MS * 1_000_000,
     )
 
-    owner_connection = object.__new__(TypedStateOwnerConnection)
-
-    def owner_request(action: str, **fields: object) -> dict[str, object]:
-        assert fields["merge_admission_cid"] == admission["merge_admission_cid"]
-        assert (
-            fields["operational_capability_cid"]
-            == admission["operational_capability_cid"]
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id=str(capability["store_id"]),
+        transport=FakeQuackTransport(),
+        capability_probe=_quack_capability,
+        migrate=lambda path: install_eaaef_operational_schema(
+            path,
+            application_version="eaaef-fabric-test",
+            tool_version="1.5.5",
+            owner_id="eaaef-real-owner-wire-test",
+        ),
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    server.clock = lambda: 4.0
+    identity = server.start()
+    assert identity.generation == identity.fence_epoch == 1
+    service = owner_service.bind_eaaef_typed_owner_command_service(
+        owner_server=server,
+        admission=admission,
+    )
+    with pytest.raises(
+        owner_service.EAAEFTypedOwnerServiceError,
+        match="already bound",
+    ):
+        owner_service.bind_eaaef_typed_owner_command_service(
+            owner_server=server,
+            admission=admission,
         )
-        envelope = AuthorizedStateCommand.from_dict(fields["envelope"])
-        if action == owner_service.EAAEF_TYPED_OWNER_COMMAND_SUBMIT_OPERATION:
-            receipt = service.submit_authorized_operation(envelope)
-        elif action == owner_service.EAAEF_TYPED_OWNER_COMMAND_LOOKUP_OPERATION:
-            receipt = service.lookup_authorized_operation_receipt(envelope)
-        else:
-            raise AssertionError("unexpected typed-owner service operation")
-        return {"receipt": receipt}
-
-    owner_connection._request = owner_request  # type: ignore[method-assign]  # noqa: SLF001
+    client_id = "eaaef-real-wire-client"
+    process_birth_id = "birth:eaaef-real-wire-client"
+    token = server.issue_typed_client_grant(
+        client_id=client_id,
+        process_birth_id=process_birth_id,
+        allowed_operations=tuple(
+            sorted(owner_service.EAAEF_TYPED_OWNER_COMMAND_OPERATIONS)
+        ),
+        peer_pid=os.getpid(),
+    )
+    owner_connection = TypedStateOwnerConnection(
+        socket_path=server.typed_command_socket_path(),
+        token=token,
+        client_id=client_id,
+        process_birth_id=process_birth_id,
+        store_id=str(capability["store_id"]),
+    )
     transport = runtime.bind_eaaef_typed_owner_command_transport(
         owner_connection=owner_connection,
         admission=admission,
@@ -220,6 +314,7 @@ def test_typed_transport_drives_gateway_without_database_or_quack_client_open(
             capability,
             context,
             serial=1,
+            expected_revision=0,
         )
 
     monkeypatch.setattr(type(authorization_client), "authorize", authorize)
@@ -235,7 +330,32 @@ def test_typed_transport_drives_gateway_without_database_or_quack_client_open(
         transport=transport,
         journal=journal,
     )
+    retained_envelope = _envelope(
+        _intent(capability, limit=2),
+        capability,
+        context,
+        serial=1,
+        expected_revision=0,
+    )
     try:
+        with pytest.raises(TypedStateOwnerRemoteError) as denied:
+            owner_connection._request(  # noqa: SLF001 - malformed-wire probe
+                "eaaef.command.lookup",
+                envelope=retained_envelope.to_dict(),
+                merge_admission_cid=service.admission_cid,
+                operational_capability_cid=(
+                    service.operational_capability_cid
+                ),
+                unexpected="must-be-rejected",
+            )
+        assert denied.value.error_code == "protocol_denied"
+        with pytest.raises(TypedStateOwnerRemoteError) as incomplete:
+            owner_connection._request(  # noqa: SLF001 - malformed-wire probe
+                "eaaef.command.lookup",
+                envelope=retained_envelope.to_dict(),
+                merge_admission_cid=service.admission_cid,
+            )
+        assert incomplete.value.error_code == "protocol_denied"
         assert gateway.evidence()["transport"] == "typed_state_owner"
         assert (
             owner_service.EAAEF_TYPED_OWNER_TRANSPORT_PRODUCTION_BLOCKER
@@ -245,19 +365,67 @@ def test_typed_transport_drives_gateway_without_database_or_quack_client_open(
             gateway.require_production_admission()
         gateway.attach()
         page = gateway.task_source.ready_tasks(limit=2)
-        assert [row.task_cid for row in page.tasks] == ["task:eaaef:1"]
-        assert transport.lookup_receipt(
-            _envelope(
-                _intent(capability, limit=2),
-                capability,
-                context,
-                serial=1,
+        assert isinstance(page.tasks, tuple)
+        receipt = transport.lookup_receipt(retained_envelope)
+        assert receipt is not None
+        result = json.loads(str(receipt["result_json"]))
+        assert result["daemon_operation"] == "task.ready"
+        assert result["value"]["revision"] == 0
+
+        idle_client_id = "eaaef-idle-transaction-client"
+        idle_birth_id = "birth:eaaef-idle-transaction-client"
+        idle_token = server.issue_typed_client_grant(
+            client_id=idle_client_id,
+            process_birth_id=idle_birth_id,
+            allowed_operations=("load_store_generation",),
+            allowed_command_operations=("task.status.cas",),
+            peer_pid=os.getpid(),
+        )
+        idle_connection = TypedStateOwnerConnection(
+            socket_path=server.typed_command_socket_path(),
+            token=idle_token,
+            client_id=idle_client_id,
+            process_birth_id=idle_birth_id,
+            store_id=str(capability["store_id"]),
+        )
+        head = idle_connection.execute_operation(
+            "load_store_generation"
+        ).fetchone()
+        assert head is not None
+        idle_connection.prepare_command(
+            StateCommand(
+                command_id="command:eaaef-idle-stop",
+                command_kind=CommandKind.CLAIM,
+                store_id=str(capability["store_id"]),
+                session_id=idle_connection.session_id,
+                expected_generation=int(head[0]),
+                expected_revision=int(head[3]),
+                fence_epoch=int(head[2]),
+                idempotency_key="idempotency:eaaef-idle-stop",
+                parameters={
+                    "operation": "task.status.cas",
+                    "task_cid": "task:eaaef-idle-stop",
+                    "expected_task_revision": 0,
+                    "status": "claimed",
+                },
             )
-        ) is not None
+        )
+        idle_connection.execute("BEGIN TRANSACTION")
+        try:
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                stopped = executor.submit(server.stop).result(timeout=10)
+            assert stopped["stopped"] is True
+        finally:
+            idle_connection.close()
     finally:
         gateway.close()
-        service.close()
-        connection.close()
+        owner_connection.close()
+        server.stop()
+    with pytest.raises(
+        owner_service.EAAEFTypedOwnerServiceError,
+        match="closed",
+    ):
+        service.lookup_authorized_operation_receipt(retained_envelope)
 
 
 def test_owner_lock_keeps_real_connection_transaction_concurrency_at_one(
@@ -328,9 +496,9 @@ def test_owner_lock_keeps_real_connection_transaction_concurrency_at_one(
         "time_ns",
         lambda: NOW_MS * 1_000_000,
     )
-    service = owner_service.bind_eaaef_typed_owner_command_service(
-        connection=guarded,
-        transaction_lock=threading.Lock(),
+    gateway = _owner_gateway(guarded, capability, tmp_path / "owner.sock")
+    service = owner_service._bind_eaaef_typed_owner_command_service_from_gateway(  # noqa: SLF001
+        owner_gateway=gateway,
         admission=admission,
     )
     envelope = _envelope(

@@ -5,6 +5,7 @@ import json
 import os
 import stat
 import struct
+from collections.abc import Mapping
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -88,7 +89,14 @@ def _pin() -> AgentImplementationControlPlanePin:
     )
 
 
-def _signed_capability() -> tuple[dict[str, object], dict[str, object]]:
+def _signed_capability(
+    *,
+    owner_bindings: Mapping[str, object] | None = None,
+) -> tuple[dict[str, object], dict[str, object]]:
+    bindings = dict(owner_bindings or {})
+    store_id = str(bindings.get("store_id") or "eaaef-control-run-v6")
+    owner_generation = int(bindings.get("owner_generation") or 6)
+    fence_epoch = int(bindings.get("fence_epoch") or 9)
     operational_reviewer_key, operational_reviewer = _key()
     service_reviewer_key, service_reviewer = _key()
     _service_key, service_did = _key()
@@ -101,11 +109,11 @@ def _signed_capability() -> tuple[dict[str, object], dict[str, object]]:
     policy = QuackCommandAuthorizationPolicy(
         board_namespace=launch.EAAEF_BOARD_NAMESPACE,
         shard_id="control-shard-0",
-        store_id="eaaef-control-run-v6",
+        store_id=store_id,
         authority_ref_cid=_sha("6"),
         owner_principal_did=owner_did,
-        owner_generation=6,
-        fence_epoch=9,
+        owner_generation=owner_generation,
+        fence_epoch=fence_epoch,
         trusted_approver_dids=frozenset({approver_did}),
         authorized_principal_dids=frozenset({worker_did}),
         allowed_command_kinds=frozenset(
@@ -178,11 +186,11 @@ def _signed_capability() -> tuple[dict[str, object], dict[str, object]]:
         "shard_id": "control-shard-0",
         "command_endpoint": "quack:127.0.0.1:19495",
         "state_endpoint": "quack:127.0.0.1:19496",
-        "store_id": "eaaef-control-run-v6",
+        "store_id": store_id,
         "store_generation": "eaaef-run-v6",
         "owner_principal_did": owner_did,
         "owner_session_id": "session:eaaef-owner-v6",
-        "owner_generation": 6,
+        "owner_generation": owner_generation,
         "command_principal_did": worker_did,
         "worker_principal_did": worker_did,
         "authorization_policy_cid": policy.policy_cid,
@@ -191,7 +199,7 @@ def _signed_capability() -> tuple[dict[str, object], dict[str, object]]:
         "materialization_operational_profile_cid": profile_evidence[
             "verification_cid"
         ],
-        "fence_epoch": 9,
+        "fence_epoch": fence_epoch,
         "control_plane_schema_version": QUACK_STATE_REPOSITORY_INTERFACE,
         "state_schema_revision": EAAEF_OPERATIONAL_PROFILE_ID,
         "operational_profile_id": EAAEF_OPERATIONAL_PROFILE_ID,
@@ -245,7 +253,7 @@ def _signed_capability() -> tuple[dict[str, object], dict[str, object]]:
         "frontier_cid": _sha("0"),
         "operations": sorted(EAAEF_BOOTSTRAP_DAEMON_OPERATIONS),
         "excluded_operations": sorted(EAAEF_BOOTSTRAP_DAEMON_EXCLUDED_OPERATIONS),
-        "store_id": "eaaef-control-run-v6",
+        "store_id": store_id,
         "store_generation": "eaaef-run-v6",
         "schema_revision": EAAEF_OPERATIONAL_PROFILE_ID,
         "board_scope": (
@@ -254,13 +262,13 @@ def _signed_capability() -> tuple[dict[str, object], dict[str, object]]:
         "shard_id": "control-shard-0",
         "owner_principal_did": owner_did,
         "owner_session_id": "session:eaaef-owner-v6",
-        "owner_generation": 6,
+        "owner_generation": owner_generation,
         "lease_id": "lease:eaaef-board-shard-v6",
         "lease_kind": "board_shard_scheduler",
         "lease_mode": "shared_scheduler",
         "command_principal_did": worker_did,
         "fencing_token": 11,
-        "fence_epoch": 9,
+        "fence_epoch": fence_epoch,
         "command_endpoint": "quack:127.0.0.1:19495",
         "command_secret_handle": "secret-handle:eaaef-quack-ingress-v6",
         "state_endpoint": "quack:127.0.0.1:19496",

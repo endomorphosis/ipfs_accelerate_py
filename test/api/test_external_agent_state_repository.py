@@ -706,7 +706,10 @@ def _provision_canonical_plan_r2_owner(
     authorization: Mapping[str, object],
     *,
     principal_did: str,
+    owner_status: str = "running",
 ) -> None:
+    if owner_status not in {"ready", "running"}:
+        raise ValueError("owner_status must be ready or running")
     install_control_plane_schema(
         path,
         application_version="0.0.45",
@@ -740,9 +743,13 @@ def _provision_canonical_plan_r2_owner(
             ) VALUES ('server:plan-r2', ?,
                       '123e4567-e89b-12d3-a456-426614174000',
                       'birth:plan-r2', 'quack:127.0.0.1:19495', 'sha256:test',
-                      1, ?, '1970-01-01T00:00:00Z', NULL, 'running', 1)
+                      1, ?, '1970-01-01T00:00:00Z', NULL, ?, 1)
             """,
-            [authorization["store_id"], authorization["owner_generation"]],
+            [
+                authorization["store_id"],
+                authorization["owner_generation"],
+                owner_status,
+            ],
         )
         connection.execute(
             "INSERT INTO server_epochs VALUES ('server:plan-r2', ?, ?, "
@@ -803,8 +810,11 @@ def _provision_canonical_plan_r2_owner(
         )
         for sequence in range(1, 10):
             connection.execute(
-                "INSERT INTO domain_events VALUES (?, 'bootstrap', ?, ?, "
-                "'intent.seeded', '', '', '', '1970-01-01T00:00:00Z', '{}')",
+                "INSERT INTO domain_events (event_id, stream_id, sequence, "
+                "global_sequence, event_type, task_cid, attempt_id, "
+                "session_id, recorded_at, body_json) VALUES "
+                "(?, 'bootstrap', ?, ?, 'intent.seeded', '', '', '', "
+                "'1970-01-01T00:00:00Z', '{}')",
                 [f"seed:{sequence}", sequence, sequence],
             )
         connection.execute(
