@@ -21,10 +21,13 @@ import hashlib
 import json
 import os
 import re
+import secrets
+import shutil
 import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -101,6 +104,26 @@ TERMINAL_STATUSES: Final = (
     "rejected",
 )
 OWNER_COMMAND_ENVELOPE_MAX_BYTES: Final = 1_048_576
+TYPED_DEFERRAL_PROVIDER_CANARY_MAX_BYTES: Final = 8 * 1024 * 1024
+TYPED_DEFERRAL_PROVIDER_CANARY_TIMEOUT_SECONDS: Final = 600
+TYPED_DEFERRAL_RECOVERY_PRODUCTION_PATHS: Final = frozenset(
+    {
+        "ipfs_accelerate_py/agent_implementation_route.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        (
+            "ipfs_accelerate_py/agent_supervisor/task_sources/"
+            "database_task_source.py"
+        ),
+        (
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+            "implementation_daemon.py"
+        ),
+        (
+            "ipfs_accelerate_py/agent_supervisor/validation/"
+            "project_dependency_preflight.py"
+        ),
+    }
+)
 
 
 class OperatorError(RuntimeError):
@@ -1728,6 +1751,365 @@ def _owner_connection(path: Path) -> Any:
     return DuckDBConnection.wrap(connection)
 
 
+def _typed_deferral_repair_context(
+    config: Mapping[str, Any],
+    *,
+    task_cid: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    repair_head: str,
+    repair_tree: str,
+) -> dict[str, Any]:
+    """Bind one blocked task generation to the exact clean repair HEAD."""
+
+    source_head = str(task_body.get("base_revision") or "")
+    source_tree = str(task_body.get("base_repository_tree_id") or "")
+    repair_head_text = str(repair_head or "")
+    repair_tree_text = str(repair_tree or "")
+    if (
+        not str(task_cid or "")
+        or isinstance(task_revision, bool)
+        or not isinstance(task_revision, int)
+        or task_revision < 1
+        or re.fullmatch(r"[0-9a-f]{40}", source_head) is None
+        or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
+        or re.fullmatch(r"[0-9a-f]{40}", repair_head_text) is None
+        or re.fullmatch(r"[0-9a-f]{40}", repair_tree_text) is None
+        or repair_head_text == source_head
+    ):
+        raise OperatorError("typed-deferral repair generation is invalid")
+    current_head, current_tree = _assert_clean_current_tree(config)
+    if current_head != repair_head_text or current_tree != repair_tree_text:
+        raise OperatorError(
+            "typed-deferral recovery requires the exact clean current HEAD/tree"
+        )
+    if _git_commit_tree(source_head, field="typed-deferral source") != source_tree:
+        raise OperatorError("typed-deferral source tree does not match its commit")
+    if (
+        _git_commit_tree(repair_head_text, field="typed-deferral repair")
+        != repair_tree_text
+    ):
+        raise OperatorError("typed-deferral repair tree does not match its commit")
+    _git_is_ancestor(
+        source_head,
+        repair_head_text,
+        field="typed-deferral source-to-repair ancestry",
+    )
+    changed_raw = _git(
+        "diff",
+        "--name-only",
+        "--diff-filter=ACMRT",
+        "--no-renames",
+        source_head,
+        repair_head_text,
+        "--",
+        *sorted(TYPED_DEFERRAL_RECOVERY_PRODUCTION_PATHS),
+    )
+    changed_paths = {
+        line.strip()
+        for line in str(changed_raw).splitlines()
+        if line.strip()
+    }
+    if not changed_paths or not changed_paths.issubset(
+        TYPED_DEFERRAL_RECOVERY_PRODUCTION_PATHS
+    ):
+        raise OperatorError(
+            "typed-deferral repair changes no admitted production recovery path"
+        )
+    after_head, after_tree = _assert_clean_current_tree(config)
+    if (after_head, after_tree) != (current_head, current_tree):
+        raise OperatorError("typed-deferral repair generation changed during admission")
+    return {
+        "task_cid": str(task_cid),
+        "task_revision": int(task_revision),
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "repair_head": repair_head_text,
+        "repair_tree": repair_tree_text,
+        "changed_production_paths": sorted(changed_paths),
+    }
+
+
+def _terminate_provider_canary(process: subprocess.Popen[bytes]) -> None:
+    """Boundedly terminate one detached canary process group."""
+
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    deadline = time.monotonic() + 15
+    while process.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.05)
+    if process.poll() is None:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait(timeout=5)
+
+
+def _run_typed_deferral_provider_canary(
+    *, database_program: Any
+) -> dict[str, Mapping[str, Any]]:
+    """Run the real quota/high route in an inert disposable Git workspace."""
+
+    from ipfs_accelerate_py.agent_implementation_route import (
+        resolve_agent_implementation_route,
+        valid_agent_implementation_failure_receipt,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.grok_cli_runner import (
+        build_grok_quota_routed_agent_command,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
+        provider_subprocess_environment,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import (
+        extract_grok_failure_receipts,
+        extract_grok_route_outcomes,
+        valid_grok_route_outcome,
+    )
+
+    route = resolve_agent_implementation_route(
+        primary_provider_id="grok_cli",
+        primary_model_id="grok-4.6",
+        fallback_provider_id="codex",
+        fallback_model_id="gpt-5.6-terra",
+        fallback_trigger="primary_quota_exhausted",
+        fallback_reasoning_effort="high",
+    )
+    nonce = secrets.token_hex(32)
+    provider_env = provider_subprocess_environment(
+        os.environ,
+        program=database_program,
+    )
+    grok = shutil.which("grok", path=provider_env.get("PATH")) or ""
+    codex = shutil.which("codex", path=provider_env.get("PATH")) or ""
+    if not grok or not codex:
+        raise OperatorError("typed-deferral canary requires trusted Grok and Codex CLIs")
+    git_env = {
+        key: value
+        for key, value in provider_env.items()
+        if not key.startswith("GIT_")
+    }
+    git_env.update(
+        {
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_TERMINAL_PROMPT": "0",
+            "LANG": "C",
+            "LC_ALL": "C",
+        }
+    )
+    with tempfile.TemporaryDirectory(
+        prefix="vrif-provider-route-canary-"
+    ) as raw_workspace:
+        workspace = Path(raw_workspace).resolve()
+        subprocess.run(
+            ["git", "init", "-q", "-b", "main", str(workspace)],
+            env=git_env,
+            check=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(workspace),
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "user.name=VRIF Provider Canary",
+                "-c",
+                "user.email=vrif-canary.invalid",
+                "commit",
+                "--allow-empty",
+                "--no-verify",
+                "-q",
+                "-m",
+                "provider-route canary baseline",
+            ],
+            env=git_env,
+            check=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        command = build_grok_quota_routed_agent_command(
+            workspace=workspace,
+            python_executable=sys.executable,
+            grok_bin=grok,
+            codex_bin=codex,
+            fallback_reasoning_effort="high",
+            accepted_runner_path=(
+                ROOT
+                / "ipfs_accelerate_py"
+                / "agent_supervisor"
+                / "runtime"
+                / "grok_cli_runner.py"
+            ),
+        )
+        command.extend(
+            [
+                "--grok-failure-receipt-nonce",
+                nonce,
+                "--agent-implementation-route-json",
+                json.dumps(
+                    route.as_binding_dict(),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            ]
+        )
+        prompt = (
+            "Provider-route recovery canary only. Do not inspect or modify "
+            "files and do not invoke tools. Reply with exactly CANARY_OK.\n"
+        ).encode("utf-8")
+        with tempfile.TemporaryFile() as control:
+            try:
+                process = subprocess.Popen(
+                    command,
+                    cwd=ROOT,
+                    env=git_env,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    stderr=control,
+                    start_new_session=True,
+                )
+            except OSError as exc:
+                raise OperatorError("typed-deferral provider canary did not start") from exc
+            try:
+                assert process.stdin is not None
+                process.stdin.write(prompt)
+                process.stdin.close()
+                deadline = (
+                    time.monotonic()
+                    + TYPED_DEFERRAL_PROVIDER_CANARY_TIMEOUT_SECONDS
+                )
+                while process.poll() is None:
+                    if os.fstat(control.fileno()).st_size > (
+                        TYPED_DEFERRAL_PROVIDER_CANARY_MAX_BYTES
+                    ):
+                        raise OperatorError(
+                            "typed-deferral provider canary exceeded its log bound"
+                        )
+                    if time.monotonic() >= deadline:
+                        raise OperatorError("typed-deferral provider canary timed out")
+                    time.sleep(0.1)
+            except BaseException:
+                _terminate_provider_canary(process)
+                raise
+            control.flush()
+            if os.fstat(control.fileno()).st_size > (
+                TYPED_DEFERRAL_PROVIDER_CANARY_MAX_BYTES
+            ):
+                raise OperatorError(
+                    "typed-deferral provider canary exceeded its log bound"
+                )
+            control.seek(0)
+            control_text = control.read().decode("utf-8", errors="replace")
+
+        receipts = extract_grok_failure_receipts(control_text)
+        outcomes = extract_grok_route_outcomes(control_text)
+        if len(receipts) != 1 or len(outcomes) != 1:
+            raise OperatorError(
+                "typed-deferral provider canary returned an ambiguous receipt chain"
+            )
+        receipt = receipts[0]
+        outcome = outcomes[0]
+        probe_returncode = receipt.get("probe_returncode")
+        observed_now_ms = int(time.time() * 1000)
+        valid = bool(
+            process.returncode == 0
+            and isinstance(probe_returncode, int)
+            and not isinstance(probe_returncode, bool)
+            and valid_agent_implementation_failure_receipt(
+                receipt,
+                nonce=nonce,
+                model=route.primary_model_id,
+                probe_returncode=probe_returncode,
+                now_ms=observed_now_ms,
+                max_age_ms=60_000,
+            )
+            and receipt.get("failure_class") == "hard_quota_exhausted"
+            and valid_grok_route_outcome(
+                outcome,
+                receipt=receipt,
+                route_plan=route.as_outcome_dict(),
+                runner_returncode=process.returncode,
+            )
+            and outcome.get("decision") == "fallback_succeeded"
+            and outcome.get("verifier_status") == "confirmed_quota"
+            and outcome.get("fallback_dispatched") is True
+            and outcome.get("fallback_returncode") == 0
+            and bool(outcome.get("quota_evidence_id"))
+        )
+        status = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(workspace),
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+            ],
+            env=git_env,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        if not valid or status:
+            raise OperatorError(
+                "typed-deferral provider canary did not produce the exact "
+                "fresh quota/high success chain"
+            )
+        return {
+            "quota_probe_receipt": receipt,
+            "route_outcome": outcome,
+        }
+
+
+def _owner_typed_deferral_provider_evidence(
+    config: Mapping[str, Any],
+    *,
+    database_program: Any,
+    task_cid: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    repair_head: str,
+    repair_tree: str,
+) -> dict[str, Mapping[str, Any]]:
+    """Validate Git on both sides of the owner-executed provider canary."""
+
+    before = _typed_deferral_repair_context(
+        config,
+        task_cid=task_cid,
+        task_revision=task_revision,
+        task_body=task_body,
+        repair_head=repair_head,
+        repair_tree=repair_tree,
+    )
+    evidence = _run_typed_deferral_provider_canary(
+        database_program=database_program,
+    )
+    after = _typed_deferral_repair_context(
+        config,
+        task_cid=task_cid,
+        task_revision=task_revision,
+        task_body=task_body,
+        repair_head=repair_head,
+        repair_tree=repair_tree,
+    )
+    if before != after:
+        raise OperatorError("typed-deferral repair context changed during canary")
+    return evidence
+
+
 def _process_owner_commands(
     repository: Any,
     command_dir: Path,
@@ -1735,12 +2117,14 @@ def _process_owner_commands(
     token: str,
     expected_store_id: str,
     expected_store_generation: str,
+    typed_deferral_provider_evidence_factory: Any = None,
 ) -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
         execute_quack_owner_command,
         quack_owner_command_error_code,
     )
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
         quack_owner_command_response,
         validate_quack_owner_command_request,
     )
@@ -1776,13 +2160,24 @@ def _process_owner_commands(
                 expected_store_id=expected_store_id,
                 expected_store_generation=expected_store_generation,
             )
+            owner_bindings: dict[str, Any] = {
+                "request_id": expected_request_id,
+                "store_id": expected_store_id,
+                "store_generation": expected_store_generation,
+            }
+            if command == QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET:
+                if not callable(typed_deferral_provider_evidence_factory):
+                    raise OperatorError(
+                        "typed-deferral recovery provider boundary is unavailable"
+                    )
+                owner_bindings["typed_deferral_provider_evidence_factory"] = (
+                    typed_deferral_provider_evidence_factory
+                )
             result = execute_quack_owner_command(
                 repository,
                 command,
                 command_payload,
-                request_id=expected_request_id,
-                store_id=expected_store_id,
-                store_generation=expected_store_generation,
+                **owner_bindings,
             )
             _atomic_json(
                 done,
@@ -1969,6 +2364,13 @@ def state_owner(config_path: Path) -> int:
             token=owner_token,
             expected_store_id=program.store_id,
             expected_store_generation=program.store_generation,
+            typed_deferral_provider_evidence_factory=(
+                lambda **context: _owner_typed_deferral_provider_evidence(
+                    config,
+                    database_program=program,
+                    **context,
+                )
+            ),
         )
         time.sleep(0.05)
     owner_repository.close()

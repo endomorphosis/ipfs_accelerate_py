@@ -263,6 +263,7 @@ def test_runtime_config_closes_authority_and_training_fallbacks() -> None:
 
 def test_owner_command_vocabulary_has_no_raw_sql_surface() -> None:
     from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
         DuckDBConnectionPolicyError,
         validate_quack_owner_command,
     )
@@ -278,6 +279,23 @@ def test_owner_command_vocabulary_has_no_raw_sql_surface() -> None:
         validate_quack_owner_command(
             "record_queue_retry",
             {"task_cid": "task-cid", "sql": "DELETE FROM tasks"},
+        )
+    recovery = {
+        "task_cid_or_alias": "VRIF-029",
+        "repair_head": "1" * 40,
+        "repair_tree": "2" * 40,
+    }
+    assert validate_quack_owner_command(
+        QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+        recovery,
+    ) == recovery
+    with pytest.raises(DuckDBConnectionPolicyError, match="closed schema"):
+        validate_quack_owner_command(
+            QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+            {
+                **recovery,
+                "quota_probe_receipt": {"source": "caller"},
+            },
         )
 
 
@@ -345,6 +363,80 @@ def test_owner_command_inbox_requires_signed_store_bound_envelope(
     assert result["schema"] == QUACK_OWNER_COMMAND_RESPONSE_SCHEMA
     assert result["ok"] is True
     assert result["result"] == {"schema": "test-result@1", "changed": True}
+
+
+def test_typed_deferral_owner_command_injects_private_provider_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.task_sources import database_task_source
+    from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
+        QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+        QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
+        quack_owner_command_signature,
+    )
+
+    operator = _operator()
+    request_id = "e" * 32
+    token = "vrif_test_token_0123456789"
+    store_id = "data/agent_supervisor/residual_intelligence_foundry/control.duckdb"
+    payload = {
+        "schema": QUACK_OWNER_COMMAND_REQUEST_SCHEMA,
+        "request_id": request_id,
+        "issued_at_ms": int(time.time() * 1000),
+        "writer_identity": "supervisor-process:1234",
+        "store_id": store_id,
+        "store_generation": "vrif-v1",
+        "command": QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+        "payload": {
+            "task_cid_or_alias": "VRIF-029",
+            "repair_head": "1" * 40,
+            "repair_tree": "2" * 40,
+        },
+    }
+    payload["signature"] = quack_owner_command_signature(payload, token=token)
+    (tmp_path / f"{request_id}.request.json").write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+    provider_boundary = lambda **_context: {  # noqa: E731
+        "quota_probe_receipt": {"receipt_id": "real"},
+        "route_outcome": {"outcome_id": "real"},
+    }
+    observed: dict[str, object] = {}
+
+    def execute(
+        _repository: object,
+        command: str,
+        command_payload: object,
+        **bindings: object,
+    ) -> dict[str, object]:
+        observed.update(
+            {
+                "command": command,
+                "payload": command_payload,
+                "bindings": bindings,
+            }
+        )
+        return {"schema": "typed-recovery-result@1", "changed": True}
+
+    monkeypatch.setattr(database_task_source, "execute_quack_owner_command", execute)
+    operator._process_owner_commands(
+        object(),
+        tmp_path,
+        token=token,
+        expected_store_id=store_id,
+        expected_store_generation="vrif-v1",
+        typed_deferral_provider_evidence_factory=provider_boundary,
+    )
+    assert observed["command"] == (
+        QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET
+    )
+    assert observed["payload"] == payload["payload"]
+    bindings = observed["bindings"]
+    assert isinstance(bindings, dict)
+    assert bindings["request_id"] == request_id
+    assert bindings["typed_deferral_provider_evidence_factory"] is provider_boundary
 
 
 def test_owner_command_inbox_rejects_raw_sql_envelopes(

@@ -608,6 +608,9 @@ QUACK_OWNER_COMMAND_RESPONSE_SCHEMA = (
 QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS = "compare_and_set_status"
 QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS = "compare_and_set_goal_status"
 QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK = "rearm_blocked_task"
+QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET = (
+    "recover_typed_deferral_budget"
+)
 QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF = "record_queue_backoff"
 QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY = "record_queue_retry"
 QUACK_OWNER_COMMAND_RECORD_EVIDENCE = "record_evidence"
@@ -617,6 +620,7 @@ QUACK_OWNER_COMMANDS = frozenset(
         QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
         QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
         QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
+        QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
         QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
         QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
         QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
@@ -640,6 +644,10 @@ _QUACK_OWNER_COMMAND_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = 
     QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK: (
         frozenset({"task_cid_or_alias"}),
         frozenset({"receipt"}),
+    ),
+    QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET: (
+        frozenset({"task_cid_or_alias", "repair_head", "repair_tree"}),
+        frozenset(),
     ),
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF: (
         frozenset({"task_cid", "delay_ms"}),
@@ -712,6 +720,8 @@ def validate_quack_owner_command(
         "digest",
         "outcome",
         "evidence_digest",
+        "repair_head",
+        "repair_tree",
     }
     for field in text_fields & fields:
         _owner_command_text(copied[field], field=field)
@@ -1057,12 +1067,19 @@ def submit_quack_owner_command(
 
     command_name = str(command or "")
     command_payload = validate_quack_owner_command(command_name, payload)
+    maximum_timeout = (
+        660.0
+        if command_name == QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET
+        else 60.0
+    )
     if (
         not isinstance(timeout_seconds, (int, float))
         or isinstance(timeout_seconds, bool)
-        or not 0 < float(timeout_seconds) <= 60
+        or not 0 < float(timeout_seconds) <= maximum_timeout
     ):
-        raise DuckDBConnectionPolicyError("quack owner command timeout must be in (0, 60] seconds")
+        raise DuckDBConnectionPolicyError(
+            "quack owner command timeout exceeds its closed command bound"
+        )
     target = quack_owner_command_dir()
     if target is None:
         raise DuckDBConnectionPolicyError(

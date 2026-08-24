@@ -23,6 +23,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from ipfs_accelerate_py.agent_implementation_route import (
+    resolve_agent_implementation_route,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     checkout_repository_id,
 )
@@ -37,8 +40,15 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
     DATABASE_PROGRAM_JSON_ENV,
     DatabaseProgramConfig,
 )
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_failure_policy import (
+    build_grok_failure_receipt,
+    build_grok_route_outcome,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources import (
+    database_task_source as database_task_source_module,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
     install_control_plane_schema,
@@ -277,6 +287,88 @@ def _open_daemon(
         require_real_execution=True,
         clock_ms=clock_ms,
     )
+
+
+TYPED_DEFERRAL_RECOVERY_TEST_PATH = (
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py"
+)
+
+
+def _git_recovery_repo(tmp_path: Path) -> tuple[Path, str, str]:
+    repo = tmp_path / "repair-repo"
+    repo.mkdir(parents=True)
+    for argv in (
+        ("init", "-q"),
+        ("config", "user.name", "Typed Deferral Test"),
+        ("config", "user.email", "typed-deferral@example.invalid"),
+    ):
+        subprocess.run(
+            ["git", "-C", str(repo), *argv],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    (repo / "generation.txt").write_text("base\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(repo), "add", "generation.txt"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-q", "-m", "base"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return repo, _git_output(repo, "rev-parse", "HEAD"), _git_output(
+        repo, "rev-parse", "HEAD^{tree}"
+    )
+
+
+def _git_output(repo: Path, *argv: str, input_text: str | None = None) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), *argv],
+        check=True,
+        capture_output=True,
+        text=True,
+        input=input_text,
+    ).stdout.strip()
+
+
+def _git_commit(repo: Path, *, name: str, content: str) -> tuple[str, str]:
+    target = repo / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    _git_output(repo, "add", name)
+    _git_output(repo, "commit", "-m", f"add {name}")
+    return _git_output(repo, "rev-parse", "HEAD"), _git_output(
+        repo, "rev-parse", "HEAD^{tree}"
+    )
+
+
+def _successful_quota_high_pair() -> tuple[dict[str, object], dict[str, object]]:
+    failure = build_grok_failure_receipt(
+        probe_stderr_text="Grok Build usage balance exhausted",
+        nonce="f" * 64,
+        model="grok-4.6",
+        probe_returncode=41,
+        primary_dispatched=False,
+    )
+    legacy = resolve_agent_implementation_route(default_route="legacy")
+    quota_high = resolve_agent_implementation_route(
+        **{**legacy.as_dict(), "fallback_reasoning_effort": "high"}
+    )
+    outcome = build_grok_route_outcome(
+        receipt=failure,
+        route_plan=quota_high.as_outcome_dict(),
+        quota_evidence_id="sha256:" + ("e" * 64),
+        decision="fallback_succeeded",
+        verifier_status="confirmed_quota",
+        fallback_dispatched=True,
+        fallback_returncode=0,
+    )
+    return failure, outcome
 
 
 def _validation_retry_receipt(
@@ -1591,6 +1683,240 @@ def test_typed_portal_deferral_budget_blocks_before_fourth_dispatch(
         daemon.close()
 
 
+def test_exhausted_supersession_with_admitted_repair_survives_reconciliation(
+    tmp_path: Path,
+) -> None:
+    now = {"ms": 1_000}
+    repo, base_head, base_tree = _git_recovery_repo(tmp_path)
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=300,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:typed-budget-supersession",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=1,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["base_revision"] = base_head
+        tasks[0]["base_repository_tree_id"] = base_tree
+        daemon.materialize_population(population)
+        exhausted = daemon.run_once()
+        task_cid = str(exhausted["claimed_task_cid"])
+        assert exhausted["implementation_result"]["retry_budget_exhausted"] is True
+        blocked = daemon.task_source.get(task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+
+        repair_head, repair_tree = _git_commit(
+            repo,
+            name=TYPED_DEFERRAL_RECOVERY_TEST_PATH,
+            content="quota/high route repair\n",
+        )
+        failure, route_outcome = _successful_quota_high_pair()
+        request = database_task_source_module._build_owner_typed_deferral_budget_supersession_request(
+            task_cid=blocked.task_cid,
+            task_revision=blocked.revision,
+            task_body=blocked.body,
+            repair_head=repair_head,
+            repair_tree=repair_tree,
+            quota_probe_receipt=failure,
+            route_outcome=route_outcome,
+            owner_command_request_id="d" * 32,
+            owner_store_id="store:test-reconciliation",
+            owner_store_generation="generation:test-reconciliation",
+            admitted_at_ms=int(failure["observed_at_ms"]),
+            _owner_admission_sentinel=(
+                database_task_source_module._TYPED_DEFERRAL_PROVIDER_EVIDENCE_OWNER_SENTINEL
+            ),
+        )
+        rearmed = daemon.task_source.rearm_blocked_task(
+            task_cid,
+            receipt=request,
+        )
+        assert rearmed.task.status == "retrying"
+
+        # A later unrelated accepted commit is permitted: the admitted repair
+        # remains an ancestor and still reproduces its exact tree.
+        current_head, _current_tree = _git_commit(
+            repo,
+            name="unrelated.txt",
+            content="later accepted merge\n",
+        )
+        assert current_head != repair_head
+        daemon._merge_repo_root = repo
+        assert task_cid in daemon.sync_ready_tasks_into_coordination()
+        now["ms"] = 7_000
+        reconciled = daemon.reconcile_terminal_retry_states()
+        assert len(reconciled) == 1
+        assert reconciled[0]["changed"] is False
+        assert reconciled[0]["status"] == "retrying"
+        assert reconciled[0]["reason"] == (
+            "typed_portal_deferral_budget_superseded"
+        )
+        assert daemon.task_source.get(task_cid).status == "retrying"
+
+        # An authoritative later completion remains immutable even though the
+        # historical failed attempt and exhausted observation are retained.
+        current = daemon.task_source.get(task_cid)
+        assert current is not None
+        daemon.task_source._intent.cas_task_status(
+            task_cid=task_cid,
+            expected_revision=current.revision,
+            new_status="completed",
+            receipt={"operation": "authoritative_external_completion"},
+            allow_completion_without_evidence=True,
+        )
+        assert daemon.reconcile_terminal_retry_states() == []
+        assert daemon.task_source.get(task_cid).status == "completed"
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "rearm_kind",
+    (
+        "generic",
+        "nonancestor_repair",
+        "source_as_repair",
+        "source_head_missing",
+        "source_tree_mismatch",
+        "repair_tree_mismatch",
+        "unrelated_descendant",
+        "dirty_worktree",
+    ),
+)
+def test_exhausted_generic_or_unadmitted_repair_is_reblocked(
+    tmp_path: Path,
+    rearm_kind: str,
+) -> None:
+    now = {"ms": 1_000}
+    repo, base_head, base_tree = _git_recovery_repo(tmp_path)
+
+    def provider(_attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        raise DatabasePortalBridgeDeferred(
+            "validation_project_dependency_preflight_failed",
+            backoff_seconds=300,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session=f"session:typed-budget-{rearm_kind}",
+        provider_fn=provider,
+        lease_ms=5_000,
+        max_task_attempts=1,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        population = _population(1)
+        tasks = population["tasks"]
+        assert isinstance(tasks, list)
+        tasks[0]["base_revision"] = (
+            "8" * 40 if rearm_kind == "source_head_missing" else base_head
+        )
+        tasks[0]["base_repository_tree_id"] = (
+            "9" * 40 if rearm_kind == "source_tree_mismatch" else base_tree
+        )
+        daemon.materialize_population(population)
+        exhausted = daemon.run_once()
+        task_cid = str(exhausted["claimed_task_cid"])
+        blocked = daemon.task_source.get(task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+
+        if rearm_kind == "generic":
+            # Simulate a lower-level repository writer bypassing the public
+            # DatabaseTaskSource gate.  Restart reconciliation still fails
+            # closed and restores the exhausted block.
+            daemon.task_source._intent.cas_task_status(
+                task_cid=task_cid,
+                expected_revision=blocked.revision,
+                new_status="retrying",
+                receipt={"operation": "generic_owner_retry"},
+            )
+        else:
+            if rearm_kind == "nonancestor_repair":
+                # An object-store commit outside current history is not an
+                # admitted runtime repair.
+                repair_tree = _git_output(repo, "rev-parse", "HEAD^{tree}")
+                repair_head = _git_output(
+                    repo,
+                    "commit-tree",
+                    repair_tree,
+                    input_text="unrelated orphan repair\n",
+                )
+            elif rearm_kind == "source_as_repair":
+                repair_head, repair_tree = base_head, base_tree
+            elif rearm_kind == "unrelated_descendant":
+                # Strict descent is necessary but not sufficient: a commit
+                # outside the closed production recovery paths cannot reset a
+                # provider/validation deferral budget.
+                repair_head, repair_tree = _git_commit(
+                    repo,
+                    name="unrelated.txt",
+                    content="unrelated accepted change\n",
+                )
+            else:
+                repair_head, repair_tree = _git_commit(
+                    repo,
+                    name=TYPED_DEFERRAL_RECOVERY_TEST_PATH,
+                    content="quota/high route repair\n",
+                )
+                if rearm_kind == "repair_tree_mismatch":
+                    repair_tree = "7" * 40
+            failure, route_outcome = _successful_quota_high_pair()
+            request = database_task_source_module._build_owner_typed_deferral_budget_supersession_request(
+                task_cid=blocked.task_cid,
+                task_revision=blocked.revision,
+                task_body=blocked.body,
+                repair_head=repair_head,
+                repair_tree=repair_tree,
+                quota_probe_receipt=failure,
+                route_outcome=route_outcome,
+                owner_command_request_id="e" * 32,
+                owner_store_id="store:test-reblock",
+                owner_store_generation="generation:test-reblock",
+                admitted_at_ms=int(failure["observed_at_ms"]),
+                _owner_admission_sentinel=(
+                    database_task_source_module._TYPED_DEFERRAL_PROVIDER_EVIDENCE_OWNER_SENTINEL
+                ),
+            )
+            daemon.task_source.rearm_blocked_task(task_cid, receipt=request)
+            if rearm_kind == "dirty_worktree":
+                (repo / "unadmitted.txt").write_text(
+                    "dirty runtime generation\n",
+                    encoding="utf-8",
+                )
+
+        daemon._merge_repo_root = repo
+        now["ms"] = 7_000
+        if rearm_kind != "generic":
+            # Model one of four lanes whose reconciliation pass completed just
+            # before the owner accepted this rearm.  Claim admission must
+            # independently reject it; waiting for the lane's next restart
+            # reconciliation would leave a provider-dispatch race.
+            assert task_cid not in daemon.sync_ready_tasks_into_coordination()
+            assert daemon.claim_next() is None
+            assert daemon.task_source.get(task_cid).status == "retrying"
+        reconciled = daemon.reconcile_terminal_retry_states()
+        assert len(reconciled) == 1
+        assert reconciled[0]["changed"] is True
+        assert reconciled[0]["status"] == "blocked"
+        assert reconciled[0]["reason"] == (
+            "typed_portal_deferral_budget_exhausted"
+        )
+        assert daemon.task_source.get(task_cid).status == "blocked"
+    finally:
+        daemon.close()
+
+
 def test_legacy_failed_claim_does_not_consume_typed_deferral_budget(
     tmp_path: Path,
 ) -> None:
@@ -1716,9 +2042,14 @@ def test_restart_reconciles_exhausted_typed_deferral_without_new_claim(
         replacement.close()
 
 
+@pytest.mark.parametrize(
+    "terminal_status",
+    ("completed", "complete", "done", "rejected"),
+)
 def test_exhausted_typed_deferral_yields_to_later_terminal_control_cas(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    terminal_status: str,
 ) -> None:
     now = {"ms": 1_000}
 
@@ -1768,15 +2099,19 @@ def test_exhausted_typed_deferral_yields_to_later_terminal_control_cas(
         completed = daemon._cas_task_status_database(
             task_cid,
             expected_revision=int(control.revision),
-            new_status="completed",
+            new_status=terminal_status,
             receipt={"operation": "simulated_external_completion"},
-            evidence_digests=(validation_digest,),
+            evidence_digests=(
+                (validation_digest,)
+                if terminal_status in {"completed", "complete", "done"}
+                else None
+            ),
         )
-        assert completed.task.status == "completed"
+        assert completed.task.status == terminal_status
 
         monkeypatch.undo()
         assert daemon.reconcile_terminal_retry_states() == []
-        assert daemon.task_source.get(task_cid).status == "completed"
+        assert daemon.task_source.get(task_cid).status == terminal_status
     finally:
         daemon.close()
 

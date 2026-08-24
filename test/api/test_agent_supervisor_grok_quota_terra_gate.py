@@ -11,6 +11,7 @@ import subprocess
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import quote
 
 import pytest
 from ipfs_accelerate_py import llm_router
@@ -56,8 +57,15 @@ def _write_native_session_home(
     updates: list[dict[str, object]],
     *,
     session_id: str = _NATIVE_SESSION_ID,
+    workspace: Path | None = None,
+    encoded_workspace: bool = True,
 ) -> Path:
-    session = grok_home / "sessions" / session_id
+    session_root = grok_home / "sessions"
+    if workspace is not None:
+        workspace = workspace.resolve(strict=True)
+    if workspace is not None and encoded_workspace:
+        session_root /= quote(str(workspace), safe="")
+    session = session_root / session_id
     session.mkdir(parents=True)
     (session / "updates.jsonl").write_text(
         "".join(json.dumps(item, sort_keys=True) + "\n" for item in updates),
@@ -66,7 +74,14 @@ def _write_native_session_home(
     (session / "summary.json").write_text(
         json.dumps(
             {
-                "info": {"id": session_id},
+                "info": {
+                    "id": session_id,
+                    **(
+                        {"cwd": str(workspace)}
+                        if workspace is not None
+                        else {}
+                    ),
+                },
                 "current_model_id": "grok-4.6",
                 "grok_home": str(grok_home),
             },
@@ -874,6 +889,7 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
                 _spending_limit_terminal(session_id=session_id),
             ],
             session_id=session_id,
+            workspace=kwargs["cwd"],
         )
         return subprocess.CompletedProcess(command, 23)
 
@@ -900,6 +916,134 @@ def test_independent_quota_verifier_uses_isolated_os_cwd(
     assert evidence is not None
     assert captured["env"]["PWD"] == str(captured["cwd"])
     assert "OLDPWD" not in captured["env"]
+
+
+def test_native_quota_verifier_rejects_foreign_workspace_session(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    foreign_workspace = tmp_path / "foreign-workspace"
+    workspace.mkdir()
+    foreign_workspace.mkdir()
+    verifier_home = tmp_path / "grok-home"
+    _write_native_session_home(
+        verifier_home,
+        [_spending_limit_retry(), _spending_limit_terminal()],
+        workspace=foreign_workspace,
+    )
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text="Grok Build usage balance exhausted",
+        nonce="2" * 64,
+        model="grok-4.6",
+        probe_returncode=1,
+        primary_dispatched=False,
+    )
+
+    evidence = llm_router.validate_agent_implementation_quota_evidence(
+        grok_home=verifier_home,
+        expected_session_id=_NATIVE_SESSION_ID,
+        verifier_returncode=1,
+        failure_receipt=receipt,
+        verifier_workspace=workspace,
+    )
+
+    assert evidence is None
+
+
+def test_native_quota_verifier_rejects_direct_session_wrong_cwd(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    foreign_workspace = tmp_path / "foreign-workspace"
+    workspace.mkdir()
+    foreign_workspace.mkdir()
+    verifier_home = tmp_path / "grok-home"
+    _write_native_session_home(
+        verifier_home,
+        [_spending_limit_retry(), _spending_limit_terminal()],
+        workspace=foreign_workspace,
+        encoded_workspace=False,
+    )
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text="Grok Build usage balance exhausted",
+        nonce="5" * 64,
+        model="grok-4.6",
+        probe_returncode=1,
+        primary_dispatched=False,
+    )
+
+    evidence = llm_router.validate_agent_implementation_quota_evidence(
+        grok_home=verifier_home,
+        expected_session_id=_NATIVE_SESSION_ID,
+        verifier_returncode=1,
+        failure_receipt=receipt,
+        verifier_workspace=workspace,
+    )
+
+    assert evidence is None
+
+
+def test_native_quota_verifier_rejects_ambiguous_session_layouts(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    verifier_home = tmp_path / "grok-home"
+    updates = [_spending_limit_retry(), _spending_limit_terminal()]
+    _write_native_session_home(verifier_home, updates)
+    _write_native_session_home(
+        verifier_home,
+        updates,
+        workspace=workspace,
+    )
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text="Grok Build usage balance exhausted",
+        nonce="3" * 64,
+        model="grok-4.6",
+        probe_returncode=1,
+        primary_dispatched=False,
+    )
+
+    evidence = llm_router.validate_agent_implementation_quota_evidence(
+        grok_home=verifier_home,
+        expected_session_id=_NATIVE_SESSION_ID,
+        verifier_returncode=1,
+        failure_receipt=receipt,
+        verifier_workspace=workspace,
+    )
+
+    assert evidence is None
+
+
+def test_native_quota_verifier_rejects_workspace_traversal_alias(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    verifier_home = tmp_path / "grok-home"
+    _write_native_session_home(
+        verifier_home,
+        [_spending_limit_retry(), _spending_limit_terminal()],
+        workspace=workspace,
+    )
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text="Grok Build usage balance exhausted",
+        nonce="4" * 64,
+        model="grok-4.6",
+        probe_returncode=1,
+        primary_dispatched=False,
+    )
+    traversal_alias = tmp_path / "missing" / ".." / workspace.name
+
+    evidence = llm_router.validate_agent_implementation_quota_evidence(
+        grok_home=verifier_home,
+        expected_session_id=_NATIVE_SESSION_ID,
+        verifier_returncode=1,
+        failure_receipt=receipt,
+        verifier_workspace=traversal_alias,
+    )
+
+    assert evidence is None
 
 
 def test_quota_fallback_command_rejects_model_or_effort_drift() -> None:

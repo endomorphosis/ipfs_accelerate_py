@@ -168,6 +168,8 @@ from ..merge.merge_conflict_repair import (
 from ..core.submodule_degradation import DegradationState
 from ..task_sources.database_task_source import (
     TaskSourceConflictError as DatabaseTaskSourceConflictError,
+    TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION,
+    typed_deferral_budget_supersession_matches,
 )
 from ..task_sources.persistent_task_queue import PersistentTaskQueue
 from ..task_sources.task_identity import (
@@ -438,7 +440,16 @@ IMPLEMENTATION_TASK_CLAIM_RELEASE_RECEIPT_DIRNAME = (
     "implementation-task-claim-release-receipts"
 )
 IMPLEMENTATION_TASK_TERMINAL_STATUSES = frozenset(
-    {"completed", "cancelled", "skipped", "failed", "quarantined"}
+    {
+        "completed",
+        "complete",
+        "done",
+        "cancelled",
+        "skipped",
+        "failed",
+        "quarantined",
+        "rejected",
+    }
 )
 WORKTREE_LIFECYCLE_LEASE_SECONDS_ENV = (
     "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_LEASE_SECONDS"
@@ -61834,7 +61845,7 @@ class PortalImplementationDaemon:
                 f"invalid sealed implementation route: {exc}",
                 backoff_seconds=300,
             ) from exc
-        if route_plan and route_plan.permits_authentication_unavailable:
+        if route_plan is not None:
             if self.implementation_command:
                 raise ImplementationRetryDeferred(
                     "sealed Grok/Codex route rejects explicit implementation "
@@ -61865,16 +61876,26 @@ class PortalImplementationDaemon:
                     "that requires independent Codex review",
                     backoff_seconds=300,
                 )
-            if _grok_binary() and shutil.which("codex"):
+            if not _grok_binary() or not shutil.which("codex"):
+                raise ImplementationRetryDeferred(
+                    "sealed Grok/Codex route requires both pinned provider CLIs",
+                    backoff_seconds=300,
+                )
+            if (
+                not route_plan.permits_authentication_unavailable
+                and not _grok_cli_available()
+            ):
+                raise ImplementationRetryDeferred(
+                    "quota-only Grok/Codex route requires authenticated Grok CLI",
+                    backoff_seconds=300,
+                )
+            if route_plan.permits_authentication_unavailable:
                 # Authentication is intentionally not a readiness condition
                 # for this exact route. The fixed runner preflight turns a
                 # missing/expired credential into a typed, nonce-bound receipt
                 # before the task prompt and may then enter Terra/high.
                 return
-            raise ImplementationRetryDeferred(
-                "sealed Grok/Codex route requires both pinned provider CLIs",
-                backoff_seconds=300,
-            )
+            return
         if self.implementation_command and not declared_provider:
             return
         if (
@@ -62566,7 +62587,7 @@ class PortalImplementationDaemon:
                 f"invalid sealed implementation route: {exc}",
                 backoff_seconds=300,
             ) from exc
-        if route_plan and route_plan.permits_authentication_unavailable:
+        if route_plan is not None:
             if self.implementation_command:
                 raise ImplementationRetryDeferred(
                     "sealed Grok/Codex route rejects explicit implementation "
@@ -62582,7 +62603,7 @@ class PortalImplementationDaemon:
             if declared_provider in GROK_IMPLEMENTATION_PROVIDER_NAMES:
                 return _grok_cli_command(
                     workspace_path=workspace_path,
-                    model_override=DEFAULT_AUTOMATIC_GROK_MODEL,
+                    model_override=route_plan.primary_model_id,
                     enable_codex_fallback=False,
                 )
             if declared_provider and declared_provider != "auto":
@@ -62596,9 +62617,17 @@ class PortalImplementationDaemon:
                     "that requires independent Codex review",
                     backoff_seconds=300,
                 )
-            if not _grok_binary():
+            if not _grok_binary() or not shutil.which("codex"):
                 raise ImplementationRetryDeferred(
-                    "sealed Grok/Codex route requires the pinned Grok CLI",
+                    "sealed Grok/Codex route requires both pinned provider CLIs",
+                    backoff_seconds=300,
+                )
+            allow_auth_unavailable = (
+                route_plan.permits_authentication_unavailable
+            )
+            if not allow_auth_unavailable and not _grok_cli_available():
+                raise ImplementationRetryDeferred(
+                    "quota-only Grok/Codex route requires authenticated Grok CLI",
                     backoff_seconds=300,
                 )
             if route_plan.authorization is not None:
@@ -62624,7 +62653,7 @@ class PortalImplementationDaemon:
                 workspace_path=workspace_path,
                 model_override=route_plan.primary_model_id,
                 failure_receipt_nonce=secrets.token_hex(32),
-                allow_auth_unavailable_fallback=True,
+                allow_auth_unavailable_fallback=allow_auth_unavailable,
                 fallback_reasoning_effort=route_plan.fallback_reasoning_effort,
                 route_plan=route_plan,
                 sealed_runner_path=(
@@ -69976,6 +70005,24 @@ _DATABASE_PORTAL_TYPED_DEFERRAL_BUDGET_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-typed-deferral-budget@1"
 )
+_TYPED_DEFERRAL_RECOVERY_PRODUCTION_PATHS = frozenset(
+    {
+        "ipfs_accelerate_py/agent_implementation_route.py",
+        "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+        (
+            "ipfs_accelerate_py/agent_supervisor/task_sources/"
+            "database_task_source.py"
+        ),
+        (
+            "ipfs_accelerate_py/agent_supervisor/todo_daemon/"
+            "implementation_daemon.py"
+        ),
+        (
+            "ipfs_accelerate_py/agent_supervisor/validation/"
+            "project_dependency_preflight.py"
+        ),
+    }
+)
 _MAX_DATABASE_TASK_ATTEMPTS = 10_000
 _MAX_TYPED_DEFERRAL_ATTEMPT_PREVIEW = 16
 DATABASE_POST_MERGE_RECOVERY_SCHEMA = (
@@ -70978,6 +71025,190 @@ class DatabaseImplementationDaemon:
                 return False
         return True
 
+    def _typed_deferral_repair_generation_is_admitted(
+        self,
+        supersession: Mapping[str, Any] | None,
+    ) -> bool:
+        """Verify the clean repair commit/tree against the current merge repo.
+
+        The immutable task ``source_head``/``source_tree`` identify the old
+        task generation.  A separate repair generation must be its strict
+        descendant, change a protected production recovery path, reproduce
+        its declared tree, and remain an ancestor of current HEAD.  Allowing
+        later HEAD descendants keeps a valid waiting rearm alive across
+        unrelated accepted merges; dirty state, missing objects, unrelated
+        commits, or rewritten history fail closed.
+        """
+
+        if self._merge_repo_root is None or not isinstance(
+            supersession, Mapping
+        ):
+            return False
+        source_head = str(supersession.get("source_head") or "")
+        source_tree = str(supersession.get("source_tree") or "")
+        repair_head = str(supersession.get("repair_head") or "")
+        repair_tree = str(supersession.get("repair_tree") or "")
+        if (
+            re.fullmatch(r"[0-9a-f]{40}", source_head) is None
+            or re.fullmatch(r"[0-9a-f]{40}", source_tree) is None
+            or re.fullmatch(r"[0-9a-f]{40}", repair_head) is None
+            or re.fullmatch(r"[0-9a-f]{40}", repair_tree) is None
+            or repair_head == source_head
+        ):
+            return False
+        try:
+            repo = self._merge_repo_root.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return False
+        git = "/usr/bin/git" if Path("/usr/bin/git").is_file() else "git"
+
+        def run(*args: str) -> subprocess.CompletedProcess[str] | None:
+            try:
+                return subprocess.run(
+                    [git, "-C", str(repo), *args],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+
+        # Ignored runtime databases/logs are omitted by Git.  Any other
+        # untracked source, config, hook, index, or worktree drift invalidates
+        # executable repair authority until it is admitted in a commit.
+        status_before = run("status", "--porcelain=v1", "--untracked-files=all")
+        top_level = run("rev-parse", "--show-toplevel")
+        current_before = run("rev-parse", "--verify", "HEAD^{commit}")
+        observed_source = run("rev-parse", "--verify", f"{source_head}^{{commit}}")
+        observed_source_tree = run(
+            "rev-parse", "--verify", f"{source_head}^{{tree}}"
+        )
+        observed_repair = run("rev-parse", "--verify", f"{repair_head}^{{commit}}")
+        observed_repair_tree = run(
+            "rev-parse", "--verify", f"{repair_head}^{{tree}}"
+        )
+        source_ancestor = run(
+            "merge-base", "--is-ancestor", source_head, repair_head
+        )
+        repair_ancestor = run(
+            "merge-base", "--is-ancestor", repair_head, "HEAD"
+        )
+        recovery_diff = run(
+            "diff",
+            "--name-only",
+            "--diff-filter=ACMRT",
+            "--no-renames",
+            source_head,
+            repair_head,
+            "--",
+            *sorted(_TYPED_DEFERRAL_RECOVERY_PRODUCTION_PATHS),
+        )
+        current_after = run("rev-parse", "--verify", "HEAD^{commit}")
+        status_after = run("status", "--porcelain=v1", "--untracked-files=all")
+        changed_recovery_paths = (
+            {
+                line.strip()
+                for line in recovery_diff.stdout.splitlines()
+                if line.strip()
+            }
+            if recovery_diff is not None and recovery_diff.returncode == 0
+            else set()
+        )
+        return bool(
+            status_before is not None
+            and status_before.returncode == 0
+            and not status_before.stdout.strip()
+            and top_level is not None
+            and top_level.returncode == 0
+            and Path(top_level.stdout.strip()).resolve(strict=False) == repo
+            and current_before is not None
+            and current_before.returncode == 0
+            and re.fullmatch(r"[0-9a-f]{40}", current_before.stdout.strip())
+            and observed_source is not None
+            and observed_source.returncode == 0
+            and observed_source.stdout.strip() == source_head
+            and observed_source_tree is not None
+            and observed_source_tree.returncode == 0
+            and observed_source_tree.stdout.strip() == source_tree
+            and observed_repair is not None
+            and observed_repair.returncode == 0
+            and observed_repair.stdout.strip() == repair_head
+            and observed_repair_tree is not None
+            and observed_repair_tree.returncode == 0
+            and observed_repair_tree.stdout.strip() == repair_tree
+            and source_ancestor is not None
+            and source_ancestor.returncode == 0
+            and repair_ancestor is not None
+            and repair_ancestor.returncode == 0
+            and changed_recovery_paths
+            and changed_recovery_paths.issubset(
+                _TYPED_DEFERRAL_RECOVERY_PRODUCTION_PATHS
+            )
+            and current_after is not None
+            and current_after.returncode == 0
+            and current_after.stdout.strip() == current_before.stdout.strip()
+            and status_after is not None
+            and status_after.returncode == 0
+            and not status_after.stdout.strip()
+        )
+
+    def _typed_deferral_claim_is_admitted(self, task: Any) -> bool:
+        """Gate an owner-authored supersession before any lane can claim it.
+
+        The Quack owner validates the blocked task/revision when it authors the
+        durable supersession.  Lanes independently reproduce that receipt from
+        the shared task body and validate the configured Git generation.  This
+        check runs both before local coordination registration and after a
+        local claim, closing the window where another lane completed restart
+        reconciliation just before the owner accepted the rearm CAS.
+
+        Ordinary ready/retrying tasks carry another operation and preserve
+        their existing claim behavior.
+        """
+
+        body = getattr(task, "body", None)
+        if not isinstance(body, Mapping):
+            return True
+        supersession = body.get("completion_receipt")
+        if not isinstance(supersession, Mapping) or supersession.get(
+            "operation"
+        ) != TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION:
+            return True
+        exhausted_receipt = supersession.get("exhausted_receipt")
+        if not isinstance(exhausted_receipt, Mapping):
+            return False
+        exhausted_budget = exhausted_receipt.get("retry_budget")
+        if not isinstance(exhausted_budget, Mapping):
+            return False
+        attempt = {
+            field: supersession.get(field)
+            for field in (
+                "task_cid",
+                "attempt_id",
+                "attempt_number",
+                "claim_id",
+                "lease_id",
+                "owner_session_id",
+                "fencing_token",
+                "fence_epoch",
+            )
+        }
+        return bool(
+            typed_deferral_budget_supersession_matches(
+                supersession,
+                task_cid=str(getattr(task, "task_cid", "") or ""),
+                task_alias=str(getattr(task, "task_alias", "") or ""),
+                task_revision=int(getattr(task, "revision", 0) or 0),
+                task_body=body,
+                attempt=attempt,
+                exhausted_budget=exhausted_budget,
+            )
+            and self._typed_deferral_repair_generation_is_admitted(
+                supersession
+            )
+        )
+
     def _rearm_blocked_tasks_with_outputs_on_head(self) -> dict[str, Any]:
         """Rearm blocked DuckDB tasks whose declared outputs already exist.
 
@@ -71848,7 +72079,11 @@ class DatabaseImplementationDaemon:
         """Ensure ready tasks from the intent repository are claimable."""
 
         ready = self.task_source.ready_tasks(limit=TASK_SOURCE_QUERY_LIMIT)
-        ready_tasks = tuple(ready.tasks)
+        ready_tasks = tuple(
+            task
+            for task in ready.tasks
+            if self._typed_deferral_claim_is_admitted(task)
+        )
         # A Quack lane owns a disposable, lane-local coordination sidecar.  It
         # can therefore start after the canonical task board was materialized
         # and after prerequisite tasks were completed.  ``ready_tasks`` has
@@ -72085,9 +72320,14 @@ class DatabaseImplementationDaemon:
             shard_admitted = bool(
                 task is not None and self._task_belongs_to_strict_shard(task)
             )
+            recovery_admitted = bool(
+                task is not None
+                and self._typed_deferral_claim_is_admitted(task)
+            )
             ready = bool(
                 task is not None
                 and shard_admitted
+                and recovery_admitted
                 and task_status in {"todo", "ready", "open", "retrying"}
                 and str(claim.task_cid) in fresh_ready_cids
             )
@@ -72104,6 +72344,8 @@ class DatabaseImplementationDaemon:
                     reason=(
                         "shared_board_task_out_of_strict_shard"
                         if task is not None and not shard_admitted
+                        else "shared_board_typed_deferral_recovery_unadmitted"
+                        if task is not None and not recovery_admitted
                         else "shared_board_task_not_ready"
                     ),
                 )
@@ -76168,6 +76410,47 @@ class DatabaseImplementationDaemon:
                         "exhausted typed deferral cannot reconcile control "
                         f"status {status!r}"
                     )
+                if status == "retrying":
+                    task_body = getattr(task, "body", None)
+                    supersession = (
+                        task_body.get("completion_receipt")
+                        if isinstance(task_body, Mapping)
+                        else None
+                    )
+                    # A generic blocked->retrying CAS is not a recovery: the
+                    # immutable failed attempts below will re-block it.  Only
+                    # the closed task/attempt/observation/source/provider
+                    # supersession contract can suppress that replay.
+                    if typed_deferral_budget_supersession_matches(
+                        supersession,
+                        task_cid=attempt.task_cid,
+                        task_alias=str(getattr(task, "task_alias", "") or ""),
+                        task_revision=int(getattr(task, "revision", 0) or 0),
+                        task_body=(task_body or {}),
+                        attempt=attempt.to_dict(),
+                        exhausted_budget=budget,
+                    ) and self._typed_deferral_repair_generation_is_admitted(
+                        supersession
+                    ):
+                        coordination = self._reconcile_failed_attempt_coordination(
+                            attempt
+                        )
+                        outcomes.append(
+                            {
+                                "task_cid": attempt.task_cid,
+                                "attempt_id": attempt.attempt_id,
+                                "status": "retrying",
+                                "changed": False,
+                                "reason": (
+                                    "typed_portal_deferral_budget_superseded"
+                                ),
+                                "supersession_id": str(
+                                    supersession.get("supersession_id") or ""
+                                ),
+                                "coordination": coordination,
+                            }
+                        )
+                        continue
                 coordination = self._reconcile_failed_attempt_coordination(
                     attempt
                 )

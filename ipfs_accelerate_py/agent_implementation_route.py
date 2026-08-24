@@ -27,6 +27,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 _AGENT_IMPLEMENTATION_PROVIDER_ENV = (
     "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
@@ -3103,6 +3104,94 @@ def _read_stable_agent_implementation_evidence_file(
     return raw, after_resolved
 
 
+def _agent_implementation_native_session_record(
+    *,
+    grok_home: Path,
+    expected_session_id: str,
+    verifier_workspace: Path | str | None,
+) -> tuple[Path, Path | None] | None:
+    """Select one native session record from the reviewed Grok layouts.
+
+    Grok CLI 1.0.5 keys sessions by the percent-encoded absolute workspace
+    before the UUID.  Older reviewed releases put the UUID directly below
+    ``sessions``.  Accept only the exact workspace-derived path (or that
+    legacy direct path), reject ambiguous dual materialization, and never
+    search the provider home for a matching UUID.
+    """
+
+    try:
+        home_metadata = grok_home.lstat()
+    except OSError:
+        return None
+    if (
+        grok_home.is_symlink()
+        or not stat_module.S_ISDIR(home_metadata.st_mode)
+        or home_metadata.st_uid != os.geteuid()
+    ):
+        return None
+
+    sessions = grok_home / "sessions"
+    workspace: Path | None = None
+    if verifier_workspace is not None:
+        raw_workspace = Path(verifier_workspace)
+        if (
+            not raw_workspace.is_absolute()
+            or ".." in raw_workspace.parts
+        ):
+            return None
+        try:
+            workspace = raw_workspace.resolve(strict=True)
+            workspace_metadata = workspace.stat()
+            encoded_workspace = quote(str(workspace), safe="")
+        except (OSError, UnicodeError):
+            return None
+        if not stat_module.S_ISDIR(workspace_metadata.st_mode):
+            return None
+        if (
+            not encoded_workspace
+            or "/" in encoded_workspace
+            or encoded_workspace in {".", ".."}
+        ):
+            return None
+    candidates: list[tuple[Path, Path | None]] = [
+        (sessions / expected_session_id / "updates.jsonl", workspace)
+    ]
+    if workspace is not None:
+        candidates.append(
+            (
+                sessions
+                / encoded_workspace
+                / expected_session_id
+                / "updates.jsonl",
+                workspace,
+            )
+        )
+
+    observed: list[tuple[Path, Path | None]] = []
+    for candidate, workspace in candidates:
+        try:
+            candidate.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return None
+        observed.append((candidate, workspace))
+    if len(observed) != 1:
+        return None
+
+    candidate, workspace = observed[0]
+    try:
+        relative = candidate.relative_to(grok_home)
+        cursor = grok_home
+        for component in relative.parts:
+            cursor /= component
+            if stat_module.S_ISLNK(cursor.lstat().st_mode):
+                return None
+    except (OSError, ValueError):
+        return None
+    return candidate, workspace
+
+
 def _agent_native_failure_type(line: str) -> str:
     if (
         not line
@@ -3283,7 +3372,14 @@ def validate_agent_implementation_quota_evidence(
         uuid.UUID(expected_session_id)
     except ValueError:
         return None
-    record = home / "sessions" / expected_session_id / "updates.jsonl"
+    selected_record = _agent_implementation_native_session_record(
+        grok_home=home,
+        expected_session_id=expected_session_id,
+        verifier_workspace=verifier_workspace,
+    )
+    if selected_record is None:
+        return None
+    record, session_workspace = selected_record
     try:
         home_resolved = home.resolve(strict=True)
         transcript_read = _read_stable_agent_implementation_evidence_file(
@@ -3427,6 +3523,10 @@ def validate_agent_implementation_quota_evidence(
         or user_message_count > 1
         or not isinstance(summary_info, dict)
         or summary_info.get("id") != recorded_session_id
+        or (
+            session_workspace is not None
+            and summary_info.get("cwd") != str(session_workspace)
+        )
         or summary.get("current_model_id") != expected_model
         or summary_home != home_resolved
         or latest_failure not in _AGENT_IMPLEMENTATION_NATIVE_QUOTA_FAILURES
@@ -7285,4 +7385,3 @@ def decide_agent_implementation_fallback(
         reason_code="independent_quota_not_confirmed",
         verifier_status="not_confirmed",
     )
-

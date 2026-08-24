@@ -20,8 +20,11 @@ intent-repository completion gate is enforced on every complete transition.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
+import re
 import tempfile
+import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +36,7 @@ from .control_plane_migrations import duckdb_available
 from .duckdb_state import (
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
+    QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
     QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
     QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
     QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF,
@@ -88,6 +92,161 @@ _REARM_IMMUTABLE_TASK_STATUSES: Final[frozenset[str]] = frozenset(
         "rejected",
     }
 )
+_REOPENED_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "proposed",
+        "admitted",
+        "pending",
+        "ready",
+        "todo",
+        "queued",
+        "retrying",
+        "claimed",
+        "in_progress",
+        "running",
+    }
+)
+TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION: Final[str] = (
+    "database_portal_typed_deferral_budget_exhausted"
+)
+TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION: Final[str] = (
+    "database_portal_typed_deferral_budget_supersession"
+)
+TYPED_DEFERRAL_BUDGET_SUPERSESSION_REQUEST_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-typed-deferral-budget-supersession-request@2"
+)
+TYPED_DEFERRAL_BUDGET_SUPERSESSION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-typed-deferral-budget-supersession@2"
+)
+_TYPED_DEFERRAL_PROVIDER_EVIDENCE_ADMISSION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-typed-deferral-provider-evidence-admission@1"
+)
+_TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_AGE_MS: Final[int] = 5 * 60 * 1000
+_TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_BYTES: Final[int] = 16 * 1024
+_TYPED_DEFERRAL_PROVIDER_EVIDENCE_OWNER_SENTINEL: Final[object] = object()
+_TYPED_DEFERRAL_PROVIDER_EVIDENCE_SEAL: Final[object] = object()
+_TYPED_DEFERRAL_BUDGET_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-typed-deferral-budget@1"
+)
+_TYPED_DEFERRAL_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
+_TYPED_DEFERRAL_GIT_OBJECT_RE = re.compile(r"[0-9a-f]{40}")
+_TYPED_DEFERRAL_OWNER_REQUEST_ID_RE = re.compile(r"[0-9a-f]{32}")
+_TYPED_DEFERRAL_ROUTE_TUPLE_FIELDS = (
+    "primary_provider_id",
+    "primary_model_id",
+    "fallback_provider_id",
+    "fallback_model_id",
+    "fallback_trigger",
+    "fallback_reasoning_effort",
+)
+_TYPED_DEFERRAL_SUPERSESSION_REQUEST_FIELDS = frozenset(
+    {
+        "schema",
+        "operation",
+        "task_cid",
+        "attempt_id",
+        "exhausted_observation_id",
+        "exhausted_receipt_id",
+        "source_head",
+        "source_tree",
+        "repair_head",
+        "repair_tree",
+        "provider_evidence_admission",
+    }
+)
+_TYPED_DEFERRAL_PROVIDER_EVIDENCE_ADMISSION_FIELDS = frozenset(
+    {
+        "schema",
+        "task_cid",
+        "task_revision",
+        "attempt_id",
+        "exhausted_observation_id",
+        "exhausted_receipt_id",
+        "exhausted_finished_at_ms",
+        "source_head",
+        "source_tree",
+        "repair_head",
+        "repair_tree",
+        "quota_probe_receipt_id",
+        "quota_probe_observed_at_ms",
+        "route_outcome_id",
+        "route_id",
+        "quota_evidence_id",
+        "admitted_at_ms",
+        "max_age_ms",
+        "owner_command",
+        "owner_command_request_id",
+        "owner_store_id",
+        "owner_store_generation",
+    }
+)
+_TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS = frozenset(
+    {
+        "operation",
+        "attempt_id",
+        "attempt_number",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "execution_phase",
+        "execution_revision",
+        "execution_finished_at_ms",
+        "reason",
+        "retryable",
+        "attempt_consumed",
+        "typed_deferral_slot_consumed",
+        "retry_budget",
+        "prior_queue_entry_preserved_inactive",
+        "coordination",
+        "control_expected_status",
+        "control_expected_revision",
+    }
+)
+_TYPED_DEFERRAL_SUPERSESSION_FIELDS = frozenset(
+    {
+        "schema",
+        "operation",
+        "task_cid",
+        "task_alias",
+        "attempt_id",
+        "attempt_number",
+        "claim_id",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "exhausted_observation_id",
+        "exhausted_generation_fingerprint",
+        "exhausted_receipt_id",
+        "exhausted_receipt",
+        "source_head",
+        "source_tree",
+        "repair_head",
+        "repair_tree",
+        "quota_probe_receipt_id",
+        "quota_probe_receipt",
+        "route_outcome_id",
+        "route_outcome",
+        "route_id",
+        "quota_evidence_id",
+        "provider_evidence_admission_id",
+        "provider_evidence_admitted_at_ms",
+        "provider_evidence_max_age_ms",
+        "provider_evidence_owner_command",
+        "provider_evidence_owner_command_request_id",
+        "provider_evidence_owner_store_id",
+        "provider_evidence_owner_store_generation",
+        "control_expected_status",
+        "control_expected_revision",
+        "supersession_id",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +272,21 @@ class TaskSourceBoundsError(DatabaseTaskSourceError, IntentRepositoryBoundsError
 
 class TaskSourceCompletionError(DatabaseTaskSourceError, IntentCompletionError):
     """Completion refused without current required evidence."""
+
+
+class TypedDeferralRecoveryError(ValueError):
+    """An exhausted-budget recovery receipt is absent, stale, or invalid."""
+
+
+@dataclass(frozen=True)
+class _TypedDeferralProviderEvidenceAdmission:
+    """Process-local capability minted only after an owner-run fresh canary."""
+
+    admission_json: str = field(repr=False)
+    quota_probe_receipt_json: str = field(repr=False)
+    route_outcome_json: str = field(repr=False)
+    admission_id: str
+    seal: object = field(repr=False, compare=False)
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +470,820 @@ def _task_key(value: str | TaskRecord | Mapping[str, Any]) -> str:
     return text
 
 
+def _sha256_identity(value: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        dict(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _mapping(value: Any, *, noun: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise TypedDeferralRecoveryError(f"{noun} must be a mapping")
+    return dict(value)
+
+
+def _positive_integer(value: Any, *, noun: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise TypedDeferralRecoveryError(f"{noun} must be a positive integer")
+    return int(value)
+
+
+def _source_generation(task_body: Mapping[str, Any]) -> tuple[str, str]:
+    source_head = str(task_body.get("base_revision") or "")
+    source_tree = str(task_body.get("base_repository_tree_id") or "")
+    if _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(source_head) is None:
+        raise TypedDeferralRecoveryError(
+            "typed-deferral recovery task has no exact source HEAD"
+        )
+    if _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(source_tree) is None:
+        raise TypedDeferralRecoveryError(
+            "typed-deferral recovery task has no exact source tree"
+        )
+    return source_head, source_tree
+
+
+def _blocked_context(
+    *,
+    task_cid: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], str, str, str]:
+    body = _mapping(task_body, noun="typed-deferral task body")
+    receipt = _mapping(
+        body.get("completion_receipt"),
+        noun="typed-deferral exhausted receipt",
+    )
+    if (
+        set(receipt) != _TYPED_DEFERRAL_BLOCK_RECEIPT_FIELDS
+        or receipt.get("operation") != TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION
+        or receipt.get("reason") != "typed_portal_deferral_budget_exhausted"
+        or receipt.get("retryable") is not False
+        or receipt.get("attempt_consumed") is not False
+        or receipt.get("typed_deferral_slot_consumed") is not True
+        or not isinstance(
+            receipt.get("prior_queue_entry_preserved_inactive"), bool
+        )
+        or receipt.get("execution_phase") != "failed"
+        or receipt.get("control_expected_status")
+        not in {"in_progress", "retrying"}
+    ):
+        raise TypedDeferralRecoveryError(
+            "task is not bound to an exact exhausted typed-deferral receipt"
+        )
+    revision = _positive_integer(task_revision, noun="task revision")
+    if receipt.get("control_expected_revision") != revision - 1:
+        raise TypedDeferralRecoveryError(
+            "typed-deferral exhausted receipt is stale for the task revision"
+        )
+    attempt_number = _positive_integer(
+        receipt.get("attempt_number"), noun="exhausted attempt number"
+    )
+    _positive_integer(
+        receipt.get("execution_revision"), noun="exhausted execution revision"
+    )
+    _positive_integer(
+        receipt.get("execution_finished_at_ms"),
+        noun="exhausted execution finish time",
+    )
+    for field in ("attempt_id", "claim_id", "lease_id", "owner_session_id"):
+        if not isinstance(receipt.get(field), str) or not receipt[field]:
+            raise TypedDeferralRecoveryError(
+                f"typed-deferral exhausted receipt has no {field}"
+            )
+    for field in ("fencing_token", "fence_epoch"):
+        _positive_integer(receipt.get(field), noun=f"exhausted {field}")
+
+    budget = _mapping(receipt.get("retry_budget"), noun="exhausted retry budget")
+    observation_id = str(budget.get("observation_id") or "")
+    budget_body = dict(budget)
+    budget_body.pop("observation_id", None)
+    if (
+        budget.get("schema") != _TYPED_DEFERRAL_BUDGET_SCHEMA
+        or budget.get("task_cid") != task_cid
+        or budget.get("task_generation") != task_cid
+        or budget.get("exhausted") is not True
+        or budget.get("attempt_consumed") is not False
+        or budget.get("typed_deferral_slot_consumed") is not True
+        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(observation_id) is None
+        or observation_id != _sha256_identity(budget_body)
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral exhausted observation is invalid"
+        )
+    if not isinstance(receipt.get("coordination"), Mapping):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral exhausted coordination is malformed"
+        )
+    source_head, source_tree = _source_generation(body)
+    # The local binding includes the complete original receipt because the
+    # retrying CAS replaces body.completion_receipt.  Restart reconciliation
+    # can therefore reproduce, rather than trust, the overwritten authority.
+    return (
+        receipt,
+        budget,
+        observation_id,
+        source_head,
+        source_tree,
+    )
+
+
+def _canonical_typed_deferral_mapping_json(
+    value: Mapping[str, Any], *, noun: str
+) -> str:
+    try:
+        encoded = json.dumps(
+            dict(value),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+    except (TypeError, ValueError) as exc:
+        raise TypedDeferralRecoveryError(f"{noun} is not canonical JSON") from exc
+    if len(encoded.encode("utf-8")) > _TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_BYTES:
+        raise TypedDeferralRecoveryError(f"{noun} exceeds the closed size bound")
+    return encoded
+
+
+def _decode_typed_deferral_mapping_json(value: Any, *, noun: str) -> dict[str, Any]:
+    if not isinstance(value, str):
+        raise TypedDeferralRecoveryError(f"{noun} is not sealed JSON")
+    try:
+        decoded = json.loads(value)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise TypedDeferralRecoveryError(f"{noun} is not sealed JSON") from exc
+    if not isinstance(decoded, dict) or (
+        _canonical_typed_deferral_mapping_json(decoded, noun=noun) != value
+    ):
+        raise TypedDeferralRecoveryError(f"{noun} is not canonical sealed JSON")
+    return decoded
+
+
+def _typed_deferral_owner_binding(value: Any, *, noun: str) -> str:
+    if (
+        not isinstance(value, str)
+        or value != value.strip()
+        or not value
+        or len(value.encode("utf-8")) > 512
+        or any(ord(character) < 32 for character in value)
+    ):
+        raise TypedDeferralRecoveryError(f"{noun} is invalid")
+    return value
+
+
+def _validated_provider_pair(
+    failure_receipt: Mapping[str, Any],
+    route_outcome: Mapping[str, Any],
+    *,
+    exhausted_finished_at_ms: int,
+    admission_now_ms: int,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    from ...agent_implementation_route import (
+        resolve_agent_implementation_route,
+        valid_agent_implementation_failure_receipt,
+    )
+    from ..runtime.provider_failure_policy import (
+        valid_grok_hard_quota_receipt,
+        valid_grok_route_outcome,
+    )
+
+    failure = _mapping(failure_receipt, noun="quota probe receipt")
+    outcome = _mapping(route_outcome, noun="provider route outcome")
+    nonce = str(failure.get("nonce") or "")
+    model = str(failure.get("primary_model") or "")
+    probe_returncode = failure.get("probe_returncode")
+    observed_at_ms = failure.get("observed_at_ms")
+    if (
+        isinstance(admission_now_ms, bool)
+        or not isinstance(admission_now_ms, int)
+        or admission_now_ms <= 0
+        or isinstance(probe_returncode, bool)
+        or not isinstance(probe_returncode, int)
+        or isinstance(observed_at_ms, bool)
+        or not isinstance(observed_at_ms, int)
+        or observed_at_ms < exhausted_finished_at_ms
+        or not valid_agent_implementation_failure_receipt(
+            failure,
+            nonce=nonce,
+            model=model,
+            probe_returncode=probe_returncode,
+            now_ms=admission_now_ms,
+            max_age_ms=_TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_AGE_MS,
+        )
+        or not valid_grok_hard_quota_receipt(
+            failure,
+            nonce=nonce,
+            model=model,
+            returncode=probe_returncode,
+        )
+    ):
+        raise TypedDeferralRecoveryError(
+            "quota probe is not fresh, post-exhaustion hard-quota evidence"
+        )
+
+    route_plan = _mapping(outcome.get("route_plan"), noun="provider route plan")
+    try:
+        resolved = resolve_agent_implementation_route(
+            **{
+                field: route_plan.get(field)
+                for field in _TYPED_DEFERRAL_ROUTE_TUPLE_FIELDS
+            }
+        )
+    except (TypeError, ValueError) as exc:
+        raise TypedDeferralRecoveryError(
+            "provider route is not a reviewed canonical tuple"
+        ) from exc
+    canonical_route = resolved.as_outcome_dict()
+    quota_evidence_id = str(outcome.get("quota_evidence_id") or "")
+    if (
+        resolved.fallback_trigger != "primary_quota_exhausted"
+        or resolved.fallback_reasoning_effort != "high"
+        or route_plan != canonical_route
+        or outcome.get("decision") != "fallback_succeeded"
+        or outcome.get("verifier_status") != "confirmed_quota"
+        or outcome.get("fallback_dispatched") is not True
+        or outcome.get("fallback_returncode") != 0
+        or _TYPED_DEFERRAL_SHA256_RE.fullmatch(quota_evidence_id) is None
+        or not valid_grok_route_outcome(
+            outcome,
+            receipt=failure,
+            route_plan=canonical_route,
+            runner_returncode=0,
+        )
+    ):
+        raise TypedDeferralRecoveryError(
+            "provider route is not a confirmed successful quota/high fallback"
+        )
+    return failure, outcome, canonical_route
+
+
+def _validated_provider_evidence_admission(
+    admission: object,
+    *,
+    task_cid: str,
+    task_revision: int,
+    exhausted_receipt: Mapping[str, Any],
+    exhausted_observation_id: str,
+    source_head: str,
+    source_tree: str,
+    repair_head: str,
+    repair_tree: str,
+) -> tuple[
+    _TypedDeferralProviderEvidenceAdmission,
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+]:
+    if (
+        not isinstance(admission, _TypedDeferralProviderEvidenceAdmission)
+        or admission.seal is not _TYPED_DEFERRAL_PROVIDER_EVIDENCE_SEAL
+    ):
+        raise TypedDeferralRecoveryError(
+            "provider evidence was not admitted by the state owner"
+        )
+    body = _decode_typed_deferral_mapping_json(
+        admission.admission_json,
+        noun="provider evidence admission",
+    )
+    failure = _decode_typed_deferral_mapping_json(
+        admission.quota_probe_receipt_json,
+        noun="quota probe receipt",
+    )
+    outcome = _decode_typed_deferral_mapping_json(
+        admission.route_outcome_json,
+        noun="provider route outcome",
+    )
+    admitted_at_ms = body.get("admitted_at_ms")
+    owner_request_id = body.get("owner_command_request_id")
+    if (
+        set(body) != _TYPED_DEFERRAL_PROVIDER_EVIDENCE_ADMISSION_FIELDS
+        or body.get("schema")
+        != _TYPED_DEFERRAL_PROVIDER_EVIDENCE_ADMISSION_SCHEMA
+        or admission.admission_id != content_identity(body)
+        or body.get("task_cid") != task_cid
+        or body.get("task_revision") != task_revision
+        or body.get("attempt_id") != exhausted_receipt.get("attempt_id")
+        or body.get("exhausted_observation_id") != exhausted_observation_id
+        or body.get("exhausted_receipt_id") != content_identity(exhausted_receipt)
+        or body.get("exhausted_finished_at_ms")
+        != exhausted_receipt.get("execution_finished_at_ms")
+        or body.get("source_head") != source_head
+        or body.get("source_tree") != source_tree
+        or body.get("repair_head") != repair_head
+        or body.get("repair_tree") != repair_tree
+        or body.get("max_age_ms")
+        != _TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_AGE_MS
+        or body.get("owner_command")
+        != QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET
+        or isinstance(admitted_at_ms, bool)
+        or not isinstance(admitted_at_ms, int)
+        or admitted_at_ms <= 0
+        or not isinstance(owner_request_id, str)
+        or _TYPED_DEFERRAL_OWNER_REQUEST_ID_RE.fullmatch(owner_request_id) is None
+    ):
+        raise TypedDeferralRecoveryError(
+            "provider evidence admission is stale or mismatched"
+        )
+    _typed_deferral_owner_binding(
+        body.get("owner_store_id"), noun="owner store identity"
+    )
+    _typed_deferral_owner_binding(
+        body.get("owner_store_generation"), noun="owner store generation"
+    )
+    failure, outcome, route = _validated_provider_pair(
+        failure,
+        outcome,
+        exhausted_finished_at_ms=int(exhausted_receipt["execution_finished_at_ms"]),
+        admission_now_ms=admitted_at_ms,
+    )
+    if (
+        body.get("quota_probe_receipt_id") != failure.get("receipt_id")
+        or body.get("quota_probe_observed_at_ms") != failure.get("observed_at_ms")
+        or body.get("route_outcome_id") != outcome.get("outcome_id")
+        or body.get("route_id") != route.get("route_id")
+        or body.get("quota_evidence_id") != outcome.get("quota_evidence_id")
+    ):
+        raise TypedDeferralRecoveryError(
+            "provider evidence admission identities do not reproduce"
+        )
+    return admission, body, failure, outcome, route
+
+
+def _admit_owner_typed_deferral_provider_evidence(
+    *,
+    task_cid: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    repair_head: str,
+    repair_tree: str,
+    quota_probe_receipt: Mapping[str, Any],
+    route_outcome: Mapping[str, Any],
+    owner_command_request_id: str,
+    owner_store_id: str,
+    owner_store_generation: str,
+    admitted_at_ms: int | None = None,
+    _owner_admission_sentinel: object,
+) -> _TypedDeferralProviderEvidenceAdmission:
+    """Mint a process-local capability after the owner runs one fresh canary."""
+
+    if (
+        _owner_admission_sentinel
+        is not _TYPED_DEFERRAL_PROVIDER_EVIDENCE_OWNER_SENTINEL
+    ):
+        raise TypedDeferralRecoveryError(
+            "provider evidence admission requires state-owner authority"
+        )
+    (
+        exhausted_receipt,
+        _budget,
+        observation_id,
+        source_head,
+        source_tree,
+    ) = _blocked_context(
+        task_cid=task_cid,
+        task_revision=task_revision,
+        task_body=task_body,
+    )
+    repair_head_text = str(repair_head or "")
+    repair_tree_text = str(repair_tree or "")
+    if (
+        _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(repair_head_text) is None
+        or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(repair_tree_text) is None
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral repair requires an exact commit and tree"
+        )
+    request_id = _typed_deferral_owner_binding(
+        owner_command_request_id, noun="owner command request identity"
+    )
+    if _TYPED_DEFERRAL_OWNER_REQUEST_ID_RE.fullmatch(request_id) is None:
+        raise TypedDeferralRecoveryError("owner command request identity is invalid")
+    store_id = _typed_deferral_owner_binding(
+        owner_store_id, noun="owner store identity"
+    )
+    store_generation = _typed_deferral_owner_binding(
+        owner_store_generation, noun="owner store generation"
+    )
+    observed_now = (
+        int(time.time() * 1000) if admitted_at_ms is None else admitted_at_ms
+    )
+    failure, outcome, route = _validated_provider_pair(
+        quota_probe_receipt,
+        route_outcome,
+        exhausted_finished_at_ms=int(exhausted_receipt["execution_finished_at_ms"]),
+        admission_now_ms=observed_now,
+    )
+    body = {
+        "schema": _TYPED_DEFERRAL_PROVIDER_EVIDENCE_ADMISSION_SCHEMA,
+        "task_cid": task_cid,
+        "task_revision": int(task_revision),
+        "attempt_id": str(exhausted_receipt["attempt_id"]),
+        "exhausted_observation_id": observation_id,
+        "exhausted_receipt_id": content_identity(exhausted_receipt),
+        "exhausted_finished_at_ms": int(
+            exhausted_receipt["execution_finished_at_ms"]
+        ),
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "repair_head": repair_head_text,
+        "repair_tree": repair_tree_text,
+        "quota_probe_receipt_id": str(failure.get("receipt_id") or ""),
+        "quota_probe_observed_at_ms": int(failure["observed_at_ms"]),
+        "route_outcome_id": str(outcome.get("outcome_id") or ""),
+        "route_id": str(route.get("route_id") or ""),
+        "quota_evidence_id": str(outcome.get("quota_evidence_id") or ""),
+        "admitted_at_ms": observed_now,
+        "max_age_ms": _TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_AGE_MS,
+        "owner_command": QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+        "owner_command_request_id": request_id,
+        "owner_store_id": store_id,
+        "owner_store_generation": store_generation,
+    }
+    return _TypedDeferralProviderEvidenceAdmission(
+        admission_json=_canonical_typed_deferral_mapping_json(
+            body, noun="provider evidence admission"
+        ),
+        quota_probe_receipt_json=_canonical_typed_deferral_mapping_json(
+            failure, noun="quota probe receipt"
+        ),
+        route_outcome_json=_canonical_typed_deferral_mapping_json(
+            outcome, noun="provider route outcome"
+        ),
+        admission_id=content_identity(body),
+        seal=_TYPED_DEFERRAL_PROVIDER_EVIDENCE_SEAL,
+    )
+
+
+def build_typed_deferral_budget_supersession_request(
+    *,
+    task_cid: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    repair_head: str,
+    repair_tree: str,
+    provider_evidence_admission: object,
+) -> dict[str, Any]:
+    """Build a closed request around one state-owner-minted capability."""
+
+    receipt, _budget, observation_id, source_head, source_tree = _blocked_context(
+        task_cid=task_cid,
+        task_revision=task_revision,
+        task_body=task_body,
+    )
+    repair_head_text = str(repair_head or "")
+    repair_tree_text = str(repair_tree or "")
+    if (
+        _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(repair_head_text) is None
+        or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(repair_tree_text) is None
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral repair requires an exact commit and tree"
+        )
+    _validated_provider_evidence_admission(
+        provider_evidence_admission,
+        task_cid=task_cid,
+        task_revision=task_revision,
+        exhausted_receipt=receipt,
+        exhausted_observation_id=observation_id,
+        source_head=source_head,
+        source_tree=source_tree,
+        repair_head=repair_head_text,
+        repair_tree=repair_tree_text,
+    )
+    return {
+        "schema": TYPED_DEFERRAL_BUDGET_SUPERSESSION_REQUEST_SCHEMA,
+        "operation": TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION,
+        "task_cid": task_cid,
+        "attempt_id": str(receipt["attempt_id"]),
+        "exhausted_observation_id": observation_id,
+        "exhausted_receipt_id": content_identity(receipt),
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "repair_head": repair_head_text,
+        "repair_tree": repair_tree_text,
+        "provider_evidence_admission": provider_evidence_admission,
+    }
+
+
+def _build_owner_typed_deferral_budget_supersession_request(
+    *,
+    task_cid: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    repair_head: str,
+    repair_tree: str,
+    quota_probe_receipt: Mapping[str, Any],
+    route_outcome: Mapping[str, Any],
+    owner_command_request_id: str,
+    owner_store_id: str,
+    owner_store_generation: str,
+    admitted_at_ms: int | None = None,
+    _owner_admission_sentinel: object,
+) -> dict[str, Any]:
+    """Owner callback API: seal one fresh pair and bind its exact repair."""
+
+    admission = _admit_owner_typed_deferral_provider_evidence(
+        task_cid=task_cid,
+        task_revision=task_revision,
+        task_body=task_body,
+        repair_head=repair_head,
+        repair_tree=repair_tree,
+        quota_probe_receipt=quota_probe_receipt,
+        route_outcome=route_outcome,
+        owner_command_request_id=owner_command_request_id,
+        owner_store_id=owner_store_id,
+        owner_store_generation=owner_store_generation,
+        admitted_at_ms=admitted_at_ms,
+        _owner_admission_sentinel=_owner_admission_sentinel,
+    )
+    return build_typed_deferral_budget_supersession_request(
+        task_cid=task_cid,
+        task_revision=task_revision,
+        task_body=task_body,
+        repair_head=repair_head,
+        repair_tree=repair_tree,
+        provider_evidence_admission=admission,
+    )
+
+
+def admit_typed_deferral_budget_supersession(
+    *,
+    task_cid: str,
+    task_alias: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    request: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Validate a request and return the owner-authored durable CAS receipt."""
+
+    raw = _mapping(request, noun="typed-deferral supersession request")
+    (
+        exhausted_receipt,
+        budget,
+        observation_id,
+        source_head,
+        source_tree,
+    ) = _blocked_context(
+        task_cid=task_cid,
+        task_revision=task_revision,
+        task_body=task_body,
+    )
+    if (
+        set(raw) != _TYPED_DEFERRAL_SUPERSESSION_REQUEST_FIELDS
+        or raw.get("schema")
+        != TYPED_DEFERRAL_BUDGET_SUPERSESSION_REQUEST_SCHEMA
+        or raw.get("operation")
+        != TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION
+        or raw.get("task_cid") != task_cid
+        or raw.get("attempt_id") != exhausted_receipt.get("attempt_id")
+        or raw.get("exhausted_observation_id") != observation_id
+        or raw.get("exhausted_receipt_id")
+        != content_identity(exhausted_receipt)
+        or raw.get("source_head") != source_head
+        or raw.get("source_tree") != source_tree
+        or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(str(raw.get("repair_head") or "")) is None
+        or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(str(raw.get("repair_tree") or "")) is None
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral supersession request is stale or mismatched"
+        )
+    _admission, admission_body, failure, outcome, route = (
+        _validated_provider_evidence_admission(
+            raw.get("provider_evidence_admission"),
+            task_cid=task_cid,
+            task_revision=task_revision,
+            exhausted_receipt=exhausted_receipt,
+            exhausted_observation_id=observation_id,
+            source_head=source_head,
+            source_tree=source_tree,
+            repair_head=str(raw["repair_head"]),
+            repair_tree=str(raw["repair_tree"]),
+        )
+    )
+    durable = {
+        "schema": TYPED_DEFERRAL_BUDGET_SUPERSESSION_SCHEMA,
+        "operation": TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION,
+        "task_cid": task_cid,
+        "task_alias": str(task_alias or ""),
+        "attempt_id": str(exhausted_receipt["attempt_id"]),
+        "attempt_number": int(exhausted_receipt["attempt_number"]),
+        "claim_id": str(exhausted_receipt["claim_id"]),
+        "lease_id": str(exhausted_receipt["lease_id"]),
+        "owner_session_id": str(exhausted_receipt["owner_session_id"]),
+        "fencing_token": int(exhausted_receipt["fencing_token"]),
+        "fence_epoch": int(exhausted_receipt["fence_epoch"]),
+        "exhausted_observation_id": observation_id,
+        "exhausted_generation_fingerprint": str(
+            budget.get("generation_fingerprint") or ""
+        ),
+        "exhausted_receipt_id": content_identity(exhausted_receipt),
+        "exhausted_receipt": exhausted_receipt,
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "repair_head": str(raw["repair_head"]),
+        "repair_tree": str(raw["repair_tree"]),
+        "quota_probe_receipt_id": str(failure.get("receipt_id") or ""),
+        "quota_probe_receipt": failure,
+        "route_outcome_id": str(outcome.get("outcome_id") or ""),
+        "route_outcome": outcome,
+        "route_id": str(route.get("route_id") or ""),
+        "quota_evidence_id": str(outcome.get("quota_evidence_id") or ""),
+        "provider_evidence_admission_id": _admission.admission_id,
+        "provider_evidence_admitted_at_ms": int(
+            admission_body["admitted_at_ms"]
+        ),
+        "provider_evidence_max_age_ms": int(admission_body["max_age_ms"]),
+        "provider_evidence_owner_command": str(
+            admission_body["owner_command"]
+        ),
+        "provider_evidence_owner_command_request_id": str(
+            admission_body["owner_command_request_id"]
+        ),
+        "provider_evidence_owner_store_id": str(
+            admission_body["owner_store_id"]
+        ),
+        "provider_evidence_owner_store_generation": str(
+            admission_body["owner_store_generation"]
+        ),
+        "control_expected_status": "blocked",
+        "control_expected_revision": int(task_revision),
+    }
+    durable["supersession_id"] = content_identity(durable)
+    return durable
+
+
+def validate_typed_deferral_budget_supersession(
+    receipt: Mapping[str, Any],
+    *,
+    task_cid: str,
+    task_alias: str,
+    task_revision: int,
+    task_body: Mapping[str, Any],
+    attempt: Mapping[str, Any],
+    exhausted_budget: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Reproduce one durable supersession against restart-time authority."""
+
+    raw = _mapping(receipt, noun="typed-deferral supersession receipt")
+    identity_body = dict(raw)
+    supersession_id = identity_body.pop("supersession_id", None)
+    if (
+        set(raw) != _TYPED_DEFERRAL_SUPERSESSION_FIELDS
+        or raw.get("schema") != TYPED_DEFERRAL_BUDGET_SUPERSESSION_SCHEMA
+        or raw.get("operation")
+        != TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION
+        or supersession_id != content_identity(identity_body)
+        or raw.get("task_cid") != task_cid
+        or raw.get("task_alias") != str(task_alias or "")
+        or raw.get("control_expected_status") != "blocked"
+        or raw.get("control_expected_revision") != int(task_revision) - 1
+        or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(str(raw.get("repair_head") or "")) is None
+        or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(str(raw.get("repair_tree") or "")) is None
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral supersession identity is invalid or stale"
+        )
+    current_body = _mapping(task_body, noun="retrying task body")
+    source_head, source_tree = _source_generation(current_body)
+    if raw.get("source_head") != source_head or raw.get("source_tree") != source_tree:
+        raise TypedDeferralRecoveryError(
+            "typed-deferral supersession source generation changed"
+        )
+
+    exhausted_receipt = _mapping(
+        raw.get("exhausted_receipt"), noun="superseded exhausted receipt"
+    )
+    original_body = dict(current_body)
+    original_body["completion_receipt"] = exhausted_receipt
+    (
+        reproduced_receipt,
+        reproduced_budget,
+        observation_id,
+        _original_head,
+        _original_tree,
+    ) = _blocked_context(
+        task_cid=task_cid,
+        task_revision=int(raw["control_expected_revision"]),
+        task_body=original_body,
+    )
+    if (
+        raw.get("exhausted_receipt_id") != content_identity(reproduced_receipt)
+        or raw.get("exhausted_observation_id") != observation_id
+        or reproduced_budget != dict(exhausted_budget)
+        or raw.get("exhausted_generation_fingerprint")
+        != exhausted_budget.get("generation_fingerprint")
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral supersession does not match the exhausted observation"
+        )
+
+    attempt_raw = _mapping(attempt, noun="latest failed attempt")
+    expected_attempt = {
+        "task_cid": task_cid,
+        "attempt_id": raw.get("attempt_id"),
+        "attempt_number": raw.get("attempt_number"),
+        "claim_id": raw.get("claim_id"),
+        "lease_id": raw.get("lease_id"),
+        "owner_session_id": raw.get("owner_session_id"),
+        "fencing_token": raw.get("fencing_token"),
+        "fence_epoch": raw.get("fence_epoch"),
+    }
+    if any(attempt_raw.get(key) != value for key, value in expected_attempt.items()):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral supersession does not match the latest failed attempt"
+        )
+
+    admitted_at_ms = raw.get("provider_evidence_admitted_at_ms")
+    owner_request_id = raw.get("provider_evidence_owner_command_request_id")
+    if (
+        raw.get("provider_evidence_max_age_ms")
+        != _TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_AGE_MS
+        or raw.get("provider_evidence_owner_command")
+        != QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET
+        or not isinstance(owner_request_id, str)
+        or _TYPED_DEFERRAL_OWNER_REQUEST_ID_RE.fullmatch(owner_request_id) is None
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral provider admission policy does not reproduce"
+        )
+    owner_store_id = _typed_deferral_owner_binding(
+        raw.get("provider_evidence_owner_store_id"),
+        noun="owner store identity",
+    )
+    owner_store_generation = _typed_deferral_owner_binding(
+        raw.get("provider_evidence_owner_store_generation"),
+        noun="owner store generation",
+    )
+    failure, outcome, route = _validated_provider_pair(
+        _mapping(raw.get("quota_probe_receipt"), noun="quota probe receipt"),
+        _mapping(raw.get("route_outcome"), noun="provider route outcome"),
+        exhausted_finished_at_ms=int(
+            exhausted_receipt["execution_finished_at_ms"]
+        ),
+        admission_now_ms=admitted_at_ms,
+    )
+    if (
+        raw.get("quota_probe_receipt_id") != failure.get("receipt_id")
+        or raw.get("route_outcome_id") != outcome.get("outcome_id")
+        or raw.get("route_id") != route.get("route_id")
+        or raw.get("quota_evidence_id") != outcome.get("quota_evidence_id")
+    ):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral supersession provider identities do not reproduce"
+        )
+    admission_body = {
+        "schema": _TYPED_DEFERRAL_PROVIDER_EVIDENCE_ADMISSION_SCHEMA,
+        "task_cid": task_cid,
+        "task_revision": int(raw["control_expected_revision"]),
+        "attempt_id": str(raw["attempt_id"]),
+        "exhausted_observation_id": observation_id,
+        "exhausted_receipt_id": content_identity(exhausted_receipt),
+        "exhausted_finished_at_ms": int(
+            exhausted_receipt["execution_finished_at_ms"]
+        ),
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "repair_head": str(raw["repair_head"]),
+        "repair_tree": str(raw["repair_tree"]),
+        "quota_probe_receipt_id": str(failure.get("receipt_id") or ""),
+        "quota_probe_observed_at_ms": int(failure["observed_at_ms"]),
+        "route_outcome_id": str(outcome.get("outcome_id") or ""),
+        "route_id": str(route.get("route_id") or ""),
+        "quota_evidence_id": str(outcome.get("quota_evidence_id") or ""),
+        "admitted_at_ms": admitted_at_ms,
+        "max_age_ms": _TYPED_DEFERRAL_PROVIDER_EVIDENCE_MAX_AGE_MS,
+        "owner_command": QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+        "owner_command_request_id": owner_request_id,
+        "owner_store_id": owner_store_id,
+        "owner_store_generation": owner_store_generation,
+    }
+    if raw.get("provider_evidence_admission_id") != content_identity(admission_body):
+        raise TypedDeferralRecoveryError(
+            "typed-deferral provider admission identity does not reproduce"
+        )
+    return raw
+
+
+def typed_deferral_budget_supersession_matches(
+    receipt: Mapping[str, Any] | None,
+    **current: Any,
+) -> bool:
+    """Return false for every absent/forged/stale restart-time receipt."""
+
+    try:
+        validate_typed_deferral_budget_supersession(receipt or {}, **current)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+
+
 def _as_task_record(row: Mapping[str, Any]) -> TaskRecord:
     body = row.get("body") if isinstance(row.get("body"), Mapping) else {}
     deps = row.get("dependencies") or ()
@@ -434,6 +1422,7 @@ def execute_quack_owner_command(
     request_id: str = "",
     store_id: str = "",
     store_generation: str = "",
+    typed_deferral_provider_evidence_factory: Any = None,
 ) -> Mapping[str, Any]:
     """Execute one admitted command through canonical repository methods.
 
@@ -474,6 +1463,70 @@ def execute_quack_owner_command(
                 args["task_cid_or_alias"],
                 receipt=args.get("receipt"),
             )
+            return result.to_dict()
+        if command == QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET:
+            task = source.get_task(args["task_cid_or_alias"])
+            if task is None:
+                raise KeyError(args["task_cid_or_alias"])
+            status = str(task.status or "").strip().lower()
+            if status != "blocked":
+                # A replay under a different request identity cannot rerun a
+                # provider effect after the first recovery or a later
+                # terminal CAS. Preserve the ordinary idempotent no-op rules.
+                result = source.rearm_blocked_task(task.task_cid)
+                return result.to_dict()
+            if not all((request_id, store_id, store_generation)):
+                raise TaskSourceIntegrityError(
+                    "typed-deferral recovery requires exact owner-command bindings"
+                )
+            if not callable(typed_deferral_provider_evidence_factory):
+                raise TaskSourceIntegrityError(
+                    "typed-deferral recovery requires the owner provider boundary"
+                )
+            # Reject ordinary/stale blocked tasks before crossing the paid
+            # provider boundary. The sealed request repeats this check after
+            # the canary so a concurrent generation change also fails closed.
+            _blocked_context(
+                task_cid=task.task_cid,
+                task_revision=int(task.revision),
+                task_body=task.body,
+            )
+            evidence = typed_deferral_provider_evidence_factory(
+                task_cid=task.task_cid,
+                task_revision=int(task.revision),
+                task_body=dict(task.body),
+                repair_head=args["repair_head"],
+                repair_tree=args["repair_tree"],
+            )
+            if not isinstance(evidence, Mapping) or set(evidence) != {
+                "quota_probe_receipt",
+                "route_outcome",
+            }:
+                raise TaskSourceIntegrityError(
+                    "owner provider boundary returned malformed recovery evidence"
+                )
+            request = _build_owner_typed_deferral_budget_supersession_request(
+                task_cid=task.task_cid,
+                task_revision=int(task.revision),
+                task_body=task.body,
+                repair_head=args["repair_head"],
+                repair_tree=args["repair_tree"],
+                quota_probe_receipt=_mapping(
+                    evidence.get("quota_probe_receipt"),
+                    noun="owner quota probe receipt",
+                ),
+                route_outcome=_mapping(
+                    evidence.get("route_outcome"),
+                    noun="owner provider route outcome",
+                ),
+                owner_command_request_id=request_id,
+                owner_store_id=store_id,
+                owner_store_generation=store_generation,
+                _owner_admission_sentinel=(
+                    _TYPED_DEFERRAL_PROVIDER_EVIDENCE_OWNER_SENTINEL
+                ),
+            )
+            result = source.rearm_blocked_task(task.task_cid, receipt=request)
             return result.to_dict()
         if command == QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF:
             receipt = source.record_queue_backoff(
@@ -1445,12 +2498,41 @@ class DatabaseTaskSource:
         if prior is None:
             raise KeyError(key)
         previous_status = str(prior["status"])
+        transition_receipt = receipt
+        if (
+            previous_status.strip().lower() == "blocked"
+            and str(status or "").strip().lower() in _REOPENED_TASK_STATUSES
+        ):
+            body = prior.get("body")
+            completion_receipt = (
+                body.get("completion_receipt")
+                if isinstance(body, Mapping)
+                else None
+            )
+            if (
+                isinstance(completion_receipt, Mapping)
+                and completion_receipt.get("operation")
+                == "database_portal_typed_deferral_budget_exhausted"
+            ):
+                try:
+                    transition_receipt = admit_typed_deferral_budget_supersession(
+                        task_cid=str(prior["task_cid"]),
+                        task_alias=str(prior.get("task_alias") or ""),
+                        task_revision=int(prior["revision"]),
+                        task_body=body,
+                        request=receipt,
+                    )
+                except TypedDeferralRecoveryError as exc:
+                    raise TaskSourceConflictError(
+                        "exhausted typed-deferral task remains blocked: "
+                        + str(exc)
+                    ) from exc
         try:
             intent_receipt = self._intent.cas_task_status(
                 task_cid=str(prior["task_cid"]),
                 expected_revision=int(expected_revision),
                 new_status=status,
-                receipt=receipt,
+                receipt=transition_receipt,
                 evidence_digests=evidence_digests,
             )
         except IntentCompletionError as exc:
@@ -1584,6 +2666,49 @@ class DatabaseTaskSource:
             "retrying",
             compact,
         )
+
+    def recover_typed_deferral_budget(
+        self,
+        task_cid_or_alias: str | TaskRecord | Mapping[str, Any],
+        *,
+        repair_head: str,
+        repair_tree: str,
+        timeout_seconds: float = 660.0,
+    ) -> CASResult:
+        """Ask the fenced owner to run the real canary and rearm one block.
+
+        Provider receipts are intentionally absent from this client API.  The
+        credential-bearing state owner executes the inert quota/high canary,
+        admits its fresh output in process, and performs the revision CAS.
+        """
+
+        key = _task_key(task_cid_or_alias)
+        repair_head_text = str(repair_head or "")
+        repair_tree_text = str(repair_tree or "")
+        if (
+            _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(repair_head_text) is None
+            or _TYPED_DEFERRAL_GIT_OBJECT_RE.fullmatch(repair_tree_text) is None
+        ):
+            raise TaskSourceBoundsError(
+                "typed-deferral recovery requires an exact repair commit/tree"
+            )
+        if not self._intent.uses_quack_transport:
+            raise TaskSourceIntegrityError(
+                "typed-deferral provider recovery requires the fenced state owner"
+            )
+        try:
+            result = submit_quack_owner_command(
+                QUACK_OWNER_COMMAND_RECOVER_TYPED_DEFERRAL_BUDGET,
+                {
+                    "task_cid_or_alias": key,
+                    "repair_head": repair_head_text,
+                    "repair_tree": repair_tree_text,
+                },
+                timeout_seconds=timeout_seconds,
+            )
+        except QuackOwnerCommandRemoteError as exc:
+            _raise_typed_owner_error(exc)
+        return _cas_result_from_dict(result)
 
     def record_queue_backoff(
         self,
@@ -1732,6 +2857,15 @@ __all__ = (
     "TaskSourceConflictError",
     "TaskSourceBoundsError",
     "TaskSourceCompletionError",
+    "TYPED_DEFERRAL_BUDGET_BLOCK_OPERATION",
+    "TYPED_DEFERRAL_BUDGET_SUPERSESSION_OPERATION",
+    "TYPED_DEFERRAL_BUDGET_SUPERSESSION_REQUEST_SCHEMA",
+    "TYPED_DEFERRAL_BUDGET_SUPERSESSION_SCHEMA",
+    "TypedDeferralRecoveryError",
+    "admit_typed_deferral_budget_supersession",
+    "build_typed_deferral_budget_supersession_request",
+    "typed_deferral_budget_supersession_matches",
+    "validate_typed_deferral_budget_supersession",
     "TaskRecord",
     "TaskPage",
     "CASResult",

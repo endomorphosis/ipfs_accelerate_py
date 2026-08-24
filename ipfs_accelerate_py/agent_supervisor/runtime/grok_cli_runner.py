@@ -4282,6 +4282,7 @@ def _independently_verify_grok_quota(
                 expected_session_id=verifier_session_id,
                 verifier_returncode=int(completed.returncode),
                 failure_receipt=failure_receipt,
+                verifier_workspace=verifier_workspace,
             )
         return _validate_quota_evidence_in_accepted_child(
             grok_home=verifier_home,
