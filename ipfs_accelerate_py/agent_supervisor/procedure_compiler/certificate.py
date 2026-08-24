@@ -941,6 +941,17 @@ def verify_procedure_certificate(
     return verifier.verify(certificate, context, candidate=candidate)
 
 
+def certificate_is_usable_promotion_evidence(admission: CertificateAdmission) -> bool:
+    """Return whether a certificate may be *evidence* for a separate gate.
+
+    This deliberately does not convert a certificate into registry authority;
+    authorization, expected-old CAS, and rollback remain registry concerns.
+    """
+    if not isinstance(admission, CertificateAdmission):
+        raise ProcedureCertificateError("promotion evidence requires CertificateAdmission")
+    return admission.accepted and admission.usable and not admission.grants_promotion
+
+
 __all__ = [
     "CERTIFICATE_SIGNING_SCOPE",
     "CERTIFICATE_VERIFIER_REVISION",
@@ -960,4 +971,5 @@ __all__ = [
     "issue_procedure_certificate",
     "unsigned_certificate_statement",
     "verify_procedure_certificate",
+    "certificate_is_usable_promotion_evidence",
 ]
