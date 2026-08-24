@@ -18,6 +18,7 @@ deny-all networking only.
 
 from __future__ import annotations
 
+import ast
 import base64
 import ctypes
 import errno
@@ -160,6 +161,10 @@ MAX_OPEN_FILES: Final[int] = 256
 MAX_PROCESSES: Final[int] = 128
 MAX_CPU_SECONDS: Final[int] = 3600
 MAX_PROCESS_LOCAL_NONCES: Final[int] = 65_536
+MAX_JSON_SECRET_FIELDS: Final[int] = 4096
+MAX_PYTHON_SECRET_FIELDS: Final[int] = 4096
+MAX_PARENT_SECRET_VALUES: Final[int] = 64
+MAX_PARENT_SECRET_BYTES: Final[int] = 65_536
 _GIT_TIMEOUT_SECONDS: Final[int] = 30
 _HEX_SHA256: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{64}$")
 _HEX_COMMIT: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40,64}$")
@@ -173,6 +178,8 @@ _SECRET_TEXT: Final[re.Pattern[str]] = re.compile(
     r"(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|"
     r"authorization|bearer|credential)s?\s*[:=]\s*[^\s,;]{4,}"
 )
+_JSON_FIELD: Final[re.Pattern[str]] = re.compile(r'\\?"(?P<key>(?:\\.|[^"\\])*)\\?"\s*:')
+_PYTHON_FIELD: Final[re.Pattern[str]] = re.compile(r"\\?'(?P<key>(?:\\.|[^'\\])*)\\?'\s*:")
 _BEARER_TEXT: Final[re.Pattern[str]] = re.compile(
     r"(?i)\b(?:bearer\s+|sk-|ghp_|github_pat_|xox[baprs]-)[A-Za-z0-9_./+=-]{8,}"
 )
@@ -225,6 +232,81 @@ def _deep_freeze(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return tuple(_deep_freeze(item) for item in value)
     return value
+
+
+def _json_secret_material(text: str) -> tuple[bool, bool]:
+    """Locate JSON secret-field values, including JSON embedded in argv/prose."""
+
+    decoder = json.JSONDecoder()
+    detected = False
+    secret_fields = 0
+    for match in _JSON_FIELD.finditer(text):
+        try:
+            key = json.loads(f'"{match.group("key")}"')
+        except ValueError:
+            continue
+        if not isinstance(key, str) or not _SECRET_KEY.search(key):
+            continue
+        secret_fields += 1
+        if secret_fields > MAX_JSON_SECRET_FIELDS:
+            return True, True
+        value_start = match.end()
+        while value_start < len(text) and text[value_start].isspace():
+            value_start += 1
+        try:
+            parsed, _value_end = decoder.raw_decode(text, value_start)
+        except (ValueError, RecursionError):
+            return True, True
+        if parsed == "[redacted]":
+            detected = True
+            continue
+        # Conservatively hide the entire preview.  Re-serializing individual
+        # values cannot enumerate every equivalent JSON escape spelling, and
+        # repeated per-field rewrites make postflight cost attacker-controlled.
+        return True, True
+    return detected, False
+
+
+def _python_secret_material(text: str) -> tuple[bool, bool]:
+    """Locate bounded single-quoted mapping keys without evaluating containers."""
+
+    field_count = 0
+    for match in _PYTHON_FIELD.finditer(text):
+        field_count += 1
+        if field_count > MAX_PYTHON_SECRET_FIELDS:
+            # The scanner cannot prove an oversized mapping credential-free.
+            return True, True
+        encoded_key = match.group("key")
+        if len(encoded_key.encode("utf-8")) > MAX_ARGUMENT_BYTES:
+            return True, True
+        if _SECRET_KEY.search(encoded_key):
+            return True, True
+        if "\\" not in encoded_key:
+            continue
+        try:
+            key = ast.literal_eval(f"'{encoded_key}'")
+        except (MemoryError, RecursionError):
+            return True, True
+        except (SyntaxError, ValueError):
+            continue
+        if isinstance(key, str) and _SECRET_KEY.search(key):
+            # As with JSON, wiping the whole preview avoids escape-equivalent
+            # copies of a decoded secret value and attacker-controlled rewrites.
+            return True, True
+    return False, False
+
+
+def _structured_secret_material(text: str) -> tuple[bool, bool]:
+    json_detected, json_wipe_all = _json_secret_material(text)
+    if json_wipe_all:
+        return True, True
+    python_detected, python_wipe_all = _python_secret_material(text)
+    return json_detected or python_detected, json_wipe_all or python_wipe_all
+
+
+def _contains_secret_material(text: str) -> bool:
+    structured_detected, _wipe_all = _structured_secret_material(text)
+    return bool(structured_detected or _SECRET_TEXT.search(text) or _BEARER_TEXT.search(text))
 
 
 def _bounded_identifier(value: Any, *, field_name: str) -> str:
@@ -316,7 +398,7 @@ def _argv(value: Any, *, field_name: str = "argv") -> tuple[str, ...]:
             or len(item.encode("utf-8")) > MAX_ARGUMENT_BYTES
         ):
             raise MalformedError(f"{field_name}[{index}] is malformed")
-        if _SECRET_TEXT.search(item) or _BEARER_TEXT.search(item):
+        if _contains_secret_material(item):
             raise _violation(
                 "credential_forbidden", f"{field_name}[{index}] contains credential material"
             )
@@ -1180,6 +1262,12 @@ class SandboxExecutionReceipt(_WireRecord):
         for name in ("worktree_cleanup_proven", "canonical_unchanged", "secret_scan_passed"):
             if type(getattr(self, name)) is not bool:
                 raise MalformedError(f"{name} must be boolean")
+        if self.reason == "secret_detected" and self.secret_scan_passed:
+            raise BoundaryViolationError(
+                "secret-detected receipt cannot claim that its secret scan passed"
+            )
+        if self.reason == "secret_detected" and self.status != "denied":
+            raise MalformedError("secret-detected receipt must carry denied status")
         if self.runtime_integration_status != RUNTIME_INTEGRATION_STATUS:
             raise BoundaryViolationError("receipt cannot claim runtime integration")
         if self.enforcement_disposition != ENFORCEMENT_DISPOSITION:
@@ -1302,13 +1390,19 @@ class SandboxExecutionResult(_WireRecord):
             value = getattr(self, name)
             if not isinstance(value, str) or len(value.encode("utf-8")) > MAX_LOG_BYTES:
                 raise MalformedError(f"{name} exceeds its redacted bound")
-            _preview, detected = _redact_preview(value.encode("utf-8"), (), limit=MAX_LOG_BYTES)
-            if detected:
+            preview, detected = _redact_preview(value.encode("utf-8"), (), limit=MAX_LOG_BYTES)
+            if detected and preview != value:
                 raise BoundaryViolationError(f"{name} contains unredacted credential material")
+            if detected and self.receipt.secret_scan_passed:
+                raise BoundaryViolationError(
+                    f"{name} contains redacted credential fields but the receipt claims a pass"
+                )
         if self.denial_trace is None and self.receipt.denial_trace_cid is not None:
             raise MalformedError("receipt names a denial trace absent from the result")
         if self.denial_trace is not None and self.denial_trace.cid != self.receipt.denial_trace_cid:
             raise MalformedError("receipt denial trace identity is inconsistent")
+        if self.denial_trace is not None and self.denial_trace.reason != self.receipt.reason:
+            raise MalformedError("receipt and denial trace reasons are inconsistent")
 
     def to_mapping(self) -> Mapping[str, Any]:
         return _deep_freeze(
@@ -2347,13 +2441,28 @@ def _redact_preview(
     limit: int,
 ) -> tuple[str, bool]:
     text = value.decode("utf-8", "replace").replace("\x00", "")
-    detected = False
+    structured_detected, wipe_all = _structured_secret_material(text)
+    detected = structured_detected
+    if wipe_all and structured_detected:
+        text = '"[redacted]"'
+    secrets_to_replace: set[str] = set()
     for raw in parent_secret_values:
         if len(raw) < 4:
             continue
         secret = raw.decode("utf-8", "ignore")
-        if secret and secret in text:
-            text = text.replace(secret, "[redacted]")
+        if secret:
+            secrets_to_replace.add(secret)
+    variants: set[str] = set()
+    for secret in secrets_to_replace:
+        variants.add(secret)
+        variants.add(json.dumps(secret, ensure_ascii=True)[1:-1])
+        variants.add(json.dumps(secret, ensure_ascii=False)[1:-1])
+    if variants:
+        literal_pattern = re.compile(
+            "|".join(re.escape(secret) for secret in sorted(variants, key=len, reverse=True))
+        )
+        if literal_pattern.search(text):
+            text = literal_pattern.sub("[redacted]", text)
             detected = True
     if _SECRET_TEXT.search(text) or _BEARER_TEXT.search(text):
         detected = True
@@ -2367,6 +2476,7 @@ def _redact_preview(
 def _ambient_secret_values(environment: Mapping[str, str]) -> tuple[bytes, ...]:
     values: list[bytes] = []
     total_bytes = 0
+    secret_bytes = 0
     if len(environment) > 1024:
         raise MalformedError("parent environment exceeds its scan item bound")
     for key, value in environment.items():
@@ -2384,6 +2494,12 @@ def _ambient_secret_values(environment: Mapping[str, str]) -> tuple[bytes, ...]:
             or _SECRET_KEY.search(normalized)
         ):
             if value:
+                secret_bytes += len(encoded)
+                if (
+                    len(values) >= MAX_PARENT_SECRET_VALUES
+                    or secret_bytes > MAX_PARENT_SECRET_BYTES
+                ):
+                    raise MalformedError("parent credential scan inputs exceed their frozen bound")
                 values.append(encoded)
     return tuple(values)
 
@@ -2957,6 +3073,10 @@ def sandbox_descriptor() -> Mapping[str, Any]:
                 "max_memory_bytes": MAX_MEMORY_BYTES,
                 "max_processes": MAX_PROCESSES,
                 "max_process_local_nonces": MAX_PROCESS_LOCAL_NONCES,
+                "max_json_secret_fields": MAX_JSON_SECRET_FIELDS,
+                "max_python_secret_fields": MAX_PYTHON_SECRET_FIELDS,
+                "max_parent_secret_values": MAX_PARENT_SECRET_VALUES,
+                "max_parent_secret_bytes": MAX_PARENT_SECRET_BYTES,
             },
             "required_capabilities": (
                 "Linux O_PATH/O_NOFOLLOW descriptor roots",

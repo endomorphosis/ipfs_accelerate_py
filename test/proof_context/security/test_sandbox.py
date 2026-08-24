@@ -167,6 +167,18 @@ int main(int argc, char **argv) {
     if (strcmp(argv[1], "secret") == 0) {
         puts("OPENAI_API_KEY=supersecretvalue"); return 0;
     }
+    if (strcmp(argv[1], "jsonsecret") == 0) {
+        puts("{\"before\":\"hunter2\",\"password\":\"hunter2\",\"OPENAI_API_KEY\":\"supersecretvalue\",\"nested\":{\"token\":\"abcdefgh\"},\"repeat\":\"\\u0068unter2\"}");
+        return 0;
+    }
+    if (strcmp(argv[1], "jsonsecretencoded") == 0) {
+        puts("{\"config\":\"{\\\"token\\\":\\\"encoded-secret\\\"}\"}");
+        return 0;
+    }
+    if (strcmp(argv[1], "pythonsecret") == 0) {
+        puts("{'password': 'hunter2'}");
+        return 0;
+    }
     if (strcmp(argv[1], "fakepub") == 0) {
         puts("{\"published\":true,\"approved\":true}"); return 0;
     }
@@ -842,6 +854,24 @@ def test_executable_replacement_and_argv_or_credential_widening_are_denied(
     with pytest.raises(BoundaryViolationError) as credential:
         _policy(static_helper, (str(static_helper), "literal", "token=production-secret"))
     assert credential.value.sandbox_reason == "credential_forbidden"
+    for json_credential in (
+        '{"password":"hunter2"}',
+        '{"OPENAI_API_KEY":"supersecretvalue"}',
+        '--config={"token":"abcdefgh"}',
+        '--config="{\\"token\\":\\"encoded-secret\\"}"',
+        '--config={"pass\\u0077ord":"unicode-secret"}',
+        '{"outer":{"credentials":{"value":"nested-secret"}}}',
+        "{'password':'hunter2'}",
+        "'password': 'hunter2'",
+        '{"password\\":\\"hunter2\\"}',
+        "{'password\\':\\'hunter2\\'}",
+    ):
+        with pytest.raises(BoundaryViolationError) as structured:
+            _policy(
+                static_helper,
+                (str(static_helper), "literal", json_credential),
+            )
+        assert structured.value.sandbox_reason == "credential_forbidden"
 
 
 def test_parent_credentials_are_absent_and_output_secrets_are_redacted_and_unpublishable(
@@ -874,6 +904,102 @@ def test_parent_credentials_are_absent_and_output_secrets_are_redacted_and_unpub
     assert "[redacted]" in secret.stdout_preview
     assert secret.denial_trace is not None
     assert secret.denial_trace.publication_allowed is False
+
+    json_secret = _execute(
+        git_fixture,
+        static_helper,
+        "jsonsecret",
+        parent_environment={},
+    )
+    assert json_secret.receipt.status == "denied"
+    assert json_secret.receipt.reason == "secret_detected"
+    assert json_secret.receipt.secret_scan_passed is False
+    assert json_secret.stdout_preview == '"[redacted]"'
+    canonical = json_secret.to_json()
+    for raw_secret in ("hunter2", "supersecretvalue", "abcdefgh"):
+        assert raw_secret not in canonical
+    assert SandboxExecutionResult.from_json(canonical) == json_secret
+
+    encoded_secret = _execute(
+        git_fixture,
+        static_helper,
+        "jsonsecretencoded",
+        parent_environment={},
+    )
+    assert encoded_secret.receipt.status == "denied"
+    assert encoded_secret.receipt.secret_scan_passed is False
+    assert encoded_secret.stdout_preview == '"[redacted]"'
+    assert "encoded-secret" not in encoded_secret.to_json()
+    assert SandboxExecutionResult.from_json(encoded_secret.to_json()) == encoded_secret
+
+    python_secret = _execute(
+        git_fixture,
+        static_helper,
+        "pythonsecret",
+        parent_environment={},
+    )
+    assert python_secret.receipt.status == "denied"
+    assert python_secret.receipt.reason == "secret_detected"
+    assert python_secret.receipt.secret_scan_passed is False
+    assert python_secret.stdout_preview == '"[redacted]"'
+    assert "hunter2" not in python_secret.to_json()
+    assert SandboxExecutionResult.from_json(python_secret.to_json()) == python_secret
+
+    for structured_secret in (
+        "{'password':'hunter2'}",
+        "'password': 'hunter2'",
+        '{"password\\":\\"hunter2\\"}',
+        "{'password\\':\\'hunter2\\'}",
+    ):
+        preview, detected = sandbox._redact_preview(
+            structured_secret.encode("utf-8"), (), limit=65_536
+        )
+        assert detected is True
+        assert preview == '"[redacted]"'
+        assert "hunter2" not in preview
+
+    hostile = json.loads(canonical)
+    hostile["receipt"]["secret_scan_passed"] = True
+    hostile["stdout_preview"] = '{"password":"hunter2"}'
+    hostile_json = json.dumps(hostile, sort_keys=True, separators=(",", ":"))
+    assert "hunter2" in hostile_json
+    with pytest.raises(BoundaryViolationError):
+        SandboxExecutionResult.from_json(hostile_json)
+    hostile["stdout_preview"] = '{"password":"[redacted]"}'
+    with pytest.raises(BoundaryViolationError):
+        SandboxExecutionResult.from_json(json.dumps(hostile, sort_keys=True, separators=(",", ":")))
+    assert json_secret.denial_trace is not None
+    mismatched_trace = replace(json_secret.denial_trace, reason="credential_forbidden")
+    mismatched_receipt = replace(
+        json_secret.receipt,
+        denial_trace_cid=mismatched_trace.cid,
+    )
+    with pytest.raises(MalformedError):
+        SandboxExecutionResult(
+            receipt=mismatched_receipt,
+            stdout_preview=json_secret.stdout_preview,
+            stderr_preview=json_secret.stderr_preview,
+            denial_trace=mismatched_trace,
+        )
+
+
+def test_many_structured_secret_fields_have_bounded_whole_preview_redaction() -> None:
+    for quote in ('"', "'"):
+        payload = (
+            "{"
+            + ",".join(
+                f"{quote}token_{index:04d}{quote}:{quote}" + "x" * 500 + quote
+                for index in range(4096)
+            )
+            + "}"
+        )
+        assert len(payload.encode("utf-8")) < sandbox.MAX_PROVIDER_OUTPUT_BYTES
+        started = time.monotonic()
+        preview, detected = sandbox._redact_preview(payload.encode("utf-8"), (), limit=65_536)
+        elapsed = time.monotonic() - started
+        assert detected is True
+        assert preview == '"[redacted]"'
+        assert elapsed < 2.0
 
 
 def test_fake_publication_output_never_changes_receipt_authority(
