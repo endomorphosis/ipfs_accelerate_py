@@ -89,7 +89,7 @@ def _ordinary() -> OrdinaryRetrieval:
             key=lambda item: (item.path, item.content_cid),
         )
     )
-    return OrdinaryRetrieval(chunks)
+    return OrdinaryRetrieval(visible_projection_cid=_cid("visible"), chunks=chunks)
 
 
 def _pack() -> SemanticContextPack:
@@ -267,14 +267,21 @@ def test_runner_descriptor_and_metric_vocabulary_are_content_addressed() -> None
     assert len(METRIC_NAMES) == len(set(METRIC_NAMES))
     assert RUNNER_DESCRIPTOR_CID == cid_for_obj(runner_descriptor(), codec="dag-json")
     assert runner_descriptor()["only_a_to_b_difference"] == ["context_method"]
+    assert runner_descriptor()["identity_profile"] == "software-contract-cid-profile-v1"
 
 
 def test_ordinary_retrieval_is_exact_and_canonical() -> None:
     context = _ordinary()
     assert context.token_count == estimate_context_tokens(context.rendered_context)
+    exact_source_bytes = sum(len(item.text.encode("utf-8")) for item in context.chunks)
+    assert context.exact_source_tokens == (exact_source_bytes + 3) // 4
+    assert context.exact_source_tokens < context.token_count
     assert "<<<VISIBLE" in context.rendered_context
     with pytest.raises(ConfigurationABError, match="canonical-ordered"):
-        OrdinaryRetrieval(tuple(reversed(context.chunks)))
+        OrdinaryRetrieval(
+            visible_projection_cid=_cid("visible"),
+            chunks=tuple(reversed(context.chunks)),
+        )
     with pytest.raises(ConfigurationABError, match="content_cid"):
         ContextChunk("src/value.py", "x = 1\n", _cid("wrong"))
 
@@ -285,6 +292,16 @@ def test_ordinary_retrieval_is_exact_and_canonical() -> None:
         "../answer.py",
         "/tmp/source.py",
         "sealed_evaluator/test_secret.py",
+        "hidden-tests/test_secret.py",
+        "hidden_tests/test_secret.py",
+        "historical-answer/patch.diff",
+        "negative-review-rubric/rules.json",
+        "assurance-mutant-outcomes/result.json",
+        "future-commits/next.patch",
+        "expected-patch-bytes/answer.diff",
+        "gold-labels/task.json",
+        "evaluator-paths/index.json",
+        "pre-terminal-evaluator-diagnostics/log.json",
         "answers/patch.diff",
         ".git/config",
         "src\\escape.py",
@@ -307,6 +324,30 @@ def test_task_mapping_rejects_hidden_answer_fields() -> None:
         TaskAgentView.from_mapping(visible)
 
 
+def test_noncanonical_task_projection_cannot_reach_provider() -> None:
+    provider = RecordingProvider()
+    verifier = RecordingVerifier()
+    leaking_task: Any = {
+        "objective": "fix visible source",
+        "owned_paths": ["src/value.py"],
+        "routine_localized": True,
+        "risk_class": "routine",
+        "hidden_tests": "SECRET_HIDDEN_FIXTURE",
+    }
+    with pytest.raises(HiddenDataDenied, match="exact provider-visible projection"):
+        run_arm(
+            configuration_id="A",
+            identity=_identity(),
+            task=leaking_task,
+            context=_ordinary(),
+            permit=_permit(),
+            provider=provider,
+            verifier=verifier,
+        )
+    assert not provider.invocations
+    assert not verifier.requests
+
+
 def test_semantic_pack_rechecks_tokens_and_disables_expansion() -> None:
     with pytest.raises(ConfigurationABError, match="token count"):
         replace(_pack(), declared_tokens=_pack().declared_tokens + 1)
@@ -325,6 +366,62 @@ def test_semantic_pack_must_bind_the_exact_visible_projection() -> None:
             provider=RecordingProvider(),
             verifier=RecordingVerifier(),
         )
+
+
+def test_ordinary_retrieval_must_bind_the_exact_visible_projection_before_dispatch() -> None:
+    provider = RecordingProvider()
+    verifier = RecordingVerifier()
+    with pytest.raises(HiddenDataDenied, match="different visible projection"):
+        run_arm(
+            configuration_id="A",
+            identity=_identity(),
+            task=_task(),
+            context=replace(_ordinary(), visible_projection_cid=_cid("other-visible")),
+            permit=_permit(),
+            provider=provider,
+            verifier=verifier,
+        )
+    assert not provider.invocations
+    assert not verifier.requests
+
+
+@pytest.mark.parametrize(
+    "evaluator_path",
+    (
+        "hidden-tests/test_secret.py",
+        "historical-answer/patch.diff",
+        "negative-review-rubric/rules.json",
+        "assurance-mutant-outcomes/result.json",
+    ),
+)
+@pytest.mark.parametrize("configuration_id", ("A", "B"))
+def test_forged_evaluator_namespace_is_revalidated_before_either_provider_arm(
+    configuration_id: str,
+    evaluator_path: str,
+) -> None:
+    provider = RecordingProvider()
+    verifier = RecordingVerifier()
+    if configuration_id == "A":
+        context = _ordinary()
+        object.__setattr__(context.chunks[0], "path", evaluator_path)
+    else:
+        context = _pack()
+        hidden = f"{evaluator_path}\nSECRET_HIDDEN_FIXTURE = True\n"
+        object.__setattr__(context, "rendered_context", hidden)
+        object.__setattr__(context, "declared_tokens", estimate_context_tokens(hidden))
+
+    with pytest.raises(HiddenDataDenied, match="hidden or evaluator namespace"):
+        run_arm(
+            configuration_id=configuration_id,
+            identity=_identity(),
+            task=_task(),
+            context=context,
+            permit=_permit(),
+            provider=provider,
+            verifier=verifier,
+        )
+    assert not provider.invocations
+    assert not verifier.requests
 
 
 @pytest.mark.parametrize(
@@ -395,6 +492,11 @@ def test_a_and_b_record_their_distinct_context_measurements() -> None:
     arm_a, _, _ = _run_success("A")
     arm_b, _, _ = _run_success("B")
     assert arm_a.raw_result["metrics"]["ordinary_retrieval_tokens"] == _ordinary().token_count
+    assert arm_a.raw_result["metrics"]["exact_source_tokens"] == _ordinary().exact_source_tokens
+    assert (
+        arm_a.raw_result["metrics"]["exact_source_tokens"]
+        != arm_a.raw_result["metrics"]["ordinary_retrieval_tokens"]
+    )
     assert arm_a.raw_result["metrics"]["context_pack_tokens"] is None
     assert arm_b.raw_result["metrics"]["context_pack_tokens"] == _pack().token_count
     assert arm_b.raw_result["metrics"]["ordinary_retrieval_tokens"] is None
@@ -478,6 +580,46 @@ def test_provider_unavailable_exception_is_not_imputed() -> None:
     assert run.raw_result["metrics"]["provider_call_count"] == 1
     assert run.raw_result["metrics"]["inference_cost_micros"] is None
     assert not verifier.requests
+
+
+def test_verifier_exception_retains_raw_observed_provider_cost_without_false_zero() -> None:
+    class ExplodingVerifier:
+        def __init__(self) -> None:
+            self.requests: list[VerificationRequest] = []
+
+        def verify(self, request: VerificationRequest) -> FullVerificationObservation:
+            self.requests.append(request)
+            raise TimeoutError("verification infrastructure timed out")
+
+    provider = RecordingProvider()
+    verifier = ExplodingVerifier()
+    run = run_arm(
+        configuration_id="A",
+        identity=_identity(),
+        task=_task(),
+        context=_ordinary(),
+        permit=_permit(),
+        provider=provider,
+        verifier=verifier,
+    )
+
+    raw = run.raw_result
+    assert raw["terminal_status"] == "infrastructure_failure"
+    assert raw["metrics"]["provider_call_count"] == 1
+    assert raw["metrics"]["inference_cost_micros"] == 310
+    assert raw["metrics"]["failure_cost_micros"] == 0
+    assert raw["metrics"]["verification_cost_micros"] is None
+    assert raw["metrics"]["total_cost_micros"] is None
+    assert raw["metrics"]["failed_attempt_cost_micros"] is None
+    assert "inference_cost_micros" not in raw["missingness"]
+    assert "failure_cost_micros" not in raw["missingness"]
+    assert "verification_cost_micros" in raw["missingness"]
+    assert "total_cost_micros" in raw["missingness"]
+    assert _cid("provider-evidence") in raw["evidence_cids"]
+    assert len(provider.invocations) == 1
+    assert len(verifier.requests) == 1
+    assert run.audit["observed_provider_cost_micros"] == 310
+    assert run.audit["hidden_data_shared_with_provider"] is False
 
 
 @pytest.mark.parametrize(

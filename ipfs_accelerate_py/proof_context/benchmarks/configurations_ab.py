@@ -24,7 +24,7 @@ CONFIGURATION_SCHEMA: Final[str] = "ipfs-datasets.proof-context.benchmark-config
 RAW_RESULT_SCHEMA: Final[str] = "ipfs-datasets.proof-context.benchmark-raw-result@1"
 RUNNER_SCHEMA: Final[str] = "ipfs-accelerate.proof-context.benchmark-configurations-ab@1"
 PAIR_SCHEMA: Final[str] = "ipfs-accelerate.proof-context.benchmark-pair-ab@1"
-IDENTITY_PROFILE: Final[str] = "cidv1-base32-raw-or-dag-json-sha2-256"
+IDENTITY_PROFILE: Final[str] = "software-contract-cid-profile-v1"
 
 PROVENANCE_CLASSES: Final[tuple[str, ...]] = ("live", "replayed", "simulated")
 PROVIDER_TERMINAL_STATUSES: Final[tuple[str, ...]] = (
@@ -207,12 +207,54 @@ _DENIED_PATH_PARTS: Final[frozenset[str]] = frozenset(
         ".git",
         ".hidden",
         "_hidden",
+        "hidden",
+        "hidden-test",
+        "hidden-tests",
+        "hidden_test",
+        "hidden_tests",
         "answers",
         "answer",
         "expected",
         "evaluator",
+        "evaluators",
         "sealed-evaluator",
         "sealed_evaluator",
+        "historical-answer",
+        "historical_answer",
+        "negative-review-rubric",
+        "negative_review_rubric",
+        "assurance-mutant-outcomes",
+        "assurance_mutant_outcomes",
+        "future-commits",
+        "future_commits",
+        "expected-patch-bytes",
+        "expected_patch_bytes",
+        "gold-labels",
+        "gold_labels",
+        "evaluator-paths",
+        "evaluator_paths",
+        "pre-terminal-evaluator-diagnostics",
+        "pre_terminal_evaluator_diagnostics",
+    }
+)
+_EVALUATOR_NAMESPACE_MARKERS: Final[frozenset[str]] = frozenset(
+    {
+        "answer/",
+        "answers/",
+        "evaluator/",
+        "evaluators/",
+        "evaluator-only",
+        "hidden-test",
+        "hidden-tests",
+        "sealed-evaluator",
+        "historical-answer",
+        "negative-review-rubric",
+        "assurance-mutant-outcomes",
+        "future-commits",
+        "expected-patch-bytes",
+        "gold-labels",
+        "evaluator-paths",
+        "pre-terminal-evaluator-diagnostics",
     }
 )
 
@@ -276,9 +318,19 @@ def _safe_path(value: Any, field: str) -> str:
         raise HiddenDataDenied(f"{field} is not a safe visible path")
     parts = tuple(part for part in text.split("/") if part not in {"", "."})
     lowered = {part.lower() for part in parts}
-    if ".." in parts or lowered & _DENIED_PATH_PARTS:
+    normalized = lowered | {part.replace("_", "-") for part in lowered}
+    if ".." in parts or normalized & _DENIED_PATH_PARTS:
         raise HiddenDataDenied(f"{field} enters a hidden or evaluator namespace")
     return "/".join(parts)
+
+
+def _deny_evaluator_namespace_text(value: Any, field: str) -> str:
+    if not isinstance(value, str):
+        raise ConfigurationABError(f"{field} must be UTF-8 text")
+    normalized = value.lower().replace("\\", "/").replace("_", "-")
+    if any(marker in normalized for marker in _EVALUATOR_NAMESPACE_MARKERS):
+        raise HiddenDataDenied(f"{field} exposes a hidden or evaluator namespace")
+    return value
 
 
 def estimate_context_tokens(text: str) -> int:
@@ -352,6 +404,7 @@ class TaskAgentView:
 
     def __post_init__(self) -> None:
         _nonempty(self.objective, "objective")
+        _deny_evaluator_namespace_text(self.objective, "objective")
         if not isinstance(self.owned_paths, tuple) or not self.owned_paths:
             raise ConfigurationABError("owned_paths must be a non-empty tuple")
         safe = tuple(_safe_path(path, "owned_paths[]") for path in self.owned_paths)
@@ -400,6 +453,7 @@ class ContextChunk:
         object.__setattr__(self, "path", _safe_path(self.path, "chunk.path"))
         if not isinstance(self.text, str):
             raise ConfigurationABError("chunk.text must be UTF-8 text")
+        _deny_evaluator_namespace_text(self.text, "chunk.text")
         expected = cid_for_bytes(self.text.encode("utf-8"), codec="raw")
         if _cid(self.content_cid, "chunk.content_cid") != expected:
             raise ConfigurationABError("chunk bytes do not match content_cid")
@@ -409,11 +463,21 @@ class ContextChunk:
 class OrdinaryRetrieval:
     """Deterministic visible lexical/raw retrieval input for arm A."""
 
+    visible_projection_cid: str
     chunks: tuple[ContextChunk, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "visible_projection_cid",
+            _cid(self.visible_projection_cid, "visible_projection_cid"),
+        )
         if not isinstance(self.chunks, tuple) or not self.chunks:
             raise ConfigurationABError("ordinary retrieval requires visible chunks")
+        if any(type(item) is not ContextChunk for item in self.chunks):
+            raise ConfigurationABError("ordinary retrieval accepts only exact context chunks")
+        for item in self.chunks:
+            item.__post_init__()
         order = tuple((item.path, item.content_cid) for item in self.chunks)
         if order != tuple(sorted(order)) or len(order) != len(set(order)):
             raise ConfigurationABError("ordinary chunks must be uniquely canonical-ordered")
@@ -428,6 +492,11 @@ class OrdinaryRetrieval:
     @property
     def token_count(self) -> int:
         return estimate_context_tokens(self.rendered_context)
+
+    @property
+    def exact_source_tokens(self) -> int:
+        source_bytes = sum(len(item.text.encode("utf-8")) for item in self.chunks)
+        return (source_bytes + 3) // 4
 
     @property
     def evidence_cids(self) -> tuple[str, ...]:
@@ -457,6 +526,7 @@ class SemanticContextPack:
         )
         if not isinstance(self.rendered_context, str):
             raise ConfigurationABError("rendered_context must be UTF-8 text")
+        _deny_evaluator_namespace_text(self.rendered_context, "rendered_context")
         for field in (
             "declared_tokens",
             "exact_source_tokens",
@@ -682,7 +752,7 @@ def _set_context_metrics(
 ) -> None:
     if configuration_id == "A" and isinstance(context, OrdinaryRetrieval):
         metrics["ordinary_retrieval_tokens"] = context.token_count
-        metrics["exact_source_tokens"] = context.token_count
+        metrics["exact_source_tokens"] = context.exact_source_tokens
         metrics["context_fallback_count"] = 0
         metrics["context_expansion_count"] = 0
         metrics["context_expansion_tokens"] = 0
@@ -789,16 +859,23 @@ def run_arm(
 ) -> BenchmarkRun:
     """Run one frozen arm through an injected provider and full verifier."""
 
+    if type(identity) is not PairIdentity:
+        raise ConfigurationABError("identity must use the exact frozen pair identity type")
+    if type(task) is not TaskAgentView:
+        raise HiddenDataDenied("task must use the exact provider-visible projection type")
+    if type(permit) is not ExecutionPermit:
+        raise ConfigurationABError("permit must use the exact execution permit type")
+    PairIdentity.__post_init__(identity)
+    TaskAgentView.__post_init__(task)
+    ExecutionPermit.__post_init__(permit)
     descriptor = configuration_descriptor(configuration_id)
-    if configuration_id == "A" and not isinstance(context, OrdinaryRetrieval):
+    if configuration_id == "A" and type(context) is not OrdinaryRetrieval:
         raise ConfigurationABError("configuration A requires ordinary retrieval")
-    if configuration_id == "B" and not isinstance(context, SemanticContextPack):
+    if configuration_id == "B" and type(context) is not SemanticContextPack:
         raise ConfigurationABError("configuration B requires a semantic ContextPack")
-    if (
-        isinstance(context, SemanticContextPack)
-        and context.visible_projection_cid != identity.visible_projection_cid
-    ):
-        raise HiddenDataDenied("ContextPack is bound to a different visible projection")
+    context.__post_init__()
+    if context.visible_projection_cid != identity.visible_projection_cid:
+        raise HiddenDataDenied("context is bound to a different visible projection")
     if not permit.admits(identity):
         return _unavailable_run(
             configuration_id=configuration_id,
@@ -929,14 +1006,47 @@ def run_arm(
         )
 
     assert provider_observation.proposal_cid is not None
-    verification = verifier.verify(
-        VerificationRequest(
+    try:
+        verification = verifier.verify(
+            VerificationRequest(
+                identity=identity,
+                configuration_id=configuration_id,
+                configuration_cid=configuration_cid(configuration_id),
+                proposal_cid=provider_observation.proposal_cid,
+            )
+        )
+    except Exception:
+        raw = _raw_result(
             identity=identity,
             configuration_id=configuration_id,
-            configuration_cid=configuration_cid(configuration_id),
-            proposal_cid=provider_observation.proposal_cid,
+            provenance=permit.provenance,
+            terminal_status="infrastructure_failure",
+            metrics=metrics,
+            missing_reason="full-verification-port-exception-with-unknown-cost",
+            evidence_cids=evidence,
         )
-    )
+        return BenchmarkRun(
+            configuration_id,
+            raw,
+            _freeze(
+                {
+                    "schema": RUNNER_SCHEMA,
+                    "configuration_id": configuration_id,
+                    "provider_dispatched": True,
+                    "full_verification_attempted": True,
+                    "full_verification_executed": False,
+                    "hidden_data_shared_with_provider": False,
+                    "observed_provider_cost_micros": (
+                        provider_observation.inference_cost_micros
+                        + provider_observation.failure_cost_micros
+                        if provider_observation.inference_cost_micros is not None
+                        and provider_observation.failure_cost_micros is not None
+                        else None
+                    ),
+                    "reason": "full-verification-port-exception-with-unknown-cost",
+                }
+            ),
+        )
     if verification.proposal_cid != provider_observation.proposal_cid:
         raise ConfigurationABError("verification trace is bound to a different proposal")
     if not verification.full_verification:
@@ -1121,8 +1231,13 @@ def runner_descriptor() -> dict[str, Any]:
         "held_constant_fields": list(_PAIR_FIELDS),
         "only_a_to_b_difference": ["context_method"],
         "provider_visibility": "task-agent-view-plus-visible-context-only",
+        "projection_binding": "both-arms-exact-visible-projection-cid-before-dispatch",
+        "evaluator_namespace_policy": "deny-before-dispatch-and-revalidate-provider-inputs",
         "hidden_scoring_phase": "after-patch-proposal",
         "verification": "full-runtime-verification-both-arms",
+        "verification_exception_policy": (
+            "infrastructure-failure-retain-observed-provider-cost-null-unknown-cost"
+        ),
         "live_dispatch": "exact-available-eligible-permit-only",
         "unavailable_policy": "preserve-unavailable-never-impute-live",
         "simulation_policy": "force-simulated-terminal-never-accepted",
