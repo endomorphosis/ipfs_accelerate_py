@@ -471,6 +471,41 @@ def test_owner_rearms_blocked_task_without_client_revision(tmp_path: Path) -> No
         owner_connection.close()
 
 
+def test_owner_rearm_preserves_terminal_task_as_idempotent_noop(tmp_path: Path) -> None:
+    path = tmp_path / "control.duckdb"
+    _materialize_one_task(path)
+    owner_connection = open_duckdb_connection(path)
+    try:
+        owner_connection.execute(
+            "UPDATE tasks SET status = 'completed' WHERE task_cid = ?",
+            ["task:typed-owner-test"],
+        )
+        repository = IntentRepository(
+            path,
+            bound_connection=owner_connection,
+            install_schema=False,
+            owner_id="owner:typed-test",
+            session_id="session:terminal-rearm",
+        )
+        result = execute_quack_owner_command(
+            repository,
+            QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
+            {
+                "task_cid_or_alias": "task:typed-owner-test",
+                "receipt": {"operation": "database_declared_outputs_on_head_rearm"},
+            },
+            request_id="e" * 32,
+            store_id="data/control.duckdb",
+            store_generation="generation-1",
+        )
+        assert result["changed"] is False
+        assert result["previous_status"] == "completed"
+        assert result["task"]["status"] == "completed"
+        repository.close()
+    finally:
+        owner_connection.close()
+
+
 def test_quack_transport_sql_mutations_fail_closed() -> None:
     class NeverExecute:
         description = None

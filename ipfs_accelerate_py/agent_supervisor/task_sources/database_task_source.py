@@ -76,6 +76,18 @@ DATABASE_TASK_CAS_SCHEMA: Final[str] = "ipfs_accelerate_py/agent-supervisor/data
 
 DEFAULT_QUERY_LIMIT: Final[int] = DEFAULT_PAGE_LIMIT
 MAX_QUERY_LIMIT: Final[int] = MAX_PAGE_LIMIT
+_REARM_IMMUTABLE_TASK_STATUSES: Final[frozenset[str]] = frozenset(
+    {
+        "completed",
+        "skipped",
+        "complete",
+        "done",
+        "cancelled",
+        "failed",
+        "quarantined",
+        "rejected",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1546,6 +1558,18 @@ class DatabaseTaskSource:
             return CASResult(
                 task=record,
                 previous_status="retrying",
+                revision=int(record.revision),
+                event_cursor=0,
+                changed=False,
+            )
+        if status in _REARM_IMMUTABLE_TASK_STATUSES:
+            # A completed repair receipt is durable history and can be replayed
+            # by every lane after the task has subsequently reached a terminal
+            # state.  Treat that replay as an idempotent no-op: terminal task
+            # authority is immutable and must never be reopened by recovery.
+            return CASResult(
+                task=record,
+                previous_status=status,
                 revision=int(record.revision),
                 event_cursor=0,
                 changed=False,
