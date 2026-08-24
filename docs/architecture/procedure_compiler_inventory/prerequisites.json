@@ -151,7 +151,7 @@
         {"path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py", "symbol": "CONTROL_AUDIT_RECEIPT_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/control-audit-receipt@1"}
       ],
       "source_bindings": [
-        {"blob_id": "f06b091ff4e5a0a3ea09da81c866845bf064af9b", "path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py"}
+        {"blob_id": "f06b091ff4e5a0a3ea09da81c866845bf064af9b", "current_blob_id": "01bdede85b470ca7fbf8d3274e3e32875b8553db", "path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py"}
       ],
       "status": "available",
       "submodule_bindings": [],
