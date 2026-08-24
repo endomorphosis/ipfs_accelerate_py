@@ -35,8 +35,8 @@ def _display(value: Any) -> str:
     if value is None or value == "" or value == {} or value == []:
         return MISSING_EVIDENCE
     if isinstance(value, Mapping):
-        return "; ".join(f"{key}={_display(item)}" for key, item in value.items())
-    if isinstance(value, Sequence) and not isinstance(value, str):
+        return "; ".join(f"{key}={_display(value[key])}" for key in sorted(value, key=str))
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return ", ".join(_display(item) for item in value)
     return str(value)
 
@@ -85,19 +85,22 @@ def render_human_patch_report(
     identities_value = safe.get("identities", {}) if isinstance(safe, Mapping) else {}
     lines = [
         f"Proof-carrying context patch report ({REPORT_SCHEMA_VERSION})",
+        f"Command: {_display(safe.get('command'))}",
         f"Status: {_display(safe.get('status'))}",
         f"Exit code: {_display(safe.get('exit_code'))}",
+        f"Provenance: {_display(safe.get('provenance'))}",
         f"Trace / correlation: {_display(safe.get('trace_id'))} / {_display(safe.get('correlation_id'))}",
         f"Repository identity: {_display(identities_value.get('repository_id') if isinstance(identities_value, Mapping) else None)}",
         f"Run identity: {_display(identities_value.get('run_id') if isinstance(identities_value, Mapping) else None)}",
         f"Patch identity: {_display(identities_value.get('patch_id') if isinstance(identities_value, Mapping) else None)}",
+        f"Artifact CIDs: {_display(safe.get('artifact_cids'))}",
     ]
     for title, key in REPORT_SECTIONS:
         value = details.get(key)
         if key == "task" and value in (None, "", {}, []):
-            value = identities_value.get("task_id") if isinstance(identities_value, Mapping) else None
-        if key == "receipts" and value in (None, "", {}, []):
-            value = safe.get("artifact_cids")
+            value = (
+                identities_value.get("task_id") if isinstance(identities_value, Mapping) else None
+            )
         rendered = _cost_display(value) if key == "costs" else _display(value)
         lines.append(f"{title}: {rendered}")
     return "\n".join(lines) + "\n"
