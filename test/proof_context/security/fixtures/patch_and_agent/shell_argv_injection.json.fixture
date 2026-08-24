@@ -1,0 +1,8 @@
+{
+  "schema": "pcce-073.patch-agent-fixture@1",
+  "attack_id": "shell-argv-injection",
+  "arguments": [
+    "-c",
+    "; touch escaped-process\u0000"
+  ]
+}
