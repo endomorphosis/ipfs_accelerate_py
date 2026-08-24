@@ -8,18 +8,20 @@ blocked, is_schedulable remains false, and configured-board-launch is not starte
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
-    DatabaseTaskSource,
-)
+if TYPE_CHECKING:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
 
 CAMPAIGN = ROOT / "docs/architecture/external_agent_autonomous_execution_fabric"
 BOARD_PATH = CAMPAIGN / "task_board.json"
@@ -38,6 +40,54 @@ MATERIALIZATION = (
 )
 HOST_EVIDENCE_MIN = 180
 HOST_EVIDENCE_MAX = 191
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse the intentionally argument-free offline ingestion contract."""
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    return parser.parse_args(argv)
+
+
+def _ensure_repository_importable() -> None:
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
+
+def _database_task_source_class() -> type[DatabaseTaskSource]:
+    _ensure_repository_importable()
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DatabaseTaskSource,
+    )
+
+    return DatabaseTaskSource
+
+
+def _acquire_state_owner_lease(control: Path) -> Any:
+    """Fence the offline ingestion against the live Quack state owner."""
+
+    _ensure_repository_importable()
+    from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
+        current_process_birth,
+    )
+    from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
+        OWNER_LOCK_SUFFIX,
+        OWNER_MARKER_SUFFIX,
+        ExclusiveOwnerLease,
+    )
+
+    database = Path(control)
+    lease = ExclusiveOwnerLease(
+        lock_path=database.with_name(f".{database.name}{OWNER_LOCK_SUFFIX}"),
+        marker_path=database.with_name(f".{database.name}{OWNER_MARKER_SUFFIX}"),
+    )
+    lease.acquire(
+        server_id=f"offline:eaaef-held-board-ingest:{os.getpid()}",
+        process_birth=current_process_birth(),
+        database_path=database,
+        generation=1,
+    )
+    return lease
 
 
 def _cid(value: object) -> str:
@@ -91,20 +141,18 @@ def _materialization_binding(control: Path) -> dict[str, str]:
     }
 
 
-def ingest() -> dict[str, object]:
+def _ingest_under_lease(control: Path) -> dict[str, object]:
     board = json.loads(BOARD_PATH.read_text(encoding="utf-8"))
-    control = _active_control_db()
     binding = _materialization_binding(control)
     plan_root_cid = binding["plan_root_cid"]
     tree = binding["repository_tree_id"]
     source_head = binding["source_head"]
     inserted: list[str] = []
     skipped: list[str] = []
-    with DatabaseTaskSource(control, install_schema=False) as source:
+    database_task_source = _database_task_source_class()
+    with database_task_source(control, install_schema=False) as source:
         existing_page = source.list_tasks(limit=1000)
-        existing = {
-            item.task_alias: item.task_cid for item in existing_page.tasks
-        }
+        existing = {item.task_alias: item.task_cid for item in existing_page.tasks}
         goal_cids: dict[str, str] = {}
         for goal in board.get("goals") or ():
             alias = str(goal.get("goal_id") or "")
@@ -120,9 +168,7 @@ def ingest() -> dict[str, object]:
 
             con = duckdb.connect(str(control), read_only=True)
             try:
-                for alias, cid in con.execute(
-                    "SELECT goal_alias, goal_cid FROM goals"
-                ).fetchall():
+                for alias, cid in con.execute("SELECT goal_alias, goal_cid FROM goals").fetchall():
                     goal_cids[str(alias)] = str(cid)
             finally:
                 con.close()
@@ -264,7 +310,17 @@ def ingest() -> dict[str, object]:
     return payload
 
 
-def main() -> int:
+def ingest() -> dict[str, object]:
+    control = _active_control_db()
+    lease = _acquire_state_owner_lease(control)
+    try:
+        return _ingest_under_lease(control)
+    finally:
+        lease.release(fence_token=lease.fence_token)
+
+
+def main(argv: list[str] | None = None) -> int:
+    _parse_args(argv)
     print(json.dumps(ingest(), indent=2, sort_keys=True))
     return 0
 

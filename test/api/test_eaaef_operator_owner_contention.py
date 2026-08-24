@@ -27,6 +27,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.quack_state_server import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 START_OWNER = REPO_ROOT / "scripts/start_eaaef_quack_owner.py"
 HOST_ADMISSION = REPO_ROOT / "scripts/run_eaaef_host_admission_supervisor.py"
+HELD_BOARD_INGEST = REPO_ROOT / "scripts/ingest_eaaef_held_board_into_duckdb.py"
 
 
 def _load_script(path: Path, name: str) -> ModuleType:
@@ -51,7 +52,7 @@ def _lease(database: Path, *, server_id: str) -> ExclusiveOwnerLease:
     return lease
 
 
-@pytest.mark.parametrize("script", [START_OWNER, HOST_ADMISSION])
+@pytest.mark.parametrize("script", [START_OWNER, HOST_ADMISSION, HELD_BOARD_INGEST])
 @pytest.mark.parametrize(
     ("argv", "expected_returncode"),
     [(["--help"], 0), (["--not-a-real-option"], 2)],
@@ -81,9 +82,39 @@ def test_cli_inspection_is_cold_before_repository_imports_or_writes(
 def test_no_argument_parser_contract_remains_accepted() -> None:
     owner = _load_script(START_OWNER, "tested_start_eaaef_quack_owner")
     host = _load_script(HOST_ADMISSION, "tested_run_eaaef_host_admission")
+    ingest = _load_script(HELD_BOARD_INGEST, "tested_ingest_eaaef_held_board")
 
     assert vars(owner._parse_args([])) == {}
     assert vars(host._parse_args([])) == {}
+    assert vars(ingest._parse_args([])) == {}
+
+
+def test_live_quack_lease_makes_held_ingest_fail_before_receipt_or_db_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ingest = _load_script(HELD_BOARD_INGEST, "tested_ingest_loses_owner_race")
+    database = tmp_path / "run-v-test/control.duckdb"
+    receipt = tmp_path / "held-board-catalog.json"
+    calls: list[str] = []
+    owner = _lease(database, server_id="quack:test-ingest-winner")
+    try:
+        monkeypatch.setattr(ingest, "_active_control_db", lambda: database)
+        monkeypatch.setattr(ingest, "RECEIPT_PATH", receipt)
+        monkeypatch.setattr(
+            ingest,
+            "_ingest_under_lease",
+            lambda _control: calls.append("database_or_receipt") or {},
+        )
+
+        with pytest.raises(QuackStateServerOwnershipError, match="exclusive lock"):
+            ingest.ingest()
+
+        assert calls == []
+        assert not database.exists()
+        assert not receipt.exists()
+    finally:
+        owner.release(fence_token=owner.fence_token)
 
 
 def test_live_quack_lease_makes_offline_writer_fail_before_receipt_or_db_open(
@@ -177,9 +208,7 @@ def test_offline_writer_lease_makes_quack_owner_fail_before_db_open(
     monkeypatch.setattr(host, "ROOT", tmp_path)
     monkeypatch.setattr(host, "STATUS_PATH", status)
     monkeypatch.setattr(host, "_collect_host_admission", collect_receipt)
-    monkeypatch.setattr(
-        host, "_database_task_source_class", lambda: _EmptyTaskSource
-    )
+    monkeypatch.setattr(host, "_database_task_source_class", lambda: _EmptyTaskSource)
 
     def run_host() -> None:
         try:
