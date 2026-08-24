@@ -81,6 +81,26 @@ OWNER_RESTART_ALLOWED_SOURCE_FIELDS: Final = frozenset(
         "accelerator_planning_tree",
     }
 )
+OWNER_RESTART_CONFIG_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "verified-residual-intelligence-foundry-owner-config-transition@1"
+)
+VRIF_RUNTIME_HARDENING_CONFIG_IDENTITY: Final = (
+    "sha256:c4a35cf46a497e7ed11c56e8577a5c116b48aa73dd9d507c9ce443bde433cf4a"
+)
+VRIF_RUNTIME_HARDENING_PROTECTED_INSERTIONS: Final = (
+    (
+        "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
+        ("ipfs_accelerate_py/agent_supervisor/runtime/vrif_runtime_settlement.py",),
+    ),
+    (
+        "test/api/residual_intelligence/test_board.py",
+        (
+            "test/api/residual_intelligence/test_goal_authority.py",
+            "test/api/residual_intelligence/test_runtime_settlement.py",
+        ),
+    ),
+)
 GOAL_RE: Final = re.compile(r"^## (VRIF-G\d{3}) (.+)$", re.MULTILINE)
 QUACK_ENDPOINT_RE: Final = re.compile(
     r"^quack:(?://)?(127(?:\.\d{1,3}){3}|localhost):(\d{1,5})$",
@@ -473,9 +493,20 @@ def _git_blob_at(*, head: str, path: Path, field: str) -> bytes:
 
 
 def _json_mapping_bytes(value: bytes, *, field: str) -> dict[str, Any]:
+    def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        decoded_object: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in decoded_object:
+                raise ValueError("duplicate JSON object key")
+            decoded_object[key] = item
+        return decoded_object
+
     try:
-        decoded = json.loads(value.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        decoded = json.loads(
+            value.decode("utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise OperatorError(f"{field} must be a JSON object") from exc
     if not isinstance(decoded, dict):
         raise OperatorError(f"{field} must be a JSON object")
@@ -529,6 +560,102 @@ def _restart_static_config(config: Mapping[str, Any], *, label: str) -> dict[str
     for field in OWNER_RESTART_ALLOWED_SOURCE_FIELDS:
         source_binding.pop(field, None)
     return normalized
+
+
+def _exact_vrif_runtime_hardening_transition(
+    bootstrap_static: Mapping[str, Any],
+    current_static: Mapping[str, Any],
+    *,
+    planning_revision: str,
+    planning_tree: str,
+    config_path: Path,
+) -> dict[str, Any]:
+    """Admit the one frozen runtime-settlement hardening migration.
+
+    The bootstrap configuration remains the immutable default.  This narrow
+    exception admits only the content-pinned settlement block and the exact
+    three protection insertions that make its implementation and tests
+    immutable to workers.  The resulting static config must also have existed
+    at the explicitly advanced planning revision, so a later descendant cannot
+    smuggle an unsealed static change into an owner restart.
+    """
+
+    if "runtime_settlement" in bootstrap_static:
+        raise OperatorError(
+            "current config changes fields outside the admitted source-binding lineage"
+        )
+    runtime_settlement = current_static.get("runtime_settlement")
+    if (
+        not isinstance(runtime_settlement, Mapping)
+        or _identity(runtime_settlement) != VRIF_RUNTIME_HARDENING_CONFIG_IDENTITY
+    ):
+        raise OperatorError(
+            "current config changes fields outside the admitted source-binding lineage"
+        )
+
+    bootstrap_paths_raw = bootstrap_static.get("protected_paths")
+    current_paths_raw = current_static.get("protected_paths")
+    if (
+        not isinstance(bootstrap_paths_raw, list)
+        or not isinstance(current_paths_raw, list)
+        or any(type(item) is not str or not item for item in bootstrap_paths_raw)
+        or any(type(item) is not str or not item for item in current_paths_raw)
+        or len(set(bootstrap_paths_raw)) != len(bootstrap_paths_raw)
+        or len(set(current_paths_raw)) != len(current_paths_raw)
+    ):
+        raise OperatorError(
+            "current config changes fields outside the admitted source-binding lineage"
+        )
+    expected_paths = list(bootstrap_paths_raw)
+    for anchor, additions in VRIF_RUNTIME_HARDENING_PROTECTED_INSERTIONS:
+        if expected_paths.count(anchor) != 1 or any(
+            addition in expected_paths for addition in additions
+        ):
+            raise OperatorError(
+                "current config changes fields outside the admitted source-binding lineage"
+            )
+        offset = expected_paths.index(anchor) + 1
+        expected_paths[offset:offset] = list(additions)
+
+    expected_current = dict(bootstrap_static)
+    expected_current["protected_paths"] = expected_paths
+    expected_current["runtime_settlement"] = dict(runtime_settlement)
+    if _canonical_bytes(expected_current) != _canonical_bytes(current_static):
+        raise OperatorError(
+            "current config changes fields outside the admitted source-binding lineage"
+        )
+
+    planned_config = _json_mapping_bytes(
+        _git_blob_at(
+            head=planning_revision,
+            path=config_path,
+            field="current planning config",
+        ),
+        field="current planning config",
+    )
+    planned_static = _restart_static_config(planned_config, label="current planning")
+    if _canonical_bytes(planned_static) != _canonical_bytes(current_static):
+        raise OperatorError(
+            "runtime hardening config is not sealed by the planning revision"
+        )
+
+    transition: dict[str, Any] = {
+        "schema": OWNER_RESTART_CONFIG_TRANSITION_SCHEMA,
+        "mode": "exact_runtime_settlement_hardening",
+        "bootstrap_static_config_identity": _identity(bootstrap_static),
+        "current_static_config_identity": _identity(current_static),
+        "planning_revision": planning_revision,
+        "planning_tree": planning_tree,
+        "planning_config_identity": _identity(planned_config),
+        "runtime_settlement_identity": VRIF_RUNTIME_HARDENING_CONFIG_IDENTITY,
+        "protected_path_insertions": [
+            addition
+            for _anchor, additions in VRIF_RUNTIME_HARDENING_PROTECTED_INSERTIONS
+            for addition in additions
+        ],
+    }
+    transition["transition_id"] = _identity(transition)
+    return transition
 
 
 def _owner_restart_admission(
@@ -657,9 +784,28 @@ def _owner_restart_admission(
         label="bootstrap",
     )
     current_static = _restart_static_config(current_config, label="current")
-    if _canonical_bytes(bootstrap_static) != _canonical_bytes(current_static):
-        raise OperatorError(
-            "current config changes fields outside the admitted source-binding lineage"
+    if _canonical_bytes(bootstrap_static) == _canonical_bytes(current_static):
+        config_transition: dict[str, Any] = {
+            "schema": OWNER_RESTART_CONFIG_TRANSITION_SCHEMA,
+            "mode": "exact_static_config",
+            "bootstrap_static_config_identity": _identity(bootstrap_static),
+            "current_static_config_identity": _identity(current_static),
+        }
+        config_transition["transition_id"] = _identity(config_transition)
+    else:
+        if (
+            current_binding["accelerator_planning_revision"]
+            == bootstrap_binding["accelerator_planning_revision"]
+        ):
+            raise OperatorError(
+                "runtime hardening config requires an advanced planning revision"
+            )
+        config_transition = _exact_vrif_runtime_hardening_transition(
+            bootstrap_static,
+            current_static,
+            planning_revision=current_binding["accelerator_planning_revision"],
+            planning_tree=current_binding["accelerator_planning_tree"],
+            config_path=board.config_path,
         )
 
     mode = (
@@ -679,6 +825,7 @@ def _owner_restart_admission(
         "bootstrap_config_identity": _identity(bootstrap_sources["config"]),
         "current_config_identity": _identity(current_sources["config"]),
         "static_config_identity": _identity(bootstrap_static),
+        "config_transition": config_transition,
         "source_identities": {
             name: str(source_identities[name]) for name in sorted(source_paths)
         },

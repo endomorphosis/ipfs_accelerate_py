@@ -108,6 +108,12 @@ def _owner_restart_fixture(
             "evidence": "runtime/evidence",
             "quack_owner": "runtime/quack-owner",
         },
+        "protected_paths": [
+            "ipfs_accelerate_py/agent_supervisor/runtime/process_security.py",
+            "scripts/run_agent_supervisor_residual_intelligence.py",
+            "test/api/residual_intelligence/test_board.py",
+            "test/api/residual_intelligence/test_runtime_bootstrap.py",
+        ],
         "taskboard_path": board.taskboard_path,
         "objectives_path": board.objectives_path,
         "plan_path": board.plan_path,
@@ -175,6 +181,37 @@ def _owner_restart_fixture(
         bootstrap=bootstrap,
         bootstrap_path=bootstrap_path,
     )
+
+
+def _seal_runtime_hardening_transition(
+    operator: object,
+    fixture: SimpleNamespace,
+    root: Path,
+) -> dict[str, object]:
+    config = json.loads(json.dumps(fixture.config))
+    production = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    config["runtime_settlement"] = production["runtime_settlement"]
+    protected_paths = list(config["protected_paths"])
+    for anchor, additions in operator.VRIF_RUNTIME_HARDENING_PROTECTED_INSERTIONS:
+        offset = protected_paths.index(anchor) + 1
+        protected_paths[offset:offset] = list(additions)
+    config["protected_paths"] = protected_paths
+    _write_fixture_json(fixture.board.config_path, config)
+    _run_fixture_git(root, "add", "config/restart.json")
+    _run_fixture_git(root, "commit", "-m", "seal exact runtime hardening")
+    planning_revision = _run_fixture_git(root, "rev-parse", "HEAD")
+    planning_tree = _run_fixture_git(root, "rev-parse", "HEAD^{tree}")
+    config["source_binding"].update(
+        {
+            "accelerator_required_ancestor": planning_revision,
+            "accelerator_planning_revision": planning_revision,
+            "accelerator_planning_tree": planning_tree,
+        }
+    )
+    _write_fixture_json(fixture.board.config_path, config)
+    _run_fixture_git(root, "add", "config/restart.json")
+    _run_fixture_git(root, "commit", "-m", "advance runtime hardening binding")
+    return json.loads(fixture.board.config_path.read_text(encoding="utf-8"))
 
 
 def _absent_prior_owner() -> dict[str, object]:
@@ -705,6 +742,117 @@ def test_owner_restart_admits_only_monotonic_source_binding_on_descendant(
     assert admission["planning_lineage"]["bootstrap_revision"] != (
         admission["planning_lineage"]["current_revision"]
     )
+
+
+def test_owner_restart_admits_exact_sealed_runtime_hardening_transition(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    fixture = _owner_restart_fixture(
+        operator,
+        monkeypatch,
+        tmp_path,
+        descendant=True,
+    )
+    config = _seal_runtime_hardening_transition(operator, fixture, tmp_path)
+    admission = operator._owner_restart_admission(
+        fixture.board,
+        config,
+        fixture.paths,
+    )
+    transition = admission["config_transition"]
+    assert transition["mode"] == "exact_runtime_settlement_hardening"
+    assert (
+        transition["runtime_settlement_identity"]
+        == operator.VRIF_RUNTIME_HARDENING_CONFIG_IDENTITY
+    )
+    assert transition["planning_revision"] == config["source_binding"][
+        "accelerator_planning_revision"
+    ]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "runtime_schema",
+        "runtime_extra_field",
+        "archive_hash",
+        "protected_missing",
+        "protected_reordered",
+        "protected_extra",
+        "database_program",
+        "runtime_paths",
+    ],
+)
+def test_owner_restart_rejects_any_delta_from_exact_runtime_hardening(
+    mutation: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    operator = _operator()
+    fixture = _owner_restart_fixture(
+        operator,
+        monkeypatch,
+        tmp_path,
+        descendant=True,
+    )
+    config = _seal_runtime_hardening_transition(operator, fixture, tmp_path)
+    changed = json.loads(json.dumps(config))
+    if mutation == "runtime_schema":
+        changed["runtime_settlement"]["schema"] = "foreign-schema"
+    elif mutation == "runtime_extra_field":
+        changed["runtime_settlement"]["extra"] = True
+    elif mutation == "archive_hash":
+        changed["runtime_settlement"]["retired_coordination_snapshots"][0][
+            "database_sha256"
+        ] = "sha256:" + ("0" * 64)
+    elif mutation == "protected_missing":
+        changed["protected_paths"].remove(
+            "test/api/residual_intelligence/test_runtime_settlement.py"
+        )
+    elif mutation == "protected_reordered":
+        first = changed["protected_paths"].index(
+            "test/api/residual_intelligence/test_goal_authority.py"
+        )
+        second = changed["protected_paths"].index(
+            "test/api/residual_intelligence/test_runtime_settlement.py"
+        )
+        changed["protected_paths"][first], changed["protected_paths"][second] = (
+            changed["protected_paths"][second],
+            changed["protected_paths"][first],
+        )
+    elif mutation == "protected_extra":
+        changed["protected_paths"].append("unexpected/authority.py")
+    elif mutation == "database_program":
+        changed["database_program"]["store_generation"] = "foreign-generation"
+    elif mutation == "runtime_paths":
+        changed["runtime_paths"]["root"] = "foreign-runtime"
+    else:  # pragma: no cover - the parameter set above is closed
+        raise AssertionError(mutation)
+    _write_fixture_json(fixture.board.config_path, changed)
+    _run_fixture_git(tmp_path, "add", "config/restart.json")
+    _run_fixture_git(tmp_path, "commit", "-m", f"mutate hardening {mutation}")
+    with pytest.raises(operator.OperatorError, match="outside the admitted|not sealed"):
+        operator._owner_restart_admission(
+            fixture.board,
+            changed,
+            fixture.paths,
+        )
+
+
+def test_owner_restart_rejects_duplicate_json_keys() -> None:
+    operator = _operator()
+    with pytest.raises(operator.OperatorError, match="must be a JSON object"):
+        operator._json_mapping_bytes(
+            b'{"runtime_paths": {}, "runtime_paths": {"root": "foreign"}}',
+            field="duplicate config",
+        )
+    with pytest.raises(operator.OperatorError, match="must be a JSON object"):
+        operator._json_mapping_bytes(
+            b'{"runtime_settlement": {"schema": "one", "schema": "two"}}',
+            field="nested duplicate config",
+        )
 
 
 def test_owner_restart_rejects_tampered_bootstrap_receipt(
