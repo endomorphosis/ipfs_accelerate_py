@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -145,6 +147,18 @@ def _task_grant_operations() -> tuple[str, ...]:
     )
 
 
+def _attached_client(client_id: str) -> QuackStateClient:
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id="control.duckdb",
+    )
+    client.attach(
+        "quack:127.0.0.1:7777",
+        server_id="server:typed-owner-test",
+    )
+    return client
+
+
 def test_default_owner_socket_path_compacts_an_overlong_store_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -239,6 +253,211 @@ def test_closed_owner_command_is_atomic_and_rolls_back_callback_failure(
         assert int(task["revision"]) == 1
         assert after.revision == before.revision
         assert client.execute("lookup_idempotency", ["idem:typed-owner:rollback"]) == ()
+    finally:
+        client.close()
+        gateway.stop()
+        connection.close()
+
+
+def test_commit_observer_runs_after_owner_transaction_lock_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    gateway, connection = _gateway(db, socket_path)
+    client_id = "client:post-commit-lock"
+    token, _grant = gateway.issue_grant(
+        client_id=client_id,
+        allowed_operations=_task_grant_operations(),
+        allowed_command_operations=("task.status.cas",),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_SOCKET_ENV, str(socket_path))
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    observed: list[tuple[bool, str, tuple[str, ...]]] = []
+
+    def observe_commit(command: StateCommand, manifest: tuple[Any, ...]) -> None:
+        lock_available = gateway._transaction_lock.acquire(blocking=False)
+        if lock_available:
+            gateway._transaction_lock.release()
+        observed.append(
+            (
+                lock_available,
+                str(command.parameters.get("operation") or ""),
+                tuple(str(item[0]) for item in manifest),
+            )
+        )
+
+    gateway.bind_commit_observer(observe_commit)
+    client = _attached_client(client_id)
+    try:
+        accepted = client.cas_task_status(
+            task_cid="task:typed-owner",
+            expected_task_revision=0,
+            new_status="claimed",
+            idempotency_key="idem:post-commit-lock",
+            command_id="command:post-commit-lock",
+        )
+        assert accepted.changed is True
+        assert observed == [
+            (
+                True,
+                "task.status.cas",
+                (
+                    "txn_cas_task_status",
+                    "txn_advance_store_revision",
+                    "txn_record_idempotency",
+                ),
+            )
+        ]
+    finally:
+        client.close()
+        gateway.stop()
+        connection.close()
+
+
+def test_blocked_downstream_observer_does_not_block_later_owner_transaction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    gateway, connection = _gateway(db, socket_path)
+    client_id = "client:blocked-downstream"
+    token, _grant = gateway.issue_grant(
+        client_id=client_id,
+        allowed_operations=_task_grant_operations(),
+        allowed_command_operations=("task.status.cas",),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_SOCKET_ENV, str(socket_path))
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    first_observer_entered = threading.Event()
+    release_first_observer = threading.Event()
+    observer_guard = threading.Lock()
+    observer_lock_available: list[bool] = []
+    observer_calls = 0
+
+    def blocked_downstream_observer(
+        _command: StateCommand,
+        _manifest: tuple[Any, ...],
+    ) -> None:
+        nonlocal observer_calls
+        lock_available = gateway._transaction_lock.acquire(blocking=False)
+        if lock_available:
+            gateway._transaction_lock.release()
+        with observer_guard:
+            observer_calls += 1
+            call_number = observer_calls
+            observer_lock_available.append(lock_available)
+        if call_number == 1:
+            first_observer_entered.set()
+            release_first_observer.wait(timeout=10.0)
+
+    gateway.bind_commit_observer(blocked_downstream_observer)
+    first_client = _attached_client(client_id)
+    second_client = _attached_client(client_id)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(
+                first_client.cas_task_status,
+                task_cid="task:typed-owner",
+                expected_task_revision=0,
+                new_status="claimed",
+                idempotency_key="idem:blocked-downstream:first",
+                command_id="command:blocked-downstream:first",
+            )
+            assert first_observer_entered.wait(timeout=5.0)
+            try:
+                second_call = executor.submit(
+                    second_client.cas_task_status,
+                    task_cid="task:typed-owner",
+                    expected_task_revision=1,
+                    new_status="running",
+                    idempotency_key="idem:blocked-downstream:second",
+                    command_id="command:blocked-downstream:second",
+                )
+                second = second_call.result(timeout=5.0)
+                assert second.changed is True
+                assert first.done() is False
+            finally:
+                release_first_observer.set()
+            assert first.result(timeout=5.0).changed is True
+        assert observer_calls == 2
+        assert observer_lock_available == [True, True]
+        task = second_client.execute(
+            "select_task_by_cid",
+            {"task_cid": "task:typed-owner"},
+        )[0]
+        assert task["status"] == "running"
+        assert int(task["revision"]) == 2
+    finally:
+        release_first_observer.set()
+        first_client.close()
+        second_client.close()
+        gateway.stop()
+        connection.close()
+
+
+def test_failing_downstream_observer_cannot_undo_or_disable_owner_operations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = tmp_path / "control.duckdb"
+    socket_path = tmp_path / "owner.sock"
+    _install(db)
+    gateway, connection = _gateway(db, socket_path)
+    client_id = "client:failing-downstream"
+    token, _grant = gateway.issue_grant(
+        client_id=client_id,
+        allowed_operations=_task_grant_operations(),
+        allowed_command_operations=("task.status.cas",),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_SOCKET_ENV, str(socket_path))
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    observer_lock_available: list[bool] = []
+
+    def failing_downstream_observer(
+        _command: StateCommand,
+        _manifest: tuple[Any, ...],
+    ) -> None:
+        lock_available = gateway._transaction_lock.acquire(blocking=False)
+        if lock_available:
+            gateway._transaction_lock.release()
+        observer_lock_available.append(lock_available)
+        raise RuntimeError("downstream DuckLake-style observer unavailable")
+
+    gateway.bind_commit_observer(failing_downstream_observer)
+    client = _attached_client(client_id)
+    try:
+        first = client.cas_task_status(
+            task_cid="task:typed-owner",
+            expected_task_revision=0,
+            new_status="claimed",
+            idempotency_key="idem:failing-downstream:first",
+            command_id="command:failing-downstream:first",
+        )
+        second = client.cas_task_status(
+            task_cid="task:typed-owner",
+            expected_task_revision=1,
+            new_status="running",
+            idempotency_key="idem:failing-downstream:second",
+            command_id="command:failing-downstream:second",
+        )
+        assert first.changed is True
+        assert second.changed is True
+        assert observer_lock_available == [True, True]
+        assert gateway.capability()["last_observer_error_type"] == "RuntimeError"
+        task = client.execute(
+            "select_task_by_cid",
+            {"task_cid": "task:typed-owner"},
+        )[0]
+        assert task["status"] == "running"
+        assert int(task["revision"]) == 2
     finally:
         client.close()
         gateway.stop()
