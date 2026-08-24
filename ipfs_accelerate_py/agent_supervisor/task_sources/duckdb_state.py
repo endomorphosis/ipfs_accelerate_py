@@ -2912,11 +2912,36 @@ def quack_token_vault_path() -> Path | None:
     store = _quack_store_id()
     if not store:
         return None
+    if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", store):
+        return None
+    store_path = Path(store).expanduser()
+    root_text = str(
+        os.environ.get("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", "") or ""
+    ).strip()
+    root: Path | None = None
+    if root_text:
+        root = Path(root_text).expanduser().resolve()
+    if not store_path.is_absolute():
+        # A relative store identity is meaningful only below the admitted
+        # lifecycle root.  Treating an opaque identity such as ``store:foo``
+        # as a path would otherwise materialize credentials in the caller's
+        # current checkout.
+        if root is None:
+            return None
+        store_path = root / store_path
+    store_path = store_path.resolve()
+    if store_path.suffix.lower() not in {".duckdb", ".ddb"}:
+        return None
+    if root is not None:
+        try:
+            store_path.relative_to(root)
+        except ValueError:
+            return None
     handle = str(
         os.environ.get("IPFS_ACCELERATE_AGENT_STATE_ENDPOINT_SECRET_HANDLE", "")
         or "env://IPFS_ACCELERATE_AGENT_QUACK_TOKEN"
     ).strip()
-    owner_dir = Path(store).expanduser().resolve().parent / "quack-owner"
+    owner_dir = store_path.parent / "quack-owner"
     safe = handle.replace(":", "_").replace("/", "_")
     return owner_dir / f"{safe}{'.quack-token'}"
 

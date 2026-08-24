@@ -196,6 +196,35 @@ REPAIR_FOLLOWUP_TRANSITION_VALIDATIONS: Final = (
         "test/api/test_agent_supervisor_quack_transport_defaults.py",
     ),
 )
+REPAIR_CLEAN_LAUNCH_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-clean-launch-transition@1"
+)
+REPAIR_CLEAN_LAUNCH_TRANSITION_BASE_HEAD: Final = (
+    "3760a6fccb1634fef98b5e68d6697832079d6fe1"
+)
+REPAIR_CLEAN_LAUNCH_TRANSITION_CHANGED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    "test/api/test_agent_supervisor_quack_transport_defaults.py",
+)
+REPAIR_CLEAN_LAUNCH_TRANSITION_VALIDATIONS: Final = (
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k", "repair_clean_launch_transition",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_quack_transport_defaults.py",
+        "-k", (
+            "quack_mutation_timeout_is_unknown_outcome_without_internal_replay "
+            "or quack_token_vault_path_anchors_relative_database_to_admitted_root "
+            "or resolve_quack_attach_token_persists_missing_vault"
+        ),
+    ),
+)
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
         "schema", "source_head", "repository_tree_id", "plan_root_cid",
@@ -230,6 +259,19 @@ REPAIR_FOLLOWUP_TRANSITION_RECEIPT_FIELDS: Final = frozenset(
         "terminal_success_criteria", "terminal_non_success_criteria",
         "semantic_corpus_changed", "database_mutated", "authorized_at",
         "receipt_cid",
+    }
+)
+REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS: Final = frozenset(
+    {
+        "schema", "task_id", "stable_identity", "program_id",
+        "transition_revision", "bootstrap_receipt_id",
+        "previous_receipt_cid", "plan_root_cid", "repository_tree_id",
+        "base_head", "base_tree", "repair_head", "repair_tree",
+        "changed_paths", "patch_digest", "dependencies",
+        "owning_repository", "risk_class", "authority_requirement",
+        "validation_results", "terminal_success_criteria",
+        "terminal_non_success_criteria", "semantic_corpus_changed",
+        "database_mutated", "authorized_at", "receipt_cid",
     }
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
@@ -352,6 +394,59 @@ def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
         raise
 
 
+def _atomic_json_create(path: Path, payload: Mapping[str, Any]) -> None:
+    """Publish one immutable JSON object without replacing an existing path."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    directory = os.open(
+        path.parent,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0),
+    )
+    temporary = path.with_name(
+        f".{path.name}.create.{os.getpid()}.{threading.get_ident()}.{time.time_ns()}"
+    )
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        fcntl.flock(directory, fcntl.LOCK_EX)
+        try:
+            os.lstat(path)
+        except FileNotFoundError:
+            pass
+        else:
+            raise OperatorError(
+                "immutable runtime receipt already exists; reload and validate it"
+            )
+        descriptor = os.open(temporary, flags, 0o600)
+        try:
+            os.fchmod(descriptor, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(payload, indent=2, sort_keys=True) + "\n"
+                )
+                handle.flush()
+                os.fsync(handle.fileno())
+            # Every cooperating authorizer holds the directory inode lock and
+            # rechecks absence before this rename.  The final path therefore
+            # becomes visible only after complete bytes are durable, without
+            # the two-link crash window of a hard-link publication.
+            os.replace(temporary, path)
+            os.chmod(path, 0o600)
+            os.fsync(directory)
+        finally:
+            temporary.unlink(missing_ok=True)
+    finally:
+        try:
+            fcntl.flock(directory, fcntl.LOCK_UN)
+        finally:
+            os.close(directory)
+
+
 def _secure_runtime_json(path: Path, *, max_bytes: int) -> dict[str, Any]:
     """Read one same-UID, single-link runtime object without following links."""
 
@@ -459,6 +554,28 @@ def _repair_followup_transition_receipt_id(
     receipt_id = str(unsigned.pop("receipt_cid", "") or "")
     if receipt_id != _identity(unsigned):
         raise OperatorError("bootstrap repair follow-up CID is invalid")
+    return receipt_id
+
+
+def _repair_clean_launch_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-3 launch-cleanliness receipt."""
+
+    if (
+        payload.get("schema") != REPAIR_CLEAN_LAUNCH_TRANSITION_SCHEMA
+        or set(payload) != REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 3
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+    ):
+        raise OperatorError("bootstrap repair clean-launch schema is invalid")
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError("bootstrap repair clean-launch CID is invalid")
     return receipt_id
 
 
@@ -571,6 +688,33 @@ def _run_repair_followup_transition_validations() -> list[dict[str, Any]]:
     return results
 
 
+def _run_repair_clean_launch_transition_validations() -> list[dict[str, Any]]:
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError(
+            "bootstrap repair clean-launch validation requires a clean checkout"
+        )
+    results: list[dict[str, Any]] = []
+    for command in REPAIR_CLEAN_LAUNCH_TRANSITION_VALIDATIONS:
+        completed = _run(command, timeout=900)
+        result = {
+            "argv": list(command),
+            "returncode": int(completed.returncode),
+            "stdout_digest": _identity(completed.stdout.encode("utf-8")),
+            "stderr_digest": _identity(completed.stderr.encode("utf-8")),
+        }
+        results.append(result)
+        if completed.returncode != 0:
+            raise OperatorError(
+                "bootstrap repair clean-launch validation failed: "
+                + " ".join(command)
+            )
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError(
+            "bootstrap repair clean-launch validation dirtied the checkout"
+        )
+    return results
+
+
 def _safe_path(value: str, *, field: str) -> Path:
     candidate = (ROOT / value).resolve()
     try:
@@ -653,6 +797,11 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-followup-transition.json"
+    )
+    result["repair_clean_launch_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-clean-launch-transition.json"
     )
     result["status_receipt"] = (
         result["evidence"] / "control-plane" / "live-status.json"
@@ -2843,6 +2992,139 @@ def _validate_repair_followup_transition(
     }
 
 
+def _validate_repair_clean_launch_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 3 chained to the immutable revision-2 repair."""
+
+    receipt_id = _repair_clean_launch_transition_receipt_id(receipt)
+    previous_receipt_id = _repair_followup_transition_receipt_id(
+        previous_receipt
+    )
+    expected_authority = (
+        "the operator explicitly directed the bootstrap engineering agent "
+        "to fix the existing supervisor so admission validation cannot "
+        "materialize credentials in or dirty the launch checkout"
+    )
+    if (
+        receipt.get("stable_identity")
+        != f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R3"
+        or receipt.get("previous_receipt_cid") != previous_receipt_id
+        or receipt.get("bootstrap_receipt_id")
+        != bootstrap.get("bootstrap_receipt_id")
+        or receipt.get("plan_root_cid") != bootstrap.get("plan_root_cid")
+        or receipt.get("repository_tree_id")
+        != bootstrap.get("repository_tree_id")
+        or receipt.get("base_head")
+        != REPAIR_CLEAN_LAUNCH_TRANSITION_BASE_HEAD
+        or receipt.get("changed_paths")
+        != list(REPAIR_CLEAN_LAUNCH_TRANSITION_CHANGED_PATHS)
+        or receipt.get("dependencies")
+        != ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R2"]
+        or receipt.get("owning_repository") != "ipfs_accelerate_py"
+        or receipt.get("risk_class")
+        != "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+        or receipt.get("authority_requirement") != expected_authority
+        or type(receipt.get("authorized_at")) not in {int, float}
+        or float(receipt["authorized_at"]) <= 0.0
+    ):
+        raise OperatorError("bootstrap repair clean-launch authority differs")
+    repair = str(receipt.get("repair_head") or "").strip().casefold()
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", repair) is None
+        or _git("show", "-s", "--format=%P", repair).split()
+        != [REPAIR_CLEAN_LAUNCH_TRANSITION_BASE_HEAD]
+    ):
+        raise OperatorError(
+            "bootstrap repair clean-launch must be one exact child"
+        )
+    base_tree = _git(
+        "rev-parse", f"{REPAIR_CLEAN_LAUNCH_TRANSITION_BASE_HEAD}^{{tree}}"
+    )
+    repair_tree = _git("rev-parse", f"{repair}^{{tree}}")
+    if (
+        receipt.get("base_tree") != base_tree
+        or receipt.get("repair_tree") != repair_tree
+        or _git_changed_paths(REPAIR_CLEAN_LAUNCH_TRANSITION_BASE_HEAD, repair)
+        != REPAIR_CLEAN_LAUNCH_TRANSITION_CHANGED_PATHS
+        or receipt.get("patch_digest")
+        != _git_patch_digest(REPAIR_CLEAN_LAUNCH_TRANSITION_BASE_HEAD, repair)
+    ):
+        raise OperatorError("bootstrap repair clean-launch Git proof differs")
+    forest = bootstrap.get("source_forest")
+    by_owner = forest.get("by_owner") if isinstance(forest, Mapping) else None
+    if not isinstance(by_owner, Mapping):
+        raise OperatorError("bootstrap source forest owner binding is absent")
+    for owner, path in (
+        ("ipfs_datasets_py", "ipfs_datasets_py"),
+        ("ipfs_kit_py", "ipfs_kit_py"),
+    ):
+        expected = by_owner.get(owner)
+        if (
+            not isinstance(expected, Mapping)
+            or _git("rev-parse", f"{repair}:{path}")
+            != expected.get("commit")
+        ):
+            raise OperatorError(
+                "bootstrap repair clean-launch changed a sibling"
+            )
+    stored_results = receipt.get("validation_results")
+    if (
+        not isinstance(stored_results, list)
+        or len(stored_results)
+        != len(REPAIR_CLEAN_LAUNCH_TRANSITION_VALIDATIONS)
+    ):
+        raise OperatorError("bootstrap repair clean-launch validation differs")
+    for stored, command in zip(
+        stored_results,
+        REPAIR_CLEAN_LAUNCH_TRANSITION_VALIDATIONS,
+        strict=True,
+    ):
+        if (
+            not isinstance(stored, Mapping)
+            or set(stored)
+            != {"argv", "returncode", "stdout_digest", "stderr_digest"}
+            or stored.get("argv") != list(command)
+            or stored.get("returncode") != 0
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(stored.get("stdout_digest") or "")
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}", str(stored.get("stderr_digest") or "")
+            )
+            is None
+        ):
+            raise OperatorError(
+                "bootstrap repair clean-launch validation differs"
+            )
+    if rerun_validations:
+        rerun = _run_repair_clean_launch_transition_validations()
+        if [item["argv"] for item in rerun] != [
+            item.get("argv") for item in stored_results
+        ]:
+            raise OperatorError(
+                "bootstrap repair clean-launch commands differ"
+            )
+    return {
+        "schema": REPAIR_CLEAN_LAUNCH_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 3,
+        "base_head": REPAIR_CLEAN_LAUNCH_TRANSITION_BASE_HEAD,
+        "base_tree": base_tree,
+        "repair_head": repair,
+        "repair_tree": repair_tree,
+        "changed_paths": list(REPAIR_CLEAN_LAUNCH_TRANSITION_CHANGED_PATHS),
+        "patch_digest": str(receipt.get("patch_digest") or ""),
+        "previous_receipt_cid": previous_receipt_id,
+        "receipt_cid": receipt_id,
+    }
+
+
 def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
     """Replay projections on a private clone, never on authoritative bytes."""
 
@@ -3097,6 +3379,152 @@ def authorize_repair_transition(config_path: Path) -> dict[str, Any]:
                 "merge-base", "--is-ancestor",
                 str(followup_transition["repair_head"]), head,
             )
+            clean_launch_path = paths.get(
+                "repair_clean_launch_transition_receipt"
+            )
+            if (
+                isinstance(clean_launch_path, Path)
+                and clean_launch_path.is_file()
+            ):
+                clean_launch = _secure_runtime_json(
+                    clean_launch_path, max_bytes=STATUS_RECEIPT_MAX_BYTES
+                )
+                clean_launch_transition = (
+                    _validate_repair_clean_launch_transition(
+                        clean_launch,
+                        bootstrap=bootstrap,
+                        previous_receipt=followup,
+                        rerun_validations=(
+                            clean_launch.get("repair_head") == head
+                        ),
+                    )
+                )
+                _git(
+                    "merge-base", "--is-ancestor",
+                    str(clean_launch_transition["repair_head"]), head,
+                )
+                current_admission = _admit_materialized_launch(
+                    board, _config, paths
+                )
+                admitted_repair = current_admission.get(
+                    "repair_transition"
+                )
+                admitted_continuity = current_admission.get(
+                    "canonical_continuity"
+                )
+                if (
+                    not isinstance(admitted_repair, Mapping)
+                    or admitted_repair.get("repair_head")
+                    != clean_launch_transition["repair_head"]
+                    or not isinstance(admitted_continuity, Mapping)
+                    or "repair_to_current" not in admitted_continuity
+                ):
+                    raise OperatorError(
+                        "current admission does not retain the clean-launch "
+                        "repair transition"
+                    )
+                return {
+                    "schema": OPERATOR_SCHEMA,
+                    "command": "authorize-repair-transition",
+                    "ok": True,
+                    "idempotent_replay": True,
+                    "repair_transition_receipt": clean_launch,
+                    "repair_transition_chain": [
+                        prior, followup, clean_launch
+                    ],
+                    "current_admission_cid": current_admission[
+                        "admission_cid"
+                    ],
+                    "runtime_source_head": current_admission[
+                        "runtime_source_head"
+                    ],
+                }
+            if advanced:
+                parents = _git("show", "-s", "--format=%P", head).split()
+                if parents != [REPAIR_CLEAN_LAUNCH_TRANSITION_BASE_HEAD]:
+                    raise OperatorError(
+                        "bootstrap repair clean-launch must be one child of "
+                        "the exact revision-2 repair"
+                    )
+                if _git_changed_paths(
+                    REPAIR_CLEAN_LAUNCH_TRANSITION_BASE_HEAD, head
+                ) != REPAIR_CLEAN_LAUNCH_TRANSITION_CHANGED_PATHS:
+                    raise OperatorError(
+                        "bootstrap repair clean-launch changed-path set differs"
+                    )
+                validation_results = (
+                    _run_repair_clean_launch_transition_validations()
+                )
+                receipt = {
+                    "schema": REPAIR_CLEAN_LAUNCH_TRANSITION_SCHEMA,
+                    "task_id": REPAIR_TRANSITION_TASK_ID,
+                    "stable_identity": (
+                        f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}"
+                        "@ASEH-PLAN-R3"
+                    ),
+                    "program_id": PROGRAM,
+                    "transition_revision": 3,
+                    "bootstrap_receipt_id": bootstrap_id,
+                    "previous_receipt_cid": followup_transition[
+                        "receipt_cid"
+                    ],
+                    "plan_root_cid": bootstrap["plan_root_cid"],
+                    "repository_tree_id": bootstrap[
+                        "repository_tree_id"
+                    ],
+                    "base_head": REPAIR_CLEAN_LAUNCH_TRANSITION_BASE_HEAD,
+                    "base_tree": _git(
+                        "rev-parse",
+                        f"{REPAIR_CLEAN_LAUNCH_TRANSITION_BASE_HEAD}^{{tree}}",
+                    ),
+                    "repair_head": head,
+                    "repair_tree": _git("rev-parse", f"{head}^{{tree}}"),
+                    "changed_paths": list(
+                        REPAIR_CLEAN_LAUNCH_TRANSITION_CHANGED_PATHS
+                    ),
+                    "patch_digest": _git_patch_digest(
+                        REPAIR_CLEAN_LAUNCH_TRANSITION_BASE_HEAD, head
+                    ),
+                    "dependencies": [
+                        "ASEH-BOOTSTRAP-002@ASEH-PLAN-R2"
+                    ],
+                    "owning_repository": "ipfs_accelerate_py",
+                    "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+                    "authority_requirement": (
+                        "the operator explicitly directed the bootstrap "
+                        "engineering agent to fix the existing supervisor so "
+                        "admission validation cannot materialize credentials "
+                        "in or dirty the launch checkout"
+                    ),
+                    "validation_results": validation_results,
+                    "terminal_success_criteria": (
+                        "Opaque state-store identities cannot resolve a token "
+                        "vault from cwd, admission tests leave the exact "
+                        "checkout clean, and launch remains fail closed."
+                    ),
+                    "terminal_non_success_criteria": (
+                        "Any path escape, checkout credential artifact, dirty "
+                        "post-validation tree, identity drift, sibling change, "
+                        "database mutation, or validation failure is rejected."
+                    ),
+                    "semantic_corpus_changed": False,
+                    "database_mutated": False,
+                    "authorized_at": time.time(),
+                }
+                receipt["receipt_cid"] = _identity(receipt)
+                if not isinstance(clean_launch_path, Path):
+                    raise OperatorError(
+                        "bootstrap repair clean-launch path is absent"
+                    )
+                _atomic_json_create(clean_launch_path, receipt)
+                return {
+                    "schema": OPERATOR_SCHEMA,
+                    "command": "authorize-repair-transition",
+                    "ok": True,
+                    "idempotent_replay": False,
+                    "repair_transition_receipt": receipt,
+                    "repair_transition_chain": [prior, followup, receipt],
+                }
             current_admission = _admit_materialized_launch(
                 board, _config, paths
             )
@@ -3411,22 +3839,56 @@ def _admit_materialized_launch(
                 completed_requests=requests,
                 stored_followup=followup_receipt,
             )
+            active_transition = followup_transition
+            clean_launch_transition: dict[str, Any] | None = None
+            clean_launch_path = paths.get(
+                "repair_clean_launch_transition_receipt"
+            )
+            if (
+                isinstance(clean_launch_path, Path)
+                and clean_launch_path.is_file()
+            ):
+                clean_launch_receipt = _secure_runtime_json(
+                    clean_launch_path, max_bytes=STATUS_RECEIPT_MAX_BYTES
+                )
+                clean_launch_transition = (
+                    _validate_repair_clean_launch_transition(
+                        clean_launch_receipt,
+                        bootstrap=bootstrap,
+                        previous_receipt=followup_receipt,
+                        rerun_validations=True,
+                    )
+                )
+                if (
+                    clean_launch_transition["base_head"]
+                    != followup_transition["repair_head"]
+                ):
+                    raise OperatorError(
+                        "clean-launch repair does not extend revision 2"
+                    )
+                active_transition = clean_launch_transition
             current_proof = _admit_canonical_merge_suffix(
                 board,
-                base_head=str(followup_transition["repair_head"]),
+                base_head=str(active_transition["repair_head"]),
                 target_head=str(population["source_head"]),
                 bootstrap=bootstrap,
                 integrity=integrity,
                 task_outputs=outputs,
                 completed_requests=requests,
             )
-            repair_transition = followup_transition
+            repair_transition = active_transition
             repair_transition_chain.append(followup_transition)
+            if clean_launch_transition is not None:
+                repair_transition_chain.append(clean_launch_transition)
             continuity = {
                 "bootstrap_to_repair_base": base_proof,
                 "initial_repair_to_followup_base": followup_base,
                 "repair_to_current": current_proof,
             }
+            if clean_launch_transition is not None:
+                continuity["followup_to_clean_launch"] = (
+                    clean_launch_transition
+                )
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,

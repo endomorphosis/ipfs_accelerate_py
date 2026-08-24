@@ -259,6 +259,9 @@ def test_quack_mutation_timeout_is_unknown_outcome_without_internal_replay(
 
     registry = tmp_path / "runtime-registry"
     inbox = registry / "mutations"
+    lane = tmp_path / "lane"
+    lane.mkdir()
+    monkeypatch.chdir(lane)
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_AUTHORITY_MODE", "quack")
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_RUNTIME_REGISTRY_PATH",
@@ -270,7 +273,7 @@ def test_quack_mutation_timeout_is_unknown_outcome_without_internal_replay(
     )
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_STATE_STORE_ID",
-        "store:timeout-unknown",
+        "store:timeout-unknown.duckdb",
     )
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_STATE_STORE_GENERATION", "7")
     monkeypatch.setenv(
@@ -299,6 +302,27 @@ def test_quack_mutation_timeout_is_unknown_outcome_without_internal_replay(
     # resolve. The worker does not create a second request on timeout.
     assert len(list(inbox.glob("*.request.json"))) == 1
     assert not list(inbox.glob("*.done.json"))
+    assert quack_token_vault_path() is None
+    assert not (lane / "quack-owner").exists()
+
+
+def test_quack_token_vault_path_anchors_relative_database_to_admitted_root(
+    tmp_path, monkeypatch
+) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    monkeypatch.setenv("IPFS_ACCELERATE_LIFECYCLE_REPOSITORY_ROOT", str(root))
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_STATE_STORE_ID", "state/control.duckdb"
+    )
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_QUACK_TOKEN_FILE", raising=False)
+
+    assert quack_token_vault_path() == (
+        root
+        / "state"
+        / "quack-owner"
+        / "env___IPFS_ACCELERATE_AGENT_QUACK_TOKEN.quack-token"
+    )
 
 
 def test_database_daemon_defaults_to_quack_and_refuses_file_open(tmp_path) -> None:
