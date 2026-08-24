@@ -1382,6 +1382,26 @@ def bind_database_portal_execution_from_args(
             "database Portal bridge does not expose protected-preservation "
             "recovery"
         )
+    protected_self_lock_binder = getattr(
+        daemon,
+        "bind_protected_reconciliation_self_lock_recovery",
+        None,
+    )
+    if not callable(protected_self_lock_binder):
+        raise RuntimeError(
+            "production database daemon does not expose protected "
+            "reconciliation self-lock recovery binding"
+        )
+    protected_self_lock_recovery = getattr(
+        bridge,
+        "recover_protected_reconciliation_self_lock",
+        None,
+    )
+    if not callable(protected_self_lock_recovery):
+        raise RuntimeError(
+            "database Portal bridge does not expose protected reconciliation "
+            "self-lock recovery"
+        )
     binder(
         provider_fn=bridge.run_provider,
         effect_fn=bridge.apply_effect,
@@ -1389,6 +1409,7 @@ def bind_database_portal_execution_from_args(
     )
     consumed_recovery_binder(bridge.recover_consumed_attempt_retry)
     protected_recovery_binder(protected_recovery)
+    protected_self_lock_binder(protected_self_lock_recovery)
     if recovery_queue is not None:
         recovery_binder = getattr(daemon, "bind_post_merge_recovery", None)
         if not callable(recovery_binder):

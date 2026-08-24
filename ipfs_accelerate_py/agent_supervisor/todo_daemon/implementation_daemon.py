@@ -70668,6 +70668,10 @@ DATABASE_SUPERSEDED_CONSUMED_ATTEMPT_CONTEXT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-superseded-consumed-attempt-context@1"
 )
+DATABASE_PROTECTED_RECONCILIATION_SELF_LOCK_CONTEXT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-protected-reconciliation-self-lock-context@1"
+)
 DATABASE_PORTAL_CROSS_BOARD_COMPLETION_REASONS = frozenset(
     {
         "cross_board_manual_completion_authority_metadata_invalid",
@@ -70715,6 +70719,10 @@ _DATABASE_CONTROL_ATTEMPT_OPERATIONS_BY_STATUS = {
             "database_portal_capacity_retry",
             "database_portal_protected_preservation_retry",
             "database_portal_protected_preservation_retry_recovery",
+            (
+                "database_portal_protected_preservation_"
+                "reconciliation_retry_recovery"
+            ),
             "database_portal_superseded_consumed_attempt_recovery",
             "database_portal_post_merge_declared_output_recovery",
             "database_post_merge_declared_outputs_repair_recovery",
@@ -70928,6 +70936,10 @@ class DatabaseImplementationDaemon:
             ["DatabaseTaskAttempt"], Mapping[str, Any]
         ]
         | None = None,
+        protected_reconciliation_self_lock_recovery_fn: Callable[
+            ["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]
+        ]
+        | None = None,
         require_real_execution: bool = False,
         clock_ms: Callable[[], int] | None = None,
         task_source: Any = None,
@@ -71066,6 +71078,9 @@ class DatabaseImplementationDaemon:
         )
         self._protected_preservation_recovery_fn = (
             protected_preservation_recovery_fn
+        )
+        self._protected_reconciliation_self_lock_recovery_fn = (
+            protected_reconciliation_self_lock_recovery_fn
         )
         self._merge_queue: Any = None
         self._merge_repo_root: Path | None = None
@@ -71433,6 +71448,28 @@ class DatabaseImplementationDaemon:
                     "protected preservation recovery callback is already bound"
                 )
             self._protected_preservation_recovery_fn = callback
+
+    def bind_protected_reconciliation_self_lock_recovery(
+        self,
+        callback: Callable[
+            ["DatabaseTaskAttempt", Mapping[str, Any]], Mapping[str, Any]
+        ],
+    ) -> None:
+        """Bind read-only proof for one historical nested-lock terminal."""
+
+        self._require_execution_authority(
+            "protected reconciliation self-lock recovery"
+        )
+        if not callable(callback):
+            raise TypeError(
+                "protected reconciliation self-lock recovery callback must be callable"
+            )
+        with self._lock:
+            if self._protected_reconciliation_self_lock_recovery_fn is not None:
+                raise DatabaseImplementationAuthorityError(
+                    "protected reconciliation self-lock recovery callback is already bound"
+                )
+            self._protected_reconciliation_self_lock_recovery_fn = callback
 
     def bind_merge_train_recovery(
         self,
@@ -74041,29 +74078,52 @@ class DatabaseImplementationDaemon:
                             "database_portal_protected_preservation_"
                             "retry_recovery"
                         ),
+                        (
+                            "database_portal_protected_preservation_"
+                            "reconciliation_retry_recovery"
+                        ),
                     }
                     or not isinstance(protected_seed, Mapping)
                 ):
                     raise DatabaseImplementationAuthorityError(
                         "database claim found malformed protected-preservation seed"
                     )
-                source_attempt = self._retry_source_attempt_from_shared_seed(
-                    task_cid=task_cid,
-                    task_alias=str(getattr(task, "task_alias", "") or ""),
-                    seed=protected_seed,
-                    control_receipt=prior_status_receipt,
-                )
-                verified_protected_seed = (
-                    self._verified_protected_preservation_receipt(
-                        source_attempt,
-                        protected_seed,
+                failed_reconciliation_attempt: DatabaseTaskAttempt | None = None
+                if prior_status_receipt.get("operation") == (
+                    "database_portal_protected_preservation_"
+                    "reconciliation_retry_recovery"
+                ):
+                    recovery_state = (
+                        self._verified_protected_reconciliation_retry_control_state(
+                            task,
+                            expected_retry_evidence=protected_seed,
+                        )
                     )
-                )
-                self._verified_protected_preservation_control_state(
-                    source_attempt,
-                    task,
-                    expected_retry_evidence=verified_protected_seed,
-                )
+                    source_attempt = recovery_state["source_attempt"]
+                    failed_reconciliation_attempt = recovery_state[
+                        "failed_target_attempt"
+                    ]
+                    verified_protected_seed = recovery_state[
+                        "protected_preservation_evidence"
+                    ]
+                else:
+                    source_attempt = self._retry_source_attempt_from_shared_seed(
+                        task_cid=task_cid,
+                        task_alias=str(getattr(task, "task_alias", "") or ""),
+                        seed=protected_seed,
+                        control_receipt=prior_status_receipt,
+                    )
+                    verified_protected_seed = (
+                        self._verified_protected_preservation_receipt(
+                            source_attempt,
+                            protected_seed,
+                        )
+                    )
+                    self._verified_protected_preservation_control_state(
+                        source_attempt,
+                        task,
+                        expected_retry_evidence=verified_protected_seed,
+                    )
                 coordination_attempt = self.coordinator.get_task_attempt(
                     str(receipt_payload.get("attempt_id") or "")
                 )
@@ -74101,6 +74161,19 @@ class DatabaseImplementationDaemon:
                     == source_attempt.claim_id
                     or str(target_claim_identity.get("lease_id") or "")
                     == source_attempt.lease_id
+                    or (
+                        failed_reconciliation_attempt is not None
+                        and (
+                            target_identity.get("attempt_id")
+                            == failed_reconciliation_attempt.attempt_id
+                            or target_claim_identity.get("claim_id")
+                            == failed_reconciliation_attempt.claim_id
+                            or str(
+                                target_claim_identity.get("lease_id") or ""
+                            )
+                            == failed_reconciliation_attempt.lease_id
+                        )
+                    )
                 ):
                     raise DatabaseImplementationConflictError(
                         "database claim protected-preservation target is not exact"
@@ -74819,6 +74892,163 @@ class DatabaseImplementationDaemon:
         ):
             raise DatabaseImplementationAuthorityError(
                 "protected preservation evidence failed independent verification"
+            )
+        return dict(raw)
+
+    def _verified_protected_reconciliation_self_lock_receipt(
+        self,
+        target_attempt: DatabaseTaskAttempt,
+        preservation_seed: Mapping[str, Any],
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Verify Portal's closed proof of the historical nested-lock defect."""
+
+        from .database_portal_bridge import (
+            DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA,
+        )
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation self-lock evidence is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "disposition",
+            "reason",
+            "task_cid",
+            "task_alias",
+            "target_attempt_id",
+            "target_claim_id",
+            "target_lease_id",
+            "target_attempt_number",
+            "target_fencing_token",
+            "target_fence_epoch",
+            "source_preservation_receipt_id",
+            "source_attempt_id",
+            "baseline_commit",
+            "preserved_commit",
+            "rescue_branch",
+            "target_binding_id",
+            "events_digest",
+            "event_stream_id",
+            "recovery_key",
+            "recovery_branch",
+            "validation_started_event_id",
+            "verification_lock_timeout_event_id",
+            "validation_finished_event_id",
+            "cleanup_finished_event_id",
+            "lock_path",
+            "lock_owner_pid",
+            "lock_waited_seconds",
+            "provider_dispatched",
+            "attempt_consumed",
+            "validation_commands_passed",
+            "verification_deferred",
+            "merge_attempted",
+            "receipt_id",
+        }
+        body = dict(raw)
+        receipt_id = body.pop("receipt_id", None)
+        binding_id = str(raw.get("target_binding_id") or "")
+        recovery_identity = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-protected-preservation-recovery@1"
+            ),
+            "source_receipt_id": str(preservation_seed.get("receipt_id") or ""),
+            "source_attempt_id": str(preservation_seed.get("attempt_id") or ""),
+            "source_claim_id": str(preservation_seed.get("claim_id") or ""),
+            "task_cid": target_attempt.task_cid,
+            "task_alias": target_attempt.task_alias,
+            "baseline_commit": str(
+                preservation_seed.get("baseline_commit") or ""
+            ),
+            "preserved_commit": str(
+                preservation_seed.get("preserved_commit") or ""
+            ),
+            "rescue_branch": str(preservation_seed.get("rescue_branch") or ""),
+            "target_attempt_id": target_attempt.attempt_id,
+            "target_claim_id": target_attempt.claim_id,
+            "target_attempt_number": int(target_attempt.attempt_number),
+            "target_fencing_token": int(target_attempt.fencing_token),
+            "target_fence_epoch": int(target_attempt.fence_epoch),
+            "target_lease_id": target_attempt.lease_id,
+            "target_binding_id": binding_id,
+        }
+        expected_recovery_key = self._database_portal_evidence_digest(
+            recovery_identity
+        )
+        safe_alias = re.sub(
+            r"[^a-z0-9._-]+",
+            "-",
+            target_attempt.task_alias.lower(),
+        ).strip("-") or "protected-task"
+        expected_branch = (
+            f"implementation/{safe_alias}-protected-"
+            f"{expected_recovery_key.removeprefix('sha256:')[:20]}"
+        )
+        lock_wait = raw.get("lock_waited_seconds")
+        owner_pid = raw.get("lock_owner_pid")
+        digest_fields = (
+            "target_binding_id",
+            "events_digest",
+            "recovery_key",
+            "validation_started_event_id",
+            "verification_lock_timeout_event_id",
+            "validation_finished_event_id",
+            "cleanup_finished_event_id",
+        )
+        if (
+            set(raw) != expected_fields
+            or raw.get("schema")
+            != DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA
+            or raw.get("disposition") != "retry_exact_preserved_candidate"
+            or raw.get("reason")
+            != "protected_preservation_reconciliation_self_lock"
+            or raw.get("task_cid") != target_attempt.task_cid
+            or raw.get("task_alias") != target_attempt.task_alias
+            or raw.get("target_attempt_id") != target_attempt.attempt_id
+            or raw.get("target_claim_id") != target_attempt.claim_id
+            or raw.get("target_lease_id") != target_attempt.lease_id
+            or raw.get("target_attempt_number")
+            != int(target_attempt.attempt_number)
+            or raw.get("target_fencing_token")
+            != int(target_attempt.fencing_token)
+            or raw.get("target_fence_epoch") != int(target_attempt.fence_epoch)
+            or raw.get("source_preservation_receipt_id")
+            != preservation_seed.get("receipt_id")
+            or raw.get("source_attempt_id")
+            != preservation_seed.get("attempt_id")
+            or raw.get("baseline_commit")
+            != preservation_seed.get("baseline_commit")
+            or raw.get("preserved_commit")
+            != preservation_seed.get("preserved_commit")
+            or raw.get("rescue_branch")
+            != preservation_seed.get("rescue_branch")
+            or raw.get("recovery_key") != expected_recovery_key
+            or raw.get("recovery_branch") != expected_branch
+            or any(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", str(raw.get(field) or ""))
+                is None
+                for field in digest_fields
+            )
+            or not str(raw.get("event_stream_id") or "")
+            or not str(raw.get("lock_path") or "")
+            or isinstance(owner_pid, bool)
+            or not isinstance(owner_pid, int)
+            or owner_pid <= 0
+            or isinstance(lock_wait, bool)
+            or not isinstance(lock_wait, int)
+            or lock_wait <= 0
+            or raw.get("provider_dispatched") is not False
+            or raw.get("attempt_consumed") is not False
+            or raw.get("validation_commands_passed") is not True
+            or raw.get("verification_deferred") is not True
+            or raw.get("merge_attempted") is not False
+            or receipt_id != self._database_portal_evidence_digest(body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation self-lock evidence failed independent verification"
             )
         return dict(raw)
 
@@ -75682,6 +75912,948 @@ class DatabaseImplementationDaemon:
             "retry_not_before_ms": retry_not_before_ms,
         }
 
+    def _verified_protected_reconciliation_self_lock_failed_phase(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> dict[str, Any]:
+        """Classify only the zero-provider successor terminalized as not-attempted."""
+
+        phases = self.phase_history(attempt.attempt_id)
+        failed = [phase for phase in phases if phase.get("phase") == ATTEMPT_PHASE_FAILED]
+        body = failed[-1].get("body") if failed else None
+        expected = {
+            "reason": "not_attempted",
+            "portal_retryable_failure": False,
+            "portal_terminal_failure": True,
+            "deferred": False,
+            "attempt_consumed": "unknown",
+            "provider_dispatched": "unknown",
+            "typed_deferral_slot_consumed": "unknown",
+            "backoff_seconds": 0,
+        }
+        forbidden = {
+            ATTEMPT_PHASE_PROVIDER,
+            ATTEMPT_PHASE_EFFECT,
+            ATTEMPT_PHASE_VALIDATION,
+            ATTEMPT_PHASE_COMPLETE,
+        }
+        connection = self._require_connection()
+        provider_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM provider_invocations WHERE attempt_id = ?",
+                [attempt.attempt_id],
+            ).fetchone()[0]
+        )
+        effect_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM effect_claims WHERE attempt_id = ?",
+                [attempt.attempt_id],
+            ).fetchone()[0]
+        )
+        if (
+            len(failed) != 1
+            or not isinstance(body, Mapping)
+            or dict(body) != expected
+            or any(phase.get("phase") in forbidden for phase in phases)
+            or provider_count != 0
+            or effect_count != 0
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation self-lock recovery requires the exact "
+                "zero-provider not-attempted failed phase"
+            )
+        return dict(body)
+
+    @staticmethod
+    def _verified_protected_reconciliation_source_retry_coordination(
+        attempt: DatabaseTaskAttempt,
+        raw: Any,
+    ) -> dict[str, Any]:
+        """Verify the exact expired-fence proof carried by the source retry."""
+
+        expected_fields = {
+            "claim_id",
+            "attempt_id",
+            "attempt_number",
+            "lease_state",
+            "claim_state",
+            "claim_revision",
+            "coordination_attempt_status",
+            "coordination_attempt_revision",
+            "expires_at_ms",
+            "observed_at_ms",
+            "expired_now",
+            "historical_expired",
+            "superseded_by_newer_fence",
+            "successor",
+        }
+        integer_fields = {
+            "claim_revision",
+            "coordination_attempt_revision",
+            "expires_at_ms",
+            "observed_at_ms",
+        }
+        if (
+            not isinstance(raw, Mapping)
+            or set(raw) != expected_fields
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or raw.get("lease_state") != "expired"
+            or raw.get("claim_state") != "expired"
+            or raw.get("coordination_attempt_status") != "expired"
+            or any(
+                isinstance(raw.get(field), bool)
+                or not isinstance(raw.get(field), int)
+                or int(raw[field]) < (1 if "revision" in field else 0)
+                for field in integer_fields
+            )
+            or int(raw.get("observed_at_ms") or 0)
+            < int(raw.get("expires_at_ms") or 0)
+            or raw.get("expired_now") is not False
+            or raw.get("historical_expired") is not True
+            or raw.get("superseded_by_newer_fence") is not False
+            or raw.get("successor") != {}
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation source retry has no exact latest "
+                "historical expired-fence proof"
+            )
+        return dict(raw)
+
+    def _verified_protected_reconciliation_self_lock_context(
+        self,
+        raw: Any,
+        *,
+        expected_target: DatabaseTaskAttempt | None = None,
+    ) -> dict[str, Any]:
+        """Verify the five immutable control revisions surrounding the defect."""
+
+        if not isinstance(raw, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation self-lock context is malformed"
+            )
+        expected_fields = {
+            "schema",
+            "task_cid",
+            "task_alias",
+            "history_prefix_cid",
+            "semantic_body_cid",
+            "source_claim_task_revision",
+            "source_blocked_task_revision",
+            "source_retry_task_revision",
+            "target_claim_task_revision",
+            "target_blocked_task_revision",
+            "source_claim_control_receipt",
+            "source_blocked_control_receipt",
+            "source_retry_control_receipt",
+            "target_claim_control_receipt",
+            "target_blocked_control_receipt",
+            "portal_self_lock_evidence",
+            "context_id",
+        }
+        context_body = dict(raw)
+        context_id = context_body.pop("context_id", None)
+        revisions_by_name = {
+            name: raw.get(name)
+            for name in (
+                "source_claim_task_revision",
+                "source_blocked_task_revision",
+                "source_retry_task_revision",
+                "target_claim_task_revision",
+                "target_blocked_task_revision",
+            )
+        }
+        if (
+            set(raw) != expected_fields
+            or raw.get("schema")
+            != DATABASE_PROTECTED_RECONCILIATION_SELF_LOCK_CONTEXT_SCHEMA
+            or not str(raw.get("task_cid") or "")
+            or not str(raw.get("task_alias") or "")
+            or any(
+                isinstance(value, bool) or not isinstance(value, int) or value < 1
+                for value in revisions_by_name.values()
+            )
+            or list(revisions_by_name.values())
+            != list(
+                range(
+                    int(revisions_by_name["source_claim_task_revision"]),
+                    int(revisions_by_name["source_claim_task_revision"]) + 5,
+                )
+            )
+            or context_id != content_identity(context_body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation self-lock context failed bounds"
+            )
+        task_cid = str(raw["task_cid"])
+        task_alias = str(raw["task_alias"])
+        history_projection = getattr(
+            self.task_source,
+            "task_revision_history_projection",
+            None,
+        )
+        if not callable(history_projection):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot prove protected reconciliation history"
+            )
+        history = history_projection(task_cid)
+        revisions = history.get("revisions") if isinstance(history, Mapping) else None
+        projection_body = dict(history) if isinstance(history, Mapping) else {}
+        projection_cid = projection_body.pop("projection_cid", None)
+        if (
+            not isinstance(history, Mapping)
+            or set(history) != {"schema", "task_cid", "revisions", "projection_cid"}
+            or history.get("schema") != TASK_REVISION_HISTORY_PROJECTION_SCHEMA
+            or history.get("task_cid") != task_cid
+            or not isinstance(revisions, list)
+            or projection_cid != content_identity(projection_body)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation history projection failed identity verification"
+            )
+        matches: list[tuple[int, Mapping[str, Any]]] = []
+        for revision in revisions_by_name.values():
+            selected = [
+                (index, entry)
+                for index, entry in enumerate(revisions)
+                if isinstance(entry, Mapping) and entry.get("revision") == revision
+            ]
+            if len(selected) != 1:
+                raise DatabaseImplementationConflictError(
+                    "protected reconciliation history is absent or ambiguous"
+                )
+            matches.append(selected[0])
+        indices = [index for index, _entry in matches]
+        entries = [entry for _index, entry in matches]
+        if indices != list(range(indices[0], indices[0] + 5)):
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation history revisions are not adjacent"
+            )
+        source_claim_entry, source_blocked_entry, source_retry_entry, target_claim_entry, target_blocked_entry = entries
+        if [entry.get("status") for entry in entries] != [
+            "in_progress",
+            "blocked",
+            "retrying",
+            "in_progress",
+            "blocked",
+        ]:
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation history statuses do not reproduce"
+            )
+        bodies = [entry.get("body") for entry in entries]
+        if any(not isinstance(body, Mapping) for body in bodies):
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation history contains a malformed body"
+            )
+        semantic_bodies: list[dict[str, Any]] = []
+        receipts: list[Mapping[str, Any]] = []
+        for body in bodies:
+            semantic = dict(body)
+            receipt = semantic.pop("completion_receipt", None)
+            if not isinstance(receipt, Mapping):
+                raise DatabaseImplementationAuthorityError(
+                    "protected reconciliation history has no exact control receipt"
+                )
+            semantic_bodies.append(semantic)
+            receipts.append(receipt)
+        if any(semantic != semantic_bodies[0] for semantic in semantic_bodies[1:]):
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation history changed task semantics"
+            )
+        (
+            source_claim_receipt,
+            source_blocked_receipt,
+            source_retry_receipt,
+            target_claim_receipt,
+            target_blocked_receipt,
+        ) = receipts
+        named_receipts = (
+            ("source_claim_control_receipt", source_claim_receipt),
+            ("source_blocked_control_receipt", source_blocked_receipt),
+            ("source_retry_control_receipt", source_retry_receipt),
+            ("target_claim_control_receipt", target_claim_receipt),
+            ("target_blocked_control_receipt", target_blocked_receipt),
+        )
+        if any(dict(raw[name]) != dict(receipt) for name, receipt in named_receipts):
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation context receipts do not reproduce"
+            )
+        prefix = {
+            "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+            "task_cid": task_cid,
+            "revisions": [
+                dict(item) for item in revisions[: indices[-1] + 1]
+            ],
+        }
+        if (
+            raw.get("history_prefix_cid") != content_identity(prefix)
+            or raw.get("semantic_body_cid")
+            != content_identity({"task_cid": task_cid, "body": semantic_bodies[0]})
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation context history digest changed"
+            )
+        special_operation = (
+            "database_portal_protected_preservation_"
+            "reconciliation_retry_recovery"
+        )
+        for entry in revisions[: indices[-1] + 1]:
+            entry_body = entry.get("body") if isinstance(entry, Mapping) else None
+            entry_receipt = (
+                entry_body.get("completion_receipt")
+                if isinstance(entry_body, Mapping)
+                else None
+            )
+            if (
+                isinstance(entry_receipt, Mapping)
+                and entry_receipt.get("operation") == special_operation
+            ):
+                raise DatabaseImplementationConflictError(
+                    "protected reconciliation self-lock recovery is one-shot"
+                )
+
+        seed = source_retry_receipt.get("protected_preservation_seed")
+        if not isinstance(seed, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation history lost its preservation seed"
+            )
+        source_attempt = self._retry_source_attempt_from_shared_seed(
+            task_cid=task_cid,
+            task_alias=task_alias,
+            seed=seed,
+            control_receipt=source_retry_receipt,
+        )
+        verified_seed = self._verified_protected_preservation_receipt(
+            source_attempt,
+            seed,
+        )
+        source_identity = self._control_attempt_identity(source_attempt)
+        claim_identity_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+        }
+        source_claim_expected_fields = {
+            *claim_identity_fields,
+            "attempt_number",
+            "consumed_attempt_retry_source_attempt_id",
+            "consumed_attempt_retry_seed",
+        }
+        target_claim_expected_fields = {
+            *claim_identity_fields,
+            "attempt_number",
+            "protected_preservation_source_attempt_id",
+            "protected_preservation_seed",
+        }
+        terminal_expected_fields = {
+            "operation",
+            "attempt_id",
+            "attempt_number",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "retryable",
+            "coordination",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        source_retry_expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "protected_preservation_seed",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        consumed_seed = source_claim_receipt.get("consumed_attempt_retry_seed")
+        if not isinstance(consumed_seed, Mapping):
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation source claim lost its consumed-attempt seed"
+            )
+        consumed_identity_values = {
+            "attempt_id": consumed_seed.get("attempt_id"),
+            "claim_id": consumed_seed.get("claim_id"),
+            "lease_id": consumed_seed.get("lease_id"),
+            "attempt_number": consumed_seed.get("attempt_number"),
+            "fencing_token": consumed_seed.get("fencing_token"),
+            "fence_epoch": consumed_seed.get("fence_epoch"),
+        }
+        if (
+            any(
+                not isinstance(consumed_identity_values[name], str)
+                or not consumed_identity_values[name]
+                for name in ("attempt_id", "claim_id", "lease_id")
+            )
+            or any(
+                isinstance(consumed_identity_values[name], bool)
+                or not isinstance(consumed_identity_values[name], int)
+                or int(consumed_identity_values[name]) < 1
+                for name in ("attempt_number", "fencing_token", "fence_epoch")
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation consumed-attempt source identity is malformed"
+            )
+        consumed_source = DatabaseTaskAttempt(
+            attempt_id=str(consumed_identity_values["attempt_id"]),
+            claim_id=str(consumed_identity_values["claim_id"]),
+            task_cid=task_cid,
+            task_alias=task_alias,
+            attempt_number=int(consumed_identity_values["attempt_number"]),
+            owner_session_id="historical-cross-lane-source",
+            fencing_token=int(consumed_identity_values["fencing_token"]),
+            fence_epoch=int(consumed_identity_values["fence_epoch"]),
+            lease_id=str(consumed_identity_values["lease_id"]),
+            committed_phase=ATTEMPT_PHASE_FAILED,
+            status="failed",
+            started_at_ms=0,
+            finished_at_ms=None,
+            revision=1,
+            body={},
+        )
+        verified_consumed_seed = self._verified_consumed_attempt_retry_receipt(
+            consumed_source,
+            consumed_seed,
+        )
+        source_coordination = source_retry_receipt.get("coordination")
+        source_blocked_coordination = source_blocked_receipt.get(
+            "coordination"
+        )
+        source_retry_not_before_ms = source_retry_receipt.get(
+            "retry_not_before_ms"
+        )
+        self._verified_protected_reconciliation_source_retry_coordination(
+            source_attempt,
+            source_coordination,
+        )
+        source_queue_reason = (
+            f"database_portal_retry:{source_attempt.attempt_id}:"
+            "implementation_protected_path_mutated"
+        )[:2048]
+        if (
+            set(source_claim_receipt) != source_claim_expected_fields
+            or source_claim_receipt.get("operation") != "database_claim"
+            or any(
+                source_claim_receipt.get(field) != expected
+                for field, expected in source_identity.items()
+            )
+            or source_claim_receipt.get("attempt_number")
+            != int(source_attempt.attempt_number)
+            or source_claim_receipt.get(
+                "consumed_attempt_retry_source_attempt_id"
+            )
+            != consumed_source.attempt_id
+            or source_claim_receipt.get("consumed_attempt_retry_seed")
+            != verified_consumed_seed
+            or consumed_source.attempt_id == source_attempt.attempt_id
+            or consumed_source.claim_id == source_attempt.claim_id
+            or consumed_source.lease_id == source_attempt.lease_id
+            or set(source_blocked_receipt) != terminal_expected_fields
+            or source_blocked_receipt.get("operation")
+            != "database_portal_terminal_failure"
+            or any(
+                source_blocked_receipt.get(field) != expected
+                for field, expected in source_identity.items()
+            )
+            or source_blocked_receipt.get("attempt_number")
+            != int(source_attempt.attempt_number)
+            or source_blocked_receipt.get("execution_phase")
+            != ATTEMPT_PHASE_FAILED
+            or source_blocked_receipt.get("execution_revision")
+            != int(source_attempt.revision)
+            or source_blocked_receipt.get("execution_finished_at_ms")
+            != source_attempt.finished_at_ms
+            or str(source_blocked_receipt.get("reason") or "").casefold()
+            != _DATABASE_PORTAL_PROTECTED_PRESERVATION_LEGACY_REASON.casefold()
+            or source_blocked_receipt.get("retryable") is not False
+            or source_blocked_coordination != {}
+            or source_blocked_receipt.get("control_expected_status")
+            != "in_progress"
+            or source_blocked_receipt.get("control_expected_revision")
+            != revisions_by_name["source_claim_task_revision"]
+            or set(source_retry_receipt) != source_retry_expected_fields
+            or source_retry_receipt.get("operation")
+            != "database_portal_protected_preservation_retry_recovery"
+            or any(
+                source_retry_receipt.get(field) != expected
+                for field, expected in source_identity.items()
+            )
+            or source_retry_receipt.get("attempt_number")
+            != int(source_attempt.attempt_number)
+            or source_retry_receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or source_retry_receipt.get("execution_revision")
+            != int(source_attempt.revision)
+            or source_retry_receipt.get("execution_finished_at_ms")
+            != source_attempt.finished_at_ms
+            or source_retry_receipt.get("reason")
+            != "implementation_protected_path_mutated"
+            or source_retry_receipt.get("backoff_seconds") != 0
+            or source_retry_receipt.get("backoff_ms") != 0
+            or isinstance(source_retry_not_before_ms, bool)
+            or not isinstance(source_retry_not_before_ms, int)
+            or source_retry_not_before_ms < 0
+            or source_retry_receipt.get("evidence_source")
+            != "typed_portal_protected_preservation_recovery:"
+            + str(verified_seed["receipt_id"])
+            or source_retry_receipt.get("queue_reason")
+            != source_queue_reason
+            or not isinstance(source_retry_receipt.get("queue_reused"), bool)
+            or not isinstance(source_retry_receipt.get("queue_receipt"), Mapping)
+            or source_retry_receipt.get("control_expected_status") != "blocked"
+            or source_retry_receipt.get("control_expected_revision")
+            != revisions_by_name["source_blocked_task_revision"]
+            or verified_seed.get("source_task_revision")
+            != revisions_by_name["source_claim_task_revision"]
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation source history does not reproduce"
+            )
+
+        target_identity_fields = {
+            "attempt_id": str(target_claim_receipt.get("attempt_id") or ""),
+            "claim_id": str(target_claim_receipt.get("claim_id") or ""),
+            "lease_id": str(target_claim_receipt.get("lease_id") or ""),
+            "owner_session_id": str(
+                target_claim_receipt.get("owner_session_id") or ""
+            ),
+            "fencing_token": target_claim_receipt.get("fencing_token"),
+            "fence_epoch": target_claim_receipt.get("fence_epoch"),
+            "attempt_number": target_claim_receipt.get("attempt_number"),
+        }
+        if (
+            any(
+                not value
+                for name, value in target_identity_fields.items()
+                if name in {
+                    "attempt_id",
+                    "claim_id",
+                    "lease_id",
+                    "owner_session_id",
+                }
+            )
+            or any(
+                isinstance(target_identity_fields[name], bool)
+                or not isinstance(target_identity_fields[name], int)
+                or int(target_identity_fields[name]) < 1
+                for name in ("fencing_token", "fence_epoch", "attempt_number")
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation target identity is malformed"
+            )
+        target_blocked_coordination = target_blocked_receipt.get(
+            "coordination"
+        )
+        target_attempt = DatabaseTaskAttempt(
+            attempt_id=str(target_identity_fields["attempt_id"]),
+            claim_id=str(target_identity_fields["claim_id"]),
+            task_cid=task_cid,
+            task_alias=task_alias,
+            attempt_number=int(target_identity_fields["attempt_number"]),
+            owner_session_id=str(target_identity_fields["owner_session_id"]),
+            fencing_token=int(target_identity_fields["fencing_token"]),
+            fence_epoch=int(target_identity_fields["fence_epoch"]),
+            lease_id=str(target_identity_fields["lease_id"]),
+            committed_phase=ATTEMPT_PHASE_FAILED,
+            status="failed",
+            started_at_ms=0,
+            finished_at_ms=target_blocked_receipt.get(
+                "execution_finished_at_ms"
+            ),
+            revision=int(target_blocked_receipt.get("execution_revision") or 0),
+            body={},
+        )
+        target_identity = self._control_attempt_identity(target_attempt)
+        if (
+            set(target_claim_receipt) != target_claim_expected_fields
+            or target_claim_receipt.get("operation") != "database_claim"
+            or any(
+                target_claim_receipt.get(field) != expected
+                for field, expected in target_identity.items()
+            )
+            or target_claim_receipt.get("attempt_number")
+            != int(target_attempt.attempt_number)
+            or target_claim_receipt.get("protected_preservation_source_attempt_id")
+            != source_attempt.attempt_id
+            or target_claim_receipt.get("protected_preservation_seed")
+            != verified_seed
+            or any(
+                target_claim_receipt.get(field) is not None
+                for field in (
+                    "validation_retry_seed",
+                    "capacity_retry_seed",
+                    "consumed_attempt_retry_seed",
+                )
+            )
+            # Attempt numbers and fence counters are lane-local.  Cross-lane
+            # freshness comes from the adjacent shared task revisions and
+            # exact distinct attempt/claim/lease identities below, not from
+            # comparing lane-local counters.
+            or target_attempt.attempt_id == source_attempt.attempt_id
+            or target_attempt.claim_id == source_attempt.claim_id
+            or target_attempt.lease_id == source_attempt.lease_id
+            or set(target_blocked_receipt) != terminal_expected_fields
+            or target_blocked_receipt.get("operation")
+            != "database_portal_terminal_failure"
+            or any(
+                target_blocked_receipt.get(field) != expected
+                for field, expected in target_identity.items()
+            )
+            or target_blocked_receipt.get("execution_phase")
+            != ATTEMPT_PHASE_FAILED
+            or target_blocked_receipt.get("attempt_number")
+            != int(target_attempt.attempt_number)
+            or target_blocked_receipt.get("execution_revision")
+            != int(target_attempt.revision)
+            or target_blocked_receipt.get("execution_finished_at_ms")
+            != target_attempt.finished_at_ms
+            or target_blocked_receipt.get("reason") != "not_attempted"
+            or target_blocked_receipt.get("retryable") is not False
+            or target_blocked_coordination != {}
+            or target_blocked_receipt.get("control_expected_status")
+            != "in_progress"
+            or target_blocked_receipt.get("control_expected_revision")
+            != revisions_by_name["target_claim_task_revision"]
+            or (
+                expected_target is not None
+                and (
+                    self._control_attempt_identity(expected_target)
+                    != target_identity
+                    or int(expected_target.attempt_number)
+                    != int(target_attempt.attempt_number)
+                    or int(expected_target.revision) != int(target_attempt.revision)
+                    or expected_target.finished_at_ms
+                    != target_attempt.finished_at_ms
+                )
+            )
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation target history does not reproduce"
+            )
+        self._verified_protected_reconciliation_self_lock_receipt(
+            target_attempt,
+            verified_seed,
+            raw.get("portal_self_lock_evidence"),
+        )
+        return dict(raw)
+
+    def _protected_reconciliation_self_lock_context(
+        self,
+        target_attempt: DatabaseTaskAttempt,
+        task: Any,
+    ) -> dict[str, Any] | None:
+        """Build the one exact five-revision history proof for automatic recovery."""
+
+        if (
+            str(getattr(task, "status", "") or "").strip().lower() != "blocked"
+            or not callable(self._protected_reconciliation_self_lock_recovery_fn)
+        ):
+            return None
+        try:
+            self._verified_protected_reconciliation_self_lock_failed_phase(
+                target_attempt
+            )
+        except DatabaseImplementationAuthorityError:
+            return None
+        latest = {
+            candidate.task_cid: candidate
+            for candidate in self._latest_failed_attempts()
+        }.get(target_attempt.task_cid)
+        if latest is None or latest.attempt_id != target_attempt.attempt_id:
+            return None
+        if (
+            self._automatic_claim_forbidden(task)
+            or self.coordinator.get_prepared_task_completion(target_attempt.task_cid)
+            is not None
+        ):
+            return None
+        history_projection = getattr(
+            self.task_source,
+            "task_revision_history_projection",
+            None,
+        )
+        if not callable(history_projection):
+            return None
+        history = history_projection(target_attempt.task_cid)
+        revisions = history.get("revisions") if isinstance(history, Mapping) else None
+        current_revision = int(getattr(task, "revision", 0) or 0)
+        if not isinstance(revisions, list) or len(revisions) < 5:
+            return None
+        entries = revisions[-5:]
+        if (
+            any(not isinstance(entry, Mapping) for entry in entries)
+            or [entry.get("revision") for entry in entries]
+            != list(range(current_revision - 4, current_revision + 1))
+            or entries[-1].get("body") != getattr(task, "body", None)
+        ):
+            return None
+        receipts = []
+        for entry in entries:
+            body = entry.get("body")
+            receipt = (
+                body.get("completion_receipt")
+                if isinstance(body, Mapping)
+                else None
+            )
+            if not isinstance(receipt, Mapping):
+                return None
+            receipts.append(dict(receipt))
+        source_retry_receipt = receipts[2]
+        seed = source_retry_receipt.get("protected_preservation_seed")
+        if not isinstance(seed, Mapping):
+            return None
+        try:
+            portal_evidence = dict(
+                self._protected_reconciliation_self_lock_recovery_fn(
+                    target_attempt,
+                    seed,
+                )
+            )
+        except Exception as exc:
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation self-lock Portal evidence recovery failed"
+            ) from exc
+        semantic = dict(entries[0].get("body") or {})
+        semantic.pop("completion_receipt", None)
+        prefix = {
+            "schema": TASK_REVISION_HISTORY_PROJECTION_SCHEMA,
+            "task_cid": target_attempt.task_cid,
+            "revisions": [dict(entry) for entry in revisions],
+        }
+        context: dict[str, Any] = {
+            "schema": DATABASE_PROTECTED_RECONCILIATION_SELF_LOCK_CONTEXT_SCHEMA,
+            "task_cid": target_attempt.task_cid,
+            "task_alias": target_attempt.task_alias,
+            "history_prefix_cid": content_identity(prefix),
+            "semantic_body_cid": content_identity(
+                {"task_cid": target_attempt.task_cid, "body": semantic}
+            ),
+            "source_claim_task_revision": current_revision - 4,
+            "source_blocked_task_revision": current_revision - 3,
+            "source_retry_task_revision": current_revision - 2,
+            "target_claim_task_revision": current_revision - 1,
+            "target_blocked_task_revision": current_revision,
+            "source_claim_control_receipt": receipts[0],
+            "source_blocked_control_receipt": receipts[1],
+            "source_retry_control_receipt": receipts[2],
+            "target_claim_control_receipt": receipts[3],
+            "target_blocked_control_receipt": receipts[4],
+            "portal_self_lock_evidence": portal_evidence,
+        }
+        context["context_id"] = content_identity(context)
+        return self._verified_protected_reconciliation_self_lock_context(
+            context,
+            expected_target=target_attempt,
+        )
+
+    def _protected_reconciliation_context_attempts(
+        self,
+        context: Mapping[str, Any],
+    ) -> tuple[DatabaseTaskAttempt, DatabaseTaskAttempt, dict[str, Any]]:
+        """Reconstruct the source and failed successor from verified history."""
+
+        source_receipt = context["source_retry_control_receipt"]
+        seed = dict(source_receipt["protected_preservation_seed"])
+        source = self._retry_source_attempt_from_shared_seed(
+            task_cid=str(context["task_cid"]),
+            task_alias=str(context["task_alias"]),
+            seed=seed,
+            control_receipt=source_receipt,
+        )
+        target_claim = context["target_claim_control_receipt"]
+        target_blocked = context["target_blocked_control_receipt"]
+        target = DatabaseTaskAttempt(
+            attempt_id=str(target_claim["attempt_id"]),
+            claim_id=str(target_claim["claim_id"]),
+            task_cid=str(context["task_cid"]),
+            task_alias=str(context["task_alias"]),
+            attempt_number=int(target_claim["attempt_number"]),
+            owner_session_id=str(target_claim["owner_session_id"]),
+            fencing_token=int(target_claim["fencing_token"]),
+            fence_epoch=int(target_claim["fence_epoch"]),
+            lease_id=str(target_claim["lease_id"]),
+            committed_phase=ATTEMPT_PHASE_FAILED,
+            status="failed",
+            started_at_ms=0,
+            finished_at_ms=int(target_blocked["execution_finished_at_ms"]),
+            revision=int(target_blocked["execution_revision"]),
+            body={},
+        )
+        return source, target, seed
+
+    def _verified_protected_reconciliation_retry_control_state(
+        self,
+        task: Any,
+        *,
+        expected_retry_evidence: Mapping[str, Any] | None = None,
+        expected_context: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Verify the one special retry wrapper before a successor claim."""
+
+        if str(getattr(task, "status", "") or "").strip().lower() != "retrying":
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation recovery projection is not retrying"
+            )
+        receipt = self._raw_control_receipt(task)
+        expected_fields = {
+            "operation",
+            "attempt_id",
+            "claim_id",
+            "lease_id",
+            "owner_session_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "execution_phase",
+            "execution_revision",
+            "execution_finished_at_ms",
+            "reason",
+            "backoff_seconds",
+            "backoff_ms",
+            "retry_not_before_ms",
+            "evidence_source",
+            "queue_reason",
+            "queue_reused",
+            "queue_receipt",
+            "coordination",
+            "protected_preservation_seed",
+            "reconciliation_self_lock_context",
+            "control_expected_status",
+            "control_expected_revision",
+        }
+        if not isinstance(receipt, Mapping) or set(receipt) != expected_fields:
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation recovery wrapper is malformed"
+            )
+        context = self._verified_protected_reconciliation_self_lock_context(
+            receipt.get("reconciliation_self_lock_context")
+        )
+        source, target, seed = self._protected_reconciliation_context_attempts(
+            context
+        )
+        verified_seed = self._verified_protected_preservation_receipt(
+            source,
+            seed,
+        )
+        if (
+            receipt.get("protected_preservation_seed") != verified_seed
+            or (
+                expected_retry_evidence is not None
+                and dict(expected_retry_evidence) != verified_seed
+            )
+            or (
+                expected_context is not None
+                and dict(expected_context) != context
+            )
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation recovery wrapper carries foreign evidence"
+            )
+        portal_evidence = context["portal_self_lock_evidence"]
+        queue_reason = (
+            f"database_portal_retry:{target.attempt_id}:"
+            "implementation_protected_path_mutated"
+        )[:2048]
+        retry_not_before_ms = receipt.get("retry_not_before_ms")
+        queue_receipt = receipt.get("queue_receipt")
+        coordination = receipt.get("coordination")
+        task_revision = getattr(task, "revision", None)
+        target_identity = self._control_attempt_identity(target)
+        if (
+            isinstance(task_revision, bool)
+            or not isinstance(task_revision, int)
+            or task_revision != int(context["target_blocked_task_revision"]) + 1
+            or receipt.get("operation")
+            != (
+                "database_portal_protected_preservation_"
+                "reconciliation_retry_recovery"
+            )
+            or any(
+                receipt.get(field) != expected
+                for field, expected in target_identity.items()
+            )
+            or receipt.get("attempt_number") != int(target.attempt_number)
+            or receipt.get("execution_phase") != ATTEMPT_PHASE_FAILED
+            or receipt.get("execution_revision") != int(target.revision)
+            or receipt.get("execution_finished_at_ms") != target.finished_at_ms
+            or receipt.get("reason") != "implementation_protected_path_mutated"
+            or receipt.get("backoff_seconds") != 0
+            or receipt.get("backoff_ms") != 0
+            or isinstance(retry_not_before_ms, bool)
+            or not isinstance(retry_not_before_ms, int)
+            or retry_not_before_ms < 0
+            or receipt.get("evidence_source")
+            != (
+                "typed_portal_protected_preservation_reconciliation_recovery:"
+                + str(portal_evidence["receipt_id"])
+            )
+            or receipt.get("queue_reason") != queue_reason
+            or not isinstance(receipt.get("queue_reused"), bool)
+            or not isinstance(queue_receipt, Mapping)
+            or not isinstance(coordination, Mapping)
+            or coordination.get("attempt_id") != target.attempt_id
+            or coordination.get("claim_id") != target.claim_id
+            or coordination.get("attempt_number") != int(target.attempt_number)
+            or receipt.get("control_expected_status") != "blocked"
+            or receipt.get("control_expected_revision")
+            != int(context["target_blocked_task_revision"])
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation recovery wrapper does not reproduce"
+            )
+        get_queue_entry = getattr(self.task_source, "get_queue_entry", None)
+        if not callable(get_queue_entry):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot verify protected reconciliation recovery queue"
+            )
+        queue_entry = get_queue_entry(target.task_cid)
+        if (
+            queue_entry is None
+            or str(getattr(queue_entry, "reason", "") or "") != queue_reason
+            or int(getattr(queue_entry, "retry_not_before_ms", -1))
+            != retry_not_before_ms
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation recovery queue changed"
+            )
+        return {
+            "receipt": dict(receipt),
+            "protected_preservation_evidence": verified_seed,
+            "reconciliation_self_lock_context": context,
+            "source_attempt": source,
+            "failed_target_attempt": target,
+            "queue_reason": queue_reason,
+            "retry_not_before_ms": retry_not_before_ms,
+        }
+
     def _verified_protected_preservation_control_state(
         self,
         attempt: DatabaseTaskAttempt,
@@ -75701,6 +76873,18 @@ class DatabaseImplementationDaemon:
             if isinstance(task_body, Mapping)
             else None
         )
+        if (
+            isinstance(receipt, Mapping)
+            and receipt.get("operation")
+            == (
+                "database_portal_protected_preservation_"
+                "reconciliation_retry_recovery"
+            )
+        ):
+            return self._verified_protected_reconciliation_retry_control_state(
+                task,
+                expected_retry_evidence=expected_retry_evidence,
+            )
         expected_fields = {
             "operation",
             "attempt_id",
@@ -77407,6 +78591,223 @@ class DatabaseImplementationDaemon:
             )
         return dict(body)
 
+    def _persist_protected_reconciliation_self_lock_recovery(
+        self,
+        target_attempt: DatabaseTaskAttempt,
+        *,
+        history_context: Mapping[str, Any],
+        coordination_evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Atomically rearm the old seed under the failed successor's fence."""
+
+        task = self.task_source.get(target_attempt.task_cid)
+        if task is None:
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation recovery task disappeared"
+            )
+        status = str(task.status or "").strip().lower()
+        context = self._verified_protected_reconciliation_self_lock_context(
+            history_context,
+            expected_target=target_attempt,
+        )
+        source, target, seed = self._protected_reconciliation_context_attempts(
+            context
+        )
+        if status == "retrying":
+            verified = self._verified_protected_reconciliation_retry_control_state(
+                task,
+                expected_retry_evidence=seed,
+                expected_context=context,
+            )
+            return {
+                "task_cid": target.task_cid,
+                "attempt_id": target.attempt_id,
+                "source_attempt_id": verified["source_attempt"].attempt_id,
+                "status": "retrying",
+                "changed": False,
+                "retry_not_before_ms": int(
+                    verified["retry_not_before_ms"]
+                ),
+                "queue_reason": str(verified["queue_reason"]),
+                "control_receipt": dict(verified["receipt"]),
+                "protected_preservation_evidence": dict(
+                    verified["protected_preservation_evidence"]
+                ),
+                "reconciliation_self_lock_context": dict(
+                    verified["reconciliation_self_lock_context"]
+                ),
+            }
+        if (
+            status != "blocked"
+            or int(getattr(task, "revision", 0) or 0)
+            != int(context["target_blocked_task_revision"])
+            or self._raw_control_receipt(task)
+            != context["target_blocked_control_receipt"]
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation recovery lost its blocked CAS"
+            )
+        guarded_queue_status = getattr(
+            self.task_source,
+            "record_queue_backoff_and_cas_status",
+            None,
+        )
+        if not callable(guarded_queue_status):
+            raise DatabaseImplementationAuthorityError(
+                "task source cannot atomically persist protected reconciliation recovery"
+            )
+        queue_reason = (
+            f"database_portal_retry:{target.attempt_id}:"
+            "implementation_protected_path_mutated"
+        )[:2048]
+        portal_evidence = context["portal_self_lock_evidence"]
+        transition_receipt = {
+            "operation": (
+                "database_portal_protected_preservation_"
+                "reconciliation_retry_recovery"
+            ),
+            "attempt_id": target.attempt_id,
+            "claim_id": target.claim_id,
+            "lease_id": target.lease_id,
+            "owner_session_id": target.owner_session_id,
+            "fencing_token": int(target.fencing_token),
+            "fence_epoch": int(target.fence_epoch),
+            "attempt_number": int(target.attempt_number),
+            "execution_phase": ATTEMPT_PHASE_FAILED,
+            "execution_revision": int(target.revision),
+            "execution_finished_at_ms": target.finished_at_ms,
+            "reason": "implementation_protected_path_mutated",
+            "backoff_seconds": 0,
+            "backoff_ms": 0,
+            "retry_not_before_ms": 0,
+            "evidence_source": (
+                "typed_portal_protected_preservation_reconciliation_recovery:"
+                + str(portal_evidence["receipt_id"])
+            ),
+            "queue_reason": queue_reason,
+            "queue_reused": False,
+            "queue_receipt": {},
+            "coordination": dict(coordination_evidence),
+            "protected_preservation_seed": dict(seed),
+            "reconciliation_self_lock_context": dict(context),
+            "control_expected_status": "blocked",
+            "control_expected_revision": int(task.revision),
+        }
+
+        def project() -> Mapping[str, Any]:
+            return guarded_queue_status(
+                task_cid=target.task_cid,
+                expected_revision=int(task.revision),
+                expected_control_receipt=dict(
+                    context["target_blocked_control_receipt"]
+                ),
+                status="retrying",
+                receipt=transition_receipt,
+                delay_ms=0,
+                reason=queue_reason,
+            )
+
+        result = self._execute_with_retry_transition_authority(
+            target_attempt,
+            coordination_evidence,
+            project,
+        )
+        if not isinstance(result, Mapping):
+            raise DatabaseImplementationDaemonError(
+                "protected reconciliation recovery returned no durable result"
+            )
+        cas_result = result.get("cas_result")
+        to_dict = getattr(cas_result, "to_dict", None)
+        queue_receipt = result.get("queue_receipt")
+        if not callable(to_dict) or not isinstance(queue_receipt, Mapping):
+            raise DatabaseImplementationDaemonError(
+                "protected reconciliation recovery returned malformed evidence"
+            )
+        return {
+            "task_cid": target.task_cid,
+            "attempt_id": target.attempt_id,
+            "source_attempt_id": source.attempt_id,
+            "status": "retrying",
+            "changed": bool(
+                getattr(cas_result, "changed", False) or queue_receipt
+            ),
+            "backoff_seconds": 0,
+            "backoff_ms": 0,
+            "retry_not_before_ms": int(result["retry_not_before_ms"]),
+            "queue_reused": bool(result["queue_reused"]),
+            "queue_receipt": dict(queue_receipt),
+            "control_receipt": dict(to_dict()),
+            "protected_preservation_evidence": dict(seed),
+            "reconciliation_self_lock_context": dict(context),
+        }
+
+    def recover_protected_reconciliation_self_lock(
+        self,
+        attempt: DatabaseTaskAttempt | str,
+        *,
+        history_context: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Recover one proved historical verifier self-lock without dispatch."""
+
+        self._require_execution_authority(
+            "protected reconciliation self-lock recovery"
+        )
+        current = (
+            attempt
+            if isinstance(attempt, DatabaseTaskAttempt)
+            else self.get_attempt(str(attempt))
+        )
+        if current is None:
+            raise KeyError(f"unknown attempt: {attempt!r}")
+        persisted = self.get_attempt(current.attempt_id)
+        if (
+            persisted is None
+            or persisted.status != "failed"
+            or persisted.committed_phase != ATTEMPT_PHASE_FAILED
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation recovery requires an exact failed attempt"
+            )
+        current = persisted
+        self._verified_protected_reconciliation_self_lock_failed_phase(current)
+        task = self.task_source.get(current.task_cid)
+        if task is None or self._automatic_claim_forbidden(task):
+            raise DatabaseImplementationAuthorityError(
+                "protected reconciliation recovery task is unavailable or manual"
+            )
+        context = (
+            self._verified_protected_reconciliation_self_lock_context(
+                history_context,
+                expected_target=current,
+            )
+            if history_context is not None
+            else self._protected_reconciliation_self_lock_context(current, task)
+        )
+        if context is None:
+            raise DatabaseImplementationConflictError(
+                "task is not an exact protected reconciliation self-lock candidate"
+            )
+        coordination = self._reconcile_failed_attempt_coordination(current)
+        if (
+            coordination.get("claim_state") == "expired"
+            and coordination.get("expired_now") is True
+            and coordination.get("historical_expired") is not True
+        ):
+            coordination = self._reconcile_failed_attempt_coordination(current)
+        if (
+            coordination.get("claim_state") != "expired"
+            or coordination.get("historical_expired") is not True
+            or coordination.get("superseded_by_newer_fence") is True
+        ):
+            raise DatabaseImplementationConflictError(
+                "protected reconciliation recovery requires its latest expired fence"
+            )
+        return self._persist_protected_reconciliation_self_lock_recovery(
+            current,
+            history_context=context,
+            coordination_evidence=coordination,
+        )
+
     def recover_blocked_portal_protected_preservation(
         self,
         attempt: DatabaseTaskAttempt | str,
@@ -77470,6 +78871,15 @@ class DatabaseImplementationDaemon:
                 f"retrying control state, observed {status!r}"
             )
         coordination = self._reconcile_failed_attempt_coordination(current)
+        if (
+            coordination.get("claim_state") == "expired"
+            and coordination.get("expired_now") is True
+            and coordination.get("historical_expired") is not True
+        ):
+            # Persist only the independently re-read historical shape.  This
+            # lets a later cross-lane self-lock proof distinguish durable
+            # expiry from the response to the mutation that caused it.
+            coordination = self._reconcile_failed_attempt_coordination(current)
         result = self._persist_task_retry_state(
             current,
             reason="implementation_protected_path_mutated",
@@ -80511,6 +81921,42 @@ class DatabaseImplementationDaemon:
             )
             status = str(task.status or "").strip().lower()
             if status == "blocked":
+                if reason == "not_attempted":
+                    history_context = (
+                        self._protected_reconciliation_self_lock_context(
+                            attempt,
+                            task,
+                        )
+                    )
+                    if history_context is not None:
+                        outcomes.append(
+                            self.recover_protected_reconciliation_self_lock(
+                                attempt,
+                                history_context=history_context,
+                            )
+                        )
+                        continue
+                if reason == "portal_provider_failed":
+                    recovery_context = (
+                        self._superseded_consumed_attempt_recovery_context(
+                            attempt,
+                            task,
+                        )
+                    )
+                    if recovery_context is not None:
+                        outcomes.append(
+                            self.recover_superseded_consumed_portal_attempt(
+                                attempt,
+                                history_context=recovery_context,
+                            )
+                        )
+                        continue
+                superseded = self._fresh_failed_attempt_control_supersession(
+                    attempt
+                )
+                if superseded is not None:
+                    outcomes.append(superseded)
+                    continue
                 if (
                     reason.casefold()
                     == _DATABASE_PORTAL_PROTECTED_PRESERVATION_LEGACY_REASON.casefold()
@@ -80526,19 +81972,6 @@ class DatabaseImplementationDaemon:
                         )
                     )
                     continue
-                recovery_context = (
-                    self._superseded_consumed_attempt_recovery_context(
-                        attempt,
-                        task,
-                    )
-                )
-                if recovery_context is not None:
-                    outcomes.append(
-                        self.recover_superseded_consumed_portal_attempt(
-                            attempt,
-                            history_context=recovery_context,
-                        )
-                    )
                 continue
             if status in {
                 "completed",
@@ -80585,6 +82018,22 @@ class DatabaseImplementationDaemon:
                         attempt,
                         task,
                     )
+                elif operation == (
+                    "database_portal_protected_preservation_"
+                    "reconciliation_retry_recovery"
+                ):
+                    verified_recovery = (
+                        self._verified_protected_reconciliation_retry_control_state(
+                            task
+                        )
+                    )
+                    if (
+                        verified_recovery["failed_target_attempt"].attempt_id
+                        != attempt.attempt_id
+                    ):
+                        raise DatabaseImplementationConflictError(
+                            "protected reconciliation retry belongs to another target"
+                        )
                 elif operation in {
                     "database_portal_protected_preservation_retry",
                     "database_portal_protected_preservation_retry_recovery",

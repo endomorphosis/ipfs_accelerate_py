@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    checkout_mutation_lock_path,
     checkout_repository_id,
 )
 from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
@@ -30,6 +31,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SEED_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
     DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
+    DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
@@ -2848,6 +2850,325 @@ def _protected_recovery_bridge(
         max_task_attempts=4,
     )
     return bridge, observed, queue, provider_hooks, factory_calls
+
+
+def _write_protected_reconciliation_self_lock_events(
+    *,
+    bridge: DatabasePortalExecutionBridge,
+    target: DatabaseTaskAttempt,
+    record: object,
+    preservation_seed: dict[str, object],
+    tamper: str = "",
+) -> tuple[object, str, str]:
+    paths, binding = bridge._ensure_attempt_projection(target, record)
+    _identity, recovery_key, recovery_branch = (
+        bridge._protected_preservation_recovery_identity(
+            attempt=target,
+            binding=binding,
+            seed=preservation_seed,
+        )
+    )
+    task_id = target.task_alias
+    task_cid = target.task_cid
+    worktree_path = str(paths.root / "historical-reconciliation-worktree")
+    log_path = str(paths.root / "historical-validation.log")
+    proposal_id = "a" * 64
+    policy_id = "b" * 64
+    proposal_receipt_id = "c" * 64
+    protected_paths = ["docs/architecture/protected.md"]
+    lock = {
+        "acquired": False,
+        "lock_owner_branch": recovery_branch,
+        "lock_owner_operation": (
+            "provider_dispatch"
+            if tamper == "lock_owner_operation"
+            else "reconcile_protected_preservation_candidate"
+        ),
+        "lock_owner_pid": 4242,
+        "lock_owner_task_id": task_id,
+        "lock_path": str(checkout_mutation_lock_path(bridge.repository_root)),
+        "reason": "lock_exists",
+        "waited_seconds": 30.0,
+    }
+    mutations = [
+        {
+            "path": protected_paths[0],
+            "change": "verification_inconclusive",
+            "scope": "shared_checkout",
+            "before": {"state": "present", "sha256": "1" * 64},
+            "after": {
+                "error": (
+                    "implementation_protected_path_verification_lock_timeout"
+                ),
+                "state": "error",
+            },
+        }
+    ]
+    violation = {
+        "task_id": task_id,
+        "reason": "implementation_protected_path_verification_lock_timeout",
+        "attempt": 1,
+        "workspace_path": worktree_path,
+        "protected_paths": protected_paths,
+        "mutations": (
+            [{**mutations[0], "path": "docs/architecture/spliced.md"}]
+            if tamper == "spliced_mutations"
+            else mutations
+        ),
+        "verification_deferred": True,
+        "shared_checkout_restored": False,
+        "lock": lock,
+    }
+    append_jsonl_event(
+        paths.events,
+        "implementation_task_claim_lock_cleared",
+        {
+            "task_id": task_id,
+            "branch": "",
+            "lock_owner_pid": 4242,
+            "lock_path": str(paths.root / "implementation-task-claim.json"),
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_protected_path_snapshot_recorded",
+        {
+            "task_id": task_id,
+            "attempt": 1,
+            "protected_paths": protected_paths,
+            "workspace_path": worktree_path,
+        },
+    )
+    if tamper == "interposed_provider_dispatch":
+        append_jsonl_event(
+            paths.events,
+            "implementation_started",
+            {
+                "task_id": task_id,
+                "canonical_task_cid": task_cid,
+                "attempt": 1,
+                "provider_dispatched": True,
+            },
+        )
+    append_jsonl_event(
+        paths.events,
+        "worktree_reconciliation_validation_started",
+        {
+            "task_id": task_id,
+            "task_cid": task_cid,
+            "attempt": 1,
+            "attempt_consumed": False,
+            "provider_dispatched": False,
+            "baseline_ref": preservation_seed["baseline_commit"],
+            "implementation_commit": preservation_seed["preserved_commit"],
+            "branch": recovery_branch,
+            "recovery_key": recovery_key,
+            "worktree_path": worktree_path,
+            "log_path": log_path,
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_expected_outputs_checked",
+        {
+            "task_id": task_id,
+            "expected_paths": ["inventory/result.json"],
+            "staged_paths": ["inventory/result.json"],
+            "force_staged_paths": [],
+            "issues": [],
+            "passed": tamper != "expected_outputs_failed",
+            "proposal_id": proposal_id,
+            "completion_authoritative": False,
+            "proof_authoritative": False,
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_proposal_validated",
+        {
+            "task_id": task_id,
+            "attempted": True,
+            "accepted": True,
+            "changed_paths": ["inventory/result.json"],
+            "reason_codes": [],
+            "proposal_id": proposal_id,
+            "policy_id": policy_id,
+            "receipt_id": proposal_receipt_id,
+            "repository_tree_id": preservation_seed["baseline_commit"],
+            "completion_authoritative": False,
+            "proof_authoritative": False,
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_protected_path_verification_lock_timeout",
+        {
+            "task_id": task_id,
+            "attempt": 1,
+            "workspace_path": worktree_path,
+            "reason": "implementation_protected_path_verification_lock_timeout",
+            "verification_deferred": True,
+            "shared_checkout_restored": False,
+            "protected_paths": protected_paths,
+            "mutations": mutations,
+            "lock": lock,
+        },
+    )
+    validation = {
+        "attempted": True,
+        "passed": False,
+        "returncode": 1,
+        "reason": "implementation_protected_path_mutated",
+        "results": [
+            {
+                "command": "python3 -m pytest -q focused.py",
+                "returncode": 0,
+                "timed_out": False,
+            }
+        ],
+        "stages": [{"stage": "targeted", "passed": True}],
+        "validation_dag_receipt": {"passed": True},
+        "proposal_gate": {
+            "accepted": True,
+            "attempted": True,
+            "changed_paths": ["inventory/result.json"],
+            "completion_authoritative": False,
+            "policy_id": policy_id,
+            "proof_authoritative": False,
+            "proposal_id": proposal_id,
+            "reason_codes": [],
+            "receipt_id": proposal_receipt_id,
+            "repository_tree_id": preservation_seed["baseline_commit"],
+        },
+        "protected_path_violation": violation,
+    }
+    append_jsonl_event(
+        paths.events,
+        "worktree_reconciliation_validation_finished",
+        {
+            "task_id": task_id,
+            "task_cid": task_cid,
+            "attempt": 1,
+            "returncode": 1,
+            "attempt_consumed": False,
+            "provider_dispatched": False,
+            "baseline_ref": preservation_seed["baseline_commit"],
+            "implementation_commit": preservation_seed["preserved_commit"],
+            "branch": recovery_branch,
+            "recovery_key": recovery_key,
+            "worktree_path": worktree_path,
+            "log_path": log_path,
+            "validation_result": validation,
+            "protected_path_violation": violation,
+            "commit_result": {"committed": False},
+            "merge_result": {"merged": False, "reason": "not_attempted"},
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "cleanup_finished",
+        {
+            "branch": recovery_branch,
+            "worktree_path": worktree_path,
+            "cleaned": True,
+            "removed_worktree": True,
+            "deleted_branch": True,
+        },
+    )
+    return paths, recovery_key, recovery_branch
+
+
+def test_bridge_recovers_exact_historical_protected_reconciliation_self_lock(
+    tmp_path: Path,
+) -> None:
+    record, target, repo, target_root, *_commits, seed = (
+        _prepare_protected_preservation_successor_seed(tmp_path)
+    )
+    bridge, _observed, _queue, provider_hooks, factory_calls = (
+        _protected_recovery_bridge(
+            record=record,
+            target=target,
+            repo=repo,
+            target_root=target_root,
+            mode="validation_failure",
+        )
+    )
+    paths, recovery_key, recovery_branch = (
+        _write_protected_reconciliation_self_lock_events(
+            bridge=bridge,
+            target=target,
+            record=record,
+            preservation_seed=seed,
+        )
+    )
+
+    receipt = bridge.recover_protected_reconciliation_self_lock(target, seed)
+
+    assert [
+        event["type"] for event in bridge._verified_event_chain(paths)
+    ] == [
+        "implementation_task_claim_lock_cleared",
+        "implementation_protected_path_snapshot_recorded",
+        "worktree_reconciliation_validation_started",
+        "implementation_expected_outputs_checked",
+        "implementation_proposal_validated",
+        "implementation_protected_path_verification_lock_timeout",
+        "worktree_reconciliation_validation_finished",
+        "cleanup_finished",
+    ]
+    assert receipt["schema"] == (
+        DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA
+    )
+    assert receipt["recovery_key"] == recovery_key
+    assert receipt["recovery_branch"] == recovery_branch
+    assert receipt["provider_dispatched"] is False
+    assert receipt["attempt_consumed"] is False
+    assert receipt["validation_commands_passed"] is True
+    assert receipt["verification_deferred"] is True
+    assert receipt["merge_attempted"] is False
+    assert receipt["receipt_id"].startswith("sha256:")
+    assert factory_calls == []
+    assert provider_hooks == []
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        "lock_owner_operation",
+        "interposed_provider_dispatch",
+        "expected_outputs_failed",
+        "spliced_mutations",
+    ],
+)
+def test_bridge_protected_reconciliation_self_lock_tamper_fails_closed(
+    tmp_path: Path,
+    tamper: str,
+) -> None:
+    record, target, repo, target_root, *_commits, seed = (
+        _prepare_protected_preservation_successor_seed(tmp_path)
+    )
+    bridge, _observed, _queue, provider_hooks, factory_calls = (
+        _protected_recovery_bridge(
+            record=record,
+            target=target,
+            repo=repo,
+            target_root=target_root,
+            mode="validation_failure",
+        )
+    )
+    _write_protected_reconciliation_self_lock_events(
+        bridge=bridge,
+        target=target,
+        record=record,
+        preservation_seed=seed,
+        tamper=tamper,
+    )
+
+    with pytest.raises(DatabasePortalBridgeError):
+        bridge.recover_protected_reconciliation_self_lock(target, seed)
+
+    assert factory_calls == []
+    assert provider_hooks == []
 
 
 def test_bridge_zero_provider_reconciles_protected_preservation_seed(

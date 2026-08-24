@@ -69,6 +69,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA,
     DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA,
     DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
+    DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
@@ -671,6 +672,77 @@ def _protected_preservation_receipt(
         "implementation_finished_event_id": "sha256:" + "6" * 64,
         "protected_path_violation_digest": "sha256:" + "7" * 64,
         "preservation_digest": "sha256:" + "8" * 64,
+    }
+    receipt["receipt_id"] = daemon._database_portal_evidence_digest(receipt)
+    return receipt
+
+
+def _protected_reconciliation_self_lock_receipt(
+    daemon: DatabaseImplementationDaemon,
+    target: DatabaseTaskAttempt,
+    preservation_seed: dict[str, object],
+) -> dict[str, object]:
+    binding_id = "sha256:" + "9" * 64
+    recovery_identity = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "database-portal-protected-preservation-recovery@1"
+        ),
+        "source_receipt_id": preservation_seed["receipt_id"],
+        "source_attempt_id": preservation_seed["attempt_id"],
+        "source_claim_id": preservation_seed["claim_id"],
+        "task_cid": target.task_cid,
+        "task_alias": target.task_alias,
+        "baseline_commit": preservation_seed["baseline_commit"],
+        "preserved_commit": preservation_seed["preserved_commit"],
+        "rescue_branch": preservation_seed["rescue_branch"],
+        "target_attempt_id": target.attempt_id,
+        "target_claim_id": target.claim_id,
+        "target_attempt_number": target.attempt_number,
+        "target_fencing_token": target.fencing_token,
+        "target_fence_epoch": target.fence_epoch,
+        "target_lease_id": target.lease_id,
+        "target_binding_id": binding_id,
+    }
+    recovery_key = daemon._database_portal_evidence_digest(recovery_identity)
+    safe_alias = target.task_alias.lower()
+    receipt: dict[str, object] = {
+        "schema": DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA,
+        "disposition": "retry_exact_preserved_candidate",
+        "reason": "protected_preservation_reconciliation_self_lock",
+        "task_cid": target.task_cid,
+        "task_alias": target.task_alias,
+        "target_attempt_id": target.attempt_id,
+        "target_claim_id": target.claim_id,
+        "target_lease_id": target.lease_id,
+        "target_attempt_number": target.attempt_number,
+        "target_fencing_token": target.fencing_token,
+        "target_fence_epoch": target.fence_epoch,
+        "source_preservation_receipt_id": preservation_seed["receipt_id"],
+        "source_attempt_id": preservation_seed["attempt_id"],
+        "baseline_commit": preservation_seed["baseline_commit"],
+        "preserved_commit": preservation_seed["preserved_commit"],
+        "rescue_branch": preservation_seed["rescue_branch"],
+        "target_binding_id": binding_id,
+        "events_digest": "sha256:" + "8" * 64,
+        "event_stream_id": "event-log:protected-reconciliation-self-lock",
+        "recovery_key": recovery_key,
+        "recovery_branch": (
+            f"implementation/{safe_alias}-protected-"
+            f"{recovery_key.removeprefix('sha256:')[:20]}"
+        ),
+        "validation_started_event_id": "sha256:" + "1" * 64,
+        "verification_lock_timeout_event_id": "sha256:" + "2" * 64,
+        "validation_finished_event_id": "sha256:" + "3" * 64,
+        "cleanup_finished_event_id": "sha256:" + "4" * 64,
+        "lock_path": "/tmp/vrif-checkout-mutation.lock",
+        "lock_owner_pid": 12345,
+        "lock_waited_seconds": 30,
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+        "validation_commands_passed": True,
+        "verification_deferred": True,
+        "merge_attempted": False,
     }
     receipt["receipt_id"] = daemon._database_portal_evidence_digest(receipt)
     return receipt
@@ -1837,6 +1909,350 @@ def test_exact_legacy_protected_preservation_block_recovers_once(
         )
         assert receipt["protected_preservation_seed"] == seed
         assert daemon.reconcile_terminal_portal_failures() == []
+    finally:
+        daemon.close()
+
+
+def test_protected_reconciliation_self_lock_rearms_original_seed_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = {"ms": 1_000}
+    provider_calls: list[str] = []
+    failure_reasons = iter(
+        (
+            "portal_provider_failed",
+            "Portal consumed-attempt retry seed state conflicts with its receipt",
+            "not_attempted",
+        )
+    )
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        provider_calls.append(attempt.attempt_id)
+        raise DatabasePortalBridgeError(next(failure_reasons))
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:protected-reconciliation-self-lock",
+        provider_fn=provider,
+        max_task_attempts=3,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        persist_terminal = daemon._persist_terminal_portal_failure
+        monkeypatch.setattr(
+            daemon,
+            "_persist_terminal_portal_failure",
+            lambda attempt, **_kwargs: {
+                "task_cid": attempt.task_cid,
+                "attempt_id": attempt.attempt_id,
+                "status": "blocked",
+                "changed": False,
+            },
+        )
+        predecessor_result = daemon.run_once()
+        predecessor = daemon.get_attempt(predecessor_result["attempt_id"])
+        assert predecessor is not None
+        predecessor_claim = daemon.task_source.get(predecessor.task_cid)
+        assert predecessor_claim is not None
+        assert predecessor_claim.status == "in_progress"
+        predecessor_claim_revision = predecessor_claim.revision
+        foreign_terminal = {
+            "operation": "database_portal_terminal_failure",
+            "attempt_id": "attempt:foreign-stale",
+            "attempt_number": 1,
+            "claim_id": "claim:foreign-stale",
+            "lease_id": "lease:foreign-stale",
+            "owner_session_id": "session:foreign-stale",
+            "fencing_token": 1,
+            "fence_epoch": 1,
+            "execution_phase": "failed",
+            "execution_revision": 1,
+            "execution_finished_at_ms": predecessor.started_at_ms - 1,
+            "reason": "portal_provider_failed",
+            "retryable": False,
+            "coordination": {},
+            "control_expected_status": "in_progress",
+            "control_expected_revision": predecessor_claim_revision,
+        }
+        daemon.task_source.compare_and_set_status(
+            predecessor.task_cid,
+            expected_revision=predecessor_claim_revision,
+            status="blocked",
+            receipt=foreign_terminal,
+        )
+        consumed_seed = _consumed_attempt_retry_receipt(
+            daemon,
+            predecessor,
+            source_task_revision=predecessor_claim_revision,
+        )
+        daemon.bind_superseded_consumed_attempt_recovery(
+            lambda _attempt: consumed_seed
+        )
+        now["ms"] = 7_001
+        consumed_recovery = daemon.recover_superseded_consumed_portal_attempt(
+            predecessor,
+            retry_evidence=consumed_seed,
+        )
+        assert consumed_recovery["changed"] is True
+        monkeypatch.setattr(
+            daemon,
+            "_persist_terminal_portal_failure",
+            persist_terminal,
+        )
+
+        source = daemon.claim_next()
+        assert source is not None
+        assert source.attempt_number == 2
+        source_claim = daemon.task_source.get(source.task_cid)
+        assert source_claim is not None
+        source_claim_receipt = source_claim.body["completion_receipt"]
+        assert set(source_claim_receipt) == {
+            "operation",
+            "claim_id",
+            "attempt_id",
+            "owner_session_id",
+            "lease_id",
+            "fencing_token",
+            "fence_epoch",
+            "attempt_number",
+            "consumed_attempt_retry_source_attempt_id",
+            "consumed_attempt_retry_seed",
+        }
+        assert source_claim_receipt[
+            "consumed_attempt_retry_source_attempt_id"
+        ] == predecessor.attempt_id
+        assert source_claim_receipt["consumed_attempt_retry_seed"] == (
+            consumed_seed
+        )
+        source_result = daemon.run_once()
+        assert source_result["implementation_result"]["attempt_id"] == (
+            source.attempt_id
+        )
+        source = daemon.get_attempt(source.attempt_id)
+        assert source is not None
+        source_blocked = daemon.task_source.get(source.task_cid)
+        assert source_blocked is not None
+        assert source_blocked.status == "blocked"
+        preservation_seed = _protected_preservation_receipt(
+            daemon,
+            source,
+            source_task_revision=source_blocked.revision - 1,
+        )
+        daemon.bind_protected_preservation_recovery(
+            lambda _attempt: preservation_seed
+        )
+
+        now["ms"] = 13_002
+        source_recovery = daemon.reconcile_terminal_portal_failures()
+        assert len(source_recovery) == 1
+        assert source_recovery[0]["changed"] is True
+        source_retry = daemon.task_source.get(source.task_cid)
+        assert source_retry is not None
+        assert source_retry.status == "retrying"
+        assert source_retry.body["completion_receipt"]["operation"] == (
+            "database_portal_protected_preservation_retry_recovery"
+        )
+        source_retry_coordination = source_retry.body["completion_receipt"][
+            "coordination"
+        ]
+        assert set(source_retry_coordination) == {
+            "claim_id",
+            "attempt_id",
+            "attempt_number",
+            "lease_state",
+            "claim_state",
+            "claim_revision",
+            "coordination_attempt_status",
+            "coordination_attempt_revision",
+            "expires_at_ms",
+            "observed_at_ms",
+            "expired_now",
+            "historical_expired",
+            "superseded_by_newer_fence",
+            "successor",
+        }
+        assert source_retry_coordination["claim_state"] == "expired"
+        assert source_retry_coordination["lease_state"] == "expired"
+        assert source_retry_coordination["coordination_attempt_status"] == (
+            "expired"
+        )
+        assert source_retry_coordination["expired_now"] is False
+        assert source_retry_coordination["historical_expired"] is True
+        assert source_retry_coordination["superseded_by_newer_fence"] is False
+        assert source_retry_coordination["successor"] == {}
+        for field, value in (
+            ("historical_expired", False),
+            ("superseded_by_newer_fence", True),
+        ):
+            tampered_coordination = dict(source_retry_coordination)
+            tampered_coordination[field] = value
+            with pytest.raises(DatabaseImplementationConflictError):
+                daemon._verified_protected_reconciliation_source_retry_coordination(
+                    source,
+                    tampered_coordination,
+                )
+
+        now["ms"] = 19_003
+        daemon.close()
+        daemon = _open_daemon(
+            tmp_path,
+            session="session:protected-reconciliation-target-lane",
+            provider_fn=provider,
+            max_task_attempts=3,
+            lease_ms=5_000,
+            clock_ms=lambda: now["ms"],
+            lane="protected-target",
+        )
+        target = daemon.claim_next()
+        assert target is not None
+        assert target.attempt_number == 1
+        assert target.attempt_number < source.attempt_number
+        assert target.attempt_id != source.attempt_id
+        target_claim = daemon.task_source.get(target.task_cid)
+        assert target_claim is not None
+        assert target_claim.status == "in_progress"
+        assert target_claim.body["completion_receipt"][
+            "protected_preservation_seed"
+        ] == preservation_seed
+
+        target_result = daemon.run_once()
+        assert target_result["implementation_result"]["attempt_id"] == (
+            target.attempt_id
+        )
+        target = daemon.get_attempt(target.attempt_id)
+        assert target is not None
+        assert target.status == "failed"
+        assert daemon.phase_history(target.attempt_id)[-1]["body"] == {
+            "attempt_consumed": "unknown",
+            "backoff_seconds": 0,
+            "deferred": False,
+            "portal_retryable_failure": False,
+            "portal_terminal_failure": True,
+            "provider_dispatched": "unknown",
+            "reason": "not_attempted",
+            "typed_deferral_slot_consumed": "unknown",
+        }
+        provider_count = daemon._require_connection().execute(
+            "SELECT COUNT(*) FROM provider_invocations WHERE attempt_id = ?",
+            [target.attempt_id],
+        ).fetchone()
+        effect_count = daemon._require_connection().execute(
+            "SELECT COUNT(*) FROM effect_claims WHERE attempt_id = ?",
+            [target.attempt_id],
+        ).fetchone()
+        assert provider_count is not None and int(provider_count[0]) == 0
+        assert effect_count is not None and int(effect_count[0]) == 0
+
+        target_blocked = daemon.task_source.get(target.task_cid)
+        assert target_blocked is not None
+        assert target_blocked.status == "blocked"
+        history = daemon.task_source.task_revision_history_projection(
+            target.task_cid
+        )
+        exact_chain = history["revisions"][-5:]
+        assert [entry["status"] for entry in exact_chain] == [
+            "in_progress",
+            "blocked",
+            "retrying",
+            "in_progress",
+            "blocked",
+        ]
+        assert [
+            entry["body"]["completion_receipt"]["operation"]
+            for entry in exact_chain
+        ] == [
+            "database_claim",
+            "database_portal_terminal_failure",
+            "database_portal_protected_preservation_retry_recovery",
+            "database_claim",
+            "database_portal_terminal_failure",
+        ]
+        assert exact_chain[1]["body"]["completion_receipt"]["coordination"] == {}
+        assert exact_chain[2]["body"]["completion_receipt"][
+            "coordination"
+        ] == source_retry_coordination
+        assert exact_chain[4]["body"]["completion_receipt"]["coordination"] == {}
+
+        observed_recovery_calls: list[tuple[str, str]] = []
+
+        def recover_self_lock(
+            failed_target: DatabaseTaskAttempt,
+            seed: dict[str, object],
+        ) -> dict[str, object]:
+            observed_recovery_calls.append(
+                (failed_target.attempt_id, str(seed["receipt_id"]))
+            )
+            return _protected_reconciliation_self_lock_receipt(
+                daemon,
+                failed_target,
+                seed,
+            )
+
+        daemon.bind_protected_reconciliation_self_lock_recovery(
+            recover_self_lock
+        )
+        now["ms"] = 25_004
+        recovered = daemon.reconcile_terminal_portal_failures()
+        assert len(recovered) == 1
+        assert recovered[0]["changed"] is True
+        assert recovered[0]["status"] == "retrying"
+        assert recovered[0]["source_attempt_id"] == source.attempt_id
+        assert recovered[0]["protected_preservation_evidence"] == (
+            preservation_seed
+        )
+        assert observed_recovery_calls == [
+            (target.attempt_id, str(preservation_seed["receipt_id"]))
+        ]
+
+        retrying = daemon.task_source.get(target.task_cid)
+        assert retrying is not None
+        assert retrying.status == "retrying"
+        recovery_control = retrying.body["completion_receipt"]
+        assert recovery_control["operation"] == (
+            "database_portal_protected_preservation_"
+            "reconciliation_retry_recovery"
+        )
+        context = recovery_control["reconciliation_self_lock_context"]
+        assert context["source_claim_task_revision"] == exact_chain[0][
+            "revision"
+        ]
+        assert context["target_blocked_task_revision"] == exact_chain[-1][
+            "revision"
+        ]
+        replay = daemon.recover_protected_reconciliation_self_lock(
+            target,
+            history_context=context,
+        )
+        assert replay["changed"] is False
+        assert replay["attempt_id"] == target.attempt_id
+        assert replay["source_attempt_id"] == source.attempt_id
+        # Operator and runner surfaces serialize recovery outcomes directly;
+        # an idempotent replay must not leak internal attempt objects.
+        json.dumps(replay, sort_keys=True)
+        assert daemon.reconcile_terminal_portal_failures() == []
+        assert len(observed_recovery_calls) == 1
+
+        successor = daemon.claim_next()
+        assert successor is not None
+        assert successor.attempt_id not in {
+            source.attempt_id,
+            target.attempt_id,
+        }
+        fresh_claim = daemon.task_source.get(successor.task_cid)
+        assert fresh_claim is not None
+        assert fresh_claim.status == "in_progress"
+        fresh_receipt = fresh_claim.body["completion_receipt"]
+        assert fresh_receipt["operation"] == "database_claim"
+        assert fresh_receipt["protected_preservation_seed"] == (
+            preservation_seed
+        )
+        assert fresh_receipt[
+            "protected_preservation_source_attempt_id"
+        ] == source.attempt_id
+        assert len(provider_calls) == 3
     finally:
         daemon.close()
 

@@ -85,6 +85,10 @@ DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-protected-path-preservation@1"
 )
+DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-protected-reconciliation-self-lock@1"
+)
 _DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_FIELDS: Final[
     frozenset[str]
 ] = frozenset(
@@ -5059,6 +5063,464 @@ class DatabasePortalExecutionBridge:
             )
         return receipt
 
+    @staticmethod
+    def _protected_preservation_recovery_identity(
+        *,
+        attempt: Any,
+        binding: Mapping[str, Any],
+        seed: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], str, str]:
+        """Return the deterministic identity for one zero-provider replay."""
+
+        alias = str(binding.get("task_alias") or "")
+        identity = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "database-portal-protected-preservation-recovery@1"
+            ),
+            "source_receipt_id": str(seed.get("receipt_id") or ""),
+            "source_attempt_id": str(seed.get("attempt_id") or ""),
+            "source_claim_id": str(seed.get("claim_id") or ""),
+            "task_cid": str(attempt.task_cid),
+            "task_alias": alias,
+            "baseline_commit": str(seed.get("baseline_commit") or ""),
+            "preserved_commit": str(seed.get("preserved_commit") or ""),
+            "rescue_branch": str(seed.get("rescue_branch") or ""),
+            "target_attempt_id": str(attempt.attempt_id),
+            "target_claim_id": str(attempt.claim_id),
+            "target_attempt_number": int(attempt.attempt_number),
+            "target_fencing_token": int(attempt.fencing_token),
+            "target_fence_epoch": int(attempt.fence_epoch),
+            "target_lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "target_binding_id": str(binding.get("binding_id") or ""),
+        }
+        recovery_key = _sha256_bytes(_canonical_json(identity))
+        recovery_digest = recovery_key.removeprefix("sha256:")
+        safe_alias = re.sub(r"[^a-z0-9._-]+", "-", alias.lower()).strip("-")
+        safe_alias = safe_alias or "protected-task"
+        recovery_branch = (
+            f"implementation/{safe_alias}-protected-{recovery_digest[:20]}"
+        )
+        return identity, recovery_key, recovery_branch
+
+    def recover_protected_reconciliation_self_lock(
+        self,
+        attempt: Any,
+        preservation_seed: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Prove the historical nested verification self-lock without retrying it.
+
+        This recovery is deliberately narrower than an ordinary ``not_attempted``
+        retry.  It admits only a content-addressed attempt-local event chain in
+        which every declared validation command passed, the zero-provider
+        protected replay owned the same checkout lease that the final verifier
+        timed out on, and no merge was attempted.  The method is read-only.
+        """
+
+        paths, binding = self._recovery_attempt_binding(
+            attempt,
+            recovery_name="protected reconciliation self-lock recovery",
+        )
+        try:
+            seed = DatabasePortalProtectedPathPreserved(
+                preservation_seed
+            ).retry_receipt
+        except ValueError as exc:
+            raise DatabasePortalBridgeError(
+                "protected reconciliation self-lock seed failed verification"
+            ) from exc
+        if (
+            seed.get("task_cid") != str(attempt.task_cid)
+            or seed.get("task_alias")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or str(seed.get("attempt_id") or "")
+            == str(attempt.attempt_id)
+            or not self._preserved_commit_exists(
+                commit=str(seed.get("preserved_commit") or ""),
+                rescue_branch=str(seed.get("rescue_branch") or ""),
+            )
+            or not self._preserved_commit_descends_from(
+                baseline_commit=str(seed.get("baseline_commit") or ""),
+                preserved_commit=str(seed.get("preserved_commit") or ""),
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "protected reconciliation self-lock seed is not the exact "
+                "preserved candidate"
+            )
+        _identity, recovery_key, recovery_branch = (
+            self._protected_preservation_recovery_identity(
+                attempt=attempt,
+                binding=binding,
+                seed=seed,
+            )
+        )
+        from ..merge.checkout_lock import checkout_mutation_lock_path
+
+        expected_lock_path = checkout_mutation_lock_path(self.repository_root)
+        events = self._verified_event_chain(paths)
+        expected_event_types = (
+            "implementation_task_claim_lock_cleared",
+            "implementation_protected_path_snapshot_recorded",
+            "worktree_reconciliation_validation_started",
+            "implementation_expected_outputs_checked",
+            "implementation_proposal_validated",
+            "implementation_protected_path_verification_lock_timeout",
+            "worktree_reconciliation_validation_finished",
+            "cleanup_finished",
+        )
+        observed_event_types = tuple(
+            str(event.get("type") or "") for event in events
+        )
+        if observed_event_types != expected_event_types:
+            raise DatabasePortalBridgeError(
+                "protected reconciliation self-lock event chain does not "
+                "match the exact historical population"
+            )
+        claim_cleared = events[0]
+        snapshot = events[1]
+        expected_outputs = events[3]
+        proposal = events[4]
+        selected: dict[str, list[tuple[int, Mapping[str, Any]]]] = {
+            event_type: []
+            for event_type in (
+                "worktree_reconciliation_validation_started",
+                "implementation_protected_path_verification_lock_timeout",
+                "worktree_reconciliation_validation_finished",
+                "cleanup_finished",
+            )
+        }
+        for index, event in enumerate(events):
+            event_type = str(event.get("type") or "")
+            if event_type in selected:
+                selected[event_type].append((index, event))
+        if any(len(matches) != 1 for matches in selected.values()):
+            raise DatabasePortalBridgeError(
+                "protected reconciliation self-lock event chain is absent or ambiguous"
+            )
+        started_index, started = selected[
+            "worktree_reconciliation_validation_started"
+        ][0]
+        timeout_index, timeout = selected[
+            "implementation_protected_path_verification_lock_timeout"
+        ][0]
+        finished_index, finished = selected[
+            "worktree_reconciliation_validation_finished"
+        ][0]
+        cleanup_index, cleanup = selected["cleanup_finished"][0]
+        if not started_index < timeout_index < finished_index < cleanup_index:
+            raise DatabasePortalBridgeError(
+                "protected reconciliation self-lock event order is invalid"
+            )
+        later_authority = {
+            "implementation_started",
+            "implementation_finished",
+            "task_completed",
+            "worktree_reconciliation_candidate_queued",
+            "worktree_reconciliation_candidate_merged",
+            "worktree_reconciliation_validation_started",
+            "worktree_reconciliation_validation_finished",
+        }
+        if any(
+            str(event.get("type") or "") in later_authority
+            for event in events[finished_index + 1 :]
+        ):
+            raise DatabasePortalBridgeError(
+                "protected reconciliation self-lock was superseded by later authority"
+            )
+
+        lock = timeout.get("lock")
+        protected = finished.get("protected_path_violation")
+        validation = finished.get("validation_result")
+        validation_protected = (
+            validation.get("protected_path_violation")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        results = validation.get("results") if isinstance(validation, Mapping) else None
+        stages = validation.get("stages") if isinstance(validation, Mapping) else None
+        validation_dag = (
+            validation.get("validation_dag_receipt")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        proposal_gate = (
+            validation.get("proposal_gate")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        mutations = timeout.get("mutations")
+        protected_paths = timeout.get("protected_paths")
+        snapshot_paths = snapshot.get("protected_paths")
+        waited_seconds = lock.get("waited_seconds") if isinstance(lock, Mapping) else None
+        owner_pid = lock.get("lock_owner_pid") if isinstance(lock, Mapping) else None
+        violation_fields = {
+            "task_id",
+            "reason",
+            "attempt",
+            "workspace_path",
+            "protected_paths",
+            "mutations",
+            "lock",
+            "verification_deferred",
+            "shared_checkout_restored",
+        }
+        timeout_violation = {
+            field: timeout.get(field) for field in violation_fields
+        }
+        proposal_gate_fields = {
+            "accepted",
+            "attempted",
+            "changed_paths",
+            "completion_authoritative",
+            "policy_id",
+            "proof_authoritative",
+            "proposal_id",
+            "reason_codes",
+            "receipt_id",
+            "repository_tree_id",
+        }
+        exact_lock = bool(
+            isinstance(lock, Mapping)
+            and set(lock)
+            == {
+                "acquired",
+                "lock_owner_branch",
+                "lock_owner_operation",
+                "lock_owner_pid",
+                "lock_owner_task_id",
+                "lock_path",
+                "reason",
+                "waited_seconds",
+            }
+            and lock.get("acquired") is False
+            and lock.get("reason") == "lock_exists"
+            and lock.get("lock_owner_branch") == recovery_branch
+            and lock.get("lock_owner_operation")
+            == "reconcile_protected_preservation_candidate"
+            and lock.get("lock_owner_task_id")
+            == str(getattr(attempt, "task_alias", "") or "")
+            and isinstance(owner_pid, int)
+            and not isinstance(owner_pid, bool)
+            and owner_pid > 0
+            and isinstance(waited_seconds, (int, float))
+            and not isinstance(waited_seconds, bool)
+            and math.isfinite(float(waited_seconds))
+            and float(waited_seconds) > 0
+            and bool(str(lock.get("lock_path") or ""))
+            and Path(str(lock.get("lock_path") or "")) == expected_lock_path
+        )
+        exact_mutations = bool(
+            isinstance(protected_paths, list)
+            and protected_paths
+            and len(protected_paths) == len(set(protected_paths))
+            and isinstance(mutations, list)
+            and mutations
+            and len(mutations) == len(protected_paths)
+            and {str(item.get("path") or "") for item in mutations}
+            == set(protected_paths)
+            and all(
+                isinstance(item, Mapping)
+                and item.get("change") == "verification_inconclusive"
+                and item.get("scope") == "shared_checkout"
+                and item.get("after")
+                == {
+                    "error": (
+                        "implementation_protected_path_verification_lock_timeout"
+                    ),
+                    "state": "error",
+                }
+                for item in mutations
+            )
+        )
+        exact_validation = bool(
+            isinstance(validation, Mapping)
+            and validation.get("attempted") is True
+            and validation.get("passed") is False
+            and validation.get("returncode") == 1
+            and validation.get("reason") == "implementation_protected_path_mutated"
+            and isinstance(results, list)
+            and results
+            and all(
+                isinstance(result, Mapping)
+                and result.get("returncode") == 0
+                and result.get("timed_out") is False
+                for result in results
+            )
+            and isinstance(stages, list)
+            and stages
+            and all(
+                isinstance(stage, Mapping) and stage.get("passed") is True
+                for stage in stages
+            )
+            and isinstance(validation_dag, Mapping)
+            and validation_dag.get("passed") is True
+            and isinstance(validation_protected, Mapping)
+            and validation_protected.get("reason")
+            == "implementation_protected_path_verification_lock_timeout"
+            and validation_protected.get("verification_deferred") is True
+            and validation_protected.get("shared_checkout_restored") is False
+            and validation_protected.get("lock") == lock
+        )
+        event_ids = tuple(
+            str(event.get("event_id") or "")
+            for event in (started, timeout, finished, cleanup)
+        )
+        if (
+            not exact_lock
+            or not exact_mutations
+            or not exact_validation
+            or claim_cleared.get("task_id")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or claim_cleared.get("branch") != ""
+            or isinstance(claim_cleared.get("lock_owner_pid"), bool)
+            or not isinstance(claim_cleared.get("lock_owner_pid"), int)
+            or int(claim_cleared["lock_owner_pid"]) <= 0
+            or not str(claim_cleared.get("lock_path") or "")
+            or snapshot.get("task_id")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or snapshot.get("attempt") != 1
+            or snapshot.get("workspace_path") != started.get("worktree_path")
+            or snapshot_paths != protected_paths
+            or expected_outputs.get("task_id")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or expected_outputs.get("passed") is not True
+            or expected_outputs.get("issues") != []
+            or expected_outputs.get("completion_authoritative") is not False
+            or expected_outputs.get("proof_authoritative") is not False
+            or not isinstance(expected_outputs.get("expected_paths"), list)
+            or not expected_outputs.get("expected_paths")
+            or expected_outputs.get("expected_paths")
+            != proposal.get("changed_paths")
+            or not isinstance(expected_outputs.get("staged_paths"), list)
+            or not isinstance(expected_outputs.get("force_staged_paths"), list)
+            or not str(expected_outputs.get("proposal_id") or "")
+            or proposal.get("task_id")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or proposal.get("attempted") is not True
+            or proposal.get("accepted") is not True
+            or proposal.get("reason_codes") != []
+            or proposal.get("completion_authoritative") is not False
+            or proposal.get("proof_authoritative") is not False
+            or proposal.get("proposal_id")
+            != expected_outputs.get("proposal_id")
+            or proposal.get("repository_tree_id")
+            != seed.get("baseline_commit")
+            or any(
+                re.fullmatch(r"[0-9a-f]{64}", str(proposal.get(field) or ""))
+                is None
+                for field in ("proposal_id", "policy_id", "receipt_id")
+            )
+            or not isinstance(proposal_gate, Mapping)
+            or set(proposal_gate) != proposal_gate_fields
+            or dict(proposal_gate)
+            != {
+                field: proposal.get(field) for field in proposal_gate_fields
+            }
+            or timeout.get("reason")
+            != "implementation_protected_path_verification_lock_timeout"
+            or timeout.get("verification_deferred") is not True
+            or timeout.get("shared_checkout_restored") is not False
+            or timeout.get("task_id")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or timeout.get("attempt") != 1
+            or timeout.get("workspace_path") != started.get("worktree_path")
+            or not isinstance(protected, Mapping)
+            or set(protected) != violation_fields
+            or {field: protected.get(field) for field in violation_fields}
+            != timeout_violation
+            or not isinstance(validation_protected, Mapping)
+            or set(validation_protected) != violation_fields
+            or {
+                field: validation_protected.get(field)
+                for field in violation_fields
+            }
+            != timeout_violation
+            or finished.get("task_id")
+            != str(getattr(attempt, "task_alias", "") or "")
+            or finished.get("task_cid") != str(attempt.task_cid)
+            or finished.get("attempt") != 1
+            or finished.get("returncode") != 1
+            or finished.get("attempt_consumed") is not False
+            or finished.get("provider_dispatched") is not False
+            or finished.get("baseline_ref") != seed.get("baseline_commit")
+            or finished.get("implementation_commit")
+            != seed.get("preserved_commit")
+            or finished.get("branch") != recovery_branch
+            or finished.get("recovery_key") != recovery_key
+            or finished.get("commit_result") != {"committed": False}
+            or finished.get("merge_result")
+            != {"merged": False, "reason": "not_attempted"}
+            or started.get("task_id") != finished.get("task_id")
+            or started.get("task_cid") != finished.get("task_cid")
+            or started.get("attempt") != 1
+            or started.get("attempt_consumed") is not False
+            or started.get("provider_dispatched") is not False
+            or started.get("baseline_ref") != seed.get("baseline_commit")
+            or started.get("implementation_commit")
+            != seed.get("preserved_commit")
+            or started.get("branch") != recovery_branch
+            or started.get("recovery_key") != recovery_key
+            or started.get("worktree_path") != finished.get("worktree_path")
+            or started.get("log_path") != finished.get("log_path")
+            or not str(started.get("log_path") or "")
+            or cleanup.get("cleaned") is not True
+            or cleanup.get("removed_worktree") is not True
+            or cleanup.get("deleted_branch") is not True
+            or cleanup.get("branch") != recovery_branch
+            or cleanup.get("worktree_path") != finished.get("worktree_path")
+            or any(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", event_id) is None
+                for event_id in event_ids
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "protected reconciliation self-lock evidence failed verification"
+            )
+        receipt: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA,
+            "disposition": "retry_exact_preserved_candidate",
+            "reason": "protected_preservation_reconciliation_self_lock",
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "target_attempt_id": str(attempt.attempt_id),
+            "target_claim_id": str(attempt.claim_id),
+            "target_lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "target_attempt_number": int(attempt.attempt_number),
+            "target_fencing_token": int(attempt.fencing_token),
+            "target_fence_epoch": int(attempt.fence_epoch),
+            "source_preservation_receipt_id": str(seed["receipt_id"]),
+            "source_attempt_id": str(seed["attempt_id"]),
+            "baseline_commit": str(seed["baseline_commit"]),
+            "preserved_commit": str(seed["preserved_commit"]),
+            "rescue_branch": str(seed["rescue_branch"]),
+            "target_binding_id": str(binding.get("binding_id") or ""),
+            "events_digest": _sha256_file(paths.events),
+            "event_stream_id": str(finished.get("stream_id") or ""),
+            "recovery_key": recovery_key,
+            "recovery_branch": recovery_branch,
+            "validation_started_event_id": event_ids[0],
+            "verification_lock_timeout_event_id": event_ids[1],
+            "validation_finished_event_id": event_ids[2],
+            "cleanup_finished_event_id": event_ids[3],
+            "lock_path": str(lock["lock_path"]),
+            "lock_owner_pid": int(owner_pid),
+            # Intent-repository control receipts prohibit JSON floats.  The
+            # event stream and its digest retain the exact fractional wait;
+            # the durable summary conservatively records whole seconds.
+            "lock_waited_seconds": max(
+                1,
+                int(math.ceil(float(waited_seconds))),
+            ),
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "validation_commands_passed": True,
+            "verification_deferred": True,
+            "merge_attempted": False,
+        }
+        receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        return receipt
+
     def recover_consumed_attempt_retry(self, attempt: Any) -> Mapping[str, Any]:
         """Recover one consumed legacy Portal attempt without changing state.
 
@@ -5271,35 +5733,16 @@ class DatabasePortalExecutionBridge:
         baseline_commit = str(seed.get("baseline_commit") or "")
         preserved_commit = str(seed.get("preserved_commit") or "")
         rescue_branch = str(seed.get("rescue_branch") or "")
-        source_receipt_id = str(seed.get("receipt_id") or "")
-        recovery_identity = {
-            "schema": (
-                "ipfs_accelerate_py/agent-supervisor/"
-                "database-portal-protected-preservation-recovery@1"
-            ),
-            "source_receipt_id": source_receipt_id,
-            "source_attempt_id": str(seed.get("attempt_id") or ""),
-            "source_claim_id": str(seed.get("claim_id") or ""),
-            "task_cid": task_cid,
-            "task_alias": alias,
-            "baseline_commit": baseline_commit,
-            "preserved_commit": preserved_commit,
-            "rescue_branch": rescue_branch,
-            "target_attempt_id": str(attempt.attempt_id),
-            "target_claim_id": str(attempt.claim_id),
-            "target_attempt_number": int(attempt.attempt_number),
-            "target_fencing_token": int(attempt.fencing_token),
-            "target_fence_epoch": int(attempt.fence_epoch),
-            "target_lease_id": str(getattr(attempt, "lease_id", "") or ""),
-            "target_binding_id": str(binding.get("binding_id") or ""),
-        }
-        recovery_key = _sha256_bytes(_canonical_json(recovery_identity))
+        _identity, recovery_key, recovery_branch = (
+            self._protected_preservation_recovery_identity(
+                attempt=attempt,
+                binding=binding,
+                seed=seed,
+            )
+        )
         recovery_digest = recovery_key.removeprefix("sha256:")
         safe_alias = re.sub(r"[^a-z0-9._-]+", "-", alias.lower()).strip("-")
         safe_alias = safe_alias or "protected-task"
-        recovery_branch = (
-            f"implementation/{safe_alias}-protected-{recovery_digest[:20]}"
-        )
 
         # Recheck the immutable source authority immediately before creating a
         # daemon or touching a checkout.  This also makes a replay after rescue
@@ -8262,6 +8705,7 @@ __all__ = (
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
     "DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA",
+    "DATABASE_PORTAL_PROTECTED_RECONCILIATION_SELF_LOCK_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA",
     "DatabasePortalAttemptPaths",

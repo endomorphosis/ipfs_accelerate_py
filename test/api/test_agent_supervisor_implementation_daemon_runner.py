@@ -956,6 +956,12 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
             callbacks["protected_preservation_recovery"] = callback
 
         @staticmethod
+        def bind_protected_reconciliation_self_lock_recovery(
+            callback: object,
+        ) -> None:
+            callbacks["protected_reconciliation_self_lock_recovery"] = callback
+
+        @staticmethod
         def bind_merge_train_recovery(**values: object) -> None:
             callbacks["merge_train_recovery"] = values
 
@@ -1020,6 +1026,9 @@ def test_database_runner_binds_targeted_post_merge_recovery_only_with_explicit_t
     assert callable(callbacks["protected_preservation_recovery"])
     assert callbacks["protected_preservation_recovery"] == (
         bridge.recover_protected_path_preservation
+    )
+    assert callbacks["protected_reconciliation_self_lock_recovery"] == (
+        bridge.recover_protected_reconciliation_self_lock
     )
     assert callbacks["merge_train_recovery"] == {
         "merge_queue": bridge.merge_queue,
