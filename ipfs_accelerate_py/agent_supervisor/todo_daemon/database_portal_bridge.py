@@ -8097,11 +8097,6 @@ class DatabasePortalExecutionBridge:
             "preauthorize_post_merge_declared_output_recovery",
             None,
         )
-        run_checkout_mutation = getattr(
-            database_daemon,
-            "_run_checkout_mutation_transaction",
-            None,
-        )
         if (
             not callable(digest)
             or not callable(recover)
@@ -8185,11 +8180,6 @@ class DatabasePortalExecutionBridge:
                 or receipt.get("mutation_short_circuited") is not True
             ):
                 return None
-            if not callable(run_checkout_mutation):
-                raise DatabasePortalBridgeError(
-                    "database daemon lacks checkout mutation authority for "
-                    "false-completion recovery"
-                )
             request_id = str(
                 getattr(completed, "request_id", "") or ""
             )
@@ -8240,7 +8230,48 @@ class DatabasePortalExecutionBridge:
                     "write_count": 0,
                 }
 
+            portal = self.portal_factory(
+                projection.paths,
+                str(getattr(completed, "task_id", "") or ""),
+            )
+            if portal is None:
+                raise DatabasePortalBridgeError(
+                    "portal_factory did not return a Portal-compatible daemon"
+                )
+            close = getattr(
+                portal,
+                "close_event_runtime",
+                None,
+            ) or getattr(portal, "close", None)
             try:
+                portal_queue = getattr(portal, "merge_queue", None)
+                portal_repo_root = getattr(portal, "repo_root", None)
+                portal_target = str(
+                    getattr(
+                        portal,
+                        "resolved_merge_target_branch",
+                        "",
+                    )
+                    or ""
+                )
+                run_checkout_mutation = getattr(
+                    portal,
+                    "_run_checkout_mutation_transaction",
+                    None,
+                )
+                if (
+                    portal_queue is not self.merge_queue
+                    or portal_repo_root is None
+                    or self.repository_root is None
+                    or Path(portal_repo_root).absolute()
+                    != self.repository_root
+                    or portal_target != self.merge_target_branch
+                    or not callable(run_checkout_mutation)
+                ):
+                    raise DatabasePortalBridgeError(
+                        "Portal recovery daemon lacks checkout mutation "
+                        "authority for the selected target"
+                    )
                 guarded = run_checkout_mutation(
                     task_id=str(getattr(completed, "task_id", "") or ""),
                     attempt=int(getattr(completed, "attempt", 0) or 0),
@@ -8261,6 +8292,9 @@ class DatabasePortalExecutionBridge:
                 if _is_implementation_conflict(exc):
                     return None
                 raise
+            finally:
+                if callable(close):
+                    close()
             if not isinstance(guarded, Mapping):
                 raise DatabasePortalBridgeError(
                     "checkout mutation returned invalid false-completion "

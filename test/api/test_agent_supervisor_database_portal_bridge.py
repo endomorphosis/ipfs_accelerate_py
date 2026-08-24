@@ -5352,19 +5352,15 @@ def test_bridge_reopens_exact_false_declared_output_completion(
     ).stdout.strip()
     assert advanced_target != target
     portal_calls: list[str] = []
-    bridge = DatabasePortalExecutionBridge(
-        task_source=task_source,
-        attempt_root=attempt_root,
-        portal_factory=lambda _paths, alias: portal_calls.append(alias),
-        repository_root=repo,
-        merge_queue=queue,
-        merge_target_branch="main",
-        task_header_prefix="## LGSWF-",
-    )
+    checkout_mutation_calls: list[str] = []
+    transaction_targets: list[str] = []
 
-    class Authority:
-        checkout_mutation_calls: list[str] = []
-        transaction_target = ""
+    class CheckoutAuthorityPortal:
+        def __init__(self, alias: str) -> None:
+            portal_calls.append(alias)
+            self.merge_queue = queue
+            self.repo_root = repo.absolute()
+            self.resolved_merge_target_branch = "main"
 
         def _run_checkout_mutation_transaction(
             self,
@@ -5373,7 +5369,7 @@ def test_bridge_reopens_exact_false_declared_output_completion(
             callback: object,
             **_kwargs: object,
         ) -> dict[str, object]:
-            self.checkout_mutation_calls.append(operation)
+            checkout_mutation_calls.append(operation)
             assert callable(callback)
             # Simulate a target writer finishing immediately before this
             # transaction acquires the shared checkout lease.  Recovery must
@@ -5392,15 +5388,32 @@ def test_bridge_reopens_exact_false_declared_output_completion(
                 cwd=repo,
                 check=True,
             )
-            self.transaction_target = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=repo,
-                check=True,
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
+            transaction_targets.append(
+                subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=repo,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+            )
             return dict(callback())
 
+        @staticmethod
+        def close_event_runtime() -> None:
+            return None
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, alias: CheckoutAuthorityPortal(alias),
+        repository_root=repo,
+        merge_queue=queue,
+        merge_target_branch="main",
+        task_header_prefix="## LGSWF-",
+    )
+
+    class Authority:
         @staticmethod
         def _database_portal_evidence_digest(value: object) -> str:
             encoded = json.dumps(
@@ -5442,6 +5455,36 @@ def test_bridge_reopens_exact_false_declared_output_completion(
         }
     )
     authority = Authority()
+
+    missing_checkout_closed: list[bool] = []
+
+    class MissingCheckoutAuthorityPortal:
+        merge_queue = queue
+        repo_root = repo.absolute()
+        resolved_merge_target_branch = "main"
+
+        @staticmethod
+        def close_event_runtime() -> None:
+            missing_checkout_closed.append(True)
+
+    missing_checkout_bridge = DatabasePortalExecutionBridge(
+        task_source=task_source,
+        attempt_root=attempt_root,
+        portal_factory=lambda _paths, _alias: MissingCheckoutAuthorityPortal(),
+        repository_root=repo,
+        merge_queue=queue,
+        merge_target_branch="main",
+        task_header_prefix="## LGSWF-",
+    )
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="lacks checkout mutation authority",
+    ):
+        missing_checkout_bridge.recover_post_merge_declared_outputs(authority)
+    unchanged = queue.get(request.request_id)
+    assert unchanged is not None and unchanged.status == "completed"
+    assert missing_checkout_closed == [True]
+
     result = bridge.recover_post_merge_declared_outputs(authority)
 
     assert result is not None
@@ -5452,11 +5495,11 @@ def test_bridge_reopens_exact_false_declared_output_completion(
     assert result["reason"] == "false_positive_completion_reopened"
     assert result["request_id"] == request.request_id
     assert result["candidate_commit"] == candidate
-    assert authority.transaction_target
-    assert authority.transaction_target != advanced_target
-    assert result["target_commit"] == authority.transaction_target
+    assert transaction_targets
+    assert transaction_targets == [result["target_commit"]]
+    assert transaction_targets[0] != advanced_target
     assert result["write_count"] == 1
-    assert authority.checkout_mutation_calls == [
+    assert checkout_mutation_calls == [
         "reopen_false_positive_merge_completion"
     ]
     recovery_cursors = bridge._load_post_merge_recovery_cursors()
@@ -5480,14 +5523,277 @@ def test_bridge_reopens_exact_false_declared_output_completion(
         allow_post_merge_declared_output_recovery=True,
     )
     assert not recovery_train._quarantine_may_auto_recover(reopened)
-    assert portal_calls == []
+    assert portal_calls == ["LGSWF-004"]
     assert subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=repo,
         check=True,
         capture_output=True,
         text=True,
-    ).stdout.strip() == authority.transaction_target
+    ).stdout.strip() == transaction_targets[0]
+
+
+@pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
+def test_production_database_daemon_uses_portal_checkout_authority_for_false_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "production-reopen@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Production Reopen Test"],
+        cwd=repo,
+        check=True,
+    )
+    output = repo / "inventory" / "result.json"
+    output.parent.mkdir(parents=True)
+    output.write_text('{"version":"base"}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "inventory/result.json"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=repo, check=True)
+    target = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "switch", "-q", "-c", "implementation/candidate"],
+        cwd=repo,
+        check=True,
+    )
+    output.write_text('{"version":"candidate"}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "inventory/result.json"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "candidate"], cwd=repo, check=True)
+    candidate = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(["git", "switch", "-q", "main"], cwd=repo, check=True)
+
+    daemon = DatabaseImplementationDaemon(
+        database_path=tmp_path / "control.duckdb",
+        coordination_path=tmp_path / "coordination.duckdb",
+        execution_path=tmp_path / "execution.duckdb",
+        owner_session_id="session:production-false-completion",
+        authority_mode="embedded_exclusive",
+        task_source_kind="duckdb",
+        require_real_execution=True,
+    )
+    try:
+        daemon.materialize_population(
+            {
+                "repository_tree_id": "tree:production-false-completion",
+                "tasks": [
+                    {
+                        "task_cid": "task:cid:004",
+                        "task_id": "LGSWF-004",
+                        "goal_cid": "goal:inventory",
+                        "status": "ready",
+                        "priority": "P0",
+                        "ordinal": 4,
+                        "title": "Inventory",
+                        "outputs": [{"path": "inventory/result.json"}],
+                        "validations": [
+                            {
+                                "argv": [
+                                    "python3",
+                                    "-m",
+                                    "pytest",
+                                    "focused.py",
+                                ]
+                            }
+                        ],
+                        "acceptance": [
+                            {"criterion": "Focused validation passes"}
+                        ],
+                        "objective": "Produce the current authority inventory",
+                        "completion": "auto",
+                        "track": "analysis",
+                        "read_scope": ["ipfs_accelerate_py/agent_supervisor"],
+                        "write_scope": ["inventory/result.json"],
+                        "completion_contract": "Focused validation passes",
+                    }
+                ],
+            }
+        )
+        failed = daemon.claim_next()
+        assert failed is not None
+        record = daemon.task_source.get_task(failed.task_cid)
+        assert record is not None and record.status == "in_progress"
+
+        attempt_root = tmp_path / "lane-0-attempts"
+        seed_bridge = DatabasePortalExecutionBridge(
+            task_source=daemon.task_source,
+            attempt_root=attempt_root,
+            portal_factory=lambda _paths, _alias: None,
+            repository_root=repo,
+            task_header_prefix="## LGSWF-",
+        )
+        paths, _binding = seed_bridge._ensure_attempt_projection(failed, record)
+        [projected_task] = parse_task_text(
+            paths.task_projection.read_text(encoding="utf-8"),
+            path=paths.task_projection,
+            task_header_prefix="## LGSWF-",
+        )
+        repository_id = checkout_repository_id(repo)
+        queue = MergeQueue(
+            tmp_path / "merge-queue",
+            target_repository_id=repository_id,
+            target_branch="main",
+            require_target_binding=True,
+        )
+        request = queue.enqueue(
+            branch_name="implementation/candidate",
+            task_id=failed.task_alias,
+            canonical_task_id=failed.task_cid,
+            canonical_task_key=str(projected_task.canonical_task_key),
+            commit_sha=candidate,
+            metadata={
+                "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
+                "target_binding_schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "merge-target-binding@1"
+                ),
+                "target_repository_id": repository_id,
+                "target_branch": "main",
+                "implementation_commit": candidate,
+                "todo_path": str(paths.task_projection),
+                "state_path": str(paths.state),
+                "strategy_path": str(paths.strategy),
+                "events_path": str(paths.events),
+                "repo_root": str(repo.absolute()),
+                "task_header_prefix": "## LGSWF-",
+                "task": asdict(projected_task),
+                "completion_task_cids": {failed.task_alias: failed.task_cid},
+                "changed_submodule_paths": [],
+            },
+        )
+        claimed = queue.claim_pending_request(
+            request.request_id,
+            consumer_id="merge-train:production-false-shortcut-fixture",
+        )
+        assert claimed is not None
+        queue.complete(claimed)
+        completed = queue.get(request.request_id)
+        assert completed is not None and completed.status == "completed"
+        train = MergeTrain(repo, queue, target_branch="main")
+        train._write_receipt(
+            completed.dedupe_key,
+            {
+                "already_merged": True,
+                "canonical_task_id": completed.canonical_identity,
+                "commit_sha": candidate,
+                "distributed_publication_admission": {
+                    "admitted": True,
+                    "distributed": False,
+                    "request_id": request.request_id,
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "distributed-lane-admission@1"
+                    ),
+                    "status": "local",
+                },
+                "finished_at": 2.0,
+                "integrated": True,
+                "merge_commit": target,
+                "merged": False,
+                "mutation_short_circuited": True,
+                "reason": "declared_outputs_already_on_target",
+                "request_id": request.request_id,
+                "started_at": 1.0,
+                "status": "already_merged",
+                "target_branch": "main",
+                "target_commit": target,
+                "task_id": failed.task_alias,
+            },
+        )
+
+        failed = daemon.commit_phase(failed, "context")
+        failed = daemon.commit_phase(
+            failed,
+            "failed",
+            body={
+                "reason": "post_merge_declared_outputs_missing",
+                "portal_retryable_failure": False,
+                "portal_terminal_failure": True,
+            },
+        )
+        coordination = daemon._reconcile_failed_attempt_coordination(failed)
+        terminal = daemon._persist_terminal_portal_failure(
+            failed,
+            reason="post_merge_declared_outputs_missing",
+            coordination_evidence=coordination,
+        )
+        assert terminal["status"] == "blocked"
+        assert not hasattr(daemon, "_run_checkout_mutation_transaction")
+
+        lock_observations: list[bool] = []
+        original_reopen = queue.reopen_false_positive_completion
+
+        def observe_reopen(
+            current: object,
+            *,
+            completion_receipt: object,
+        ) -> object:
+            lock_observations.append(checkout_mutation_lock_path(repo).is_file())
+            return original_reopen(
+                current,
+                completion_receipt=completion_receipt,
+            )
+
+        monkeypatch.setattr(
+            queue,
+            "reopen_false_positive_completion",
+            observe_reopen,
+        )
+        portal_calls: list[str] = []
+
+        def portal_factory(portal_paths: object, alias: str) -> object:
+            portal_calls.append(alias)
+            return PortalImplementationDaemon(
+                todo_path=portal_paths.task_projection,
+                state_path=portal_paths.state,
+                strategy_path=portal_paths.strategy,
+                events_path=portal_paths.events,
+                repo_root=repo,
+                task_header_prefix="## LGSWF-",
+                merge_queue=queue,
+                merge_target_branch="main",
+            )
+
+        bridge = DatabasePortalExecutionBridge(
+            task_source=daemon.task_source,
+            attempt_root=attempt_root,
+            portal_factory=portal_factory,
+            repository_root=repo,
+            merge_queue=queue,
+            merge_target_branch="main",
+            task_header_prefix="## LGSWF-",
+        )
+        result = bridge.recover_post_merge_declared_outputs(daemon)
+
+        assert result is not None
+        assert result["reason"] == "false_positive_completion_reopened"
+        assert result["write_count"] == 1
+        assert portal_calls == [failed.task_alias]
+        assert lock_observations == [True]
+        assert not checkout_mutation_lock_path(repo).exists()
+        reopened = queue.get(request.request_id)
+        assert reopened is not None and reopened.status == "pending"
+        blocked = daemon.task_source.get_task(failed.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+    finally:
+        daemon.close()
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB required")
