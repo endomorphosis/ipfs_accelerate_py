@@ -6,17 +6,28 @@ Missing signed artifacts are represented as typed receipts, not xfail/skip.
 
 from __future__ import annotations
 
+import base64
 import json
 from pathlib import Path
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
+    ed25519_did_key,
+)
+from ipfs_accelerate_py.agent_supervisor.validation import eaaef_host_admission
 from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
     BUNDLE_SCHEMA,
+    BUNDLE_SIGNATURES_SCHEMA,
     RECEIPT_DIR,
     RECEIPT_FILES,
     RECEIPT_SCHEMA,
+    admission_bundle_review_payload,
+    admission_bundle_target_decision,
+    cid,
     classify_blocker,
     closing_task_ids,
     collect_host_admission_receipts,
+    verify_admission_bundle_receipt,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.implementation_auto_rescue import (
     AutoRescueAction,
@@ -313,6 +324,249 @@ def test_admission_bundle_receipt_contract() -> None:
     assert _tasks()["EAAEF-191"]["completion_mode"] == "manual"
     assert _tasks()["EAAEF-183"]["completion_mode"] == "auto"
     assert _tasks()["EAAEF-184"]["completion_mode"] == "auto"
+
+
+def test_admission_review_binds_source_children_and_host_gate_inventory() -> None:
+    child_decisions = {
+        task_id: ("admitted" if task_id not in {"EAAEF-180", "EAAEF-181"} else "held")
+        for task_id in RECEIPT_FILES
+        if task_id != "EAAEF-191"
+    }
+    child_cids = {
+        task_id: "sha256:" + f"{index:064x}"
+        for index, task_id in enumerate(child_decisions, start=1)
+    }
+    bootstrap_cid = "sha256:" + "a" * 64
+    materialization_cid = "sha256:" + "b" * 64
+    assert admission_bundle_target_decision(
+        child_decisions=child_decisions,
+        bootstrap_admission_statement_cid=bootstrap_cid,
+        materialization_receipt_cid=materialization_cid,
+    ) == "admitted"
+
+    common = {
+        "child_decisions": child_decisions,
+        "child_receipt_cids": child_cids,
+        "decision": "admitted",
+        "launch_plan_allowed": False,
+        "source_head": "1" * 40,
+        "source_tree": "2" * 40,
+        "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        "board_cid": "sha256:" + "c" * 64,
+        "bootstrap_admission_statement_cid": bootstrap_cid,
+        "materialization_receipt_cid": materialization_cid,
+        "inventory_open_host_gated": (),
+    }
+    review = admission_bundle_review_payload(**common)
+    changed = admission_bundle_review_payload(**{**common, "source_head": "3" * 40})
+    assert review != changed
+    changed = admission_bundle_review_payload(
+        **{
+            **common,
+            "child_receipt_cids": {**child_cids, "EAAEF-190": "sha256:" + "d" * 64},
+        }
+    )
+    assert review != changed
+    changed = admission_bundle_review_payload(
+        **{
+            **common,
+            "inventory_open_host_gated": ("bootstrap bundle pending",),
+        }
+    )
+    assert review != changed
+
+
+def test_tracked_admission_word_is_not_current_launch_authority() -> None:
+    board = _board()
+    verification = verify_admission_bundle_receipt(
+        expected_source_head="0" * 40,
+        expected_source_tree="1" * 40,
+        expected_board_namespace=str(board["board_namespace"]),
+        expected_board_cid=str(board["board_cid"]),
+    )
+    assert verification["admitted"] is False
+    assert verification["blockers"]
+
+
+def test_current_signed_bundle_rejects_child_receipt_replay(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_head = "1" * 40
+    source_tree = "2" * 40
+    board_namespace = "external-agent-autonomous-execution-fabric-v1"
+    board_cid = "sha256:" + "3" * 64
+    bootstrap_cid = "sha256:" + "4" * 64
+    materialization_cid = "sha256:" + "5" * 64
+    open_host_gates = ["board validation awaits this EAAEF-191 bundle — reviewed"]
+    operator_key = Ed25519PrivateKey.generate()
+    reviewer_key = Ed25519PrivateKey.generate()
+    operator_did = ed25519_did_key(operator_key.public_key())
+    reviewer_did = ed25519_did_key(reviewer_key.public_key())
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "TRUSTED_OPERATOR_DIDS",
+        (operator_did,),
+    )
+    monkeypatch.setattr(
+        eaaef_host_admission,
+        "TRUSTED_SECURITY_REVIEWER_DIDS",
+        (reviewer_did,),
+    )
+
+    child_decisions: dict[str, str] = {}
+    child_receipt_cids: dict[str, str] = {}
+    for task_id, filename in RECEIPT_FILES.items():
+        if task_id == "EAAEF-191":
+            continue
+        decision = (
+            "admitted"
+            if task_id not in {"EAAEF-180", "EAAEF-181"}
+            else "inventory"
+        )
+        child = {
+            "schema": RECEIPT_SCHEMA,
+            "task_id": task_id,
+            "receipt_name": filename,
+            "decision": decision,
+            "process_started": False,
+            "supervisor_process_started": False,
+            "self_signed": False,
+            "independent_signatures": [],
+            "source_head": source_head,
+            "source_tree": source_tree,
+            "board_namespace": board_namespace,
+            "board_cid": board_cid,
+            "evidence": {},
+        }
+        child["receipt_cid"] = cid(child)
+        (tmp_path / filename).write_text(
+            json.dumps(child, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        child_decisions[task_id] = decision
+        child_receipt_cids[task_id] = str(child["receipt_cid"])
+
+    review = admission_bundle_review_payload(
+        child_decisions=child_decisions,
+        child_receipt_cids=child_receipt_cids,
+        decision="admitted",
+        launch_plan_allowed=False,
+        source_head=source_head,
+        source_tree=source_tree,
+        board_namespace=board_namespace,
+        board_cid=board_cid,
+        bootstrap_admission_statement_cid=bootstrap_cid,
+        materialization_receipt_cid=materialization_cid,
+        inventory_open_host_gated=open_host_gates,
+    )
+    canonical_review = json.dumps(
+        review,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    operator_signature = base64.b64encode(
+        operator_key.sign(canonical_review)
+    ).decode("ascii")
+    reviewer_payload = {
+        **review,
+        "operator_did": operator_did,
+        "operator_signature": operator_signature,
+    }
+    reviewer_signature = base64.b64encode(
+        reviewer_key.sign(
+            json.dumps(
+                reviewer_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            ).encode("utf-8")
+        )
+    ).decode("ascii")
+    signatures = {
+        "schema": BUNDLE_SIGNATURES_SCHEMA,
+        "operator_did": operator_did,
+        "operator_signature": operator_signature,
+        "security_reviewer_did": reviewer_did,
+        "security_reviewer_signature": reviewer_signature,
+        "payload_sha256": cid(review),
+        "supervisor_signed": False,
+        "configured_board_launch": False,
+        "decision": "admitted",
+    }
+    (tmp_path / "admission_bundle.signatures.json").write_text(
+        json.dumps(signatures, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    bundle = {
+        "schema": BUNDLE_SCHEMA,
+        "task_id": "EAAEF-191",
+        "receipt_name": RECEIPT_FILES["EAAEF-191"],
+        "decision": "admitted",
+        "process_started": False,
+        "supervisor_process_started": False,
+        "self_signed": False,
+        "independent_signatures": [],
+        "source_head": source_head,
+        "source_tree": source_tree,
+        "board_namespace": board_namespace,
+        "board_cid": board_cid,
+        "evidence": {
+            "child_receipt_cids": child_receipt_cids,
+            "launch_plan_allowed": False,
+            "bootstrap_admission_statement_cid": bootstrap_cid,
+            "materialization_receipt_cid": materialization_cid,
+            "independent_operator_signature": operator_signature,
+            "independent_security_reviewer_signature": reviewer_signature,
+            "operator_did": operator_did,
+            "security_reviewer_did": reviewer_did,
+            "independent_signature_present": True,
+            "prospective_supervisor_signature_rejected": True,
+            "inventory_open_host_gated": open_host_gates,
+        },
+    }
+    bundle["receipt_cid"] = cid(bundle)
+    (tmp_path / RECEIPT_FILES["EAAEF-191"]).write_text(
+        json.dumps(bundle, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    expected = {
+        "receipt_dir": tmp_path,
+        "expected_source_head": source_head,
+        "expected_source_tree": source_tree,
+        "expected_board_namespace": board_namespace,
+        "expected_board_cid": board_cid,
+    }
+    assert verify_admission_bundle_receipt(**expected)["admitted"] is True
+
+    signatures_path = tmp_path / "admission_bundle.signatures.json"
+    mislabeled = {**signatures, "configured_board_launch": True}
+    signatures_path.write_text(
+        json.dumps(mislabeled, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    assert verify_admission_bundle_receipt(**expected)["admitted"] is False
+    signatures_path.write_text(
+        json.dumps(signatures, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    replay_path = tmp_path / RECEIPT_FILES["EAAEF-190"]
+    replay = json.loads(replay_path.read_text(encoding="utf-8"))
+    replay["evidence"] = {"replayed": True}
+    replay.pop("receipt_cid")
+    replay["receipt_cid"] = cid(replay)
+    replay_path.write_text(
+        json.dumps(replay, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    rejected = verify_admission_bundle_receipt(**expected)
+    assert rejected["admitted"] is False
+    assert "EAAEF-191 child receipt identities differ" in rejected["blockers"]
 
 
 def test_collector_records_live_allowed_plan_without_launching() -> None:

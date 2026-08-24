@@ -739,6 +739,44 @@ def _validate_board(board: dict[str, Any], source: dict[str, Any], stack: dict[s
     }
 
 
+def _verify_live_host_admission(board: dict[str, Any]) -> dict[str, Any]:
+    if not board:
+        return {
+            "admitted": False,
+            "blockers": ["full generated board validation is required for live admission"],
+        }
+    try:
+        from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
+            verify_admission_bundle_receipt,
+        )
+
+        source_head = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            text=True,
+        ).strip()
+        source_tree = subprocess.check_output(
+            ["git", "rev-parse", "HEAD^{tree}"],
+            cwd=ROOT,
+            text=True,
+        ).strip()
+        return verify_admission_bundle_receipt(
+            receipt_dir=CAMPAIGN_DIR / "receipts/host_admission",
+            expected_source_head=source_head,
+            expected_source_tree=source_tree,
+            expected_board_namespace=str(board.get("board_namespace") or ""),
+            expected_board_cid=str(board.get("board_cid") or ""),
+        )
+    except Exception as exc:
+        return {
+            "admitted": False,
+            "blockers": [
+                "independent EAAEF-191 admission verification failed: "
+                f"{type(exc).__name__}"
+            ],
+        }
+
+
 def validate(*, source_only: bool = False) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -749,27 +787,24 @@ def validate(*, source_only: bool = False) -> dict[str, Any]:
         board = _validate_generated_parity(errors)
         _validate_native_markdown_projection(board, errors)
         counts = _validate_board(board, source, stack, errors)
-    admission_path = CAMPAIGN_DIR / "receipts/host_admission/admission_bundle.json"
-    admission_decision = ""
-    if admission_path.is_file():
-        try:
-            admission = json.loads(admission_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            admission = {}
-        if isinstance(admission, dict):
-            admission_decision = str(admission.get("decision") or "")
-    live_launch_allowed = admission_decision == "admitted"
-    live_launch_blockers = []
+    admission_verification = _verify_live_host_admission(board)
+    live_launch_allowed = admission_verification.get("admitted") is True
+    live_launch_blockers = [
+        str(item) for item in admission_verification.get("blockers") or ()
+    ]
     if not live_launch_allowed:
-        live_launch_blockers = [
-            "EAAEF-191 admission bundle is not independently signed admitted",
-            "actual independently signed native-dependency, V2 lane/verifier/merge, Quack-client, dispatcher-service and Plan-R2 remote-owner artifacts are absent",
-            "independently deployed signed command-authorizer, Quack and dispatcher endpoints plus a qualified DuckDB/Quack extension are absent",
-            "real Docker/container engine, image/profile/SBOM, provider and effect-bound network authority are not admitted",
-            "configured multi-supervisor launch requires an immutable accepted control-plane capsule",
-            "continuous Quack and live DuckLake exact profiles remain unqualified",
-            "source R1/R2 factories and supervisor wiring do not authorize live launch or effects",
-        ]
+        live_launch_blockers.extend(
+            [
+                "EAAEF-191 admission bundle is not independently signed admitted",
+                "actual independently signed native-dependency, V2 lane/verifier/merge, Quack-client, dispatcher-service and Plan-R2 remote-owner artifacts are absent",
+                "independently deployed signed command-authorizer, Quack and dispatcher endpoints plus a qualified DuckDB/Quack extension are absent",
+                "real Docker/container engine, image/profile/SBOM, provider and effect-bound network authority are not admitted",
+                "configured multi-supervisor launch requires an immutable accepted control-plane capsule",
+                "continuous Quack and live DuckLake exact profiles remain unqualified",
+                "source R1/R2 factories and supervisor wiring do not authorize live launch or effects",
+            ]
+        )
+        live_launch_blockers = list(dict.fromkeys(live_launch_blockers))
     return {
         "schema": SCHEMA,
         "valid": not errors,

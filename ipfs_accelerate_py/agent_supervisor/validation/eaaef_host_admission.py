@@ -41,10 +41,10 @@ BUNDLE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-bundle@1"
 )
 BUNDLE_REVIEW_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/eaaef-admission-bundle-review@1"
+    "ipfs_accelerate_py/agent-supervisor/eaaef-admission-bundle-review@2"
 )
 BUNDLE_SIGNATURES_SCHEMA: Final = (
-    "ipfs_accelerate_py/agent-supervisor/eaaef-admission-bundle-signatures@1"
+    "ipfs_accelerate_py/agent-supervisor/eaaef-admission-bundle-signatures@2"
 )
 TRUSTED_OPERATOR_DIDS: Final = (
     "did:key:z6Mku1TT7TcoD2VksFwNmYGNpE1zprQMmXsT3tz39BzhVdsy",
@@ -209,15 +209,34 @@ _CLOSING_TASK_MARKERS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
 def admission_bundle_review_payload(
     *,
     child_decisions: Mapping[str, str],
+    child_receipt_cids: Mapping[str, str],
     decision: str,
     launch_plan_allowed: bool,
+    source_head: str,
+    source_tree: str,
+    board_namespace: str,
+    board_cid: str,
+    bootstrap_admission_statement_cid: str,
+    materialization_receipt_cid: str,
+    inventory_open_host_gated: Sequence[str],
 ) -> dict[str, Any]:
     return {
         "schema": BUNDLE_REVIEW_SCHEMA,
-        "board_namespace": "external-agent-autonomous-execution-fabric-v1",
+        "source_head": str(source_head),
+        "source_tree": str(source_tree),
+        "board_namespace": str(board_namespace),
+        "board_cid": str(board_cid),
         "decision": str(decision),
         "launch_plan_allowed": bool(launch_plan_allowed),
         "child_decisions": dict(child_decisions),
+        "child_receipt_cids": dict(child_receipt_cids),
+        "bootstrap_admission_statement_cid": str(
+            bootstrap_admission_statement_cid
+        ),
+        "materialization_receipt_cid": str(materialization_receipt_cid),
+        "inventory_open_host_gated": [
+            str(item) for item in inventory_open_host_gated
+        ],
         "prospective_supervisor_signature_rejected": True,
         "configured_board_launch": False,
     }
@@ -226,8 +245,17 @@ def admission_bundle_review_payload(
 def load_admission_bundle_signatures(
     *,
     child_decisions: Mapping[str, str],
+    child_receipt_cids: Mapping[str, str],
     decision: str,
     launch_plan_allowed: bool,
+    source_head: str,
+    source_tree: str,
+    board_namespace: str,
+    board_cid: str,
+    bootstrap_admission_statement_cid: str,
+    materialization_receipt_cid: str,
+    inventory_open_host_gated: Sequence[str],
+    signatures_path: Path = BUNDLE_SIGNATURES_PATH,
 ) -> dict[str, str]:
     """Return verified operator/reviewer signatures, or empty strings."""
 
@@ -237,13 +265,19 @@ def load_admission_bundle_signatures(
         "operator_did": "",
         "security_reviewer_did": "",
     }
-    if not BUNDLE_SIGNATURES_PATH.is_file():
+    if not signatures_path.is_file():
         return empty
     try:
-        payload = json.loads(BUNDLE_SIGNATURES_PATH.read_text(encoding="utf-8"))
+        payload = json.loads(signatures_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return empty
-    if not isinstance(payload, dict) or payload.get("schema") != BUNDLE_SIGNATURES_SCHEMA:
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema") != BUNDLE_SIGNATURES_SCHEMA
+        or payload.get("supervisor_signed") is not False
+        or payload.get("configured_board_launch") is not False
+        or payload.get("decision") != decision
+    ):
         return empty
     operator_did = str(payload.get("operator_did") or "")
     reviewer_did = str(payload.get("security_reviewer_did") or "")
@@ -258,8 +292,16 @@ def load_admission_bundle_signatures(
         return empty
     review = admission_bundle_review_payload(
         child_decisions=child_decisions,
+        child_receipt_cids=child_receipt_cids,
         decision=decision,
         launch_plan_allowed=launch_plan_allowed,
+        source_head=source_head,
+        source_tree=source_tree,
+        board_namespace=board_namespace,
+        board_cid=board_cid,
+        bootstrap_admission_statement_cid=bootstrap_admission_statement_cid,
+        materialization_receipt_cid=materialization_receipt_cid,
+        inventory_open_host_gated=inventory_open_host_gated,
     )
     if cid(review) != str(payload.get("payload_sha256") or ""):
         return empty
@@ -297,6 +339,168 @@ def cid(value: Any) -> str:
         ensure_ascii=False,
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _full_sha256(value: object) -> bool:
+    text = str(value or "")
+    return (
+        len(text) == 71
+        and text.startswith("sha256:")
+        and all(character in "0123456789abcdef" for character in text[7:])
+    )
+
+
+def admission_bundle_target_decision(
+    *,
+    child_decisions: Mapping[str, str],
+    bootstrap_admission_statement_cid: str,
+    materialization_receipt_cid: str,
+) -> str:
+    """Return the only decision eligible for an independently signed review."""
+
+    admitted = (
+        all(
+            child_decisions.get(task_id) == "admitted"
+            for task_id in ADMIT_REQUIRED_CHILDREN
+        )
+        and _full_sha256(bootstrap_admission_statement_cid)
+        and _full_sha256(materialization_receipt_cid)
+    )
+    return "admitted" if admitted else "no_go"
+
+
+def verify_admission_bundle_receipt(
+    *,
+    receipt_dir: Path = RECEIPT_DIR,
+    expected_source_head: str,
+    expected_source_tree: str,
+    expected_board_namespace: str,
+    expected_board_cid: str,
+) -> dict[str, Any]:
+    """Verify current, closed, independently signed EAAEF host admission.
+
+    Host evidence is deliberately allowed to remain outside a source commit.
+    Consequently its signatures must bind the exact source/tree, board, child
+    receipt CIDs, bootstrap/materialization identities, and open-blocker list.
+    A decision string by itself is never launch authority.
+    """
+
+    blockers: list[str] = []
+    receipts: dict[str, dict[str, Any]] = {}
+    for task_id, filename in RECEIPT_FILES.items():
+        path = receipt_dir / filename
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            blockers.append(f"{task_id} host receipt is unavailable or malformed")
+            continue
+        if not isinstance(payload, dict):
+            blockers.append(f"{task_id} host receipt is not an object")
+            continue
+        body = {key: value for key, value in payload.items() if key != "receipt_cid"}
+        expected_schema = RECEIPT_SCHEMA if task_id != "EAAEF-191" else BUNDLE_SCHEMA
+        if (
+            payload.get("schema") != expected_schema
+            or payload.get("task_id") != task_id
+            or payload.get("receipt_name") != filename
+            or payload.get("receipt_cid") != cid(body)
+        ):
+            blockers.append(f"{task_id} host receipt identity is invalid")
+        if (
+            payload.get("source_head") != expected_source_head
+            or payload.get("source_tree") != expected_source_tree
+            or payload.get("board_namespace") != expected_board_namespace
+            or payload.get("board_cid") != expected_board_cid
+        ):
+            blockers.append(f"{task_id} host receipt is stale for the current source")
+        if (
+            payload.get("process_started") is not False
+            or payload.get("supervisor_process_started") is not False
+            or payload.get("self_signed") is not False
+        ):
+            blockers.append(f"{task_id} host receipt violates launch separation")
+        receipts[task_id] = payload
+
+    bundle = receipts.get("EAAEF-191") or {}
+    evidence = bundle.get("evidence")
+    if not isinstance(evidence, Mapping):
+        blockers.append("EAAEF-191 admission evidence is unavailable")
+        evidence = {}
+    child_receipt_cids = {
+        task_id: str((receipts.get(task_id) or {}).get("receipt_cid") or "")
+        for task_id in RECEIPT_FILES
+        if task_id != "EAAEF-191"
+    }
+    child_decisions = {
+        task_id: str((receipts.get(task_id) or {}).get("decision") or "")
+        for task_id in RECEIPT_FILES
+        if task_id != "EAAEF-191"
+    }
+    raw_child_cids = evidence.get("child_receipt_cids")
+    observed_child_cids = (
+        {str(key): str(value) for key, value in raw_child_cids.items()}
+        if isinstance(raw_child_cids, Mapping)
+        else {}
+    )
+    if observed_child_cids != child_receipt_cids:
+        blockers.append("EAAEF-191 child receipt identities differ")
+    bootstrap_cid = str(evidence.get("bootstrap_admission_statement_cid") or "")
+    materialization_cid = str(evidence.get("materialization_receipt_cid") or "")
+    raw_open = evidence.get("inventory_open_host_gated")
+    open_host_gates = (
+        [str(item) for item in raw_open]
+        if isinstance(raw_open, list) and all(isinstance(item, str) for item in raw_open)
+        else ["host-gated blocker inventory is malformed"]
+    )
+    target_decision = admission_bundle_target_decision(
+        child_decisions=child_decisions,
+        bootstrap_admission_statement_cid=bootstrap_cid,
+        materialization_receipt_cid=materialization_cid,
+    )
+    if bundle.get("decision") != target_decision:
+        blockers.append("EAAEF-191 decision differs from its closed evidence")
+    if target_decision != "admitted":
+        blockers.append("EAAEF-191 closed admission preconditions are not admitted")
+    if (
+        evidence.get("launch_plan_allowed") is not False
+        or evidence.get("prospective_supervisor_signature_rejected") is not True
+    ):
+        blockers.append("EAAEF-191 review/launch separation differs")
+
+    signatures = load_admission_bundle_signatures(
+        child_decisions=child_decisions,
+        child_receipt_cids=child_receipt_cids,
+        decision=target_decision,
+        launch_plan_allowed=False,
+        source_head=expected_source_head,
+        source_tree=expected_source_tree,
+        board_namespace=expected_board_namespace,
+        board_cid=expected_board_cid,
+        bootstrap_admission_statement_cid=bootstrap_cid,
+        materialization_receipt_cid=materialization_cid,
+        inventory_open_host_gated=open_host_gates,
+        signatures_path=receipt_dir / "admission_bundle.signatures.json",
+    )
+    expected_signature_evidence = {
+        name: str(evidence.get(name) or "")
+        for name in (
+            "independent_operator_signature",
+            "independent_security_reviewer_signature",
+            "operator_did",
+            "security_reviewer_did",
+        )
+    }
+    if not signatures["independent_operator_signature"] or (
+        signatures != expected_signature_evidence
+        or evidence.get("independent_signature_present") is not True
+    ):
+        blockers.append("EAAEF-191 independent signatures are absent or invalid")
+    return {
+        "admitted": not blockers,
+        "decision": str(bundle.get("decision") or ""),
+        "target_decision": target_decision,
+        "blockers": list(dict.fromkeys(blockers)),
+    }
 
 
 def classify_blocker(text: str) -> str:
@@ -2444,20 +2648,41 @@ def collect_host_admission_receipts(
         for task_id in RECEIPT_FILES
         if task_id != "EAAEF-191"
     }
-    children_admitted = all(
-        child_decisions.get(task_id) == "admitted" for task_id in ADMIT_REQUIRED_CHILDREN
+    bootstrap_cid = str(
+        (plan.get("bootstrap_admission_statement") or {}).get("statement_cid") or ""
     )
-    target_decision = "admitted" if children_admitted else "no_go"
-    signatures = load_admission_bundle_signatures(
+    materialization_cid = str(plan.get("materialization_receipt_cid") or "")
+    open_host_gates = [
+        str(item["blocker"])
+        for item in inventory_items
+        if item["class"] == "host_gated_external_authority"
+    ]
+    source_identity = receipts["EAAEF-180"]
+    target_decision = admission_bundle_target_decision(
         child_decisions=child_decisions,
+        bootstrap_admission_statement_cid=bootstrap_cid,
+        materialization_receipt_cid=materialization_cid,
+    )
+    signature_arguments = {
+        "child_decisions": child_decisions,
+        "child_receipt_cids": child_cids,
+        "launch_plan_allowed": False,
+        "source_head": str(source_identity["source_head"]),
+        "source_tree": str(source_identity["source_tree"]),
+        "board_namespace": str(source_identity["board_namespace"]),
+        "board_cid": str(source_identity["board_cid"]),
+        "bootstrap_admission_statement_cid": bootstrap_cid,
+        "materialization_receipt_cid": materialization_cid,
+        "inventory_open_host_gated": open_host_gates,
+    }
+    signatures = load_admission_bundle_signatures(
         decision=target_decision,
-        launch_plan_allowed=False,
+        **signature_arguments,
     )
     if not signatures["independent_operator_signature"] and target_decision == "admitted":
         signatures = load_admission_bundle_signatures(
-            child_decisions=child_decisions,
             decision="no_go",
-            launch_plan_allowed=False,
+            **signature_arguments,
         )
         target_decision = "no_go"
     elif not signatures["independent_operator_signature"]:
@@ -2468,10 +2693,8 @@ def collect_host_admission_receipts(
         evidence={
             "child_receipt_cids": child_cids,
             "launch_plan_allowed": False,
-            "bootstrap_admission_statement_cid": (
-                (plan.get("bootstrap_admission_statement") or {}).get("statement_cid")
-            ),
-            "materialization_receipt_cid": plan.get("materialization_receipt_cid"),
+            "bootstrap_admission_statement_cid": bootstrap_cid or None,
+            "materialization_receipt_cid": materialization_cid,
             "independent_operator_signature": signatures[
                 "independent_operator_signature"
             ],
@@ -2485,11 +2708,7 @@ def collect_host_admission_receipts(
                 and signatures["independent_security_reviewer_signature"]
             ),
             "prospective_supervisor_signature_rejected": True,
-            "inventory_open_host_gated": [
-                item["blocker"]
-                for item in inventory_items
-                if item["class"] == "host_gated_external_authority"
-            ],
+            "inventory_open_host_gated": open_host_gates,
         },
     )
     return receipts

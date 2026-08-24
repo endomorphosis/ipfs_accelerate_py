@@ -265,14 +265,14 @@ def test_board_validation_reopens_only_the_admitted_import_root(
     report = materializer._validate_board(binding)
 
     assert report["valid"] is True
-    admission = json.loads(
-        (
-            ROOT
-            / "docs/architecture/external_agent_autonomous_execution_fabric"
-            / "receipts/host_admission/admission_bundle.json"
-        ).read_text(encoding="utf-8")
+    # The tracked receipt contains the word ``admitted`` but is stale, keeps
+    # open host gates, and uses the superseded review signature schema.  Board
+    # validation must agree with the launch materializer's fail-closed result.
+    assert report["live_launch_allowed"] is False
+    assert report["qualification_status"] == (
+        "source_r1_r2_seams_implemented_live_no_go"
     )
-    assert report["live_launch_allowed"] is (admission.get("decision") == "admitted")
+    assert materializer._host_receipt_decision("EAAEF-191") == "no_go"
 
     forged = json.loads(json.dumps(binding, sort_keys=True))
     forged["approved_import_root"] = str(tmp_path / "missing-import-root")

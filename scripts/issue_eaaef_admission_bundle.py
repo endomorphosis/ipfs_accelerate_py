@@ -26,7 +26,6 @@ from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
     lifecycle_root_identity_did,
 )
 from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import (
-    ADMIT_REQUIRED_CHILDREN,
     BUNDLE_SIGNATURES_PATH,
     BUNDLE_SIGNATURES_SCHEMA,
     RECEIPT_DIR,
@@ -34,6 +33,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.eaaef_host_admission import 
     TRUSTED_OPERATOR_DIDS,
     TRUSTED_SECURITY_REVIEWER_DIDS,
     admission_bundle_review_payload,
+    admission_bundle_target_decision,
     cid,
     collect_and_write,
 )
@@ -60,7 +60,7 @@ def _canonical(value: object) -> bytes:
         value,
         sort_keys=True,
         separators=(",", ":"),
-        ensure_ascii=False,
+        ensure_ascii=True,
         allow_nan=False,
     ).encode("utf-8")
 
@@ -73,21 +73,48 @@ def _sign(key_path: Path, payload: object) -> tuple[str, str]:
 
 
 def issue() -> dict[str, str]:
-    collection = collect_and_write()
-    child_decisions = {
-        task_id: str(collection["decisions"][task_id])
-        for task_id in RECEIPT_FILES
+    collect_and_write()
+    child_receipts = {
+        task_id: json.loads(
+            (RECEIPT_DIR / filename).read_text(encoding="utf-8")
+        )
+        for task_id, filename in RECEIPT_FILES.items()
         if task_id != "EAAEF-191"
     }
-    decision = (
-        "admitted"
-        if all(child_decisions.get(task_id) == "admitted" for task_id in ADMIT_REQUIRED_CHILDREN)
-        else "no_go"
+    unsigned_bundle = json.loads(
+        (RECEIPT_DIR / RECEIPT_FILES["EAAEF-191"]).read_text(encoding="utf-8")
+    )
+    evidence = unsigned_bundle.get("evidence") or {}
+    child_decisions = {
+        task_id: str(receipt.get("decision") or "")
+        for task_id, receipt in child_receipts.items()
+    }
+    child_receipt_cids = {
+        task_id: str(receipt.get("receipt_cid") or "")
+        for task_id, receipt in child_receipts.items()
+    }
+    open_host_gates = [
+        str(item) for item in evidence.get("inventory_open_host_gated") or ()
+    ]
+    bootstrap_cid = str(evidence.get("bootstrap_admission_statement_cid") or "")
+    materialization_cid = str(evidence.get("materialization_receipt_cid") or "")
+    decision = admission_bundle_target_decision(
+        child_decisions=child_decisions,
+        bootstrap_admission_statement_cid=bootstrap_cid,
+        materialization_receipt_cid=materialization_cid,
     )
     review = admission_bundle_review_payload(
         child_decisions=child_decisions,
+        child_receipt_cids=child_receipt_cids,
         decision=decision,
         launch_plan_allowed=False,
+        source_head=str(unsigned_bundle.get("source_head") or ""),
+        source_tree=str(unsigned_bundle.get("source_tree") or ""),
+        board_namespace=str(unsigned_bundle.get("board_namespace") or ""),
+        board_cid=str(unsigned_bundle.get("board_cid") or ""),
+        bootstrap_admission_statement_cid=bootstrap_cid,
+        materialization_receipt_cid=materialization_cid,
+        inventory_open_host_gated=open_host_gates,
     )
     operator_did, operator_signature = _sign(OPERATOR_KEY, review)
     if operator_did not in TRUSTED_OPERATOR_DIDS:
