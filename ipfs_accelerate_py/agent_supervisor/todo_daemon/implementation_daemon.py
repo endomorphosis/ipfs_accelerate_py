@@ -80405,43 +80405,209 @@ class DatabaseImplementationDaemon:
             )
         return {**value, "receipt_id": str(receipt_id)}
 
-    def _legacy_empty_terminal_coordination_reproduces(
+    @staticmethod
+    def _terminal_coordination_projection_state(
+        attempt: DatabaseTaskAttempt,
+        raw: Mapping[str, Any],
+    ) -> str:
+        """Return the known state sealed by one populated coordination receipt."""
+
+        base_fields = {
+            "claim_id",
+            "attempt_id",
+            "attempt_number",
+            "lease_state",
+            "claim_state",
+            "claim_revision",
+            "coordination_attempt_status",
+            "coordination_attempt_revision",
+            "expires_at_ms",
+            "observed_at_ms",
+            "expired_now",
+        }
+        historical_fields = {
+            *base_fields,
+            "historical_expired",
+            "superseded_by_newer_fence",
+            "successor",
+        }
+        integer_fields = {
+            "claim_revision",
+            "coordination_attempt_revision",
+            "expires_at_ms",
+            "observed_at_ms",
+        }
+        raw_fields = set(raw)
+        if (
+            raw_fields not in (base_fields, historical_fields)
+            or raw.get("claim_id") != attempt.claim_id
+            or raw.get("attempt_id") != attempt.attempt_id
+            or raw.get("attempt_number") != int(attempt.attempt_number)
+            or any(
+                isinstance(raw.get(field), bool)
+                or not isinstance(raw.get(field), int)
+                or int(raw[field]) < (1 if "revision" in field else 0)
+                for field in integer_fields
+            )
+        ):
+            return ""
+        expires_at_ms = int(raw["expires_at_ms"])
+        observed_at_ms = int(raw["observed_at_ms"])
+        if (
+            raw_fields == base_fields
+            and raw.get("claim_state") == "accepted"
+            and raw.get("lease_state") == "accepted"
+            and raw.get("coordination_attempt_status") == "running"
+            and raw.get("expired_now") is False
+            and observed_at_ms < expires_at_ms
+        ):
+            return "accepted"
+        if (
+            raw_fields == base_fields
+            and raw.get("claim_state") == "expired"
+            and raw.get("lease_state") == "expired"
+            and raw.get("coordination_attempt_status") == "expired"
+            and raw.get("expired_now") is True
+            and observed_at_ms >= expires_at_ms
+        ):
+            return "expired"
+        if (
+            raw_fields == historical_fields
+            and raw.get("claim_state") == "expired"
+            and raw.get("lease_state") == "expired"
+            and raw.get("coordination_attempt_status") == "expired"
+            and raw.get("expired_now") is False
+            and raw.get("historical_expired") is True
+            and raw.get("superseded_by_newer_fence") is False
+            and raw.get("successor") == {}
+            and observed_at_ms >= expires_at_ms
+        ):
+            return "expired"
+        return ""
+
+    def _terminal_coordination_reproduces_read_only(
         self,
         attempt: DatabaseTaskAttempt,
+        *,
+        persisted: Mapping[str, Any] | None = None,
+        require_expired: bool = False,
     ) -> bool:
-        """Verify one historical empty coordination receipt without mutation.
-
-        Older immediate terminal paths sealed an empty object even though the
-        surrounding control receipt was bound to the exact failed attempt.
-        Such a receipt is eligible only after that same coordination claim is
-        already durably expired.  Requiring the pre-existing expired state
-        before calling the general reproducer keeps preauthorization read-only;
-        the reproducer then verifies the complete claim/attempt/lease triple
-        and proves that no newer same-task fence superseded it.
-        """
+        """Reproduce the current claim/attempt/lease triple without mutation."""
 
         claim = self.coordinator.get_task_claim(attempt.claim_id)
         if claim is None:
             return False
-        claim_state = str(
-            getattr(getattr(claim, "state", ""), "value", claim.state) or ""
+        coordination_attempt = self.coordinator.get_task_attempt(
+            attempt.attempt_id
         )
-        if claim_state != "expired":
+        get_lease = getattr(self.coordinator, "get_lease", None)
+        if coordination_attempt is None or not callable(get_lease):
             return False
-        coordination = self._reconcile_failed_attempt_coordination(attempt)
-        return bool(
-            coordination.get("claim_id") == attempt.claim_id
-            and coordination.get("attempt_id") == attempt.attempt_id
-            and coordination.get("attempt_number")
-            == int(attempt.attempt_number)
-            and coordination.get("claim_state") == "expired"
-            and coordination.get("lease_state") == "expired"
-            and coordination.get("coordination_attempt_status") == "expired"
-            and coordination.get("historical_expired") is True
-            and coordination.get("expired_now") is False
-            and coordination.get("superseded_by_newer_fence") is False
-            and coordination.get("successor") == {}
+        lease = get_lease(attempt.lease_id)
+        projections: list[Any] = [claim, coordination_attempt, lease]
+        projection_dicts: list[Mapping[str, Any]] = []
+        for projection in projections:
+            to_dict = getattr(projection, "to_dict", None)
+            value = to_dict() if callable(to_dict) else None
+            if not isinstance(value, Mapping):
+                return False
+            projection_dicts.append(value)
+        claim_identity, attempt_identity, lease_identity = projection_dicts
+        common_identity = {
+            "task_cid": attempt.task_cid,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        if (
+            claim_identity.get("claim_id") != attempt.claim_id
+            or claim_identity.get("lease_id") != attempt.lease_id
+            or any(
+                claim_identity.get(field) != expected
+                for field, expected in common_identity.items()
+            )
+            or any(
+                attempt_identity.get(field) != expected
+                for field, expected in common_identity.items()
+            )
+            or lease_identity.get("lease_id") != attempt.lease_id
+            or lease_identity.get("lease_kind") != "task"
+            or lease_identity.get("scope_key") != f"task:{attempt.task_cid}"
+            or lease_identity.get("scope") != attempt.task_cid
+            or lease_identity.get("mode") != "exclusive"
+            or lease_identity.get("claim_id") != attempt.claim_id
+            or any(
+                lease_identity.get(field) != expected
+                for field, expected in common_identity.items()
+            )
+        ):
+            return False
+        claim_state = str(claim_identity.get("state") or "")
+        attempt_status = str(attempt_identity.get("status") or "")
+        lease_state = str(lease_identity.get("state") or "")
+        expires_at_ms = claim_identity.get("expires_at_ms")
+        current_revisions = {
+            "claim_revision": claim_identity.get("revision"),
+            "coordination_attempt_revision": attempt_identity.get("revision"),
+        }
+        if (
+            isinstance(expires_at_ms, bool)
+            or not isinstance(expires_at_ms, int)
+            or expires_at_ms < 0
+            or lease_identity.get("expires_at_ms") != expires_at_ms
+            or any(
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 1
+                for value in current_revisions.values()
+            )
+            or self.coordinator.get_prepared_task_completion(attempt.task_cid)
+            is not None
+        ):
+            return False
+        now = self._now_ms()
+        if claim_state == "accepted":
+            if (
+                require_expired
+                or lease_state != "accepted"
+                or attempt_status != "running"
+                or expires_at_ms <= now
+            ):
+                return False
+        elif claim_state == "expired":
+            if (
+                lease_state != "expired"
+                or attempt_status != "expired"
+                or expires_at_ms > now
+            ):
+                return False
+        else:
+            return False
+        if persisted is not None:
+            persisted_state = self._terminal_coordination_projection_state(
+                attempt,
+                persisted,
+            )
+            if (
+                not persisted_state
+                or persisted.get("expires_at_ms") != expires_at_ms
+                or any(
+                    int(persisted[field]) > int(current_revisions[field])
+                    for field in current_revisions
+                )
+                or (claim_state == "accepted" and persisted_state != "accepted")
+            ):
+                return False
+        get_successor = getattr(
+            self.coordinator,
+            "get_task_claim_successor_projection",
+            None,
         )
+        if not callable(get_successor):
+            return False
+        return self._failed_attempt_coordination_successor(attempt) is None
 
     def preauthorize_post_merge_declared_output_recovery(
         self,
@@ -80627,6 +80793,8 @@ class DatabaseImplementationDaemon:
                 latest,
             )
         )
+        persisted_coordination: Mapping[str, Any] | None = None
+        require_expired_coordination = False
         if binding_changed_resume:
             pass
         elif (
@@ -80671,19 +80839,26 @@ class DatabaseImplementationDaemon:
             )
         elif coordination:
             if (
-                coordination.get("attempt_id") != latest.attempt_id
-                or coordination.get("claim_id") != latest.claim_id
-                or coordination.get("attempt_number")
-                != int(latest.attempt_number)
+                not self._terminal_coordination_projection_state(
+                    latest,
+                    coordination,
+                )
             ):
                 raise DatabaseImplementationConflictError(
                     "post-merge recovery preauthorization found no exact "
                     "terminal failure coordination projection"
                 )
-        elif not self._legacy_empty_terminal_coordination_reproduces(latest):
+            persisted_coordination = coordination
+        else:
+            require_expired_coordination = True
+        if not self._terminal_coordination_reproduces_read_only(
+            latest,
+            persisted=persisted_coordination,
+            require_expired=require_expired_coordination,
+        ):
             raise DatabaseImplementationConflictError(
                 "post-merge recovery preauthorization could not reproduce "
-                "legacy empty terminal coordination"
+                "the current terminal coordination fence"
             )
         result = {
             **raw,
