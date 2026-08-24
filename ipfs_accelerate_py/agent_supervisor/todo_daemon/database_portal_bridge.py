@@ -61,6 +61,62 @@ DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SEED_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/"
     "database-portal-consumed-attempt-retry-seed@1"
 )
+DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-protected-path-preservation@1"
+)
+_DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_FIELDS: Final[
+    frozenset[str]
+] = frozenset(
+    {
+        "schema",
+        "disposition",
+        "reason",
+        "task_cid",
+        "task_alias",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "source_task_revision",
+        "portal_attempt",
+        "attempt_consumed",
+        "provider_dispatched",
+        "completion_authoritative",
+        "local_recovery_required",
+        "mutation_scopes",
+        "protected_paths",
+        "baseline_commit",
+        "implementation_commit",
+        "preserved_commit",
+        "rescue_branch",
+        "original_branch",
+        "original_worktree_path",
+        "binding_id",
+        "events_digest",
+        "event_stream_id",
+        "implementation_started_event_id",
+        "protected_mutation_event_id",
+        "preservation_event_id",
+        "implementation_finished_event_id",
+        "protected_path_violation_digest",
+        "preservation_digest",
+        "receipt_id",
+    }
+)
+_PROTECTED_PATH_PRESERVATION_EVENT_CHAIN: Final[tuple[str, ...]] = (
+    "task_selected",
+    "implementation_protected_path_snapshot_recorded",
+    "implementation_started",
+    "pre_implementation_kernel_evaluated",
+    "implementation_protected_path_mutated",
+    "cleanup_finished",
+    "protected_path_interrupted_worktree_preserved",
+    "implementation_finished",
+    "daemon_pass",
+)
 _CONSUMED_ATTEMPT_TERMINAL_EVENT_CHAIN: Final[tuple[str, ...]] = (
     "task_selected",
     "implementation_protected_path_snapshot_recorded",
@@ -587,6 +643,60 @@ class DatabasePortalConsumedAttemptTerminal(DatabasePortalBridgeError):
         self.reason = "portal_provider_failed"
         self.attempt_consumed = True
         self.provider_dispatched = True
+        self.retry_receipt = value
+
+
+class DatabasePortalProtectedPathPreserved(DatabasePortalBridgeError):
+    """Replay one exact post-dispatch protected-path preservation.
+
+    This is neither a pre-dispatch deferral nor an ordinary consumed retry.
+    The provider already ran, while the external protected-path fence restored
+    Portal's attempt counter and preserved the candidate for zero-provider
+    validation.  Outer authorities must therefore keep this receipt distinct
+    from both retry classes.
+    """
+
+    def __init__(self, receipt: Mapping[str, Any]) -> None:
+        value = dict(receipt)
+        commit = str(value.get("preserved_commit") or "")
+        rescue_branch = str(value.get("rescue_branch") or "")
+        if (
+            set(value)
+            != _DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_FIELDS
+            or value.get("schema")
+            != DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA
+            or value.get("disposition") != "protected_candidate_preserved"
+            or value.get("reason")
+            != "implementation_protected_path_mutated"
+            or value.get("attempt_consumed") is not False
+            or value.get("provider_dispatched") is not True
+            or value.get("completion_authoritative") is not False
+            or value.get("local_recovery_required") is not True
+            or value.get("mutation_scopes") != ["shared_checkout"]
+            or value.get("implementation_commit") != commit
+            or not re.fullmatch(r"[0-9a-f]{40}", commit)
+            or not rescue_branch.startswith("rescue/")
+            or not rescue_branch.endswith("-protected-path-interrupted")
+        ):
+            raise ValueError(
+                "protected-path preservation receipt has an invalid disposition"
+            )
+        receipt_id = str(value.get("receipt_id") or "")
+        if receipt_id != _content_addressed_record(
+            value,
+            identity_field="receipt_id",
+        ):
+            raise ValueError(
+                "protected-path preservation receipt identity is invalid"
+            )
+        super().__init__("implementation_protected_path_mutated")
+        self.reason = "implementation_protected_path_mutated"
+        self.attempt_consumed = False
+        self.provider_dispatched = True
+        self.preservation_receipt = value
+        # Compatibility with the outer daemon's existing typed-exception
+        # receipt accessor.  This remains a preservation disposition, not an
+        # authorization to dispatch or consume an ordinary retry.
         self.retry_receipt = value
 
 
@@ -3324,6 +3434,72 @@ class DatabasePortalExecutionBridge:
             and resolved.stdout.strip() == commit
         )
 
+    def _preserved_commit_descends_from(
+        self,
+        *,
+        baseline_commit: str,
+        preserved_commit: str,
+    ) -> bool:
+        """Bind a preserved candidate to its exact immutable baseline."""
+
+        if (
+            self.repository_root is None
+            or re.fullmatch(r"[0-9a-f]{40}", baseline_commit) is None
+            or re.fullmatch(r"[0-9a-f]{40}", preserved_commit) is None
+            or baseline_commit == preserved_commit
+        ):
+            return False
+        try:
+            baseline = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{baseline_commit}^{{commit}}",
+                ],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=5,
+            )
+            candidate = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{preserved_commit}^{{commit}}",
+                ],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=5,
+            )
+            ancestry = subprocess.run(
+                [
+                    "git",
+                    "merge-base",
+                    "--is-ancestor",
+                    baseline_commit,
+                    preserved_commit,
+                ],
+                cwd=self.repository_root,
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return (
+            baseline.returncode == 0
+            and baseline.stdout.strip() == baseline_commit
+            and candidate.returncode == 0
+            and candidate.stdout.strip() == preserved_commit
+            and ancestry.returncode == 0
+        )
+
     def _validation_retry_receipt(
         self,
         *,
@@ -3598,6 +3774,464 @@ class DatabasePortalExecutionBridge:
             "denial_findings": [],
         }
         receipt["receipt_id"] = _sha256_bytes(_canonical_json(receipt))
+        return receipt
+
+    def _protected_path_preservation_receipt(
+        self,
+        *,
+        attempt: Any,
+        paths: DatabasePortalAttemptPaths,
+        binding: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Bind one exact post-dispatch, externally interrupted candidate.
+
+        A shared-checkout protected path can change after provider dispatch but
+        before proposal validation.  Portal preserves the candidate and
+        restores its ordinary-attempt counter.  On crash replay this terminal
+        must be recognized before any carried retry seed is reinitialized;
+        otherwise a successor state can reach another provider dispatch.
+
+        Near-shape evidence fails closed.  In particular, workspace-scoped
+        mutations, incomplete preservation, a substituted rescue ref, or a
+        later execution event never degrade into an ordinary Portal pass.
+        """
+
+        events = self._verified_event_chain(paths)
+        alias = str(binding.get("task_alias") or "")
+        task_cid = str(attempt.task_cid)
+        preservation_type = "protected_path_interrupted_worktree_preserved"
+        protected_reason = "implementation_protected_path_mutated"
+        marker_present = any(
+            event.get("type") == preservation_type
+            or (
+                event.get("type") == "implementation_finished"
+                and (
+                    event.get("reason") == protected_reason
+                    or (
+                        isinstance(
+                            event.get("protected_path_violation"),
+                            Mapping,
+                        )
+                        and event["protected_path_violation"].get("reason")
+                        == protected_reason
+                    )
+                    or (
+                        isinstance(
+                            event.get("failed_preservation_result"),
+                            Mapping,
+                        )
+                        and isinstance(
+                            event["failed_preservation_result"].get(
+                                "protected_path_violation"
+                            ),
+                            Mapping,
+                        )
+                        and event["failed_preservation_result"][
+                            "protected_path_violation"
+                        ].get("reason")
+                        == protected_reason
+                    )
+                )
+            )
+            for event in events
+        )
+        if not marker_present:
+            return None
+
+        seed_event: Mapping[str, Any] | None = None
+        terminal_events = events
+        if events and str(events[0].get("type") or "") in (
+            _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS
+        ):
+            seed_event = events[0]
+            terminal_events = events[1:]
+        if tuple(
+            str(event.get("type") or "") for event in terminal_events
+        ) != _PROTECTED_PATH_PRESERVATION_EVENT_CHAIN:
+            raise DatabasePortalBridgeError(
+                "protected-path preservation event chain is not exact"
+            )
+        (
+            selected_event,
+            snapshot_event,
+            started_event,
+            kernel_event,
+            mutation_event,
+            cleanup_event,
+            preserved_event,
+            finished_event,
+            daemon_pass_event,
+        ) = terminal_events
+
+        seed_receipt: Mapping[str, Any] | None = None
+        if seed_event is not None:
+            seed_type = str(seed_event.get("type") or "")
+            seed_receipt_field = {
+                "database_portal_validation_retry_seeded": (
+                    "validation_retry_receipt"
+                ),
+                "database_portal_capacity_retry_seeded": (
+                    "capacity_retry_receipt"
+                ),
+                "database_portal_consumed_attempt_retry_seeded": (
+                    "consumed_attempt_retry_receipt"
+                ),
+            }[seed_type]
+            seed_schema = {
+                "database_portal_validation_retry_seeded": (
+                    DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA
+                ),
+                "database_portal_capacity_retry_seeded": (
+                    DATABASE_PORTAL_CAPACITY_RETRY_SEED_SCHEMA
+                ),
+                "database_portal_consumed_attempt_retry_seeded": (
+                    DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SEED_SCHEMA
+                ),
+            }[seed_type]
+            nested_schema = {
+                "database_portal_validation_retry_seeded": (
+                    DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA
+                ),
+                "database_portal_capacity_retry_seeded": (
+                    DATABASE_PORTAL_CAPACITY_RETRY_SCHEMA
+                ),
+                "database_portal_consumed_attempt_retry_seeded": (
+                    DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA
+                ),
+            }[seed_type]
+            candidate_seed_receipt = seed_event.get(seed_receipt_field)
+            seed_identity_body = {
+                key: value
+                for key, value in seed_event.items()
+                if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+                and key != "seed_id"
+            }
+            if (
+                set(seed_event)
+                != _CONSUMED_ATTEMPT_SEED_EVENT_FIELDS[seed_type]
+                or seed_event.get("schema") != seed_schema
+                or seed_event.get("task_id") != alias
+                or seed_event.get("canonical_task_cid") != task_cid
+                or seed_event.get("target_database_attempt_id")
+                != str(attempt.attempt_id)
+                or seed_event.get("target_claim_id") != str(attempt.claim_id)
+                or not str(
+                    seed_event.get("source_database_attempt_id") or ""
+                )
+                or seed_event.get("source_database_attempt_id")
+                == str(attempt.attempt_id)
+                or seed_event.get("completion_authoritative") is not False
+                or not isinstance(candidate_seed_receipt, Mapping)
+                or candidate_seed_receipt.get("schema") != nested_schema
+                or candidate_seed_receipt.get("receipt_id")
+                != seed_event.get("source_retry_receipt_id")
+                or candidate_seed_receipt.get("attempt_id")
+                != seed_event.get("source_database_attempt_id")
+                or candidate_seed_receipt.get("task_cid") != task_cid
+                or candidate_seed_receipt.get("task_alias") != alias
+                or candidate_seed_receipt.get("attempt_consumed") is not True
+                or candidate_seed_receipt.get("provider_dispatched") is not True
+                or seed_event.get("seed_id")
+                != _sha256_bytes(_canonical_json(seed_identity_body))
+            ):
+                raise DatabasePortalBridgeError(
+                    "protected-path preservation retry seed failed verification"
+                )
+            seed_receipt = candidate_seed_receipt
+
+        portal_attempt = finished_event.get("attempt")
+        source_revision = binding.get("task_revision")
+        baseline_commit = str(started_event.get("baseline_ref") or "")
+        branch = str(started_event.get("branch") or "")
+        workspace_path = str(started_event.get("worktree_path") or "")
+        preservation = finished_event.get("failed_preservation_result")
+        violation = finished_event.get("protected_path_violation")
+        validation = finished_event.get("validation_result")
+        commit_result = (
+            preservation.get("commit_result")
+            if isinstance(preservation, Mapping)
+            else None
+        )
+        cleanup_result = (
+            preservation.get("cleanup_result")
+            if isinstance(preservation, Mapping)
+            else None
+        )
+        preserved_commit = str(
+            preservation.get("preserved_commit")
+            if isinstance(preservation, Mapping)
+            else ""
+        )
+        implementation_commit = str(
+            preservation.get("implementation_commit")
+            if isinstance(preservation, Mapping)
+            else ""
+        )
+        rescue_branch = str(
+            preservation.get("rescue_branch")
+            if isinstance(preservation, Mapping)
+            else ""
+        )
+        preservation_fields = {
+            "task_id",
+            "attempt",
+            "branch",
+            "worktree_path",
+            "started_at",
+            "finished_at",
+            "preserved",
+            "rescue_branch",
+            "implementation_commit",
+            "preserved_commit",
+            "commit_result",
+            "cleanup_result",
+            "pruned_seeded_context",
+            "protected_path_violation",
+        }
+        preservation_event_body = {
+            key: preserved_event.get(key) for key in preservation_fields
+        }
+        mutations = (
+            violation.get("mutations")
+            if isinstance(violation, Mapping)
+            else None
+        )
+        mutation_paths: list[str] = []
+        if isinstance(mutations, list):
+            for mutation in mutations:
+                if not isinstance(mutation, Mapping):
+                    mutation_paths = []
+                    break
+                path = str(mutation.get("path") or "")
+                try:
+                    safe_path = _safe_repository_path(path)
+                except DatabasePortalBridgeError:
+                    mutation_paths = []
+                    break
+                mutation_paths.append(safe_path)
+        protected_paths = (
+            violation.get("protected_paths")
+            if isinstance(violation, Mapping)
+            else None
+        )
+        expected_rescue_branch = (
+            "rescue/"
+            + (
+                branch.removeprefix("implementation/")
+                .strip("/")
+                .replace(" ", "-")
+                or "implementation-attempt"
+            )
+            + "-protected-path-interrupted"
+        )
+        event_identity_values = (
+            str(started_event.get("event_id") or ""),
+            str(mutation_event.get("event_id") or ""),
+            str(preserved_event.get("event_id") or ""),
+            str(finished_event.get("event_id") or ""),
+            str(binding.get("binding_id") or ""),
+        )
+        cleanup_event_body = {
+            key: value
+            for key, value in cleanup_event.items()
+            if key not in _PORTAL_EVENT_ENVELOPE_FIELDS
+        }
+        seed_portal_attempt = (
+            seed_receipt.get("portal_attempt")
+            if isinstance(seed_receipt, Mapping)
+            else None
+        )
+        if (
+            selected_event.get("task_id") != alias
+            or selected_event.get("canonical_task_cid") != task_cid
+            or snapshot_event.get("task_id") != alias
+            or snapshot_event.get("canonical_task_cid") != task_cid
+            or snapshot_event.get("attempt") != portal_attempt
+            or snapshot_event.get("workspace_path") != workspace_path
+            or started_event.get("task_id") != alias
+            or started_event.get("canonical_task_cid") != task_cid
+            or started_event.get("attempt") != portal_attempt
+            or started_event.get("provider_dispatched") is not False
+            or kernel_event.get("task_id") != alias
+            or kernel_event.get("canonical_task_cid") != task_cid
+            or kernel_event.get("attempt") != portal_attempt
+            or not branch.startswith("implementation/")
+            or not workspace_path
+            or isinstance(portal_attempt, bool)
+            or not isinstance(portal_attempt, int)
+            or portal_attempt < 1
+            or (
+                self.max_task_attempts > 0
+                and portal_attempt > self.max_task_attempts
+            )
+            or isinstance(source_revision, bool)
+            or not isinstance(source_revision, int)
+            or source_revision < 1
+            or (
+                seed_event is not None
+                and (
+                    isinstance(seed_portal_attempt, bool)
+                    or not isinstance(seed_portal_attempt, int)
+                    or seed_portal_attempt < 1
+                    or seed_portal_attempt + 1 != portal_attempt
+                    or (
+                        seed_event.get("portal_attempt") is not None
+                        and seed_event.get("portal_attempt")
+                        != seed_portal_attempt
+                    )
+                )
+            )
+            or mutation_event.get("task_id") != alias
+            or mutation_event.get("canonical_task_cid") != task_cid
+            or mutation_event.get("attempt") != portal_attempt
+            or mutation_event.get("reason") != protected_reason
+            or mutation_event.get("workspace_path") != workspace_path
+            or not isinstance(preservation, Mapping)
+            or set(preservation) != preservation_fields
+            or any(
+                preservation.get(key) != value
+                for key, value in preservation_event_body.items()
+            )
+            or preserved_event.get("task_id") != alias
+            or preserved_event.get("canonical_task_cid") != task_cid
+            or preserved_event.get("attempt") != portal_attempt
+            or preserved_event.get("branch") != branch
+            or preserved_event.get("worktree_path") != workspace_path
+            or preservation.get("preserved") is not True
+            or not isinstance(commit_result, Mapping)
+            or commit_result.get("committed") is not True
+            or commit_result.get("commit") != preserved_commit
+            or implementation_commit != preserved_commit
+            or finished_event.get("task_id") != alias
+            or finished_event.get("task_cid") != task_cid
+            or finished_event.get("canonical_task_cid") != task_cid
+            or finished_event.get("attempt") != portal_attempt
+            or finished_event.get("branch") != branch
+            or finished_event.get("baseline_ref") != baseline_commit
+            or finished_event.get("worktree_path") != workspace_path
+            or finished_event.get("reason") != protected_reason
+            or finished_event.get("deferred") is not True
+            or finished_event.get("returncode") != 1
+            or finished_event.get("attempt_consumed") is not False
+            or finished_event.get("provider_dispatched") is not True
+            or finished_event.get("implementation_commit")
+            != preserved_commit
+            or finished_event.get("commit_result") != commit_result
+            or finished_event.get("cleanup_result") != cleanup_result
+            or finished_event.get("merge_result")
+            != {"merged": False, "reason": "not_attempted"}
+            or finished_event.get("board_completion")
+            != {
+                "complete": False,
+                "pending_merge": False,
+                "reason": "implementation_or_validation_failed",
+            }
+            or not isinstance(validation, Mapping)
+            or validation.get("attempted") is not False
+            or validation.get("passed") is not False
+            or validation.get("returncode") != 1
+            or validation.get("results") != []
+            or validation.get("reason") != protected_reason
+            or validation.get("protected_path_violation") != violation
+            or not isinstance(violation, Mapping)
+            or violation.get("reason") != protected_reason
+            or violation.get("verification_deferred") is True
+            or violation.get("workspace_path") != workspace_path
+            or violation.get("task_id") != alias
+            or violation.get("attempt") != portal_attempt
+            or not isinstance(mutations, list)
+            or not mutations
+            or not mutation_paths
+            or len(set(mutation_paths)) != len(mutation_paths)
+            or {
+                str(mutation.get("scope") or "")
+                for mutation in mutations
+                if isinstance(mutation, Mapping)
+            }
+            != {"shared_checkout"}
+            or protected_paths != sorted(mutation_paths)
+            or mutation_event.get("mutations") != mutations
+            or mutation_event.get("protected_paths") != protected_paths
+            or mutation_event.get("shared_checkout_restored") is not False
+            or rescue_branch != expected_rescue_branch
+            or not isinstance(cleanup_result, Mapping)
+            or cleanup_result.get("cleaned") is not True
+            or cleanup_event_body != cleanup_result
+            or daemon_pass_event.get("active_task_id") not in {None, ""}
+            or re.fullmatch(
+                r"event-log:sha256:[0-9a-f]{64}",
+                str(finished_event.get("stream_id") or ""),
+            )
+            is None
+            or any(
+                re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None
+                for value in event_identity_values
+            )
+            or not self._preserved_commit_exists(
+                commit=preserved_commit,
+                rescue_branch=rescue_branch,
+            )
+            or not self._preserved_commit_descends_from(
+                baseline_commit=baseline_commit,
+                preserved_commit=preserved_commit,
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "protected-path preservation terminal failed verification"
+            )
+
+        receipt: dict[str, Any] = {
+            "schema": DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
+            "disposition": "protected_candidate_preserved",
+            "reason": protected_reason,
+            "task_cid": task_cid,
+            "task_alias": alias,
+            "attempt_id": str(attempt.attempt_id),
+            "claim_id": str(attempt.claim_id),
+            "lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "attempt_number": int(attempt.attempt_number),
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+            "source_task_revision": int(source_revision),
+            "portal_attempt": int(portal_attempt),
+            "attempt_consumed": False,
+            "provider_dispatched": True,
+            "completion_authoritative": False,
+            "local_recovery_required": True,
+            "mutation_scopes": ["shared_checkout"],
+            "protected_paths": list(protected_paths),
+            "baseline_commit": baseline_commit,
+            "implementation_commit": preserved_commit,
+            "preserved_commit": preserved_commit,
+            "rescue_branch": rescue_branch,
+            "original_branch": branch,
+            "original_worktree_path": workspace_path,
+            "binding_id": str(binding.get("binding_id") or ""),
+            "events_digest": _sha256_file(paths.events),
+            "event_stream_id": str(finished_event.get("stream_id") or ""),
+            "implementation_started_event_id": str(
+                started_event.get("event_id") or ""
+            ),
+            "protected_mutation_event_id": str(
+                mutation_event.get("event_id") or ""
+            ),
+            "preservation_event_id": str(
+                preserved_event.get("event_id") or ""
+            ),
+            "implementation_finished_event_id": str(
+                finished_event.get("event_id") or ""
+            ),
+            "protected_path_violation_digest": _sha256_bytes(
+                _canonical_json(violation)
+            ),
+            "preservation_digest": _sha256_bytes(
+                _canonical_json(preservation)
+            ),
+        }
+        receipt["receipt_id"] = _content_addressed_record(
+            receipt,
+            identity_field="receipt_id",
+        )
         return receipt
 
     def _consumed_attempt_retry_receipt(
@@ -4006,6 +4640,33 @@ class DatabasePortalExecutionBridge:
             )
         return receipt
 
+    def recover_protected_path_preservation(
+        self,
+        attempt: Any,
+    ) -> Mapping[str, Any]:
+        """Recover one exact preserved candidate without provider work.
+
+        The returned receipt is immutable source-attempt evidence for the
+        database daemon's protected-preservation transition.  This method is
+        read-only and never initializes a successor Portal attempt.
+        """
+
+        paths, observed_binding = self._recovery_attempt_binding(
+            attempt,
+            recovery_name="protected-path preservation recovery",
+        )
+        receipt = self._protected_path_preservation_receipt(
+            attempt=attempt,
+            paths=paths,
+            binding=observed_binding,
+        )
+        if receipt is None:
+            raise DatabasePortalBridgeError(
+                "attempt is not eligible for protected-path preservation "
+                "recovery"
+            )
+        return receipt
+
     def recover_consumed_attempt_retry(self, attempt: Any) -> Mapping[str, Any]:
         """Recover one consumed legacy Portal attempt without changing state.
 
@@ -4115,6 +4776,76 @@ class DatabasePortalExecutionBridge:
                 "database claim validation retry seed failed verification"
             )
         return dict(seed)
+
+    def _protected_preservation_seed_from_record(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+    ) -> dict[str, Any] | None:
+        """Verify an exact preserved-candidate seed without consuming it."""
+
+        body = dict(getattr(record, "body", {}) or {})
+        status_receipt = body.get("completion_receipt")
+        if not isinstance(status_receipt, Mapping):
+            return None
+        seed = status_receipt.get("protected_preservation_seed")
+        if seed is None:
+            return None
+        source_attempt_id = str(
+            status_receipt.get(
+                "protected_preservation_source_attempt_id"
+            )
+            or ""
+        )
+        if (
+            status_receipt.get("operation") != "database_claim"
+            or status_receipt.get("attempt_id") != str(attempt.attempt_id)
+            or status_receipt.get("claim_id") != str(attempt.claim_id)
+            or status_receipt.get("attempt_number")
+            != int(attempt.attempt_number)
+            or status_receipt.get("fencing_token")
+            != int(attempt.fencing_token)
+            or status_receipt.get("fence_epoch") != int(attempt.fence_epoch)
+            or status_receipt.get("lease_id")
+            != str(getattr(attempt, "lease_id", "") or "")
+            or not isinstance(seed, Mapping)
+            or not source_attempt_id
+            or source_attempt_id != str(seed.get("attempt_id") or "")
+            or source_attempt_id == str(attempt.attempt_id)
+            or str(seed.get("claim_id") or "") == str(attempt.claim_id)
+            or str(seed.get("lease_id") or "")
+            == str(getattr(attempt, "lease_id", "") or "")
+            or seed.get("task_cid") != str(attempt.task_cid)
+            or seed.get("task_alias")
+            != str(getattr(attempt, "task_alias", "") or "")
+        ):
+            raise DatabasePortalBridgeError(
+                "database claim carries a malformed protected-preservation seed"
+            )
+        try:
+            verified = DatabasePortalProtectedPathPreserved(seed).retry_receipt
+        except ValueError as exc:
+            raise DatabasePortalBridgeError(
+                "database claim protected-preservation seed failed verification"
+            ) from exc
+        if (
+            not self._preserved_commit_exists(
+                commit=str(verified.get("preserved_commit") or ""),
+                rescue_branch=str(verified.get("rescue_branch") or ""),
+            )
+            or not self._preserved_commit_descends_from(
+                baseline_commit=str(verified.get("baseline_commit") or ""),
+                preserved_commit=str(
+                    verified.get("preserved_commit") or ""
+                ),
+            )
+        ):
+            raise DatabasePortalBridgeError(
+                "database claim protected-preservation seed has no exact "
+                "preserved candidate"
+            )
+        return dict(verified)
 
     def _initialize_validation_retry_seed(
         self,
@@ -4866,6 +5597,7 @@ class DatabasePortalExecutionBridge:
         retry_seed_fields = (
             "validation_retry_seed",
             "capacity_retry_seed",
+            "protected_preservation_seed",
             "consumed_attempt_retry_seed",
         )
         if isinstance(status_receipt, Mapping) and sum(
@@ -4874,6 +5606,19 @@ class DatabasePortalExecutionBridge:
         ) > 1:
             raise DatabasePortalBridgeError(
                 "database claim carries conflicting retry seeds"
+            )
+        protected_seed = self._protected_preservation_seed_from_record(
+            attempt=attempt,
+            record=record,
+        )
+        if protected_seed is not None:
+            # The exact candidate is safe to validate locally, but the bridge
+            # does not yet have a proven zero-provider checkout/reconciliation
+            # contract for this receipt.  Never reinterpret it as permission
+            # for a fresh provider invocation or another zero-consumption
+            # protected-preservation retry loop.
+            raise DatabasePortalBridgeError(
+                "protected preservation seed consumption is not implemented"
             )
         paths, binding = self._ensure_attempt_projection(attempt, record)
         projection = self._verify_projection(paths, binding)
@@ -4895,6 +5640,17 @@ class DatabasePortalExecutionBridge:
         # Replay that exact event before seed initialization or provider work;
         # an advanced attempt-local state must never cause a second dispatch.
         if paths.events.is_file():
+            recovered_preservation = (
+                self._protected_path_preservation_receipt(
+                    attempt=attempt,
+                    paths=paths,
+                    binding=binding,
+                )
+            )
+            if recovered_preservation is not None:
+                raise DatabasePortalProtectedPathPreserved(
+                    recovered_preservation
+                )
             recovered_capacity = self._capacity_retry_receipt(
                 attempt=attempt,
                 paths=paths,
@@ -4982,6 +5738,36 @@ class DatabasePortalExecutionBridge:
                 summary = _bounded_portal_result(raw_result)
                 summaries.append(summary)
                 self._verify_projection(paths, binding)
+                implementation = raw_result.get("implementation_result")
+                protected_violation = (
+                    implementation.get("protected_path_violation")
+                    if isinstance(implementation, Mapping)
+                    else None
+                )
+                if (
+                    paths.events.is_file()
+                    and isinstance(implementation, Mapping)
+                    and (
+                        implementation.get("reason")
+                        == "implementation_protected_path_mutated"
+                        or (
+                            isinstance(protected_violation, Mapping)
+                            and protected_violation.get("reason")
+                            == "implementation_protected_path_mutated"
+                        )
+                    )
+                ):
+                    protected_preservation = (
+                        self._protected_path_preservation_receipt(
+                            attempt=attempt,
+                            paths=paths,
+                            binding=binding,
+                        )
+                    )
+                    if protected_preservation is not None:
+                        raise DatabasePortalProtectedPathPreserved(
+                            protected_preservation
+                        )
                 deferral = self._typed_deferral(raw_result)
                 if deferral is not None:
                     reason, backoff_seconds = deferral
@@ -4989,7 +5775,6 @@ class DatabasePortalExecutionBridge:
                         reason,
                         backoff_seconds=backoff_seconds,
                     )
-                implementation = raw_result.get("implementation_result")
                 capacity_retry_receipt = self._capacity_retry_receipt(
                     attempt=attempt,
                     paths=paths,
@@ -5545,6 +6330,7 @@ __all__ = (
     "DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SEED_SCHEMA",
     "DATABASE_PORTAL_EXECUTION_BRIDGE_INTERFACE",
     "DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA",
+    "DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA",
     "DATABASE_PORTAL_VALIDATION_RETRY_SEED_SCHEMA",
     "DatabasePortalAttemptPaths",
@@ -5553,6 +6339,7 @@ __all__ = (
     "DatabasePortalCapacityRetry",
     "DatabasePortalConsumedAttemptTerminal",
     "DatabasePortalExecutionBridge",
+    "DatabasePortalProtectedPathPreserved",
     "DatabasePortalValidationRetry",
     "PortalDaemonFactory",
     "verify_database_portal_attempt_projection",

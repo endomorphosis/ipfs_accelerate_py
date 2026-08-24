@@ -27,12 +27,14 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SCHEMA,
     DATABASE_PORTAL_CONSUMED_ATTEMPT_RETRY_SEED_SCHEMA,
     DATABASE_PORTAL_EXECUTION_RECEIPT_SCHEMA,
+    DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA,
     DATABASE_PORTAL_VALIDATION_RETRY_SCHEMA,
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalCapacityRetry,
     DatabasePortalConsumedAttemptTerminal,
     DatabasePortalExecutionBridge,
+    DatabasePortalProtectedPathPreserved,
     DatabasePortalValidationRetry,
     _is_implementation_conflict,
     verify_database_portal_attempt_projection,
@@ -828,6 +830,437 @@ def _write_consumed_attempt_failure(
     return started, finished
 
 
+def _git_protected_path_candidate(repo: Path) -> tuple[str, str, str]:
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "portal-test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Portal Test"],
+        cwd=repo,
+        check=True,
+    )
+    baseline_path = repo / "README.md"
+    baseline_path.write_text("baseline\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-qm", "baseline"],
+        cwd=repo,
+        check=True,
+    )
+    baseline = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    candidate_path = repo / "inventory" / "result.json"
+    candidate_path.parent.mkdir(parents=True)
+    candidate_path.write_text('{"candidate":true}\n', encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "inventory/result.json"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-qm", "preserved candidate"],
+        cwd=repo,
+        check=True,
+    )
+    candidate = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    rescue_branch = (
+        "rescue/lgswf-004-attempt-2-protected-path-interrupted"
+    )
+    subprocess.run(
+        ["git", "branch", rescue_branch, candidate],
+        cwd=repo,
+        check=True,
+    )
+    return baseline, candidate, rescue_branch
+
+
+def _write_protected_path_preservation_terminal(
+    paths: object,
+    task_alias: str,
+    *,
+    baseline_commit: str,
+    preserved_commit: str,
+    rescue_branch: str,
+    mutation_scope: str = "shared_checkout",
+    provider_dispatched: bool = True,
+    attempt_consumed: bool = False,
+    interposed_event_type: str = "",
+    preservation_event_type: str = (
+        "protected_path_interrupted_worktree_preserved"
+    ),
+    later_event_type: str = "",
+) -> tuple[
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    task_cid = "task:cid:004"
+    canonical_task_key = "task/v1/protected-preservation"
+    board_namespace = "task-projection.md"
+    portal_attempt = 2
+    branch = "implementation/lgswf-004-attempt-2"
+    workspace_path = "/tmp/protected-preservation-worktree"
+    protected_path = "docs/architecture/protected.md"
+    workspace_setup = {
+        "base_commit": baseline_commit,
+        "branch": branch,
+        "worktree_path": workspace_path,
+    }
+    common_identity = {
+        "task_id": task_alias,
+        "canonical_task_cid": task_cid,
+        "canonical_task_key": canonical_task_key,
+        "board_namespace": board_namespace,
+    }
+    append_jsonl_event(
+        paths.events,
+        "task_selected",
+        {
+            **common_identity,
+            "title": "Protected preservation replay fixture",
+            "track": "implementation",
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "implementation_protected_path_snapshot_recorded",
+        {
+            **common_identity,
+            "attempt": portal_attempt,
+            "protected_paths": [protected_path],
+            "workspace_path": workspace_path,
+        },
+    )
+    started = append_jsonl_event(
+        paths.events,
+        "implementation_started",
+        {
+            **common_identity,
+            "attempt": portal_attempt,
+            "branch": branch,
+            "baseline_ref": baseline_commit,
+            "provider_dispatched": False,
+            "cache_hit": False,
+            "checkpoint_directory": "/tmp/protected-preservation-checkpoint",
+            "command": ["provider"],
+            "execution_mode": "model-assisted",
+            "log_path": "/tmp/protected-preservation.log",
+            "outputs": ["inventory/result.json"],
+            "saved_duration_seconds": 0.0,
+            "setup_duration_seconds": 1.0,
+            "timeout_policy": {"source": "test"},
+            "workspace_setup": workspace_setup,
+            "worktree_lifecycle": {"state": "active"},
+            "worktree_path": workspace_path,
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "pre_implementation_kernel_evaluated",
+        {
+            **common_identity,
+            "analytical_candidate_count": 0,
+            "attempt": portal_attempt,
+            "disposition": "abstain_review",
+            "event": "pre_implementation_kernel_evaluated",
+            "interface": "ImplementationDaemon@pre_implementation_kernel",
+            "kernel_receipt": {"schema": "protected-test-kernel@1"},
+            "provider_authorized": False,
+            "provider_hook_count": 0,
+            "reason_code": "no_analytical_close",
+            "receipt_cid": "bagu-protected-test-kernel-receipt",
+            "residual_packet_cid": "",
+            "skip_provider": True,
+        },
+    )
+    violation: dict[str, object] = {
+        "reason": "implementation_protected_path_mutated",
+        "task_id": task_alias,
+        "attempt": portal_attempt,
+        "workspace_path": workspace_path,
+        "protected_paths": [protected_path],
+        "mutations": [
+            {
+                "scope": mutation_scope,
+                "path": protected_path,
+                "change": "content_changed",
+                "before": {"sha256": "1" * 64},
+                "after": {"sha256": "2" * 64},
+            }
+        ],
+        "shared_checkout_restored": False,
+    }
+    mutation = append_jsonl_event(
+        paths.events,
+        "implementation_protected_path_mutated",
+        {
+            **common_identity,
+            **violation,
+        },
+    )
+    if interposed_event_type:
+        append_jsonl_event(
+            paths.events,
+            interposed_event_type,
+            {**common_identity, "attempt": portal_attempt},
+        )
+    commit_result = {
+        "committed": True,
+        "commit": preserved_commit,
+    }
+    cleanup_result = {
+        "cleaned": True,
+        "removed_worktree": True,
+        "deleted_branch": True,
+        "reason": "cleaned",
+    }
+    append_jsonl_event(
+        paths.events,
+        "cleanup_finished",
+        cleanup_result,
+    )
+    preservation: dict[str, object] = {
+        "task_id": task_alias,
+        "attempt": portal_attempt,
+        "branch": branch,
+        "worktree_path": workspace_path,
+        "started_at": "2026-08-24T15:00:00+00:00",
+        "finished_at": "2026-08-24T15:00:01+00:00",
+        "preserved": True,
+        "rescue_branch": rescue_branch,
+        "implementation_commit": preserved_commit,
+        "preserved_commit": preserved_commit,
+        "commit_result": commit_result,
+        "cleanup_result": cleanup_result,
+        "pruned_seeded_context": [],
+        "protected_path_violation": violation,
+    }
+    preserved = append_jsonl_event(
+        paths.events,
+        preservation_event_type,
+        {
+            **common_identity,
+            **preservation,
+        },
+    )
+    validation = {
+        "attempted": False,
+        "passed": False,
+        "returncode": 1,
+        "results": [],
+        "reason": "implementation_protected_path_mutated",
+        "protected_path_violation": violation,
+    }
+    finished = append_jsonl_event(
+        paths.events,
+        "implementation_finished",
+        {
+            **common_identity,
+            "task_cid": task_cid,
+            "attempt": portal_attempt,
+            "branch": branch,
+            "baseline_ref": baseline_commit,
+            "returncode": 1,
+            "reason": "implementation_protected_path_mutated",
+            "deferred": True,
+            "attempt_consumed": attempt_consumed,
+            "provider_dispatched": provider_dispatched,
+            "validation_result": validation,
+            "implementation_commit": preserved_commit,
+            "commit_result": commit_result,
+            "merge_result": {"merged": False, "reason": "not_attempted"},
+            "board_completion": {
+                "complete": False,
+                "pending_merge": False,
+                "reason": "implementation_or_validation_failed",
+            },
+            "failed_preservation_result": preservation,
+            "cleanup_result": cleanup_result,
+            "log_path": "/tmp/protected-preservation.log",
+            "workspace_setup": workspace_setup,
+            "worktree_path": workspace_path,
+            "protected_path_violation": violation,
+        },
+    )
+    append_jsonl_event(
+        paths.events,
+        "daemon_pass",
+        {"active_task_id": ""},
+    )
+    if later_event_type:
+        append_jsonl_event(
+            paths.events,
+            later_event_type,
+            {**common_identity, "attempt": portal_attempt},
+        )
+    state = json.loads(paths.state.read_text(encoding="utf-8"))
+    state.update(
+        {
+            "implementation_in_progress": False,
+            "active_task_id": "",
+            "active_task_cid": "",
+            "active_attempt": 0,
+            "last_implementation_task_id": task_alias,
+            "last_implementation_task_cid": task_cid,
+            "last_implementation_returncode": 1,
+            "last_implementation_commit": preserved_commit,
+            "implementation_attempts": {task_alias: portal_attempt},
+            "implementation_attempts_by_cid": {
+                task_cid: portal_attempt,
+            },
+            "last_implementation_finished_at": (
+                "2026-08-24T15:00:01+00:00"
+            ),
+        }
+    )
+    paths.state.write_text(
+        json.dumps(state, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return started, mutation, preserved, finished
+
+
+def _prepare_seeded_protected_preservation_replay(
+    tmp_path: Path,
+    *,
+    mutation_scope: str = "shared_checkout",
+    provider_dispatched: bool = True,
+    attempt_consumed: bool = False,
+    interposed_event_type: str = "",
+    preservation_event_type: str = (
+        "protected_path_interrupted_worktree_preserved"
+    ),
+    later_event_type: str = "",
+) -> tuple[
+    SimpleNamespace,
+    DatabaseTaskAttempt,
+    Path,
+    Path,
+    str,
+    str,
+    str,
+    tuple[
+        dict[str, object],
+        dict[str, object],
+        dict[str, object],
+        dict[str, object],
+    ],
+]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    baseline, preserved_commit, rescue_branch = (
+        _git_protected_path_candidate(repo)
+    )
+    record = _record()
+    source = _attempt(attempt_number=189)
+    source_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=tmp_path / "source-attempts",
+        repository_root=repo,
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "source receipt recovery dispatched a provider"
+        ),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    source_paths, _source_binding = source_bridge._ensure_attempt_projection(
+        source,
+        record,
+    )
+    _write_consumed_attempt_failure(source_paths, source.task_alias)
+    record.revision += 1
+    consumed_retry = source_bridge.recover_consumed_attempt_retry(source)
+
+    successor = DatabaseTaskAttempt(
+        attempt_id="attempt:protected-successor",
+        claim_id="claim:protected-successor",
+        task_cid=source.task_cid,
+        task_alias=source.task_alias,
+        attempt_number=1,
+        owner_session_id="session:protected-successor-lane",
+        fencing_token=1,
+        fence_epoch=1,
+        lease_id="lease:protected-successor",
+        committed_phase="claimed",
+        status="running",
+        started_at_ms=2,
+    )
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            "operation": "database_claim",
+            "attempt_id": successor.attempt_id,
+            "claim_id": successor.claim_id,
+            "attempt_number": successor.attempt_number,
+            "fencing_token": successor.fencing_token,
+            "fence_epoch": successor.fence_epoch,
+            "lease_id": successor.lease_id,
+            "consumed_attempt_retry_source_attempt_id": source.attempt_id,
+            "consumed_attempt_retry_seed": consumed_retry,
+        },
+    }
+    record.revision += 1
+    attempt_root = tmp_path / "protected-successor-attempts"
+    staging_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=attempt_root,
+        repository_root=repo,
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "fixture staging dispatched a provider"
+        ),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    paths, binding = staging_bridge._ensure_attempt_projection(
+        successor,
+        record,
+    )
+    staging_bridge._initialize_consumed_attempt_retry_seed(
+        attempt=successor,
+        record=record,
+        paths=paths,
+        binding=binding,
+    )
+    terminal = _write_protected_path_preservation_terminal(
+        paths,
+        successor.task_alias,
+        baseline_commit=baseline,
+        preserved_commit=preserved_commit,
+        rescue_branch=rescue_branch,
+        mutation_scope=mutation_scope,
+        provider_dispatched=provider_dispatched,
+        attempt_consumed=attempt_consumed,
+        interposed_event_type=interposed_event_type,
+        preservation_event_type=preservation_event_type,
+        later_event_type=later_event_type,
+    )
+    return (
+        record,
+        successor,
+        repo,
+        attempt_root,
+        baseline,
+        preserved_commit,
+        rescue_branch,
+        terminal,
+    )
+
+
 def test_bridge_propagates_typed_pre_dispatch_cooldown(tmp_path: Path) -> None:
     class DeferredPortal:
         def __init__(self) -> None:
@@ -1567,6 +2000,274 @@ def test_bridge_recovers_consumed_attempt_and_seeds_lane_local_successor(
         seeded_replay.run_provider(successor)
     assert replayed.value.retry_receipt["portal_attempt"] == 2
     assert replayed.value.retry_receipt["remaining_task_attempts"] == 2
+
+
+def test_bridge_replays_exact_protected_preservation_before_seed_reinit(
+    tmp_path: Path,
+) -> None:
+    (
+        record,
+        successor,
+        repo,
+        attempt_root,
+        baseline,
+        preserved_commit,
+        rescue_branch,
+        terminal,
+    ) = _prepare_seeded_protected_preservation_replay(tmp_path)
+    started, mutation, preserved, finished = terminal
+    factory_calls: list[str] = []
+
+    def unexpected_factory(_paths: object, _alias: str) -> object:
+        factory_calls.append("called")
+        return SimpleNamespace(run_once=lambda: {})
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=attempt_root,
+        repository_root=repo,
+        portal_factory=unexpected_factory,
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    recovered = bridge.recover_protected_path_preservation(successor)
+    with pytest.raises(DatabasePortalProtectedPathPreserved) as caught:
+        bridge.run_provider(successor)
+
+    receipt = caught.value.retry_receipt
+    expected_fields = {
+        "schema",
+        "disposition",
+        "reason",
+        "task_cid",
+        "task_alias",
+        "attempt_id",
+        "claim_id",
+        "lease_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "source_task_revision",
+        "portal_attempt",
+        "attempt_consumed",
+        "provider_dispatched",
+        "completion_authoritative",
+        "local_recovery_required",
+        "mutation_scopes",
+        "protected_paths",
+        "baseline_commit",
+        "implementation_commit",
+        "preserved_commit",
+        "rescue_branch",
+        "original_branch",
+        "original_worktree_path",
+        "binding_id",
+        "events_digest",
+        "event_stream_id",
+        "implementation_started_event_id",
+        "protected_mutation_event_id",
+        "preservation_event_id",
+        "implementation_finished_event_id",
+        "protected_path_violation_digest",
+        "preservation_digest",
+        "receipt_id",
+    }
+    assert set(receipt) == expected_fields
+    assert recovered == receipt
+    assert caught.value.preservation_receipt == receipt
+    assert receipt["schema"] == (
+        DATABASE_PORTAL_PROTECTED_PATH_PRESERVATION_SCHEMA
+    )
+    assert receipt["attempt_consumed"] is False
+    assert receipt["provider_dispatched"] is True
+    assert receipt["completion_authoritative"] is False
+    assert receipt["local_recovery_required"] is True
+    assert receipt["portal_attempt"] == 2
+    assert receipt["baseline_commit"] == baseline
+    assert receipt["implementation_commit"] == preserved_commit
+    assert receipt["preserved_commit"] == preserved_commit
+    assert receipt["rescue_branch"] == rescue_branch
+    assert receipt["mutation_scopes"] == ["shared_checkout"]
+    assert receipt["protected_paths"] == [
+        "docs/architecture/protected.md"
+    ]
+    assert receipt["implementation_started_event_id"] == started["event_id"]
+    assert receipt["protected_mutation_event_id"] == mutation["event_id"]
+    assert receipt["preservation_event_id"] == preserved["event_id"]
+    assert receipt["implementation_finished_event_id"] == finished["event_id"]
+    assert receipt["receipt_id"] == _capacity_record_id(
+        dict(receipt),
+        "receipt_id",
+    )
+    assert factory_calls == []
+
+
+@pytest.mark.parametrize(
+    ("terminal_options", "error_match"),
+    [
+        pytest.param(
+            {"mutation_scope": "workspace"},
+            "terminal failed verification",
+            id="workspace-mutation",
+        ),
+        pytest.param(
+            {"provider_dispatched": False},
+            "terminal failed verification",
+            id="provider-not-dispatched",
+        ),
+        pytest.param(
+            {"attempt_consumed": True},
+            "terminal failed verification",
+            id="attempt-consumed",
+        ),
+        pytest.param(
+            {"interposed_event_type": "unexpected_diagnostic"},
+            "event chain is not exact",
+            id="arbitrary-interposed-event",
+        ),
+        pytest.param(
+            {
+                "interposed_event_type": (
+                    "implementation_post_dispatch_capacity_retry"
+                )
+            },
+            "event chain is not exact",
+            id="capacity-terminal-interposed",
+        ),
+        pytest.param(
+            {
+                "preservation_event_type": (
+                    "failed_validation_worktree_preserved"
+                )
+            },
+            "event chain is not exact",
+            id="validation-preservation-variant",
+        ),
+        pytest.param(
+            {"later_event_type": "implementation_started"},
+            "event chain is not exact",
+            id="later-execution-event",
+        ),
+    ],
+)
+def test_bridge_rejects_near_protected_preservation_without_dispatch(
+    tmp_path: Path,
+    terminal_options: dict[str, object],
+    error_match: str,
+) -> None:
+    (
+        record,
+        successor,
+        repo,
+        attempt_root,
+        _baseline,
+        _preserved_commit,
+        _rescue_branch,
+        _terminal,
+    ) = _prepare_seeded_protected_preservation_replay(
+        tmp_path,
+        **terminal_options,
+    )
+    factory_calls: list[str] = []
+
+    def unexpected_factory(_paths: object, _alias: str) -> object:
+        factory_calls.append("called")
+        return SimpleNamespace(run_once=lambda: {})
+
+    bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=attempt_root,
+        repository_root=repo,
+        portal_factory=unexpected_factory,
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    with pytest.raises(DatabasePortalBridgeError, match=error_match) as caught:
+        bridge.run_provider(successor)
+    assert type(caught.value) is DatabasePortalBridgeError
+    assert factory_calls == []
+
+
+def test_bridge_fails_closed_on_unconsumed_protected_preservation_seed(
+    tmp_path: Path,
+) -> None:
+    (
+        record,
+        source_attempt,
+        repo,
+        source_attempt_root,
+        _baseline,
+        _preserved_commit,
+        _rescue_branch,
+        _terminal,
+    ) = _prepare_seeded_protected_preservation_replay(tmp_path)
+    source_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=source_attempt_root,
+        repository_root=repo,
+        portal_factory=lambda _paths, _alias: pytest.fail(
+            "source recovery dispatched a provider"
+        ),
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    preservation_seed = (
+        source_bridge.recover_protected_path_preservation(source_attempt)
+    )
+    target = DatabaseTaskAttempt(
+        attempt_id="attempt:protected-seed-target",
+        claim_id="claim:protected-seed-target",
+        task_cid=source_attempt.task_cid,
+        task_alias=source_attempt.task_alias,
+        attempt_number=2,
+        owner_session_id="session:protected-seed-target",
+        fencing_token=2,
+        fence_epoch=2,
+        lease_id="lease:protected-seed-target",
+        committed_phase="claimed",
+        status="running",
+        started_at_ms=3,
+    )
+    record.body = {
+        **record.body,
+        "completion_receipt": {
+            "operation": "database_claim",
+            "attempt_id": target.attempt_id,
+            "claim_id": target.claim_id,
+            "attempt_number": target.attempt_number,
+            "fencing_token": target.fencing_token,
+            "fence_epoch": target.fence_epoch,
+            "lease_id": target.lease_id,
+            "protected_preservation_source_attempt_id": (
+                source_attempt.attempt_id
+            ),
+            "protected_preservation_seed": dict(preservation_seed),
+        },
+    }
+    record.revision += 1
+    target_root = tmp_path / "protected-seed-target-attempts"
+    factory_calls: list[str] = []
+
+    def unexpected_factory(_paths: object, _alias: str) -> object:
+        factory_calls.append("called")
+        return SimpleNamespace(run_once=lambda: {})
+
+    target_bridge = DatabasePortalExecutionBridge(
+        task_source=_TaskSource(record),
+        attempt_root=target_root,
+        repository_root=repo,
+        portal_factory=unexpected_factory,
+        max_passes=1,
+        max_task_attempts=4,
+    )
+    target_paths = target_bridge._paths(target)
+    with pytest.raises(
+        DatabasePortalBridgeError,
+        match="protected preservation seed consumption is not implemented",
+    ):
+        target_bridge.run_provider(target)
+    assert factory_calls == []
+    assert not target_paths.binding.exists()
 
 
 def test_bridge_replays_consumed_attempt_terminal_without_dispatch(
