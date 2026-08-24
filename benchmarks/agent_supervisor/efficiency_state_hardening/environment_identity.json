@@ -29,6 +29,7 @@
     "quack_profile": "agent-supervisor-duckdb-quack-1.5",
     "quack_status": "compatible"
   },
+  "identity": "baguqeeraoiwpuyij56u66q36u6utp7fdggl3avccrsfsdrouhoife7jajmpq",
   "package_version": "0.0.45",
   "package_version_source": "pyproject.toml",
   "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",

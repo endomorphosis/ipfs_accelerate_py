@@ -1,6 +1,7 @@
 {
   "authority": false,
   "goal_id": "ASEH-G010",
+  "identity": "baguqeera5wehcqr5rbuwrcgskjdhpt7d4oz32ks7oalbqa5iimevjpjstrha",
   "max_concurrency": 4,
   "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
   "providers": [
@@ -34,5 +35,6 @@
   "secrets_in_argv_prompts_logs_or_receipts": false,
   "source": "config/agent_supervisor_efficiency_state_hardening_scheduler.json",
   "source_field": "provider",
+  "source_sha256": "sha256:db7fd1e20636722cb1921ba4a76e6403b6d97ffa3ae52d06f396e566d968558d",
   "task_id": "ASEH-001"
 }

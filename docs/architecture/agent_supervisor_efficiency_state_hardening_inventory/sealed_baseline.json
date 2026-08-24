@@ -8,11 +8,13 @@
       "reason": "not_sealed_until_ASEH-014",
       "status": "unavailable"
     },
+    "identity": "baguqeerab25koaihkalsqboozoahhtjcp2nr3sc2upa3jw3sanuwxocz2pcq",
     "live_acceptance_vectors": {
       "reason": "not_sealed_until_ASEH-015",
       "status": "unavailable"
     },
     "path": "test/api/agent_supervisor/efficiency_state_hardening/test_sealed_baseline.py",
+    "sha256": "sha256:9a3b3c021c64444cf5898a436e944f0ef3cbb50da1db65d385f1e145446b81c7",
     "validation_command": [
       "python3",
       "-m",
@@ -24,11 +26,16 @@
   "authority": false,
   "benchmark_code_digest": {
     "algorithm": "sha256",
+    "digest": "baguqeera3cvih67yz43j3bg5kfh6xjyelnkv3ankfysirsaxbrxyb4s5ko6q",
     "files": [
-      "benchmarks/agent_supervisor/efficiency_state_hardening/environment_identity.json",
-      "benchmarks/agent_supervisor/efficiency_state_hardening/price_snapshot.json",
-      "benchmarks/agent_supervisor/efficiency_state_hardening/provider_model_config.json",
-      "benchmarks/agent_supervisor/efficiency_state_hardening/sealed_input_manifest.json"
+      {
+        "path": "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py",
+        "sha256": "sha256:85cbcf37d61e373eabfbdd4a291b85f4e5f2a275c6587b45fa1dc26a5d9803bd"
+      },
+      {
+        "path": "test/api/agent_supervisor/efficiency_state_hardening/test_sealed_baseline.py",
+        "sha256": "sha256:9a3b3c021c64444cf5898a436e944f0ef3cbb50da1db65d385f1e145446b81c7"
+      }
     ],
     "paired_harness": {
       "path": "benchmarks/agent_supervisor/efficiency_state_hardening/paired_harness.py",
@@ -36,7 +43,7 @@
       "status": "unavailable"
     },
     "schema": "ipfs_accelerate_py/agent-supervisor/aseh-benchmark-code-digest@1",
-    "status": "sealed_companion_artifacts_only"
+    "status": "sealed_available_benchmark_contract_code"
   },
   "bootstrap_forest": {
     "claim_is_runtime_or_completion_evidence": false,
@@ -71,23 +78,30 @@
     "unknown_cost_recorded_as_zero": false
   },
   "environment_identity": {
-    "path": "benchmarks/agent_supervisor/efficiency_state_hardening/environment_identity.json"
+    "identity": "baguqeeraoiwpuyij56u66q36u6utp7fdggl3avccrsfsdrouhoife7jajmpq",
+    "path": "benchmarks/agent_supervisor/efficiency_state_hardening/environment_identity.json",
+    "sha256": "sha256:a37b0e8a54b83d6b8dba81499dd5ba7c502a4aee8e59c31302b87a723e2d5e75"
   },
   "goal_id": "ASEH-G010",
+  "identity": "baguqeeradvsnp72gwufah7zjmapvp7msarsyndadzpmwl22mjtkzvroo57ga",
   "implementation_envelope_tree_id": {
     "authority": false,
     "claim_is_current_head": false,
     "source": "implementation_task_envelope.tree_id",
-    "value": "2eaad8e4c688e261153e30a42c10a72c31024881"
+    "value": "7c03c4ded2a80d50fb72130591a521d415386c97"
   },
   "plan_revision": "ASEH-PLAN-R1",
   "price_snapshot": {
     "captured_at": "2026-08-23T18:54:50Z",
-    "path": "benchmarks/agent_supervisor/efficiency_state_hardening/price_snapshot.json"
+    "identity": "baguqeera3nas3dp546nrxqg3nr6qdalxzbld2wlbhxzrdt5bz5disttd3w6a",
+    "path": "benchmarks/agent_supervisor/efficiency_state_hardening/price_snapshot.json",
+    "sha256": "sha256:e6ff6b34ba4987c35f20388e8652d0ac449c95fc24cfc6abd371b8da9c653aa5"
   },
   "program_id": "agent-supervisor-efficiency-and-state-hardening-v1",
   "provider_and_model_configuration": {
-    "path": "benchmarks/agent_supervisor/efficiency_state_hardening/provider_model_config.json"
+    "identity": "baguqeera5wehcqr5rbuwrcgskjdhpt7d4oz32ks7oalbqa5iimevjpjstrha",
+    "path": "benchmarks/agent_supervisor/efficiency_state_hardening/provider_model_config.json",
+    "sha256": "sha256:761e38b348d787f0f5d641dcec03b23abee539d79b73cb3b53e27dd6fa9f03a7"
   },
   "qualification": false,
   "repositories": {
@@ -143,24 +157,30 @@
     "merge_retry_budget": 4,
     "poll_interval_seconds": 5,
     "source": "config/agent_supervisor_efficiency_state_hardening_scheduler.json",
+    "source_sha256": "sha256:db7fd1e20636722cb1921ba4a76e6403b6d97ffa3ae52d06f396e566d968558d",
     "stale_seconds": 1800,
     "validation_retry_budget": 4
   },
   "schema": "ipfs_accelerate_py/agent-supervisor/aseh-sealed-baseline@1",
   "sealed_at": "2026-08-23T18:54:50Z",
   "sealed_input_manifest": {
-    "path": "benchmarks/agent_supervisor/efficiency_state_hardening/sealed_input_manifest.json"
+    "identity": "baguqeeraf6tws27cpczkyf2ffwbyewugrltdrxzvypnjxlxjjluh4vfdxhxa",
+    "path": "benchmarks/agent_supervisor/efficiency_state_hardening/sealed_input_manifest.json",
+    "sha256": "sha256:54aa873ea3a2789b248b24c874c2b6ffcb6003cc548662cd7e5a6d665710073e"
   },
   "supervisor_policy": {
+    "identity": "baguqeerarxf76z2xnfby7572hcg3zmml6j6h6dw5zcvn7adnzmxvsuzh4hwa",
     "path": "config/agent_supervisor_efficiency_state_hardening_scheduler.json",
     "plan_revision": "ASEH-PLAN-R1",
     "requirements_digest": "sha256:734a1c016bbb4e3e896c612c95a7144d6a8846b921784e75a41d90a5f2568e96",
     "requirements_path": "docs/architecture/agent_supervisor_efficiency_state_hardening.requirements.json",
+    "scheduler_digest": "sha256:db7fd1e20636722cb1921ba4a76e6403b6d97ffa3ae52d06f396e566d968558d",
     "schema": "ipfs_accelerate_py/agent-supervisor/aseh-supervisor-policy@1"
   },
   "task_corpus": {
     "availability": "sealed_board_identities_only",
     "board_path": "docs/architecture/agent_supervisor_efficiency_state_hardening.todo.md",
+    "board_sha256": "sha256:16d95123ce06d49b9b6e8d9fd2c2621815e56a008b52a384985e4e6924a470ef",
     "hermetic_development_corpus": {
       "minimum": 60,
       "reason": "not_sealed_until_ASEH-013",
@@ -171,6 +191,7 @@
       "reason": "not_sealed_until_ASEH-014",
       "status": "unavailable"
     },
+    "identity": "baguqeeramctclplnvantlfkl34n4hcmde3epsf5tpenvmo6ljhdplu3hmlia",
     "live_shadow_canary_cohort": {
       "minimum": 10,
       "reason": "not_sealed_until_ASEH-015",
