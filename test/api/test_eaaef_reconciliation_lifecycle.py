@@ -5,6 +5,7 @@ import hashlib
 import inspect
 import json
 import os
+import subprocess
 from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
@@ -23,6 +24,38 @@ _TEST_IMPORT_EVIDENCE_CID = "sha256:" + "9" * 64
 @pytest.fixture
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _run_test_git(repo: Path, *arguments: str) -> str:
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    }
+    result = subprocess.run(
+        ["git", "-C", str(repo), *arguments],
+        env=environment,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        raise AssertionError(result.stderr or result.stdout)
+    return result.stdout.strip()
+
+
+def _tiny_git_repository(tmp_path: Path) -> Path:
+    repo = tmp_path / "sealed-git-fixture"
+    repo.mkdir()
+    _run_test_git(repo, "init", "--initial-branch=main")
+    _run_test_git(repo, "config", "user.name", "EAAEF Test")
+    _run_test_git(repo, "config", "user.email", "eaaef@example.invalid")
+    (repo / "tracked.txt").write_text("first\n", encoding="ascii")
+    _run_test_git(repo, "add", "tracked.txt")
+    _run_test_git(repo, "commit", "-m", "first")
+    (repo / "tracked.txt").write_text("second\n", encoding="ascii")
+    _run_test_git(repo, "add", "tracked.txt")
+    _run_test_git(repo, "commit", "-m", "second")
+    return repo
 
 
 def _sealed_forest(*, accelerator_commit: str = "1" * 40) -> dict[str, Any]:
@@ -455,7 +488,12 @@ def test_git_identity_reads_disable_replacements_and_ambient_redirection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     hostile = {
+        "GIT_COMMON_DIR": "/forged/common-dir",
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "core.worktree",
+        "GIT_CONFIG_VALUE_0": "/forged/config-work-tree",
         "GIT_DIR": "/forged/git-dir",
+        "GIT_INDEX_FILE": "/forged/index",
         "GIT_WORK_TREE": "/forged/work-tree",
         "GIT_OBJECT_DIRECTORY": "/forged/objects",
         "GIT_ALTERNATE_OBJECT_DIRECTORIES": "/forged/alternates",
@@ -476,6 +514,17 @@ def test_git_identity_reads_disable_replacements_and_ambient_redirection(
             assert environment["GIT_CONFIG_GLOBAL"] == os.devnull
             assert environment["GIT_CONFIG_SYSTEM"] == os.devnull
             assert set(environment).isdisjoint(hostile)
+            flattened = "\0".join(arguments)
+            for sealed_config in (
+                "core.worktree=",
+                "extensions.worktreeConfig=false",
+                "core.fsmonitor=false",
+                "core.untrackedCache=false",
+                "core.sparseCheckout=false",
+                "core.ignoreStat=false",
+                "core.commitGraph=false",
+            ):
+                assert sealed_config in flattened
         return real_run(arguments, **kwargs)
 
     monkeypatch.setattr(lifecycle.subprocess, "run", audited_run)
@@ -487,6 +536,142 @@ def test_git_identity_reads_disable_replacements_and_ambient_redirection(
     )
     assert lifecycle._git_blob(repo_root, blob_oid, maximum_bytes=128 * 1024)
     assert len(observed) == 4
+
+
+def test_sealed_git_command_overrides_repository_config_redirection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _tiny_git_repository(tmp_path)
+    forged_worktree = tmp_path / "forged-worktree"
+    forged_worktree.mkdir()
+    sentinel = tmp_path / "fsmonitor-was-executed"
+    monitor = tmp_path / "hostile-fsmonitor.sh"
+    monitor.write_text(
+        "#!/bin/sh\n" f": > {sentinel}\n" "exit 0\n",
+        encoding="ascii",
+    )
+    monitor.chmod(0o700)
+    git_dir = repo / ".git"
+    for key, value in (
+        ("core.worktree", str(forged_worktree)),
+        ("core.fsmonitor", str(monitor)),
+        ("core.untrackedCache", "true"),
+        ("core.sparseCheckout", "true"),
+        ("core.ignoreStat", "true"),
+    ):
+        result = subprocess.run(
+            ["git", f"--git-dir={git_dir}", "config", key, value],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+    forged_index = tmp_path / "forged-index"
+    forged_index.write_bytes(b"not an index")
+    monkeypatch.setenv("GIT_INDEX_FILE", str(forged_index))
+    monkeypatch.setenv("GIT_WORK_TREE", str(forged_worktree))
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.worktree")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", str(forged_worktree))
+
+    assert Path(lifecycle._git(repo, "rev-parse", "--show-toplevel")) == repo
+    assert lifecycle._git(repo, "status", "--porcelain=v1", "--untracked-files=all") == ""
+    lifecycle._require_sealed_git_repository(repo)
+    assert not sentinel.exists()
+
+
+@pytest.mark.parametrize(
+    ("flag", "message"),
+    (
+        ("--assume-unchanged", "assume-unchanged"),
+        ("--skip-worktree", "skip-worktree"),
+    ),
+)
+def test_sealed_git_repository_rejects_hidden_index_flags(
+    tmp_path: Path,
+    flag: str,
+    message: str,
+) -> None:
+    repo = _tiny_git_repository(tmp_path)
+    lifecycle._require_sealed_git_repository(repo)
+    _run_test_git(repo, "update-index", flag, "tracked.txt")
+
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match=message):
+        lifecycle._require_sealed_git_repository(repo)
+
+
+def test_sealed_git_repository_rejects_fsmonitor_index_tag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _tiny_git_repository(tmp_path)
+    real_git = lifecycle._git
+
+    def tagged_git(repo_root: Path, *arguments: str, check: bool = True) -> str:
+        if arguments == ("ls-files", "-f", "--cached"):
+            return "h tracked.txt"
+        return real_git(repo_root, *arguments, check=check)
+
+    monkeypatch.setattr(lifecycle, "_git", tagged_git)
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match="fsmonitor"):
+        lifecycle._require_sealed_git_repository(repo)
+
+
+def test_checkout_blob_rejects_assume_unchanged_worktree_drift(tmp_path: Path) -> None:
+    repo = _tiny_git_repository(tmp_path)
+    blob_oid = _run_test_git(repo, "rev-parse", "HEAD:tracked.txt")
+    _run_test_git(repo, "update-index", "--assume-unchanged", "tracked.txt")
+    (repo / "tracked.txt").write_text("hidden drift\n", encoding="ascii")
+    assert _run_test_git(repo, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+    with pytest.raises(
+        lifecycle.EAAEFReconciliationIdentityError,
+        match="differs from sealed blob",
+    ):
+        lifecycle._require_checkout_blob(repo, "tracked.txt", blob_oid)
+
+
+@pytest.mark.parametrize(
+    "indirection",
+    ("grafts", "grafts_symlink", "alternates", "http_alternates", "replace"),
+)
+def test_sealed_git_repository_rejects_ancestry_and_object_indirection(
+    tmp_path: Path,
+    indirection: str,
+) -> None:
+    repo = _tiny_git_repository(tmp_path)
+    lifecycle._require_sealed_git_repository(repo)
+    git_dir = repo / ".git"
+    if indirection == "grafts":
+        (git_dir / "info/grafts").write_text(
+            _run_test_git(repo, "rev-parse", "HEAD") + "\n",
+            encoding="ascii",
+        )
+    elif indirection == "grafts_symlink":
+        target = tmp_path / "external-grafts"
+        target.write_text(_run_test_git(repo, "rev-parse", "HEAD") + "\n", encoding="ascii")
+        (git_dir / "info/grafts").symlink_to(target)
+    elif indirection in {"alternates", "http_alternates"}:
+        alternate_objects = tmp_path / "alternate-objects"
+        alternate_objects.mkdir()
+        name = "alternates" if indirection == "alternates" else "http-alternates"
+        (git_dir / f"objects/info/{name}").write_text(
+            str(alternate_objects) + "\n",
+            encoding="ascii",
+        )
+    else:
+        _run_test_git(
+            repo,
+            "replace",
+            _run_test_git(repo, "rev-parse", "HEAD"),
+            _run_test_git(repo, "rev-parse", "HEAD~1"),
+        )
+
+    expected = "replacement refs" if indirection == "replace" else "graft or alternate"
+    with pytest.raises(lifecycle.EAAEFReconciliationIdentityError, match=expected):
+        lifecycle._require_sealed_git_repository(repo)
 
 
 def test_canonical_casf_import_is_exact_and_structurally_valid(

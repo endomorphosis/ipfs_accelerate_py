@@ -579,17 +579,52 @@ def _sealed_git_environment() -> dict[str, str]:
             "GIT_CONFIG_GLOBAL": os.devnull,
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_ATTR_NOSYSTEM": "1",
             "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_NO_LAZY_FETCH": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
             "GIT_TERMINAL_PROMPT": "0",
         }
     )
     return environment
 
 
+def _sealed_git_command(repo_root: Path, *args: str) -> list[str]:
+    """Build one read-only Git command immune to repository config redirects."""
+
+    root = Path(repo_root).resolve(strict=True)
+    git_dir = _explicit_git_dir(root)
+    config = (
+        ("core.worktree", str(root)),
+        ("extensions.worktreeConfig", "false"),
+        ("core.fsmonitor", "false"),
+        ("core.untrackedCache", "false"),
+        ("core.sparseCheckout", "false"),
+        ("core.sparseCheckoutCone", "false"),
+        ("core.ignoreStat", "false"),
+        ("core.trustctime", "true"),
+        ("core.checkStat", "default"),
+        ("core.commitGraph", "false"),
+        ("core.quotePath", "true"),
+        ("status.relativePaths", "false"),
+    )
+    command = [
+        "git",
+        "--no-replace-objects",
+        "--literal-pathspecs",
+        f"--git-dir={git_dir}",
+        f"--work-tree={root}",
+    ]
+    for key, value in config:
+        command.extend(("-c", f"{key}={value}"))
+    command.extend(args)
+    return command
+
+
 def _git(repo_root: Path, *args: str, check: bool = True) -> str:
     try:
         result = subprocess.run(
-            ["git", "--no-replace-objects", *args],
+            _sealed_git_command(repo_root, *args),
             cwd=repo_root,
             env=_sealed_git_environment(),
             text=True,
@@ -618,7 +653,7 @@ def _git_blob(repo_root: Path, blob_oid: str, *, maximum_bytes: int) -> bytes:
         raise EAAEFReconciliationIdentityError("Git blob size is outside its bound")
     try:
         result = subprocess.run(
-            ["git", "--no-replace-objects", "cat-file", "blob", blob_oid],
+            _sealed_git_command(repo_root, "cat-file", "blob", blob_oid),
             cwd=repo_root,
             env=_sealed_git_environment(),
             capture_output=True,
@@ -631,6 +666,238 @@ def _git_blob(repo_root: Path, blob_oid: str, *, maximum_bytes: int) -> bytes:
         detail = result.stderr.decode("utf-8", errors="replace").strip()
         raise EAAEFReconciliationIdentityError(detail or "Git blob read failed")
     return result.stdout
+
+
+def _path_exists_no_follow(path: Path) -> bool:
+    try:
+        os.lstat(path)
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise EAAEFReconciliationIdentityError(
+            "Git administrative metadata cannot be inspected"
+        ) from exc
+    return True
+
+
+def _stable_regular_file_bytes(
+    path: Path,
+    *,
+    noun: str,
+    maximum_bytes: int,
+) -> bytes:
+    """Read one bounded checkout file without following or racing a symlink."""
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise EAAEFReconciliationIdentityError(f"{noun} is not one real file") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_size <= 0
+            or metadata.st_size > maximum_bytes
+        ):
+            raise EAAEFReconciliationIdentityError(
+                f"{noun} is not one bounded regular file"
+            )
+        chunks: list[bytes] = []
+        observed_size = 0
+        while True:
+            chunk = os.read(descriptor, min(1024 * 1024, maximum_bytes + 1 - observed_size))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            observed_size += len(chunk)
+            if observed_size > maximum_bytes:
+                raise EAAEFReconciliationIdentityError(f"{noun} exceeds its byte bound")
+        final_metadata = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    stable_fields = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+    if observed_size != metadata.st_size or any(
+        getattr(metadata, field) != getattr(final_metadata, field)
+        for field in stable_fields
+    ):
+        raise EAAEFReconciliationIdentityError(f"{noun} changed while it was read")
+    try:
+        path_metadata = os.lstat(path)
+    except OSError as exc:
+        raise EAAEFReconciliationIdentityError(f"{noun} changed while it was read") from exc
+    if (
+        stat.S_ISLNK(path_metadata.st_mode)
+        or path_metadata.st_dev != metadata.st_dev
+        or path_metadata.st_ino != metadata.st_ino
+    ):
+        raise EAAEFReconciliationIdentityError(f"{noun} changed while it was read")
+    return b"".join(chunks)
+
+
+def _explicit_git_dir(repo_root: Path) -> Path:
+    """Resolve only the explicit, non-symlink Git administrative marker."""
+
+    root = Path(repo_root).resolve(strict=True)
+    marker = root / ".git"
+    try:
+        marker_metadata = os.lstat(marker)
+    except OSError as exc:
+        raise EAAEFReconciliationIdentityError(
+            "Git repository has no explicit administrative marker"
+        ) from exc
+    if stat.S_ISLNK(marker_metadata.st_mode):
+        raise EAAEFReconciliationIdentityError(
+            "Git administrative marker is redirected or malformed"
+        )
+    if stat.S_ISDIR(marker_metadata.st_mode):
+        candidate = marker
+    elif stat.S_ISREG(marker_metadata.st_mode):
+        marker_payload = _stable_regular_file_bytes(
+            marker,
+            noun="Git administrative marker",
+            maximum_bytes=4096,
+        )
+        try:
+            marker_text = marker_payload.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise EAAEFReconciliationIdentityError(
+                "Git administrative marker is malformed"
+            ) from exc
+        marker_lines = marker_text.splitlines()
+        prefix = "gitdir: "
+        if len(marker_lines) != 1 or not marker_lines[0].startswith(prefix):
+            raise EAAEFReconciliationIdentityError(
+                "Git administrative marker is malformed"
+            )
+        target = marker_lines[0].removeprefix(prefix)
+        if not target or "\x00" in target:
+            raise EAAEFReconciliationIdentityError(
+                "Git administrative marker is malformed"
+            )
+        candidate = Path(target)
+        if not candidate.is_absolute():
+            candidate = marker.parent / candidate
+    else:
+        raise EAAEFReconciliationIdentityError(
+            "Git administrative marker is redirected or malformed"
+        )
+    try:
+        candidate_metadata = os.lstat(candidate)
+        git_dir = candidate.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise EAAEFReconciliationIdentityError(
+            "Git administrative directory is unavailable"
+        ) from exc
+    if stat.S_ISLNK(candidate_metadata.st_mode) or not stat.S_ISDIR(
+        candidate_metadata.st_mode
+    ):
+        raise EAAEFReconciliationIdentityError(
+            "Git administrative directory is redirected"
+        )
+    return git_dir
+
+
+def _require_plain_git_index(repo_root: Path) -> None:
+    """Reject index flags capable of hiding checkout changes from status."""
+
+    for option, flag_name in (("-v", "assume-unchanged/skip-worktree"), ("-f", "fsmonitor")):
+        tracked = _git(repo_root, "ls-files", option, "--cached")
+        if not tracked or any(not line.startswith("H ") for line in tracked.splitlines()):
+            raise EAAEFReconciliationIdentityError(
+                f"Git index has hidden {flag_name} state"
+            )
+
+
+def _require_sealed_git_repository(repo_root: Path) -> None:
+    """Reject ancestry/object/index indirection before sealing a repository."""
+
+    root = Path(repo_root).resolve(strict=True)
+    explicit_git_dir = _explicit_git_dir(root)
+    top = _git(root, "rev-parse", "--show-toplevel")
+    if not top or Path(top).resolve(strict=True) != root:
+        raise EAAEFReconciliationIdentityError("Git worktree root is redirected")
+    git_dir_text = _git(
+        root,
+        "rev-parse",
+        "--path-format=absolute",
+        "--absolute-git-dir",
+    )
+    common_dir_text = _git(
+        root,
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-common-dir",
+    )
+    try:
+        git_dir = Path(git_dir_text).resolve(strict=True)
+        common_dir = Path(common_dir_text).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise EAAEFReconciliationIdentityError(
+            "Git administrative directory is unavailable"
+        ) from exc
+    if git_dir != explicit_git_dir:
+        raise EAAEFReconciliationIdentityError(
+            "Git administrative directory differs from its explicit marker"
+        )
+    for directory in {git_dir, common_dir}:
+        try:
+            metadata = os.lstat(directory)
+        except OSError as exc:
+            raise EAAEFReconciliationIdentityError(
+                "Git administrative directory is unavailable"
+            ) from exc
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+            raise EAAEFReconciliationIdentityError(
+                "Git administrative directory is redirected"
+            )
+    forbidden_paths = {
+        git_dir / "info/grafts",
+        common_dir / "info/grafts",
+        git_dir / "objects/info/alternates",
+        common_dir / "objects/info/alternates",
+        git_dir / "objects/info/http-alternates",
+        common_dir / "objects/info/http-alternates",
+    }
+    if any(_path_exists_no_follow(path) for path in forbidden_paths):
+        raise EAAEFReconciliationIdentityError(
+            "Git repository uses forbidden graft or alternate object metadata"
+        )
+    if _git(root, "for-each-ref", "--format=%(refname)", "refs/replace/"):
+        raise EAAEFReconciliationIdentityError(
+            "Git repository contains forbidden replacement refs"
+        )
+    if _git(root, "rev-parse", "--is-shallow-repository") != "false":
+        raise EAAEFReconciliationIdentityError(
+            "Git repository ancestry is shallow or indeterminate"
+        )
+    _require_plain_git_index(root)
+
+
+def _require_checkout_blob(
+    repo_root: Path,
+    relative_path: str,
+    blob_oid: str,
+    *,
+    maximum_bytes: int = 32 * 1024 * 1024,
+) -> None:
+    """Match an actual checkout file to the already selected Git blob."""
+
+    if not _GIT_OID_RE.fullmatch(blob_oid):
+        raise EAAEFReconciliationIdentityError("Git checkout blob identity is malformed")
+    payload = _stable_regular_file_bytes(
+        Path(repo_root) / relative_path,
+        noun=f"checked-out imported CASF file {relative_path}",
+        maximum_bytes=maximum_bytes,
+    )
+    observed_oid = hashlib.sha1(
+        b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload,
+        usedforsecurity=False,
+    ).hexdigest()
+    if observed_oid != blob_oid:
+        raise EAAEFReconciliationIdentityError(
+            f"checked-out imported CASF file differs from sealed blob: {relative_path}"
+        )
 
 
 def _git_tree_blob_oid(
@@ -947,6 +1214,7 @@ def verify_imported_casf_source(
             raise EAAEFReconciliationIdentityError(
                 f"EAAEF canonical CASF import blob differs: {path}"
             )
+        _require_checkout_blob(root, path, imported_blob_oid)
     report = _validate_imported_casf_structure(
         root,
         manifest=manifest,
@@ -1059,6 +1327,7 @@ def inspect_current_repository_forest(repo_root: str | Path) -> dict[str, Any]:
 
     root = Path(repo_root).resolve(strict=True)
     blockers: list[str] = []
+    _require_sealed_git_repository(root)
     head = _git(root, "rev-parse", "HEAD")
     tree = _git(root, "rev-parse", f"{head}^{{tree}}")
     if not _GIT_OID_RE.fullmatch(head) or not _GIT_OID_RE.fullmatch(tree):
@@ -1096,6 +1365,8 @@ def inspect_current_repository_forest(repo_root: str | Path) -> dict[str, Any]:
         exact_repository = bool(
             nested_top and Path(nested_top).resolve(strict=True) == nested.resolve(strict=True)
         )
+        if exact_repository:
+            _require_sealed_git_repository(nested)
         nested_head = _git(nested, "rev-parse", "HEAD", check=False) if exact_repository else ""
         nested_tree = (
             _git(nested, "rev-parse", f"{nested_head}^{{tree}}", check=False)
@@ -1130,6 +1401,8 @@ def inspect_current_repository_forest(repo_root: str | Path) -> dict[str, Any]:
             blockers.append(
                 f"required_gitlink_worktree_changed_during_inspection:{relative_path}"
             )
+        if initialized:
+            _require_sealed_git_repository(nested)
         repositories.append(
             {
                 "name": name,
@@ -1146,6 +1419,7 @@ def inspect_current_repository_forest(repo_root: str | Path) -> dict[str, Any]:
                 ),
             }
         )
+    _require_sealed_git_repository(root)
     final_head = _git(root, "rev-parse", "HEAD")
     final_status = _git(root, "status", "--porcelain=v1", "--untracked-files=all")
     if final_head != head:
