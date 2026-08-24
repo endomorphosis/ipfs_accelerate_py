@@ -76320,86 +76320,32 @@ class DatabaseImplementationDaemon:
                     "(--quack-endpoint or IPFS_ACCELERATE_AGENT_QUACK_ENDPOINT); "
                     "refusing direct-file multi-process DuckDB open"
                 )
+            if quack_command_gateway is None:
+                raise DatabaseImplementationAuthorityError(
+                    "quack authority requires an independently injected "
+                    "QuackDaemonCommandGateway@1; refusing legacy local "
+                    "coordination/execution sidecars"
+                )
             self._quack_uri = resolved_quack_uri
             self._store_target = resolved_quack_uri
-            # Task state goes through the Quack state-owner. Execution and
-            # coordination metadata stay in lane-private sidecars because the
-            # landed coordinator schema is not the control schema's task-claim
-            # shape and DuckDB sidecars permit only one external writer.
+            # The command gateway is the only mutable surface in Quack mode.
+            # This process retains the lexical control path for identity and
+            # diagnostics, but never opens it or derives lane-local sidecars.
             control_path = Path(str(database_path)).expanduser().absolute()
             self.database_path = control_path
-            if quack_command_gateway is not None:
-                if coordination_path is not None or execution_path is not None:
-                    raise DatabaseImplementationAuthorityError(
-                        "EAAEF quack authority forbids local coordination/execution "
-                        "paths; all mutable state must use the admitted command gateway"
-                    )
-                if task_source is not None or coordinator is not None:
-                    raise DatabaseImplementationAuthorityError(
-                        "EAAEF quack authority forbids independently injected task or "
-                        "coordination adapters; all components must share the exact "
-                        "command-gateway capability binding"
-                    )
-                self.coordination_path = control_path
-                self.execution_path = control_path
-            else:
-                if coordination_path is not None:
-                    self.coordination_path = Path(
-                        coordination_path
-                    ).expanduser().absolute()
-                elif control_path.suffix.lower() in {".duckdb", ".ddb"}:
-                    self.coordination_path = control_path.with_name(
-                        f"{control_path.stem}.coordination.duckdb"
-                    )
-                else:
-                    self.coordination_path = control_path.with_name(
-                        f"{control_path.name or 'control'}.coordination.duckdb"
-                    )
-                if execution_path is not None:
-                    self.execution_path = Path(
-                        execution_path
-                    ).expanduser().absolute()
-                elif control_path.suffix.lower() in {".duckdb", ".ddb"}:
-                    self.execution_path = control_path.with_name(
-                        f"{control_path.stem}.execution.duckdb"
-                    )
-                else:
-                    self.execution_path = control_path.with_name(
-                        f"{control_path.name or 'control'}.execution.duckdb"
-                    )
-
-                def storage_targets_alias(left: Path, right: Path) -> bool:
-                    if left.resolve(strict=False) == right.resolve(strict=False):
-                        return True
-                    if not left.exists() or not right.exists():
-                        return False
-                    try:
-                        return os.path.samefile(left, right)
-                    except OSError as exc:
-                        raise DatabaseImplementationAuthorityError(
-                            "quack sidecar inode separation could not be verified"
-                        ) from exc
-
-                if storage_targets_alias(
-                    self.coordination_path,
-                    control_path,
-                ):
-                    raise DatabaseImplementationAuthorityError(
-                        "quack coordination sidecar must not alias the canonical "
-                        "control database"
-                    )
-                if storage_targets_alias(self.execution_path, control_path):
-                    raise DatabaseImplementationAuthorityError(
-                        "quack execution sidecar must not alias the canonical "
-                        "control database"
-                    )
-                if storage_targets_alias(
-                    self.coordination_path,
-                    self.execution_path,
-                ):
-                    raise DatabaseImplementationAuthorityError(
-                        "quack coordination and execution sidecars must be distinct"
-                    )
+            if coordination_path is not None or execution_path is not None:
+                raise DatabaseImplementationAuthorityError(
+                    "EAAEF quack authority forbids local coordination/execution "
+                    "paths; all mutable state must use the admitted command gateway"
+                )
+            if task_source is not None or coordinator is not None:
+                raise DatabaseImplementationAuthorityError(
+                    "EAAEF quack authority forbids independently injected task or "
+                    "coordination adapters; all components must share the exact "
+                    "command-gateway capability binding"
+                )
+            self.coordination_path = control_path
+            self.execution_path = control_path
         else:
             self._quack_uri = ""
             self.database_path = Path(database_path).absolute()
@@ -78554,11 +78500,40 @@ class DatabaseImplementationDaemon:
         authoritative task completion evidence.
         """
 
-        if not self.require_real_execution:
-            raise DatabaseImplementationAuthorityError(
-                f"database {operation} requires explicit real-execution "
-                "authority (--implement / require_real_execution=True)"
-            )
+        if self.require_real_execution:
+            return
+
+        # A structural-only gateway can exercise the claim/fence contract in
+        # hermetic validation without acquiring production authority.  Keep
+        # that aperture deliberately narrower than provider, effect,
+        # validation, merge, or completion execution.  Real execution still
+        # calls ``require_production_admission()`` while opening the gateway.
+        if self._is_structural_quack_gateway() and operation in {
+            "task claim",
+            "attempt phase commit",
+        }:
+            return
+
+        raise DatabaseImplementationAuthorityError(
+            f"database {operation} requires explicit real-execution "
+            "authority (--implement / require_real_execution=True)"
+        )
+
+    def _is_structural_quack_gateway(self) -> bool:
+        """Return whether this daemon is attached only to a hermetic gateway."""
+
+        if not self._uses_quack_command_gateway():
+            return False
+        capability = getattr(
+            self._quack_command_gateway,
+            "capability",
+            None,
+        )
+        return bool(
+            getattr(capability, "qualification_status", "")
+            == "structural_only_unavailable"
+            and getattr(capability, "production_admitted", None) is False
+        )
 
     def _execution_disabled_observation(self) -> dict[str, Any]:
         """Return one read-only pass result without reconciling or claiming.
@@ -79265,6 +79240,45 @@ class DatabaseImplementationDaemon:
     ) -> tuple[tuple[Any, ...], frozenset[str]]:
         """Read one bounded, generation-stable task and readiness projection."""
 
+        if self._uses_quack_command_gateway():
+            # The closed gateway deliberately exposes no repository snapshot
+            # or connection.  Its bounded list and ready commands each return
+            # the sole owner's transaction revision; matching revisions prove
+            # that the two projections describe one generation.  The owner
+            # rejects populations above the protocol bound instead of
+            # returning a partial page.
+            for _attempt in range(_DATABASE_PROJECTION_READ_ATTEMPTS):
+                population = self.task_source.list_tasks(
+                    limit=TASK_SOURCE_QUERY_LIMIT
+                )
+                ready = self.task_source.ready_tasks(
+                    limit=TASK_SOURCE_QUERY_LIMIT
+                )
+                if str(getattr(population, "next_cursor", "") or "") or str(
+                    getattr(ready, "next_cursor", "") or ""
+                ):
+                    raise DatabaseImplementationAuthorityError(
+                        "Quack task projection returned an unbounded cursor"
+                    )
+                population_revision = getattr(population, "revision", None)
+                ready_revision = getattr(ready, "revision", None)
+                if population_revision is not None or ready_revision is not None:
+                    if type(population_revision) is not int or type(ready_revision) is not int:
+                        raise DatabaseImplementationAuthorityError(
+                            "Quack task projection lost its owner revision"
+                        )
+                    if population_revision != ready_revision:
+                        continue
+                tasks = tuple(population.tasks)
+                return self._validated_authoritative_task_projection(
+                    tasks=tasks,
+                    ready_tasks=tuple(ready.tasks),
+                    expected_count=int(getattr(population, "task_count", len(tasks))),
+                )
+            raise DatabaseImplementationConflictError(
+                "authoritative Quack task projection changed during bounded read"
+            )
+
         for _attempt in range(_DATABASE_PROJECTION_READ_ATTEMPTS):
             before = self.task_source.snapshot()
             population_tasks: list[Any] = []
@@ -79295,43 +79309,57 @@ class DatabaseImplementationDaemon:
             if str(before.projection_cid) != str(after.projection_cid):
                 continue
             tasks = tuple(population_tasks)
-            expected_count = int(after.task_count)
-            if expected_count > TASK_SOURCE_MAX_SNAPSHOT_TASKS:
-                raise DatabaseImplementationAuthorityError(
-                    "authoritative task population exceeds coordination sync bound"
-                )
-            if len(tasks) != expected_count:
-                raise DatabaseImplementationAuthorityError(
-                    "authoritative task population is incomplete"
-                )
-            by_cid: dict[str, Any] = {}
-            for task in tasks:
-                task_cid = str(task.task_cid or "")
-                status = str(task.status or "").strip().lower()
-                if not task_cid or task_cid in by_cid:
-                    raise DatabaseImplementationAuthorityError(
-                        "authoritative task population has a missing or duplicate CID"
-                    )
-                if status not in _DATABASE_CLOSED_TASK_STATUSES:
-                    raise DatabaseImplementationAuthorityError(
-                        f"authoritative task {task_cid} has unknown status {status!r}"
-                    )
-                by_cid[task_cid] = task
-            ready_cids = frozenset(str(task.task_cid or "") for task in ready.tasks)
-            if "" in ready_cids or not ready_cids.issubset(by_cid):
-                raise DatabaseImplementationAuthorityError(
-                    "authoritative ready set is not a subset of the task population"
-                )
-            for task_cid in ready_cids:
-                status = str(by_cid[task_cid].status or "").strip().lower()
-                if status not in _DATABASE_READY_TASK_STATUSES:
-                    raise DatabaseImplementationAuthorityError(
-                        f"authoritative ready task {task_cid} has status {status!r}"
-                    )
-            return tasks, ready_cids
+            return self._validated_authoritative_task_projection(
+                tasks=tasks,
+                ready_tasks=tuple(ready.tasks),
+                expected_count=int(after.task_count),
+            )
         raise DatabaseImplementationConflictError(
             "authoritative task projection changed during bounded read"
         )
+
+    @staticmethod
+    def _validated_authoritative_task_projection(
+        *,
+        tasks: tuple[Any, ...],
+        ready_tasks: tuple[Any, ...],
+        expected_count: int,
+    ) -> tuple[tuple[Any, ...], frozenset[str]]:
+        """Validate a complete closed task/ready projection."""
+
+        if expected_count > TASK_SOURCE_MAX_SNAPSHOT_TASKS:
+            raise DatabaseImplementationAuthorityError(
+                "authoritative task population exceeds coordination sync bound"
+            )
+        if len(tasks) != expected_count:
+            raise DatabaseImplementationAuthorityError(
+                "authoritative task population is incomplete"
+            )
+        by_cid: dict[str, Any] = {}
+        for task in tasks:
+            task_cid = str(task.task_cid or "")
+            status = str(task.status or "").strip().lower()
+            if not task_cid or task_cid in by_cid:
+                raise DatabaseImplementationAuthorityError(
+                    "authoritative task population has a missing or duplicate CID"
+                )
+            if status not in _DATABASE_CLOSED_TASK_STATUSES:
+                raise DatabaseImplementationAuthorityError(
+                    f"authoritative task {task_cid} has unknown status {status!r}"
+                )
+            by_cid[task_cid] = task
+        ready_cids = frozenset(str(task.task_cid or "") for task in ready_tasks)
+        if "" in ready_cids or not ready_cids.issubset(by_cid):
+            raise DatabaseImplementationAuthorityError(
+                "authoritative ready set is not a subset of the task population"
+            )
+        for task_cid in ready_cids:
+            status = str(by_cid[task_cid].status or "").strip().lower()
+            if status not in _DATABASE_READY_TASK_STATUSES:
+                raise DatabaseImplementationAuthorityError(
+                    f"authoritative ready task {task_cid} has status {status!r}"
+                )
+        return tasks, ready_cids
 
     def _synchronize_authoritative_task_projection(
         self,
@@ -80643,6 +80671,11 @@ class DatabaseImplementationDaemon:
         """Claim one task, resolving lane-local races through shared-board CAS."""
 
         self._require_execution_authority("task claim")
+        if self._is_structural_quack_gateway():
+            return self._claim_next_through_structural_gateway(
+                exclude_task_cids=exclude_task_cids,
+                lease_ms=lease_ms,
+            )
         # A crash between the shared reservation and the lane-local claimed
         # insert leaves no sidecar that projection synchronization can safely
         # reconstruct.  Ask the exclusive owner to prove the historic process
@@ -80907,6 +80940,66 @@ class DatabaseImplementationDaemon:
         raise DatabaseImplementationConflictError(
             "shared task-board claim retry bound exhausted"
         )
+
+    def _claim_next_through_structural_gateway(
+        self,
+        *,
+        exclude_task_cids: Iterable[str],
+        lease_ms: int | None,
+    ) -> DatabaseTaskAttempt | None:
+        """Exercise the closed claim/fence seam without production authority.
+
+        Structural gateway components are admitted only for hermetic protocol
+        validation.  They share one in-memory owner and never expose a DuckDB
+        path.  This path intentionally stops after a fenced attempt cursor: it
+        cannot invoke providers, effects, validation, merge, or completion.
+        """
+
+        tasks, ready_cids = self._stable_authoritative_task_projection()
+        by_cid = {str(task.task_cid): task for task in tasks}
+        eligible_ready_cids = {
+            task_cid
+            for task_cid in ready_cids
+            if task_cid in by_cid
+            and self._database_task_is_eligible(by_cid[task_cid])
+            and not self._automatic_claim_forbidden(by_cid[task_cid])
+        }
+        excluded = {
+            str(task_cid)
+            for task_cid in exclude_task_cids
+            if str(task_cid)
+        }
+        excluded.update(set(ready_cids) - eligible_ready_cids)
+        claim = self.coordinator.claim_ready_task(
+            owner_session_id=self.owner_session_id,
+            lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
+            exclude_task_cids=excluded,
+            now_ms=self._now_ms(),
+        )
+        if claim is None:
+            return None
+        task_cid = str(getattr(claim, "task_cid", "") or "")
+        task = self.task_source.get(task_cid)
+        if (
+            task_cid not in eligible_ready_cids
+            or task is None
+            or str(getattr(task, "status", "") or "").strip().lower()
+            not in _DATABASE_READY_TASK_STATUSES
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "structural gateway returned a task outside its closed ready set"
+            )
+        attempt = self._insert_attempt_from_claim(
+            claim,
+            task_alias=str(getattr(task, "task_alias", "") or task_cid),
+        )
+        self._record_event(
+            "task_claimed",
+            attempt_id=attempt.attempt_id,
+            task_cid=attempt.task_cid,
+            body=attempt.to_dict(),
+        )
+        return attempt
 
     def _insert_attempt_from_claim(
         self,

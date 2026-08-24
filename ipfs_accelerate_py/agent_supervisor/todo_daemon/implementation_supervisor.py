@@ -8683,6 +8683,7 @@ class PortalSupervisorConfig:
     task_prefix: str = TASK_HEADER_PREFIX
     board_namespace: str = ""
     state_prefix: str = "portal"
+    accepted_launch_argv: tuple[str, ...] | None = None
     database_program: DatabaseProgramConfig | None = None
     database_owner_session_id: str = ""
     state_owner_bootstrap_fd: int = -1
@@ -9133,6 +9134,15 @@ class PortalImplementationSupervisor:
     def _reload_for_control_plane_update(self) -> None:
         """Replace this process image so parent and child import one generation."""
 
+        # ``main(argv)`` may be embedded in another launcher whose sys.argv is
+        # unrelated to the arguments this supervisor accepted.  Prefer the
+        # exact captured launch vector; direct programmatic configurations
+        # retain the historical sys.argv fallback for compatibility.
+        reload_argv = (
+            list(self.config.accepted_launch_argv)
+            if self.config.accepted_launch_argv is not None
+            else list(sys.argv[1:])
+        )
         supervisor_script_path = self.config.supervisor_script_path
         if supervisor_script_path is not None:
             script_path = Path(supervisor_script_path)
@@ -9141,7 +9151,7 @@ class PortalImplementationSupervisor:
             arguments = [
                 sys.executable,
                 str(script_path.resolve()),
-                *sys.argv[1:],
+                *reload_argv,
             ]
         else:
             module_name = (
@@ -9156,7 +9166,7 @@ class PortalImplementationSupervisor:
                 sys.executable,
                 "-m",
                 module_name,
-                *sys.argv[1:],
+                *reload_argv,
             ]
         os.execv(
             sys.executable,
@@ -22626,6 +22636,47 @@ class PortalImplementationSupervisor:
                 if token == option
             ]
 
+        # The daemon's immutable state-authority selection must match exactly,
+        # including the absence of optional fields.  Merely matching the
+        # executable and board paths could otherwise adopt a stale process
+        # bound to a different store generation, schema, or failover policy.
+        program_args = (
+            self.config.database_program.daemon_cli_args()
+            if self.config.database_program is not None
+            else []
+        )
+        authority_value_options = (
+            "--task-source-kind",
+            "--authority-mode",
+            "--state-failover-policy",
+            "--quack-endpoint",
+            "--state-store-id",
+            "--state-store-generation",
+            "--state-schema-revision",
+            "--event-store-path",
+            "--runtime-registry-path",
+            "--export-profile",
+        )
+        expected_authority_values = {
+            option: [
+                program_args[index + 1]
+                for index, token in enumerate(program_args[:-1])
+                if token == option
+            ]
+            for option in authority_value_options
+        }
+        if any(
+            option_value_list(option) != expected_authority_values[option]
+            for option in authority_value_options
+        ):
+            return False
+        expected_explicit_legacy = "--explicit-legacy-task-source" in program_args
+        if ("--explicit-legacy-task-source" in tokens) != expected_explicit_legacy:
+            return False
+        # Secret handles are environment-only for managed daemons.
+        if "--endpoint-secret-handle" in tokens:
+            return False
+
         if option_values("--task-shard-count") != {
             str(self.config.task_shard_count)
         }:
@@ -23585,6 +23636,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error(str(exc))
     parsed = parser.parse_args(expanded_argv)
     parsed.scheduler_config = scheduler_config_path
+    parsed._accepted_launch_argv = tuple(str(item) for item in raw_argv)
     return parsed
 
 
@@ -23640,6 +23692,9 @@ def supervisor_config_from_args(
         task_prefix=args.task_prefix,
         board_namespace=str(getattr(args, "board_namespace", "") or ""),
         state_prefix=args.state_prefix,
+        accepted_launch_argv=(
+            tuple(args._accepted_launch_argv) if hasattr(args, "_accepted_launch_argv") else None
+        ),
         database_program=database_program,
         database_owner_session_id=str(
             getattr(args, "database_owner_session_id", "") or ""
