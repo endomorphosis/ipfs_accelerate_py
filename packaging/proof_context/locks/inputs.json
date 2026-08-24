@@ -164,6 +164,39 @@
     },
     "selected_archive_identity_count": 107
   },
+  "mutable_vcs_metadata_policy": {
+    "disposition": "record-inactive-and-fail-closed-if-unexpected-or-selected",
+    "expected_inactive_declarations": [
+      {
+        "declaration": "ipld-unixfs @ git+https://github.com/storacha/py-ipld-unixfs.git ; extra == \"ipld-github\"",
+        "declared_by": "ipfs-kit-py",
+        "required_extra": "ipld-github",
+        "target_distribution": "ipld-unixfs"
+      },
+      {
+        "declaration": "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main ; extra == \"full\"",
+        "declared_by": "ipfs-kit-py",
+        "required_extra": "full",
+        "target_distribution": "libp2p"
+      },
+      {
+        "declaration": "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main ; extra == \"libp2p\"",
+        "declared_by": "ipfs-kit-py",
+        "required_extra": "libp2p",
+        "target_distribution": "libp2p"
+      }
+    ],
+    "selected_archive_origin_allowlist": [
+      "local-admitted-artifact",
+      "https://pypi.org/simple"
+    ],
+    "selected_unsafe_requirement_classes": [
+      "mutable-vcs",
+      "unadmitted-direct-url",
+      "editable",
+      "local-path"
+    ]
+  },
   "profiles": {
     "core": {
       "accelerator_extra": null,
@@ -336,6 +369,7 @@
     "all five clean installs remain no-go because selected source-distribution builds were inspected but not qualified by PCCE-053",
     "offline no-index pip --require-hashes dry-run resolution passed for core, verification, and codex and failed closed at the unprovided native build backend for local-model and evaluation",
     "selected source-distribution hashes and build-system metadata inspected for all five profiles",
+    "three frozen mutable-VCS Core Metadata declarations are proven inactive unrequested-extra metadata with absent targets; selected unsafe requirement declarations remain empty",
     "every emitted raw CIDv1 is decoded and checked for raw multicodec, sha2-256 multihash, and exact SHA-256 binding",
     "two independent environment-evidence generations compared byte-for-byte"
   ]

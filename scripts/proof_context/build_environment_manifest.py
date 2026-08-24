@@ -35,6 +35,23 @@ RECEIPT_OUTPUT = Path("artifacts/proof_carrying_context_engine/receipts/PCCE-053
 LOCAL_ORIGIN = "local-admitted-artifact"
 PYPI_ORIGIN = "https://pypi.org/simple"
 SCHEMA_PREFIX = "lift_coding.proof-carrying-context-engine"
+EXPECTED_INACTIVE_VCS_DECLARATIONS = {
+    'ipld-unixfs @ git+https://github.com/storacha/py-ipld-unixfs.git ; extra == "ipld-github"': (
+        "ipfs-kit-py",
+        "ipld-github",
+        "ipld-unixfs",
+    ),
+    'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main ; extra == "full"': (
+        "ipfs-kit-py",
+        "full",
+        "libp2p",
+    ),
+    'libp2p @ git+https://github.com/libp2p/py-libp2p.git@main ; extra == "libp2p"': (
+        "ipfs-kit-py",
+        "libp2p",
+        "libp2p",
+    ),
+}
 
 
 class EvidenceError(RuntimeError):
@@ -106,7 +123,7 @@ def _normalized_name(value: str) -> str:
 
 def _git_output(*args: str) -> str:
     completed = subprocess.run(
-        ["git", "-C", str(ACCELERATOR_ROOT), *args],
+        ["git", "--no-optional-locks", "-C", str(ACCELERATOR_ROOT), *args],
         check=False,
         capture_output=True,
         text=True,
@@ -217,6 +234,132 @@ def _license_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return {
         "core_metadata_license": declaration,
         "license_classifiers": sorted(set(classifiers)),
+    }
+
+
+def _requirement_risk_ledger(
+    *, profile: str, packages: list[dict[str, Any]], inputs: dict[str, Any]
+) -> dict[str, Any]:
+    """Classify frozen mutable declarations without treating them as selected."""
+    policy = inputs.get("mutable_vcs_metadata_policy")
+    if not isinstance(policy, dict):
+        raise EvidenceError("mutable VCS metadata policy is missing")
+    if policy.get("disposition") != "record-inactive-and-fail-closed-if-unexpected-or-selected":
+        raise EvidenceError("mutable VCS metadata policy disposition drifted")
+    origin_allowlist = policy.get("selected_archive_origin_allowlist")
+    if origin_allowlist != [LOCAL_ORIGIN, PYPI_ORIGIN]:
+        raise EvidenceError("selected archive origin allowlist drifted")
+    unsafe_classes = policy.get("selected_unsafe_requirement_classes")
+    expected_unsafe_classes = [
+        "mutable-vcs",
+        "unadmitted-direct-url",
+        "editable",
+        "local-path",
+    ]
+    if unsafe_classes != expected_unsafe_classes:
+        raise EvidenceError("selected unsafe requirement class policy drifted")
+    expected = policy.get("expected_inactive_declarations")
+    if not isinstance(expected, list) or len(expected) != 3:
+        raise EvidenceError("exactly three frozen inactive mutable VCS declarations are required")
+    expected_by_declaration: dict[str, dict[str, Any]] = {}
+    for descriptor in expected:
+        if not isinstance(descriptor, dict):
+            raise EvidenceError("mutable VCS declaration descriptors must be objects")
+        declaration = str(descriptor.get("declaration", ""))
+        if not declaration or declaration in expected_by_declaration:
+            raise EvidenceError("mutable VCS declarations must be nonempty and unique")
+        expected_by_declaration[declaration] = descriptor
+    frozen_policy = {
+        declaration: (
+            descriptor.get("declared_by"),
+            descriptor.get("required_extra"),
+            descriptor.get("target_distribution"),
+        )
+        for declaration, descriptor in expected_by_declaration.items()
+    }
+    if frozen_policy != EXPECTED_INACTIVE_VCS_DECLARATIONS:
+        raise EvidenceError("frozen inactive mutable VCS declaration policy drifted")
+
+    selected_names = {package["name"] for package in packages}
+    observed: list[dict[str, Any]] = []
+    observed_declarations: set[str] = set()
+    any_direct_reference_pattern = re.compile(r"^\s*[A-Za-z0-9_.-]+(?:\s*\[[^\]\r\n]+\])?\s*@\s*")
+    direct_reference_pattern = re.compile(
+        r'^\s*([A-Za-z0-9_.-]+)\s*@\s*([^;\s]+)\s*;\s*extra\s*==\s*"([^"]+)"\s*$'
+    )
+    for package in packages:
+        for declaration in package["requires_dist"]:
+            if any_direct_reference_pattern.match(declaration) is None:
+                continue
+            match = direct_reference_pattern.fullmatch(declaration)
+            if match is None:
+                raise EvidenceError(
+                    f"unexpected PEP 508 direct-reference syntax in {profile}: {declaration!r}"
+                )
+            descriptor = expected_by_declaration.get(declaration)
+            if descriptor is None:
+                raise EvidenceError(
+                    f"unexpected PEP 508 direct-reference Core Metadata declaration in {profile}: {declaration!r}"
+                )
+            target = _normalized_name(match.group(1))
+            direct_reference = match.group(2)
+            required_extra = match.group(3)
+            if not direct_reference.startswith("git+https://"):
+                raise EvidenceError(
+                    f"frozen direct reference is not the expected VCS class in {profile}"
+                )
+            if (
+                package["name"] != descriptor.get("declared_by")
+                or target != descriptor.get("target_distribution")
+                or required_extra != descriptor.get("required_extra")
+            ):
+                raise EvidenceError(f"mutable VCS declaration descriptor drifted in {profile}")
+            extra_requested = required_extra in package["requested_extras"]
+            target_selected = target in selected_names
+            if extra_requested or target_selected:
+                raise EvidenceError(
+                    f"mutable VCS declaration became selected in {profile}: {declaration!r}"
+                )
+            observed_declarations.add(declaration)
+            observed.append(
+                {
+                    **descriptor,
+                    "declaring_distribution_requested_extras": package["requested_extras"],
+                    "required_extra_requested": False,
+                    "target_distribution_selected": False,
+                    "selection_status": "inactive-unrequested-extra-target-absent",
+                }
+            )
+    if observed_declarations != set(expected_by_declaration):
+        missing = sorted(set(expected_by_declaration) - observed_declarations)
+        raise EvidenceError(
+            f"expected mutable VCS metadata declarations are absent in {profile}: {missing}"
+        )
+    observed.sort(key=lambda item: item["declaration"])
+
+    local_archives = sorted(
+        package["filename"] for package in packages if package["origin"] == LOCAL_ORIGIN
+    )
+    pypi_archives = sorted(
+        package["filename"] for package in packages if package["origin"] == PYPI_ORIGIN
+    )
+    observed_origins = {package["origin"] for package in packages}
+    if not observed_origins <= set(origin_allowlist):
+        raise EvidenceError(f"selected archive origin escaped the allowlist in {profile}")
+    if len(local_archives) != 4 or len(local_archives) + len(pypi_archives) != len(packages):
+        raise EvidenceError(f"selected archive origin classification is incomplete in {profile}")
+    return {
+        "policy_status": "passed",
+        "inactive_mutable_vcs_core_metadata": observed,
+        "selected_unsafe_vcs_direct_editable_path_requirements": [],
+        "selected_unsafe_requirements_by_class": {name: [] for name in unsafe_classes},
+        "selected_archive_origins": {
+            LOCAL_ORIGIN: local_archives,
+            PYPI_ORIGIN: pypi_archives,
+        },
+        "selected_archive_origin_policy": (
+            "exact local admitted archive or credential-free files.pythonhosted.org URL with SHA-256"
+        ),
     }
 
 
@@ -335,11 +478,26 @@ def _compile_receipt(
         if not version or name in seen:
             raise EvidenceError(f"duplicate or versionless distribution in {profile}: {name}")
         seen.add(name)
+        download_info = install.get("download_info")
+        if not isinstance(download_info, dict):
+            raise EvidenceError(f"resolver entry lacks download information in {profile}: {name}")
+        unsafe_source_keys = sorted({"vcs_info", "dir_info"} & set(download_info))
+        if unsafe_source_keys:
+            raise EvidenceError(
+                f"selected VCS/editable/path source in {profile}: {name} ({unsafe_source_keys})"
+            )
+        is_direct = install.get("is_direct", False)
+        if not isinstance(is_direct, bool):
+            raise EvidenceError(f"resolver is_direct flag is invalid in {profile}: {name}")
         url, archive_sha256 = _report_archive(install)
         parsed = urlsplit(url)
         filename = unquote(Path(parsed.path).name)
         key = (name, version)
         if parsed.scheme == "file":
+            if not is_direct:
+                raise EvidenceError(
+                    f"local archive was not an explicit direct input in {profile}: {name}"
+                )
             admitted = artifact_index.get(key)
             if not admitted:
                 raise EvidenceError(
@@ -368,6 +526,8 @@ def _compile_receipt(
             admitted_license = wheel.get("license_declared")
             local_seen.add(key)
         else:
+            if is_direct:
+                raise EvidenceError(f"unadmitted selected direct URL in {profile}: {name}")
             download_url = _safe_remote_url(url)
             origin = PYPI_ORIGIN
             lock_hashes = [archive_sha256]
@@ -421,6 +581,11 @@ def _compile_receipt(
             f"profile {profile} did not request accelerator extras {expected_extras}"
         )
     packages.sort(key=lambda package: package["name"])
+    requirement_risk_ledger = _requirement_risk_ledger(
+        profile=profile,
+        packages=packages,
+        inputs=inputs,
+    )
     report_environment = report.get("environment", {})
     observed = {
         "implementation_name": report_environment.get("implementation_name"),
@@ -440,6 +605,7 @@ def _compile_receipt(
             "artifact_clean_install_status"
         ],
         "native_build_status": inputs["profiles"][profile]["native_build_status"],
+        "requirement_risk_ledger": requirement_risk_ledger,
         "resolver": {
             "name": "pip",
             "version": report["pip_version"],
@@ -517,6 +683,138 @@ def _compile_locks(
                 path.write_bytes(content)
 
 
+def _validate_committed_package_sources(
+    *, profile: str, packages: Any, inputs: dict[str, Any]
+) -> None:
+    """Revalidate selected archive provenance without consulting a resolver or index."""
+    if not isinstance(packages, list) or not packages:
+        raise EvidenceError(f"resolver receipt has no package list: {profile}")
+    artifact_index = _artifact_index(inputs)
+    local_seen: set[tuple[str, str]] = set()
+    seen_names: set[str] = set()
+    for package in packages:
+        if not isinstance(package, dict):
+            raise EvidenceError(f"resolver receipt package is not an object: {profile}")
+        required = {
+            "name",
+            "version",
+            "filename",
+            "sha256",
+            "resolution_sha256",
+            "lock_hashes",
+            "origin",
+            "download_url",
+            "requested",
+            "requested_extras",
+            "requires_dist",
+            "artifact_availability",
+        }
+        missing = sorted(required - set(package))
+        if missing:
+            raise EvidenceError(
+                f"resolver receipt package fields are absent in {profile}: {missing}"
+            )
+        name = package["name"]
+        if not isinstance(name, str) or _normalized_name(name) != name or name in seen_names:
+            raise EvidenceError(f"resolver receipt package name is invalid or duplicated: {name!r}")
+        seen_names.add(name)
+        version = package["version"]
+        filename = package["filename"]
+        if not isinstance(version, str) or not version:
+            raise EvidenceError(f"resolver receipt package version is invalid: {name}")
+        if (
+            not isinstance(filename, str)
+            or not filename
+            or PurePosixPath(filename).name != filename
+        ):
+            raise EvidenceError(f"resolver receipt archive filename is invalid: {name}")
+        sha256 = package["sha256"]
+        resolution_sha256 = package["resolution_sha256"]
+        lock_hashes = package["lock_hashes"]
+        if not isinstance(sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", sha256):
+            raise EvidenceError(f"resolver receipt package SHA-256 is invalid: {name}")
+        if not isinstance(resolution_sha256, str) or not re.fullmatch(
+            r"[0-9a-f]{64}", resolution_sha256
+        ):
+            raise EvidenceError(f"resolver receipt resolution SHA-256 is invalid: {name}")
+        if (
+            not isinstance(lock_hashes, list)
+            or not lock_hashes
+            or lock_hashes != sorted(set(lock_hashes))
+            or not all(
+                isinstance(item, str) and re.fullmatch(r"[0-9a-f]{64}", item)
+                for item in lock_hashes
+            )
+        ):
+            raise EvidenceError(f"resolver receipt lock hashes are invalid: {name}")
+        if not isinstance(package["requested"], bool):
+            raise EvidenceError(f"resolver receipt requested flag is invalid: {name}")
+        for field in ("requested_extras", "requires_dist"):
+            values = package[field]
+            if (
+                not isinstance(values, list)
+                or not all(isinstance(item, str) for item in values)
+                or values != sorted(set(values))
+            ):
+                raise EvidenceError(f"resolver receipt {field} is invalid: {name}")
+        if package["artifact_availability"] != "available":
+            raise EvidenceError(f"selected archive is not explicitly available: {name}")
+
+        origin = package["origin"]
+        download_url = package["download_url"]
+        if not isinstance(download_url, str):
+            raise EvidenceError(f"resolver receipt download URL is invalid: {name}")
+        key = (name, version)
+        if origin == LOCAL_ORIGIN:
+            admitted = artifact_index.get(key)
+            if admitted is None:
+                raise EvidenceError(f"unadmitted local selected distribution in {profile}: {name}")
+            wheel = next(item for item in admitted if item["kind"] == "wheel")
+            expected_hashes = sorted(item["sha256"] for item in admitted)
+            if (
+                filename != wheel["filename"]
+                or sha256 != wheel["sha256"]
+                or resolution_sha256 != wheel["sha256"]
+                or lock_hashes != expected_hashes
+                or download_url != f"artifact://{wheel['filename']}"
+                or package.get("admitted_artifact_license") != wheel.get("license_declared")
+            ):
+                raise EvidenceError(f"local selected archive is not exactly admitted: {name}")
+            local_seen.add(key)
+        elif origin == PYPI_ORIGIN:
+            if key in artifact_index:
+                raise EvidenceError(
+                    f"admitted direct package was relabeled as an index archive: {name}"
+                )
+            if _safe_remote_url(download_url) != download_url:
+                raise EvidenceError(f"selected index archive URL is not canonical: {name}")
+            parsed = urlsplit(download_url)
+            if (
+                unquote(PurePosixPath(parsed.path).name) != filename
+                or sha256 != resolution_sha256
+                or lock_hashes != [sha256]
+                or package.get("admitted_artifact_license") is not None
+            ):
+                raise EvidenceError(f"selected index archive identity is inconsistent: {name}")
+        else:
+            raise EvidenceError(
+                f"selected archive origin escaped the allowlist in {profile}: {origin!r}"
+            )
+    if local_seen != set(artifact_index):
+        raise EvidenceError(f"resolver receipt does not select all four admitted wheels: {profile}")
+    if [package["name"] for package in packages] != sorted(seen_names):
+        raise EvidenceError(f"resolver receipt package order is not canonical: {profile}")
+    root = next((package for package in packages if package["name"] == "ipfs-accelerate-py"), None)
+    expected_extra = inputs["profiles"][profile]["accelerator_extra"]
+    expected_extras = [] if expected_extra is None else [expected_extra]
+    if (
+        root is None
+        or root["requested_extras"] != expected_extras
+        or root["origin"] != LOCAL_ORIGIN
+    ):
+        raise EvidenceError(f"resolver receipt root extras or origin drifted: {profile}")
+
+
 def _load_receipts(inputs: dict[str, Any]) -> dict[str, dict[str, Any]]:
     receipts: dict[str, dict[str, Any]] = {}
     root = LOCK_ROOT / ENVIRONMENT_SLUG
@@ -531,11 +829,50 @@ def _load_receipts(inputs: dict[str, Any]) -> dict[str, dict[str, Any]]:
             raise EvidenceError(f"invalid resolver receipt: {receipt_path}")
         if receipt.get("environment") != inputs["supported_environment"]:
             raise EvidenceError(f"resolver receipt environment drifted: {receipt_path}")
+        expected_profile = inputs["profiles"][profile]
+        if receipt.get("root_requirement") != expected_profile["root_requirement"]:
+            raise EvidenceError(f"resolver receipt root requirement drifted: {receipt_path}")
+        for field in (
+            "resolution_status",
+            "artifact_clean_install_status",
+            "native_build_status",
+        ):
+            if receipt.get(field) != expected_profile[field]:
+                raise EvidenceError(f"resolver receipt {field} drifted: {receipt_path}")
+        resolver = receipt.get("resolver")
+        if not isinstance(resolver, dict):
+            raise EvidenceError(f"resolver receipt resolver fields are absent: {receipt_path}")
+        expected_resolver = {
+            "name": "pip",
+            "version": inputs["resolver"]["pip_version"],
+            "index": PYPI_ORIGIN,
+            "extra_indexes": [],
+            "resolution_only": True,
+            "raw_report_retained": False,
+            "command": inputs["resolver"]["command"],
+        }
+        if any(resolver.get(field) != value for field, value in expected_resolver.items()):
+            raise EvidenceError(f"resolver receipt resolver policy drifted: {receipt_path}")
+        if not re.fullmatch(r"[0-9a-f]{64}", str(resolver.get("raw_report_sha256", ""))):
+            raise EvidenceError(f"resolver receipt report SHA-256 is invalid: {receipt_path}")
+        packages = receipt.get("packages")
+        _validate_committed_package_sources(
+            profile=profile,
+            packages=packages,
+            inputs=inputs,
+        )
+        expected_risk_ledger = _requirement_risk_ledger(
+            profile=profile,
+            packages=packages,
+            inputs=inputs,
+        )
+        if receipt.get("requirement_risk_ledger") != expected_risk_ledger:
+            raise EvidenceError(f"resolver receipt requirement risk ledger drifted: {receipt_path}")
         lock_path = root / f"{profile}.txt"
         expected_lock = _lock_bytes(receipt)
         if not lock_path.is_file() or lock_path.read_bytes() != expected_lock:
             raise EvidenceError(f"lock differs from resolver receipt: {lock_path}")
-        package_keys = {(package["name"], package["version"]) for package in receipt["packages"]}
+        package_keys = {(package["name"], package["version"]) for package in packages}
         if not artifact_keys <= package_keys:
             raise EvidenceError(f"lock omits an admitted package pair: {lock_path}")
         receipts[profile] = receipt
@@ -640,6 +977,33 @@ def _outer_documents(
                 "native_build_status": inputs["profiles"][profile]["native_build_status"],
             }
         )
+    requirement_source_risk = {
+        "policy_status": "passed",
+        "policy": inputs["mutable_vcs_metadata_policy"],
+        "profiles": {
+            profile: {
+                "inactive_mutable_vcs_core_metadata": receipts[profile]["requirement_risk_ledger"][
+                    "inactive_mutable_vcs_core_metadata"
+                ],
+                "selected_unsafe_vcs_direct_editable_path_requirements": receipts[profile][
+                    "requirement_risk_ledger"
+                ]["selected_unsafe_vcs_direct_editable_path_requirements"],
+                "selected_unsafe_requirements_by_class": receipts[profile][
+                    "requirement_risk_ledger"
+                ]["selected_unsafe_requirements_by_class"],
+                "selected_archive_origin_counts": {
+                    origin: len(filenames)
+                    for origin, filenames in receipts[profile]["requirement_risk_ledger"][
+                        "selected_archive_origins"
+                    ].items()
+                },
+                "selected_archive_origin_policy": receipts[profile]["requirement_risk_ledger"][
+                    "selected_archive_origin_policy"
+                ],
+            }
+            for profile in PROFILES
+        },
+    }
     dependency_locks = {
         "schema": f"{SCHEMA_PREFIX}.dependency-locks@1",
         "environment_id": ENVIRONMENT_SLUG,
@@ -651,6 +1015,7 @@ def _outer_documents(
         "supported_environment": inputs["supported_environment"],
         "resolver": inputs["resolver"],
         "hash_gate_validation": inputs["hash_gate_validation"],
+        "requirement_source_risk": requirement_source_risk,
         "locks": lock_records,
     }
     artifact_hashes = {
@@ -802,6 +1167,7 @@ def _outer_documents(
         "toolchain": inputs["toolchain"],
         "indexes": {"primary": PYPI_ORIGIN, "additional": []},
         "hash_gate_validation": inputs["hash_gate_validation"],
+        "requirement_source_risk": requirement_source_risk,
         # Deliberately exclude the manifest's own digest; the task receipt
         # binds it after these bytes exist.
         "evidence": dict(environment_sha256),
@@ -852,6 +1218,7 @@ def _outer_documents(
                 for profile in PROFILES
             },
             "hash_gate_validation": inputs["hash_gate_validation"],
+            "requirement_source_risk": requirement_source_risk,
             "deterministic_generation": {"runs_compared": 2, "byte_identical": True},
             "output_sha256": environment_sha256,
             "output_cid_v1_raw": environment_cid_v1_raw,

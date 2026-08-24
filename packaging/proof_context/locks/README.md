@@ -30,6 +30,15 @@ kit sdist CID is derived from its frozen digest and is explicitly labeled
 The builder decodes every emitted CID and compares its multihash digest before
 writing or checking evidence.
 
+The admitted kit Core Metadata contains three mutable VCS direct-reference
+declarations under its unrequested `ipld-github`, `full`, and `libp2p` extras.
+They are retained, not hidden. Each resolver receipt and outer risk ledger
+proves the exact declaration is inactive, its required extra was not requested,
+and its target distribution is absent from the selected package set and lock.
+Compilation fails closed for a changed or additional PEP 508 direct reference,
+an activated frozen declaration, a selected VCS/editable/path source, an
+unadmitted direct URL, or an archive origin outside the two-item allowlist.
+
 A lock can be resolved through pip's hash gate without installing it by
 materializing the exact selected archive named for every receipt entry. The
 direct-package subset needs the four available exact admitted wheels; the
@@ -66,3 +75,7 @@ The canonical builder verifies these files and materializes the outer evidence:
 ```bash
 python external/ipfs_accelerate/scripts/proof_context/build_environment_manifest.py --check
 ```
+
+Check mode performs no resolver or network operation and invokes Git with
+optional locks disabled, so verifying a clean checkout does not refresh the
+index or create `index.lock`.
