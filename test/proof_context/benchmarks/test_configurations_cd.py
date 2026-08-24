@@ -228,7 +228,7 @@ def _disposition(**changes: Any) -> DispositionDecision:
         "human_review_required": False,
         "human_review_performed": False,
         "human_review_correct": None,
-        "autonomous_accept": False,
+        "autonomous_accept": True,
         "human_cost_micros": 0,
     }
     values.update(changes)
@@ -796,7 +796,12 @@ def test_provider_failure_retains_complete_observed_failed_attempt_cost() -> Non
 
 
 def test_configuration_d_enforces_complete_governed_lifecycle_and_measurements() -> None:
-    run, port = _run("D")
+    observation = _observation("D")
+    assert observation.disposition is not None
+    assert observation.disposition.autonomous_accept is True
+    assert observation.disposition.human_review_required is False
+    assert observation.disposition.human_review_performed is False
+    run, port = _run("D", observation)
     raw = run.raw_result
     assert raw["terminal_status"] == "succeeded"
     assert tuple(stage["stage"] for stage in run.audit["lifecycle_trace"]) == (
@@ -817,13 +822,46 @@ def test_configuration_d_does_not_expand_already_sufficient_context() -> None:
     context = _context_decision(
         "D",
         initial_sufficient=True,
-        sufficient_after_expansion=True,
+        sufficient_after_expansion=None,
         expansion_count=0,
         expansion_tokens=0,
     )
     run, _ = _run("D", _observation("D", context=context))
     assert run.raw_result["terminal_status"] == "succeeded"
     assert run.raw_result["metrics"]["context_expansion_count"] == 0
+
+
+@pytest.mark.parametrize("post_expansion_decision", (False, True))
+def test_initially_sufficient_context_cannot_claim_post_expansion_decision(
+    post_expansion_decision: bool,
+) -> None:
+    context = _context_decision(
+        "D",
+        initial_sufficient=True,
+        sufficient_after_expansion=post_expansion_decision,
+        expansion_count=0,
+        expansion_tokens=0,
+    )
+    run, _ = _run("D", _observation("D", context=context))
+    assert run.raw_result["terminal_status"] == "invalid"
+    assert run.audit["defect"] == ("post-expansion-sufficiency-requires-initial-insufficiency")
+    assert run.raw_result["metrics"]["accepted_patch_count"] == 0
+    assert run.audit["accepted"] is False
+
+
+def test_initially_sufficient_context_cannot_report_expansion() -> None:
+    context = _context_decision(
+        "D",
+        initial_sufficient=True,
+        sufficient_after_expansion=None,
+        expansion_count=1,
+        expansion_tokens=8,
+    )
+    run, _ = _run("D", _observation("D", context=context))
+    assert run.raw_result["terminal_status"] == "invalid"
+    assert run.audit["defect"] == "initially-sufficient-context-cannot-expand"
+    assert run.raw_result["metrics"]["accepted_patch_count"] == 0
+    assert run.audit["accepted"] is False
 
 
 def test_configuration_d_missing_lifecycle_stage_is_invalid() -> None:
@@ -941,6 +979,7 @@ def test_required_human_review_remains_visible_and_unaccepted_until_performed() 
         human_review_required=True,
         human_review_performed=False,
         human_review_correct=None,
+        autonomous_accept=False,
         human_cost_micros=None,
     )
     observation = _observation(
@@ -975,12 +1014,39 @@ def test_incorrect_human_review_cannot_accept_a_patch() -> None:
         human_review_required=True,
         human_review_performed=True,
         human_review_correct=False,
+        autonomous_accept=False,
         human_cost_micros=40,
     )
     run, _ = _run("D", _observation("D", disposition=disposition))
     assert run.raw_result["terminal_status"] == "invalid"
     assert run.raw_result["metrics"]["human_review_correct_count"] == 0
     assert run.audit["defect"] == "configuration-d-cannot-accept-an-incorrect-human-review"
+    assert run.audit["accepted"] is False
+
+
+def test_valid_completed_human_review_is_the_single_acceptance_authority() -> None:
+    disposition = _disposition(
+        human_review_required=True,
+        human_review_performed=True,
+        human_review_correct=True,
+        autonomous_accept=False,
+        human_cost_micros=40,
+    )
+    run, _ = _run("D", _observation("D", disposition=disposition))
+    assert run.raw_result["terminal_status"] == "succeeded"
+    assert run.raw_result["metrics"]["accepted_patch_count"] == 1
+    assert run.raw_result["metrics"]["human_review_correct_count"] == 1
+    assert run.audit["accepted"] is True
+
+
+def test_configuration_d_rejects_terminal_disposition_with_neither_authority() -> None:
+    disposition = _disposition(autonomous_accept=False)
+    run, _ = _run("D", _observation("D", disposition=disposition))
+    assert run.raw_result["terminal_status"] == "invalid"
+    assert run.raw_result["metrics"]["accepted_patch_count"] == 0
+    assert run.audit["defect"] == (
+        "configuration-d-requires-exactly-one-valid-acceptance-authority"
+    )
     assert run.audit["accepted"] is False
 
 

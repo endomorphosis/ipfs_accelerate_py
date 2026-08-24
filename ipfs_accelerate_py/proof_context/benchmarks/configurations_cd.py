@@ -927,6 +927,15 @@ def _binding_defect(
         or observation.context.expansion_tokens != 0
     ):
         return "configuration-c-observed-d-only-context-governance"
+    if (
+        observation.context.sufficient_after_expansion is not None
+        and observation.context.initial_sufficient is not False
+    ):
+        return "post-expansion-sufficiency-requires-initial-insufficiency"
+    if observation.context.initial_sufficient is True and (
+        observation.context.expansion_count != 0 or observation.context.expansion_tokens != 0
+    ):
+        return "initially-sufficient-context-cannot-expand"
     route = observation.route
     if route is not None:
         if route.provenance != observation.provenance:
@@ -1082,7 +1091,9 @@ def _success_defect(observation: CDExecutionObservation, configuration_id: str) 
             or observation.context.sufficient_after_expansion is not True
         ):
             return "configuration-d-insufficient-context-requires-successful-expansion"
-    elif observation.context.expansion_count != 0:
+    elif observation.context.sufficient_after_expansion is not None:
+        return "configuration-d-initial-sufficiency-cannot-claim-post-expansion-decision"
+    elif observation.context.expansion_count != 0 or observation.context.expansion_tokens != 0:
         return "configuration-d-expanded-an-already-sufficient-context"
     assurance = observation.assurance
     if assurance is None or assurance.status != "succeeded" or not assurance.accepted:
@@ -1105,6 +1116,20 @@ def _success_defect(observation: CDExecutionObservation, configuration_id: str) 
         return "configuration-d-omits-required-human-review"
     if disposition.human_review_performed and disposition.human_review_correct is not True:
         return "configuration-d-cannot-accept-an-incorrect-human-review"
+    autonomous_authority = bool(
+        disposition.autonomous_accept
+        and not disposition.human_review_required
+        and not disposition.human_review_performed
+        and disposition.human_review_correct is None
+    )
+    human_authority = bool(
+        not disposition.autonomous_accept
+        and disposition.human_review_required
+        and disposition.human_review_performed
+        and disposition.human_review_correct is True
+    )
+    if autonomous_authority == human_authority:
+        return "configuration-d-requires-exactly-one-valid-acceptance-authority"
     return None
 
 
