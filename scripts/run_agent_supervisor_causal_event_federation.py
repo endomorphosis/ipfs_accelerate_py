@@ -98,6 +98,7 @@ SUPERVISOR_HEALTH_STALE_SECONDS: Final = 45.0
 STATE_OWNER_OUTBOX_CONVERGENCE_GRACE_SECONDS: Final = 30.0
 EXECUTION_ROUTE_QUIESCENCE_TIMEOUT_SECONDS: Final = 30.0
 EXECUTION_ROUTE_QUIESCENCE_RETRY_SECONDS: Final = 0.05
+INTERNAL_CLIENT_GRANT_TTL_SECONDS: Final = 86_400.0
 UNIX_SOCKET_PATH_CEILING: Final = 100
 EXECUTOR_OWNER_SESSION_ID: Final = "casf-v1-executor"
 EXECUTOR_BOOTSTRAP_SCHEMA: Final = (
@@ -1006,6 +1007,22 @@ def _state_owner_outbox_health(server: Any) -> dict[str, Any]:
     return _outbox_worker_health(server.status())
 
 
+def _state_owner_outbox_terminal_reason_code(
+    health: Mapping[str, Any],
+) -> str:
+    """Map an unhealthy projection to one closed, non-secret reason code."""
+
+    if str(health.get("last_error_type") or "") == "QuackClientTransportError":
+        return "state_owner_outbox_transport_failure"
+    if str(health.get("last_error_type") or ""):
+        return "state_owner_outbox_worker_failure"
+    if str(health.get("observer_error_type") or ""):
+        return "state_owner_outbox_commit_observer_failure"
+    if health.get("malformed") is True:
+        return "state_owner_outbox_status_malformed"
+    return "state_owner_outbox_unavailable"
+
+
 def _seal_quiescent_execution_route_policy(
     *,
     server: Any,
@@ -1190,6 +1207,7 @@ class _SteadyStateOutboxHealth:
             return {
                 "continue_running": False,
                 "classification": "state_owner_outbox_unavailable",
+                "reason_code": _state_owner_outbox_terminal_reason_code(health),
                 "structural_healthy": False,
                 "caught_up": caught_up,
                 "lag_seconds": 0.0,
@@ -1200,6 +1218,7 @@ class _SteadyStateOutboxHealth:
             return {
                 "continue_running": True,
                 "classification": "state_owner_outbox_healthy",
+                "reason_code": "",
                 "structural_healthy": True,
                 "caught_up": True,
                 "lag_seconds": 0.0,
@@ -1216,6 +1235,9 @@ class _SteadyStateOutboxHealth:
                 "state_owner_outbox_catching_up"
                 if within_grace
                 else "state_owner_outbox_lag_timeout"
+            ),
+            "reason_code": (
+                "" if within_grace else "state_owner_outbox_lag_timeout"
             ),
             "structural_healthy": True,
             "caught_up": False,
@@ -1523,7 +1545,7 @@ def _spawn_event_supervisor(
             "process_birth_id": birth_id,
             "tenant_id": admission.federation_identity.binding.tenant_id,
             "federation_id": admission.federation_identity.record_id,
-            "ttl_seconds": 86_400.0,
+            "ttl_seconds": INTERNAL_CLIENT_GRANT_TTL_SECONDS,
         }
         runtime_client_id = "casf-supervisor-runtime:" + admission.supervisor.record_id
         event_client_id = "casf-supervisor-events:" + admission.supervisor.record_id
@@ -1906,7 +1928,7 @@ class _ExecutorBootstrapBroker:
                 sorted(EXECUTOR_OWNER_COMMAND_OPERATIONS)
             ),
             peer_pid=pid,
-            ttl_seconds=86_400.0,
+            ttl_seconds=INTERNAL_CLIENT_GRANT_TTL_SECONDS,
         )
         if self.stopping.is_set():
             self.server.revoke_typed_client_grant(grant.grant_id)
@@ -2370,6 +2392,7 @@ def state_owner(
             "event.delivery.fail",
             "event.acknowledge",
         ),
+        ttl_seconds=INTERNAL_CLIENT_GRANT_TTL_SECONDS,
     )
     owner_client = QuackStateClient(
         owner_id="casf-state-owner:federation-runtime",
@@ -2529,6 +2552,7 @@ def state_owner(
     signal.signal(signal.SIGTERM, request_stop)
     runtime_exit_code: int | None = None
     failure_role = ""
+    failure_reason_code = ""
     steady_state_outbox = _SteadyStateOutboxHealth()
     if server.lifecycle is ServerLifecycle.READY:
         while not stopping.wait(2.0):
@@ -2538,6 +2562,7 @@ def state_owner(
             if outbox_decision["continue_running"] is not True:
                 runtime_exit_code = 1
                 failure_role = "state_owner_outbox"
+                failure_reason_code = str(outbox_decision["reason_code"])
                 break
             coordinator_returncode = supervisor_process.poll()
             if coordinator_returncode is not None:
@@ -2597,6 +2622,7 @@ def state_owner(
                 **result,
                 "supervisor_exit_code": runtime_exit_code,
                 "failure_role": failure_role,
+                "failure_reason_code": failure_reason_code,
                 "executor_cleanup": executor_cleanup,
             },
             sort_keys=True,

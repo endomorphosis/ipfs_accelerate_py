@@ -516,6 +516,67 @@ def test_state_owner_build_disables_legacy_board_unstall(
     assert os.environ[operator.LEGACY_BOARD_UNSTALL_POLICY_ENV] == "disabled"
 
 
+def test_state_owner_internal_grant_uses_maximum_bounded_lifetime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ipfs_accelerate_py.agent_supervisor.runtime import (
+        quack_state_server as server_module,
+    )
+    from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+        DEFAULT_GRANT_TTL_SECONDS,
+        MAX_GRANT_TTL_SECONDS,
+    )
+
+    operator = _operator()
+    board, config = operator._load_config(CONFIG)
+    paths = {
+        "database": tmp_path / "control.duckdb",
+        "bootstrap_receipt": tmp_path / "bootstrap.json",
+        "owner": tmp_path / "owner",
+        "owner_socket": tmp_path / "owner" / "typed-owner.sock",
+    }
+    paths["database"].write_bytes(b"sealed-test-placeholder")
+    paths["bootstrap_receipt"].write_text("{}\n", encoding="utf-8")
+    bootstrap = {
+        "schema": operator.BOOTSTRAP_SCHEMA,
+        "program_id": operator.PROGRAM_ID,
+    }
+    captured: dict[str, object] = {}
+
+    class _GrantCaptured(Exception):
+        pass
+
+    class _Server:
+        def typed_command_socket_path(self):
+            return paths["owner_socket"]
+
+        def start(self):
+            return SimpleNamespace(process_birth_id="process-birth:state-owner")
+
+        def issue_typed_client_grant(self, **kwargs):
+            captured.update(kwargs)
+            raise _GrantCaptured
+
+    monkeypatch.setattr(operator, "_load_config", lambda _path: (board, config))
+    monkeypatch.setattr(operator, "_runtime_paths", lambda _board: paths)
+    monkeypatch.setattr(operator, "_json_object", lambda _path: bootstrap)
+    monkeypatch.setattr(operator, "_verify_receipt", lambda *_a, **_k: None)
+    monkeypatch.setattr(operator, "_require_free_port", lambda *_a, **_k: None)
+    monkeypatch.setattr(operator, "_quack_capability", lambda: None)
+    monkeypatch.setattr(operator, "_prepare_private_socket_parent", lambda _p: None)
+    monkeypatch.setattr(server_module, "build_server", lambda **_kwargs: _Server())
+
+    with pytest.raises(_GrantCaptured):
+        operator.state_owner(CONFIG)
+
+    assert operator.INTERNAL_CLIENT_GRANT_TTL_SECONDS == MAX_GRANT_TTL_SECONDS
+    assert captured["ttl_seconds"] == MAX_GRANT_TTL_SECONDS
+    assert captured["ttl_seconds"] != DEFAULT_GRANT_TTL_SECONDS
+    assert captured["process_birth_id"] == "process-birth:state-owner"
+    assert captured["client_id"] == "casf-state-owner:federation-runtime"
+
+
 def test_route_preflight_uses_complete_configured_tuple_without_self_authority() -> None:
     operator = _operator()
     board, _config = operator._load_config(CONFIG)
@@ -1472,6 +1533,7 @@ def test_steady_state_outbox_guard_fails_closed_after_persistent_lag() -> None:
     expired = guard.observe(lagging)
     assert expired["continue_running"] is False
     assert expired["classification"] == "state_owner_outbox_lag_timeout"
+    assert expired["reason_code"] == "state_owner_outbox_lag_timeout"
     assert expired["lag_seconds"] == 30.0
 
 
@@ -1500,6 +1562,38 @@ def test_steady_state_outbox_guard_rejects_structural_failure_immediately() -> N
     decision = guard.observe(failed)
     assert decision["continue_running"] is False
     assert decision["classification"] == "state_owner_outbox_unavailable"
+    assert decision["reason_code"] == "state_owner_outbox_unavailable"
+
+
+def test_steady_state_outbox_guard_retains_bounded_transport_reason() -> None:
+    operator = _operator()
+    guard = operator._SteadyStateOutboxHealth(monotonic=lambda: 1.0)
+    failed = operator._outbox_worker_health(
+        {
+            "outbox_worker": {
+                "available": False,
+                "thread_alive": False,
+                "server_owned": True,
+                "polling": False,
+                "watermark": 127,
+                "committed_sequence": 127,
+                "drain_count": 59,
+                "last_error_type": "QuackClientTransportError",
+                "last_error_message": "must-not-escape",
+            },
+            "typed_command_gateway": {
+                "commit_observer_bound": True,
+                "last_observer_error_type": "",
+            },
+        }
+    )
+
+    decision = guard.observe(failed)
+
+    assert decision["continue_running"] is False
+    assert decision["reason_code"] == "state_owner_outbox_transport_failure"
+    assert "QuackClientTransportError" not in json.dumps(decision)
+    assert "must-not-escape" not in json.dumps(decision)
 
 
 @pytest.mark.parametrize(
