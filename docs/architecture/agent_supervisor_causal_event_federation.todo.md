@@ -1833,6 +1833,7 @@ Same-wave work is only a candidate frontier: exact causal, conflict, effect, pro
 - Stable task ID: CASF-033
 - Status: todo
 - Completion: auto
+- No-change completion: allowed
 - Is schedulable: true
 - Review only: false
 - Priority: P0
@@ -1886,6 +1887,7 @@ Same-wave work is only a candidate frontier: exact causal, conflict, effect, pro
 - Stable task ID: CASF-034
 - Status: todo
 - Completion: auto
+- No-change completion: allowed
 - Is schedulable: true
 - Review only: false
 - Priority: P0
@@ -1939,6 +1941,7 @@ Same-wave work is only a candidate frontier: exact causal, conflict, effect, pro
 - Stable task ID: CASF-035
 - Status: todo
 - Completion: auto
+- No-change completion: allowed
 - Is schedulable: true
 - Review only: false
 - Priority: P0
@@ -1992,6 +1995,7 @@ Same-wave work is only a candidate frontier: exact causal, conflict, effect, pro
 - Stable task ID: CASF-036
 - Status: todo
 - Completion: auto
+- No-change completion: allowed
 - Is schedulable: true
 - Review only: false
 - Priority: P0
