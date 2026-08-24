@@ -907,6 +907,12 @@ class TypedDatabaseTaskSource:
 
     cas_status = compare_and_set_status
 
+    def claim_process_attestation(self) -> Mapping[str, Any]:
+        """Return the active owner-derived process tuple for claim receipts."""
+
+        attestation = self._client.claim_process_attestation()
+        return MappingProxyType(dict(attestation))
+
     def record_validation_result(
         self,
         *,

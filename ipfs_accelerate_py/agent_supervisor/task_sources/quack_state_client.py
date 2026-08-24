@@ -73,8 +73,11 @@ from .control_plane_transactions import (
 )
 from .duckdb_state import open_duckdb_connection
 from .typed_state_owner import (
+    TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TypedStateOwnerError,
+    _process_birth_content_id,
+    _process_runtime_facts,
     _validated_stored_retry_cooldown,
     open_typed_state_owner_connection,
 )
@@ -1902,6 +1905,79 @@ class QuackStateClient:
             }
 
         return self.submit_command(command, apply=apply_receipt)
+
+    def claim_process_attestation(self) -> Mapping[str, Any]:
+        """Return the active owner-grant birth tuple for a typed claim.
+
+        The caller merely reproduces the handshake material in its receipt;
+        the exclusive owner independently re-reads procfs and validates every
+        field against the active kernel-bound grant before admitting a claim.
+        """
+
+        adapter = self._require_adapter()
+        grant = getattr(adapter.raw, "grant", None)
+        if not isinstance(grant, Mapping):
+            raise QuackClientError(
+                "database claim process attestation requires a typed owner grant"
+            )
+        required = {
+            "grant_id",
+            "client_id",
+            "process_birth_id",
+            "peer_pid",
+            "peer_uid",
+            "peer_start_time_ticks",
+        }
+        if any(name not in grant for name in required):
+            raise QuackClientError(
+                "typed owner grant omits database claim process identity"
+            )
+        try:
+            peer_pid = grant["peer_pid"]
+            peer_uid = grant["peer_uid"]
+            peer_start = grant["peer_start_time_ticks"]
+            if (
+                type(peer_pid) is not int
+                or peer_pid < 1
+                or type(peer_uid) is not int
+                or peer_uid < 0
+                or type(peer_start) is not int
+                or peer_start < 0
+            ):
+                raise ValueError("invalid typed owner grant process scalar")
+            start_time, parent_pid, boot_id = _process_runtime_facts(peer_pid)
+        except (TypedStateOwnerError, TypeError, ValueError) as exc:
+            raise QuackClientError(
+                "typed owner grant process identity is unavailable"
+            ) from exc
+        birth_id = _process_birth_content_id(
+            peer_pid,
+            start_time,
+            boot_id,
+            parent_pid,
+        )
+        if (
+            start_time != peer_start
+            or grant.get("process_birth_id") != birth_id
+            or grant.get("client_id") != self.owner_id
+            or grant.get("process_birth_id") != self.process_birth_id
+        ):
+            raise QuackClientError(
+                "typed owner grant differs from the active process birth"
+            )
+        return MappingProxyType(
+            {
+                "schema": TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+                "grant_id": str(grant["grant_id"]),
+                "client_id": str(grant["client_id"]),
+                "process_birth_id": birth_id,
+                "pid": peer_pid,
+                "uid": peer_uid,
+                "start_time_ticks": start_time,
+                "boot_id": boot_id,
+                "parent_pid": parent_pid,
+            }
+        )
 
     def record_task_retry_cooldown(
         self,

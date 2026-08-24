@@ -57,6 +57,8 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source
     TypedDatabaseTaskSource,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+    TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_RETRY_COOLDOWN_SCHEMA,
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
@@ -66,9 +68,11 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
     build_control_plane_operation_catalog,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    ATTEMPT_PHASE_CLAIMED,
     ATTEMPT_PHASE_FAILED,
     DATABASE_POST_MERGE_RECOVERY_SCHEMA,
     POST_MERGE_DECLARED_OUTPUT_REPAIR_SCHEMA,
+    DatabaseImplementationAuthorityError,
     DatabaseImplementationDaemon,
 )
 from test.api.causal_federation.test_bootstrap_runtime import (
@@ -535,14 +539,71 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
             )
         ready = adapter.get("CASF-TYPED")
         assert ready is not None and ready.revision == 1
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            adapter.compare_and_set_status(
+                ready.task_cid,
+                ready.revision,
+                "in_progress",
+                {"operation": "database_claim"},
+            )
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            adapter.compare_and_set_status(
+                ready.task_cid,
+                ready.revision,
+                "in_progress",
+                {
+                    "operation": "database_claim",
+                    "claim_phase_schema": "foreign-claim-phase@1",
+                },
+            )
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            client.cas_task_status(
+                task_cid=ready.task_cid,
+                expected_task_revision=ready.revision,
+                new_status="in_progress",
+                idempotency_key="executor-cas:receiptless-in-progress",
+            )
+        assert adapter.get(ready.task_cid).revision == ready.revision
+        claim_receipt = {
+            "operation": "database_claim",
+            "claim_phase_schema": TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+            "claim_process_attestation": dict(
+                adapter.claim_process_attestation()
+            ),
+            "claim_id": "claim:typed-test",
+            "attempt_id": "attempt:typed-test",
+            "attempt_number": 1,
+            "lease_id": "lease:typed-test",
+            "owner_session_id": "session:typed-test",
+            "fencing_token": 1,
+            "fence_epoch": 1,
+            "claimed_from_revision": ready.revision,
+        }
         claimed = adapter.compare_and_set_status(
             ready.task_cid,
             ready.revision,
             "in_progress",
-            {"operation": "database_claim", "claim_id": "claim:typed-test"},
+            claim_receipt,
         )
         assert claimed.changed is True
         assert claimed.task.body["completion_receipt"]["operation"] == "database_claim"
+        admitted_receipt = {
+            **claim_receipt,
+            "operation": "database_attempt_admitted",
+            "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+            "admitted_from_revision": claimed.task.revision,
+            "attempt_execution_phase": "claimed",
+            "attempt_execution_revision": 1,
+        }
+        claimed = adapter.compare_and_set_status(
+            claimed.task.task_cid,
+            claimed.task.revision,
+            "in_progress",
+            admitted_receipt,
+        )
+        assert claimed.task.body["completion_receipt"]["operation"] == (
+            "database_attempt_admitted"
+        )
         evidence_digest = "sha256:" + ("a" * 64)
         validation = adapter.record_validation_result(
             task_cid=claimed.task.task_cid,
@@ -604,6 +665,192 @@ def test_typed_database_task_source_reads_claims_and_records_evidence(
         connection.close()
 
 
+def test_typed_daemon_promotes_local_attempt_before_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "typed-claim-barrier.duckdb"
+    source = DatabaseTaskSource(database)
+    source.materialize(
+        {
+            "repository_tree_id": "tree:typed-claim-barrier",
+            "plan_root_cid": "plan:typed-claim-barrier",
+            "goals": [
+                {
+                    "goal_cid": "goal:typed-claim-barrier",
+                    "goal_alias": "CASF-G-TYPED-CLAIM-BARRIER",
+                    "title": "Typed claim barrier",
+                }
+            ],
+            "tasks": [
+                {
+                    "task_cid": "task:typed-claim-barrier",
+                    "task_id": "CASF-TYPED-CLAIM-BARRIER",
+                    "goal_cid": "goal:typed-claim-barrier",
+                    "status": "ready",
+                }
+            ],
+        }
+    )
+    source.close()
+    server = build_server(
+        database_path=database,
+        state_dir=tmp_path / "typed-claim-barrier-owner",
+        repository_id="repository:ipfs_accelerate_py",
+        store_id="casf-typed-claim-barrier-v1",
+        transport=FakeQuackTransport(),
+        capability_probe=_capability,
+        migrate=_migrate,
+        connection_factory=open_duckdb_connection,
+        owner_liveness_probe=lambda _birth: OwnerLiveness.DEAD,
+    )
+    identity = server.start()
+    operator = _operator()
+    client_id = "database-implementation-daemon:typed-claim-barrier"
+    token, grant = server.issue_typed_client_grant_record(
+        client_id=client_id,
+        process_birth_id=identity.process_birth_id,
+        allowed_operations=tuple(
+            sorted(operator.EXECUTOR_OWNER_ALLOWED_OPERATIONS)
+        ),
+        allowed_command_operations=tuple(
+            sorted(operator.EXECUTOR_OWNER_COMMAND_OPERATIONS)
+        ),
+        peer_pid=os.getpid(),
+    )
+    monkeypatch.setenv(
+        TYPED_STATE_OWNER_SOCKET_ENV,
+        str(server.typed_command_socket_path()),
+    )
+    monkeypatch.setenv(TYPED_STATE_OWNER_TOKEN_ENV, token)
+    client = QuackStateClient(
+        owner_id=client_id,
+        store_id=identity.store_id,
+        process_birth_id=identity.process_birth_id,
+    )
+    adapter: TypedDatabaseTaskSource | None = None
+    daemon: DatabaseImplementationDaemon | None = None
+    try:
+        client.attach(identity.listen_uri, server_id=identity.server_id)
+        unsealed = TypedDatabaseTaskSource(client, owns_client=False)
+        route_policy = unsealed.seal_execution_route_policy(
+            {
+                "CASF-TYPED-CLAIM-BARRIER": (
+                    DETERMINISTIC_ONLY_EXECUTION_MODE
+                )
+            }
+        )
+        unsealed.close()
+        adapter = TypedDatabaseTaskSource(
+            client,
+            execution_route_policy=route_policy,
+        )
+        daemon = DatabaseImplementationDaemon(
+            database_path=database,
+            coordination_path=tmp_path / "typed-claim-barrier-coordination.duckdb",
+            execution_path=tmp_path / "typed-claim-barrier-execution.duckdb",
+            owner_session_id="session:typed-claim-barrier",
+            authority_mode="quack",
+            task_source_kind="duckdb",
+            quack_uri=identity.listen_uri,
+            task_source=adapter,
+            close_task_source=False,
+            lease_ms=5_000,
+            clock_ms=lambda: 1_000,
+            provider_fn=lambda _attempt: {"status": "ok", "accepted": True},
+            effect_fn=lambda _attempt, _provider: {"status": "applied"},
+            validation_fn=lambda _attempt, _effect: {
+                "outcome": "passed",
+                "evidence_digest": "sha256:" + "a" * 64,
+            },
+            require_real_execution=True,
+        ).open()
+        promote = daemon._promote_typed_attempt_admission
+
+        def fail_before_admission(*_args: Any, **_kwargs: Any) -> None:
+            raise DatabaseImplementationAuthorityError(
+                "simulated crash after local attempt insert"
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_promote_typed_attempt_admission",
+            fail_before_admission,
+        )
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="simulated crash",
+        ):
+            daemon.claim_next()
+        running = daemon.list_running_attempts()
+        assert len(running) == 1
+        reservation = adapter.get(running[0].task_cid)
+        assert reservation is not None
+        assert reservation.body["completion_receipt"]["operation"] == (
+            "database_claim"
+        )
+        assert daemon._shared_claim_binding_for_this_owner(reservation) == {
+            "claim_id": running[0].claim_id,
+            "attempt_id": running[0].attempt_id,
+            "lease_id": running[0].lease_id,
+            "owner_session_id": running[0].owner_session_id,
+            "fencing_token": running[0].fencing_token,
+            "fence_epoch": running[0].fence_epoch,
+            "attempt_number": running[0].attempt_number,
+            "operation": "database_claim",
+            "claim_phase_schema": TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+        }
+        provider_calls: list[str] = []
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="simulated crash",
+        ):
+            daemon.run_provider(
+                running[0],
+                provider_fn=lambda attempt: provider_calls.append(
+                    attempt.attempt_id
+                )
+                or {"status": "ok", "accepted": True},
+            )
+        assert provider_calls == []
+
+        monkeypatch.setattr(
+            daemon,
+            "_promote_typed_attempt_admission",
+            promote,
+        )
+        context_attempt = daemon.commit_phase(running[0], "context")
+        _updated, _result, duplicated = daemon.run_provider(
+            context_attempt,
+            provider_fn=lambda attempt: provider_calls.append(
+                attempt.attempt_id
+            )
+            or {"status": "ok", "accepted": True},
+        )
+        assert duplicated is False
+        assert provider_calls == [running[0].attempt_id]
+        admitted = adapter.get(running[0].task_cid)
+        assert admitted is not None
+        admitted_receipt = admitted.body["completion_receipt"]
+        assert admitted_receipt["operation"] == "database_attempt_admitted"
+        assert admitted_receipt["claim_phase_schema"] == (
+            TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        )
+        assert admitted_receipt["attempt_id"] == running[0].attempt_id
+        assert admitted_receipt["attempt_execution_phase"] == ATTEMPT_PHASE_CLAIMED
+        assert admitted_receipt["attempt_execution_revision"] == 1
+        assert context_attempt.revision > running[0].revision
+    finally:
+        if daemon is not None:
+            daemon.close()
+        if adapter is not None:
+            adapter.close()
+        else:
+            client.close()
+        server.revoke_typed_client_grant(grant.grant_id)
+        server.stop()
+
+
 def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -648,6 +895,15 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
         "attempt_number": True,
         "fencing_token": 41,
         "fence_epoch": 19,
+    }
+    legacy_claim = {
+        "attempt_id": "attempt:typed-legacy-receipt",
+        "claim_id": "claim:typed-legacy-receipt",
+        "lease_id": "lease:typed-legacy-receipt",
+        "owner_session_id": "session:typed-legacy-receipt",
+        "attempt_number": 1,
+        "fencing_token": 43,
+        "fence_epoch": 23,
     }
     source = DatabaseTaskSource(database)
     source.materialize(
@@ -718,6 +974,17 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
                     "completion_receipt": {
                         "operation": "database_claim",
                         **bool_claim,
+                        "claimed_from_revision": 0,
+                    },
+                },
+                {
+                    "task_cid": "task:typed-legacy-receipt",
+                    "task_id": "CASF-TYPED-LEGACY-RECEIPT",
+                    "goal_cid": "goal:typed-retry-cooldown",
+                    "status": "in_progress",
+                    "completion_receipt": {
+                        "operation": "database_claim",
+                        **legacy_claim,
                         "claimed_from_revision": 0,
                     },
                 },
@@ -793,6 +1060,22 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
                     "strict_numeric_receipt"
                 ),
                 now_ms=clock["now_ms"],
+            )
+
+        legacy_task = adapter.get("CASF-TYPED-LEGACY-RECEIPT")
+        assert legacy_task is not None
+        with pytest.raises(TransactionError, match="authorization_denied"):
+            adapter.record_task_retry_cooldown(
+                task_cid=legacy_task.task_cid,
+                expected_task_revision=legacy_task.revision,
+                expected_task_status="in_progress",
+                delay_ms=1,
+                reason=(
+                    "database_portal_retry:attempt:typed-legacy-receipt:"
+                    "missing_typed_reservation"
+                ),
+                now_ms=clock["now_ms"],
+                **legacy_claim,
             )
 
         recovery = adapter.get("CASF-TYPED-RETRY-RECOVERY")
@@ -876,6 +1159,10 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
         assert ready is not None
         claim = {
             "operation": "database_claim",
+            "claim_phase_schema": TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+            "claim_process_attestation": dict(
+                adapter.claim_process_attestation()
+            ),
             "attempt_id": "attempt:typed-retry-cooldown",
             "claim_id": "claim:typed-retry-cooldown",
             "lease_id": "lease:typed-retry-cooldown",
@@ -890,6 +1177,19 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
             ready.revision,
             "in_progress",
             claim,
+        )
+        claimed = adapter.compare_and_set_status(
+            claimed.task.task_cid,
+            claimed.task.revision,
+            "in_progress",
+            {
+                **claim,
+                "operation": "database_attempt_admitted",
+                "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+                "admitted_from_revision": claimed.task.revision,
+                "attempt_execution_phase": "claimed",
+                "attempt_execution_revision": 1,
+            },
         )
         cooldown = {
             name: claim[name]
@@ -1018,6 +1318,10 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
         assert retrying is not None and retrying.status == "retrying"
         second_claim = {
             "operation": "database_claim",
+            "claim_phase_schema": TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+            "claim_process_attestation": dict(
+                adapter.claim_process_attestation()
+            ),
             "attempt_id": "attempt:typed-retry-cooldown:2",
             "claim_id": "claim:typed-retry-cooldown:2",
             "lease_id": "lease:typed-retry-cooldown:2",
@@ -1032,6 +1336,19 @@ def test_typed_retry_cooldown_is_claim_bound_replay_safe_and_deadline_gated(
             retrying.revision,
             "in_progress",
             second_claim,
+        )
+        claimed_again = adapter.compare_and_set_status(
+            claimed_again.task.task_cid,
+            claimed_again.task.revision,
+            "in_progress",
+            {
+                **second_claim,
+                "operation": "database_attempt_admitted",
+                "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+                "admitted_from_revision": claimed_again.task.revision,
+                "attempt_execution_phase": "claimed",
+                "attempt_execution_revision": 1,
+            },
         )
         second_cooldown = {
             name: second_claim[name]

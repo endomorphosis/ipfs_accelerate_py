@@ -848,6 +848,7 @@ def test_authoritative_task_sync_is_idempotent_fail_closed_and_preserves_prepare
                     "attempt_id": "attempt:forged",
                     "lease_id": "lease:forged",
                     "owner_session_id": "session:forged-retry",
+                    "attempt_number": 1,
                     "fencing_token": 1,
                     "fence_epoch": 1,
                 },
@@ -873,6 +874,7 @@ def test_authoritative_task_sync_is_idempotent_fail_closed_and_preserves_prepare
             "attempt_id": recovery_claim.attempt_id,
             "lease_id": recovery_claim.lease_id,
             "owner_session_id": recovery_claim.owner_session_id,
+            "attempt_number": recovery_claim.attempt_number,
             "fencing_token": recovery_claim.fencing_token,
             "fence_epoch": recovery_claim.fence_epoch,
         }

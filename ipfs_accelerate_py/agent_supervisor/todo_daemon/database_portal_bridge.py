@@ -6295,7 +6295,8 @@ class DatabasePortalExecutionBridge:
         if seed is None:
             return None
         if (
-            status_receipt.get("operation") != "database_claim"
+            status_receipt.get("operation")
+            not in {"database_claim", "database_attempt_admitted"}
             or status_receipt.get("attempt_id") != str(attempt.attempt_id)
             or status_receipt.get("claim_id") != str(attempt.claim_id)
             or status_receipt.get("attempt_number")
