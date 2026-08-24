@@ -2006,8 +2006,8 @@ Same-wave work is only a candidate frontier: exact causal, conflict, effect, pro
 - Base plan revision: CASF-PLAN-R1
 - Objective: Add TLA+/state-machine specifications and model checks; extend current canonical authorities narrowly, fail closed on missing capability, and preserve every non-compensable constraint.
 - Depends on: CASF-003, CASF-004, CASF-009, CASF-010, CASF-015, CASF-027, CASF-029, CASF-030
-- Owned paths: ipfs_accelerate_py/agent_supervisor/federation/formal/, test/api/causal_federation/test_formal_models.py
-- Predicted files: ipfs_accelerate_py/agent_supervisor/federation/formal/, test/api/causal_federation/test_formal_models.py
+- Owned paths: ipfs_accelerate_py/agent_supervisor/federation/formal, test/api/causal_federation/test_formal_models.py
+- Predicted files: ipfs_accelerate_py/agent_supervisor/federation/formal, test/api/causal_federation/test_formal_models.py
 - Predicted symbols: versioned Add TLA+/state-machine specifications and model checks contracts, services, receipts, negative-path validators, and exact-current-tree evidence producers
 - Database migrations: none; validation and reporting cannot mutate schema
 - Event effects: typed compact domain events through the same transaction/outbox; no large bodies
@@ -2036,7 +2036,7 @@ Same-wave work is only a candidate frontier: exact causal, conflict, effect, pro
 - Rollback: Revert only owned implementation in a fenced rollback worktree, revoke effects safely, preserve attempts/events/evidence, and restore the declared predecessor generation; never rewrite history.
 - Required evidence: exact commit/tree/schema/generation/policy/capability/task/attempt/fence identities; validation/proof receipts; effect observations; rollback target
 - Final result identity: pending; accepted only after current-tree merge and post-merge gates produce a canonical content identity
-- Outputs: ipfs_accelerate_py/agent_supervisor/federation/formal/, test/api/causal_federation/test_formal_models.py
+- Outputs: ipfs_accelerate_py/agent_supervisor/federation/formal, test/api/causal_federation/test_formal_models.py
 - Raw-source requirements: Exact owned/predecessor blobs and content-addressed evidence; no private chain-of-thought or large generated body in Git.
 - Capability blockers: none
 
