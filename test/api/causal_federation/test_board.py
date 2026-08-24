@@ -210,10 +210,37 @@ def test_bootstrap_qualifies_only_exact_typed_wait_without_federation_claim() ->
     }
 
 
-def test_source_check_binds_branch_and_starting_tree() -> None:
-    report = _validator_module().validate_program(check_source=True)
+def test_imported_source_binds_sealed_casf_ancestor_and_starting_tree() -> None:
+    validator = _validator_module()
+    # CASF's --check-source launch policy intentionally requires its own
+    # protected branch.  An EAAEF integration validates the imported program
+    # structurally, then proves the same sealed predecessor/tree without
+    # pretending this checkout is the CASF launch branch.
+    report = validator.validate_program(check_source=False)
     assert report["valid"] is True, report["errors"]
-    assert report["source_checks_performed"] is True
+    assert report["source_checks_performed"] is False
+
+    source_binding = json.loads(CONFIG.read_text(encoding="utf-8"))[
+        "source_binding"
+    ]
+    assert source_binding["accelerator_required_ancestor"] == validator.BASE_REVISION
+    assert source_binding["accelerator_planning_tree"] == validator.BASE_TREE
+    tree = subprocess.run(
+        ["git", "rev-parse", f"{validator.BASE_REVISION}^{{tree}}"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert tree == validator.BASE_TREE
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", validator.BASE_REVISION, "HEAD"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert ancestry.returncode == 0, ancestry.stderr
 
 
 def test_validator_rejects_missing_required_task_declaration(tmp_path, monkeypatch) -> None:

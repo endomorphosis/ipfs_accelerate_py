@@ -92795,10 +92795,6 @@ except (OSError, ValueError, subprocess.SubprocessError):
     _IMPORTED_CONTROL_PLANE_TEMP_ROOT = None
 
 
-if __name__ == "__main__":
-    main()
-
-
 # --- merged from origin/main ---
 
 def _configured_provider_fallback_policy() -> str:
@@ -93202,3 +93198,7 @@ def _validated_provider_route_receipt(
     ):
         raise RuntimeError("provider route receipt binding is invalid")
     return dict(payload)
+
+
+if __name__ == "__main__":
+    main()
