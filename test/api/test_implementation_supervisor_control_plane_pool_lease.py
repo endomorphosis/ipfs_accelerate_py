@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.worktree_lifecycle import (
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge import (
     DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
+    _projection_immutable_digest,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTaskState,
@@ -103,12 +104,37 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
     lock_path = pool_path.with_suffix(".lock")
     _write_json(lock_path, {"pid": os.getpid(), "created_at_epoch": 1.0})
 
+    canonical_task_key = "task-key:vrif-010"
+    owner_session_id = "owner-session:vrif-010"
+    projection = "\n".join(
+        (
+            "# Database attempt projection (non-authoritative)",
+            "",
+            "## VRIF-010 Active nested database work",
+            "",
+            "- Status: ready",
+            f"- Database task CID: {task_cid}",
+            f"- Database attempt ID: {attempt_id}",
+            "- Database claim ID: claim:vrif-010",
+            "- Database attempt number: 1",
+            f"- Database owner session ID: {owner_session_id}",
+            f"- Canonical task key: {canonical_task_key}",
+            f"- Canonical task CID: {task_cid}",
+            "- Projection authority: false",
+            "",
+        )
+    )
+    projection_path = attempt_dir / "task-projection.md"
+    projection_path.write_text(projection, encoding="utf-8")
     binding = {
         "schema": DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
         "interface": "DatabasePortalExecutionBridge@1",
         "attempt_id": attempt_id,
         "claim_id": "claim:vrif-010",
+        "attempt_number": 1,
+        "owner_session_id": owner_session_id,
         "task_cid": task_cid,
+        "canonical_task_key": canonical_task_key,
         "task_alias": "VRIF-010",
         "goal_cid": "goal:vrif",
         "plan_cid": "plan:vrif",
@@ -116,11 +142,17 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
         "fencing_token": 1,
         "fence_epoch": 1,
         "lease_id": "database-lease-vrif-010",
-        "task_body_digest": "sha256:body",
-        "projection_seed_digest": "sha256:seed",
-        "projection_immutable_digest": "sha256:projection",
+        "task_body_digest": "sha256:" + hashlib.sha256(b"body").hexdigest(),
+        "task_contract_digest": "sha256:"
+        + hashlib.sha256(b"contract").hexdigest(),
+        "repository_tree_id": "sha256:"
+        + hashlib.sha256(b"repository-tree").hexdigest(),
+        "projection_seed_digest": "sha256:"
+        + hashlib.sha256(projection.encode("utf-8")).hexdigest(),
+        "projection_immutable_digest": _projection_immutable_digest(projection),
         "authoritative_task_store": "duckdb",
         "projection_authority": False,
+        "landed_completion_recovery_seed_id": "",
     }
     binding["binding_id"] = (
         "sha256:"
@@ -176,6 +208,7 @@ def _seed_active_database_pool_lease(tmp_path: Path) -> dict[str, Any]:
         "pool_path": pool_path,
         "lock_path": lock_path,
         "binding_path": binding_path,
+        "projection_path": projection_path,
         "nested_state_path": nested_state_path,
         "lifecycle_path": lifecycle_store.workspace_path_for(workspace),
         "workspace": workspace,
@@ -316,6 +349,7 @@ def test_control_plane_reload_defers_for_exact_nested_database_pool_lease(
         "malformed_lifecycle",
         "terminal_lifecycle",
         "malformed_binding",
+        "malformed_projection",
         "malformed_nested_state",
     ],
 )
@@ -374,6 +408,8 @@ def test_database_pool_lease_never_defers_without_exact_corroboration(
         _write_json(fixture["lifecycle_path"], lifecycle)
     elif case == "malformed_binding":
         fixture["binding_path"].write_text("[]\n", encoding="utf-8")
+    elif case == "malformed_projection":
+        fixture["projection_path"].write_text("# malformed\n", encoding="utf-8")
     elif case == "malformed_nested_state":
         fixture["nested_state_path"].write_text("[]\n", encoding="utf-8")
 

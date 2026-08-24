@@ -13,11 +13,16 @@ import subprocess
 import time
 import uuid
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from ipfs_accelerate_py.agent_supervisor.control import provider_attempt_store
+from ipfs_accelerate_py.agent_supervisor.control.profile_authority import (
+    ed25519_did_key,
+)
 from ipfs_accelerate_py.agent_supervisor.integrations import (
     llm_merge_resolver_fallback as merge_resolver_fallback,
 )
@@ -1858,6 +1863,435 @@ def test_nonce_route_nonzero_never_restores_provider_attempt(
     assert "route_outcome_id" not in capacity
 
 
+@pytest.mark.parametrize(
+    ("record_case", "expected_exhausted"),
+    (
+        ("valid_hard_quota", True),
+        ("live_canonical_medium", True),
+        ("authentication", False),
+        ("malformed", False),
+        ("missing", False),
+        ("forged", False),
+        ("duplicate", False),
+        ("quota_high_canonical", False),
+        ("foreign_implementer", False),
+        ("other_unscoped_route", False),
+    ),
+)
+def test_invocation_null_route_restores_only_exact_denied_hard_quota_pair(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_case: str,
+    expected_exhausted: bool,
+) -> None:
+    classifier_calls: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        implementation_daemon,
+        "classify_provider_capacity_failure",
+        lambda *args, **_kwargs: classifier_calls.append(args),
+    )
+    nonce = "9" * 64
+    if record_case == "valid_hard_quota":
+        route_plan = implementation_daemon._HISTORICAL_INVOCATION_NULL_GROK_ROUTE
+    elif record_case == "live_canonical_medium":
+        route_plan = implementation_daemon._CANONICAL_INVOCATION_NULL_GROK_ROUTE
+    elif record_case == "quota_high_canonical":
+        route_plan = llm_router.resolve_agent_implementation_route(
+            primary_provider_id="grok_cli",
+            primary_model_id="grok-4.6",
+            fallback_provider_id="codex",
+            fallback_model_id="gpt-5.6-terra",
+            fallback_trigger="primary_quota_exhausted",
+            fallback_reasoning_effort="high",
+        )
+    elif record_case == "foreign_implementer":
+        route_plan = llm_router.AgentImplementationRoutePlan(
+            primary_provider_id="grok_cli",
+            primary_model_id="grok-4.6",
+            fallback_provider_id="codex",
+            fallback_model_id="gpt-5.6-terra",
+            fallback_trigger="primary_quota_exhausted",
+            fallback_reasoning_effort="medium",
+            route_id=(
+                "agent-supervisor-grok45-terra56-medium-hard-quota-v1"
+            ),
+            authorization=None,
+            fallback_implementer_identity="not-codex",
+            invocation_binding=None,
+        )
+    elif record_case == "other_unscoped_route":
+        route_plan = llm_router.AgentImplementationRoutePlan(
+            primary_provider_id="grok_cli",
+            primary_model_id="grok-4.6",
+            fallback_provider_id="codex",
+            fallback_model_id="gpt-5.6-terra",
+            fallback_trigger="primary_quota_exhausted",
+            fallback_reasoning_effort="medium",
+            route_id="unscoped-noncanonical-route",
+            authorization=None,
+            fallback_implementer_identity="codex",
+            invocation_binding=None,
+        )
+    else:
+        route_plan = llm_router._AUTH_OR_QUOTA_AGENT_IMPLEMENTATION_ROUTE
+    authentication = record_case == "authentication"
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text=(
+            "Error: Not signed in"
+            if authentication
+            else "Grok Build usage balance exhausted"
+        ),
+        nonce=nonce,
+        model="grok-4.6",
+        probe_returncode=41,
+        primary_dispatched=False,
+    )
+    outcome = provider_failure_policy.build_grok_route_outcome(
+        receipt=receipt,
+        route_plan=route_plan.as_binding_dict(),
+        decision="denied",
+        verifier_status=(
+            "not_required_exact_auth" if authentication else "not_confirmed"
+        ),
+        fallback_dispatched=False,
+        fallback_returncode=None,
+    )
+    if record_case == "forged":
+        outcome = {**outcome, "outcome_id": "sha256:" + "0" * 64}
+
+    records = [provider_failure_policy.render_grok_failure_receipt(receipt)]
+    if record_case == "malformed":
+        records.append(
+            provider_failure_policy.GROK_ROUTE_OUTCOME_PREFIX
+            + '{"schema":"first","schema":"last"}'
+        )
+    elif record_case != "missing":
+        records.append(provider_failure_policy.render_grok_route_outcome(outcome))
+    if record_case == "duplicate":
+        records.append(provider_failure_policy.render_grok_route_outcome(outcome))
+    log_path = tmp_path / f"invocation-null-{record_case}.log"
+    log_path.write_text("\n".join(records) + "\n", encoding="utf-8")
+    log_path.chmod(0o600)
+    command = [
+        "/usr/bin/python3",
+        "grok_cli_runner.py",
+        "--model",
+        "grok-4.6",
+        "--grok-failure-receipt-nonce",
+        nonce,
+        "--agent-implementation-route-json",
+        json.dumps(route_plan.as_binding_dict()),
+    ]
+
+    capacity = _daemon(tmp_path)._provider_capacity_failure_from_log(
+        log_path,
+        command=command,
+        returncode=41,
+    )
+
+    assert capacity["exhausted"] is expected_exhausted
+    assert classifier_calls == []
+    if expected_exhausted:
+        assert capacity["providers"] == ["grok"]
+        assert capacity["reason"] == "provider_capacity_exhausted"
+        assert capacity["failure_class"] == "hard_quota_exhausted"
+        assert capacity["hard_quota_exhausted_providers"] == ["grok"]
+        assert capacity["hard_quota_evidence_sha256"] == receipt[
+            "evidence_sha256"
+        ]
+        assert capacity["evidence"] == [
+            "runner_receipt:" + str(receipt["receipt_id"])
+        ]
+        assert capacity["quota_probe_receipt"] == receipt
+        assert capacity["route_outcome"] == outcome
+    else:
+        assert capacity["providers"] == []
+        assert capacity["reason"] == ""
+
+
+@pytest.mark.parametrize(
+    ("command_case", "expected_match"),
+    (
+        ("script", True),
+        ("module", True),
+        ("module_suffix", False),
+        ("lookalike_script_path", False),
+        ("lookalike_script_interpreter", False),
+        ("lookalike_module_interpreter", False),
+        ("runner_value_token", False),
+        ("duplicate_nonce", False),
+        ("duplicate_model", False),
+        ("equals_nonce_override", False),
+        ("equals_model_override", False),
+    ),
+)
+def test_quota_start_event_requires_exact_runner_and_unique_flags(
+    tmp_path: Path,
+    command_case: str,
+    expected_match: bool,
+) -> None:
+    daemon = _daemon(tmp_path)
+    task = PortalTask(
+        task_id="PCPC-025",
+        title="Bind exact Grok runner start",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+    )
+    nonce = "7" * 64
+    trusted_python = implementation_daemon.sys.executable
+    trusted_script = str(
+        (
+            Path(implementation_daemon.__file__).resolve(strict=True).parents[1]
+            / "grok_cli_runner.py"
+        ).resolve(strict=True)
+    )
+    prefix = (
+        [trusted_python, trusted_script]
+        if command_case == "script"
+        else [
+            trusted_python,
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        ]
+    )
+    if command_case == "module_suffix":
+        prefix = [
+            trusted_python,
+            "-m",
+            "evil.ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        ]
+    elif command_case == "lookalike_script_path":
+        lookalike_script = tmp_path / "grok_cli_runner.py"
+        lookalike_script.write_text("raise SystemExit(0)\n", encoding="utf-8")
+        prefix = [trusted_python, str(lookalike_script)]
+    elif command_case in {
+        "lookalike_script_interpreter",
+        "lookalike_module_interpreter",
+    }:
+        lookalike_python = tmp_path / "python"
+        lookalike_python.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        lookalike_python.chmod(0o755)
+        prefix = (
+            [str(lookalike_python), trusted_script]
+            if command_case == "lookalike_script_interpreter"
+            else [
+                str(lookalike_python),
+                "-m",
+                "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+            ]
+        )
+    elif command_case == "runner_value_token":
+        prefix = [
+            trusted_python,
+            "not-the-runner.py",
+            "--workspace",
+            "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        ]
+    command = [
+        *prefix,
+        "--model",
+        "grok-4.6",
+        "--grok-failure-receipt-nonce",
+        nonce,
+    ]
+    if command_case == "duplicate_nonce":
+        command.extend(["--grok-failure-receipt-nonce", "6" * 64])
+    elif command_case == "duplicate_model":
+        command.extend(["--model", "grok-4.5"])
+    elif command_case == "equals_nonce_override":
+        command.append("--grok-failure-receipt-nonce=" + "6" * 64)
+    elif command_case == "equals_model_override":
+        command.append("--model=grok-4.5")
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": daemon._canonical_ref(task),
+            "attempt": 1,
+            "command": command,
+        },
+    )
+
+    matched = daemon._matching_quota_fallback_start_event(
+        task=task,
+        attempt=1,
+        receipt={"nonce": nonce, "primary_model": "grok-4.6"},
+    )
+
+    assert (matched is not None) is expected_match
+
+
+def test_module_form_grok_start_event_builds_durable_auto_codex_latch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixed_now = datetime.now(timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+    )
+    daemon = _daemon(tmp_path)
+    task = PortalTask(
+        task_id="PCPC-025",
+        title="Resume after sealed Grok quota",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="provider",
+    )
+    canonical_task_cid = daemon._canonical_ref(task)
+    nonce = "8" * 64
+    route_plan = implementation_daemon._CANONICAL_INVOCATION_NULL_GROK_ROUTE
+    command = [
+        implementation_daemon.sys.executable,
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.grok_cli_runner",
+        "--model",
+        "grok-4.6",
+        "--grok-failure-receipt-nonce",
+        nonce,
+        "--agent-implementation-route-json",
+        json.dumps(route_plan.as_binding_dict()),
+    ]
+    log_path = tmp_path / "module-form-grok-quota.log"
+    state = implementation_daemon.PortalTaskState()
+    daemon._mark_implementation_started(
+        state,
+        task=task,
+        attempt=1,
+        started_at=fixed_now.isoformat(),
+        log_path=log_path,
+    )
+    daemon._record_event(
+        "implementation_started",
+        {
+            "task_id": task.task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": 1,
+            "command": command,
+        },
+    )
+    receipt = grok_cli_runner.build_grok_failure_receipt(
+        probe_stderr_text="Grok Build usage balance exhausted",
+        nonce=nonce,
+        model="grok-4.6",
+        probe_returncode=41,
+        primary_dispatched=False,
+    )
+    outcome = provider_failure_policy.build_grok_route_outcome(
+        receipt=receipt,
+        route_plan=route_plan.as_binding_dict(),
+        decision="denied",
+        verifier_status="not_confirmed",
+        fallback_dispatched=False,
+        fallback_returncode=None,
+    )
+    log_path.write_text(
+        "\n".join(
+            (
+                provider_failure_policy.render_grok_failure_receipt(receipt),
+                provider_failure_policy.render_grok_route_outcome(outcome),
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    log_path.chmod(0o600)
+    failure = daemon._provider_capacity_failure_from_log(
+        log_path,
+        command=command,
+        returncode=41,
+    )
+    assert failure["exhausted"] is True
+    start = daemon._matching_quota_fallback_start_event(
+        task=task,
+        attempt=1,
+        receipt=receipt,
+    )
+    assert start is not None
+    result = daemon._record_provider_capacity_deferral(
+        task=task,
+        state=state,
+        attempt=1,
+        started_at=fixed_now.isoformat(),
+        returncode=41,
+        log_path=log_path,
+        failure=failure,
+    )
+    authority = result["quota_fallback_authority"]
+    assert authority["start_event_id"] == start["event_id"]
+    assert authority["command_sha256"] == (
+        daemon._implementation_command_identity(command)
+    )
+    assert result["hard_quota_exhausted_providers"] == ["grok"]
+
+    states = daemon._provider_capacity_latch_states()
+    assert states["grok"]["active"] is True
+    assert states["grok"]["hard_quota_exhausted"] is True
+
+    monkeypatch.setenv(
+        implementation_daemon.IMPLEMENTATION_PROVIDER_ENV,
+        "auto",
+    )
+    monkeypatch.delenv(
+        implementation_daemon.PROVIDER_EXTERNAL_ISOLATION_ENV,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_codex_ready_for_automatic_routing",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_host_cli_binary",
+        lambda _name: "",
+    )
+    monkeypatch.setattr(
+        implementation_daemon,
+        "_copilot_has_auth",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+    monkeypatch.setattr(llm_router, "_grok_cli_auth_available", lambda: True)
+    monkeypatch.setattr(llm_router, "get_llm_provider", lambda _name: object())
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        cli_provider_balance,
+    )
+
+    monkeypatch.setattr(
+        cli_provider_balance,
+        "probe_all_cli_provider_readiness",
+        lambda: {},
+    )
+
+    selected = daemon._build_implementation_command(tmp_path)
+    assert selected[:2] == ["/usr/local/bin/codex", "exec"]
+    assert selected[selected.index("-m") + 1] == "gpt-5.6-terra"
+
+
 def test_legacy_non_route_capacity_classification_remains_available(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2310,11 +2744,25 @@ def test_grok_docker_create_binds_exact_id_to_attached_start(
     docker_environment = {"PATH": "/usr/bin"}
     create_command = ["/usr/bin/docker", "create", "sealed-grok"]
     calls: list[tuple[list[str], dict[str, object]]] = []
+    lease_root = tmp_path / "asref-grok-container-identity"
+    docker_config = lease_root / "docker-config"
+    docker_config.mkdir(parents=True)
 
     class FakeLease:
         docker_bin = "/usr/bin/docker"
-        docker_config = tmp_path / "docker-config"
-        cidfile = tmp_path / "container.cid"
+        container_name = "ipfs-accelerate-grok-1-" + "a" * 32
+
+    FakeLease.docker_config = docker_config
+    FakeLease.cidfile = lease_root / "container.cid"
+    FakeLease.lease_root = lease_root
+
+    invocation, network_profile = _signed_network_fixture(
+        tmp_path,
+        provider="grok",
+        workspace=workspace,
+        container_name=FakeLease.container_name,
+        lease_root=FakeLease.lease_root,
+    )
 
     def fake_run(command, **kwargs):
         calls.append((list(command), dict(kwargs)))
@@ -2385,10 +2833,25 @@ def test_grok_docker_create_rejects_untrusted_container_identity(
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    lease_root = tmp_path / "asref-grok-container-invalid-identity"
+    docker_config = lease_root / "docker-config"
+    docker_config.mkdir(parents=True)
+
     class FakeLease:
         docker_bin = "/usr/bin/docker"
-        docker_config = tmp_path / "docker-config"
-        cidfile = tmp_path / "container.cid"
+        container_name = "ipfs-accelerate-grok-1-" + "a" * 32
+
+    FakeLease.docker_config = docker_config
+    FakeLease.cidfile = lease_root / "container.cid"
+    FakeLease.lease_root = lease_root
+
+    invocation, network_profile = _signed_network_fixture(
+        tmp_path,
+        provider="grok",
+        workspace=workspace,
+        container_name=FakeLease.container_name,
+        lease_root=FakeLease.lease_root,
+    )
 
     if cidfile_container_id is not None:
         FakeLease.cidfile.write_text(

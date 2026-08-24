@@ -2074,9 +2074,13 @@ def bind_database_portal_execution_from_args(
         merge_target_branch=(
             configured_merge_target_branch if recovery_queue is not None else ""
         ),
+        merge_target_ref=(
+            str(getattr(parsed, "merge_target_branch", "") or "HEAD")
+        ),
         worktree_submodule_paths=tuple(worktree_submodule_paths or ()),
         task_header_prefix=parsed.task_prefix,
         max_task_attempts=int(getattr(parsed, "max_task_attempts", 0) or 0),
+        implementation_timeout=float(parsed.implementation_timeout),
     )
     binder(
         provider_fn=bridge.run_provider,
@@ -2091,6 +2095,10 @@ def bind_database_portal_execution_from_args(
             bridge.recover_validation_retry_seed_conflict
         ),
         pooled_worktree_create_recovery_fn=bridge.recover_pooled_worktree_create,
+        landed_completion_recovery_fn=bridge.recover_landed_completion,
+        validation_retry_successor_recovery_fn=(
+            bridge.verify_validation_retry_successor_recovery
+        ),
     )
     if recovery_queue is not None:
         merge_train_binder = getattr(daemon, "bind_merge_train_recovery", None)

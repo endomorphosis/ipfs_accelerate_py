@@ -18,12 +18,14 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import shlex
 import stat
 import subprocess
 import tempfile
+import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
@@ -47,6 +49,14 @@ from ..merge.protected_recovery_fence import (
 )
 from ..runtime.event_log import append_jsonl_event, utc_now
 from ..validation.validation_commands import validation_command_repository_root
+from .implementation_timeout import DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS
+from .landed_completion_recovery import (
+    LandedCompletionRecoveryError,
+    build_landed_completion_claim_seed,
+    discover_landed_completion_recovery,
+    revalidate_landed_completion_repository,
+    verify_landed_completion_recovery_receipt,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -140,6 +150,10 @@ _IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME: Final[str] = (
     "implementation-protected-path-incident.json"
 )
 _MAX_PROTECTED_PATH_RECOVERY_PATHS: Final[int] = 256
+DATABASE_PORTAL_VALIDATION_RETRY_ORDER_REPAIR_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "database-portal-validation-retry-order-repair@1"
+)
 _TERMINAL_STATUSES: Final[frozenset[str]] = frozenset(
     {"completed", "complete", "done"}
 )
@@ -213,6 +227,13 @@ DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
         "supervisor_protected_recovery_owner_active",
         "protected_recovery_adoption_raced",
         "checkout_mutation_lock_exists",
+    }
+)
+DATABASE_PORTAL_SKIP_CONTENTION_REASONS: Final[frozenset[str]] = frozenset(
+    {
+        "inflight_process",
+        "provider_capacity_backoff",
+        "task_claim_lock_exists",
     }
 )
 DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS: Final[int] = (
@@ -315,6 +336,8 @@ _DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
         "interface",
         "attempt_id",
         "claim_id",
+        "attempt_number",
+        "owner_session_id",
         "task_cid",
         "canonical_task_key",
         "task_alias",
@@ -331,6 +354,7 @@ _DATABASE_PORTAL_ATTEMPT_BINDING_FIELDS: Final[frozenset[str]] = frozenset(
         "projection_immutable_digest",
         "authoritative_task_store",
         "projection_authority",
+        "landed_completion_recovery_seed_id",
         "binding_id",
     }
 )
@@ -346,6 +370,25 @@ def _is_implementation_conflict(exc: BaseException) -> bool:
     """
 
     return type(exc).__name__ == "DatabaseImplementationConflictError"
+
+
+DATABASE_PORTAL_INFLIGHT_POLL_SECONDS: Final[float] = 15.0
+_MAX_DATABASE_PORTAL_PASS_PREVIEW: Final[int] = 16
+DATABASE_PORTAL_QUOTA_FALLBACK_AUTHORITY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py.agent_supervisor.grok-quota-fallback-authority@2"
+)
+
+
+def _monotonic_seconds() -> float:
+    """Return the local monotonic clock (a narrow seam for deterministic tests)."""
+
+    return time.monotonic()
+
+
+def _sleep_seconds(seconds: float) -> None:
+    """Sleep without ever widening the closed in-flight polling interval."""
+
+    time.sleep(seconds)
 
 
 class DatabasePortalBridgeError(RuntimeError):
@@ -1660,6 +1703,7 @@ def verify_database_portal_attempt_projection(
     string_fields = (
         "attempt_id",
         "claim_id",
+        "owner_session_id",
         "task_cid",
         "task_alias",
         "goal_cid",
@@ -1683,6 +1727,23 @@ def verify_database_portal_attempt_projection(
     ):
         raise DatabasePortalBridgeError(
             "database Portal attempt binding fence is invalid"
+        )
+    if type(binding.get("attempt_number")) is not int or int(
+        binding["attempt_number"]
+    ) < 1:
+        raise DatabasePortalBridgeError(
+            "database Portal attempt binding attempt number is invalid"
+        )
+    landed_recovery_seed_id = binding.get(
+        "landed_completion_recovery_seed_id"
+    )
+    if type(landed_recovery_seed_id) is not str or (
+        landed_recovery_seed_id
+        and re.fullmatch(r"sha256:[0-9a-f]{64}", landed_recovery_seed_id)
+        is None
+    ):
+        raise DatabasePortalBridgeError(
+            "database Portal attempt binding landed recovery seed is invalid"
         )
     digest_fields = (
         "task_body_digest",
@@ -1735,6 +1796,8 @@ def verify_database_portal_attempt_projection(
         "Database task CID": task_cid,
         "Database attempt ID": str(binding["attempt_id"]),
         "Database claim ID": str(binding["claim_id"]),
+        "Database attempt number": str(binding["attempt_number"]),
+        "Database owner session ID": str(binding["owner_session_id"]),
         "Canonical task CID": task_cid,
         "Projection authority": "false",
     }
@@ -1773,6 +1836,8 @@ def verify_database_portal_attempt_projection(
         "binding_id": binding_id,
         "attempt_id": str(binding["attempt_id"]),
         "claim_id": str(binding["claim_id"]),
+        "attempt_number": int(binding["attempt_number"]),
+        "owner_session_id": str(binding["owner_session_id"]),
         "lease_id": str(binding["lease_id"]),
         "task_alias": task_alias,
         "task_cid": task_cid,
@@ -1782,6 +1847,9 @@ def verify_database_portal_attempt_projection(
         "task_revision": int(binding["task_revision"]),
         "fencing_token": int(binding["fencing_token"]),
         "fence_epoch": int(binding["fence_epoch"]),
+        "landed_completion_recovery_seed_id": str(
+            binding["landed_completion_recovery_seed_id"]
+        ),
         "projection_path": str(projection),
         "projection_immutable_digest": str(
             binding["projection_immutable_digest"]
@@ -1870,10 +1938,12 @@ class DatabasePortalExecutionBridge:
         implementation_protected_paths: Sequence[str] = (),
         merge_queue: Any = None,
         merge_target_branch: str = "",
+        merge_target_ref: str = "HEAD",
         worktree_submodule_paths: Sequence[str] = (),
         task_header_prefix: str = "## ",
         max_passes: int = 4,
         max_task_attempts: int = 0,
+        implementation_timeout: float = DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
     ) -> None:
         if not callable(portal_factory):
             raise TypeError("portal_factory must be callable")
@@ -1889,6 +1959,13 @@ class DatabasePortalExecutionBridge:
                 "max_task_attempts must be an integer in "
                 f"[0, {_MAX_DATABASE_PORTAL_TASK_ATTEMPTS}]"
             )
+        if (
+            isinstance(implementation_timeout, bool)
+            or not isinstance(implementation_timeout, (int, float))
+            or not math.isfinite(float(implementation_timeout))
+            or float(implementation_timeout) <= 0
+        ):
+            raise ValueError("implementation_timeout must be finite and positive")
         self.task_source = task_source
         self.attempt_root = Path(attempt_root).absolute()
         self.portal_factory = portal_factory
@@ -1947,6 +2024,7 @@ class DatabasePortalExecutionBridge:
                         "post-merge recovery merge queue lacks "
                         f"{operation}()"
                     )
+        self.merge_target_ref = str(merge_target_ref or "HEAD").strip() or "HEAD"
         self.worktree_submodule_paths = tuple(
             _safe_repository_path(path) for path in worktree_submodule_paths
         )
@@ -1957,6 +2035,7 @@ class DatabasePortalExecutionBridge:
         self.task_header_prefix = str(task_header_prefix or "## ")
         self.max_passes = max_passes
         self.max_task_attempts = int(max_task_attempts)
+        self.implementation_timeout = float(implementation_timeout)
 
     def _post_merge_recovery_cursor_path(self) -> Path:
         if self.merge_queue is None:
@@ -3248,6 +3327,184 @@ class DatabasePortalExecutionBridge:
             raise DatabasePortalBridgeError("database task alias changed")
         return record
 
+    def recover_landed_completion(self, attempt: Any) -> Mapping[str, Any] | None:
+        """Propose a landed candidate for a newer, freshly validated claim.
+
+        This callback is read-only.  It neither rearms nor completes the task;
+        the database daemon independently binds any returned receipt to the
+        exact failed attempt before asking the Quack owner for a retry CAS.
+        """
+
+        if self.repository_root is None:
+            return None
+        record = self._record_for_attempt(self.task_source, attempt)
+        body = dict(getattr(record, "body", {}) or {})
+        control_receipt = body.get("completion_receipt")
+        record_status = str(getattr(record, "status", "") or "").strip().lower()
+        if (
+            str(getattr(attempt, "status", "") or "").strip().lower()
+            != "failed"
+            or record_status != "blocked"
+            or not isinstance(control_receipt, Mapping)
+            or control_receipt.get("operation")
+            != "database_portal_terminal_failure"
+            or control_receipt.get("reason") != "portal_provider_failed"
+            or control_receipt.get("retryable") is not False
+            or control_receipt.get("attempt_id")
+            != str(getattr(attempt, "attempt_id", "") or "")
+            or control_receipt.get("claim_id")
+            != str(getattr(attempt, "claim_id", "") or "")
+            or control_receipt.get("lease_id")
+            != str(getattr(attempt, "lease_id", "") or "")
+            or control_receipt.get("owner_session_id")
+            != str(getattr(attempt, "owner_session_id", "") or "")
+            or control_receipt.get("attempt_number")
+            != int(getattr(attempt, "attempt_number", 0) or 0)
+            or control_receipt.get("fencing_token")
+            != int(getattr(attempt, "fencing_token", 0) or 0)
+            or control_receipt.get("fence_epoch")
+            != int(getattr(attempt, "fence_epoch", 0) or 0)
+            or control_receipt.get("execution_revision")
+            != int(getattr(attempt, "revision", 0) or 0)
+            or control_receipt.get("execution_finished_at_ms")
+            != getattr(attempt, "finished_at_ms", None)
+        ):
+            return None
+        repository = self._validation_repository_scope(body)
+        outputs = self._scope_outputs(_output_values(record, body), repository)
+        validations = self._scope_validations(
+            _validation_values(record, body),
+            repository,
+        )
+        revision = getattr(record, "revision", 0)
+        if not outputs or not validations or type(revision) is not int or revision < 1:
+            return None
+        return discover_landed_completion_recovery(
+            repo_root=self.repository_root,
+            target_ref=self.merge_target_ref,
+            task_cid=str(getattr(attempt, "task_cid", "") or ""),
+            task_alias=str(
+                getattr(record, "task_alias", "")
+                or getattr(attempt, "task_alias", "")
+                or ""
+            ),
+            declared_outputs=outputs,
+            source_attempt_id=str(getattr(attempt, "attempt_id", "") or ""),
+            source_claim_id=str(getattr(attempt, "claim_id", "") or ""),
+            source_lease_id=str(getattr(attempt, "lease_id", "") or ""),
+            source_owner_session_id=str(
+                getattr(attempt, "owner_session_id", "") or ""
+            ),
+            source_attempt_number=int(
+                getattr(attempt, "attempt_number", 0) or 0
+            ),
+            source_fencing_token=int(
+                getattr(attempt, "fencing_token", 0) or 0
+            ),
+            source_fence_epoch=int(getattr(attempt, "fence_epoch", 0) or 0),
+            source_execution_revision=int(
+                getattr(attempt, "revision", 0) or 0
+            ),
+            source_execution_finished_at_ms=int(
+                getattr(attempt, "finished_at_ms", 0) or 0
+            ),
+            source_control_revision=int(revision),
+        )
+
+    def _landed_completion_claim_seed_from_record(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+    ) -> dict[str, Any] | None:
+        """Verify and bind a source recovery receipt to this live claim."""
+
+        body = dict(getattr(record, "body", {}) or {})
+        status_receipt = body.get("completion_receipt")
+        if not isinstance(status_receipt, Mapping):
+            return None
+        raw_recovery = status_receipt.get("landed_completion_recovery_seed")
+        if raw_recovery is None:
+            return None
+        if (
+            status_receipt.get("operation") != "database_claim"
+            or status_receipt.get("attempt_id")
+            != str(getattr(attempt, "attempt_id", "") or "")
+            or status_receipt.get("claim_id")
+            != str(getattr(attempt, "claim_id", "") or "")
+            or status_receipt.get("owner_session_id")
+            != str(getattr(attempt, "owner_session_id", "") or "")
+            or status_receipt.get("attempt_number")
+            != int(getattr(attempt, "attempt_number", 0) or 0)
+            or status_receipt.get("fencing_token")
+            != int(getattr(attempt, "fencing_token", 0) or 0)
+            or status_receipt.get("fence_epoch")
+            != int(getattr(attempt, "fence_epoch", 0) or 0)
+            or status_receipt.get("lease_id")
+            != str(getattr(attempt, "lease_id", "") or "")
+            or not isinstance(raw_recovery, Mapping)
+        ):
+            raise DatabasePortalBridgeError(
+                "database claim carries a malformed landed recovery seed"
+            )
+        task_cid = str(getattr(attempt, "task_cid", "") or "")
+        task_alias = str(
+            getattr(record, "task_alias", "")
+            or getattr(attempt, "task_alias", "")
+            or ""
+        )
+        try:
+            recovery = verify_landed_completion_recovery_receipt(
+                raw_recovery,
+                task_cid=task_cid,
+                task_alias=task_alias,
+            )
+            if self.repository_root is None:
+                raise LandedCompletionRecoveryError(
+                    "landed recovery has no repository authority"
+                )
+            repository_evidence = revalidate_landed_completion_repository(
+                recovery,
+                repo_root=self.repository_root,
+                target_ref=self.merge_target_ref,
+            )
+            scoped_outputs = self._scope_outputs(
+                _output_values(record, body),
+                self._validation_repository_scope(body),
+            )
+            if recovery.get("declared_outputs") != scoped_outputs:
+                raise LandedCompletionRecoveryError(
+                    "landed recovery outputs changed before the target claim"
+                )
+            return build_landed_completion_claim_seed(
+                recovery,
+                target_task_cid=task_cid,
+                target_task_alias=task_alias,
+                target_attempt_id=str(getattr(attempt, "attempt_id", "") or ""),
+                target_claim_id=str(getattr(attempt, "claim_id", "") or ""),
+                target_owner_session_id=str(
+                    getattr(attempt, "owner_session_id", "") or ""
+                ),
+                target_attempt_number=int(
+                    getattr(attempt, "attempt_number", 0) or 0
+                ),
+                target_fencing_token=int(
+                    getattr(attempt, "fencing_token", 0) or 0
+                ),
+                target_fence_epoch=int(
+                    getattr(attempt, "fence_epoch", 0) or 0
+                ),
+                target_lease_id=str(getattr(attempt, "lease_id", "") or ""),
+                validated_target_commit=repository_evidence[
+                    "current_target_commit"
+                ],
+                validated_target_tree=repository_evidence["current_target_tree"],
+            )
+        except (LandedCompletionRecoveryError, OSError, ValueError) as exc:
+            raise DatabasePortalBridgeError(
+                "database claim landed recovery seed failed verification"
+            ) from exc
+
     def _binding(self, attempt: Any, record: Any, seed: str) -> dict[str, Any]:
         body = dict(getattr(record, "body", {}) or {})
         canonical_task_key, canonical_task_cid = _projection_task_identity(
@@ -3258,6 +3515,10 @@ class DatabasePortalExecutionBridge:
             self.task_source,
             canonical_task_cid,
         )
+        landed_recovery_seed = self._landed_completion_claim_seed_from_record(
+            attempt=attempt,
+            record=record,
+        )
         payload = {
             "schema": DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA,
             "interface": self.INTERFACE,
@@ -3265,6 +3526,8 @@ class DatabasePortalExecutionBridge:
             "claim_id": str(attempt.claim_id),
             "task_cid": canonical_task_cid,
             "canonical_task_key": canonical_task_key,
+            "attempt_number": int(attempt.attempt_number),
+            "owner_session_id": str(attempt.owner_session_id),
             "task_alias": str(
                 getattr(record, "task_alias", "")
                 or getattr(attempt, "task_alias", "")
@@ -3283,9 +3546,34 @@ class DatabasePortalExecutionBridge:
             "projection_immutable_digest": _projection_immutable_digest(seed),
             "authoritative_task_store": "duckdb",
             "projection_authority": False,
+            "landed_completion_recovery_seed_id": str(
+                (landed_recovery_seed or {}).get("seed_id") or ""
+            ),
         }
         payload["binding_id"] = _sha256_bytes(_canonical_json(payload))
         return payload
+
+    def _verify_landed_completion_target_stable(
+        self,
+        attempt: Any,
+        binding: Mapping[str, Any],
+    ) -> None:
+        """Refuse acceptance if the target moved after claim projection."""
+
+        expected_seed_id = str(
+            binding.get("landed_completion_recovery_seed_id") or ""
+        )
+        if not expected_seed_id:
+            return
+        record = self._record_for_attempt(self.task_source, attempt)
+        current = self._landed_completion_claim_seed_from_record(
+            attempt=attempt,
+            record=record,
+        )
+        if current is None or current.get("seed_id") != expected_seed_id:
+            raise DatabasePortalBridgeError(
+                "landed completion target changed during fresh validation"
+            )
 
     def _render_projection(self, attempt: Any, record: Any) -> str:
         body = dict(getattr(record, "body", {}) or {})
@@ -3310,7 +3598,13 @@ class DatabasePortalExecutionBridge:
             repository_scope,
         )
         acceptance = _acceptance_value(record, body)
-        priority = _line_value(getattr(record, "priority", "") or body.get("priority") or "P2")
+        landed_recovery_seed = self._landed_completion_claim_seed_from_record(
+            attempt=attempt,
+            record=record,
+        )
+        priority = _line_value(
+            getattr(record, "priority", "") or body.get("priority") or "P2"
+        )
         reserved = {
             "status",
             "completion",
@@ -3355,11 +3649,21 @@ class DatabasePortalExecutionBridge:
             f"- Database task CID: {_line_value(attempt.task_cid)}",
             f"- Database attempt ID: {_line_value(attempt.attempt_id)}",
             f"- Database claim ID: {_line_value(attempt.claim_id)}",
+            f"- Database attempt number: {_line_value(attempt.attempt_number)}",
+            f"- Database owner session ID: {_line_value(attempt.owner_session_id)}",
+            f"- Database fencing token: {_line_value(attempt.fencing_token)}",
+            f"- Database fence epoch: {_line_value(attempt.fence_epoch)}",
+            f"- Database lease ID: {_line_value(getattr(attempt, 'lease_id', '') or '')}",
             f"- Database dependency CIDs: {_line_value(getattr(record, 'dependencies', ()))}",
             f"- Canonical task key: {canonical_task_key}",
             f"- Canonical task CID: {canonical_task_cid}",
             "- Projection authority: false",
         ]
+        if landed_recovery_seed is not None:
+            lines.append(
+                "- Landed completion recovery: "
+                + _line_value(landed_recovery_seed)
+            )
         for key in sorted(body):
             normalized = str(key).strip().lower().replace("_", " ")
             if not normalized or normalized in reserved:
@@ -3544,7 +3848,7 @@ class DatabasePortalExecutionBridge:
             return str(implementation.get("reason") or "portal_provider_failed")
         if implementation.get("skipped") is True:
             reason = str(implementation.get("reason") or "portal_execution_skipped")
-            if reason == _INFLIGHT_PROCESS_SKIP_REASON:
+            if reason in DATABASE_PORTAL_SKIP_CONTENTION_REASONS:
                 # A live implementer is a wait, not a task defect. Deferral
                 # owns this reason; do not CAS blocked.
                 return ""
@@ -3901,12 +4205,17 @@ class DatabasePortalExecutionBridge:
             return None
         if (
             implementation.get("skipped") is True
-            and str(implementation.get("reason") or "")
-            == _INFLIGHT_PROCESS_SKIP_REASON
+            and str(implementation.get("reason") or "").strip()
+            in DATABASE_PORTAL_SKIP_CONTENTION_REASONS
         ):
+            skip_reason = str(implementation.get("reason") or "").strip()
             raw_backoff = implementation.get(
                 "backoff_seconds",
-                INFLIGHT_PROCESS_BACKOFF_SECONDS,
+                (
+                    INFLIGHT_PROCESS_BACKOFF_SECONDS
+                    if skip_reason == _INFLIGHT_PROCESS_SKIP_REASON
+                    else DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS
+                ),
             )
             if (
                 isinstance(raw_backoff, bool)
@@ -3918,7 +4227,7 @@ class DatabasePortalExecutionBridge:
                     "Portal inflight deferral returned an invalid "
                     "backoff_seconds value"
                 )
-            return (_INFLIGHT_PROCESS_SKIP_REASON, int(raw_backoff))
+            return (skip_reason, int(raw_backoff))
         # ``attempt_consumed=false``/``provider_dispatched=false`` also
         # describe a successful deterministic zero-provider closure.  Only
         # the explicit closed deferral signal grants retry semantics.
@@ -4071,6 +4380,144 @@ class DatabasePortalExecutionBridge:
         return (
             DATABASE_PORTAL_POOLED_WORKTREE_CREATE_FAILED_REASON,
             _POOLED_WORKTREE_CREATE_DEFERRAL_BACKOFF_SECONDS,
+        )
+
+    @staticmethod
+    def _same_claim_inflight_identity(
+        result: Mapping[str, Any],
+        *,
+        binding: Mapping[str, Any],
+    ) -> tuple[str, int, str] | None:
+        """Return the exact claim-private lifecycle identity for a live provider.
+
+        ``inflight_process`` is the only Portal wait result whose payload binds
+        the selected task, Portal-local attempt, and worktree together. Other
+        contention reasons may describe a sibling owner, so they deliberately
+        remain ordinary database deferrals rather than keeping this callback
+        alive.
+        """
+
+        implementation = result.get("implementation_result")
+        if not isinstance(implementation, Mapping):
+            return None
+        task_id = implementation.get("task_id")
+        canonical_task_cid = implementation.get("canonical_task_cid")
+        portal_attempt = implementation.get("attempt")
+        worktree_path = implementation.get("worktree_path")
+        if (
+            implementation.get("skipped") is not True
+            or implementation.get("reason") != "inflight_process"
+            or task_id != binding.get("task_alias")
+            or (
+                canonical_task_cid not in (None, "")
+                and canonical_task_cid != binding.get("task_cid")
+            )
+            or type(portal_attempt) is not int
+            or portal_attempt < 1
+            or not isinstance(worktree_path, str)
+            or not worktree_path.strip()
+            or len(worktree_path.encode("utf-8", errors="surrogatepass"))
+            > _MAX_REPOSITORY_PATH_BYTES
+        ):
+            return None
+        return task_id, portal_attempt, worktree_path
+
+    @staticmethod
+    def _continues_verified_quota_fallback(
+        result: Mapping[str, Any],
+        *,
+        attempt: Any,
+        binding: Mapping[str, Any],
+    ) -> bool:
+        """Keep one verified Grok-quota handoff inside the same Portal claim.
+
+        The fallback authority is bound to the attempt-local event chain.  If
+        the bridge exported this result as an ordinary database deferral, the
+        successor database claim would receive a new private Portal journal
+        and could not replay that authority.  Continuing here grants no
+        completion or provider effect: the next bounded Portal pass still has
+        to independently validate the latch before it can select Codex.
+        """
+
+        implementation = result.get("implementation_result")
+        if not isinstance(implementation, Mapping):
+            return False
+        authority = implementation.get("quota_fallback_authority")
+        if not isinstance(authority, Mapping):
+            return False
+        expected_authority_fields = {
+            "schema",
+            "primary_provider",
+            "primary_model",
+            "failure_class",
+            "evidence_sha256",
+            "task_id",
+            "canonical_task_cid",
+            "attempt",
+            "primary_returncode",
+            "start_event_id",
+            "start_sequence",
+            "command_sha256",
+            "runner_receipt_id",
+            "runner_receipt",
+        }
+        portal_attempt = implementation.get("attempt")
+        start_sequence = authority.get("start_sequence")
+        return bool(
+            implementation.get("deferred") is True
+            and implementation.get("reason") == "provider_capacity_exhausted"
+            and implementation.get("attempt_consumed") is False
+            and implementation.get("task_prompt_dispatched") is False
+            and implementation.get("providers") == ["grok"]
+            and implementation.get("failure_class") == "hard_quota_exhausted"
+            and implementation.get("hard_quota_exhausted_providers") == ["grok"]
+            and type(implementation.get("returncode")) is int
+            and implementation.get("returncode") != 0
+            and implementation.get("task_id") == binding.get("task_alias")
+            and implementation.get("canonical_task_cid")
+            == str(getattr(attempt, "task_cid", "") or "")
+            and type(portal_attempt) is int
+            and portal_attempt > 0
+            and set(authority) == expected_authority_fields
+            and authority.get("schema")
+            == DATABASE_PORTAL_QUOTA_FALLBACK_AUTHORITY_SCHEMA
+            and authority.get("primary_provider") == "grok"
+            and authority.get("primary_model") == "grok-4.6"
+            and authority.get("failure_class") == "hard_quota_exhausted"
+            and authority.get("task_id") == implementation.get("task_id")
+            and authority.get("task_id") == binding.get("task_alias")
+            and authority.get("canonical_task_cid")
+            == implementation.get("canonical_task_cid")
+            and authority.get("canonical_task_cid")
+            == str(getattr(attempt, "task_cid", "") or "")
+            and authority.get("attempt") == implementation.get("attempt")
+            and authority.get("primary_returncode")
+            == implementation.get("returncode")
+            and isinstance(authority.get("runner_receipt"), Mapping)
+            and type(start_sequence) is int
+            and start_sequence > 0
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(authority.get("start_event_id") or ""),
+            )
+            is not None
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(authority.get("command_sha256") or ""),
+            )
+            is not None
+            and re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(authority.get("evidence_sha256") or ""),
+            )
+            is not None
+            and authority.get("runner_receipt_id")
+            == authority["runner_receipt"].get("receipt_id")
+            and authority.get("evidence_sha256")
+            == authority["runner_receipt"].get("evidence_sha256")
+            and authority["runner_receipt"].get("failure_class")
+            == "hard_quota_exhausted"
+            and authority["runner_receipt"].get("primary_dispatched") is False
         )
 
     @staticmethod
@@ -6313,6 +6760,21 @@ class DatabasePortalExecutionBridge:
         """Recover the prior retry receipt carried through the claim CAS."""
 
         body = dict(getattr(record, "body", {}) or {})
+        return self._validation_retry_seed_from_body(
+            attempt=attempt,
+            record=record,
+            body=body,
+        )
+
+    def _validation_retry_seed_from_body(
+        self,
+        *,
+        attempt: Any,
+        record: Any,
+        body: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Verify one exact claim body carrying a validation retry seed."""
+
         status_receipt = body.get("completion_receipt")
         if not isinstance(status_receipt, Mapping):
             return None
@@ -6324,6 +6786,8 @@ class DatabasePortalExecutionBridge:
             not in {"database_claim", "database_attempt_admitted"}
             or status_receipt.get("attempt_id") != str(attempt.attempt_id)
             or status_receipt.get("claim_id") != str(attempt.claim_id)
+            or status_receipt.get("owner_session_id")
+            != str(getattr(attempt, "owner_session_id", "") or "")
             or status_receipt.get("attempt_number")
             != int(attempt.attempt_number)
             or status_receipt.get("fencing_token")
@@ -6379,7 +6843,8 @@ class DatabasePortalExecutionBridge:
             or seed.get("remaining_task_attempts")
             != self.max_task_attempts - source_portal_attempt
             or not isinstance(changed_paths, list)
-            or changed_paths != scoped_outputs
+            or len(changed_paths) != len(scoped_outputs)
+            or set(changed_paths) != set(scoped_outputs)
             or receipt_id != _sha256_bytes(_canonical_json(value))
             or not self._preserved_commit_exists(
                 commit=str(seed.get("implementation_commit") or ""),
@@ -6390,6 +6855,111 @@ class DatabasePortalExecutionBridge:
                 "database claim validation retry seed failed verification"
             )
         return dict(seed)
+
+    def verify_validation_retry_successor_recovery(
+        self,
+        attempt: Any,
+        record: Any,
+        historical_claim_body: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Prove that a failed seed handoff hit only the old order predicate.
+
+        This is a read-only admission check for the database coordinator.  It
+        deliberately replays the historical ``database_claim`` body through
+        the same repository-aware seed verifier used before Portal dispatch.
+        Recovery is admitted only when the preserved candidate, nested
+        repository scope, path safety, and exact output population all still
+        verify and the sole legacy mismatch is list order.
+        """
+
+        if not isinstance(historical_claim_body, Mapping):
+            raise DatabasePortalBridgeError(
+                "validation retry successor has no historical claim body"
+            )
+        current_body = dict(getattr(record, "body", {}) or {})
+        claim_body = dict(historical_claim_body)
+        current_semantic_body = dict(current_body)
+        historical_semantic_body = dict(claim_body)
+        current_semantic_body.pop("completion_receipt", None)
+        historical_semantic_body.pop("completion_receipt", None)
+        if (
+            str(getattr(record, "task_cid", "") or "")
+            != str(getattr(attempt, "task_cid", "") or "")
+            or str(
+                getattr(record, "task_alias", "")
+                or getattr(attempt, "task_alias", "")
+                or ""
+            )
+            != str(getattr(attempt, "task_alias", "") or "")
+            or _canonical_json(current_semantic_body)
+            != _canonical_json(historical_semantic_body)
+        ):
+            raise DatabasePortalBridgeError(
+                "validation retry successor task definition changed"
+            )
+
+        seed = self._validation_retry_seed_from_body(
+            attempt=attempt,
+            record=record,
+            body=claim_body,
+        )
+        if seed is None:
+            raise DatabasePortalBridgeError(
+                "validation retry successor claim has no retry seed"
+            )
+        repository_scope = self._validation_repository_scope(claim_body)
+        scoped_outputs = self._scope_outputs(
+            _output_values(record, claim_body),
+            repository_scope,
+        )
+        changed_paths = seed.get("changed_paths")
+        if (
+            not isinstance(changed_paths, list)
+            or not changed_paths
+            or len(set(changed_paths)) != len(changed_paths)
+            or any(_safe_output_path(path) != path for path in changed_paths)
+            or changed_paths == scoped_outputs
+            or len(changed_paths) != len(scoped_outputs)
+            or set(changed_paths) != set(scoped_outputs)
+        ):
+            raise DatabasePortalBridgeError(
+                "validation retry successor was not caused solely by output order"
+            )
+
+        proof = {
+            "schema": DATABASE_PORTAL_VALIDATION_RETRY_ORDER_REPAIR_SCHEMA,
+            "task_cid": str(attempt.task_cid),
+            "task_alias": str(getattr(attempt, "task_alias", "") or ""),
+            "target_attempt_id": str(attempt.attempt_id),
+            "target_claim_id": str(attempt.claim_id),
+            "target_lease_id": str(getattr(attempt, "lease_id", "") or ""),
+            "target_owner_session_id": str(
+                getattr(attempt, "owner_session_id", "") or ""
+            ),
+            "target_attempt_number": int(attempt.attempt_number),
+            "target_fencing_token": int(attempt.fencing_token),
+            "target_fence_epoch": int(attempt.fence_epoch),
+            "source_attempt_id": str(seed.get("attempt_id") or ""),
+            "source_retry_receipt_id": str(seed.get("receipt_id") or ""),
+            "historical_claim_body_digest": _sha256_bytes(
+                _canonical_json(claim_body)
+            ),
+            "stable_task_body_digest": _sha256_bytes(
+                _canonical_json(current_semantic_body)
+            ),
+            "repository_scope": repository_scope,
+            "scoped_outputs": list(scoped_outputs),
+            "changed_paths": list(changed_paths),
+            "implementation_commit": str(
+                seed.get("implementation_commit") or ""
+            ),
+            "rescue_branch": str(seed.get("rescue_branch") or ""),
+            "preserved_commit_verified": True,
+            "ordered_lists_differ": True,
+            "exact_output_set_verified": True,
+        }
+        proof["proof_id"] = _sha256_bytes(_canonical_json(proof))
+        return proof
 
     def _initialize_validation_retry_seed(
         self,
@@ -6518,7 +7088,10 @@ class DatabasePortalExecutionBridge:
         paths: DatabasePortalAttemptPaths,
         binding: Mapping[str, Any],
         summaries: Sequence[Mapping[str, Any]],
+        summary_count: int,
+        summaries_digest: str,
     ) -> dict[str, Any]:
+        self._verify_landed_completion_target_stable(attempt, binding)
         alias = str(binding.get("task_alias") or "")
         projection_text = self._verify_projection(paths, binding)
         if _projection_status(projection_text) not in _TERMINAL_STATUSES:
@@ -6542,6 +7115,9 @@ class DatabasePortalExecutionBridge:
             "state_digest": _sha256_file(paths.state) if paths.state.is_file() else "",
             "events_digest": _sha256_file(paths.events),
             "portal_passes": [dict(item) for item in summaries],
+            "portal_pass_count": int(summary_count),
+            "portal_passes_truncated": summary_count > len(summaries),
+            "portal_passes_digest": summaries_digest,
         }
         evidence_digest = _sha256_bytes(_canonical_json(evidence))
         receipt = {
@@ -6607,6 +7183,7 @@ class DatabasePortalExecutionBridge:
     def run_provider(self, attempt: Any) -> Mapping[str, Any]:
         """Run bounded real Portal passes and return only accepted evidence."""
 
+        inflight_deadline = _monotonic_seconds() + self.implementation_timeout
         record = self._record_for_attempt(self.task_source, attempt)
         execution_route_binding = self._execution_route_binding(
             attempt=attempt,
@@ -6620,6 +7197,8 @@ class DatabasePortalExecutionBridge:
             binding=binding,
         )
         summaries: list[Mapping[str, Any]] = []
+        summary_count = 0
+        summaries_hasher = hashlib.sha256()
         daemon = self.portal_factory(
             paths,
             str(binding.get("task_alias") or attempt.task_cid),
@@ -6640,7 +7219,10 @@ class DatabasePortalExecutionBridge:
                 )
             bind_route(execution_route_binding)
         try:
-            for _pass_index in range(self.max_passes):
+            quota_fallback_continued = False
+            ordinary_passes = 0
+            inflight_identity: tuple[str, int, str] | None = None
+            while ordinary_passes < self.max_passes:
                 projection = self._verify_projection(paths, binding)
                 if _projection_status(
                     projection
@@ -6655,13 +7237,74 @@ class DatabasePortalExecutionBridge:
                         paths=paths,
                         binding=binding,
                         summaries=summaries,
+                        summary_count=summary_count,
+                        summaries_digest=(
+                            "sha256:" + summaries_hasher.copy().hexdigest()
+                        ),
+                    )
+                # Once Portal has proved that this exact claim-private
+                # lifecycle is still running, do not launch another pass at
+                # or beyond the callback's wall-clock deadline.  The prior
+                # implementation checked only after that extra pass returned,
+                # which could overshoot the configured timeout and admit more
+                # work after the database callback should have deferred.
+                if (
+                    inflight_identity is not None
+                    and _monotonic_seconds() >= inflight_deadline
+                ):
+                    raise DatabasePortalBridgeDeferred(
+                        "inflight_process",
+                        backoff_seconds=(
+                            DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS
+                        ),
                     )
                 raw_result = daemon.run_once()
                 if not isinstance(raw_result, Mapping):
                     raise DatabasePortalBridgeError("Portal daemon returned a non-object result")
                 summary = _bounded_portal_result(raw_result)
+                encoded_summary = _canonical_json(summary)
+                summaries_hasher.update(len(encoded_summary).to_bytes(8, "big"))
+                summaries_hasher.update(encoded_summary)
+                summary_count += 1
+                if len(summaries) == _MAX_DATABASE_PORTAL_PASS_PREVIEW:
+                    del summaries[0]
                 summaries.append(summary)
                 self._verify_projection(paths, binding)
+                current_inflight_identity = self._same_claim_inflight_identity(
+                    raw_result,
+                    binding=binding,
+                )
+                if current_inflight_identity is not None:
+                    if inflight_identity is None:
+                        inflight_identity = current_inflight_identity
+                    elif current_inflight_identity != inflight_identity:
+                        raise DatabasePortalBridgeError(
+                            "Portal inflight lifecycle identity changed while "
+                            "the database claim was waiting"
+                        )
+                    remaining = inflight_deadline - _monotonic_seconds()
+                    if remaining <= 0:
+                        raise DatabasePortalBridgeDeferred(
+                            "inflight_process",
+                            backoff_seconds=(
+                                DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS
+                            ),
+                        )
+                    _sleep_seconds(
+                        min(DATABASE_PORTAL_INFLIGHT_POLL_SECONDS, remaining)
+                    )
+                    continue
+                ordinary_passes += 1
+                if (
+                    not quota_fallback_continued
+                    and self._continues_verified_quota_fallback(
+                        raw_result,
+                        attempt=attempt,
+                        binding=binding,
+                    )
+                ):
+                    quota_fallback_continued = True
+                    continue
                 deferral = self._typed_deferral(raw_result)
                 if deferral is not None:
                     reason, backoff_seconds = deferral
@@ -6777,6 +7420,10 @@ class DatabasePortalExecutionBridge:
                 paths=paths,
                 binding=binding,
                 summaries=summaries,
+                summary_count=summary_count,
+                summaries_digest=(
+                    "sha256:" + summaries_hasher.copy().hexdigest()
+                ),
             )
         finally:
             close = getattr(daemon, "close_event_runtime", None) or getattr(daemon, "close", None)
@@ -7296,6 +7943,7 @@ __all__ = (
     "DATABASE_PORTAL_CANDIDATE_RETRY_REASONS",
     "DATABASE_PORTAL_CHECKOUT_CONTENTION_BACKOFF_SECONDS",
     "DATABASE_PORTAL_CHECKOUT_CONTENTION_REASONS",
+    "DATABASE_PORTAL_SKIP_CONTENTION_REASONS",
     "DatabasePortalBridgeDeferred",
     "DatabasePortalBridgeConsumedNoProgressError",
     "DatabasePortalBridgeError",

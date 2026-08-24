@@ -12,6 +12,7 @@
   "package_bindings": [
     {
       "binding_id": "package:ipfs_accelerate_py@0.0.45",
+      "current_blob_id": "d607a6e93c19f9fe0c0c9b0adf875db04a7c29a3",
       "manifest_blob_id": "179882cc1254039920c5a1ab755f383dcb70842d",
       "manifest_path": "pyproject.toml",
       "name": "ipfs_accelerate_py",
@@ -46,16 +47,19 @@
   "sibling_release_bindings": [
     {
       "binding_id": "gitlink:ipfs_accelerate_py/mcplusplus@5ac0ab162f420264fd224073a5df3f2d7c054ae3",
+      "current_gitlink_commit": "c1f826e4d9750ac061b4062a1c01ae6d37971a78",
       "gitlink_commit": "5ac0ab162f420264fd224073a5df3f2d7c054ae3",
       "path": "ipfs_accelerate_py/mcplusplus"
     },
     {
       "binding_id": "gitlink:ipfs_datasets_py@480a1666f144ad606fcb3cacb66e59775f28d0d1",
+      "current_gitlink_commit": "dd898fe669ca9d4740fafe5123bf5f6ac91c7bb0",
       "gitlink_commit": "480a1666f144ad606fcb3cacb66e59775f28d0d1",
       "path": "ipfs_datasets_py"
     },
     {
       "binding_id": "gitlink:ipfs_kit_py@2564aea1ae35061f2165872aff91e8a40801ab7e",
+      "current_gitlink_commit": "80bbdc3443e560b9bf40339c864a32689ccad8ef",
       "gitlink_commit": "2564aea1ae35061f2165872aff91e8a40801ab7e",
       "path": "ipfs_kit_py"
     }
@@ -237,7 +241,7 @@
       },
       "producer_id": "TP-DEFAULT-PROVIDER-ROUTE",
       "simulated": false,
-      "source_bindings": [{"blob_id": "3a4b558d7e439af97cd000b3f5715e1eeaef67f9", "path": "test/api/test_agent_supervisor_default_provider_route.py"}]
+      "source_bindings": [{"blob_id": "3a4b558d7e439af97cd000b3f5715e1eeaef67f9", "current_blob_id": "c129c014181b71f0247bca938f5961b532dc2b5d", "path": "test/api/test_agent_supervisor_default_provider_route.py"}]
     },
     {
       "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_worktree_lifecycle.py"],
@@ -256,7 +260,7 @@
       "source_bindings": [
         {
           "blob_id": "4cf5c39ff1e9dfc97f533e1d036e1b9256d15e52",
-          "current_blob_id": "472daae1adaf2d41bdb09df087dbf410bef8420c",
+          "current_blob_id": "f2f7144c34c0b4169aaa174e7d894845fa736164",
           "path": "test/api/test_agent_supervisor_worktree_lifecycle.py"
         }
       ]
@@ -275,7 +279,7 @@
       "expected": {"collected": 17, "errors": 0, "failed": 0, "passed": 17, "returncode": 0},
       "producer_id": "TP-MERGE-TRAIN",
       "simulated": false,
-      "source_bindings": [{"blob_id": "352949393a38398fb76a034cb8e21058e8ecd58a", "path": "test/api/test_agent_supervisor_merge_train.py"}]
+      "source_bindings": [{"blob_id": "352949393a38398fb76a034cb8e21058e8ecd58a", "current_blob_id": "5c9f5fab273a42a207fc1515d3d4aeb5669d89d7", "path": "test/api/test_agent_supervisor_merge_train.py"}]
     },
     {
       "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/test_agent_supervisor_process_tree_fencing.py", "test/api/test_agent_supervisor_database_worktree_registry.py", "test/api/test_agent_supervisor_merge_queue.py"],
@@ -295,8 +299,40 @@
       "source_bindings": [
         {"blob_id": "6084a5ff69a88fe8883058a34442c28a5cf6da86", "path": "test/api/test_agent_supervisor_process_tree_fencing.py"},
         {"blob_id": "f93048b0f5dfada888584b1f1557d37637b05af3", "path": "test/api/test_agent_supervisor_database_worktree_registry.py"},
-        {"blob_id": "2993241d35fd5437c5f9dd5c8d0a20f2fac84f65", "path": "test/api/test_agent_supervisor_merge_queue.py"}
+        {"blob_id": "2993241d35fd5437c5f9dd5c8d0a20f2fac84f65", "current_blob_id": "16b06bb3d231243965f76a5d2b26f2e0c7430f9a", "path": "test/api/test_agent_supervisor_merge_queue.py"}
       ]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/autonomy/test_contracts.py"],
+      "evidence_class": "current_tree_requalification",
+      "expected": {"collected": 50, "errors": 0, "failed": 0, "passed": 50, "returncode": 0},
+      "producer_id": "TP-AUTONOMY-CONTRACTS",
+      "simulated": false,
+      "source_bindings": [{"baseline_absent": true, "current_blob_id": "3858906247005946cac15eacab18c01b21cbad0c", "path": "test/api/autonomy/test_contracts.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/autonomy/test_runtime.py"],
+      "evidence_class": "current_tree_requalification",
+      "expected": {"collected": 31, "errors": 0, "failed": 0, "passed": 31, "returncode": 0},
+      "producer_id": "TP-AUTONOMY-RUNTIME",
+      "simulated": false,
+      "source_bindings": [{"baseline_absent": true, "current_blob_id": "d01b8c05422141aeedc94573469be365cfa86af7", "path": "test/api/autonomy/test_runtime.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/autonomy/test_cognitive_scheduler.py"],
+      "evidence_class": "current_tree_requalification",
+      "expected": {"collected": 21, "errors": 0, "failed": 0, "passed": 21, "returncode": 0},
+      "producer_id": "TP-COGNITIVE-SCHEDULER",
+      "simulated": false,
+      "source_bindings": [{"baseline_absent": true, "current_blob_id": "fcd66e315485aaf9709eaba523744bf35db11327", "path": "test/api/autonomy/test_cognitive_scheduler.py"}]
+    },
+    {
+      "command": ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test/api/autonomy/test_experience_ledger.py"],
+      "evidence_class": "current_tree_requalification",
+      "expected": {"collected": 23, "errors": 0, "failed": 0, "passed": 23, "returncode": 0},
+      "producer_id": "TP-EXPERIENCE-LEDGER",
+      "simulated": false,
+      "source_bindings": [{"baseline_absent": true, "current_blob_id": "c24139ff8f86b1b67c2586462285fdf4f39a83ec", "path": "test/api/autonomy/test_experience_ledger.py"}]
     }
   ],
   "timestamp_date_utc": "2026-08-20"

@@ -130,7 +130,7 @@
         {"blob_id": "aebfc5bccd9b821f454c522e58f819c96259fc19", "path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py"},
         {"blob_id": "f8c8f059d637259b0e68aae27e753be5d256a670", "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_analysis.py"},
         {"baseline_absent": true, "current_blob_id": "986656ec49b66cf2a7abbbbedb3151f33bc817ec", "path": "ipfs_accelerate_py/agent_supervisor/analysis/mcp_contract_catalog.py"},
-        {"blob_id": "a64492b520902e9952ce7ce4cd3a0a56a5bc9df0", "path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py"}
+        {"blob_id": "a64492b520902e9952ce7ce4cd3a0a56a5bc9df0", "current_blob_id": "f72cefa4715bafc02648a7014e5dc88971a041d0", "path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py"}
       ],
       "status": "incompatible",
       "submodule_bindings": [],
@@ -151,7 +151,7 @@
         {"path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py", "symbol": "CONTROL_AUDIT_RECEIPT_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/control-audit-receipt@1"}
       ],
       "source_bindings": [
-        {"blob_id": "f06b091ff4e5a0a3ea09da81c866845bf064af9b", "path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py"}
+        {"blob_id": "f06b091ff4e5a0a3ea09da81c866845bf064af9b", "current_blob_id": "01bdede85b470ca7fbf8d3274e3e32875b8553db", "path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py"}
       ],
       "status": "available",
       "submodule_bindings": [],
@@ -239,7 +239,7 @@
       ],
       "source_bindings": [
         {"blob_id": "34652698f287805dfcf35e8d536755e7ce908e79", "path": "ipfs_accelerate_py/agent_supervisor/contracts/provider_capacity.py"},
-        {"blob_id": "5c455af35eb9e5d9e0e590fa5fb7003181c0d115", "path": "ipfs_accelerate_py/agent_supervisor/runtime/provider_capacity_monitor.py"},
+        {"blob_id": "5c455af35eb9e5d9e0e590fa5fb7003181c0d115", "current_blob_id": "d4686862acef8e9eab0899b8501cfd92ea82286a", "path": "ipfs_accelerate_py/agent_supervisor/runtime/provider_capacity_monitor.py"},
         {"blob_id": "9daf91f002d0cdd877d8e9f1558800ca5ebd0dac", "path": "ipfs_accelerate_py/agent_supervisor/runtime/provider_capacity_snapshot.py"},
         {"blob_id": "51d7a0850bb42db3de3798b47e1ffd56e0a47b86", "path": "ipfs_accelerate_py/agent_supervisor/verification/model_route.py"},
         {"blob_id": "24686d8920129557e1c36ef3a1e2d74611b72999", "path": "ipfs_accelerate_py/agent_supervisor/entrypoints/provider_route.py"},
@@ -272,13 +272,13 @@
         {"path": "ipfs_accelerate_py/agent_supervisor/merge/database_merge_queue.py", "symbol": "DATABASE_MERGE_QUEUE_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/database-merge-queue@1"}
       ],
       "source_bindings": [
-        {"blob_id": "6ab3e54848a60c78aa404492bdfab7aadac4844d", "path": "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py"},
+        {"blob_id": "6ab3e54848a60c78aa404492bdfab7aadac4844d", "current_blob_id": "87a341d9c50424521cd2198c1d8f8d19e1f76456", "path": "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py"},
         {"blob_id": "db6669155d9f2b9cae4a5e89a33974c1f55c5a99", "path": "ipfs_accelerate_py/agent_supervisor/merge/database_worktree_registry.py"},
-        {"blob_id": "61f056ddcccb19ef0152d7b796167fe648f3a1b7", "path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py"},
+        {"blob_id": "61f056ddcccb19ef0152d7b796167fe648f3a1b7", "current_blob_id": "9e53c4889790d68ecda0ad72d5f3961201229666", "path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py"},
         {"blob_id": "6f15652b9a66c4a6ef646b7891005b9c5e00b76e", "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/process_tree_fencing.py"},
         {"blob_id": "bad051d85f13f52afca0b4bfb89f485318182113", "path": "ipfs_accelerate_py/agent_supervisor/merge/database_merge_queue.py"},
-        {"blob_id": "96ff3976471a2e6d6bbb01a2cd596f6ef399fdef", "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_train.py"},
-        {"blob_id": "3bf8a7e4ab2f5409fba42d92ed8a996b05c3e565", "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py"},
+        {"blob_id": "96ff3976471a2e6d6bbb01a2cd596f6ef399fdef", "current_blob_id": "742f35a9db864f0a6d027278163ff5bdf5f3b317", "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_train.py"},
+        {"blob_id": "3bf8a7e4ab2f5409fba42d92ed8a996b05c3e565", "current_blob_id": "0ca3838f110bd7e5304481814c97acd3dcc8e653", "path": "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py"},
         {"blob_id": "e27746aaa6bda2dfbcf4ec27f70d9adf17c44892", "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py"}
       ],
       "status": "available_with_caveats",
@@ -296,6 +296,32 @@
     {
       "authority": "AutonomousMetaController",
       "blocker": "exact_authority_absent_at_baseline_commit",
+      "current_disposition": {
+        "admitted_as_comparison_baseline": false,
+        "interface_bindings": [
+          {"path": "ipfs_accelerate_py/agent_supervisor/autonomy/runtime.py", "symbol": "AUTONOMOUS_META_CONTROLLER_INTERFACE", "value": "AutonomousMetaController@1"}
+        ],
+        "negative_probes": [],
+        "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+        "positive_probes": [
+          {"kind": "python_class_present", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/runtime.py", "symbol": "AutonomousMetaController"},
+          {"kind": "test_producer_passes", "producer_id": "TP-AUTONOMY-RUNTIME"}
+        ],
+        "qualification_mode": "exact_authority_bindings",
+        "related_non_equivalent_bindings": [],
+        "schema_bindings": [
+          {"path": "ipfs_accelerate_py/agent_supervisor/autonomy/runtime.py", "symbol": "AUTONOMOUS_META_CONTROLLER_SNAPSHOT_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/autonomy/runtime-snapshot@1"}
+        ],
+        "source_bindings": [
+          {"baseline_absent": true, "current_blob_id": "2b58f901595bc6cc5237a9069d4b7e9200e74710", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/runtime.py"}
+        ],
+        "status": "available",
+        "submodule_bindings": [],
+        "symbol_bindings": [
+          {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/runtime.py", "symbol": "AutonomousMetaController"}
+        ],
+        "test_producer_bindings": ["TP-AUTONOMY-RUNTIME"]
+      },
       "interface_bindings": [],
       "negative_probes": [
         {"kind": "python_class_absent", "scope": "ipfs_accelerate_py/agent_supervisor", "symbol": "AutonomousMetaController"}
@@ -314,6 +340,31 @@
     {
       "authority": "autonomy package",
       "blocker": "exact_package_absent_at_baseline_commit",
+      "current_disposition": {
+        "admitted_as_comparison_baseline": false,
+        "caveat": "The current package and its bounded contracts are exact-source-bound and pass their focused producer, but the package declares no standalone versioned interface or schema identity. Presence is not a qualified PCPC comparison baseline.",
+        "interface_bindings": [],
+        "negative_probes": [],
+        "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+        "positive_probes": [
+          {"kind": "git_path_present", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/__init__.py"},
+          {"kind": "python_class_present", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/contracts.py", "symbol": "AutonomyPolicy"},
+          {"kind": "test_producer_passes", "producer_id": "TP-AUTONOMY-CONTRACTS"}
+        ],
+        "qualification_mode": "source_presence_with_typed_interface_gap",
+        "related_non_equivalent_bindings": [],
+        "schema_bindings": [],
+        "source_bindings": [
+          {"baseline_absent": true, "current_blob_id": "21e152fabdaef1248d410407607ff046a4a61b4c", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/__init__.py"},
+          {"baseline_absent": true, "current_blob_id": "3896faab81c4f7e4635dde38e04260e8f2f694bc", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/contracts.py"}
+        ],
+        "status": "available_with_caveats",
+        "submodule_bindings": [],
+        "symbol_bindings": [
+          {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/contracts.py", "symbol": "AutonomyPolicy"}
+        ],
+        "test_producer_bindings": ["TP-AUTONOMY-CONTRACTS"]
+      },
       "interface_bindings": [],
       "negative_probes": [
         {"kind": "git_path_absent", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/__init__.py"}
@@ -330,6 +381,29 @@
     {
       "authority": "cognitive scheduler",
       "blocker": "exact_authority_absent_at_baseline_commit",
+      "current_disposition": {
+        "admitted_as_comparison_baseline": false,
+        "caveat": "The current CognitiveScheduler class is exact-source-bound and passes its focused producer, but its module declares no standalone versioned interface or schema identity. Presence is not a qualified PCPC comparison baseline.",
+        "interface_bindings": [],
+        "negative_probes": [],
+        "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+        "positive_probes": [
+          {"kind": "python_class_present", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/cognitive_scheduler.py", "symbol": "CognitiveScheduler"},
+          {"kind": "test_producer_passes", "producer_id": "TP-COGNITIVE-SCHEDULER"}
+        ],
+        "qualification_mode": "source_presence_with_typed_interface_gap",
+        "related_non_equivalent_bindings": [],
+        "schema_bindings": [],
+        "source_bindings": [
+          {"baseline_absent": true, "current_blob_id": "a8da7d06eccc36e3d5e5b03441c99b49c1027892", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/cognitive_scheduler.py"}
+        ],
+        "status": "available_with_caveats",
+        "submodule_bindings": [],
+        "symbol_bindings": [
+          {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/cognitive_scheduler.py", "symbol": "CognitiveScheduler"}
+        ],
+        "test_producer_bindings": ["TP-COGNITIVE-SCHEDULER"]
+      },
       "interface_bindings": [],
       "negative_probes": [
         {"kind": "python_class_absent", "scope": "ipfs_accelerate_py/agent_supervisor", "symbol": "CognitiveScheduler"}
@@ -348,6 +422,32 @@
     {
       "authority": "experience ledger",
       "blocker": "exact_authority_absent_at_baseline_commit",
+      "current_disposition": {
+        "admitted_as_comparison_baseline": false,
+        "interface_bindings": [
+          {"path": "ipfs_accelerate_py/agent_supervisor/autonomy/experience_ledger.py", "symbol": "EXPERIENCE_LEDGER_INTERFACE", "value": "ExperienceLedger@1"}
+        ],
+        "negative_probes": [],
+        "package_bindings": ["package:ipfs_accelerate_py@0.0.45"],
+        "positive_probes": [
+          {"kind": "python_class_present", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/experience_ledger.py", "symbol": "ExperienceLedger"},
+          {"kind": "test_producer_passes", "producer_id": "TP-EXPERIENCE-LEDGER"}
+        ],
+        "qualification_mode": "exact_authority_bindings",
+        "related_non_equivalent_bindings": [],
+        "schema_bindings": [
+          {"path": "ipfs_accelerate_py/agent_supervisor/autonomy/experience_ledger.py", "symbol": "EXPERIENCE_LEDGER_SCHEMA", "value": "ipfs_accelerate_py/agent-supervisor/autonomy/experience-ledger@1"}
+        ],
+        "source_bindings": [
+          {"baseline_absent": true, "current_blob_id": "be44336d245306c947c47300cf89524167bc30f2", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/experience_ledger.py"}
+        ],
+        "status": "available",
+        "submodule_bindings": [],
+        "symbol_bindings": [
+          {"kind": "class", "path": "ipfs_accelerate_py/agent_supervisor/autonomy/experience_ledger.py", "symbol": "ExperienceLedger"}
+        ],
+        "test_producer_bindings": ["TP-EXPERIENCE-LEDGER"]
+      },
       "interface_bindings": [],
       "negative_probes": [
         {"kind": "python_class_absent", "scope": "ipfs_accelerate_py/agent_supervisor", "symbol": "ExperienceLedger"}

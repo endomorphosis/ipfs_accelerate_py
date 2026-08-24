@@ -6,6 +6,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import zlib
 from dataclasses import replace
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -114,6 +115,381 @@ def test_qualification_recomputes_identity_and_rejects_receipt_shaped_edit() -> 
     receipt["test_evidence_class"] = "current_tree_hermetic_but_forged"
     assert not module._stored_qualification_receipt_is_intact(
         receipt, head="commit-current", tree="tree-current"
+    )
+
+
+def test_owner_bound_qualification_reads_documents_from_exact_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_materializer()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.name", "PCPC Test")
+    git("config", "user.email", "pcpc-test@example.invalid")
+    baseline_path = repository / module.BASELINE_RELATIVE
+    inventory_path = repository / module.PREREQUISITES_RELATIVE
+    baseline_path.parent.mkdir(parents=True)
+    baseline_at_owner = {"test_producers": ["owner-producer"]}
+    inventory_at_owner = {
+        "dispositions": [{"authority": "owner-authority"}],
+        "source_bindings": [{"blob_id": "1" * 40}],
+    }
+    baseline_raw = (json.dumps(baseline_at_owner, sort_keys=True) + "\n").encode()
+    inventory_raw = (json.dumps(inventory_at_owner, sort_keys=True) + "\n").encode()
+    baseline_path.write_bytes(baseline_raw)
+    inventory_path.write_bytes(inventory_raw)
+    git("add", module.BASELINE_RELATIVE, module.PREREQUISITES_RELATIVE)
+    git("commit", "-qm", "owner qualification documents")
+    head = git("rev-parse", "HEAD")
+    tree = git("rev-parse", "HEAD^{tree}")
+    monkeypatch.setattr(module, "REPO_ROOT", repository)
+    monkeypatch.setattr(module, "BASE_COMMIT", head)
+
+    probe: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "procedure-compiler-prerequisite-probe@1"
+        ),
+        "program": module.PROGRAM,
+        "baseline_commit": head,
+        "baseline_tree": tree,
+        "repository_commit": head,
+        "repository_tree": tree,
+        "baseline_sha256": hashlib.sha256(baseline_raw).hexdigest(),
+        "prerequisites_sha256": hashlib.sha256(inventory_raw).hexdigest(),
+        "authorities": [{"authority": "owner-authority"}],
+        "authority_count": 1,
+        "test_producer_count": 1,
+        "source_drift_permitted": False,
+        "simulated": False,
+    }
+    probe["probe_cid"] = module.content_identity(probe)
+    receipt = _qualification(module)
+    receipt["repository_commit"] = head
+    receipt["repository_tree"] = tree
+    receipt["prerequisite_probe"] = probe
+    receipt["prerequisite_execution"] = {"sentinel": "owner-bound"}
+    receipt.pop("qualification_cid")
+    receipt["qualification_cid"] = module.content_identity(receipt)
+
+    # The campaign advances its working inventory after Quack's owner commit.
+    inventory_at_current = copy.deepcopy(inventory_at_owner)
+    source_binding = inventory_at_current["source_bindings"][0]
+    assert isinstance(source_binding, dict)
+    source_binding["current_blob_id"] = "2" * 40
+    inventory_path.write_text(
+        json.dumps(inventory_at_current, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+    observed: dict[str, object] = {}
+
+    def validate_historical_execution(
+        execution: object,
+        *,
+        head: str,
+        tree: str,
+        baseline: object,
+        inventory: object,
+    ) -> bool:
+        observed.update(
+            execution=execution,
+            head=head,
+            tree=tree,
+            baseline=baseline,
+            inventory=inventory,
+        )
+        return True
+
+    monkeypatch.setattr(
+        module,
+        "_stored_prerequisite_execution_matches_documents",
+        validate_historical_execution,
+    )
+    assert not module._stored_qualification_receipt_is_intact(
+        receipt,
+        head=head,
+        tree=tree,
+        require_prerequisite_probe=True,
+    )
+    assert module._stored_owner_bound_qualification_receipt_is_intact(
+        receipt, head=head, tree=tree
+    )
+    assert observed["execution"] == {"sentinel": "owner-bound"}
+    assert observed["head"] == head
+    assert observed["tree"] == tree
+    assert observed["baseline"] == baseline_at_owner
+    assert observed["inventory"] == inventory_at_owner
+
+    # Local replacement refs cannot substitute a later campaign commit for
+    # the exact owner object graph used by projection verification.
+    git("add", module.PREREQUISITES_RELATIVE)
+    git("commit", "-qm", "later campaign inventory")
+    later_head = git("rev-parse", "HEAD")
+    git("replace", head, later_head)
+    assert module._repository_identity_is_exact(head=head, tree=tree)
+    assert module._repository_blob_bytes(head, module.PREREQUISITES_RELATIVE) == inventory_raw
+
+    forged = copy.deepcopy(receipt)
+    probe = forged["prerequisite_probe"]
+    assert isinstance(probe, dict)
+    probe["prerequisites_sha256"] = "0" * 64
+    probe.pop("probe_cid")
+    probe["probe_cid"] = module.content_identity(probe)
+    forged.pop("qualification_cid")
+    forged["qualification_cid"] = module.content_identity(forged)
+    assert not module._stored_owner_bound_qualification_receipt_is_intact(
+        forged, head=head, tree=tree
+    )
+    assert not module._stored_owner_bound_qualification_receipt_is_intact(
+        receipt, head=head, tree="0" * 40
+    )
+
+
+def test_historical_prerequisite_loader_rejects_unsafe_or_unbounded_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_materializer()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.name", "PCPC Test")
+    git("config", "user.email", "pcpc-test@example.invalid")
+    document = repository / module.BASELINE_RELATIVE
+    document.parent.mkdir(parents=True)
+    document.symlink_to("untrusted-target.json")
+    git("add", module.BASELINE_RELATIVE)
+    git("commit", "-qm", "symlink prerequisite")
+    symlink_head = git("rev-parse", "HEAD")
+    monkeypatch.setattr(module, "REPO_ROOT", repository)
+
+    with pytest.raises(module.MaterializationError, match="regular blob"):
+        module._repository_blob_bytes(symlink_head, module.BASELINE_RELATIVE)
+    with pytest.raises(module.MaterializationError, match="tree entry"):
+        module._repository_blob_bytes(symlink_head, module.PREREQUISITES_RELATIVE)
+
+    document.unlink()
+    document.write_text("not JSON\n", encoding="utf-8")
+    git("add", module.BASELINE_RELATIVE)
+    git("commit", "-qm", "malformed prerequisite")
+    malformed_head = git("rev-parse", "HEAD")
+    with pytest.raises(module.MaterializationError, match="valid JSON"):
+        module._repository_json(malformed_head, module.BASELINE_RELATIVE)
+
+    document.write_bytes(b"x" * (module.MAX_PREREQUISITE_DOCUMENT_BYTES + 1))
+    git("add", module.BASELINE_RELATIVE)
+    git("commit", "-qm", "oversized prerequisite")
+    oversized_head = git("rev-parse", "HEAD")
+    with pytest.raises(module.MaterializationError, match="out of bounds"):
+        module._repository_blob_bytes(oversized_head, module.BASELINE_RELATIVE)
+
+
+def test_historical_blob_stream_rejects_corrupt_size_and_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_materializer()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.name", "PCPC Test")
+    git("config", "user.email", "pcpc-test@example.invalid")
+    document = repository / module.BASELINE_RELATIVE
+    document.parent.mkdir(parents=True)
+    document.write_bytes(b"aaaa")
+    git("add", module.BASELINE_RELATIVE)
+    git("commit", "-qm", "bounded blob")
+    head = git("rev-parse", "HEAD")
+    blob_id = git("rev-parse", f"HEAD:{module.BASELINE_RELATIVE}")
+    loose_object = repository / ".git/objects" / blob_id[:2] / blob_id[2:]
+    monkeypatch.setattr(module, "REPO_ROOT", repository)
+
+    assert module._repository_blob_bytes(head, module.BASELINE_RELATIVE) == b"aaaa"
+
+    loose_object.chmod(0o600)
+    loose_object.write_bytes(zlib.compress(b"blob 4\0bbbb"))
+    with pytest.raises(module.MaterializationError, match="identity does not match"):
+        module._repository_blob_bytes(head, module.BASELINE_RELATIVE)
+
+    loose_object.write_bytes(
+        zlib.compress(
+            b"blob 4\0" + b"x" * (module.MAX_PREREQUISITE_DOCUMENT_BYTES + 1)
+        )
+    )
+    with pytest.raises(module.MaterializationError, match="size bound"):
+        module._repository_blob_bytes(head, module.BASELINE_RELATIVE)
+
+
+def test_historical_path_rehashes_every_intermediate_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_materializer()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repository,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.name", "PCPC Test")
+    git("config", "user.email", "pcpc-test@example.invalid")
+    document = repository / module.BASELINE_RELATIVE
+    document.parent.mkdir(parents=True)
+    document.write_text('{"version":"owner"}\n', encoding="utf-8")
+    git("add", module.BASELINE_RELATIVE)
+    git("commit", "-qm", "owner tree")
+    owner_head = git("rev-parse", "HEAD")
+    owner_tree = git("rev-parse", "HEAD^{tree}")
+    parent_path = str(Path(module.BASELINE_RELATIVE).parent)
+    owner_parent_tree = git("rev-parse", f"HEAD:{parent_path}")
+
+    document.write_text('{"version":"later"}\n', encoding="utf-8")
+    git("add", module.BASELINE_RELATIVE)
+    git("commit", "-qm", "later tree")
+    later_parent_tree = git("rev-parse", f"HEAD:{parent_path}")
+    later_tree_result = subprocess.run(
+        ["git", "--no-replace-objects", "cat-file", "tree", later_parent_tree],
+        cwd=repository,
+        capture_output=True,
+        check=False,
+    )
+    assert later_tree_result.returncode == 0, later_tree_result.stderr
+
+    loose_owner_tree = (
+        repository / ".git/objects" / owner_parent_tree[:2] / owner_parent_tree[2:]
+    )
+    loose_owner_tree.chmod(0o600)
+    raw_later_tree = later_tree_result.stdout
+    loose_owner_tree.write_bytes(
+        zlib.compress(
+            f"tree {len(raw_later_tree)}\0".encode("ascii") + raw_later_tree
+        )
+    )
+    monkeypatch.setattr(module, "REPO_ROOT", repository)
+
+    with pytest.raises(module.MaterializationError, match="identity does not match"):
+        module._repository_blob_bytes(
+            owner_head, module.BASELINE_RELATIVE, expected_tree=owner_tree
+        )
+
+
+def test_p0_history_binds_stored_qualification_cid() -> None:
+    module = _load_materializer()
+    qualification = {"qualification_cid": "qualification:sealed"}
+    head = "a" * 40
+    tree = "b" * 40
+    task_history: dict[str, tuple[str, dict[str, object]]] = {}
+    acceptance_rows: list[tuple[object, ...]] = []
+    for task_alias in module.P0_TASKS:
+        criterion = f"criterion:{task_alias}"
+        task_history[task_alias] = (
+            "completed",
+            {
+                "completion_receipt": {
+                    "schema": (
+                        "ipfs_accelerate_py/agent-supervisor/"
+                        "procedure-compiler-p0-completion@1"
+                    ),
+                    "task_id": task_alias,
+                    "qualification_cid": qualification["qualification_cid"],
+                    "repository_commit": head,
+                    "repository_tree": tree,
+                }
+            },
+        )
+        acceptance_rows.append(
+            (
+                task_alias,
+                0,
+                criterion,
+                json.dumps(
+                    {
+                        "criterion": criterion,
+                        "evidence_kind": "validation",
+                        "required_digest": qualification["qualification_cid"],
+                    },
+                    sort_keys=True,
+                ),
+            )
+        )
+
+    assert module._qualification_is_bound_to_p0_history(
+        qualification,
+        task_history=task_history,
+        acceptance_rows=acceptance_rows,
+        head=head,
+        tree=tree,
+    )
+
+    forged_acceptance = copy.deepcopy(acceptance_rows)
+    policy = json.loads(forged_acceptance[0][3])
+    policy["required_digest"] = "qualification:forged"
+    forged_acceptance[0] = (*forged_acceptance[0][:3], json.dumps(policy))
+    assert not module._qualification_is_bound_to_p0_history(
+        qualification,
+        task_history=task_history,
+        acceptance_rows=forged_acceptance,
+        head=head,
+        tree=tree,
+    )
+
+    forged_history = copy.deepcopy(task_history)
+    completion = forged_history[module.P0_TASKS[0]][1]["completion_receipt"]
+    assert isinstance(completion, dict)
+    completion["qualification_cid"] = "qualification:forged"
+    assert not module._qualification_is_bound_to_p0_history(
+        qualification,
+        task_history=forged_history,
+        acceptance_rows=acceptance_rows,
+        head=head,
+        tree=tree,
     )
 
 
@@ -238,8 +614,17 @@ data.mkdir()
 connection = module._sealed_duckdb_connection(duckdb)
 module._seal_external_access(
     connection,
-    allowed_paths=(catalog, Path(f"{{catalog}}.wal")),
+    allowed_paths=(
+        catalog,
+        Path(f"{{catalog}}.wal"),
+        Path(f"{{catalog}}.wal.checkpoint"),
+    ),
     allowed_directories=(data,),
+)
+assert sorted(
+    connection.execute("SELECT current_setting('allowed_paths')").fetchone()[0]
+) == sorted(
+    [str(catalog), f"{{catalog}}.wal", f"{{catalog}}.wal.checkpoint"]
 )
 assert connection.execute(
     "SELECT current_setting('enable_external_access'), "
@@ -296,6 +681,149 @@ def test_ducklake_projection_filesystem_outage_is_typed_and_non_authoritative(
     assert result["projected"] is False
     assert result["authority"] is False
     assert "FileExistsError" in result["reason"]
+
+
+def test_ducklake_projection_admits_only_required_checkpoint_sidecar_or_typed_outage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_materializer()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    result = module._project_ducklake(
+        config=_scheduler_config(),
+        run={
+            "run_id": "run-checkpoint",
+            "repository_commit": "a" * 40,
+            "repository_tree": "b" * 40,
+            "plan_root_cid": "plan-root",
+            "qualification_cid": "qualification",
+            "task_count": 1,
+            "ready_count": 1,
+        },
+        qualification={
+            "qualification_cid": "qualification",
+            "repository_commit": "a" * 40,
+            "repository_tree": "b" * 40,
+            "test_evidence_class": "current_tree_hermetic",
+            "simulated": False,
+        },
+        tasks=(
+            {
+                "task_cid": "task-cid",
+                "task_alias": "PCPC-000",
+                "status": "ready",
+                "revision": 1,
+                "goal_cid": "goal-cid",
+            },
+        ),
+    )
+
+    if result["projected"] is False:
+        # The sealed validation image intentionally has no ambient DuckDB
+        # extension cache.  DuckLake is explicitly non-authoritative and its
+        # configured outage policy requires a typed receipt, not a test-only
+        # install or network fallback.  The separate policy assertion above
+        # still proves that the checkpoint sidecar is the only extra path.
+        extension = (
+            Path.home()
+            / ".duckdb/extensions/v1.5.5/linux_arm64/ducklake.duckdb_extension"
+        )
+        assert result == {
+            "projected": False,
+            "authority": False,
+            "reason": (
+                f'IOException: IO Error: Extension "{extension}" not found.\n'
+                'Extension "ducklake" is an existing extension.\n\n'
+                'Install it first using "INSTALL ducklake".'
+            ),
+        }
+    else:
+        assert result == {
+            "projected": True,
+            "authority": False,
+            "catalog_path": module.DUCKLAKE_CATALOG_RELATIVE,
+            "data_path": module.DUCKLAKE_DATA_RELATIVE,
+            "run_id": "run-checkpoint",
+            "task_rows": 1,
+            "qualification_rows": 1,
+        }
+    assert not (tmp_path / module.CONTROL_DATABASE_RELATIVE).exists()
+
+
+def test_live_history_snapshot_is_hash_bound_and_never_opens_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load_materializer()
+    replica_path = tmp_path / module.READ_REPLICA_DATABASE_RELATIVE
+    replica_path.parent.mkdir(parents=True)
+    replica_bytes = b"sealed non-authoritative read replica"
+    replica_path.write_bytes(replica_bytes)
+    replica_path.chmod(0o600)
+    database_path = tmp_path / module.CONTROL_DATABASE_RELATIVE
+    state_dir = tmp_path / module.QUACK_OWNER_STATE_RELATIVE
+    state_dir.mkdir(parents=True)
+    repository_prefix = f"git:{module.PROGRAM}"
+    status = {
+        "identity": {
+            "repository_id": (
+                f"{repository_prefix}:commit:{'a' * 40}:tree:{'b' * 40}"
+            )
+        },
+        "read_replica": {
+            "path": str(replica_path),
+            "sha256": f"sha256:{hashlib.sha256(replica_bytes).hexdigest()}",
+            "size_bytes": len(replica_bytes),
+            "server_id": "server:test",
+            "database_uuid": "database:test",
+            "generation": 1,
+            "schema_revision": 1,
+            "refresh_sequence": 7,
+            "refreshed_at_ms": 8,
+        },
+    }
+    status_path = state_dir / "quack-state-server.status.json"
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+    config = SimpleNamespace(
+        database_path=database_path,
+        state_dir=state_dir,
+        repository_id_prefix=repository_prefix,
+    )
+
+    class FakeLauncher:
+        @staticmethod
+        def load_program_config(repo_root: Path) -> SimpleNamespace:
+            assert repo_root == tmp_path
+            return config
+
+        @staticmethod
+        def validate_owner_status_payload(
+            payload: object, *, config: object, head: str, tree: str
+        ) -> dict[str, object]:
+            assert payload == status
+            assert config is not None
+            assert head == "a" * 40
+            assert tree == "b" * 40
+            return {}
+
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(module, "_load_program_launcher_module", lambda: FakeLauncher)
+    monkeypatch.setattr(
+        module,
+        "_open_stable_control_database",
+        lambda _path: (_ for _ in ()).throw(AssertionError("authority opened")),
+    )
+
+    with module._validated_read_replica_snapshot() as (snapshot, observation):
+        assert snapshot != replica_path
+        assert snapshot.read_bytes() == replica_bytes
+        assert observation["sha256"] == status["read_replica"]["sha256"]
+        assert observation["refresh_sequence"] == 7
+    assert not database_path.exists()
+
+    status["read_replica"]["sha256"] = "sha256:" + "0" * 64
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+    with pytest.raises(module.MaterializationError, match="digest binding"):
+        with module._validated_read_replica_snapshot():
+            raise AssertionError("invalid replica was admitted")
 
 
 def test_unsafe_projection_config_is_rejected_before_qualification_or_control_write(
@@ -768,8 +1296,34 @@ def _producer_fixture(module: ModuleType) -> tuple[dict[str, object], dict[str, 
         "dispositions": [
             {
                 "authority": "AvailableAuthority",
-                "status": "available_with_caveats",
-                "test_producer_bindings": ["TP-PASS", "TP-FAIL"],
+                "status": "missing",
+                "test_producer_bindings": [],
+                "current_disposition": {
+                    "status": "available_with_caveats",
+                    "source_bindings": [
+                        {
+                            "path": "pass.py",
+                            "blob_id": "1" * 40,
+                            "current_blob_id": "3" * 40,
+                        }
+                    ],
+                    "symbol_bindings": [
+                        {"path": "pass.py", "kind": "function", "symbol": "test_pass"}
+                    ],
+                    "interface_bindings": [],
+                    "schema_bindings": [],
+                    "package_bindings": [],
+                    "submodule_bindings": [],
+                    "test_producer_bindings": ["TP-PASS", "TP-FAIL"],
+                    "related_non_equivalent_bindings": [],
+                    "negative_probes": [],
+                    "positive_probes": [
+                        {"kind": "test_producer_passes", "producer_id": "TP-PASS"}
+                    ],
+                    "qualification_mode": "source_presence_with_typed_interface_gap",
+                    "caveat": "synthetic typed interface gap",
+                    "admitted_as_comparison_baseline": False,
+                },
             },
             {
                 "authority": "MissingAuthority",
@@ -832,6 +1386,9 @@ def test_current_prerequisite_execution_binds_exact_counts_and_authorities(
     assert by_producer["TP-PASS"]["source_blob_ids"] == ["3" * 40]
     by_authority = {item["authority"]: item for item in execution["authority_receipts"]}
     assert by_authority["AvailableAuthority"]["producer_ids"] == ["TP-FAIL", "TP-PASS"]
+    assert by_authority["AvailableAuthority"]["status"] == "available_with_caveats"
+    assert by_authority["AvailableAuthority"]["admitted_as_comparison_baseline"] is False
+    assert by_authority["MissingAuthority"]["admitted_as_comparison_baseline"] is None
     assert (
         by_authority["MissingAuthority"]["evidence_disposition"]
         == "not_applicable_missing_authority"
@@ -862,6 +1419,21 @@ def test_current_prerequisite_execution_binds_exact_counts_and_authorities(
     forged["execution_cid"] = module.content_identity(forged)
     assert not module._stored_prerequisite_execution_is_intact(
         forged, head="commit-current", tree="tree-current"
+    )
+
+    forged_admission = copy.deepcopy(execution)
+    authority = next(
+        item
+        for item in forged_admission["authority_receipts"]
+        if item["authority"] == "AvailableAuthority"
+    )
+    authority["admitted_as_comparison_baseline"] = True
+    authority.pop("authority_receipt_cid")
+    authority["authority_receipt_cid"] = module.content_identity(authority)
+    forged_admission.pop("execution_cid")
+    forged_admission["execution_cid"] = module.content_identity(forged_admission)
+    assert not module._stored_prerequisite_execution_is_intact(
+        forged_admission, head="commit-current", tree="tree-current"
     )
 
 
@@ -920,21 +1492,33 @@ def test_current_prerequisite_execution_rejects_untyped_same_count_failure(
         )
 
 
+@pytest.mark.parametrize("current_commit", [None, "b" * 40])
 def test_exact_gitlink_checkout_is_a_read_only_qualification_precondition(
     monkeypatch: pytest.MonkeyPatch,
+    current_commit: str | None,
 ) -> None:
     module = _load_materializer()
-    commit = "a" * 40
-    baseline = {
-        "sibling_release_bindings": [
-            {"binding_id": "gitlink:sibling", "path": "sibling", "gitlink_commit": commit}
-        ]
+    baseline_commit = "a" * 40
+    expected_commit = current_commit or baseline_commit
+    binding = {
+        "binding_id": "gitlink:sibling",
+        "path": "sibling",
+        "gitlink_commit": baseline_commit,
     }
-    monkeypatch.setattr(module, "_object_id", lambda revision, path: commit)
+    if current_commit is not None:
+        binding["current_gitlink_commit"] = current_commit
+    baseline = {
+        "sibling_release_bindings": [binding]
+    }
+    monkeypatch.setattr(module, "_object_id", lambda revision, path: expected_commit)
     monkeypatch.setattr(
         module,
         "_git",
-        lambda *args: f"-{commit} sibling" if args[:2] == ("submodule", "status") else "",
+        lambda *args: (
+            f"-{expected_commit} sibling"
+            if args[:2] == ("submodule", "status")
+            else ""
+        ),
     )
     with pytest.raises(module.MaterializationError, match="exact sibling checkout required"):
         module._verify_exact_gitlink_checkouts(baseline, head="commit-current", tree="tree-current")
