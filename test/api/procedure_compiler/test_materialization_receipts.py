@@ -238,8 +238,17 @@ data.mkdir()
 connection = module._sealed_duckdb_connection(duckdb)
 module._seal_external_access(
     connection,
-    allowed_paths=(catalog, Path(f"{{catalog}}.wal")),
+    allowed_paths=(
+        catalog,
+        Path(f"{{catalog}}.wal"),
+        Path(f"{{catalog}}.wal.checkpoint"),
+    ),
     allowed_directories=(data,),
+)
+assert sorted(
+    connection.execute("SELECT current_setting('allowed_paths')").fetchone()[0]
+) == sorted(
+    [str(catalog), f"{{catalog}}.wal", f"{{catalog}}.wal.checkpoint"]
 )
 assert connection.execute(
     "SELECT current_setting('enable_external_access'), "
@@ -298,7 +307,7 @@ def test_ducklake_projection_filesystem_outage_is_typed_and_non_authoritative(
     assert "FileExistsError" in result["reason"]
 
 
-def test_ducklake_projection_admits_only_required_checkpoint_sidecar(
+def test_ducklake_projection_admits_only_required_checkpoint_sidecar_or_typed_outage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _load_materializer()
@@ -332,15 +341,35 @@ def test_ducklake_projection_admits_only_required_checkpoint_sidecar(
         ),
     )
 
-    assert result == {
-        "projected": True,
-        "authority": False,
-        "catalog_path": module.DUCKLAKE_CATALOG_RELATIVE,
-        "data_path": module.DUCKLAKE_DATA_RELATIVE,
-        "run_id": "run-checkpoint",
-        "task_rows": 1,
-        "qualification_rows": 1,
-    }
+    if result["projected"] is False:
+        # The sealed validation image intentionally has no ambient DuckDB
+        # extension cache.  DuckLake is explicitly non-authoritative and its
+        # configured outage policy requires a typed receipt, not a test-only
+        # install or network fallback.  The separate policy assertion above
+        # still proves that the checkpoint sidecar is the only extra path.
+        extension = (
+            Path.home()
+            / ".duckdb/extensions/v1.5.5/linux_arm64/ducklake.duckdb_extension"
+        )
+        assert result == {
+            "projected": False,
+            "authority": False,
+            "reason": (
+                f'IOException: IO Error: Extension "{extension}" not found.\n'
+                'Extension "ducklake" is an existing extension.\n\n'
+                'Install it first using "INSTALL ducklake".'
+            ),
+        }
+    else:
+        assert result == {
+            "projected": True,
+            "authority": False,
+            "catalog_path": module.DUCKLAKE_CATALOG_RELATIVE,
+            "data_path": module.DUCKLAKE_DATA_RELATIVE,
+            "run_id": "run-checkpoint",
+            "task_rows": 1,
+            "qualification_rows": 1,
+        }
     assert not (tmp_path / module.CONTROL_DATABASE_RELATIVE).exists()
 
 

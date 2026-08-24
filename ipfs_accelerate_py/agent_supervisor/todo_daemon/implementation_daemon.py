@@ -2816,6 +2816,13 @@ _DOCKER_LOCAL_ENDPOINTS = frozenset(
         f"unix:///run/user/{os.getuid()}/docker.sock",
     }
 )
+# Schema loading can occur under a sealed validator UID that differs from the
+# host owner.  Keep syntax admission deterministic; the host-specific set above
+# remains mandatory when ``verify_host`` is true.
+_DOCKER_LOCAL_ENDPOINT_SCHEMA = re.compile(
+    r"(?:unix:///var/run/docker\.sock|"
+    r"unix:///run/user/(?:0|[1-9][0-9]{0,9})/docker\.sock)"
+)
 _CODEX_CONTAINER_HOME = Path("/opt/codex-home")
 _CODEX_CONTAINER_EXECUTABLE = Path("/usr/local/bin/codex")
 _CLI_CONTAINER_HOME = Path("/opt/cli-home")
@@ -3392,9 +3399,9 @@ class ExternalProviderIsolationConfig:
             field="runtime_executable",
         )
         endpoint = str(parsed.get("runtime_endpoint") or "")
-        if endpoint not in _DOCKER_LOCAL_ENDPOINTS:
+        if _DOCKER_LOCAL_ENDPOINT_SCHEMA.fullmatch(endpoint) is None:
             raise ValueError(
-                "external isolation Docker endpoint must be an admitted local socket"
+                "external isolation Docker endpoint must be a canonical local socket"
             )
         image_id = str(parsed.get("image_id") or "")
         if re.fullmatch(r"sha256:[0-9a-f]{64}", image_id) is None:
@@ -3537,11 +3544,15 @@ def validate_external_provider_isolation_config(
     *,
     verify_host: bool = True,
 ) -> ExternalProviderIsolationConfig:
-    """Validate one sealed external-isolation config and its local runtime."""
+    """Validate one sealed config and, when requested, its local runtime."""
 
     config = ExternalProviderIsolationConfig.parse(value)
     if not verify_host:
         return config
+    if config.runtime_endpoint not in _DOCKER_LOCAL_ENDPOINTS:
+        raise ValueError(
+            "external isolation Docker endpoint is not admitted for the current runtime"
+        )
     runtime = Path(config.runtime_executable)
     try:
         runtime_entry = runtime.lstat()
