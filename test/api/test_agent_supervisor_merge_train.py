@@ -2038,6 +2038,99 @@ def test_false_completion_reopen_merges_and_seals_qualification_receipt(
     )
 
 
+def test_false_completion_lineage_bounds_distance_not_repository_age(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "implementation/deep-history")
+    (repo / "base.txt").write_text(
+        "candidate output\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "candidate declared output")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-c", "foreign-previous", baseline)
+    _git(repo, "commit", "--allow-empty", "-m", "foreign previous target")
+    foreign_previous = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "main")
+    _git(
+        repo,
+        "merge",
+        "--no-ff",
+        "foreign-previous",
+        "-m",
+        "retain foreign previous as a side-parent ancestor",
+    )
+
+    padding_commits: list[str] = []
+    for index in range(513):
+        _git(
+            repo,
+            "commit",
+            "--allow-empty",
+            "-m",
+            f"older first-parent history {index}",
+        )
+        padding_commits.append(_git(repo, "rev-parse", "HEAD"))
+    near_previous = padding_commits[-1]
+    boundary_previous = padding_commits[1]
+    beyond_bound_previous = padding_commits[0]
+
+    _git(
+        repo,
+        "merge",
+        "--no-ff",
+        "implementation/deep-history",
+        "-m",
+        "integrate exact candidate",
+    )
+    target = _git(repo, "rev-parse", "HEAD")
+    assert int(_git(repo, "rev-list", "--first-parent", "--count", target)) > 512
+
+    attempt = _database_projection_attempt(
+        attempt_id="attempt:deep-lineage",
+        claim_id="claim:deep-lineage",
+        task_cid="task:cid:ref-040",
+        attempt_number=1,
+    )
+    daemon, _paths, _binding = _database_projection_daemon(
+        repo=repo,
+        attempt_root=repo / "attempts",
+        merge_queue_dir=tmp_path / "merge-queue",
+        attempt=attempt,
+        record=_database_projection_record(revision=2),
+    )
+    task = daemon._load_tasks()[0]
+
+    def prove(previous_target_commit: str) -> dict[str, object]:
+        return daemon._false_positive_completion_integration_lineage(
+            task,
+            candidate_commit=candidate,
+            baseline_ref=baseline,
+            previous_target_commit=previous_target_commit,
+            target_commit=target,
+        )
+
+    near = prove(near_previous)
+    assert near["passed"] is True, near
+    assert near["reason"] == "false_positive_completion_merge_lineage_proved"
+    assert near["first_parent_distance"] == 1
+
+    boundary = prove(boundary_previous)
+    assert boundary["passed"] is True, boundary
+    assert boundary["first_parent_distance"] == 512
+
+    beyond_bound = prove(beyond_bound_previous)
+    assert beyond_bound["passed"] is False
+    assert beyond_bound["reason"] == "false_completion_lineage_history_unbounded"
+
+    missing = prove(foreign_previous)
+    assert missing["passed"] is False
+    assert missing["reason"] == "false_completion_lineage_history_unbounded"
+
+
 def test_merge_train_rejects_a_mismatched_bound_queue_target(
     tmp_path: Path,
 ) -> None:

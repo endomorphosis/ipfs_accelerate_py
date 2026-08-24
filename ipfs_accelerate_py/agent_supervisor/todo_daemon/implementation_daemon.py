@@ -27118,11 +27118,12 @@ class PortalImplementationDaemon:
             proof["reason"] = "false_completion_lineage_output_identity_invalid"
             return proof
 
+        max_first_parent_distance = 512
         history = self._run_git(
             [
                 "rev-list",
                 "--first-parent",
-                "--max-count=513",
+                f"--max-count={max_first_parent_distance + 1}",
                 resolved["target_commit"],
             ],
             cwd=self.repo_root,
@@ -27132,8 +27133,9 @@ class PortalImplementationDaemon:
             return proof
         commits = [line.strip().casefold() for line in history.stdout.splitlines()]
         if (
-            len(commits) > 512
-            or resolved["previous_target_commit"] not in commits
+            len(commits) > max_first_parent_distance + 1
+            or not commits
+            or commits[0] != resolved["target_commit"]
             or any(
                 re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", commit) is None
                 for commit in commits
@@ -27141,7 +27143,15 @@ class PortalImplementationDaemon:
         ):
             proof["reason"] = "false_completion_lineage_history_unbounded"
             return proof
+        if resolved["previous_target_commit"] not in commits:
+            # Repository history older than the previous target is
+            # irrelevant; only its distance from the target is bounded.  An
+            # absent match is either farther than the bounded window or not
+            # on the target's first-parent lineage, so it remains fail-closed.
+            proof["reason"] = "false_completion_lineage_history_unbounded"
+            return proof
         previous_index = commits.index(resolved["previous_target_commit"])
+        proof["first_parent_distance"] = previous_index
         if previous_index == 0:
             proof["reason"] = "false_completion_lineage_merge_missing"
             return proof
