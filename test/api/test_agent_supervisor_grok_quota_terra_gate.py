@@ -1680,6 +1680,48 @@ def test_legacy_non_route_capacity_classification_remains_available(
     assert len(classifier_calls) == 1
 
 
+def test_docker_cleanup_watchdog_cannot_write_candidate_bytecode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeWatchdog:
+        def poll(self) -> None:
+            return None
+
+        def wait(self, *, timeout: float) -> int:
+            assert timeout > 0
+            return 0
+
+    def fake_popen(command: list[str], **kwargs: object) -> FakeWatchdog:
+        captured["command"] = list(command)
+        captured.update(kwargs)
+        return FakeWatchdog()
+
+    monkeypatch.setattr(grok_cli_runner.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(
+        grok_cli_runner,
+        "_remove_exact_docker_container",
+        lambda **_kwargs: None,
+    )
+    lease = grok_cli_runner._DockerContainerLease.create(
+        "/usr/bin/docker",
+        provider="codex",
+        provider_home=tmp_path / "asref-codex-home-test",
+        prompt_path=tmp_path / "asref-grok-prompt-test",
+    )
+    try:
+        command = captured["command"]
+        assert isinstance(command, list)
+        assert command[:3] == [grok_cli_runner.sys.executable, "-I", "-B"]
+        assert command[3] == str(Path(grok_cli_runner.__file__).resolve())
+        assert command[4] == grok_cli_runner._DOCKER_CLEANUP_WATCHDOG_ARG
+        assert captured["cwd"] == "/"
+    finally:
+        lease.close(docker_run_finished=False)
+
+
 def test_docker_codex_boundary_transforms_only_validated_sandbox(
     tmp_path: Path,
 ) -> None:

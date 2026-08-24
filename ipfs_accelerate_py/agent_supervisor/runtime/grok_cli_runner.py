@@ -2498,6 +2498,7 @@ class _DockerContainerLease:
                 [
                     sys.executable,
                     "-I",
+                    "-B",
                     runner_entry,
                     _DOCKER_CLEANUP_WATCHDOG_ARG,
                     "--provider",

@@ -1461,9 +1461,13 @@ def test_docker_cleanup_watchdog_launch_is_python_isolated(
     try:
         command = captured["command"]
         assert isinstance(command, list)
-        assert command[:2] == [grok_cli_runner_module.sys.executable, "-I"]
-        assert command[2] == str(Path(grok_cli_runner_module.__file__).resolve())
-        assert command[3] == grok_cli_runner_module._DOCKER_CLEANUP_WATCHDOG_ARG
+        assert command[:3] == [
+            grok_cli_runner_module.sys.executable,
+            "-I",
+            "-B",
+        ]
+        assert command[3] == str(Path(grok_cli_runner_module.__file__).resolve())
+        assert command[4] == grok_cli_runner_module._DOCKER_CLEANUP_WATCHDOG_ARG
         assert captured["cwd"] == "/"
         assert captured["env"] == {
             "PATH": "/usr/bin:/bin",
@@ -1473,7 +1477,7 @@ def test_docker_cleanup_watchdog_launch_is_python_isolated(
         assert captured["close_fds"] is True
         assert captured["pass_fds"] == ()
         isolation_probe = real_popen(
-            [*command[:2], "-c", "pass"],
+            [*command[:3], "-c", "pass"],
             stdin=grok_cli_runner_module.subprocess.DEVNULL,
             stdout=grok_cli_runner_module.subprocess.DEVNULL,
             stderr=grok_cli_runner_module.subprocess.DEVNULL,
