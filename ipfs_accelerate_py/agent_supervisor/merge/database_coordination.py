@@ -1972,6 +1972,7 @@ class DatabaseCoordinator:
                 "attempt_id",
                 "lease_id",
                 "owner_session_id",
+                "attempt_number",
                 "fencing_token",
                 "fence_epoch",
             }
@@ -1989,6 +1990,10 @@ class DatabaseCoordinator:
             recovery_binding["owner_session_id"] = _text(
                 recovery_binding["owner_session_id"],
                 "owner_session_id",
+            )
+            recovery_binding["attempt_number"] = _positive_int(
+                recovery_binding["attempt_number"],
+                "attempt_number",
             )
             recovery_binding["fencing_token"] = _positive_int(
                 recovery_binding["fencing_token"],
@@ -2183,6 +2188,10 @@ class DatabaseCoordinator:
                             f"restart recovery binding does not match latest claim for {cid}"
                         )
                     _positive_int(prior[7], "prior_attempt_number")
+                    if int(prior[7]) != int(recovery_binding["attempt_number"]):
+                        raise DatabaseCoordinationConflictError(
+                            f"restart recovery attempt differs for {cid}"
+                        )
                     attempt_identity = (
                         str(prior[9]),
                         str(prior[10]),

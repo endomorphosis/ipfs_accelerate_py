@@ -73637,6 +73637,10 @@ from .database_execution_schema import (
     DATABASE_IMPLEMENTATION_DAEMON_INTERFACE,
     DATABASE_IMPLEMENTATION_DAEMON_SCHEMA,
 )
+from ..task_sources.typed_state_owner import (
+    TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+    TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+)
 
 DATABASE_TASK_ATTEMPT_INTERFACE = "DatabaseTaskAttempt@1"
 DATABASE_TASK_ATTEMPT_SCHEMA = (
@@ -77228,7 +77232,20 @@ class DatabaseImplementationDaemon:
                         self.owner_session_id if restart_recovery_ready else ""
                     ),
                     restart_recovery_binding=(
-                        restart_recovery_binding if restart_recovery_ready else None
+                        {
+                            name: restart_recovery_binding[name]
+                            for name in (
+                                "claim_id",
+                                "attempt_id",
+                                "lease_id",
+                                "owner_session_id",
+                                "attempt_number",
+                                "fencing_token",
+                                "fence_epoch",
+                            )
+                        }
+                        if restart_recovery_ready
+                        else None
                     ),
                     now_ms=self._now_ms(),
                 )
@@ -77385,9 +77402,10 @@ class DatabaseImplementationDaemon:
     ) -> Mapping[str, Any] | None:
         """Return the exact shared claim tuple authorizing lane-local retry.
 
-        Attempt numbers are lane-local and therefore cannot establish ownership
-        of a task in the shared task board.  The durable receipt written by the
-        successful shared-board CAS is the exclusion authority across lanes.
+        Attempt numbers are included in the exact shared binding.  A lane-local
+        counter alone cannot establish ownership, but omitting the shared
+        attempt number would let an older sidecar masquerade as the current
+        claim after a restart.
         """
 
         body = getattr(task, "body", None)
@@ -77396,7 +77414,28 @@ class DatabaseImplementationDaemon:
         receipt = body.get("completion_receipt")
         if not isinstance(receipt, Mapping):
             return None
-        if str(receipt.get("operation") or "") != "database_claim":
+        operation = str(receipt.get("operation") or "")
+        phase_schema = str(receipt.get("claim_phase_schema") or "")
+        if operation not in {"database_claim", "database_attempt_admitted"}:
+            return None
+        typed_claim_source = callable(
+            getattr(self.task_source, "claim_process_attestation", None)
+        )
+        expected_phase_schema = (
+            TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            if operation == "database_claim"
+            else TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        )
+        if (
+            (typed_claim_source and phase_schema != expected_phase_schema)
+            or (phase_schema and phase_schema != expected_phase_schema)
+            or (
+                typed_claim_source
+                and not isinstance(
+                    receipt.get("claim_process_attestation"), Mapping
+                )
+            )
+        ):
             return None
         owner = str(receipt.get("owner_session_id") or "")
         if owner != self.owner_session_id:
@@ -77409,6 +77448,7 @@ class DatabaseImplementationDaemon:
             return None
         fencing_token = receipt.get("fencing_token")
         fence_epoch = receipt.get("fence_epoch")
+        attempt_number = receipt.get("attempt_number")
         if (
             isinstance(fencing_token, bool)
             or not isinstance(fencing_token, int)
@@ -77416,6 +77456,9 @@ class DatabaseImplementationDaemon:
             or isinstance(fence_epoch, bool)
             or not isinstance(fence_epoch, int)
             or fence_epoch < 1
+            or isinstance(attempt_number, bool)
+            or not isinstance(attempt_number, int)
+            or attempt_number < 1
         ):
             return None
         return MappingProxyType(
@@ -77424,6 +77467,9 @@ class DatabaseImplementationDaemon:
                 "owner_session_id": owner,
                 "fencing_token": fencing_token,
                 "fence_epoch": fence_epoch,
+                "attempt_number": attempt_number,
+                "operation": operation,
+                "claim_phase_schema": phase_schema,
             }
         )
 
@@ -77431,6 +77477,185 @@ class DatabaseImplementationDaemon:
         """Return whether the task binds an exact claim tuple to this lane."""
 
         return self._shared_claim_binding_for_this_owner(task) is not None
+
+    def _typed_claim_process_attestation(self) -> Mapping[str, Any] | None:
+        """Return owner-derived claim birth evidence when using the typed source."""
+
+        attest = getattr(self.task_source, "claim_process_attestation", None)
+        if not callable(attest):
+            return None
+        value = attest()
+        if not isinstance(value, Mapping) or not value:
+            raise DatabaseImplementationAuthorityError(
+                "typed task source returned no claim process attestation"
+            )
+        return MappingProxyType(dict(value))
+
+    def _claimed_attempt_execution_revision(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> int:
+        """Return the sidecar claimed-phase revision admission may attest.
+
+        Shared admission is bound to the local claimed insert, which is always
+        revision 1. Later local phases must not change that attested revision,
+        or a crash after context commit and before shared promotion could not
+        recover the reservation.
+        """
+
+        connection = self._require_connection()
+        rows = connection.execute(
+            """
+            SELECT revision FROM attempt_phases
+            WHERE attempt_id = ? AND phase = ?
+            LIMIT 2
+            """,
+            [attempt.attempt_id, ATTEMPT_PHASE_CLAIMED],
+        ).fetchall()
+        if (
+            len(rows) != 1
+            or isinstance(rows[0][0], bool)
+            or not isinstance(rows[0][0], int)
+            or int(rows[0][0]) != 1
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed attempt admission requires a claimed-phase revision of 1"
+            )
+        return int(rows[0][0])
+
+    def _promote_typed_attempt_admission(
+        self,
+        attempt: DatabaseTaskAttempt,
+        *,
+        reservation_receipt: Mapping[str, Any],
+    ) -> None:
+        """Promote a durable local attempt before provider execution is possible."""
+
+        task = self.task_source.get(attempt.task_cid)
+        task_body = getattr(task, "body", None) if task is not None else None
+        observed = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        identity = {
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        if (
+            task is None
+            or str(task.status or "").strip().lower() != "in_progress"
+            or not isinstance(observed, Mapping)
+            or observed.get("operation") != "database_claim"
+            or observed.get("claim_phase_schema")
+            != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            or any(
+                type(observed.get(name)) is not type(expected)
+                or observed.get(name) != expected
+                for name, expected in identity.items()
+            )
+            or dict(observed) != dict(reservation_receipt)
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "typed database attempt cannot promote a foreign reservation"
+            )
+        admitted_receipt = {
+            **dict(reservation_receipt),
+            "operation": "database_attempt_admitted",
+            "claim_phase_schema": TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+            "admitted_from_revision": int(task.revision),
+            "attempt_execution_phase": ATTEMPT_PHASE_CLAIMED,
+            "attempt_execution_revision": (
+                self._claimed_attempt_execution_revision(attempt)
+            ),
+        }
+        self._cas_task_status_database(
+            attempt.task_cid,
+            expected_revision=int(task.revision),
+            new_status="in_progress",
+            receipt=admitted_receipt,
+        )
+
+    def _require_typed_attempt_admission(
+        self,
+        attempt: DatabaseTaskAttempt,
+    ) -> None:
+        """Fail closed before provider work unless the local attempt was promoted."""
+
+        if not callable(
+            getattr(self.task_source, "claim_process_attestation", None)
+        ):
+            return
+        task = self.task_source.get(attempt.task_cid)
+        task_body = getattr(task, "body", None) if task is not None else None
+        receipt = (
+            task_body.get("completion_receipt")
+            if isinstance(task_body, Mapping)
+            else None
+        )
+        expected = {
+            "claim_id": attempt.claim_id,
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": int(attempt.attempt_number),
+            "lease_id": attempt.lease_id,
+            "owner_session_id": attempt.owner_session_id,
+            "fencing_token": int(attempt.fencing_token),
+            "fence_epoch": int(attempt.fence_epoch),
+        }
+        reservation_matches = bool(
+            task is not None
+            and str(task.status or "").strip().lower() == "in_progress"
+            and isinstance(receipt, Mapping)
+            and receipt.get("operation") == "database_claim"
+            and receipt.get("claim_phase_schema")
+            == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+            and isinstance(receipt.get("claim_process_attestation"), Mapping)
+            and all(
+                type(receipt.get(name)) is type(value)
+                and receipt.get(name) == value
+                for name, value in expected.items()
+            )
+        )
+        if reservation_matches:
+            self._promote_typed_attempt_admission(
+                attempt,
+                reservation_receipt=receipt,
+            )
+            task = self.task_source.get(attempt.task_cid)
+            task_body = (
+                getattr(task, "body", None) if task is not None else None
+            )
+            receipt = (
+                task_body.get("completion_receipt")
+                if isinstance(task_body, Mapping)
+                else None
+            )
+        if (
+            task is None
+            or str(task.status or "").strip().lower() != "in_progress"
+            or not isinstance(receipt, Mapping)
+            or receipt.get("operation") != "database_attempt_admitted"
+            or receipt.get("claim_phase_schema")
+            != TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+            or not isinstance(receipt.get("claim_process_attestation"), Mapping)
+            or receipt.get("attempt_execution_phase") != ATTEMPT_PHASE_CLAIMED
+            or type(receipt.get("attempt_execution_revision")) is not int
+            or receipt["attempt_execution_revision"]
+            != self._claimed_attempt_execution_revision(attempt)
+            or any(
+                type(receipt.get(name)) is not type(value)
+                or receipt.get(name) != value
+                for name, value in expected.items()
+            )
+        ):
+            raise DatabaseImplementationAuthorityError(
+                "provider execution requires an exact promoted typed attempt"
+            )
 
     def _execution_route_binding_for_claim(
         self,
@@ -77496,10 +77721,15 @@ class DatabaseImplementationDaemon:
             "attempt_id": attempt.attempt_id,
             "lease_id": attempt.lease_id,
             "owner_session_id": attempt.owner_session_id,
+            "attempt_number": int(attempt.attempt_number),
             "fencing_token": int(attempt.fencing_token),
             "fence_epoch": int(attempt.fence_epoch),
         }
-        return all(binding.get(name) == value for name, value in expected.items())
+        return all(
+            type(binding.get(name)) is type(value)
+            and binding.get(name) == value
+            for name, value in expected.items()
+        )
 
     def _shared_retry_binding_matches_attempt(
         self,
@@ -77543,6 +77773,7 @@ class DatabaseImplementationDaemon:
                         "attempt_id",
                         "lease_id",
                         "owner_session_id",
+                        "attempt_number",
                         "fencing_token",
                         "fence_epoch",
                     )
@@ -77574,6 +77805,7 @@ class DatabaseImplementationDaemon:
         if (
             isinstance(prior_number, bool)
             or not isinstance(prior_number, int)
+            or prior_number != binding.get("attempt_number")
             or prior_number >= int(attempt.attempt_number)
         ):
             return False
@@ -77937,6 +78169,8 @@ class DatabaseImplementationDaemon:
                 task,
                 fenced_retry=fenced_retry,
             )
+            claim_process_attestation = self._typed_claim_process_attestation()
+            persisted_reservation: Mapping[str, Any] | None = None
             self._protect_new_claim(claim)
             try:
                 # The owner-side status CAS is the shared exclusion point for
@@ -77948,31 +78182,63 @@ class DatabaseImplementationDaemon:
                     # receipt through the same shared revision CAS before
                     # exposing that attempt so downstream typed mutations
                     # can bind to the live fence instead of the expired one.
+                    reservation_receipt = {
+                        "operation": "database_claim",
+                        "claim_id": claim.claim_id,
+                        "attempt_id": claim.attempt_id,
+                        "attempt_number": int(claim.attempt_number),
+                        "owner_session_id": self.owner_session_id,
+                        "lease_id": claim.lease_id,
+                        "fencing_token": int(claim.fencing_token),
+                        "fence_epoch": int(claim.fence_epoch),
+                        "claimed_from_revision": int(task.revision),
+                        **(
+                            {
+                                "claim_phase_schema": (
+                                    TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                                ),
+                                "claim_process_attestation": dict(
+                                    claim_process_attestation
+                                ),
+                            }
+                            if claim_process_attestation is not None
+                            else {}
+                        ),
+                        **(
+                            {
+                                "execution_route_binding": dict(
+                                    execution_route_binding
+                                )
+                            }
+                            if execution_route_binding
+                            else {}
+                        ),
+                    }
                     self._cas_task_status_database(
                         task.task_cid,
                         expected_revision=int(task.revision),
                         new_status="in_progress",
-                        receipt={
-                            "operation": "database_claim",
-                            "claim_id": claim.claim_id,
-                            "attempt_id": claim.attempt_id,
-                            "attempt_number": int(claim.attempt_number),
-                            "owner_session_id": self.owner_session_id,
-                            "lease_id": claim.lease_id,
-                            "fencing_token": int(claim.fencing_token),
-                            "fence_epoch": int(claim.fence_epoch),
-                            "claimed_from_revision": int(task.revision),
-                            **(
-                                {
-                                    "execution_route_binding": dict(
-                                        execution_route_binding
-                                    )
-                                }
-                                if execution_route_binding
-                                else {}
-                            ),
-                        },
+                        receipt=reservation_receipt,
                     )
+                    if claim_process_attestation is not None:
+                        reserved_task = self.task_source.get(task.task_cid)
+                        reserved_body = (
+                            getattr(reserved_task, "body", None)
+                            if reserved_task is not None
+                            else None
+                        )
+                        observed_reservation = (
+                            reserved_body.get("completion_receipt")
+                            if isinstance(reserved_body, Mapping)
+                            else None
+                        )
+                        if not isinstance(observed_reservation, Mapping):
+                            raise DatabaseImplementationAuthorityError(
+                                "typed claim CAS produced no durable reservation"
+                            )
+                        persisted_reservation = MappingProxyType(
+                            dict(observed_reservation)
+                        )
             except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
                 self._release_unadmitted_claim(
                     claim,
@@ -77986,6 +78252,11 @@ class DatabaseImplementationDaemon:
                 task_alias=task_alias,
                 execution_route_binding=execution_route_binding,
             )
+            if persisted_reservation is not None:
+                self._promote_typed_attempt_admission(
+                    attempt,
+                    reservation_receipt=persisted_reservation,
+                )
             self._record_event(
                 "task_claimed",
                 attempt_id=attempt.attempt_id,
@@ -78631,6 +78902,7 @@ class DatabaseImplementationDaemon:
         """
 
         self._require_execution_authority("provider phase")
+        self._require_typed_attempt_admission(attempt)
         self._protect_attempt_write(attempt)
         key = str(idempotency_key or f"provider:{attempt.attempt_id}").strip()
         prior = self.provider_invocation_recorded(
@@ -86310,6 +86582,11 @@ class DatabaseImplementationDaemon:
                 ATTEMPT_PHASE_VALIDATION
             ),
         )
+        # Shared admission is bound to the claimed sidecar insert. Promote a
+        # durable reservation before later local phases so crash recovery
+        # after a shared claim cannot run the provider on an unadmitted
+        # attempt, even if context was already committed.
+        self._require_typed_attempt_admission(current)
 
         provider_result: Mapping[str, Any] = {}
         effect_result: Mapping[str, Any] = {}

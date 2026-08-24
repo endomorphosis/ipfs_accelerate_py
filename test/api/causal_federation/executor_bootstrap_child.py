@@ -24,7 +24,11 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.quack_state_client import 
 from ipfs_accelerate_py.agent_supervisor.task_sources.state_owner_bootstrap import (
     request_state_owner_bootstrap,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.typed_database_task_source import (
+    TypedDatabaseTaskSource,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.typed_state_owner import (
+    TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
     TYPED_STATE_OWNER_SOCKET_ENV,
     TYPED_STATE_OWNER_TOKEN_ENV,
     TypedStateOwnerConnection,
@@ -76,6 +80,7 @@ def main() -> int:
     )
     try:
         client.attach(credentials.endpoint, server_id=credentials.server_id)
+        task_source = TypedDatabaseTaskSource(client, owns_client=False)
         metadata = client.execute("whoami_metadata")
         result: dict[str, Any] = {
             "pid": os.getpid(),
@@ -106,11 +111,27 @@ def main() -> int:
         else:
             result["unrelated_read_denied"] = False
         if arguments.claim:
-            claim = client.cas_task_status(
-                task_cid=arguments.task_cid,
-                expected_task_revision=arguments.task_revision,
-                new_status="in_progress",
-                idempotency_key=f"casf-executor-e2e:{os.getpid()}",
+            claim = task_source.compare_and_set_status(
+                arguments.task_cid,
+                arguments.task_revision,
+                "in_progress",
+                {
+                    "operation": "database_claim",
+                    "claim_phase_schema": (
+                        TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                    ),
+                    "claim_process_attestation": dict(
+                        task_source.claim_process_attestation()
+                    ),
+                    "claim_id": f"claim:casf-executor-e2e:{os.getpid()}",
+                    "attempt_id": f"attempt:casf-executor-e2e:{os.getpid()}",
+                    "attempt_number": 1,
+                    "lease_id": f"lease:casf-executor-e2e:{os.getpid()}",
+                    "owner_session_id": "session:casf-executor-e2e",
+                    "fencing_token": 1,
+                    "fence_epoch": 1,
+                    "claimed_from_revision": arguments.task_revision,
+                },
             )
             result["claimed"] = bool(claim.changed)
         provider_environment = provider_subprocess_environment(os.environ)

@@ -47,6 +47,15 @@ TYPED_STATE_OWNER_TOKEN_FILENAME: Final = "typed-state-owner.token"
 TYPED_RETRY_COOLDOWN_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/typed-retry-cooldown@1"
 )
+TYPED_DATABASE_CLAIM_PROCESS_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-database-claim-process@1"
+)
+TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-database-claim-reservation@1"
+)
+TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/typed-database-attempt-admission@1"
+)
 TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
         "database_portal_retry",
@@ -382,6 +391,7 @@ class OwnerClientGrant:
             "authority_profile": self.authority_profile,
             "peer_pid": self.peer_pid,
             "peer_uid": self.peer_uid,
+            "peer_start_time_ticks": self.peer_start_time_ticks,
             "issued_at": self.issued_at,
             "expires_at": self.expires_at,
         }
@@ -440,6 +450,51 @@ def _process_runtime_facts(pid: int) -> tuple[int, int, str]:
     return start_time, parent_pid, boot_id
 
 
+def _process_birth_content_id(
+    pid: int,
+    start_time_ticks: int,
+    boot_id: str,
+    parent_pid: int,
+) -> str:
+    """Return the content identity used by launcher-attested process grants."""
+
+    material = (
+        f"{int(pid)}:{int(start_time_ticks)}:"
+        f"{str(boot_id or '')}:{int(parent_pid)}"
+    )
+    return f"birth:{hashlib.sha256(material.encode('utf-8')).hexdigest()[:32]}"
+
+
+def _claim_process_attestation(grant: OwnerClientGrant) -> dict[str, Any]:
+    """Resolve the exact kernel/grant identity admitted for a database claim."""
+
+    start_time, parent_pid, boot_id = _process_runtime_facts(grant.peer_pid)
+    expected_birth_id = _process_birth_content_id(
+        grant.peer_pid,
+        start_time,
+        boot_id,
+        parent_pid,
+    )
+    if (
+        start_time != grant.peer_start_time_ticks
+        or grant.process_birth_id != expected_birth_id
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "database claim process grant differs from kernel birth identity"
+        )
+    return {
+        "schema": TYPED_DATABASE_CLAIM_PROCESS_SCHEMA,
+        "grant_id": grant.grant_id,
+        "client_id": grant.client_id,
+        "process_birth_id": grant.process_birth_id,
+        "pid": grant.peer_pid,
+        "uid": grant.peer_uid,
+        "start_time_ticks": start_time,
+        "boot_id": boot_id,
+        "parent_pid": parent_pid,
+    }
+
+
 def _kernel_peer_identity(channel: socket.socket) -> tuple[int, int, int]:
     """Return PID, UID, and PID start time proven by the Unix socket kernel."""
 
@@ -467,6 +522,130 @@ def _strict_scalar_equal(observed: Any, expected: Any) -> bool:
     """Compare receipt scalars without Python's bool/int equivalence."""
 
     return type(observed) is type(expected) and observed == expected
+
+
+def _validated_database_claim_identity(
+    receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the exact claim/fence tuple carried by a shared receipt."""
+
+    text_fields = (
+        "claim_id",
+        "attempt_id",
+        "lease_id",
+        "owner_session_id",
+    )
+    integer_fields = (
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+    )
+    identity: dict[str, Any] = {}
+    for name in text_fields:
+        value = receipt.get(name)
+        if (
+            type(value) is not str
+            or not value.strip()
+            or len(value.encode("utf-8")) > 1_024
+            or any(marker in value for marker in ("\x00", "\n", "\r"))
+        ):
+            raise TypedStateOwnerAuthorizationError(
+                f"database claim receipt {name} is invalid"
+            )
+        identity[name] = value
+    for name in integer_fields:
+        value = receipt.get(name)
+        if type(value) is not int or value < 1:
+            raise TypedStateOwnerAuthorizationError(
+                f"database claim receipt {name} is invalid"
+            )
+        identity[name] = value
+    return identity
+
+
+def _require_database_claim_process_attestation(
+    receipt: Mapping[str, Any],
+    *,
+    grant: OwnerClientGrant,
+) -> dict[str, Any]:
+    """Require the receipt to reproduce the active owner-derived birth tuple."""
+
+    observed = receipt.get("claim_process_attestation")
+    expected = _claim_process_attestation(grant)
+    if (
+        not isinstance(observed, Mapping)
+        or set(observed) != set(expected)
+        or any(
+            not _strict_scalar_equal(observed.get(name), value)
+            for name, value in expected.items()
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "database claim receipt process attestation differs from its active grant"
+        )
+    return expected
+
+
+def _validated_database_claim_process_attestation(
+    receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate a previously owner-attested claim process without reviving it."""
+
+    observed = receipt.get("claim_process_attestation")
+    required = {
+        "schema",
+        "grant_id",
+        "client_id",
+        "process_birth_id",
+        "pid",
+        "uid",
+        "start_time_ticks",
+        "boot_id",
+        "parent_pid",
+    }
+    if not isinstance(observed, Mapping) or set(observed) != required:
+        raise TypedStateOwnerAuthorizationError(
+            "database claim receipt process attestation is malformed"
+        )
+    attestation = dict(observed)
+    text_fields = (
+        "grant_id",
+        "client_id",
+        "process_birth_id",
+        "boot_id",
+    )
+    if (
+        attestation.get("schema") != TYPED_DATABASE_CLAIM_PROCESS_SCHEMA
+        or any(
+            type(attestation.get(name)) is not str
+            or not attestation[name].strip()
+            or len(attestation[name].encode("utf-8")) > 1_024
+            or any(
+                marker in attestation[name]
+                for marker in ("\x00", "\n", "\r")
+            )
+            for name in text_fields
+        )
+        or type(attestation.get("pid")) is not int
+        or attestation["pid"] < 1
+        or type(attestation.get("uid")) is not int
+        or attestation["uid"] < 0
+        or type(attestation.get("start_time_ticks")) is not int
+        or attestation["start_time_ticks"] < 1
+        or type(attestation.get("parent_pid")) is not int
+        or attestation["parent_pid"] < 0
+        or attestation["process_birth_id"]
+        != _process_birth_content_id(
+            attestation["pid"],
+            attestation["start_time_ticks"],
+            attestation["boot_id"],
+            attestation["parent_pid"],
+        )
+    ):
+        raise TypedStateOwnerAuthorizationError(
+            "database claim receipt process attestation is malformed"
+        )
+    return attestation
 
 
 def _validated_retry_cooldown_parameters(
@@ -2290,6 +2469,16 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "task status is outside the closed command vocabulary"
                 )
+            if (
+                operation == "task.status.cas"
+                and requested_status == "in_progress"
+                and grant.client_id.startswith(
+                    "database-implementation-daemon:"
+                )
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "typed executor in-progress transition requires a claim receipt"
+                )
         if operation in _FEDERATION_COMMANDS:
             for field in ("tenant_id", "federation_id"):
                 value = str(command.parameters.get(field) or "").strip()
@@ -2474,6 +2663,205 @@ class TypedStateOwnerGateway:
         """
 
         operation = str(command.parameters.get("operation") or "")
+        if operation == "task.status.cas.receipt":
+            try:
+                next_body = json.loads(str(command.parameters.get("body_json") or ""))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise TypedStateOwnerAuthorizationError(
+                    "task status receipt body is malformed"
+                ) from exc
+            next_receipt = (
+                next_body.get("completion_receipt")
+                if isinstance(next_body, Mapping)
+                else None
+            )
+            phase_schema = (
+                str(next_receipt.get("claim_phase_schema") or "")
+                if isinstance(next_receipt, Mapping)
+                else ""
+            )
+            typed_executor_claim = bool(
+                grant.client_id.startswith("database-implementation-daemon:")
+                and str(command.parameters.get("status") or "").strip()
+                == "in_progress"
+            )
+            if typed_executor_claim and phase_schema not in {
+                TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
+                TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
+            }:
+                raise TypedStateOwnerAuthorizationError(
+                    "typed executor in-progress receipt omits its closed claim phase"
+                )
+            if typed_executor_claim:
+                if not isinstance(next_receipt, Mapping):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim receipt is unavailable"
+                    )
+                task_cid = str(command.parameters.get("task_cid") or "").strip()
+                expected_revision = command.parameters.get(
+                    "expected_task_revision"
+                )
+                next_status = str(command.parameters.get("status") or "").strip()
+                if (
+                    not task_cid
+                    or type(expected_revision) is not int
+                    or expected_revision < 0
+                    or next_status != "in_progress"
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim command is invalid"
+                    )
+                task_rows = self._connection.execute(
+                    """
+                    SELECT status, revision, body_json FROM tasks
+                    WHERE task_cid = ? LIMIT 2
+                    """,
+                    [task_cid],
+                ).fetchall()
+                if len(task_rows) != 1:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim task authority is absent or ambiguous"
+                    )
+                task_row = task_rows[0]
+                if int(task_row[1]) != expected_revision:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim task revision is stale"
+                    )
+                try:
+                    prior_body = json.loads(str(task_row[2] or "{}"))
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed database claim prior task body is malformed"
+                    ) from exc
+                prior_receipt = (
+                    prior_body.get("completion_receipt")
+                    if isinstance(prior_body, Mapping)
+                    else None
+                )
+                next_identity = _validated_database_claim_identity(next_receipt)
+                next_attestation = _require_database_claim_process_attestation(
+                    next_receipt,
+                    grant=grant,
+                )
+                if phase_schema == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA:
+                    if (
+                        next_receipt.get("operation") != "database_claim"
+                        or not _strict_scalar_equal(
+                            next_receipt.get("claimed_from_revision"),
+                            expected_revision,
+                        )
+                        or str(task_row[0] or "").strip().lower()
+                        not in {
+                            "proposed",
+                            "admitted",
+                            "pending",
+                            "ready",
+                            "todo",
+                            "queued",
+                            "retrying",
+                            "in_progress",
+                        }
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "typed database claim reservation authority is stale"
+                        )
+                    if str(task_row[0] or "").strip().lower() == "in_progress":
+                        if not isinstance(prior_receipt, Mapping):
+                            raise TypedStateOwnerAuthorizationError(
+                                "typed fenced reservation has no prior admission"
+                            )
+                        prior_identity = _validated_database_claim_identity(
+                            prior_receipt
+                        )
+                        prior_attestation = prior_receipt.get(
+                            "claim_process_attestation"
+                        )
+                        if (
+                            prior_receipt.get("operation")
+                            != "database_attempt_admitted"
+                            or prior_receipt.get("claim_phase_schema")
+                            != TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                            or not isinstance(prior_attestation, Mapping)
+                            or set(prior_attestation) != set(next_attestation)
+                            or any(
+                                not _strict_scalar_equal(
+                                    prior_attestation.get(name), value
+                                )
+                                for name, value in next_attestation.items()
+                            )
+                            or prior_identity["owner_session_id"]
+                            != next_identity["owner_session_id"]
+                            or prior_identity["attempt_number"]
+                            >= next_identity["attempt_number"]
+                            or prior_identity["fencing_token"]
+                            >= next_identity["fencing_token"]
+                            or prior_identity["fence_epoch"]
+                            > next_identity["fence_epoch"]
+                        ):
+                            raise TypedStateOwnerAuthorizationError(
+                                "typed fenced reservation is not a newer live claim"
+                            )
+                else:
+                    if not isinstance(prior_receipt, Mapping):
+                        raise TypedStateOwnerAuthorizationError(
+                            "typed database attempt admission has no reservation"
+                        )
+                    prior_identity = _validated_database_claim_identity(
+                        prior_receipt
+                    )
+                    prior_attestation = prior_receipt.get(
+                        "claim_process_attestation"
+                    )
+                    if (
+                        str(task_row[0] or "").strip().lower()
+                        != "in_progress"
+                        or next_receipt.get("operation")
+                        != "database_attempt_admitted"
+                        or prior_receipt.get("operation") != "database_claim"
+                        or prior_receipt.get("claim_phase_schema")
+                        != TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                        or any(
+                            not _strict_scalar_equal(
+                                next_identity.get(name), value
+                            )
+                            for name, value in prior_identity.items()
+                        )
+                        or not isinstance(prior_attestation, Mapping)
+                        or set(prior_attestation) != set(next_attestation)
+                        or any(
+                            not _strict_scalar_equal(
+                                prior_attestation.get(name), value
+                            )
+                            for name, value in next_attestation.items()
+                        )
+                        or not _strict_scalar_equal(
+                            next_receipt.get("claimed_from_revision"),
+                            prior_receipt.get("claimed_from_revision"),
+                        )
+                        or not _strict_scalar_equal(
+                            next_receipt.get("admitted_from_revision"),
+                            expected_revision,
+                        )
+                        or not _strict_scalar_equal(
+                            next_receipt.get("attempt_execution_revision"),
+                            1,
+                        )
+                        or next_receipt.get("attempt_execution_phase")
+                        != "claimed"
+                    ):
+                        raise TypedStateOwnerAuthorizationError(
+                            "typed database attempt admission differs from its reservation"
+                        )
+                return {
+                    "operation": "task.database.claim.phase",
+                    "task_cid": task_cid,
+                    "status": next_status,
+                    "expected_revision": expected_revision,
+                    "body_json": str(command.parameters["body_json"]),
+                    "claim_phase_schema": phase_schema,
+                    "claim_identity": next_identity,
+                    "claim_process_attestation": next_attestation,
+                }
         if operation == "task.retry.cooldown.record":
             parameters = _validated_retry_cooldown_parameters(command.parameters)
             task_rows = self._connection.execute(
@@ -2511,12 +2899,35 @@ class TypedStateOwnerGateway:
             }
             receipt_operation = str(receipt_values.get("operation") or "")
             if parameters["expected_task_status"] == "in_progress":
-                receipt_state_matches = bool(
-                    receipt_operation == "database_claim"
-                    and _strict_scalar_equal(
-                        receipt_values.get("claimed_from_revision"),
-                        parameters["expected_task_revision"] - 1,
+                reservation_matches = False
+                if receipt_operation == "database_claim":
+                    _validated_database_claim_process_attestation(
+                        receipt_values
                     )
+                    reservation_matches = bool(
+                        receipt_values.get("claim_phase_schema")
+                        == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                        and _strict_scalar_equal(
+                            receipt_values.get("claimed_from_revision"),
+                            parameters["expected_task_revision"] - 1,
+                        )
+                    )
+                admission_matches = False
+                if receipt_operation == "database_attempt_admitted":
+                    _validated_database_claim_process_attestation(
+                        receipt_values
+                    )
+                    admission_matches = bool(
+                        receipt_values.get("claim_phase_schema")
+                        == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                        and _strict_scalar_equal(
+                            receipt_values.get("admitted_from_revision"),
+                            parameters["expected_task_revision"] - 1,
+                        )
+                    )
+                receipt_state_matches = bool(
+                    reservation_matches
+                    or admission_matches
                 )
             elif parameters["expected_task_status"] == "retrying":
                 receipt_state_matches = bool(
@@ -3520,6 +3931,41 @@ class TypedStateOwnerGateway:
                 raise TypedStateOwnerAuthorizationError(
                     "semantic mutation differs from owner-resolved authority"
                 )
+
+        if operation == "task.database.claim.phase":
+            mutation = one("executor_cas_task_status_receipt")
+            expected_revision = int(authority["expected_revision"])
+            exact(
+                mutation,
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": expected_revision + 1,
+                    "status": "in_progress",
+                    "body_json": authority["body_json"],
+                },
+            )
+            rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            observed_row = (
+                tuple(rows[0][index] for index in range(3))
+                if len(rows) == 1
+                else ()
+            )
+            if observed_row != (
+                "in_progress",
+                expected_revision + 1,
+                authority["body_json"],
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "typed database claim phase post-state differs"
+                )
+            return
 
         if operation == "task.retry.cooldown.record":
             values = _validated_retry_cooldown_parameters(command.parameters)
