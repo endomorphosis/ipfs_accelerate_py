@@ -2640,17 +2640,24 @@ def _qualification_environment(config: ProgramConfig) -> dict[str, str]:
     environment[TRUSTED_DUCKDB_HOME_ENV] = str(home)
     user_base = Path(site.getuserbase()).resolve()
     user_site = Path(site.getusersitepackages()).resolve()
-    if (
-        not user_base.is_dir()
-        or not user_site.is_dir()
-        or str(user_site) not in sys.path
-        or user_base not in user_site.parents
-    ):
-        raise ProgramLaunchError(
-            "python_environment_invalid",
-            "active Python user site is unavailable for isolated qualification",
-        )
-    environment["PYTHONUSERBASE"] = str(user_base)
+    if str(user_site) in sys.path:
+        if (
+            site.ENABLE_USER_SITE is not True
+            or not user_base.is_dir()
+            or not user_site.is_dir()
+            or user_base not in user_site.parents
+        ):
+            raise ProgramLaunchError(
+                "python_environment_invalid",
+                "active Python user site is unsafe for isolated qualification",
+            )
+        environment["PYTHONUSERBASE"] = str(user_base)
+    else:
+        # Sealed validation images install the runtime in their system prefix
+        # and intentionally start Python with its user site disabled.  Preserve
+        # that stronger boundary in the child instead of requiring an ambient
+        # per-user package tree that the interpreter neither loaded nor needs.
+        environment["PYTHONNOUSERSITE"] = "1"
     cache_root = home / ".cache"
     cache_paths = {
         "CUDA_CACHE_PATH": cache_root / "cuda",
