@@ -298,6 +298,29 @@ def test_validator_rejects_no_change_population_drift(tmp_path, monkeypatch) -> 
     )
 
 
+def test_validator_rejects_noncanonical_directory_shaped_task_paths(
+    tmp_path, monkeypatch
+) -> None:
+    validator = _validator_module()
+    canonical = "ipfs_accelerate_py/agent_supervisor/federation/formal"
+    original = TODO.read_text(encoding="utf-8")
+    assert original.count(canonical) == 3
+    assert f"{canonical}/" not in original
+
+    corrupted = tmp_path / "trailing-slash.todo.md"
+    corrupted.write_text(original.replace(canonical, f"{canonical}/"), encoding="utf-8")
+    monkeypatch.setattr(validator, "BOARD", corrupted)
+    report = validator.validate_program()
+
+    assert report["valid"] is False
+    for field in ("Owned paths", "Predicted files", "Outputs"):
+        assert any(
+            error
+            == f"CASF-036: unsafe {field} path '{canonical}/'"
+            for error in report["errors"]
+        )
+
+
 def test_validator_rejects_ducklake_authority(tmp_path, monkeypatch) -> None:
     validator = _validator_module()
     payload = json.loads(CONFIG.read_text(encoding="utf-8"))

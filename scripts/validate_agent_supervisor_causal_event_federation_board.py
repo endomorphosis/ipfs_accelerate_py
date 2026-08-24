@@ -11,7 +11,7 @@ import subprocess
 import sys
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 SCHEMA = "ipfs_accelerate_py.agent_supervisor.causal-event-federation-board-validation@1"
@@ -411,7 +411,11 @@ def _safe_paths(value: str, task_id: str, field: str, errors: list[str]) -> list
             path.is_absolute()
             or ".." in path.parts
             or raw in {".", ".."}
+            or "\\" in raw
+            or bool(PureWindowsPath(raw).drive)
+            or path.as_posix() != raw
             or any(ch in raw for ch in "*?[]\x00")
+            or any(ord(ch) < 32 for ch in raw)
         ):
             errors.append(f"{task_id}: unsafe {field} path {raw!r}")
         for prefix in READ_ONLY_PREFIXES:
