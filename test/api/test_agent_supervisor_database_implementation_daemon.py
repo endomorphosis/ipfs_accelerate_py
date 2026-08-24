@@ -18,7 +18,7 @@ import json
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -32,6 +32,9 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_migrations import (
     duckdb_available,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_contracts import (
+    canonical_json_bytes as task_body_canonical_json_bytes,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.control_plane_schema import (
     install_control_plane_schema,
@@ -50,6 +53,12 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
     COMPLETED_STATUSES as TASK_SOURCE_COMPLETED_STATUSES,
 )
+from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+    MAX_BODY_BYTES as MAX_TASK_BODY_BYTES,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon_runner as daemon_runner,
 )
@@ -58,6 +67,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
     DatabasePortalBridgeDeferred,
     DatabasePortalBridgeError,
     DatabasePortalCandidateRetry,
+    DatabasePortalExecutionBridge,
     DatabasePortalValidationRetry,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
@@ -216,6 +226,11 @@ def _open_daemon(
     lease_ms: int = 60_000,
     max_task_attempts: int = 0,
     clock_ms: Callable[[], int] | None = None,
+    validation_retry_successor_recovery_fn: Callable[
+        [DatabaseTaskAttempt, object, Mapping[str, object]],
+        Mapping[str, object],
+    ]
+    | None = None,
 ) -> DatabaseImplementationDaemon:
     database_path = tmp_path / "control.duckdb"
     coordination_path = tmp_path / "coordination.duckdb"
@@ -270,6 +285,9 @@ def _open_daemon(
         provider_fn=provider_fn or default_provider,
         effect_fn=effect,
         validation_fn=validation,
+        validation_retry_successor_recovery_fn=(
+            validation_retry_successor_recovery_fn
+        ),
         require_real_execution=True,
         clock_ms=clock_ms,
     )
@@ -1427,6 +1445,307 @@ def test_typed_post_dispatch_validation_failure_retries_with_attempt_budget(
         assert claim_receipt["fencing_token"] == successor.fencing_token
         assert claim_receipt["fence_epoch"] == successor.fence_epoch
         assert claim_receipt["lease_id"] == successor.lease_id
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    "path_count",
+    (2, 192),
+    ids=("ordinary", "bounded-large-receipt"),
+)
+def test_seed_order_failure_rearms_only_after_exact_bridge_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_count: int,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "tests@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Tests"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "inventory").mkdir()
+    if path_count == 2:
+        changed_paths = [
+            "inventory/result.json",
+            "inventory/summary.json",
+        ]
+    else:
+        long_directory = "a" * 240
+        changed_paths = [
+            (
+                f"inventory/{long_directory}/{index:03d}-"
+                + "b" * 238
+                + ".json"
+            )
+            for index in range(path_count)
+        ]
+        assert all(
+            490 <= len(path.encode("utf-8")) <= 500
+            for path in changed_paths
+        )
+    changed_paths = sorted(changed_paths)
+    declared_paths = list(reversed(changed_paths))
+    for relative in changed_paths:
+        output_path = repo / relative
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text('{"result":true}\n', encoding="utf-8")
+    subprocess.run(["git", "add", "--", "inventory"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "candidate"], cwd=repo, check=True)
+    candidate_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    rescue_branch = "rescue/dqp-t001-attempt-1-failed-validation"
+    subprocess.run(
+        ["git", "branch", rescue_branch, candidate_commit],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-qm", "target advances"],
+        cwd=repo,
+        check=True,
+    )
+    target_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    holder: dict[str, object] = {}
+    now = {"ms": 1_000}
+
+    def provider(attempt: DatabaseTaskAttempt) -> dict[str, object]:
+        if attempt.attempt_number == 1:
+            daemon = holder["daemon"]
+            assert isinstance(daemon, DatabaseImplementationDaemon)
+            receipt = _validation_retry_receipt(daemon, attempt)
+            receipt.update(
+                {
+                    "implementation_commit": candidate_commit,
+                    "rescue_branch": rescue_branch,
+                    "changed_paths": changed_paths,
+                }
+            )
+            receipt.pop("receipt_id")
+            receipt["receipt_id"] = daemon._database_portal_evidence_digest(
+                receipt
+            )
+            raise DatabasePortalValidationRetry(receipt)
+        if attempt.attempt_number == 2:
+            raise DatabasePortalBridgeError(
+                "database claim validation retry seed failed verification"
+            )
+        return {
+            "status": "succeeded",
+            "accepted": True,
+            "task_cid": attempt.task_cid,
+        }
+
+    def replay(
+        attempt: DatabaseTaskAttempt,
+        record: object,
+        historical_claim_body: Mapping[str, object],
+    ) -> Mapping[str, object]:
+        bridge = holder["bridge"]
+        assert isinstance(bridge, DatabasePortalExecutionBridge)
+        return bridge.verify_validation_retry_successor_recovery(
+            attempt,
+            record,
+            historical_claim_body,
+        )
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:seed-order-successor-recovery",
+        provider_fn=provider,
+        max_task_attempts=4,
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+        validation_retry_successor_recovery_fn=replay,
+    )
+    holder["daemon"] = daemon
+    try:
+        population = _population(1)
+        population["tasks"][0]["outputs"] = [
+            {"path": path}
+            for path in declared_paths
+        ]
+        daemon.materialize_population(population)
+        holder["bridge"] = DatabasePortalExecutionBridge(
+            task_source=daemon.task_source,
+            attempt_root=tmp_path / "portal-attempts",
+            portal_factory=lambda _paths, _alias: SimpleNamespace(),
+            repository_root=repo,
+            max_task_attempts=4,
+        )
+
+        source_result = daemon.run_once()
+        source = daemon.get_attempt(source_result["attempt_id"])
+        assert source is not None and source.attempt_number == 1
+        assert daemon.task_source.get(source.task_cid).status == "retrying"
+
+        now["ms"] = 7_000
+        target_result = daemon.run_once()
+        assert "attempt_id" in target_result, target_result
+        target = daemon.get_attempt(target_result["attempt_id"])
+        assert target is not None and target.attempt_number == 2
+        blocked = daemon.task_source.get(target.task_cid)
+        assert blocked is not None and blocked.status == "blocked"
+
+        # A moved rescue ref makes the repository replay fail closed without
+        # changing the task or queue.  Restoring the exact preserved ref then
+        # admits the one typed successor recovery.
+        subprocess.run(
+            ["git", "branch", "-f", rescue_branch, target_commit],
+            cwd=repo,
+            check=True,
+        )
+        assert daemon.reconcile_terminal_portal_failures() == []
+        assert daemon.task_source.get(target.task_cid).status == "blocked"
+        subprocess.run(
+            ["git", "branch", "-f", rescue_branch, candidate_commit],
+            cwd=repo,
+            check=True,
+        )
+
+        if path_count == 192:
+            # A rejected size admission must happen before the predecessor
+            # queue is rewritten.  Use a deliberately tiny bound to exercise
+            # that ordering, then restore the production bound for recovery.
+            task_before_preflight = daemon.task_source.get(target.task_cid)
+            queue_before_preflight = daemon.task_source.get_queue_entry(
+                target.task_cid
+            )
+            assert task_before_preflight is not None
+            assert queue_before_preflight is not None
+            monkeypatch.setattr(
+                implementation_daemon_module,
+                "_MAX_TASK_BODY_BYTES",
+                1,
+            )
+            assert daemon.reconcile_terminal_portal_failures() == []
+            task_after_preflight = daemon.task_source.get(target.task_cid)
+            queue_after_preflight = daemon.task_source.get_queue_entry(
+                target.task_cid
+            )
+            assert task_after_preflight is not None
+            assert queue_after_preflight is not None
+            assert task_after_preflight.revision == task_before_preflight.revision
+            assert task_body_canonical_json_bytes(
+                dict(task_after_preflight.body)
+            ) == task_body_canonical_json_bytes(
+                dict(task_before_preflight.body)
+            )
+            assert queue_after_preflight.to_dict() == (
+                queue_before_preflight.to_dict()
+            )
+            monkeypatch.setattr(
+                implementation_daemon_module,
+                "_MAX_TASK_BODY_BYTES",
+                MAX_TASK_BODY_BYTES,
+            )
+
+        outcomes = daemon.reconcile_terminal_portal_failures()
+        assert len(outcomes) == 1
+        recovered = daemon.task_source.get(target.task_cid)
+        assert recovered is not None and recovered.status == "retrying"
+        recovery_receipt = recovered.body["completion_receipt"]
+        assert (
+            len(task_body_canonical_json_bytes(dict(recovered.body)))
+            < MAX_TASK_BODY_BYTES
+        )
+        assert recovery_receipt["operation"] == (
+            "database_portal_validation_retry_successor_recovery"
+        )
+        assert recovery_receipt["queue_receipt"] == {}
+        recovery = recovery_receipt[
+            "validation_retry_successor_recovery"
+        ]
+        assert recovery["source_attempt_id"] == source.attempt_id
+        assert recovery["target_attempt_id"] == target.attempt_id
+        compact_proof = recovery["bridge_order_repair_proof"]
+        assert compact_proof["preserved_commit_verified"] is True
+        assert "scoped_outputs" not in compact_proof
+        assert "changed_paths" not in compact_proof
+        assert compact_proof["path_count"] == path_count
+
+        def ordered_path_digest(paths: list[str]) -> str:
+            return "sha256:" + hashlib.sha256(
+                task_body_canonical_json_bytes(paths)
+            ).hexdigest()
+
+        assert compact_proof["scoped_outputs_ordered_digest"] == (
+            ordered_path_digest(declared_paths)
+        )
+        assert compact_proof["changed_paths_ordered_digest"] == (
+            ordered_path_digest(changed_paths)
+        )
+        assert compact_proof["exact_output_set_digest"] == (
+            ordered_path_digest(sorted(changed_paths))
+        )
+
+        # Reconstruct the former full proof exactly: its retained proof_id
+        # still commits to both ordered arrays even though persistence now
+        # carries only bounded digest/count evidence.
+        legacy_proof = {
+            key: value
+            for key, value in compact_proof.items()
+            if key
+            not in {
+                "path_count",
+                "scoped_outputs_ordered_digest",
+                "changed_paths_ordered_digest",
+                "exact_output_set_digest",
+            }
+        }
+        legacy_proof["scoped_outputs"] = declared_paths
+        legacy_proof["changed_paths"] = changed_paths
+        legacy_proof_body = dict(legacy_proof)
+        legacy_proof_id = legacy_proof_body.pop("proof_id")
+        assert legacy_proof_id == "sha256:" + hashlib.sha256(
+            task_body_canonical_json_bytes(legacy_proof_body)
+        ).hexdigest()
+        if path_count == 192:
+            legacy_receipt = json.loads(json.dumps(recovery_receipt))
+            legacy_receipt[
+                "validation_retry_successor_recovery"
+            ]["bridge_order_repair_proof"] = legacy_proof
+            legacy_task_body = dict(recovered.body)
+            legacy_task_body["completion_receipt"] = legacy_receipt
+            assert (
+                len(task_body_canonical_json_bytes(legacy_task_body))
+                > MAX_TASK_BODY_BYTES
+            )
+        assert daemon.reconcile_terminal_portal_failures() == []
+
+        now["ms"] = 13_000
+        successor = daemon.claim_next()
+        assert successor is not None and successor.attempt_number == 3
+        claimed = daemon.task_source.get(successor.task_cid)
+        assert claimed is not None and claimed.status == "in_progress"
+        claim_receipt = claimed.body["completion_receipt"]
+        assert claim_receipt["validation_retry_source_attempt_id"] == (
+            source.attempt_id
+        )
+        assert claim_receipt["validation_retry_seed"] == (
+            recovery_receipt["validation_retry_seed"]
+        )
+        assert successor.fencing_token > target.fencing_token
     finally:
         daemon.close()
 

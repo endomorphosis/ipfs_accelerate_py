@@ -1314,6 +1314,9 @@ def bind_database_portal_execution_from_args(
         effect_fn=bridge.apply_effect,
         validation_fn=bridge.validate_effect,
         landed_completion_recovery_fn=bridge.recover_landed_completion,
+        validation_retry_successor_recovery_fn=(
+            bridge.verify_validation_retry_successor_recovery
+        ),
     )
     return bridge
 
