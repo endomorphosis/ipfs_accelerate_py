@@ -1358,6 +1358,7 @@ def test_typed_preflight_requires_independent_quota_confirmation(
     )
     fallback = _terra_fallback_command(str(codex), workspace)
     fallback_calls: list[list[str]] = []
+    fallback_authorities: list[dict[str, object]] = []
     verifier_calls: list[dict[str, object]] = []
     preflight_calls: list[dict[str, object]] = []
     fingerprint_values = iter(fingerprints)
@@ -1430,6 +1431,12 @@ def test_typed_preflight_requires_independent_quota_confirmation(
 
     def fake_fallback(command, **kwargs) -> int:
         fallback_calls.append(list(command))
+        fallback_authorities.append(
+            {
+                "effect_claim": kwargs.get("effect_claim"),
+                "effect_terminal": kwargs.get("effect_terminal"),
+            }
+        )
         kwargs["pre_effect_validator"]()
         return 0
 
@@ -1480,6 +1487,9 @@ def test_typed_preflight_requires_independent_quota_confirmation(
     assert grok_cli_runner.GROK_FAILURE_RECEIPT_PREFIX in rendered
     if expected_fallback_count:
         assert 'model_reasoning_effort="high"' in fallback_calls[0]
+        assert fallback_authorities == [
+            {"effect_claim": None, "effect_terminal": None}
+        ]
         expected_reason = (
             "authentication is unavailable"
             if receipt["failure_class"] == "authentication_unavailable"
@@ -2511,6 +2521,12 @@ def test_docker_codex_fallback_always_closes_its_separate_lease(
         docker_config = tmp_path / "docker-config"
         container_name = "ipfs-accelerate-codex-1-" + "c" * 32
         cidfile = tmp_path / "container.cid"
+
+        def mark_cas_owned(self) -> None:
+            pytest.fail("unscoped fallback must remain lease-owned")
+
+        def mark_cas_terminal(self) -> None:
+            pytest.fail("unscoped fallback cannot claim CAS terminality")
 
         def close(self, *, docker_run_finished: bool) -> None:
             close_calls.append(docker_run_finished)

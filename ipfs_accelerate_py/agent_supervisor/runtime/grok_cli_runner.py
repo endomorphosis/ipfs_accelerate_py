@@ -6110,7 +6110,11 @@ def _run(args: argparse.Namespace, receipt_fd: int) -> int:
                 prompt_path=prompt_file,
                 base_env=os.environ.copy(),
                 pre_effect_validator=validate_effect_boundary,
-                effect_claim=claim_provider_effect,
+                effect_claim=(
+                    claim_provider_effect
+                    if invocation_binding is not None
+                    else None
+                ),
                 effect_terminal=(
                     complete_provider_effect
                     if invocation_binding is not None

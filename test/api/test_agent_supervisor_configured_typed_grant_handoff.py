@@ -4384,6 +4384,66 @@ def test_aseh_repair_control_receipt_lifecycle_transition_is_closed_and_chained(
         )
 
 
+def test_aseh_repair_provider_lease_ownership_transition_is_closed_and_chained(
+) -> None:
+    receipt = {
+        "schema": (
+            aseh_operator.REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_SCHEMA
+        ),
+        "task_id": aseh_operator.REPAIR_TRANSITION_TASK_ID,
+        "stable_identity": (
+            f"{aseh_operator.PROGRAM}/"
+            f"{aseh_operator.REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R10"
+        ),
+        "program_id": aseh_operator.PROGRAM,
+        "transition_revision": 10,
+        "bootstrap_receipt_id": "sha256:" + ("a" * 64),
+        "previous_receipt_cid": "sha256:" + ("b" * 64),
+        "plan_root_cid": "plan:sealed",
+        "repository_tree_id": "tree:sealed",
+        "base_head": "1" * 40,
+        "base_tree": "2" * 40,
+        "repair_head": "3" * 40,
+        "repair_tree": "4" * 40,
+        "changed_paths": list(
+            aseh_operator.REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": "sha256:" + ("5" * 64),
+        "dependencies": ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R9"],
+        "owning_repository": "ipfs_accelerate_py",
+        "risk_class": "R4_SECURITY_OR_PROTOCOL_SENSITIVE",
+        "authority_requirement": (
+            aseh_operator.REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_AUTHORITY
+        ),
+        "validation_results": [],
+        "terminal_success_criteria": "exact provider lease ownership",
+        "terminal_non_success_criteria": "all drift rejected",
+        "semantic_corpus_changed": False,
+        "database_mutated": False,
+        "authorized_at": 1.0,
+    }
+    receipt["receipt_cid"] = aseh_operator._identity(receipt)
+    assert (
+        aseh_operator._repair_provider_lease_ownership_transition_receipt_id(
+            receipt
+        )
+        == receipt["receipt_cid"]
+    )
+
+    receipt["transition_revision"] = 9
+    receipt["receipt_cid"] = aseh_operator._identity(
+        {
+            key: value
+            for key, value in receipt.items()
+            if key != "receipt_cid"
+        }
+    )
+    with pytest.raises(aseh_operator.OperatorError, match="schema"):
+        aseh_operator._repair_provider_lease_ownership_transition_receipt_id(
+            receipt
+        )
+
+
 def test_aseh_repair_runtime_hardening_transition_rejects_wrong_parent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4526,7 +4586,7 @@ def test_aseh_repair_clean_launch_transition_publication_is_create_only(
     ) == first
 
 
-def test_aseh_repair_control_receipt_lifecycle_transition_is_active_admission_base(
+def test_aseh_repair_provider_lease_ownership_transition_is_active_admission_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4540,6 +4600,7 @@ def test_aseh_repair_control_receipt_lifecycle_transition_is_active_admission_ba
     publication_contention_path = tmp_path / "repair-r7.json"
     recovery_replay_path = tmp_path / "repair-r8.json"
     control_receipt_lifecycle_path = tmp_path / "repair-r9.json"
+    provider_lease_ownership_path = tmp_path / "repair-r10.json"
     database_path = tmp_path / "control.duckdb"
     for path in (
         bootstrap_path,
@@ -4552,6 +4613,7 @@ def test_aseh_repair_control_receipt_lifecycle_transition_is_active_admission_ba
         publication_contention_path,
         recovery_replay_path,
         control_receipt_lifecycle_path,
+        provider_lease_ownership_path,
         database_path,
     ):
         path.touch()
@@ -4576,6 +4638,9 @@ def test_aseh_repair_control_receipt_lifecycle_transition_is_active_admission_ba
         "repair_control_receipt_lifecycle_transition_receipt": (
             control_receipt_lifecycle_path
         ),
+        "repair_provider_lease_ownership_transition_receipt": (
+            provider_lease_ownership_path
+        ),
         "database": database_path,
     }
     bootstrap = {
@@ -4595,6 +4660,7 @@ def test_aseh_repair_control_receipt_lifecycle_transition_is_active_admission_ba
     r7_receipt = {"revision": 7}
     r8_receipt = {"revision": 8}
     r9_receipt = {"revision": 9}
+    r10_receipt = {"revision": 10}
     r3_head = aseh_operator.REPAIR_RUNTIME_HARDENING_TRANSITION_BASE_HEAD
     r4_head = "4" * 40
     r5_head = "5" * 40
@@ -4602,8 +4668,9 @@ def test_aseh_repair_control_receipt_lifecycle_transition_is_active_admission_ba
     r7_head = "7" * 40
     r8_head = "8" * 40
     r9_head = "9" * 40
+    r10_head = "a" * 40
     population = {
-        "source_head": r9_head,
+        "source_head": r10_head,
         "repository_tree_id": "tree:runtime",
         "plan_root_cid": "plan:sealed",
         "source_forest": {"forest_cid": "forest:runtime"},
@@ -4661,6 +4728,12 @@ def test_aseh_repair_control_receipt_lifecycle_transition_is_active_admission_ba
         "transition_revision": 9,
         "receipt_cid": "receipt:r9",
     }
+    r10 = {
+        "base_head": r9_head,
+        "repair_head": r10_head,
+        "transition_revision": 10,
+        "receipt_cid": "receipt:r10",
+    }
     payloads = {
         bootstrap_path: bootstrap,
         repair_path: r1_receipt,
@@ -4672,6 +4745,7 @@ def test_aseh_repair_control_receipt_lifecycle_transition_is_active_admission_ba
         publication_contention_path: r7_receipt,
         recovery_replay_path: r8_receipt,
         control_receipt_lifecycle_path: r9_receipt,
+        provider_lease_ownership_path: r10_receipt,
     }
     suffix_calls: list[tuple[str, str]] = []
 
@@ -4735,6 +4809,11 @@ def test_aseh_repair_control_receipt_lifecycle_transition_is_active_admission_ba
     )
     monkeypatch.setattr(
         aseh_operator,
+        "_validate_repair_provider_lease_ownership_transition",
+        lambda *_args, **_kwargs: r10,
+    )
+    monkeypatch.setattr(
+        aseh_operator,
         "_read_continuity_state",
         lambda *_args, **_kwargs: (
             {"projection_cid": "projection:current", "event_cursor": 79},
@@ -4773,12 +4852,12 @@ def test_aseh_repair_control_receipt_lifecycle_transition_is_active_admission_ba
         object(), {}, paths
     )
 
-    assert admission["repair_transition"] == r9
+    assert admission["repair_transition"] == r10
     assert [
         item.get("transition_revision", 1)
         for item in admission["repair_transition_chain"]
-    ] == [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    assert suffix_calls[-1] == (r9_head, r9_head)
+    ] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert suffix_calls[-1] == (r10_head, r10_head)
     assert admission["canonical_continuity"][
         "followup_to_clean_launch"
     ] == r3
@@ -4800,6 +4879,9 @@ def test_aseh_repair_control_receipt_lifecycle_transition_is_active_admission_ba
     assert admission["canonical_continuity"][
         "quack_recovery_replay_to_control_receipt_lifecycle"
     ] == r9
+    assert admission["canonical_continuity"][
+        "control_receipt_lifecycle_to_provider_lease_ownership"
+    ] == r10
 
 
 def test_aseh_repair_authorization_replay_rejects_head_regression(

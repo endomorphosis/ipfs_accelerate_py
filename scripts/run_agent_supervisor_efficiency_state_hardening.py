@@ -519,6 +519,41 @@ REPAIR_CONTROL_RECEIPT_LIFECYCLE_TRANSITION_AUTHORITY: Final = (
     "closed recovery receipt without permitting any other receipt extension "
     "or weakening task, lease, fence, provider, effect, or lane health gates"
 )
+REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "aseh-bootstrap-repair-provider-lease-ownership-transition@1"
+)
+REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_BASE_HEAD: Final = (
+    "bf82e7e3ba6c31e2a4d49e9511e06024055aec13"
+)
+REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_CHANGED_PATHS: Final = (
+    "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+    "scripts/run_agent_supervisor_efficiency_state_hardening.py",
+    "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+    "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+)
+REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_VALIDATIONS: Final = (
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_configured_typed_grant_handoff.py",
+        "-k", "repair_provider_lease_ownership_transition",
+    ),
+    (
+        sys.executable, "-m", "pytest", "-q",
+        "test/api/test_agent_supervisor_grok_quota_terra_gate.py",
+        "-k", (
+            "typed_preflight_requires_independent_quota_confirmation "
+            "or docker_codex_fallback_always_closes_its_separate_lease"
+        ),
+    ),
+)
+REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_AUTHORITY: Final = (
+    "the operator explicitly directed the bootstrap engineering agent to fix "
+    "the existing supervisor so an unscoped provider launch never claims "
+    "durable CAS ownership without a durable provider-attempt record, while "
+    "scoped invocations retain their existing CAS, adoption, reconciliation, "
+    "lease, fence, and terminalization gates"
+)
 BOOTSTRAP_RECEIPT_FIELDS: Final = frozenset(
     {
         "schema", "source_head", "repository_tree_id", "plan_root_cid",
@@ -584,6 +619,9 @@ REPAIR_QUACK_RECOVERY_REPLAY_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS
 )
 REPAIR_CONTROL_RECEIPT_LIFECYCLE_TRANSITION_RECEIPT_FIELDS: Final = (
+    REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS
+)
+REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_RECEIPT_FIELDS: Final = (
     REPAIR_CLEAN_LAUNCH_TRANSITION_RECEIPT_FIELDS
 )
 REPAIR_FOLLOWUP_BASE_WITNESS_FIELDS: Final = frozenset(
@@ -1056,6 +1094,34 @@ def _repair_control_receipt_lifecycle_transition_receipt_id(
     return receipt_id
 
 
+def _repair_provider_lease_ownership_transition_receipt_id(
+    payload: Mapping[str, Any],
+) -> str:
+    """Validate the closed revision-10 provider lease receipt."""
+
+    if (
+        payload.get("schema")
+        != REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_SCHEMA
+        or set(payload)
+        != REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_RECEIPT_FIELDS
+        or payload.get("task_id") != REPAIR_TRANSITION_TASK_ID
+        or payload.get("program_id") != PROGRAM
+        or payload.get("transition_revision") != 10
+        or payload.get("semantic_corpus_changed") is not False
+        or payload.get("database_mutated") is not False
+    ):
+        raise OperatorError(
+            "bootstrap repair provider-lease-ownership schema is invalid"
+        )
+    unsigned = dict(payload)
+    receipt_id = str(unsigned.pop("receipt_cid", "") or "")
+    if receipt_id != _identity(unsigned):
+        raise OperatorError(
+            "bootstrap repair provider-lease-ownership CID is invalid"
+        )
+    return receipt_id
+
+
 def _run(
     argv: Sequence[str],
     *,
@@ -1371,6 +1437,36 @@ def _run_repair_control_receipt_lifecycle_transition_validations(
     return results
 
 
+def _run_repair_provider_lease_ownership_transition_validations(
+) -> list[dict[str, Any]]:
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError(
+            "bootstrap repair provider-lease-ownership validation requires "
+            "a clean checkout"
+        )
+    results: list[dict[str, Any]] = []
+    for command in REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_VALIDATIONS:
+        completed = _run(command, timeout=900)
+        result = {
+            "argv": list(command),
+            "returncode": int(completed.returncode),
+            "stdout_digest": _identity(completed.stdout.encode("utf-8")),
+            "stderr_digest": _identity(completed.stderr.encode("utf-8")),
+        }
+        results.append(result)
+        if completed.returncode != 0:
+            raise OperatorError(
+                "bootstrap repair provider-lease-ownership validation "
+                "failed: " + " ".join(command)
+            )
+    if _git("status", "--porcelain", "--untracked-files=all"):
+        raise OperatorError(
+            "bootstrap repair provider-lease-ownership validation dirtied "
+            "the checkout"
+        )
+    return results
+
+
 def _safe_path(value: str, *, field: str) -> Path:
     candidate = (ROOT / value).resolve()
     try:
@@ -1488,6 +1584,11 @@ def _paths(board: Any) -> dict[str, Path]:
         result["evidence"]
         / "bootstrap"
         / "bootstrap-repair-control-receipt-lifecycle-transition.json"
+    )
+    result["repair_provider_lease_ownership_transition_receipt"] = (
+        result["evidence"]
+        / "bootstrap"
+        / "bootstrap-repair-provider-lease-ownership-transition.json"
     )
     result["status_receipt"] = (
         result["evidence"] / "control-plane" / "live-status.json"
@@ -4719,6 +4820,157 @@ def _validate_repair_control_receipt_lifecycle_transition(
     }
 
 
+def _validate_repair_provider_lease_ownership_transition(
+    receipt: Mapping[str, Any],
+    *,
+    bootstrap: Mapping[str, Any],
+    previous_receipt: Mapping[str, Any],
+    rerun_validations: bool,
+) -> dict[str, Any]:
+    """Admit only revision 10 chained to immutable lifecycle repair."""
+
+    receipt_id = _repair_provider_lease_ownership_transition_receipt_id(
+        receipt
+    )
+    previous_receipt_id = (
+        _repair_control_receipt_lifecycle_transition_receipt_id(
+            previous_receipt
+        )
+    )
+    if (
+        receipt.get("stable_identity")
+        != f"{PROGRAM}/{REPAIR_TRANSITION_TASK_ID}@ASEH-PLAN-R10"
+        or receipt.get("previous_receipt_cid") != previous_receipt_id
+        or receipt.get("bootstrap_receipt_id")
+        != bootstrap.get("bootstrap_receipt_id")
+        or receipt.get("plan_root_cid") != bootstrap.get("plan_root_cid")
+        or receipt.get("repository_tree_id")
+        != bootstrap.get("repository_tree_id")
+        or receipt.get("base_head")
+        != REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_BASE_HEAD
+        or receipt.get("changed_paths")
+        != list(REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_CHANGED_PATHS)
+        or receipt.get("dependencies")
+        != ["ASEH-BOOTSTRAP-002@ASEH-PLAN-R9"]
+        or receipt.get("owning_repository") != "ipfs_accelerate_py"
+        or receipt.get("risk_class")
+        != "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+        or receipt.get("authority_requirement")
+        != REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_AUTHORITY
+        or type(receipt.get("authorized_at")) not in {int, float}
+        or float(receipt["authorized_at"]) <= 0.0
+    ):
+        raise OperatorError(
+            "bootstrap repair provider-lease-ownership authority differs"
+        )
+    repair = str(receipt.get("repair_head") or "").strip().casefold()
+    if (
+        re.fullmatch(r"[0-9a-f]{40}", repair) is None
+        or _git("show", "-s", "--format=%P", repair).split()
+        != [REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_BASE_HEAD]
+    ):
+        raise OperatorError(
+            "bootstrap repair provider-lease-ownership must be one exact "
+            "child"
+        )
+    base_tree = _git(
+        "rev-parse",
+        f"{REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_BASE_HEAD}^{{tree}}",
+    )
+    repair_tree = _git("rev-parse", f"{repair}^{{tree}}")
+    if (
+        receipt.get("base_tree") != base_tree
+        or receipt.get("repair_tree") != repair_tree
+        or _git_changed_paths(
+            REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_BASE_HEAD,
+            repair,
+        )
+        != REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_CHANGED_PATHS
+        or receipt.get("patch_digest")
+        != _git_patch_digest(
+            REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_BASE_HEAD,
+            repair,
+        )
+    ):
+        raise OperatorError(
+            "bootstrap repair provider-lease-ownership Git proof differs"
+        )
+    forest = bootstrap.get("source_forest")
+    by_owner = forest.get("by_owner") if isinstance(forest, Mapping) else None
+    if not isinstance(by_owner, Mapping):
+        raise OperatorError("bootstrap source forest owner binding is absent")
+    for owner, path in (
+        ("ipfs_datasets_py", "ipfs_datasets_py"),
+        ("ipfs_kit_py", "ipfs_kit_py"),
+    ):
+        expected = by_owner.get(owner)
+        if (
+            not isinstance(expected, Mapping)
+            or _git("rev-parse", f"{repair}:{path}")
+            != expected.get("commit")
+        ):
+            raise OperatorError(
+                "bootstrap repair provider-lease-ownership changed a sibling"
+            )
+    stored_results = receipt.get("validation_results")
+    if (
+        not isinstance(stored_results, list)
+        or len(stored_results)
+        != len(REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_VALIDATIONS)
+    ):
+        raise OperatorError(
+            "bootstrap repair provider-lease-ownership validation differs"
+        )
+    for stored, command in zip(
+        stored_results,
+        REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_VALIDATIONS,
+        strict=True,
+    ):
+        if (
+            not isinstance(stored, Mapping)
+            or set(stored)
+            != {"argv", "returncode", "stdout_digest", "stderr_digest"}
+            or stored.get("argv") != list(command)
+            or stored.get("returncode") != 0
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(stored.get("stdout_digest") or ""),
+            )
+            is None
+            or re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                str(stored.get("stderr_digest") or ""),
+            )
+            is None
+        ):
+            raise OperatorError(
+                "bootstrap repair provider-lease-ownership validation differs"
+            )
+    if rerun_validations:
+        rerun = _run_repair_provider_lease_ownership_transition_validations()
+        if [item["argv"] for item in rerun] != [
+            item.get("argv") for item in stored_results
+        ]:
+            raise OperatorError(
+                "bootstrap repair provider-lease-ownership commands differ"
+            )
+    return {
+        "schema": REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_SCHEMA,
+        "task_id": REPAIR_TRANSITION_TASK_ID,
+        "transition_revision": 10,
+        "base_head": REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_BASE_HEAD,
+        "base_tree": base_tree,
+        "repair_head": repair,
+        "repair_tree": repair_tree,
+        "changed_paths": list(
+            REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_CHANGED_PATHS
+        ),
+        "patch_digest": str(receipt.get("patch_digest") or ""),
+        "previous_receipt_cid": previous_receipt_id,
+        "receipt_cid": receipt_id,
+    }
+
+
 def _projection_matches_events_on_disposable_copy(database: Path) -> bool:
     """Replay projections on a private clone, never on authoritative bytes."""
 
@@ -5168,6 +5420,260 @@ def authorize_repair_transition(config_path: Path) -> dict[str, Any]:
                                             ),
                                             head,
                                         )
+                                        provider_lease_path = paths.get(
+                                            "repair_provider_lease_ownership_transition_receipt"
+                                        )
+                                        if (
+                                            isinstance(provider_lease_path, Path)
+                                            and provider_lease_path.is_file()
+                                        ):
+                                            provider_lease = _secure_runtime_json(
+                                                provider_lease_path,
+                                                max_bytes=(
+                                                    STATUS_RECEIPT_MAX_BYTES
+                                                ),
+                                            )
+                                            provider_lease_transition = (
+                                                _validate_repair_provider_lease_ownership_transition(
+                                                    provider_lease,
+                                                    bootstrap=bootstrap,
+                                                    previous_receipt=lifecycle,
+                                                    rerun_validations=(
+                                                        provider_lease.get(
+                                                            "repair_head"
+                                                        )
+                                                        == head
+                                                    ),
+                                                )
+                                            )
+                                            _git(
+                                                "merge-base",
+                                                "--is-ancestor",
+                                                str(
+                                                    provider_lease_transition[
+                                                        "repair_head"
+                                                    ]
+                                                ),
+                                                head,
+                                            )
+                                            current_admission = (
+                                                _admit_materialized_launch(
+                                                    board, _config, paths
+                                                )
+                                            )
+                                            admitted_repair = (
+                                                current_admission.get(
+                                                    "repair_transition"
+                                                )
+                                            )
+                                            admitted_continuity = (
+                                                current_admission.get(
+                                                    "canonical_continuity"
+                                                )
+                                            )
+                                            if (
+                                                not isinstance(
+                                                    admitted_repair, Mapping
+                                                )
+                                                or admitted_repair.get(
+                                                    "repair_head"
+                                                )
+                                                != provider_lease_transition[
+                                                    "repair_head"
+                                                ]
+                                                or not isinstance(
+                                                    admitted_continuity, Mapping
+                                                )
+                                                or "repair_to_current"
+                                                not in admitted_continuity
+                                            ):
+                                                raise OperatorError(
+                                                    "current admission does not "
+                                                    "retain the provider-lease-"
+                                                    "ownership repair transition"
+                                                )
+                                            return {
+                                                "schema": OPERATOR_SCHEMA,
+                                                "command": (
+                                                    "authorize-repair-transition"
+                                                ),
+                                                "ok": True,
+                                                "idempotent_replay": True,
+                                                "repair_transition_receipt": (
+                                                    provider_lease
+                                                ),
+                                                "repair_transition_chain": [
+                                                    prior,
+                                                    followup,
+                                                    clean_launch,
+                                                    runtime_hardening,
+                                                    quack_recovery,
+                                                    parallel_startup,
+                                                    publication,
+                                                    replay,
+                                                    lifecycle,
+                                                    provider_lease,
+                                                ],
+                                                "current_admission_cid": (
+                                                    current_admission[
+                                                        "admission_cid"
+                                                    ]
+                                                ),
+                                                "runtime_source_head": (
+                                                    current_admission[
+                                                        "runtime_source_head"
+                                                    ]
+                                                ),
+                                            }
+                                        if lifecycle.get("repair_head") != head:
+                                            parents = _git(
+                                                "show", "-s", "--format=%P", head
+                                            ).split()
+                                            if parents != [
+                                                REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_BASE_HEAD
+                                            ]:
+                                                raise OperatorError(
+                                                    "bootstrap repair provider-"
+                                                    "lease-ownership must be one "
+                                                    "child of the exact revision-9 "
+                                                    "repair"
+                                                )
+                                            if _git_changed_paths(
+                                                REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_BASE_HEAD,
+                                                head,
+                                            ) != (
+                                                REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_CHANGED_PATHS
+                                            ):
+                                                raise OperatorError(
+                                                    "bootstrap repair provider-"
+                                                    "lease-ownership changed-path "
+                                                    "set differs"
+                                                )
+                                            validation_results = (
+                                                _run_repair_provider_lease_ownership_transition_validations()
+                                            )
+                                            receipt = {
+                                                "schema": (
+                                                    REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_SCHEMA
+                                                ),
+                                                "task_id": (
+                                                    REPAIR_TRANSITION_TASK_ID
+                                                ),
+                                                "stable_identity": (
+                                                    f"{PROGRAM}/"
+                                                    f"{REPAIR_TRANSITION_TASK_ID}"
+                                                    "@ASEH-PLAN-R10"
+                                                ),
+                                                "program_id": PROGRAM,
+                                                "transition_revision": 10,
+                                                "bootstrap_receipt_id": (
+                                                    bootstrap_id
+                                                ),
+                                                "previous_receipt_cid": (
+                                                    lifecycle_transition[
+                                                        "receipt_cid"
+                                                    ]
+                                                ),
+                                                "plan_root_cid": bootstrap[
+                                                    "plan_root_cid"
+                                                ],
+                                                "repository_tree_id": bootstrap[
+                                                    "repository_tree_id"
+                                                ],
+                                                "base_head": (
+                                                    REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_BASE_HEAD
+                                                ),
+                                                "base_tree": _git(
+                                                    "rev-parse",
+                                                    REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_BASE_HEAD
+                                                    + "^{tree}",
+                                                ),
+                                                "repair_head": head,
+                                                "repair_tree": _git(
+                                                    "rev-parse", f"{head}^{{tree}}"
+                                                ),
+                                                "changed_paths": list(
+                                                    REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_CHANGED_PATHS
+                                                ),
+                                                "patch_digest": _git_patch_digest(
+                                                    REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_BASE_HEAD,
+                                                    head,
+                                                ),
+                                                "dependencies": [
+                                                    "ASEH-BOOTSTRAP-002@ASEH-PLAN-R9"
+                                                ],
+                                                "owning_repository": (
+                                                    "ipfs_accelerate_py"
+                                                ),
+                                                "risk_class": (
+                                                    "R4_SECURITY_OR_PROTOCOL_SENSITIVE"
+                                                ),
+                                                "authority_requirement": (
+                                                    REPAIR_PROVIDER_LEASE_OWNERSHIP_TRANSITION_AUTHORITY
+                                                ),
+                                                "validation_results": (
+                                                    validation_results
+                                                ),
+                                                "terminal_success_criteria": (
+                                                    "Every unscoped provider "
+                                                    "fallback remains lease-owned "
+                                                    "and is reaped on runner loss; "
+                                                    "only a scoped invocation with "
+                                                    "a durable provider-attempt CAS "
+                                                    "may mark the container CAS-owned."
+                                                ),
+                                                "terminal_non_success_criteria": (
+                                                    "Any unscoped CAS claim, scoped "
+                                                    "CAS regression, changed sibling, "
+                                                    "database mutation, identity drift, "
+                                                    "or validation failure is rejected."
+                                                ),
+                                                "semantic_corpus_changed": False,
+                                                "database_mutated": False,
+                                                "authorized_at": time.time(),
+                                            }
+                                            receipt["receipt_cid"] = _identity(
+                                                receipt
+                                            )
+                                            _validate_repair_provider_lease_ownership_transition(
+                                                receipt,
+                                                bootstrap=bootstrap,
+                                                previous_receipt=lifecycle,
+                                                rerun_validations=False,
+                                            )
+                                            if not isinstance(
+                                                provider_lease_path, Path
+                                            ):
+                                                raise OperatorError(
+                                                    "bootstrap repair provider-"
+                                                    "lease-ownership path is absent"
+                                                )
+                                            _atomic_json_create(
+                                                provider_lease_path, receipt
+                                            )
+                                            return {
+                                                "schema": OPERATOR_SCHEMA,
+                                                "command": (
+                                                    "authorize-repair-transition"
+                                                ),
+                                                "ok": True,
+                                                "idempotent_replay": False,
+                                                "repair_transition_receipt": (
+                                                    receipt
+                                                ),
+                                                "repair_transition_chain": [
+                                                    prior,
+                                                    followup,
+                                                    clean_launch,
+                                                    runtime_hardening,
+                                                    quack_recovery,
+                                                    parallel_startup,
+                                                    publication,
+                                                    replay,
+                                                    lifecycle,
+                                                    receipt,
+                                                ],
+                                            }
                                         current_admission = (
                                             _admit_materialized_launch(
                                                 board, _config, paths
@@ -6696,6 +7202,9 @@ def _admit_materialized_launch(
             control_receipt_lifecycle_transition: (
                 dict[str, Any] | None
             ) = None
+            provider_lease_ownership_transition: (
+                dict[str, Any] | None
+            ) = None
             clean_launch_receipt: dict[str, Any] | None = None
             clean_launch_path = paths.get(
                 "repair_clean_launch_transition_receipt"
@@ -6922,6 +7431,47 @@ def _admit_materialized_launch(
                                         active_transition = (
                                             control_receipt_lifecycle_transition
                                         )
+                                        provider_lease_path = paths.get(
+                                            "repair_provider_lease_ownership_transition_receipt"
+                                        )
+                                        if (
+                                            isinstance(provider_lease_path, Path)
+                                            and provider_lease_path.is_file()
+                                        ):
+                                            provider_lease_receipt = (
+                                                _secure_runtime_json(
+                                                    provider_lease_path,
+                                                    max_bytes=(
+                                                        STATUS_RECEIPT_MAX_BYTES
+                                                    ),
+                                                )
+                                            )
+                                            provider_lease_ownership_transition = (
+                                                _validate_repair_provider_lease_ownership_transition(
+                                                    provider_lease_receipt,
+                                                    bootstrap=bootstrap,
+                                                    previous_receipt=(
+                                                        lifecycle_receipt
+                                                    ),
+                                                    rerun_validations=True,
+                                                )
+                                            )
+                                            if (
+                                                provider_lease_ownership_transition[
+                                                    "base_head"
+                                                ]
+                                                != control_receipt_lifecycle_transition[
+                                                    "repair_head"
+                                                ]
+                                            ):
+                                                raise OperatorError(
+                                                    "provider-lease-ownership "
+                                                    "repair does not extend "
+                                                    "revision 9"
+                                                )
+                                            active_transition = (
+                                                provider_lease_ownership_transition
+                                            )
             current_proof = _admit_canonical_merge_suffix(
                 board,
                 base_head=str(active_transition["repair_head"]),
@@ -6957,6 +7507,10 @@ def _admit_materialized_launch(
                 repair_transition_chain.append(
                     control_receipt_lifecycle_transition
                 )
+            if provider_lease_ownership_transition is not None:
+                repair_transition_chain.append(
+                    provider_lease_ownership_transition
+                )
             continuity = {
                 "bootstrap_to_repair_base": base_proof,
                 "initial_repair_to_followup_base": followup_base,
@@ -6990,6 +7544,10 @@ def _admit_materialized_launch(
                 continuity[
                     "quack_recovery_replay_to_control_receipt_lifecycle"
                 ] = control_receipt_lifecycle_transition
+            if provider_lease_ownership_transition is not None:
+                continuity[
+                    "control_receipt_lifecycle_to_provider_lease_ownership"
+                ] = provider_lease_ownership_transition
         else:
             current_proof = _admit_canonical_merge_suffix(
                 board,
