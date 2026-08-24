@@ -1084,16 +1084,23 @@ def test_supervisor_launch_admits_exact_lifecycle_marked_lane_process(
         start_new_session=True,
     )
     try:
-        assert module._configured_lane_process_ready(
-            config=config,
-            bindings=bindings,
-            lane_index=0,
-            supervisor_pid=process.pid,
-            coordinator_pid=os.getpid(),
-            coordinator_start_ticks=coordinator_ticks,
-            repository_commit="1" * 40,
-            repository_tree="2" * 40,
-        )
+        ready = False
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            ready = module._configured_lane_process_ready(
+                config=config,
+                bindings=bindings,
+                lane_index=0,
+                supervisor_pid=process.pid,
+                coordinator_pid=os.getpid(),
+                coordinator_start_ticks=coordinator_ticks,
+                repository_commit="1" * 40,
+                repository_tree="2" * 40,
+            )
+            if ready or process.poll() is not None:
+                break
+            time.sleep(0.01)
+        assert ready
     finally:
         process.terminate()
         process.wait(timeout=5.0)
