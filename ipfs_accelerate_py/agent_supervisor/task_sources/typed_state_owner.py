@@ -75,6 +75,16 @@ TYPED_DATABASE_CLAIM_RECOVERY_COMMAND: Final = (
 TYPED_DATABASE_CLAIM_RECOVERY_REASON: Final = (
     "database_claim_lost_sidecar_dead_process"
 )
+TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "typed-database-strict-resume-rejection@1"
+)
+TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION: Final = (
+    "database_strict_resume_requeue"
+)
+TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION: Final = (
+    "database_strict_resume_quarantine"
+)
 TYPED_RETRYING_RECEIPT_OPERATIONS: Final[frozenset[str]] = frozenset(
     {
         "database_portal_retry",
@@ -581,6 +591,217 @@ def _validated_database_claim_identity(
             )
         identity[name] = value
     return identity
+
+
+def typed_database_strict_resume_rejection_receipt_id(
+    receipt: Mapping[str, Any],
+) -> str:
+    """Return the content identity of one strict-resume rejection receipt."""
+
+    body = dict(receipt)
+    body.pop("receipt_id", None)
+    return "sha256:" + hashlib.sha256(canonical_json_bytes(body)).hexdigest()
+
+
+def _validated_database_strict_resume_rejection_receipt(
+    receipt: Any,
+) -> dict[str, Any]:
+    """Validate the closed scheduling receipt used as a durable attempt floor."""
+
+    required = {
+        "schema",
+        "operation",
+        "task_cid",
+        "claim_id",
+        "attempt_id",
+        "attempt_number",
+        "lease_id",
+        "owner_session_id",
+        "fencing_token",
+        "fence_epoch",
+        "rejected_task_alias",
+        "rejected_task_revision",
+        "provider_phase_committed",
+        "provider_invocation_receipt_present",
+        "max_task_attempts",
+        "attempt_budget_exhausted",
+        "task_shard_count",
+        "task_shard_index",
+        "reasons",
+        "shared_claim_binding",
+        "execution_route_binding",
+        "execution_route_policy_id",
+        "execution_route_origin_revision",
+        "receipt_id",
+    }
+    if not isinstance(receipt, Mapping) or set(receipt) != required:
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection receipt has unknown or missing fields"
+        )
+    values = dict(receipt)
+    operation = values.get("operation")
+    if (
+        values.get("schema")
+        != TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA
+        or operation
+        not in {
+            TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
+            TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION,
+        }
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection operation is invalid"
+        )
+    identity_names = (
+        "claim_id",
+        "attempt_id",
+        "lease_id",
+        "owner_session_id",
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+    )
+    for name in ("task_cid", *identity_names[:4]):
+        value = values.get(name)
+        if (
+            type(value) is not str
+            or not value.strip()
+            or len(value.encode("utf-8")) > 1_024
+            or any(marker in value for marker in ("\x00", "\n", "\r"))
+        ):
+            raise TaskSourceIntegrityError(
+                f"typed strict-resume rejection {name} is invalid"
+            )
+    for name in (
+        "attempt_number",
+        "fencing_token",
+        "fence_epoch",
+        "rejected_task_revision",
+        "task_shard_count",
+    ):
+        value = values.get(name)
+        if type(value) is not int or value < 1:
+            raise TaskSourceIntegrityError(
+                f"typed strict-resume rejection {name} is invalid"
+            )
+    max_task_attempts = values.get("max_task_attempts")
+    shard_index = values.get("task_shard_index")
+    route_origin = values.get("execution_route_origin_revision")
+    if (
+        type(max_task_attempts) is not int
+        or not 0 <= max_task_attempts <= 10_000
+        or type(shard_index) is not int
+        or not 0 <= shard_index < values["task_shard_count"]
+        or type(route_origin) is not int
+        or route_origin < 0
+        or type(values.get("rejected_task_alias")) is not str
+        or type(values.get("execution_route_policy_id")) is not str
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection bounds are invalid"
+        )
+    for name in (
+        "provider_phase_committed",
+        "provider_invocation_receipt_present",
+        "attempt_budget_exhausted",
+    ):
+        if type(values.get(name)) is not bool:
+            raise TaskSourceIntegrityError(
+                f"typed strict-resume rejection {name} is invalid"
+            )
+    exhausted = bool(
+        max_task_attempts > 0
+        and values["attempt_number"] >= max_task_attempts
+    )
+    if values["attempt_budget_exhausted"] is not exhausted:
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection budget evidence is inconsistent"
+        )
+    provider_started = bool(
+        values["provider_phase_committed"]
+        or values["provider_invocation_receipt_present"]
+    )
+    if operation == TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION:
+        if exhausted or provider_started:
+            raise TaskSourceIntegrityError(
+                "typed strict-resume requeue is not pre-provider and under budget"
+            )
+    elif not exhausted and not provider_started:
+        raise TaskSourceIntegrityError(
+            "typed strict-resume quarantine has no terminal authority"
+        )
+    reasons = values.get("reasons")
+    if (
+        not isinstance(reasons, list)
+        or not reasons
+        or len(reasons) > 64
+        or any(
+            type(reason) is not str
+            or not reason.strip()
+            or len(reason.encode("utf-8")) > 256
+            for reason in reasons
+        )
+        or reasons != sorted(set(reasons))
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection reasons are invalid"
+        )
+    shared = values.get("shared_claim_binding")
+    shared_fields = {*identity_names, "operation", "claim_phase_schema"}
+    if not isinstance(shared, Mapping) or set(shared) != shared_fields:
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection shared binding is invalid"
+        )
+    if any(
+        not _strict_scalar_equal(shared.get(name), values[name])
+        for name in identity_names
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection shared identity differs"
+        )
+    shared_operation = shared.get("operation")
+    shared_schema = shared.get("claim_phase_schema")
+    if not (
+        (
+            shared_operation == "database_claim"
+            and shared_schema == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+        )
+        or (
+            shared_operation == "database_attempt_admitted"
+            and shared_schema == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+        )
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection shared phase is invalid"
+        )
+    route_raw = values.get("execution_route_binding")
+    if not isinstance(route_raw, Mapping) or not route_raw:
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection route is absent"
+        )
+    try:
+        route = TaskExecutionRouteBinding.from_dict(route_raw).to_dict()
+    except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection route is invalid"
+        ) from exc
+    if (
+        dict(route_raw) != route
+        or route["task_cid"] != values["task_cid"]
+        or values["execution_route_policy_id"] != route["policy_id"]
+        or values["execution_route_origin_revision"]
+        != route["task_revision"]
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection route lineage differs"
+        )
+    if values.get("receipt_id") != (
+        typed_database_strict_resume_rejection_receipt_id(values)
+    ):
+        raise TaskSourceIntegrityError(
+            "typed strict-resume rejection receipt identity differs"
+        )
+    return values
 
 
 def _require_database_claim_process_attestation(
@@ -3018,6 +3239,169 @@ class TypedStateOwnerGateway:
                 and str(command.parameters.get("status") or "").strip()
                 == "in_progress"
             )
+            strict_rejection_operation = (
+                next_receipt.get("operation")
+                if isinstance(next_receipt, Mapping)
+                else None
+            )
+            typed_strict_rejection = bool(
+                grant.client_id.startswith("database-implementation-daemon:")
+                and (
+                    (
+                        isinstance(next_receipt, Mapping)
+                        and next_receipt.get("schema")
+                        == TYPED_DATABASE_STRICT_RESUME_REJECTION_SCHEMA
+                    )
+                    or strict_rejection_operation
+                    in {
+                        TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION,
+                        TYPED_DATABASE_STRICT_RESUME_QUARANTINE_OPERATION,
+                    }
+                )
+            )
+            if typed_strict_rejection:
+                try:
+                    rejection = (
+                        _validated_database_strict_resume_rejection_receipt(
+                            next_receipt
+                        )
+                    )
+                except TaskSourceIntegrityError as exc:
+                    raise TypedStateOwnerAuthorizationError(str(exc)) from exc
+                task_cid = str(command.parameters.get("task_cid") or "").strip()
+                expected_revision = command.parameters.get(
+                    "expected_task_revision"
+                )
+                requested_status = str(
+                    command.parameters.get("status") or ""
+                ).strip()
+                expected_status = (
+                    "ready"
+                    if strict_rejection_operation
+                    == TYPED_DATABASE_STRICT_RESUME_REQUEUE_OPERATION
+                    else "quarantined"
+                )
+                if (
+                    not task_cid
+                    or type(expected_revision) is not int
+                    or expected_revision < 1
+                    or requested_status != expected_status
+                    or rejection["task_cid"] != task_cid
+                    or rejection["rejected_task_revision"]
+                    != expected_revision
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed strict-resume rejection command is invalid"
+                    )
+                task_rows = self._connection.execute(
+                    """
+                    SELECT status, revision, task_alias, body_json FROM tasks
+                    WHERE task_cid = ? LIMIT 2
+                    """,
+                    [task_cid],
+                ).fetchall()
+                if len(task_rows) != 1:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed strict-resume rejection task is absent or ambiguous"
+                    )
+                task_row = task_rows[0]
+                try:
+                    prior_body = json.loads(str(task_row[3] or "{}"))
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed strict-resume rejection prior body is malformed"
+                    ) from exc
+                prior_receipt = (
+                    prior_body.get("completion_receipt")
+                    if isinstance(prior_body, Mapping)
+                    else None
+                )
+                if not isinstance(prior_receipt, Mapping):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed strict-resume rejection has no prior claim"
+                    )
+                prior_identity = _validated_database_claim_identity(
+                    prior_receipt
+                )
+                _require_database_claim_process_attestation(
+                    prior_receipt,
+                    grant=grant,
+                )
+                prior_operation = prior_receipt.get("operation")
+                prior_schema = prior_receipt.get("claim_phase_schema")
+                if prior_operation == "database_claim":
+                    prior_revision_bound = bool(
+                        prior_schema
+                        == TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA
+                        and _strict_scalar_equal(
+                            prior_receipt.get("claimed_from_revision"),
+                            expected_revision - 1,
+                        )
+                    )
+                else:
+                    prior_revision_bound = bool(
+                        prior_operation == "database_attempt_admitted"
+                        and prior_schema
+                        == TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA
+                        and _strict_scalar_equal(
+                            prior_receipt.get("admitted_from_revision"),
+                            expected_revision - 1,
+                        )
+                        and _strict_scalar_equal(
+                            prior_receipt.get("claimed_from_revision"),
+                            expected_revision - 2,
+                        )
+                        and prior_receipt.get("attempt_execution_phase")
+                        == "claimed"
+                        and _strict_scalar_equal(
+                            prior_receipt.get("attempt_execution_revision"),
+                            1,
+                        )
+                    )
+                expected_shared_binding = {
+                    **prior_identity,
+                    "operation": prior_operation,
+                    "claim_phase_schema": prior_schema,
+                }
+                try:
+                    prior_route = TaskExecutionRouteBinding.from_dict(
+                        prior_receipt.get("execution_route_binding")
+                    ).to_dict()
+                except (TypeError, ValueError, TaskSourceIntegrityError) as exc:
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed strict-resume rejection prior route is invalid"
+                    ) from exc
+                if (
+                    str(task_row[0] or "").strip().lower() != "in_progress"
+                    or int(task_row[1]) != expected_revision
+                    or str(task_row[2] or "")
+                    != rejection["rejected_task_alias"]
+                    or not prior_revision_bound
+                    or any(
+                        not _strict_scalar_equal(
+                            rejection.get(name), value
+                        )
+                        for name, value in prior_identity.items()
+                    )
+                    or rejection["shared_claim_binding"]
+                    != expected_shared_binding
+                    or rejection["execution_route_binding"] != prior_route
+                    or rejection["execution_route_policy_id"]
+                    != prior_route["policy_id"]
+                    or rejection["execution_route_origin_revision"]
+                    != prior_route["task_revision"]
+                ):
+                    raise TypedStateOwnerAuthorizationError(
+                        "typed strict-resume rejection differs from prior authority"
+                    )
+                return {
+                    "operation": "task.database.strict_resume_rejection",
+                    "task_cid": task_cid,
+                    "status": expected_status,
+                    "expected_revision": expected_revision,
+                    "body_json": str(command.parameters["body_json"]),
+                    "receipt": rejection,
+                }
             if typed_executor_claim and phase_schema not in {
                 TYPED_DATABASE_CLAIM_RESERVATION_SCHEMA,
                 TYPED_DATABASE_ATTEMPT_ADMISSION_SCHEMA,
@@ -4404,6 +4788,41 @@ class TypedStateOwnerGateway:
             ):
                 raise TypedStateOwnerAuthorizationError(
                     "typed database claim phase post-state differs"
+                )
+            return
+
+        if operation == "task.database.strict_resume_rejection":
+            mutation = one("executor_cas_task_status_receipt")
+            expected_revision = int(authority["expected_revision"])
+            exact(
+                mutation,
+                {
+                    "task_cid": authority["task_cid"],
+                    "expected_task_revision": expected_revision,
+                    "new_revision": expected_revision + 1,
+                    "status": authority["status"],
+                    "body_json": authority["body_json"],
+                },
+            )
+            rows = self._connection.execute(
+                """
+                SELECT status, revision, body_json FROM tasks
+                WHERE task_cid = ? LIMIT 2
+                """,
+                [authority["task_cid"]],
+            ).fetchall()
+            observed_row = (
+                tuple(rows[0][index] for index in range(3))
+                if len(rows) == 1
+                else ()
+            )
+            if observed_row != (
+                authority["status"],
+                expected_revision + 1,
+                authority["body_json"],
+            ):
+                raise TypedStateOwnerAuthorizationError(
+                    "typed strict-resume rejection post-state differs"
                 )
             return
 

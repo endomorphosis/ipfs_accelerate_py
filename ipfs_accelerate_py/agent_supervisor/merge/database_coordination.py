@@ -107,6 +107,9 @@ TASK_COMPLETION_PREPARATION_SCHEMA: Final[str] = (
 TASK_DEPENDENCY_AMENDMENT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/task-dependency-amendment@1"
 )
+TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE: Final[str] = (
+    "typed-strict-resume-requeue@1"
+)
 CROSS_STORE_FENCE_GUARD_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/cross-store-fence-guard@1"
 )
@@ -1896,6 +1899,7 @@ class DatabaseCoordinator:
         restart_recovery_owner_session_id: str = "",
         restart_recovery_binding: Mapping[str, Any] | None = None,
         authoritative_attempt_floor: int = 0,
+        authoritative_attempt_floor_source: str = "",
         now_ms: int | None = None,
     ) -> dict[str, Any]:
         """Project one authoritative task into lane-local coordination.
@@ -1967,9 +1971,31 @@ class DatabaseCoordinator:
             authoritative_attempt_floor,
             "authoritative_attempt_floor",
         )
-        if attempt_floor and status not in {"in_progress", "retrying"}:
+        attempt_floor_source = _text(
+            authoritative_attempt_floor_source,
+            "authoritative_attempt_floor_source",
+            required=False,
+        )
+        ready_floor = bool(
+            attempt_floor
+            and status == "ready"
+            and authoritative_ready
+            and attempt_floor_source
+            == TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE
+        )
+        if attempt_floor and not (
+            status in {"in_progress", "retrying"} or ready_floor
+        ):
             raise DatabaseCoordinationConflictError(
-                "authoritative attempt floor requires claimed or retrying status"
+                "authoritative attempt floor requires claimed, retrying, or "
+                "typed strict-requeue ready status"
+            )
+        if (
+            attempt_floor_source
+            and not ready_floor
+        ):
+            raise DatabaseCoordinationConflictError(
+                "authoritative attempt floor source requires its exact ready floor"
             )
         recovery_binding = _bounded_mapping(
             restart_recovery_binding,
@@ -2033,6 +2059,7 @@ class DatabaseCoordinator:
                 "restart_recovery_owner_session_id": recovery_owner,
                 "restart_recovery_binding": recovery_binding,
                 "authoritative_attempt_floor": attempt_floor,
+                "authoritative_attempt_floor_source": attempt_floor_source,
             },
             name="authoritative_task_projection",
         )
@@ -2415,6 +2442,7 @@ class DatabaseCoordinator:
                     "restart_recovery_owner_session_id": recovery_owner,
                     "restart_recovery_binding": recovery_binding,
                     "authoritative_attempt_floor": attempt_floor,
+                    "authoritative_attempt_floor_source": attempt_floor_source,
                     "ready": ready,
                     "changed": changed,
                     "active_claim_preserved": active,
@@ -6512,22 +6540,43 @@ class DatabaseCoordinator:
         """Read the shared attempt floor without reconstructing a local claim."""
 
         row = connection.execute(
-            "SELECT body_json FROM coordination_tasks WHERE task_cid = ?",
+            "SELECT ready, body_json FROM coordination_tasks WHERE task_cid = ?",
             [task_cid],
         ).fetchone()
         if row is None:
             raise KeyError(f"unknown task CID: {task_cid}")
         body = _decode_coordination_body(
-            row[0],
+            row[1],
             table="coordination_tasks",
             identity=task_cid,
         )
         if body.get("authority") != "task_source":
             return 0
-        return _nonneg_int(
+        attempt_floor = _nonneg_int(
             body.get("authoritative_attempt_floor", 0),
             "authoritative_attempt_floor",
         )
+        status = str(body.get("authoritative_status") or "").strip().lower()
+        source = _text(
+            body.get("authoritative_attempt_floor_source"),
+            "authoritative_attempt_floor_source",
+            required=False,
+        )
+        if source:
+            if (
+                source != TYPED_STRICT_REQUEUE_ATTEMPT_FLOOR_SOURCE
+                or status != "ready"
+                or attempt_floor < 1
+                or not bool(row[0])
+            ):
+                raise DatabaseCoordinationStaleFenceError(
+                    f"authoritative attempt floor marker differs for {task_cid}"
+                )
+        elif attempt_floor and status not in {"in_progress", "retrying"}:
+            raise DatabaseCoordinationStaleFenceError(
+                f"authoritative attempt floor status differs for {task_cid}"
+            )
+        return attempt_floor
 
     def _claimability_unlocked(
         self,
