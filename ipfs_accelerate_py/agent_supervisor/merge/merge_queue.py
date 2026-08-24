@@ -10,20 +10,24 @@ request.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import math
 import os
+import stat
 import tempfile
 import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Iterator, Mapping, Optional
 
 from ..task_sources.duckdb_state import (
     DuckDBConnection,
     DuckDBRow,
+    connect_duckdb_with_policy,
     exclusive_file_lock,
     initialize_duckdb_database,
     open_duckdb_connection,
@@ -51,6 +55,9 @@ MERGE_QUEUE_THROUGHPUT_SCHEMA = (
 )
 MERGE_TARGET_BINDING_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+)
+MERGE_QUEUE_SETTLEMENT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/merge-queue-settlement@1"
 )
 MAX_MERGE_QUEUE_DEFERRAL_SECONDS = 3600.0
 MAX_MERGE_QUEUE_RECORDED_DEFERRALS = 32
@@ -127,6 +134,48 @@ _MERGE_QUEUE_SCHEMA_SQL = """
                   ON merge_requests(status, retry_not_before, enqueued_at);
                 """
 
+_MERGE_QUEUE_SETTLEMENT_STATES = (
+    "pending",
+    "processing",
+    "completed",
+    "quarantined",
+    "cancelled",
+)
+_MERGE_QUEUE_SETTLEMENT_MAX_ACTIVE_IDS = 1024
+_MERGE_QUEUE_SETTLEMENT_MAX_METADATA_BYTES = 64 * 1024
+_MERGE_QUEUE_SETTLEMENT_MAX_STORE_METADATA_ROWS = 256
+_MERGE_QUEUE_SETTLEMENT_LOCK_TIMEOUT_SECONDS = 5.0
+_MERGE_QUEUE_SETTLEMENT_COLUMNS = {
+    "agent_supervisor_store_metadata": (
+        ("key", "VARCHAR", "NO"),
+        ("value", "VARCHAR", "NO"),
+    ),
+    "merge_requests": (
+        ("request_id", "VARCHAR", "NO"),
+        ("branch_name", "VARCHAR", "NO"),
+        ("task_id", "VARCHAR", "NO"),
+        ("priority", "VARCHAR", "NO"),
+        ("lane_id", "VARCHAR", "NO"),
+        ("enqueued_at", "DOUBLE", "NO"),
+        ("attempt", "INTEGER", "NO"),
+        ("metadata_json", "VARCHAR", "NO"),
+        ("commit_sha", "VARCHAR", "NO"),
+        ("canonical_task_id", "VARCHAR", "NO"),
+        ("canonical_task_key", "VARCHAR", "NO"),
+        ("dedupe_key", "VARCHAR", "YES"),
+        ("status", "VARCHAR", "NO"),
+        ("claimed_at", "DOUBLE", "NO"),
+        ("consumer_id", "VARCHAR", "NO"),
+        ("failure_count", "INTEGER", "NO"),
+        ("failure_reason", "VARCHAR", "NO"),
+        ("claim_token", "VARCHAR", "NO"),
+        ("claim_generation", "BIGINT", "NO"),
+        ("retry_not_before", "DOUBLE", "NO"),
+        ("finished_at", "DOUBLE", "NO"),
+        ("updated_at", "DOUBLE", "NO"),
+    ),
+}
+
 
 class MergeQueueFullError(RuntimeError):
     """Raised when accepting another active request would exceed queue capacity."""
@@ -138,6 +187,513 @@ class MergeQueueFenceError(RuntimeError):
 
 class MergeQueueIntegrityError(RuntimeError):
     """Raised when durable queue identities disagree with legacy projections."""
+
+
+def _settlement_canonical_bytes(value: Mapping[str, Any] | list[Any]) -> bytes:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _settlement_content_id(value: Mapping[str, Any] | list[Any]) -> str:
+    return "sha256:" + hashlib.sha256(_settlement_canonical_bytes(value)).hexdigest()
+
+
+def _settlement_regular_file_identity(path: Path, *, label: str) -> dict[str, int]:
+    try:
+        details = path.lstat()
+    except OSError as exc:
+        raise MergeQueueIntegrityError(
+            f"merge queue settlement {label} is unavailable"
+        ) from exc
+    if not stat.S_ISREG(details.st_mode):
+        raise MergeQueueIntegrityError(
+            f"merge queue settlement {label} must be a regular file"
+        )
+    return {
+        "device": int(details.st_dev),
+        "inode": int(details.st_ino),
+        "size_bytes": int(details.st_size),
+        "modified_ns": int(details.st_mtime_ns),
+        "changed_ns": int(details.st_ctime_ns),
+    }
+
+
+@contextmanager
+def _locked_existing_merge_queue_store(lock_path: Path) -> Iterator[None]:
+    """Lock an existing queue without creating or modifying its lock file."""
+
+    expected = _settlement_regular_file_identity(lock_path, label="lock")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(lock_path, flags)
+    except OSError as exc:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement lock could not be opened"
+        ) from exc
+    acquired = False
+    deadline = time.monotonic() + _MERGE_QUEUE_SETTLEMENT_LOCK_TIMEOUT_SECONDS
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or int(opened.st_dev) != expected["device"]
+            or int(opened.st_ino) != expected["inode"]
+        ):
+            raise MergeQueueIntegrityError(
+                "merge queue settlement lock identity changed"
+            )
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement lock is busy"
+                    ) from None
+                time.sleep(0.01)
+        yield
+    finally:
+        if acquired:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+def _strict_settlement_metadata(value: str) -> dict[str, Any]:
+    def build_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in result:
+                raise ValueError(f"duplicate metadata key: {key}")
+            result[key] = item
+        return result
+
+    def reject_constant(value: str) -> None:
+        raise ValueError(f"non-finite JSON number: {value}")
+
+    decoded = json.loads(
+        value,
+        object_pairs_hook=build_object,
+        parse_constant=reject_constant,
+    )
+    if not isinstance(decoded, dict):
+        raise ValueError("merge request metadata must be a JSON object")
+    return decoded
+
+
+def read_merge_queue_settlement(
+    queue_dir: Path | str,
+    *,
+    target_repository_id: str,
+    target_branch: str,
+    max_active_ids: int = 256,
+) -> dict[str, Any]:
+    """Read one content-addressed, fail-closed merge settlement snapshot.
+
+    This is the operator/goal-authority read path.  It opens only a pre-existing
+    local DuckDB store and lock file, takes one bounded read-only transaction,
+    and never constructs ``MergeQueue`` or runs queue setup/reconciliation.
+    ``settled`` is true only when no pending or processing rows exist. Every
+    active row must carry the exact repository and branch binding requested by
+    the caller; a mixed, legacy, malformed, or unreadable queue is rejected.
+    """
+
+    if (
+        not isinstance(target_repository_id, str)
+        or not target_repository_id
+        or target_repository_id != target_repository_id.strip()
+        or "\x00" in target_repository_id
+    ):
+        raise ValueError("target_repository_id must be an exact non-empty string")
+    if (
+        not isinstance(target_branch, str)
+        or not target_branch
+        or target_branch != target_branch.strip()
+        or "\x00" in target_branch
+    ):
+        raise ValueError("target_branch must be an exact non-empty string")
+    if (
+        type(max_active_ids) is not int
+        or max_active_ids < 1
+        or max_active_ids > _MERGE_QUEUE_SETTLEMENT_MAX_ACTIVE_IDS
+    ):
+        raise ValueError(
+            "max_active_ids must be an integer between 1 and "
+            f"{_MERGE_QUEUE_SETTLEMENT_MAX_ACTIVE_IDS}"
+        )
+
+    directory = Path(queue_dir)
+    try:
+        directory_details = directory.lstat()
+    except OSError as exc:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement directory is unavailable"
+        ) from exc
+    if not stat.S_ISDIR(directory_details.st_mode):
+        raise MergeQueueIntegrityError(
+            "merge queue settlement directory must be an existing real directory"
+        )
+    database_path = directory / "merge_queue.duckdb"
+    lock_path = directory / ".merge_queue.duckdb.lock"
+    wal_path = directory / "merge_queue.duckdb.wal"
+    initial_database = _settlement_regular_file_identity(
+        database_path,
+        label="database",
+    )
+    if initial_database["size_bytes"] <= 0:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement database must not be empty"
+        )
+    if wal_path.exists() or wal_path.is_symlink():
+        raise MergeQueueIntegrityError(
+            "merge queue settlement database has an outstanding write-ahead log"
+        )
+
+    status_counts: dict[str, int] = {
+        state: 0 for state in _MERGE_QUEUE_SETTLEMENT_STATES
+    }
+    active_requests: list[dict[str, str]] = []
+    store_metadata: list[list[str]] = []
+    row_count = 0
+    max_updated_at = 0.0
+    max_claim_generation = 0
+    final_database: dict[str, int]
+    connection: Any | None = None
+    transaction_open = False
+    try:
+        with _locked_existing_merge_queue_store(lock_path):
+            locked_database = _settlement_regular_file_identity(
+                database_path,
+                label="database",
+            )
+            if locked_database != initial_database:
+                raise MergeQueueIntegrityError(
+                    "merge queue settlement database identity changed before read"
+                )
+            if wal_path.exists() or wal_path.is_symlink():
+                raise MergeQueueIntegrityError(
+                    "merge queue settlement database has an outstanding write-ahead log"
+                )
+            try:
+                import duckdb
+
+                connection = connect_duckdb_with_policy(
+                    duckdb,
+                    database_path,
+                    read_only=True,
+                )
+                connection.execute("BEGIN TRANSACTION")
+                transaction_open = True
+
+                table_rows = connection.execute(
+                    """
+                    SELECT table_name, table_type
+                    FROM information_schema.tables
+                    WHERE table_schema = 'main'
+                      AND table_name IN (
+                          'agent_supervisor_store_metadata',
+                          'merge_requests'
+                      )
+                    ORDER BY table_name
+                    """
+                ).fetchall()
+                expected_tables = [
+                    ("agent_supervisor_store_metadata", "BASE TABLE"),
+                    ("merge_requests", "BASE TABLE"),
+                ]
+                if [tuple(row) for row in table_rows] != expected_tables:
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement database tables are missing or malformed"
+                    )
+
+                column_rows = connection.execute(
+                    """
+                    SELECT table_name, column_name, data_type, is_nullable
+                    FROM information_schema.columns
+                    WHERE table_schema = 'main'
+                      AND table_name IN (
+                          'agent_supervisor_store_metadata',
+                          'merge_requests'
+                      )
+                    ORDER BY table_name, ordinal_position
+                    """
+                ).fetchall()
+                observed_columns: dict[str, list[tuple[str, str, str]]] = {
+                    table_name: []
+                    for table_name in _MERGE_QUEUE_SETTLEMENT_COLUMNS
+                }
+                for table_name, column_name, data_type, is_nullable in column_rows:
+                    name = str(table_name)
+                    if name not in observed_columns:
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement database columns are malformed"
+                        )
+                    observed_columns[name].append(
+                        (str(column_name), str(data_type), str(is_nullable))
+                    )
+                if any(
+                    tuple(observed_columns[table_name]) != expected
+                    for table_name, expected in _MERGE_QUEUE_SETTLEMENT_COLUMNS.items()
+                ):
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement database columns are missing or malformed"
+                    )
+
+                metadata_rows = connection.execute(
+                    """
+                    SELECT
+                        CASE WHEN octet_length(encode(key)) <= 1024 THEN key END,
+                        octet_length(encode(key)),
+                        CASE WHEN octet_length(encode(value)) <= ? THEN value END,
+                        octet_length(encode(value))
+                    FROM agent_supervisor_store_metadata
+                    ORDER BY key
+                    LIMIT ?
+                    """,
+                    (
+                        _MERGE_QUEUE_SETTLEMENT_MAX_METADATA_BYTES,
+                        _MERGE_QUEUE_SETTLEMENT_MAX_STORE_METADATA_ROWS + 1,
+                    ),
+                ).fetchall()
+                if len(metadata_rows) > _MERGE_QUEUE_SETTLEMENT_MAX_STORE_METADATA_ROWS:
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement store metadata exceeds the read bound"
+                    )
+                for key, key_size, value, value_size in metadata_rows:
+                    if (
+                        key is None
+                        or value is None
+                        or int(key_size) <= 0
+                        or int(key_size) > 1024
+                        or int(value_size) > _MERGE_QUEUE_SETTLEMENT_MAX_METADATA_BYTES
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement store metadata is malformed"
+                        )
+                    store_metadata.append([str(key), str(value)])
+
+                status_rows = connection.execute(
+                    """
+                    SELECT
+                        CASE WHEN octet_length(encode(status)) <= 32 THEN status END,
+                        octet_length(encode(status)),
+                        count(*)
+                    FROM merge_requests
+                    GROUP BY status
+                    ORDER BY status
+                    LIMIT ?
+                    """,
+                    (len(_MERGE_QUEUE_SETTLEMENT_STATES) + 1,),
+                ).fetchall()
+                if len(status_rows) > len(_MERGE_QUEUE_SETTLEMENT_STATES):
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement contains unknown states"
+                    )
+                for status_value, status_size, count in status_rows:
+                    if (
+                        status_value is None
+                        or int(status_size) <= 0
+                        or str(status_value) not in status_counts
+                        or int(count) < 0
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement contains an unknown state"
+                        )
+                    status_counts[str(status_value)] = int(count)
+
+                summary = connection.execute(
+                    """
+                    SELECT
+                        count(*),
+                        count(DISTINCT request_id),
+                        COALESCE(max(updated_at), 0.0),
+                        COALESCE(max(claim_generation), 0)
+                    FROM merge_requests
+                    """
+                ).fetchone()
+                if summary is None:
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement summary is unavailable"
+                    )
+                row_count = int(summary[0])
+                distinct_request_ids = int(summary[1])
+                max_updated_at = float(summary[2])
+                max_claim_generation = int(summary[3])
+                if (
+                    row_count < 0
+                    or distinct_request_ids != row_count
+                    or sum(status_counts.values()) != row_count
+                    or not math.isfinite(max_updated_at)
+                    or max_updated_at < 0
+                    or max_claim_generation < 0
+                ):
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement summary is malformed"
+                    )
+
+                active_rows = connection.execute(
+                    """
+                    SELECT
+                        CASE WHEN octet_length(encode(request_id)) <= 512 THEN request_id END,
+                        octet_length(encode(request_id)),
+                        status,
+                        CASE WHEN octet_length(encode(metadata_json)) <= ?
+                             THEN metadata_json END,
+                        octet_length(encode(metadata_json))
+                    FROM merge_requests
+                    WHERE status IN ('pending', 'processing')
+                    ORDER BY request_id
+                    LIMIT ?
+                    """,
+                    (
+                        _MERGE_QUEUE_SETTLEMENT_MAX_METADATA_BYTES,
+                        max_active_ids + 1,
+                    ),
+                ).fetchall()
+                expected_active_count = (
+                    status_counts["pending"] + status_counts["processing"]
+                )
+                if (
+                    expected_active_count > max_active_ids
+                    or len(active_rows) != expected_active_count
+                ):
+                    raise MergeQueueIntegrityError(
+                        "merge queue settlement active request bound was exceeded"
+                    )
+                for (
+                    request_id,
+                    request_id_size,
+                    status_value,
+                    metadata_json,
+                    metadata_size,
+                ) in active_rows:
+                    if (
+                        request_id is None
+                        or int(request_id_size) <= 0
+                        or int(request_id_size) > 512
+                        or metadata_json is None
+                        or int(metadata_size) <= 0
+                        or int(metadata_size)
+                        > _MERGE_QUEUE_SETTLEMENT_MAX_METADATA_BYTES
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement active request is malformed"
+                        )
+                    status_text = str(status_value)
+                    if status_text not in _ACTIVE_STATES:
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement active request state is malformed"
+                        )
+                    try:
+                        metadata = _strict_settlement_metadata(str(metadata_json))
+                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement active request metadata is malformed"
+                        ) from exc
+                    if (
+                        metadata.get("target_binding_schema")
+                        != MERGE_TARGET_BINDING_SCHEMA
+                        or metadata.get("target_repository_id")
+                        != target_repository_id
+                        or metadata.get("target_branch") != target_branch
+                    ):
+                        raise MergeQueueIntegrityError(
+                            "merge queue settlement active request target is unbound or differs"
+                        )
+                    active_requests.append(
+                        {
+                            "request_id": str(request_id),
+                            "status": status_text,
+                        }
+                    )
+
+                connection.execute("COMMIT")
+                transaction_open = False
+            except BaseException:
+                if connection is not None and transaction_open:
+                    try:
+                        connection.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                    transaction_open = False
+                raise
+            finally:
+                if connection is not None:
+                    connection.close()
+                    connection = None
+
+            final_database = _settlement_regular_file_identity(
+                database_path,
+                label="database",
+            )
+            if final_database != locked_database:
+                raise MergeQueueIntegrityError(
+                    "merge queue settlement database changed during read"
+                )
+            if wal_path.exists() or wal_path.is_symlink():
+                raise MergeQueueIntegrityError(
+                    "merge queue settlement database changed during read"
+                )
+    except MergeQueueIntegrityError:
+        raise
+    except Exception as exc:
+        raise MergeQueueIntegrityError(
+            "merge queue settlement store could not be read"
+        ) from exc
+
+    store_metadata_cid = _settlement_content_id(store_metadata)
+    metadata_by_key = {key: value for key, value in store_metadata}
+    database_identity = {
+        "path": str(database_path.resolve(strict=True)),
+        **final_database,
+    }
+    snapshot = {
+        "database": database_identity,
+        "store_metadata_cid": store_metadata_cid,
+        "store_metadata_rows": len(store_metadata),
+        "store_id": metadata_by_key.get("store_id"),
+        "store_generation": metadata_by_key.get("store_generation"),
+        "row_count": row_count,
+        "max_updated_at": max_updated_at,
+        "max_claim_generation": max_claim_generation,
+        "status_counts": status_counts,
+        "active_requests": active_requests,
+    }
+    receipt: dict[str, Any] = {
+        "schema": MERGE_QUEUE_SETTLEMENT_SCHEMA,
+        "settled": not active_requests,
+        "target": {
+            "binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "repository_id": target_repository_id,
+            "branch": target_branch,
+        },
+        "database": database_identity,
+        "store": {
+            "metadata_cid": store_metadata_cid,
+            "metadata_rows": len(store_metadata),
+            "store_id": metadata_by_key.get("store_id"),
+            "generation": metadata_by_key.get("store_generation"),
+        },
+        "row_count": row_count,
+        "status_counts": status_counts,
+        "active_count": len(active_requests),
+        "active_request_ids": [
+            request["request_id"] for request in active_requests
+        ],
+        "snapshot_cid": _settlement_content_id(snapshot),
+    }
+    receipt["receipt_cid"] = _settlement_content_id(receipt)
+    return receipt
 
 
 @dataclass(frozen=True)

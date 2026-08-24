@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import fcntl
+import hashlib
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -13,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MergeQueueFullError,
     MergeQueueIntegrityError,
     MergeRequest,
+    read_merge_queue_settlement,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import (
     DuckDBConnection,
@@ -35,6 +39,304 @@ def _enqueue(
         priority=priority,
         metadata=metadata,
     )
+
+
+_SETTLEMENT_REPOSITORY_ID = f"repository:sha256:{'a' * 64}"
+_SETTLEMENT_BRANCH = "main"
+
+
+def _bound_queue(path: Path) -> MergeQueue:
+    return MergeQueue(
+        path,
+        target_repository_id=_SETTLEMENT_REPOSITORY_ID,
+        target_branch=_SETTLEMENT_BRANCH,
+        require_target_binding=True,
+    )
+
+
+def _settlement(queue_path: Path, **kwargs):
+    return read_merge_queue_settlement(
+        queue_path,
+        target_repository_id=_SETTLEMENT_REPOSITORY_ID,
+        target_branch=_SETTLEMENT_BRANCH,
+        **kwargs,
+    )
+
+
+def _filesystem_snapshot(root: Path) -> dict[str, tuple[object, ...]]:
+    snapshot: dict[str, tuple[object, ...]] = {}
+    for path in sorted(root.rglob("*")):
+        details = path.lstat()
+        content = path.read_bytes() if path.is_file() else None
+        snapshot[str(path.relative_to(root))] = (
+            details.st_mode,
+            details.st_size,
+            details.st_mtime_ns,
+            content,
+        )
+    return snapshot
+
+
+def test_read_merge_queue_settlement_is_content_addressed_and_read_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = _bound_queue(queue_path)
+    pending = _enqueue(queue, 0)
+    claimed = queue.dequeue(consumer_id="merge-train:settlement")
+    assert claimed is not None
+    queue.complete(claimed)
+    with queue._connect() as connection:
+        connection.execute("BEGIN TRANSACTION")
+        connection.execute(
+            """
+            INSERT INTO agent_supervisor_store_metadata(key, value)
+            VALUES ('store_id', 'merge-store-alpha'),
+                   ('store_generation', 'generation-7')
+            """
+        )
+        connection.commit()
+
+    policy_calls: list[dict[str, object]] = []
+    original_connect = merge_queue_module.connect_duckdb_with_policy
+
+    def tracked_connect(duckdb_module, database, **kwargs):
+        policy_calls.append({"database": database, **kwargs})
+        return original_connect(duckdb_module, database, **kwargs)
+
+    def constructor_must_not_run(*_args, **_kwargs):
+        raise AssertionError("settlement reads must not construct MergeQueue")
+
+    monkeypatch.setattr(
+        merge_queue_module,
+        "connect_duckdb_with_policy",
+        tracked_connect,
+    )
+    monkeypatch.setattr(merge_queue_module, "MergeQueue", constructor_must_not_run)
+    before = _filesystem_snapshot(queue_path)
+
+    receipt = _settlement(queue_path)
+
+    after = _filesystem_snapshot(queue_path)
+    assert after == before
+    assert policy_calls == [
+        {
+            "database": queue.database_path,
+            "read_only": True,
+        }
+    ]
+    assert receipt["schema"].endswith("merge-queue-settlement@1")
+    assert receipt["settled"] is True
+    assert receipt["active_count"] == 0
+    assert receipt["active_request_ids"] == []
+    assert receipt["row_count"] == 1
+    assert receipt["status_counts"]["completed"] == 1
+    assert receipt["store"]["store_id"] == "merge-store-alpha"
+    assert receipt["store"]["generation"] == "generation-7"
+    assert receipt["database"]["path"] == str(queue.database_path.resolve())
+    assert receipt["database"]["inode"] > 0
+    assert receipt["snapshot_cid"].startswith("sha256:")
+    receipt_cid = receipt["receipt_cid"]
+    content = dict(receipt)
+    del content["receipt_cid"]
+    expected_cid = "sha256:" + hashlib.sha256(
+        json.dumps(
+            content,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    assert receipt_cid == expected_cid
+    assert pending.request_id not in receipt["active_request_ids"]
+
+
+def test_read_merge_queue_settlement_reports_pending_request(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "queue"
+    pending = _enqueue(_bound_queue(queue_path), 0)
+
+    receipt = _settlement(queue_path)
+
+    assert receipt["settled"] is False
+    assert receipt["active_count"] == 1
+    assert receipt["active_request_ids"] == [pending.request_id]
+    assert receipt["status_counts"]["pending"] == 1
+    assert receipt["status_counts"]["processing"] == 0
+
+
+def test_read_merge_queue_settlement_reports_processing_request(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = _bound_queue(queue_path)
+    pending = _enqueue(queue, 0)
+    claimed = queue.dequeue(consumer_id="merge-train:settlement")
+    assert claimed is not None
+
+    receipt = _settlement(queue_path)
+
+    assert receipt["settled"] is False
+    assert receipt["active_count"] == 1
+    assert receipt["active_request_ids"] == [pending.request_id]
+    assert receipt["status_counts"]["pending"] == 0
+    assert receipt["status_counts"]["processing"] == 1
+
+
+@pytest.mark.parametrize(
+    "metadata_json",
+    (
+        "{",
+        "{}",
+        json.dumps(
+            {
+                "target_binding_schema": (
+                    "ipfs_accelerate_py/agent-supervisor/merge-target-binding@1"
+                ),
+                "target_repository_id": f"repository:sha256:{'b' * 64}",
+                "target_branch": _SETTLEMENT_BRANCH,
+            }
+        ),
+    ),
+    ids=("malformed", "unbound", "different-repository"),
+)
+def test_read_merge_queue_settlement_rejects_malformed_or_unbound_active_row(
+    tmp_path: Path,
+    metadata_json: str,
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = _bound_queue(queue_path)
+    pending = _enqueue(queue, 0)
+    with queue._connect() as connection:
+        connection.execute("BEGIN TRANSACTION")
+        connection.execute(
+            "UPDATE merge_requests SET metadata_json=? WHERE request_id=?",
+            (metadata_json, pending.request_id),
+        )
+        connection.commit()
+
+    with pytest.raises(MergeQueueIntegrityError, match="metadata|target"):
+        _settlement(queue_path)
+
+
+def test_read_merge_queue_settlement_rejects_missing_store_without_creating_it(
+    tmp_path: Path,
+) -> None:
+    queue_path = tmp_path / "missing"
+
+    with pytest.raises(MergeQueueIntegrityError, match="directory"):
+        _settlement(queue_path)
+
+    assert queue_path.exists() is False
+
+    queue_path.mkdir()
+    before = _filesystem_snapshot(queue_path)
+    with pytest.raises(MergeQueueIntegrityError, match="database"):
+        _settlement(queue_path)
+    assert _filesystem_snapshot(queue_path) == before
+
+
+@pytest.mark.parametrize(
+    "schema_mutation",
+    (
+        "ALTER TABLE merge_requests ADD COLUMN unexpected TEXT",
+        "DROP TABLE agent_supervisor_store_metadata",
+    ),
+    ids=("extra-column", "missing-table"),
+)
+def test_read_merge_queue_settlement_rejects_noncanonical_schema(
+    tmp_path: Path,
+    schema_mutation: str,
+) -> None:
+    queue_path = tmp_path / "queue"
+    queue = _bound_queue(queue_path)
+    with queue._connect() as connection:
+        connection.execute("BEGIN TRANSACTION")
+        connection.execute(schema_mutation)
+        connection.commit()
+
+    with pytest.raises(MergeQueueIntegrityError, match="tables|columns"):
+        _settlement(queue_path)
+
+
+def test_read_merge_queue_settlement_rejects_unknown_state_and_active_overflow(
+    tmp_path: Path,
+) -> None:
+    unknown_path = tmp_path / "unknown"
+    unknown_queue = _bound_queue(unknown_path)
+    unknown = _enqueue(unknown_queue, 0)
+    with unknown_queue._connect() as connection:
+        connection.execute("BEGIN TRANSACTION")
+        connection.execute(
+            "UPDATE merge_requests SET status='paused' WHERE request_id=?",
+            (unknown.request_id,),
+        )
+        connection.commit()
+    with pytest.raises(MergeQueueIntegrityError, match="unknown state"):
+        _settlement(unknown_path)
+
+    overflow_path = tmp_path / "overflow"
+    overflow_queue = _bound_queue(overflow_path)
+    _enqueue(overflow_queue, 0)
+    _enqueue(overflow_queue, 1)
+    with pytest.raises(MergeQueueIntegrityError, match="bound"):
+        _settlement(overflow_path, max_active_ids=1)
+
+
+def test_read_merge_queue_settlement_fails_closed_on_missing_or_busy_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    missing_lock_path = tmp_path / "missing-lock"
+    missing_lock_queue = _bound_queue(missing_lock_path)
+    missing_lock_queue.database_path.with_name(
+        f".{missing_lock_queue.database_path.name}.lock"
+    ).unlink()
+    before = _filesystem_snapshot(missing_lock_path)
+    with pytest.raises(MergeQueueIntegrityError, match="lock"):
+        _settlement(missing_lock_path)
+    assert _filesystem_snapshot(missing_lock_path) == before
+
+    busy_path = tmp_path / "busy"
+    busy_queue = _bound_queue(busy_path)
+    lock_path = busy_queue.database_path.with_name(
+        f".{busy_queue.database_path.name}.lock"
+    )
+    descriptor = os.open(lock_path, os.O_RDONLY)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        monkeypatch.setattr(
+            merge_queue_module,
+            "_MERGE_QUEUE_SETTLEMENT_LOCK_TIMEOUT_SECONDS",
+            0.0,
+        )
+        with pytest.raises(MergeQueueIntegrityError, match="busy"):
+            _settlement(busy_path)
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+def test_read_merge_queue_settlement_fails_closed_on_read_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queue_path = tmp_path / "queue"
+    _bound_queue(queue_path)
+
+    def fail_read(*_args, **_kwargs):
+        raise RuntimeError("injected read failure")
+
+    monkeypatch.setattr(
+        merge_queue_module,
+        "connect_duckdb_with_policy",
+        fail_read,
+    )
+    with pytest.raises(MergeQueueIntegrityError, match="could not be read"):
+        _settlement(queue_path)
 
 
 def _legacy_request(
