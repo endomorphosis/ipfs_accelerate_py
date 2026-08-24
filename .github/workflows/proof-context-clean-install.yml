@@ -1,0 +1,143 @@
+name: Proof-context clean-install gate
+
+on:
+  workflow_call:
+    inputs:
+      artifact_run_id:
+        description: Immutable workflow run that published the PCCE-053 bundle
+        required: true
+        type: string
+      artifact_name:
+        description: Name of the frozen artifact bundle in that run
+        required: false
+        default: proof-context-environment-pcce053
+        type: string
+      artifact_repository:
+        description: Repository that owns the immutable artifact run
+        required: false
+        default: endomorphosis/ipfs_accelerate_py
+        type: string
+      artifact_manifest_path:
+        description: Bundle-relative path to artifact_hashes.json
+        required: false
+        default: environment/artifact_hashes.json
+        type: string
+      artifact_root_path:
+        description: Bundle-relative directory containing exact admitted archives
+        required: false
+        default: frozen-artifacts
+        type: string
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: Immutable workflow run that published the PCCE-053 bundle
+        required: true
+        type: string
+      artifact_name:
+        description: Name of the frozen artifact bundle in that run
+        required: true
+        default: proof-context-environment-pcce053
+        type: string
+      artifact_repository:
+        description: Repository that owns the immutable artifact run
+        required: true
+        default: endomorphosis/ipfs_accelerate_py
+        type: string
+      artifact_manifest_path:
+        description: Bundle-relative path to artifact_hashes.json
+        required: true
+        default: environment/artifact_hashes.json
+        type: string
+      artifact_root_path:
+        description: Bundle-relative directory containing exact admitted archives
+        required: true
+        default: frozen-artifacts
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: proof-context-clean-install-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  arm64-clean-install:
+    name: CPython 3.12 / Linux aarch64 / frozen profiles
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      PCCE_ARTIFACT_BUNDLE_ROOT: ${{ runner.temp }}/proof-context-pcce053
+      PCCE_ARTIFACT_MANIFEST_REL: ${{ inputs.artifact_manifest_path }}
+      PCCE_ARTIFACT_ROOT_REL: ${{ inputs.artifact_root_path }}
+      PCCE_CLEAN_INSTALL_REPORT: ${{ runner.temp }}/proof-context-clean-install.json
+      PCCE_CONTAINER_BUILD_LOG: ${{ runner.temp }}/proof-context-container-build.log
+      PCCE_CONTAINER_IID: ${{ runner.temp }}/proof-context-container.iid
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Provision the declared interpreter
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: 3.12.3
+
+      - name: Download the immutable PCCE-053 artifact bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: ${{ env.PCCE_ARTIFACT_BUNDLE_ROOT }}
+          repository: ${{ inputs.artifact_repository }}
+          run-id: ${{ inputs.artifact_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Evaluate every frozen profile and require qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$PCCE_ARTIFACT_MANIFEST_REL" in
+            ""|/*|..|../*|*/..|*/../*) echo "unsafe artifact manifest path" >&2; exit 2 ;;
+          esac
+          case "$PCCE_ARTIFACT_ROOT_REL" in
+            ""|/*|..|../*|*/..|*/../*) echo "unsafe artifact root path" >&2; exit 2 ;;
+          esac
+          python -I scripts/proof_context/test_clean_install.py \
+            --artifacts "$PCCE_ARTIFACT_BUNDLE_ROOT/$PCCE_ARTIFACT_MANIFEST_REL" \
+            --artifact-root "$PCCE_ARTIFACT_BUNDLE_ROOT/$PCCE_ARTIFACT_ROOT_REL" \
+            --output "$PCCE_CLEAN_INSTALL_REPORT" \
+            --require-qualified
+
+      # This is intentionally unreachable while PCCE-053 selects source-only
+      # transitive archives: the preceding command exits 5.  A future all-wheel
+      # frozen manifest must first make the same harness qualify every profile.
+      - name: Build the optional pinned core container
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/arm64 \
+            --network none \
+            --build-context "proof_context_artifacts=$PCCE_ARTIFACT_BUNDLE_ROOT" \
+            --build-arg "PROFILE=core" \
+            --build-arg "ARTIFACT_MANIFEST_PATH=$PCCE_ARTIFACT_MANIFEST_REL" \
+            --build-arg "ARTIFACT_ROOT_PATH=$PCCE_ARTIFACT_ROOT_REL" \
+            --file docker/proof-context/Dockerfile \
+            --iidfile "$PCCE_CONTAINER_IID" \
+            --load \
+            --tag proof-context-clean-install:pcce054 \
+            . 2>&1 | tee "$PCCE_CONTAINER_BUILD_LOG"
+
+      - name: Retain truthful gate evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: proof-context-clean-install-evidence-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            ${{ env.PCCE_CLEAN_INSTALL_REPORT }}
+            ${{ env.PCCE_CONTAINER_BUILD_LOG }}
+            ${{ env.PCCE_CONTAINER_IID }}
