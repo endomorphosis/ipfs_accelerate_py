@@ -29,14 +29,15 @@ executes and records these bounded operations:
 5. apply the good local patch in a disposable validation worktree and run only
    the selected tests;
 6. submit those exact bytes through the production-mode proof-context runtime;
-7. reuse the selected-test receipt only after exact candidate-tree equality,
-   and independently observe exact verification-receipt reuse from the runtime;
+7. bind the selected-test receipt to the exact candidate tree, and independently
+   observe exact verification-receipt reuse from the runtime;
 8. require live assurance, a real incremental seal CID, and a successful final
    report without changing the canonical clone.
 
 The emitted JSON contains the exact fixture commit/tree, every operation's
-status and artifact identity, the selected-test command and receipt, the bad
-patch reason, the accepted patch identity, proof-reuse identities, and the
-final seal CID. Any missing identity, failed test, simulated provenance,
-unexpected mutation, unsafe reuse key, or unsealed result terminates without a
-successful transcript.
+status and artifact identity, distinct rejected and accepted execution-receipt
+identities, the selected-test command and receipt, the bad patch reason, the
+accepted patch identity, proof-reuse identities, and the final seal CID. Any
+missing or colliding identity, failed test, simulated provenance, unexpected
+mutation, unsafe reuse key, or unsealed result terminates without a successful
+transcript.

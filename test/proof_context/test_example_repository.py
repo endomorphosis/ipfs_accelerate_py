@@ -181,8 +181,10 @@ def _assert_transcript(transcript: dict[str, Any]) -> None:
 
     reuse = transcript["proof_reuse"]
     assert reuse["reused"] is True
+    assert reuse["reason"] == "runtime_verification_receipt_identity"
+    assert reuse["exact_candidate_tree_match"] is True
     assert reuse["source_candidate_tree"] == reuse["admitted_candidate_tree"]
-    assert reuse["test_receipt_cid"] == tests["receipt_cid"]
+    assert reuse["selected_test_receipt_cid"] == tests["receipt_cid"]
     assert reuse["verification_calls"] == 2
     assert reuse["verification_stage_count"] == 1
     assert reuse["reuse_count"] == 1
@@ -196,7 +198,7 @@ def _assert_transcript(transcript: dict[str, Any]) -> None:
     assert acceptance["disposable_worktree_removed"] is True
     assert acceptance["patch_id"].startswith("b")
     assert acceptance["execution_receipt_cid"].startswith("b")
-    assert rejection["artifact_cid"] != acceptance["execution_receipt_cid"]
+    assert rejection["execution_receipt_cid"] != acceptance["execution_receipt_cid"]
 
     seal = transcript["seal"]
     assert seal["status"] == "succeeded"

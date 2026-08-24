@@ -26,6 +26,9 @@ from ipfs_accelerate_py.proof_context.facade import EngineIdentities, EngineReco
 from ipfs_accelerate_py.proof_context.lifecycle import STAGES, mint_lifecycle_cid
 
 SCHEMA: Final[str] = "ipfs-accelerate.proof-context.v0.1/example-walkthrough@1"
+EXECUTION_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs-accelerate.proof-context.v0.1/example-execution-receipt@1"
+)
 TASK_ID: Final[str] = "PCCE-055"
 MODE: Final[str] = "production"
 TOKEN_ESTIMATOR: Final[str] = "whitespace-v1"
@@ -137,6 +140,21 @@ def _record(record: EngineRecord) -> dict[str, Any]:
         "patch_id": record.identities.patch_id,
         "artifact_id": record.identities.artifact_id,
     }
+
+
+def _execution_receipt_cid(record: EngineRecord) -> str:
+    """Bind one live execution result to a stable, outcome-specific identity."""
+
+    return mint_lifecycle_cid(
+        {
+            "schema": EXECUTION_RECEIPT_SCHEMA,
+            "operation": record.operation,
+            "status": record.status,
+            "identities": record.identities.to_mapping(),
+            "artifact_cid": record.artifact_cid,
+            "provenance": record.provenance,
+        }
+    )
 
 
 def _failure_evidence(record: EngineRecord) -> tuple[str | None, str | None]:
@@ -360,6 +378,11 @@ def run_walkthrough(repository: Path, state_dir: Path) -> dict[str, Any]:
         if admitted_tree != selected_receipt["candidate_tree"]:
             raise WalkthroughError("selected-test receipt key does not match accepted tree")
 
+        bad_execution_receipt_cid = _execution_receipt_cid(bad)
+        good_execution_receipt_cid = _execution_receipt_cid(good)
+        if bad_execution_receipt_cid == good_execution_receipt_cid:
+            raise WalkthroughError("rejected and accepted execution receipts must be distinct")
+
         verify_first = good_bundle.engine.verify()
         verify_second = good_bundle.engine.verify()
         if (
@@ -375,6 +398,10 @@ def run_walkthrough(repository: Path, state_dir: Path) -> dict[str, Any]:
         ]
         if len(verify_trace) != 1:
             raise WalkthroughError("accepted lifecycle must contain one verification stage")
+        verification_calls = 2
+        verification_reuse_count = verification_calls - len(verify_trace)
+        if verification_reuse_count != 1:
+            raise WalkthroughError("runtime verification receipt reuse count is not exact")
 
         assurance = good_bundle.engine.assurance()
         seal = good_bundle.engine.seal()
@@ -451,26 +478,27 @@ def run_walkthrough(repository: Path, state_dir: Path) -> dict[str, Any]:
                 "status": bad.status,
                 "reason": bad_reason,
                 "artifact_cid": bad_artifact_cid,
-                "execution_receipt_cid": bad.artifact_cid,
+                "execution_receipt_cid": bad_execution_receipt_cid,
                 "canonical_head_unchanged": True,
                 "escape_created": False,
             },
             "incremental_tests": selected_receipt,
             "proof_reuse": {
-                "reused": True,
-                "reason": "exact_candidate_tree_and_runtime_receipt_identity",
-                "test_receipt_cid": selected_receipt["receipt_cid"],
+                "reused": verification_reuse_count > 0,
+                "reason": "runtime_verification_receipt_identity",
+                "exact_candidate_tree_match": True,
+                "selected_test_receipt_cid": selected_receipt["receipt_cid"],
                 "source_candidate_tree": selected_receipt["candidate_tree"],
                 "admitted_candidate_tree": admitted_tree,
                 "verification_receipt_cid": verify_first.artifact_cid,
-                "verification_calls": 2,
+                "verification_calls": verification_calls,
                 "verification_stage_count": len(verify_trace),
-                "reuse_count": 1,
+                "reuse_count": verification_reuse_count,
             },
             "acceptance": {
                 "status": good.status,
                 "patch_id": good.identities.patch_id,
-                "execution_receipt_cid": good.artifact_cid,
+                "execution_receipt_cid": good_execution_receipt_cid,
                 "all_stages": list(good.payload.get("stages") or ()),
                 "published": good.payload.get("published"),
                 "canonical_mutated": good.payload.get("canonical_mutated"),
