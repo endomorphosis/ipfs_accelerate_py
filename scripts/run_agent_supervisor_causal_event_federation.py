@@ -95,6 +95,7 @@ LEGACY_BOARD_UNSTALL_POLICY_ENV: Final = (
     "IPFS_ACCELERATE_AGENT_LEGACY_BOARD_UNSTALL_POLICY"
 )
 SUPERVISOR_HEALTH_STALE_SECONDS: Final = 45.0
+STATE_OWNER_OUTBOX_CONVERGENCE_GRACE_SECONDS: Final = 30.0
 UNIX_SOCKET_PATH_CEILING: Final = 100
 EXECUTOR_OWNER_SESSION_ID: Final = "casf-v1-executor"
 EXECUTOR_BOOTSTRAP_SCHEMA: Final = (
@@ -965,16 +966,25 @@ def _outbox_worker_health(status_payload: Mapping[str, Any]) -> dict[str, Any]:
         not malformed
         and result["watermark"] >= result["committed_sequence"]
     )
-    result["healthy"] = bool(
+    result["structural_healthy"] = bool(
         result["available"]
         and result["thread_alive"]
         and result["server_owned"]
         and result["polling"] is False
-        and result["caught_up"]
         and result["commit_observer_bound"]
         and not observer_error
         and not last_error
         and not malformed
+    )
+    result["healthy"] = bool(
+        result["structural_healthy"] and result["caught_up"]
+    )
+    result["classification"] = (
+        "state_owner_outbox_healthy"
+        if result["healthy"]
+        else "state_owner_outbox_catching_up"
+        if result["structural_healthy"]
+        else "state_owner_outbox_unavailable"
     )
     return result
 
@@ -988,6 +998,70 @@ def _state_owner_outbox_health(server: Any) -> dict[str, Any]:
     """
 
     return _outbox_worker_health(server.status())
+
+
+class _SteadyStateOutboxHealth:
+    """Admit bounded live-worker convergence without weakening fixed points."""
+
+    def __init__(
+        self,
+        *,
+        grace_seconds: float = STATE_OWNER_OUTBOX_CONVERGENCE_GRACE_SECONDS,
+        monotonic: Any = time.monotonic,
+    ) -> None:
+        grace = float(grace_seconds)
+        if not 1.0 <= grace <= 300.0:
+            raise OperatorError(
+                "state-owner outbox convergence grace must be between 1 and 300 seconds"
+            )
+        if not callable(monotonic):
+            raise OperatorError("state-owner outbox monotonic clock is not callable")
+        self._grace_seconds = grace
+        self._monotonic = monotonic
+        self._lag_started_at: float | None = None
+
+    def observe(self, health: Mapping[str, Any]) -> dict[str, Any]:
+        """Classify one steady-state sample and retain only bounded lag state."""
+
+        structural = health.get("structural_healthy") is True
+        caught_up = health.get("caught_up") is True
+        if not structural:
+            self._lag_started_at = None
+            return {
+                "continue_running": False,
+                "classification": "state_owner_outbox_unavailable",
+                "structural_healthy": False,
+                "caught_up": caught_up,
+                "lag_seconds": 0.0,
+                "grace_seconds": self._grace_seconds,
+            }
+        if caught_up:
+            self._lag_started_at = None
+            return {
+                "continue_running": True,
+                "classification": "state_owner_outbox_healthy",
+                "structural_healthy": True,
+                "caught_up": True,
+                "lag_seconds": 0.0,
+                "grace_seconds": self._grace_seconds,
+            }
+        now = float(self._monotonic())
+        if self._lag_started_at is None:
+            self._lag_started_at = now
+        lag_seconds = max(0.0, now - self._lag_started_at)
+        within_grace = lag_seconds < self._grace_seconds
+        return {
+            "continue_running": within_grace,
+            "classification": (
+                "state_owner_outbox_catching_up"
+                if within_grace
+                else "state_owner_outbox_lag_timeout"
+            ),
+            "structural_healthy": True,
+            "caught_up": False,
+            "lag_seconds": lag_seconds,
+            "grace_seconds": self._grace_seconds,
+        }
 
 
 def _process_birth(pid: int) -> dict[str, Any]:
@@ -2294,9 +2368,13 @@ def state_owner(
     signal.signal(signal.SIGTERM, request_stop)
     runtime_exit_code: int | None = None
     failure_role = ""
+    steady_state_outbox = _SteadyStateOutboxHealth()
     if server.lifecycle is ServerLifecycle.READY:
         while not stopping.wait(2.0):
-            if _state_owner_outbox_health(server)["healthy"] is not True:
+            outbox_decision = steady_state_outbox.observe(
+                _state_owner_outbox_health(server)
+            )
+            if outbox_decision["continue_running"] is not True:
                 runtime_exit_code = 1
                 failure_role = "state_owner_outbox"
                 break
@@ -3620,7 +3698,12 @@ def classify_health(
             "safe_idle_evidence": safe_idle,
         }
     if not outbox_worker_healthy:
-        reasons.append("state_owner_outbox_worker_unavailable")
+        reasons.append(
+            "state_owner_outbox_catching_up"
+            if outbox_worker.get("classification")
+            == "state_owner_outbox_catching_up"
+            else "state_owner_outbox_worker_unavailable"
+        )
         return {
             "classification": "stuck",
             "healthy": False,

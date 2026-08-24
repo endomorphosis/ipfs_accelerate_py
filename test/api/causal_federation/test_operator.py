@@ -857,6 +857,9 @@ def test_terminal_quiescence_rejects_later_pending_delivery_or_outbox_lag() -> N
     )
     assert lagging_result["classification"] == "stuck"
     assert lagging_result["healthy"] is False
+    assert lagging_result["reason_codes"] == [
+        "state_owner_outbox_catching_up"
+    ]
 
 
 def test_health_fails_closed_when_owner_outbox_worker_exits() -> None:
@@ -980,6 +983,119 @@ def test_state_owner_outbox_health_uses_full_canonical_status() -> None:
     assert health["caught_up"] is True
     assert health["commit_observer_bound"] is True
     assert server.status_calls == 1
+
+
+def test_steady_state_outbox_guard_survives_gated_drain_and_resets_on_catchup() -> None:
+    operator = _operator()
+    clock = {"now": 100.0}
+    guard = operator._SteadyStateOutboxHealth(
+        grace_seconds=30.0,
+        monotonic=lambda: clock["now"],
+    )
+    owner_status = {
+        "outbox_worker": {
+            "available": True,
+            "thread_alive": True,
+            "server_owned": True,
+            "polling": False,
+            "watermark": 126,
+            "committed_sequence": 127,
+            "drain_count": 59,
+            "last_error_type": "",
+        },
+        "typed_command_gateway": {
+            "commit_observer_bound": True,
+            "last_observer_error_type": "",
+        },
+    }
+    gated = operator._outbox_worker_health(owner_status)
+    assert gated["structural_healthy"] is True
+    assert gated["caught_up"] is False
+    assert gated["healthy"] is False
+    assert gated["classification"] == "state_owner_outbox_catching_up"
+
+    first = guard.observe(gated)
+    assert first["continue_running"] is True
+    assert first["classification"] == "state_owner_outbox_catching_up"
+    clock["now"] = 129.999
+    assert guard.observe(gated)["continue_running"] is True
+
+    owner_status["outbox_worker"]["watermark"] = 127
+    caught_up = operator._outbox_worker_health(owner_status)
+    recovered = guard.observe(caught_up)
+    assert recovered["continue_running"] is True
+    assert recovered["classification"] == "state_owner_outbox_healthy"
+
+    # A later independent gap receives a fresh bounded grace window.
+    clock["now"] = 200.0
+    owner_status["outbox_worker"]["committed_sequence"] = 128
+    later_gap = operator._outbox_worker_health(owner_status)
+    restarted = guard.observe(later_gap)
+    assert restarted["continue_running"] is True
+    assert restarted["lag_seconds"] == 0.0
+
+
+def test_steady_state_outbox_guard_fails_closed_after_persistent_lag() -> None:
+    operator = _operator()
+    clock = {"now": 500.0}
+    guard = operator._SteadyStateOutboxHealth(
+        grace_seconds=30.0,
+        monotonic=lambda: clock["now"],
+    )
+    lagging = operator._outbox_worker_health(
+        {
+            "outbox_worker": {
+                "available": True,
+                "thread_alive": True,
+                "server_owned": True,
+                "polling": False,
+                "watermark": 40,
+                "committed_sequence": 41,
+                "drain_count": 2,
+                "last_error_type": "",
+            },
+            "typed_command_gateway": {
+                "commit_observer_bound": True,
+                "last_observer_error_type": "",
+            },
+        }
+    )
+
+    assert guard.observe(lagging)["continue_running"] is True
+    clock["now"] = 529.999
+    assert guard.observe(lagging)["continue_running"] is True
+    clock["now"] = 530.0
+    expired = guard.observe(lagging)
+    assert expired["continue_running"] is False
+    assert expired["classification"] == "state_owner_outbox_lag_timeout"
+    assert expired["lag_seconds"] == 30.0
+
+
+def test_steady_state_outbox_guard_rejects_structural_failure_immediately() -> None:
+    operator = _operator()
+    guard = operator._SteadyStateOutboxHealth(monotonic=lambda: 1.0)
+    failed = operator._outbox_worker_health(
+        {
+            "outbox_worker": {
+                "available": False,
+                "thread_alive": False,
+                "server_owned": True,
+                "polling": False,
+                "watermark": 127,
+                "committed_sequence": 127,
+                "drain_count": 59,
+                "last_error_type": "",
+            },
+            "typed_command_gateway": {
+                "commit_observer_bound": True,
+                "last_observer_error_type": "",
+            },
+        }
+    )
+
+    decision = guard.observe(failed)
+    assert decision["continue_running"] is False
+    assert decision["classification"] == "state_owner_outbox_unavailable"
 
 
 @pytest.mark.parametrize(
