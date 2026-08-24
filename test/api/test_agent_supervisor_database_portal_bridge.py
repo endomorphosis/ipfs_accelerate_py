@@ -3145,6 +3145,7 @@ def test_bridge_preserves_root_repository_output_paths(tmp_path: Path) -> None:
         "pkg/../../escape.py",
         "./pkg/module.py",
         "pkg//module.py",
+        "pkg/generated/",
         "pkg/one.py,pkg/two.py",
         "pkg\\module.py",
         "C:/escape.py",

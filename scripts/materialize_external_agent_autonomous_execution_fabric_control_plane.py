@@ -2566,7 +2566,11 @@ def _assert_database_materialization_equivalent(
 
     if not isinstance(database_receipt, Mapping):
         raise MaterializationError("database materialization receipt is not an object")
-    wrapper_fields = {"task_source", "registered_task_cids"}
+    wrapper_fields = {
+        "task_source",
+        "registered_task_cids",
+        "bootstrap_completed_task_cids",
+    }
     if set(database_receipt) != wrapper_fields:
         raise MaterializationError("database materialization receipt wrapper is not canonical")
     task_source_receipt = database_receipt.get("task_source")
@@ -2624,6 +2628,25 @@ def _assert_database_materialization_equivalent(
     if not isinstance(registered_task_cids, list) or registered_task_cids != expected_task_cids:
         raise MaterializationError(
             "database materialization registered task identities differ from source"
+        )
+    bootstrap_completed_task_cids = database_receipt.get(
+        "bootstrap_completed_task_cids"
+    )
+    if not isinstance(bootstrap_completed_task_cids, list):
+        raise MaterializationError(
+            "database materialization bootstrap-completed identities are not a list"
+        )
+    expected_bootstrap_completed_task_cids = [
+        str(item.get("task_cid") or "")
+        for item in population.get("tasks") or ()
+        if isinstance(item, Mapping)
+        and str(item.get("status") or "").strip().lower()
+        in {"completed", "complete", "done"}
+    ]
+    if bootstrap_completed_task_cids != expected_bootstrap_completed_task_cids:
+        raise MaterializationError(
+            "database materialization bootstrap-completed task identities differ "
+            "from source"
         )
     if list(snapshot.get("task_cids") or ()) != sorted(expected_task_cids):
         raise MaterializationError("control intent snapshot task identities differ from source")

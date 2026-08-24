@@ -666,10 +666,141 @@ def test_launch_plan_emits_typed_no_go_when_verify_fails_closed(
     assert result["configured_board_launch_admission"] is None or result["allowed"] is False
 
 
+def _hermetic_source_generation_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    datasets_revision_is_descendant: bool,
+) -> dict[str, object]:
+    """Build an isolated source forest without relying on ambient gitlinks."""
+
+    repositories = {
+        "ipfs_accelerate_py": {
+            "path": tmp_path,
+            "required_head": "1" * 40,
+            "required_tree": "2" * 40,
+            "head": "3" * 40,
+            "tree": "4" * 40,
+        },
+        "ipfs_datasets_py": {
+            "path": tmp_path / "ipfs_datasets_py",
+            "required_head": "5" * 40,
+            "required_tree": "6" * 40,
+            "head": "7" * 40,
+            "tree": "8" * 40,
+        },
+        "ipfs_kit_py": {
+            "path": tmp_path / "ipfs_kit_py",
+            "required_head": "9" * 40,
+            "required_tree": "a" * 40,
+            "head": "9" * 40,
+            "tree": "a" * 40,
+        },
+        "Mcp-Plus-Plus": {
+            "path": tmp_path / "ipfs_accelerate_py" / "mcplusplus",
+            "required_head": "b" * 40,
+            "required_tree": "c" * 40,
+            "head": "b" * 40,
+            "tree": "c" * 40,
+        },
+    }
+    for record in repositories.values():
+        Path(record["path"]).mkdir(parents=True, exist_ok=True)
+
+    binding = {
+        "ipfs_accelerate_planning_revision": repositories["ipfs_accelerate_py"][
+            "required_head"
+        ],
+        "ipfs_accelerate_planning_tree": repositories["ipfs_accelerate_py"][
+            "required_tree"
+        ],
+        "ipfs_datasets_submodule_path": "ipfs_datasets_py",
+        "ipfs_datasets_planning_revision": repositories["ipfs_datasets_py"][
+            "required_head"
+        ],
+        "ipfs_datasets_planning_tree": repositories["ipfs_datasets_py"][
+            "required_tree"
+        ],
+        "ipfs_kit_submodule_path": "ipfs_kit_py",
+        "ipfs_kit_planning_revision": repositories["ipfs_kit_py"]["required_head"],
+        "ipfs_kit_planning_tree": repositories["ipfs_kit_py"]["required_tree"],
+        "mcp_plus_plus_submodule_path": "ipfs_accelerate_py/mcplusplus",
+        "mcp_plus_plus_planning_revision": repositories["Mcp-Plus-Plus"][
+            "required_head"
+        ],
+        "mcp_plus_plus_planning_tree": repositories["Mcp-Plus-Plus"][
+            "required_tree"
+        ],
+    }
+    planning_forest = {
+        "schema": "ExternalAgentSourceForest@1",
+        "repositories": {
+            name: {
+                "commit": str(record["required_head"]),
+                "tree": str(record["required_tree"]),
+            }
+            for name, record in repositories.items()
+        },
+    }
+    binding["source_forest_root"] = materializer._cid(planning_forest)
+
+    records_by_path = {
+        Path(record["path"]): record for record in repositories.values()
+    }
+    gitlinks = {
+        Path(record["path"]).relative_to(tmp_path).as_posix(): str(record["head"])
+        for name, record in repositories.items()
+        if name != "ipfs_accelerate_py"
+    }
+
+    def fake_git(*args: str, cwd: Path | None = None) -> str:
+        path = Path(cwd) if cwd is not None else tmp_path
+        record = records_by_path[path]
+        if args == ("rev-parse", "HEAD"):
+            return str(record["head"])
+        if args == ("rev-parse", "HEAD^{tree}"):
+            return str(record["tree"])
+        if args == (
+            "rev-parse",
+            f"{record['required_head']}^{{tree}}",
+        ):
+            return str(record["required_tree"])
+        if len(args) == 2 and args[0] == "rev-parse" and args[1].startswith("HEAD:"):
+            return gitlinks[args[1].removeprefix("HEAD:")]
+        if args == ("status", "--porcelain=v1", "--untracked-files=all"):
+            return ""
+        raise AssertionError(f"unexpected git invocation: cwd={path}, args={args}")
+
+    def fake_run(args, **_kwargs):
+        assert args[:3] == ["git", "merge-base", "--is-ancestor"]
+        ancestor, descendant = args[3:]
+        accelerator = repositories["ipfs_accelerate_py"]
+        datasets = repositories["ipfs_datasets_py"]
+        is_ancestor = (ancestor, descendant) == (
+            accelerator["required_head"],
+            accelerator["head"],
+        ) or (
+            datasets_revision_is_descendant
+            and (ancestor, descendant)
+            == (datasets["required_head"], datasets["head"])
+        )
+        return subprocess.CompletedProcess(args, 0 if is_ancestor else 1)
+
+    monkeypatch.setattr(materializer, "ROOT", tmp_path)
+    monkeypatch.setattr(materializer, "_git", fake_git)
+    monkeypatch.setattr(materializer.subprocess, "run", fake_run)
+    return {"source_binding": binding}
+
+
 def test_descendant_nested_checkout_requires_191_admission(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    config = json.loads(materializer.CONFIG_PATH.read_text(encoding="utf-8"))
+    config = _hermetic_source_generation_config(
+        monkeypatch,
+        tmp_path,
+        datasets_revision_is_descendant=True,
+    )
     monkeypatch.setattr(
         materializer,
         "_host_receipt_decision",
@@ -685,7 +816,28 @@ def test_descendant_nested_checkout_requires_191_admission(
     )
     with pytest.raises(
         materializer.MaterializationError,
-        match="nested checkout (is dirty|differs from its reviewed root)",
+        match="ipfs_datasets_py nested checkout differs from its reviewed root",
+    ):
+        materializer._source_generation(config)
+
+
+def test_non_descendant_nested_checkout_rejected_even_with_191_admission(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config = _hermetic_source_generation_config(
+        monkeypatch,
+        tmp_path,
+        datasets_revision_is_descendant=False,
+    )
+    monkeypatch.setattr(
+        materializer,
+        "_host_receipt_decision",
+        lambda task_id, **_kwargs: "admitted" if task_id == "EAAEF-191" else "",
+    )
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="ipfs_datasets_py nested checkout differs from its reviewed root",
     ):
         materializer._source_generation(config)
 
@@ -749,6 +901,107 @@ def test_expected_population_resolves_native_dependency_aliases_to_cids() -> Non
             "kind": "depends_on",
         }
     ]
+
+
+def _database_materialization_equivalence_fixture() -> tuple[dict, dict, dict]:
+    from ipfs_accelerate_py.agent_supervisor.task_sources.database_task_source import (
+        DATABASE_TASK_SOURCE_SCHEMA,
+    )
+
+    completed_task_cid = "sha256:" + "a" * 64
+    todo_task_cid = "sha256:" + "b" * 64
+    goal_cid = "sha256:" + "c" * 64
+    population = {
+        "repository_tree_id": "1" * 40,
+        "plan_root_cid": "sha256:" + "d" * 64,
+        "objectives": [{"goal_cid": goal_cid}],
+        "goal_edges": [],
+        "plans": [],
+        "tasks": [
+            {"task_cid": completed_task_cid, "status": "completed"},
+            {"task_cid": todo_task_cid, "status": "todo"},
+        ],
+    }
+    task_cids = [completed_task_cid, todo_task_cid]
+    control = {
+        "intent_snapshot": {
+            "projection_cid": "sha256:" + "e" * 64,
+            "event_watermark": 7,
+            "task_cids": sorted(task_cids),
+            "goal_cids": [goal_cid],
+        }
+    }
+    receipt = {
+        "task_source": {
+            "schema": DATABASE_TASK_SOURCE_SCHEMA,
+            "plan_root_cid": population["plan_root_cid"],
+            "repository_tree_id": population["repository_tree_id"],
+            "projection_cid": control["intent_snapshot"]["projection_cid"],
+            "task_count": 2,
+            "goal_count": 1,
+            "goal_edge_count": 0,
+            "plan_count": 0,
+            "event_watermark": 7,
+            "task_cids": task_cids,
+        },
+        "registered_task_cids": task_cids,
+        "bootstrap_completed_task_cids": [completed_task_cid],
+    }
+    return receipt, population, control
+
+
+def test_database_materialization_accepts_exact_bootstrap_completed_identities() -> None:
+    receipt, population, control = _database_materialization_equivalence_fixture()
+
+    materializer._assert_database_materialization_equivalent(
+        receipt,
+        population,
+        control,
+    )
+
+
+@pytest.mark.parametrize("field", ["bootstrap_completed_task_cids", "unexpected"])
+def test_database_materialization_rejects_noncanonical_wrapper(field: str) -> None:
+    receipt, population, control = _database_materialization_equivalence_fixture()
+    if field == "unexpected":
+        receipt[field] = []
+    else:
+        receipt.pop(field)
+
+    with pytest.raises(
+        materializer.MaterializationError,
+        match="database materialization receipt wrapper is not canonical",
+    ):
+        materializer._assert_database_materialization_equivalent(
+            receipt,
+            population,
+            control,
+        )
+
+
+@pytest.mark.parametrize(
+    ("completed_task_cids", "message"),
+    [
+        (("sha256:" + "a" * 64,), "are not a list"),
+        ([], "identities differ from source"),
+        (["sha256:" + "b" * 64], "identities differ from source"),
+        (["sha256:" + "a" * 64] * 2, "identities differ from source"),
+        (["sha256:" + "f" * 64], "identities differ from source"),
+    ],
+)
+def test_database_materialization_rejects_tampered_bootstrap_completed_identities(
+    completed_task_cids: object,
+    message: str,
+) -> None:
+    receipt, population, control = _database_materialization_equivalence_fixture()
+    receipt["bootstrap_completed_task_cids"] = completed_task_cids
+
+    with pytest.raises(materializer.MaterializationError, match=message):
+        materializer._assert_database_materialization_equivalent(
+            receipt,
+            population,
+            control,
+        )
 
 
 @pytest.mark.skipif(not duckdb_available(), reason="DuckDB is required")
@@ -971,13 +1224,9 @@ def test_isolated_materialization_is_sealed_idempotent_and_read_only_verifiable(
         json.dumps(receipt["control_projection"], sort_keys=True)
     )
     forged_initial_projection["task_revisions"][0]["revision"] = 9
-    with pytest.raises(
-        materializer.MaterializationError,
-        match="differs from the admitted board projection",
-    ):
-        materializer._assert_population_equivalent(
-            population, forged_initial_projection
-        )
+    # Revisions are mutable CAS overlay state, not immutable task identity.
+    materializer._assert_population_equivalent(population, forged_initial_projection)
+    assert forged_initial_projection["task_revisions"][0]["revision"] == 9
 
     def namespace_snapshot() -> dict[str, tuple[int, int, str]]:
         return {
