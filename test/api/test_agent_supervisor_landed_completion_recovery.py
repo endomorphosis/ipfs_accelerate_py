@@ -106,6 +106,81 @@ def _landed_repository(
     return candidate, integration, tree, outputs
 
 
+def _landed_directory_repository(
+    root: Path,
+    *,
+    task_alias: str,
+    include_undeclared_path: bool = False,
+) -> tuple[str, str, str, tuple[str, ...]]:
+    root.mkdir(parents=True)
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "landed-recovery@example.invalid")
+    _git(root, "config", "user.name", "Landed Recovery Test")
+    (root / "README.md").write_text("base\n", encoding="utf-8")
+    _git(root, "add", "--", "README.md")
+    _git(root, "commit", "-qm", "base")
+    _git(root, "branch", "-M", "main")
+
+    rescue_branch = "rescue/directory-recovery-task"
+    _git(root, "checkout", "-qb", rescue_branch)
+    benchmark_root = "benchmarks/agent_supervisor/procedure_compiler"
+    benchmark_files = (
+        f"{benchmark_root}/manifest.json",
+        f"{benchmark_root}/training.jsonl",
+        f"{benchmark_root}/held_out.jsonl",
+    )
+    declared_file = "test/api/procedure_compiler/test_benchmark_manifest.py"
+    changes = [*benchmark_files, declared_file]
+    if include_undeclared_path:
+        changes.append("benchmarks/agent_supervisor/undeclared.json")
+    for ordinal, path in enumerate(changes):
+        destination = root / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(f"fixture-{ordinal}\n", encoding="utf-8")
+    _git(root, "add", "--", *changes)
+    _git(root, "commit", "-qm", f"build frozen corpus for {task_alias}")
+    candidate = _git(root, "rev-parse", "HEAD")
+
+    _git(root, "checkout", "-q", "main")
+    _git(
+        root,
+        "merge",
+        "--no-ff",
+        "-m",
+        "integrate landed directory candidate",
+        rescue_branch,
+    )
+    integration = _git(root, "rev-parse", "HEAD")
+    tree = _git(root, "rev-parse", "HEAD^{tree}")
+    return candidate, integration, tree, (benchmark_root, declared_file)
+
+
+def _discover_test_recovery(
+    repository: Path,
+    *,
+    task_alias: str,
+    task_cid: str,
+    declared_outputs: tuple[str, ...],
+) -> dict[str, Any] | None:
+    return discover_landed_completion_recovery(
+        repo_root=repository,
+        target_ref="main",
+        task_cid=task_cid,
+        task_alias=task_alias,
+        declared_outputs=declared_outputs,
+        source_attempt_id="attempt:source",
+        source_claim_id="claim:source",
+        source_lease_id="lease:source",
+        source_owner_session_id="session:source",
+        source_attempt_number=1,
+        source_fencing_token=1,
+        source_fence_epoch=0,
+        source_execution_revision=2,
+        source_execution_finished_at_ms=3,
+        source_control_revision=4,
+    )
+
+
 class _FreshValidationCompletingPortal:
     """Use Portal's real uncached no-change gate, then publish completion."""
 
@@ -476,6 +551,87 @@ def test_landed_recovery_revalidation_rejects_a_different_target_ref(
             repo_root=repository,
             target_ref="HEAD",
         )
+
+
+def test_landed_recovery_accepts_directory_output_covering_changed_leaves(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    task_alias = "PCPC-029"
+    candidate, integration, target_tree, outputs = _landed_directory_repository(
+        repository,
+        task_alias=task_alias,
+    )
+
+    proof = _discover_test_recovery(
+        repository,
+        task_alias=task_alias,
+        task_cid="task:cid:directory-output",
+        declared_outputs=outputs,
+    )
+
+    assert proof is not None
+    assert proof["candidate_commit"] == candidate
+    assert proof["integrating_merge"] == integration
+    assert proof["declared_outputs"] == list(outputs)
+    assert (
+        revalidate_landed_completion_repository(
+            proof,
+            repo_root=repository,
+            target_ref="main",
+        )["current_target_tree"]
+        == target_tree
+    )
+
+
+def test_landed_recovery_rejects_extra_undeclared_changed_path(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    task_alias = "PCPC-029"
+    _candidate, _integration, _tree, outputs = _landed_directory_repository(
+        repository,
+        task_alias=task_alias,
+        include_undeclared_path=True,
+    )
+
+    assert (
+        _discover_test_recovery(
+            repository,
+            task_alias=task_alias,
+            task_cid="task:cid:undeclared-change",
+            declared_outputs=outputs,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("declaration_case", ("nested", "unrepresented"))
+def test_landed_recovery_rejects_inexact_directory_declarations(
+    tmp_path: Path,
+    declaration_case: str,
+) -> None:
+    repository = tmp_path / "repo"
+    task_alias = "PCPC-029"
+    _candidate, _integration, _tree, outputs = _landed_directory_repository(
+        repository,
+        task_alias=task_alias,
+    )
+    declared_outputs = (
+        (*outputs, f"{outputs[0]}/manifest.json")
+        if declaration_case == "nested"
+        else (*outputs, "README.md")
+    )
+
+    assert (
+        _discover_test_recovery(
+            repository,
+            task_alias=task_alias,
+            task_cid=f"task:cid:{declaration_case}",
+            declared_outputs=declared_outputs,
+        )
+        is None
+    )
 
 
 def test_landed_claim_seed_requires_new_fence_and_exact_owner(

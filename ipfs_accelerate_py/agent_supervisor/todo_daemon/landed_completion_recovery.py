@@ -140,6 +140,12 @@ def _safe_output(value: Any) -> str:
     return value
 
 
+def _is_strict_descendant(path: str, root: str) -> bool:
+    path_parts = PurePosixPath(path).parts
+    root_parts = PurePosixPath(root).parts
+    return bool(len(path_parts) > len(root_parts) and path_parts[: len(root_parts)] == root_parts)
+
+
 def _outputs(values: Any) -> tuple[str, ...]:
     if not isinstance(values, Sequence) or isinstance(
         values, (str, bytes, bytearray, memoryview)
@@ -154,6 +160,8 @@ def _outputs(values: Any) -> tuple[str, ...]:
         raise LandedCompletionRecoveryError(
             "declared outputs are empty, duplicated, or outside the closed bound"
         )
+    if any(_is_strict_descendant(candidate, root) for root in result for candidate in result):
+        raise LandedCompletionRecoveryError("declared outputs are nested or overlapping")
     return result
 
 
@@ -234,6 +242,53 @@ def _changed_paths(repo_root: Path, before: str, after: str) -> tuple[str, ...]:
     )
     values = tuple(line for line in raw.splitlines() if line)
     return tuple(_safe_output(value) for value in values)
+
+
+def _declared_outputs_cover_changed_paths(
+    repo_root: Path,
+    commit: str,
+    outputs: Sequence[str],
+    changed_paths: Sequence[str],
+) -> bool:
+    """Require exact, type-aware coverage of every changed Git leaf."""
+
+    if not changed_paths or len(set(changed_paths)) != len(changed_paths):
+        return False
+    declarations: list[tuple[str, str]] = []
+    for output in outputs:
+        try:
+            object_type = _run_git(
+                repo_root,
+                ["cat-file", "-t", f"{commit}:{output}"],
+            )
+        except LandedCompletionRecoveryError:
+            return False
+        if object_type not in {"blob", "tree"}:
+            return False
+        declarations.append((output, object_type))
+
+    if any(
+        _is_strict_descendant(candidate, root)
+        for root, _root_type in declarations
+        for candidate, _candidate_type in declarations
+    ):
+        return False
+
+    covered_counts = [0] * len(declarations)
+    for changed_path in changed_paths:
+        matching_declarations = [
+            index
+            for index, (output, object_type) in enumerate(declarations)
+            if (
+                changed_path == output
+                if object_type == "blob"
+                else _is_strict_descendant(changed_path, output)
+            )
+        ]
+        if len(matching_declarations) != 1:
+            return False
+        covered_counts[matching_declarations[0]] += 1
+    return all(count > 0 for count in covered_counts)
 
 
 def _is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
@@ -387,9 +442,18 @@ def revalidate_landed_completion_repository(
         or integration_parents != (receipt["integrating_first_parent"], candidate)
         or _resolve_tree(root, candidate) != receipt["candidate_tree"]
         or _resolve_tree(root, integration) != receipt["integrating_tree"]
-        or set(_changed_paths(root, candidate_parents[0], candidate)) != set(outputs)
-        or set(_changed_paths(root, integration_parents[0], integration))
-        != set(outputs)
+        or not _declared_outputs_cover_changed_paths(
+            root,
+            candidate,
+            outputs,
+            _changed_paths(root, candidate_parents[0], candidate),
+        )
+        or not _declared_outputs_cover_changed_paths(
+            root,
+            integration,
+            outputs,
+            _changed_paths(root, integration_parents[0], integration),
+        )
         or not _task_alias_in_candidate(root, candidate, str(receipt["task_alias"]))
         or not _same_output_blobs(root, candidate, integration, outputs)
         or not _is_ancestor(
@@ -461,8 +525,11 @@ def discover_landed_completion_recovery(
                 continue
             if not _task_alias_in_candidate(root, candidate, task_alias):
                 continue
-            if set(_changed_paths(root, candidate_parents[0], candidate)) != set(
-                outputs
+            if not _declared_outputs_cover_changed_paths(
+                root,
+                candidate,
+                outputs,
+                _changed_paths(root, candidate_parents[0], candidate),
             ):
                 continue
             candidate_rows[candidate] = (
@@ -505,7 +572,12 @@ def discover_landed_completion_recovery(
             candidate_row = candidate_rows.get(candidate)
             if candidate_row is None:
                 continue
-            if set(_changed_paths(root, first_parent, integration)) != set(outputs):
+            if not _declared_outputs_cover_changed_paths(
+                root,
+                integration,
+                outputs,
+                _changed_paths(root, first_parent, integration),
+            ):
                 continue
             if not _same_output_blobs(root, candidate, integration, outputs):
                 continue
