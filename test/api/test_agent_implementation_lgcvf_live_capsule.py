@@ -111,6 +111,11 @@ def _seed_repository(tmp_path: Path) -> tuple[Path, str, str]:
             path.write_text("{}\n")
         else:
             path.write_text("admitted projection\n")
+    unselected_gitlink = root / "ipfs_accelerate_py/mcplusplus"
+    unselected_gitlink.mkdir()
+    _git(unselected_gitlink, "init", "-q")
+    (unselected_gitlink / "README.md").write_text("unselected gitlink\n")
+    _commit(unselected_gitlink, "unselected nested repository")
     _commit(root, "superproject")
     return root, _git(root, "rev-parse", "HEAD"), _git(
         root, "rev-parse", "HEAD^{tree}"
@@ -179,6 +184,9 @@ def test_lgcvf_live_capsule_materialize_seal_read_and_project(
     tmp_path: Path,
 ) -> None:
     root, head, tree = _seed_repository(tmp_path)
+    assert _git(
+        root, "ls-tree", head, "--", "ipfs_accelerate_py/mcplusplus"
+    ).startswith("160000 commit ")
     runtime = _seed_duckdb_runtime(tmp_path)
     native_authorization = "sha256:" + "a" * 64
     native_dependency = "sha256:" + "b" * 64

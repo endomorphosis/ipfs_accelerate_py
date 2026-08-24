@@ -7376,7 +7376,6 @@ def _lgcvf_live_git_payloads(
                 "ascii"
             ).split(" ", 3)
             relative = raw_path.decode("utf-8")
-            size = int(size_text.strip())
         except (UnicodeError, ValueError) as exc:
             raise ValueError("LGCVF live capsule Git tree is invalid") from exc
         relative_path = Path(relative)
@@ -7386,6 +7385,10 @@ def _lgcvf_live_git_payloads(
             or not select(relative)
         ):
             continue
+        try:
+            size = int(size_text.strip())
+        except ValueError as exc:
+            raise ValueError("LGCVF live capsule Git dependency is invalid") from exc
         if (
             object_type != "blob"
             or mode not in {"100644", "100755"}
