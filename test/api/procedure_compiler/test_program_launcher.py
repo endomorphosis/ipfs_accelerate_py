@@ -633,6 +633,7 @@ def test_materialization_verification_uses_isolated_extension_home_and_rejects_e
         assert set(env) <= {
             "PATH",
             "HOME",
+            "PYTHONNOUSERSITE",
             "PYTHONUSERBASE",
             "PYTHONDONTWRITEBYTECODE",
             "CUDA_CACHE_DISABLE",
@@ -727,6 +728,46 @@ def test_materialization_verification_uses_isolated_extension_home_and_rejects_e
     assert len(quarantines) == 1
     assert (quarantines[0] / ".codex").is_dir()
     assert not any(".staging-" in item.name for item in config.qualification_home.parent.iterdir())
+
+
+def test_qualification_environment_preserves_disabled_user_site(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load()
+    config = _with_hermetic_extensions(module, _config(module), tmp_path)
+    user_base = tmp_path / "unused-user-base"
+    user_site = user_base / "lib/python3.12/site-packages"
+    monkeypatch.setattr(module.site, "getuserbase", lambda: str(user_base))
+    monkeypatch.setattr(module.site, "getusersitepackages", lambda: str(user_site))
+    monkeypatch.setattr(module.site, "ENABLE_USER_SITE", False)
+    monkeypatch.setattr(
+        module.sys,
+        "path",
+        [entry for entry in module.sys.path if entry != str(user_site)],
+    )
+
+    environment = module._qualification_environment(config)
+
+    assert environment["PYTHONNOUSERSITE"] == "1"
+    assert "PYTHONUSERBASE" not in environment
+
+
+def test_qualification_environment_rejects_inconsistent_active_user_site(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _load()
+    config = _with_hermetic_extensions(module, _config(module), tmp_path)
+    user_base = tmp_path / "unsafe-user-base"
+    user_site = user_base / "lib/python3.12/site-packages"
+    monkeypatch.setattr(module.site, "getuserbase", lambda: str(user_base))
+    monkeypatch.setattr(module.site, "getusersitepackages", lambda: str(user_site))
+    monkeypatch.setattr(module.site, "ENABLE_USER_SITE", False)
+    monkeypatch.setattr(module.sys, "path", [*module.sys.path, str(user_site)])
+
+    with pytest.raises(module.ProgramLaunchError) as raised:
+        module._qualification_environment(config)
+
+    assert raised.value.code == "python_environment_invalid"
 
 
 @pytest.mark.parametrize(
@@ -1043,16 +1084,23 @@ def test_supervisor_launch_admits_exact_lifecycle_marked_lane_process(
         start_new_session=True,
     )
     try:
-        assert module._configured_lane_process_ready(
-            config=config,
-            bindings=bindings,
-            lane_index=0,
-            supervisor_pid=process.pid,
-            coordinator_pid=os.getpid(),
-            coordinator_start_ticks=coordinator_ticks,
-            repository_commit="1" * 40,
-            repository_tree="2" * 40,
-        )
+        ready = False
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            ready = module._configured_lane_process_ready(
+                config=config,
+                bindings=bindings,
+                lane_index=0,
+                supervisor_pid=process.pid,
+                coordinator_pid=os.getpid(),
+                coordinator_start_ticks=coordinator_ticks,
+                repository_commit="1" * 40,
+                repository_tree="2" * 40,
+            )
+            if ready or process.poll() is not None:
+                break
+            time.sleep(0.01)
+        assert ready
     finally:
         process.terminate()
         process.wait(timeout=5.0)
