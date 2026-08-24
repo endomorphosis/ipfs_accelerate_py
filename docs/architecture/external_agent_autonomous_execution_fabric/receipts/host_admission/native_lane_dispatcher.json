@@ -4,7 +4,7 @@
   "decision": "admitted",
   "evidence": {
     "artifact": "native_lane_dispatcher_artifacts",
-    "artifact_cid": "sha256:c61318d42d4bb6ae2e5dd932477586acd73290c53fba0c28865636132a12edf9",
+    "artifact_cid": "sha256:dd5ea4e8aa710c64c389cf915cd8cd605f17c1306eea87e161bb12f4f473675b",
     "artifact_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/host-evidence/native-lane-dispatcher.json",
     "configured_board_launch": false,
     "decision": "admitted",
@@ -20,12 +20,12 @@
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:248de2e3acdc195afba9672cdace7b8536d9a694ce9d7ddb7a2e23b3deedaec5",
+  "receipt_cid": "sha256:f5058932690665820ffd16d2b583dfc33f1da9f10f2be4af09ffe2ff7fe450c9",
   "receipt_name": "native_lane_dispatcher.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "e8d4b1e3ccf68c284f65bb6595b24c402cf82565",
-  "source_tree": "0e8fa360e0fef8d0d5f71d74c213354f61fe9824",
+  "source_head": "1875880fbaa1943c074dcaa71734e8a515fa9615",
+  "source_tree": "946a45dd289d34f8081f9ae5c95ac379e75e7bdf",
   "supervisor_process_started": false,
   "task_id": "EAAEF-189"
 }

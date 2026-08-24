@@ -9,7 +9,7 @@
       "plan_r2.observe"
     ],
     "artifact": "plan_r2_remote_owner",
-    "artifact_cid": "sha256:68b7c9c929b16fbbb79cdb0200b54a4f3af0cc22416c7f972f5394dfa009907b",
+    "artifact_cid": "sha256:0eb046a0bd58a5e96be71593734d198fe0acae5319261bd532adab97087b2b3a",
     "artifact_path": "data/agent_supervisor/external_agent_autonomous_execution_fabric/authority/host-evidence/plan-r2-remote-owner.json",
     "configured_board_launch": false,
     "decision": "admitted",
@@ -24,12 +24,12 @@
   },
   "independent_signatures": [],
   "process_started": false,
-  "receipt_cid": "sha256:900dd2e35563e24deb5e6ef9f25ed8f449fac30d186cb851a9e3b442f97cf2ba",
+  "receipt_cid": "sha256:a65ed4e8a0540b84bec2b5db3a8fe1990c0e932ddb04e1a93418973241c58e93",
   "receipt_name": "plan_r2_remote_owner.json",
   "schema": "ipfs_accelerate_py/agent-supervisor/eaaef-host-admission-receipt@1",
   "self_signed": false,
-  "source_head": "e8d4b1e3ccf68c284f65bb6595b24c402cf82565",
-  "source_tree": "0e8fa360e0fef8d0d5f71d74c213354f61fe9824",
+  "source_head": "1875880fbaa1943c074dcaa71734e8a515fa9615",
+  "source_tree": "946a45dd289d34f8081f9ae5c95ac379e75e7bdf",
   "supervisor_process_started": false,
   "task_id": "EAAEF-190"
 }
