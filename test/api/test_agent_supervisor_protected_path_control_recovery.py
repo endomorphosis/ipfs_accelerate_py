@@ -20,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.database_portal_bridge impo
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ATTEMPT_PHASE_CONTEXT,
     ATTEMPT_PHASE_FAILED,
+    DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
     DatabaseImplementationAuthorityError,
     DatabaseImplementationConflictError,
     DatabaseImplementationDaemon,
@@ -583,6 +584,7 @@ def test_runner_binds_bridge_protected_path_recovery_callback(tmp_path: Path) ->
         implementation_protected_path=None,
         task_prefix="## PCAR-",
         max_task_attempts=3,
+        implementation_timeout=DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
     )
     bridge = bind_database_portal_execution_from_args(
         FakeDaemon(),

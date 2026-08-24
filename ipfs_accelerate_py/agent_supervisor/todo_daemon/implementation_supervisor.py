@@ -127,7 +127,10 @@ from ..rescue.supervisor_watchdog import (
     AutonomousUnstallPolicy,
 )
 from .core import ManagedDaemonSpec, terminate_pid_tree
-from .database_portal_bridge import DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
+from .database_portal_bridge import (
+    DatabasePortalBridgeError,
+    verify_database_portal_attempt_projection,
+)
 from .implementation_daemon import (
     DEFAULT_TRACKS,
     IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
@@ -11161,68 +11164,22 @@ class PortalImplementationSupervisor:
             ):
                 continue
 
-            binding_path = attempt_dir / "database-attempt-binding.json"
-            binding = self._load_single_link_json_object(binding_path)
-            if binding is None:
-                continue
-            expected_binding_fields = {
-                "schema",
-                "interface",
-                "attempt_id",
-                "claim_id",
-                "task_cid",
-                "task_alias",
-                "goal_cid",
-                "plan_cid",
-                "task_revision",
-                "fencing_token",
-                "fence_epoch",
-                "lease_id",
-                "task_body_digest",
-                "projection_seed_digest",
-                "projection_immutable_digest",
-                "authoritative_task_store",
-                "projection_authority",
-                "binding_id",
-            }
-            attempt_id = binding.get("attempt_id")
-            binding_id = binding.get("binding_id")
-            if (
-                set(binding) != expected_binding_fields
-                or binding.get("schema")
-                != DATABASE_PORTAL_ATTEMPT_BINDING_SCHEMA
-                or binding.get("interface")
-                != "DatabasePortalExecutionBridge@1"
-                or type(attempt_id) is not str
-                or not attempt_id
-                or hashlib.sha256(attempt_id.encode("utf-8")).hexdigest()[:24]
-                != attempt_dir.name
-                or binding.get("task_alias") != record.task_id
-                or binding.get("task_cid") != record.canonical_task_cid
-                or type(binding.get("claim_id")) is not str
-                or not binding.get("claim_id")
-                or type(binding.get("lease_id")) is not str
-                or not binding.get("lease_id")
-                or type(binding.get("task_revision")) is not int
-                or type(binding.get("fencing_token")) is not int
-                or type(binding.get("fence_epoch")) is not int
-                or binding.get("projection_authority") is not False
-                or binding.get("authoritative_task_store") != "duckdb"
-                or type(binding_id) is not str
+            try:
+                binding = verify_database_portal_attempt_projection(
+                    attempt_dir / "task-projection.md",
+                    expected_task_alias=record.task_id,
+                    expected_task_cid=record.canonical_task_cid,
+                    allowed_root=attempt_root,
+                )
+            except (
+                DatabasePortalBridgeError,
+                OSError,
+                RuntimeError,
+                TypeError,
+                ValueError,
             ):
                 continue
-            binding_without_id = dict(binding)
-            binding_without_id.pop("binding_id", None)
-            expected_binding_id = "sha256:" + hashlib.sha256(
-                json.dumps(
-                    binding_without_id,
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                    sort_keys=True,
-                    default=str,
-                ).encode("utf-8")
-            ).hexdigest()
-            if binding_id != expected_binding_id:
+            if binding.get("attempt_number") != record.attempt:
                 continue
 
             nested_state_path = attempt_dir / "portal-task-state.json"
