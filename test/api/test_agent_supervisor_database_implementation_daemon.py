@@ -16,6 +16,7 @@ import importlib
 import json
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -1015,6 +1016,283 @@ def test_provider_heartbeat_renews_exact_task_claim(tmp_path: Path) -> None:
         daemon.close()
 
 
+def test_claim_heartbeat_outlives_remote_control_cas_wait(tmp_path: Path) -> None:
+    """A Quack owner recycle may take longer than the initial claim lease."""
+
+    now = {"ms": 1_000}
+    renewed = threading.Event()
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:claim-cas-heartbeat",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    daemon._lease_heartbeat_interval_seconds = 0.01
+    try:
+        daemon.materialize_population(_population(1))
+        original_renew = daemon.coordinator.renew
+
+        def observe_renew(*args, **kwargs):
+            result = original_renew(*args, **kwargs)
+            if int(result.expires_at_ms) >= 10_000:
+                renewed.set()
+            return result
+
+        daemon.coordinator.renew = observe_renew
+        original_cas = daemon._cas_task_status_database
+
+        def delayed_cas(*args, **kwargs):
+            # The claim was acquired at 1,000ms and would expire at 6,000ms.
+            # Let the pre-attempt heartbeat extend it, then return after the
+            # original lease window has elapsed.
+            now["ms"] = 5_000
+            assert renewed.wait(1.0), "claim heartbeat did not renew remote CAS wait"
+            now["ms"] = 9_000
+            return original_cas(*args, **kwargs)
+
+        daemon._cas_task_status_database = delayed_cas
+
+        attempt = daemon.claim_next()
+
+        assert attempt is not None
+        assert attempt.committed_phase == "claimed"
+        claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert claim is not None
+        assert claim.expires_at_ms > now["ms"]
+        assert claim.revision > 1
+    finally:
+        daemon.close()
+
+
+def test_claim_heartbeat_renewal_failure_fails_closed_before_attempt_insert(
+    tmp_path: Path,
+) -> None:
+    """A landed CAS fails closed, then recovers through expiry and re-claim."""
+
+    from datetime import datetime, timedelta, timezone
+
+    now = {"ms": 1_000}
+    renewal_attempted = threading.Event()
+    observed_claim_ids: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:claim-cas-heartbeat-failure",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    daemon._lease_heartbeat_interval_seconds = 0.01
+    try:
+        daemon.materialize_population(_population(1))
+        original_claim = daemon.coordinator.claim_ready_task
+
+        def capture_claim(*args, **kwargs):
+            claim = original_claim(*args, **kwargs)
+            if claim is not None:
+                observed_claim_ids.append(str(claim.claim_id))
+            return claim
+
+        daemon.coordinator.claim_ready_task = capture_claim
+        original_renew = daemon.coordinator.renew
+
+        def reject_renewal(*_args, **_kwargs):
+            renewal_attempted.set()
+            raise DatabaseCoordinationError("forced claim renewal failure")
+
+        daemon.coordinator.renew = reject_renewal
+        original_cas = daemon._cas_task_status_database
+
+        def cas_after_failed_renewal(*args, **kwargs):
+            assert renewal_attempted.wait(1.0), "claim renewal was not attempted"
+            return original_cas(*args, **kwargs)
+
+        daemon._cas_task_status_database = cas_after_failed_renewal
+
+        with pytest.raises(
+            DatabaseImplementationAuthorityError,
+            match="lost lease authority during claim admission",
+        ):
+            daemon.claim_next()
+
+        attempt_count = daemon._require_connection().execute(
+            "SELECT COUNT(*) FROM database_task_attempts"
+        ).fetchone()
+        assert attempt_count is not None
+        assert int(attempt_count[0]) == 0
+        control = daemon.task_source.get("task:cid:001")
+        assert control is not None
+        assert control.status == "in_progress"
+
+        # No unsafe compensation is attempted after authority loss.  Once the
+        # exact orphan claim has expired and its owner CAS is independently
+        # stale, the ordinary recovery path reopens the control task.
+        assert len(observed_claim_ids) == 1
+        abandoned = daemon.coordinator.get_task_claim(observed_claim_ids[0])
+        assert abandoned is not None
+        now["ms"] = 7_000
+        daemon.coordinator.expire_task_claim(abandoned, now_ms=now["ms"])
+        expired = daemon.coordinator.get_task_claim(abandoned.claim_id)
+        assert expired is not None
+        assert expired.state.value == "expired"
+        stale = (datetime.now(timezone.utc) - timedelta(minutes=15)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        with daemon.task_source._intent._connection(write=True) as connection:
+            connection.execute(
+                "UPDATE tasks SET updated_at = ? WHERE task_cid = ?",
+                [stale, abandoned.task_cid],
+            )
+        daemon.coordinator.renew = original_renew
+        daemon._cas_task_status_database = original_cas
+
+        unstalled = daemon.reconcile_stale_in_progress_gates()
+        assert [item["task_cid"] for item in unstalled] == [abandoned.task_cid]
+        retried = daemon.task_source.get(abandoned.task_cid)
+        assert retried is not None
+        assert retried.status == "retrying"
+
+        replacement = daemon.claim_next()
+        assert replacement is not None
+        assert replacement.task_cid == abandoned.task_cid
+        assert replacement.claim_id != abandoned.claim_id
+        assert replacement.attempt_id != abandoned.attempt_id
+        assert replacement.fencing_token > abandoned.fencing_token
+        assert replacement.attempt_number == abandoned.attempt_number + 1
+    finally:
+        daemon.close()
+
+
+def test_claim_heartbeat_covers_post_cas_attempt_insert(tmp_path: Path) -> None:
+    """Admission stays live after the remote CAS until insertion is durable."""
+
+    now = {"ms": 1_000}
+    renewed_during_cas = threading.Event()
+    insert_started = threading.Event()
+    renewed_during_insert = threading.Event()
+    renewal_count = {"value": 0}
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:claim-insert-heartbeat",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    daemon._lease_heartbeat_interval_seconds = 0.01
+    try:
+        daemon.materialize_population(_population(1))
+        original_renew = daemon.coordinator.renew
+
+        def observe_renew(*args, **kwargs):
+            result = original_renew(*args, **kwargs)
+            renewal_count["value"] += 1
+            if insert_started.is_set() and int(result.expires_at_ms) >= 14_000:
+                renewed_during_insert.set()
+            elif int(result.expires_at_ms) >= 10_000:
+                renewed_during_cas.set()
+            return result
+
+        daemon.coordinator.renew = observe_renew
+        original_cas = daemon._cas_task_status_database
+
+        def delayed_cas(*args, **kwargs):
+            now["ms"] = 5_000
+            assert renewed_during_cas.wait(1.0), "claim CAS was not heartbeated"
+            now["ms"] = 9_000
+            return original_cas(*args, **kwargs)
+
+        daemon._cas_task_status_database = delayed_cas
+        original_insert = daemon._insert_attempt_from_claim
+
+        def delayed_insert(*args, **kwargs):
+            # The first renewal expires at 10,000ms.  Advancing the clock
+            # after the CAS proves that the same heartbeat remains active
+            # through the durable attempt insertion boundary.
+            insert_started.set()
+            assert renewed_during_insert.wait(
+                1.0
+            ), "claim heartbeat stopped before attempt insertion"
+            now["ms"] = 13_000
+            return original_insert(*args, **kwargs)
+
+        daemon._insert_attempt_from_claim = delayed_insert
+
+        attempt = daemon.claim_next()
+
+        assert attempt is not None
+        assert renewal_count["value"] >= 2
+        claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert claim is not None
+        assert claim.expires_at_ms > now["ms"]
+    finally:
+        daemon.close()
+
+
+def test_claim_conflict_stops_heartbeat_and_releases_exact_claim(
+    tmp_path: Path,
+) -> None:
+    """A losing owner CAS cannot leave either a renewer or accepted claim."""
+
+    renewed = threading.Event()
+    renewal_count = {"value": 0}
+    observed_claim_ids: list[str] = []
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:claim-conflict-heartbeat",
+        lease_ms=5_000,
+    )
+    daemon._lease_heartbeat_interval_seconds = 0.01
+    try:
+        daemon.materialize_population(_population(1))
+        original_claim = daemon.coordinator.claim_ready_task
+
+        def capture_claim(*args, **kwargs):
+            claim = original_claim(*args, **kwargs)
+            if claim is not None:
+                observed_claim_ids.append(str(claim.claim_id))
+            return claim
+
+        daemon.coordinator.claim_ready_task = capture_claim
+        original_renew = daemon.coordinator.renew
+
+        def observe_renew(*args, **kwargs):
+            result = original_renew(*args, **kwargs)
+            renewal_count["value"] += 1
+            renewed.set()
+            return result
+
+        daemon.coordinator.renew = observe_renew
+
+        original_cas = daemon._cas_task_status_database
+
+        def losing_cas(*args, **kwargs):
+            assert renewed.wait(1.0), "claim heartbeat did not start"
+            # Advance the authoritative task revision first so the original
+            # owner CAS observes its real rowcount-zero/stale-revision path.
+            daemon.task_source.compare_and_set_status(
+                args[0],
+                expected_revision=int(kwargs["expected_revision"]),
+                status="retrying",
+                receipt={"operation": "test_competing_claim"},
+            )
+            return original_cas(*args, **kwargs)
+
+        daemon._cas_task_status_database = losing_cas
+
+        assert daemon.claim_next() is None
+        assert len(observed_claim_ids) == 1
+        released = daemon.coordinator.get_task_claim(observed_claim_ids[0])
+        assert released is not None
+        assert released.state.value == "released"
+        count_after_return = renewal_count["value"]
+        time.sleep(0.05)
+        assert renewal_count["value"] == count_after_return
+        attempt_count = daemon._require_connection().execute(
+            "SELECT COUNT(*) FROM database_task_attempts"
+        ).fetchone()
+        assert attempt_count is not None
+        assert int(attempt_count[0]) == 0
+    finally:
+        daemon.close()
+
+
 def test_portal_failure_terminal_cas_refetches_advanced_attempt(
     tmp_path: Path,
 ) -> None:
@@ -1511,6 +1789,79 @@ def test_claim_next_proceeds_when_owner_recycle_lands_cas_after_timeout(
         assert daemon.task_source.get("task:cid:001").status == "in_progress"
         running = daemon.list_running_attempts()
         assert [item.attempt_id for item in running] == [attempt.attempt_id]
+    finally:
+        daemon.close()
+
+
+@pytest.mark.parametrize(
+    ("field_name", "foreign_value"),
+    (
+        ("owner_session_id", "session:foreign"),
+        ("lease_id", "lease:foreign"),
+        ("fencing_token", 999),
+        ("fence_epoch", 999),
+    ),
+)
+def test_owner_recycle_claim_readback_rejects_foreign_authority_tuple(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field_name: str,
+    foreign_value: object,
+) -> None:
+    """A landed-looking receipt cannot admit a different lease or fence."""
+
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:claim-cas-timeout-mismatch",
+        max_task_attempts=3,
+    )
+    try:
+        daemon.materialize_population(_population(1))
+        original_cas = daemon._cas_task_status_database
+
+        def land_then_timeout(*args: object, **kwargs: object) -> None:
+            original_cas(*args, **kwargs)
+            raise DuckDBConnectionPolicyError(
+                "timed out waiting for quack state-owner to apply mutation"
+            )
+
+        monkeypatch.setattr(
+            daemon,
+            "_cas_task_status_database",
+            land_then_timeout,
+        )
+        original_get = daemon.task_source.get
+
+        def foreign_receipt_readback(task_cid: str):
+            task = original_get(task_cid)
+            if task is None or str(task.status).lower() != "in_progress":
+                return task
+            body = dict(task.body)
+            receipt = dict(body.get("completion_receipt") or {})
+            receipt[field_name] = foreign_value
+            body["completion_receipt"] = receipt
+            return SimpleNamespace(status=task.status, body=body)
+
+        monkeypatch.setattr(
+            daemon.task_source,
+            "get",
+            foreign_receipt_readback,
+        )
+
+        with pytest.raises(
+            DuckDBConnectionPolicyError,
+            match="timed out waiting for quack state-owner",
+        ):
+            daemon.claim_next()
+
+        attempt_count = daemon._require_connection().execute(
+            "SELECT COUNT(*) FROM database_task_attempts"
+        ).fetchone()
+        assert attempt_count is not None
+        assert int(attempt_count[0]) == 0
+        control = original_get("task:cid:001")
+        assert control is not None
+        assert control.status == "in_progress"
     finally:
         daemon.close()
 
@@ -2680,6 +3031,73 @@ def test_provider_result_is_rejected_after_fenced_takeover(tmp_path: Path) -> No
         assert stored is not None
         assert stored.committed_phase == "context"
         assert stored.status == "running"
+    finally:
+        daemon.close()
+
+
+def test_completion_heartbeat_outlives_remote_control_cas_wait(
+    tmp_path: Path,
+) -> None:
+    """A slow owner completion CAS cannot expire its exact attempt claim."""
+
+    now = {"ms": 1_000}
+    renewed_during_cas = threading.Event()
+    daemon = _open_daemon(
+        tmp_path,
+        session="session:completion-cas-heartbeat",
+        lease_ms=5_000,
+        clock_ms=lambda: now["ms"],
+    )
+    daemon._lease_heartbeat_interval_seconds = 0.01
+    try:
+        daemon.materialize_population(_population(1))
+        attempt = daemon.claim_next()
+        assert attempt is not None
+        for phase in ("context", "provider", "effect", "validation"):
+            attempt = daemon.commit_phase(attempt, phase)
+
+        original_renew = daemon.coordinator.renew
+
+        def observe_renew(*args, **kwargs):
+            result = original_renew(*args, **kwargs)
+            if int(result.expires_at_ms) >= 10_000:
+                renewed_during_cas.set()
+            return result
+
+        daemon.coordinator.renew = observe_renew
+        original_cas = daemon._cas_task_status_database
+
+        def delayed_completion_cas(*args, **kwargs):
+            assert kwargs.get("new_status") == "completed"
+            # Completion starts at 1,000ms and the original lease expires at
+            # 6,000ms.  Hold the remote CAS until the exact attempt heartbeat
+            # extends the lease, then return beyond that original deadline.
+            now["ms"] = 5_000
+            assert renewed_during_cas.wait(
+                1.0
+            ), "completion CAS was not heartbeated"
+            now["ms"] = 9_000
+            return original_cas(*args, **kwargs)
+
+        daemon._cas_task_status_database = delayed_completion_cas
+
+        completed = daemon.complete_attempt(
+            attempt,
+            validation_result={
+                "outcome": "passed",
+                "evidence_digest": "sha256:" + "f" * 64,
+                "argv": ["focused-validation"],
+            },
+        )
+
+        assert completed.status == "succeeded"
+        assert completed.committed_phase == ATTEMPT_PHASE_COMPLETE
+        task = daemon.task_source.get(attempt.task_cid)
+        assert task is not None
+        assert task.status == "completed"
+        claim = daemon.coordinator.get_task_claim(attempt.claim_id)
+        assert claim is not None
+        assert claim.state.value == "released"
     finally:
         daemon.close()
 

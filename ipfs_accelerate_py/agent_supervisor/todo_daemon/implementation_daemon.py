@@ -68829,11 +68829,16 @@ class DatabaseImplementationDaemon:
         attempt: DatabaseTaskAttempt,
         *,
         claim: Any | None = None,
+        allow_logically_completed: bool = False,
     ) -> Any:
         """Renew only the lease proven to belong to this exact attempt."""
 
         bound_claim = self._attempt_claim(attempt) if claim is None else claim
-        lease = self._protect_attempt_claim(attempt, bound_claim)
+        lease = self._protect_attempt_claim(
+            attempt,
+            bound_claim,
+            allow_logically_completed=allow_logically_completed,
+        )
         return self.coordinator.renew(
             lease,
             lease_ms=self.lease_ms,
@@ -68841,6 +68846,159 @@ class DatabaseImplementationDaemon:
             expected_fence_epoch=int(attempt.fence_epoch),
             now_ms=self._now_ms(),
         )
+
+    def _run_with_new_claim_heartbeat(
+        self,
+        claim: Any,
+        callback: Callable[[Callable[[], None]], Any],
+        *,
+        lease_ms: int,
+    ) -> Any:
+        """Keep a new claim live until its execution attempt is durable.
+
+        Quack applies UPDATEs during an owner recycle, which can outlast the
+        ordinary lane-local claim lease.  The durable execution attempt does
+        not exist yet, so the provider heartbeat cannot protect this window.
+        Renew the exact claim/lease/fence tuple through the owner CAS, response
+        recovery readback, and durable attempt insertion.
+        """
+
+        renew = getattr(self.coordinator, "renew", None)
+        if not callable(renew):
+            raise DatabaseImplementationAuthorityError(
+                "coordinator does not implement new-claim lease renewal"
+            )
+        current_lease = [self._protect_new_claim(claim)]
+        stop = threading.Event()
+        renewal_failures: list[BaseException] = []
+        failure_lock = threading.Lock()
+
+        def raise_if_renewal_failed() -> None:
+            with failure_lock:
+                failure = renewal_failures[0] if renewal_failures else None
+            if failure is not None:
+                raise DatabaseImplementationAuthorityError(
+                    "new claim lost lease authority during claim admission"
+                ) from failure
+
+        def protect_admission_write() -> None:
+            """Fence a post-CAS write against any latched renewal loss."""
+
+            raise_if_renewal_failed()
+            self._protect_new_claim(claim)
+            raise_if_renewal_failed()
+
+        def heartbeat() -> None:
+            interval = min(
+                float(self._lease_heartbeat_interval_seconds),
+                max(0.1, float(lease_ms) / 3000.0),
+            )
+            while not stop.wait(interval):
+                try:
+                    current_lease[0] = renew(
+                        current_lease[0],
+                        lease_ms=int(lease_ms),
+                        expected_fencing_token=int(claim.fencing_token),
+                        expected_fence_epoch=int(claim.fence_epoch),
+                        now_ms=self._now_ms(),
+                    )
+                except BaseException as exc:  # fail closed after callback exit
+                    with failure_lock:
+                        renewal_failures.append(exc)
+                    stop.set()
+                    return
+
+        thread = threading.Thread(
+            target=heartbeat,
+            name=f"database-new-claim-heartbeat-{claim.attempt_id}",
+            daemon=True,
+        )
+        thread.start()
+        callback_error: BaseException | None = None
+        result: Any = None
+        try:
+            result = callback(protect_admission_write)
+        except BaseException as exc:
+            callback_error = exc
+        finally:
+            stop.set()
+            thread.join()
+        raise_if_renewal_failed()
+        if callback_error is not None:
+            raise callback_error
+        # Close the race between the final beat and accepting the attempt.
+        self._protect_new_claim(claim)
+        return result
+
+    def _run_completion_with_attempt_heartbeat(
+        self,
+        attempt: DatabaseTaskAttempt,
+        callback: Callable[[Any], Any],
+    ) -> Any:
+        """Protect completion through its separately durable owner CAS.
+
+        Completion performs a separately durable owner CAS and can therefore
+        span an owner recycle just like admission.  Keep renewing the exact
+        attempt claim through preparation, validation, and that slow CAS.
+        Stop the renewer before the short promote/COMPLETE/settle sequence so
+        its terminal RELEASE cannot race a heartbeat into a false failure.
+        """
+
+        claim = self._attempt_claim(attempt)
+        self._renew_attempt_lease(
+            attempt,
+            claim=claim,
+            allow_logically_completed=True,
+        )
+        stop = threading.Event()
+        renewal_failures: list[BaseException] = []
+
+        def authority_error() -> DatabaseImplementationAuthorityError:
+            return DatabaseImplementationAuthorityError(
+                f"attempt {attempt.attempt_id} lost lease authority during completion"
+            )
+
+        def heartbeat() -> None:
+            interval = float(self._lease_heartbeat_interval_seconds)
+            while not stop.wait(interval):
+                try:
+                    self._renew_attempt_lease(
+                        attempt,
+                        claim=claim,
+                        allow_logically_completed=True,
+                    )
+                except BaseException as exc:  # fail closed after callback exit
+                    renewal_failures.append(exc)
+                    stop.set()
+                    return
+
+        thread = threading.Thread(
+            target=heartbeat,
+            name=f"database-completion-heartbeat-{attempt.attempt_id}",
+            daemon=True,
+        )
+        thread.start()
+        callback_error: BaseException | None = None
+        result: Any = None
+        try:
+            result = callback(claim)
+        except BaseException as exc:
+            callback_error = exc
+        finally:
+            stop.set()
+            thread.join()
+        if renewal_failures:
+            raise authority_error() from renewal_failures[0]
+        if callback_error is not None:
+            raise callback_error
+        # Handoff boundary: renewal has stopped and the exact live authority
+        # tuple is re-proven immediately before promotion and settlement.
+        self._protect_attempt_claim(
+            attempt,
+            claim,
+            allow_logically_completed=True,
+        )
+        return claim, result
 
     def _run_with_attempt_heartbeat(
         self,
@@ -69139,10 +69297,22 @@ class DatabaseImplementationDaemon:
         receipt = body.get("completion_receipt") if isinstance(body, Mapping) else None
         if not isinstance(receipt, Mapping):
             return False
+        receipt_token = receipt.get("fencing_token")
+        receipt_epoch = receipt.get("fence_epoch")
         return (
             str(receipt.get("operation") or "") == "database_claim"
             and str(receipt.get("claim_id") or "") == str(claim.claim_id)
             and str(receipt.get("attempt_id") or "") == str(claim.attempt_id)
+            and str(receipt.get("owner_session_id") or "")
+            == str(claim.owner_session_id)
+            and str(claim.owner_session_id) == self.owner_session_id
+            and str(receipt.get("lease_id") or "") == str(claim.lease_id)
+            and isinstance(receipt_token, int)
+            and not isinstance(receipt_token, bool)
+            and int(receipt_token) == int(claim.fencing_token)
+            and isinstance(receipt_epoch, int)
+            and not isinstance(receipt_epoch, bool)
+            and int(receipt_epoch) == int(claim.fence_epoch)
         )
 
     def claim_next(
@@ -69196,9 +69366,12 @@ class DatabaseImplementationDaemon:
             if task_cid not in canonical_ready_task_cid_set:
                 excluded.add(task_cid)
         for _claim_attempt in range(TASK_SOURCE_QUERY_LIMIT):
+            claim_lease_ms = (
+                self.lease_ms if lease_ms is None else int(lease_ms)
+            )
             claim = self.coordinator.claim_ready_task(
                 owner_session_id=self.owner_session_id,
-                lease_ms=self.lease_ms if lease_ms is None else int(lease_ms),
+                lease_ms=claim_lease_ms,
                 exclude_task_cids=excluded,
                 eligible_task_cids=canonical_ready_task_cids,
                 now_ms=self._now_ms(),
@@ -69246,25 +69419,61 @@ class DatabaseImplementationDaemon:
                 continue
 
             task_alias = str(task.task_alias or claim.task_cid)
-            self._protect_new_claim(claim)
-            try:
+
+            def admit_claim(
+                protect_admission_write: Callable[[], None],
+                *,
+                admitted_claim: Any = claim,
+                admitted_task: Any = task,
+                admitted_task_alias: str = task_alias,
+                shared_ready: bool = ready,
+            ) -> DatabaseTaskAttempt:
                 # This owner-side status CAS is the exclusion point shared by
                 # daemons whose fenced coordination stores are lane-local.
-                if ready:
-                    self._cas_task_status_database(
-                        task.task_cid,
-                        expected_revision=int(task.revision),
-                        new_status="in_progress",
-                        receipt={
-                            "operation": "database_claim",
-                            "claim_id": claim.claim_id,
-                            "attempt_id": claim.attempt_id,
-                            "owner_session_id": self.owner_session_id,
-                            "lease_id": claim.lease_id,
-                            "fencing_token": int(claim.fencing_token),
-                            "fence_epoch": int(claim.fence_epoch),
-                        },
-                    )
+                if shared_ready:
+                    try:
+                        self._cas_task_status_database(
+                            admitted_task.task_cid,
+                            expected_revision=int(admitted_task.revision),
+                            new_status="in_progress",
+                            receipt={
+                                "operation": "database_claim",
+                                "claim_id": admitted_claim.claim_id,
+                                "attempt_id": admitted_claim.attempt_id,
+                                "owner_session_id": self.owner_session_id,
+                                "lease_id": admitted_claim.lease_id,
+                                "fencing_token": int(
+                                    admitted_claim.fencing_token
+                                ),
+                                "fence_epoch": int(admitted_claim.fence_epoch),
+                            },
+                        )
+                    except (
+                        TaskSourceConflictError,
+                        DatabaseTaskSourceConflictError,
+                    ):
+                        raise
+                    except Exception as exc:
+                        # Owner recycle may commit the CAS after its waiter
+                        # loses the transport response.  Perform the exact
+                        # receipt readback while this claim is still renewed.
+                        if not self._control_claim_already_landed(
+                            admitted_claim,
+                            exc,
+                        ):
+                            raise
+                protect_admission_write()
+                return self._insert_attempt_from_claim(
+                    admitted_claim,
+                    task_alias=admitted_task_alias,
+                )
+
+            try:
+                attempt = self._run_with_new_claim_heartbeat(
+                    claim,
+                    admit_claim,
+                    lease_ms=claim_lease_ms,
+                )
             except (TaskSourceConflictError, DatabaseTaskSourceConflictError):
                 self._release_unadmitted_claim(
                     claim,
@@ -69272,14 +69481,6 @@ class DatabaseImplementationDaemon:
                 )
                 excluded.add(str(claim.task_cid))
                 continue
-            except Exception as exc:
-                if not self._control_claim_already_landed(claim, exc):
-                    raise
-
-            attempt = self._insert_attempt_from_claim(
-                claim,
-                task_alias=task_alias,
-            )
             self._record_event(
                 "task_claimed",
                 attempt_id=attempt.attempt_id,
@@ -71430,6 +71631,39 @@ class DatabaseImplementationDaemon:
 
         self._require_execution_authority("task completion")
         current = self.get_attempt(attempt.attempt_id) or attempt
+
+        def prepare_with_live_claim(
+            claim: Any,
+        ) -> tuple[str, Mapping[str, Any]]:
+            return self._prepare_attempt_completion_with_live_claim(
+                current,
+                claim=claim,
+                evidence_digest=evidence_digest,
+                validation_result=validation_result,
+            )
+
+        claim, prepared_completion = self._run_completion_with_attempt_heartbeat(
+            current,
+            prepare_with_live_claim,
+        )
+        digest, control_completion_receipt = prepared_completion
+        return self._finalize_attempt_completion(
+            current,
+            claim=claim,
+            evidence_digest=digest,
+            control_completion_receipt=control_completion_receipt,
+        )
+
+    def _prepare_attempt_completion_with_live_claim(
+        self,
+        current: DatabaseTaskAttempt,
+        *,
+        claim: Any,
+        evidence_digest: str = "",
+        validation_result: Mapping[str, Any] | None = None,
+    ) -> tuple[str, Mapping[str, Any]]:
+        """Prepare and apply the owner CAS under one exact claim heartbeat."""
+
         validation_payload = dict(validation_result or {})
         if self.require_real_execution and (
             str(validation_payload.get("outcome") or "").strip().lower()
@@ -71467,7 +71701,6 @@ class DatabaseImplementationDaemon:
                 f"{task_status!r}; refusing to record a successful completion"
             )
 
-        claim = self._attempt_claim(current)
         if task_status in successful_statuses:
             prepared = self.coordinator.get_prepared_task_completion(
                 current.task_cid
@@ -71539,6 +71772,18 @@ class DatabaseImplementationDaemon:
                     "control task completion CAS returned no durable receipt"
                 )
             control_completion_receipt = dict(to_dict())
+        return digest, control_completion_receipt
+
+    def _finalize_attempt_completion(
+        self,
+        current: DatabaseTaskAttempt,
+        *,
+        claim: Any,
+        evidence_digest: str,
+        control_completion_receipt: Mapping[str, Any],
+    ) -> DatabaseTaskAttempt:
+        """Promote, commit, and settle an exactly prepared completion."""
+
         complete_claim = getattr(self.coordinator, "complete_task_claim", None)
         if not callable(complete_claim):
             raise DatabaseImplementationAuthorityError(
@@ -71552,7 +71797,7 @@ class DatabaseImplementationDaemon:
         updated = self.commit_phase(
             current,
             ATTEMPT_PHASE_COMPLETE,
-            body={"evidence_digest": digest},
+            body={"evidence_digest": evidence_digest},
         )
         settle_claim = getattr(self.coordinator, "settle_task_claim", None)
         if not callable(settle_claim):
@@ -71570,7 +71815,7 @@ class DatabaseImplementationDaemon:
             "attempt_completed",
             attempt_id=updated.attempt_id,
             task_cid=updated.task_cid,
-            body={"evidence_digest": digest},
+            body={"evidence_digest": evidence_digest},
         )
         return updated
 
