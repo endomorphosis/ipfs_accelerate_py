@@ -420,7 +420,7 @@ def test_controller_lock_is_held_before_locked_admission(
 
 
 def test_tracked_runtime_inventory_hashes_bytes_and_rejects_ignored_source(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     operator = _operator()
     repository = tmp_path / "repo"
@@ -456,6 +456,59 @@ def test_tracked_runtime_inventory_hashes_bytes_and_rejects_ignored_source(
         noun="test runtime",
     )
     assert receipt["tracked_object_count"] == 1
+    assert "pycache_prefix" not in receipt
+
+    probe = """
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("lgcvf_inventory_probe", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+print(json.dumps(module._tracked_runtime_inventory(
+    Path(sys.argv[2]),
+    head=sys.argv[3],
+    pathspecs=("package",),
+    noun="test runtime",
+), sort_keys=True))
+"""
+
+    def fresh_process_inventory() -> dict[str, object]:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                "-B",
+                "-c",
+                probe,
+                str(OPERATOR_PATH),
+                str(repository),
+                head,
+            ],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        value = json.loads(completed.stdout)
+        assert isinstance(value, dict)
+        return value
+
+    assert fresh_process_inventory() == fresh_process_inventory() == receipt
+
+    second_quarantine = tmp_path / "second-pycache-quarantine"
+    second_quarantine.mkdir(mode=0o700)
+    monkeypatch.setattr(operator.sys, "pycache_prefix", str(second_quarantine))
+    assert (
+        operator._tracked_runtime_inventory(
+            repository,
+            head=head,
+            pathspecs=("package",),
+            noun="test runtime",
+        )
+        == receipt
+    )
 
     module.write_text("value = 2\n", encoding="utf-8")
     with pytest.raises(operator.SuccessorOperatorError, match="bytes differ"):

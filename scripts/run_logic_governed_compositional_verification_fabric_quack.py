@@ -1016,7 +1016,6 @@ def _tracked_runtime_inventory(
         "tracked_object_count": len(observed),
         "tracked_inventory_root": inventory_root,
         "ignored_pycache_quarantined": quarantined_pycache,
-        "pycache_prefix": str(sys.pycache_prefix or ""),
     }
 
 
@@ -1024,12 +1023,28 @@ def _candidate_runtime_continuity(root: Path) -> dict[str, Any]:
     if (
         _AMBIENT_PYTHONPATH
         or sys.path[:2] != [str(root), str(root / "ipfs_datasets_py")]
-        or not sys.pycache_prefix
+        or sys.pycache_prefix != _RUNTIME_PYCACHE.name
     ):
         raise SuccessorOperatorError("candidate Python import boundary differs")
+    quarantine_path = Path(sys.pycache_prefix)
     _require_private_directory(
-        Path(sys.pycache_prefix), noun="candidate Python bytecode quarantine"
+        quarantine_path, noun="candidate Python bytecode quarantine"
     )
+    try:
+        quarantine = quarantine_path.resolve(strict=True)
+        candidate_root = root.resolve(strict=True)
+    except OSError as exc:
+        raise SuccessorOperatorError(
+            "candidate Python bytecode quarantine cannot be resolved"
+        ) from exc
+    try:
+        quarantine.relative_to(candidate_root)
+    except ValueError:
+        pass
+    else:
+        raise SuccessorOperatorError(
+            "candidate Python bytecode quarantine is inside the worktree"
+        )
     branch = _git_text(root, ("symbolic-ref", "--short", "HEAD"), noun="board branch")
     if branch != APPROVED_BOARD_BRANCH:
         raise SuccessorOperatorError(
@@ -1142,6 +1157,12 @@ def _candidate_runtime_continuity(root: Path) -> dict[str, Any]:
         "datasets_head": datasets_head,
         "datasets_tree": datasets_tree,
         "datasets_worktree_clean": True,
+        "python_bytecode_quarantine": {
+            "enabled": True,
+            "ephemeral": True,
+            "outside_candidate_root": True,
+            "private": True,
+        },
         "superproject_runtime_inventory": superproject_inventory,
         "datasets_runtime_inventory": datasets_inventory,
     }
