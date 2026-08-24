@@ -3391,7 +3391,9 @@ def test_actual_configured_supervisor_routes_mixed_generation_without_leaks(
                     "status": "ready",
                     "ordinal": 0,
                     "description": "Revalidate an output already present on target",
-                    "No-change completion": "allowed",
+                    # Database population normalizes Markdown metadata keys.
+                    # Exercise the exact representation used by live CASF.
+                    "no_change_completion": "allowed",
                     "outputs": [{"path": "pyproject.toml", "effect": {}}],
                     "validations": [{"argv": ["/usr/bin/true"], "policy": {}}],
                 },
