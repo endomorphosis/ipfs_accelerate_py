@@ -7877,6 +7877,325 @@ PythonSupervisorBackend = RepositorySupervisorBackend
 ControlService = SupervisorControlService
 
 
+# PCPC-028 deliberately has a separate vocabulary from ``Operation`` above.
+# The supervisor catalog is a sealed compatibility contract and adding procedure
+# names to it would change every existing catalog/publication receipt.  This
+# adapter is the explicit, typed bridge used by the procedure Python, CLI, and
+# MCP surfaces; it never translates an operation into a shell command.
+class ProcedureOperation(str, Enum):
+    CAPABILITIES = "procedures.capabilities"
+    LIST = "procedures.list"
+    GET = "procedures.get"
+    EXPLAIN = "procedures.explain"
+    MATCH = "procedures.match"
+    REGISTRY_STATUS = "procedures.registry_status"
+    TASK_FAMILIES = "procedures.task_families"
+    COUNTEREXAMPLES = "procedures.counterexamples"
+    DRIFT = "procedures.drift"
+    METRICS = "procedures.metrics"
+    SHADOW_RESULTS = "procedures.shadow_results"
+    SYNTHESIS_STATUS = "procedures.synthesis_status"
+    WORLD_MODEL_STATUS = "procedures.world_model_status"
+    SYNTHESIZE = "procedures.synthesize"
+    EVALUATE = "procedures.evaluate"
+    PROMOTE = "procedures.promote"
+    ROLLBACK = "procedures.rollback"
+    REVOKE = "procedures.revoke"
+    QUARANTINE = "procedures.quarantine"
+    RUN_SHADOW = "procedures.run_shadow"
+    CANCEL = "procedures.cancel"
+    REQUEST_REVIEW = "procedures.request_review"
+
+
+PROCEDURE_READ_OPERATIONS: Final[frozenset[ProcedureOperation]] = frozenset(
+    item for item in ProcedureOperation if item.value in {
+        "procedures.capabilities", "procedures.list", "procedures.get",
+        "procedures.explain", "procedures.match", "procedures.registry_status",
+        "procedures.task_families", "procedures.counterexamples", "procedures.drift",
+        "procedures.metrics", "procedures.shadow_results", "procedures.synthesis_status",
+        "procedures.world_model_status",
+    }
+)
+PROCEDURE_MUTATION_OPERATIONS: Final[frozenset[ProcedureOperation]] = frozenset(
+    set(ProcedureOperation).difference(PROCEDURE_READ_OPERATIONS)
+)
+
+
+@dataclass(frozen=True)
+class ProcedureControlRequest:
+    """Canonical request for a PCPC public operation.
+
+    ``authorization``, ``idempotency_key`` and ``lease_fence`` are opaque
+    evidence supplied by their existing owners.  The adapter validates their
+    presence/binding but does not mint authority or leases itself.
+    """
+
+    operation: ProcedureOperation | str
+    target: Mapping[str, Any] = field(default_factory=dict)
+    parameters: Mapping[str, Any] = field(default_factory=dict)
+    authorization: Any = None
+    idempotency_key: str = ""
+    lease_fence: Mapping[str, Any] = field(default_factory=dict)
+    dry_run: bool = False
+    request_id: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "operation", ProcedureOperation(self.operation))
+        if not isinstance(self.target, Mapping) or not isinstance(self.parameters, Mapping):
+            raise ValueError("procedure target and parameters must be mappings")
+        target = dict(self.target)
+        if any(not isinstance(key, str) or not key.strip() for key in target):
+            raise ValueError("procedure target keys must be non-empty strings")
+        object.__setattr__(self, "target", MappingProxyType(target))
+        object.__setattr__(self, "parameters", MappingProxyType(dict(self.parameters)))
+        if not isinstance(self.lease_fence, Mapping):
+            raise ValueError("lease_fence must be a mapping")
+        object.__setattr__(self, "lease_fence", MappingProxyType(dict(self.lease_fence)))
+        object.__setattr__(self, "idempotency_key", str(self.idempotency_key).strip())
+        object.__setattr__(self, "request_id", str(self.request_id).strip())
+
+    @property
+    def mutating(self) -> bool:
+        return self.operation in PROCEDURE_MUTATION_OPERATIONS
+
+
+@dataclass(frozen=True)
+class ProcedureAuditReceipt:
+    operation: ProcedureOperation
+    request_id: str
+    target: Mapping[str, Any]
+    authorization_id: str
+    dry_run: bool
+    replayed: bool = False
+    schema: str = "ipfs_accelerate_py/agent-supervisor/procedure-control-audit@1"
+
+
+@dataclass(frozen=True)
+class ProcedureControlResult:
+    operation: ProcedureOperation
+    status: str
+    data: Mapping[str, Any] = field(default_factory=dict)
+    audit: ProcedureAuditReceipt | None = None
+    error: str = ""
+    replayed: bool = False
+
+    @property
+    def successful(self) -> bool:
+        return self.status == "succeeded"
+
+
+class ProcedureControlServiceAdapter:
+    """Fail-closed PCPC operation service with direct Python dispatch.
+
+    Handlers are injected by the already-authoritative registry, synthesis,
+    evaluation, and review owners.  A missing handler is an unavailable typed
+    outcome, never a permissive fallback.
+    """
+
+    compatibility = MappingProxyType({
+        "interface": "ProcedureControlService@1",
+        "supervisor_control_service": "separate sealed catalog; direct adapter",
+        "mcp_dispatch": "direct_python_only",
+    })
+
+    def __init__(self, *, handlers: Mapping[ProcedureOperation | str, Callable[[ProcedureControlRequest], Any]] | None = None,
+                 authorization_validator: Callable[[ProcedureControlRequest], Any] | None = None,
+                 lease_fence_validator: Callable[[ProcedureControlRequest], Any] | None = None) -> None:
+        self._handlers = {ProcedureOperation(key): value for key, value in (handlers or {}).items()}
+        if any(not callable(value) for value in self._handlers.values()):
+            raise TypeError("procedure handlers must be callable")
+        self._authorization_validator = authorization_validator
+        self._lease_fence_validator = lease_fence_validator
+        self._idempotent: dict[str, tuple[str, ProcedureControlResult]] = {}
+        self._audit: list[ProcedureAuditReceipt] = []
+        self._lock = threading.RLock()
+
+    def discover(self) -> tuple[ProcedureOperation, ...]:
+        return tuple(ProcedureOperation)
+
+    def capabilities(self, request: ProcedureControlRequest | None = None) -> Mapping[str, Any] | ProcedureControlResult:
+        if request is not None:
+            return self._operation(ProcedureOperation.CAPABILITIES, request)
+        return MappingProxyType({"operations": tuple(item.value for item in self.discover()),
+                                 "mutations": tuple(item.value for item in sorted(PROCEDURE_MUTATION_OPERATIONS, key=lambda x: x.value)),
+                                 "compatibility": dict(self.compatibility)})
+
+    @staticmethod
+    def _fingerprint(request: ProcedureControlRequest) -> str:
+        payload = {"operation": request.operation.value, "target": dict(request.target),
+                   "parameters": dict(request.parameters), "dry_run": request.dry_run,
+                   "lease_fence": dict(request.lease_fence)}
+        return hashlib.sha256(canonical_control_json_bytes(payload)).hexdigest()
+
+    @staticmethod
+    def _authorization_id(value: Any) -> str:
+        if isinstance(value, Mapping):
+            return str(value.get("authorization_id") or value.get("id") or "").strip()
+        return str(getattr(value, "authorization_id", "") or getattr(value, "id", "")).strip()
+
+    def _authorize(self, request: ProcedureControlRequest) -> str:
+        if request.authorization is None:
+            raise AuthorityViolationError(
+                "procedure mutations require an independently supplied authorization"
+            )
+        if self._authorization_validator is None:
+            raise AuthorityViolationError("procedure mutations require an independent authorization validator")
+        decision = self._authorization_validator(request)
+        allowed = bool(decision.get("allowed", decision.get("permit", False))) if isinstance(decision, Mapping) else bool(decision)
+        authorization_id = self._authorization_id(decision)
+        if not allowed or not authorization_id:
+            raise AuthorityViolationError("procedure mutation authorization was denied or unbound")
+        return authorization_id
+
+    def _validate_target_and_fence(self, request: ProcedureControlRequest) -> None:
+        if not request.target or not any(str(value).strip() for value in request.target.values()):
+            raise ValueError("procedure mutation requires an exact non-empty target")
+        if not request.idempotency_key:
+            raise IdempotencyConflictError("procedure mutation requires an idempotency key")
+        fence = request.lease_fence
+        if not str(fence.get("lease_id") or "").strip() or isinstance(fence.get("fencing_epoch"), bool) or not isinstance(fence.get("fencing_epoch"), int):
+            raise LeaseValidationError("procedure mutation requires lease_id and integer fencing_epoch")
+        if self._lease_fence_validator is None:
+            raise LeaseValidationError(
+                "procedure mutations require an authoritative lease/fence validator"
+            )
+        if not self._lease_fence_validator(request):
+            raise LeaseValidationError("procedure lease/fence was rejected")
+
+    def execute(self, request: ProcedureControlRequest | Mapping[str, Any]) -> ProcedureControlResult:
+        if not isinstance(request, ProcedureControlRequest):
+            request = ProcedureControlRequest(**dict(request))
+        with self._lock:
+            if request.operation is ProcedureOperation.CAPABILITIES:
+                return ProcedureControlResult(request.operation, "succeeded", self.capabilities())
+            authorization_id = ""
+            fingerprint = ""
+            if request.mutating:
+                self._validate_target_and_fence(request)
+                authorization_id = self._authorize(request)
+                fingerprint = self._fingerprint(request)
+                previous = self._idempotent.get(request.idempotency_key)
+                if previous is not None:
+                    if previous[0] != fingerprint:
+                        raise IdempotencyConflictError("procedure idempotency key was reused for a different request")
+                    return replace(previous[1], replayed=True, audit=replace(previous[1].audit, replayed=True) if previous[1].audit else None)
+                if request.dry_run:
+                    receipt = ProcedureAuditReceipt(request.operation, request.request_id, request.target, authorization_id, True)
+                    result = ProcedureControlResult(request.operation, "succeeded", MappingProxyType({"dry_run": True, "would_mutate": True}), receipt)
+                    self._audit.append(receipt)
+                    return result
+            handler = self._handlers.get(request.operation)
+            if handler is None:
+                result = ProcedureControlResult(request.operation, "unavailable", error="operation handler is not configured")
+            else:
+                value = handler(request)
+                if isinstance(value, ProcedureControlResult):
+                    result = value
+                elif isinstance(value, Mapping):
+                    result = ProcedureControlResult(request.operation, "succeeded", MappingProxyType(dict(value)))
+                else:
+                    result = ProcedureControlResult(request.operation, "succeeded", MappingProxyType({"value": value}))
+            if request.mutating:
+                receipt = ProcedureAuditReceipt(request.operation, request.request_id, request.target, authorization_id, False)
+                result = replace(result, audit=receipt)
+                self._audit.append(receipt)
+                self._idempotent[request.idempotency_key] = (fingerprint, result)
+            return result
+
+    dispatch = execute
+    handle = execute
+
+    def _operation(self, operation: ProcedureOperation, request: ProcedureControlRequest) -> ProcedureControlResult:
+        if request.operation is not operation:
+            raise ValueError(f"request operation must be {operation.value}")
+        return self.execute(request)
+
+    def list(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.LIST, request)
+
+    def get(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.GET, request)
+
+    def explain(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.EXPLAIN, request)
+
+    def match(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.MATCH, request)
+
+    def registry_status(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.REGISTRY_STATUS, request)
+
+    def task_families(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.TASK_FAMILIES, request)
+
+    def counterexamples(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.COUNTEREXAMPLES, request)
+
+    def drift(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.DRIFT, request)
+
+    def metrics(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.METRICS, request)
+
+    def shadow_results(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.SHADOW_RESULTS, request)
+
+    def synthesis_status(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.SYNTHESIS_STATUS, request)
+
+    def world_model_status(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.WORLD_MODEL_STATUS, request)
+
+    def synthesize(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.SYNTHESIZE, request)
+
+    def evaluate(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.EVALUATE, request)
+
+    def promote(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.PROMOTE, request)
+
+    def rollback(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.ROLLBACK, request)
+
+    def revoke(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.REVOKE, request)
+
+    def quarantine(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.QUARANTINE, request)
+
+    def run_shadow(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.RUN_SHADOW, request)
+
+    def cancel(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.CANCEL, request)
+
+    def request_review(self, request: ProcedureControlRequest) -> ProcedureControlResult:
+        return self._operation(ProcedureOperation.REQUEST_REVIEW, request)
+
+    def audit_receipts(self) -> tuple[ProcedureAuditReceipt, ...]:
+        with self._lock:
+            return tuple(self._audit)
+
+
+class ProcedureMCPAdapter:
+    """Canonical MCP adapter.  It invokes the typed service directly only."""
+
+    def __init__(self, service: ProcedureControlServiceAdapter) -> None:
+        self._service = service
+
+    def list_tools(self) -> tuple[str, ...]:
+        return tuple(item.value for item in self._service.discover())
+
+    def call_tool(self, name: str, arguments: Mapping[str, Any] | None = None) -> ProcedureControlResult:
+        values = dict(arguments or {})
+        values["operation"] = ProcedureOperation(name)
+        return self._service.execute(ProcedureControlRequest(**values))
+
+
+ProcedureControlService = ProcedureControlServiceAdapter
+
+
 __all__ = [
     "CONTROL_AUDIT_RECEIPT_SCHEMA",
     "CONTROL_BACKEND_RESPONSE_SCHEMA",
@@ -7928,6 +8247,15 @@ __all__ = [
     "ProviderUsageControl",
     "ProviderUsageControlError",
     "PythonSupervisorBackend",
+    "ProcedureAuditReceipt",
+    "ProcedureControlRequest",
+    "ProcedureControlResult",
+    "ProcedureControlService",
+    "ProcedureControlServiceAdapter",
+    "ProcedureMCPAdapter",
+    "ProcedureOperation",
+    "PROCEDURE_MUTATION_OPERATIONS",
+    "PROCEDURE_READ_OPERATIONS",
     "ReadOnlySupervisorClient",
     "RepositorySupervisorBackend",
     "RescueHandler",
