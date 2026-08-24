@@ -2700,26 +2700,35 @@ class TypedStateOwnerGateway:
                             self._connection.commit()
                             self._committed_transactions += 1
                             observer = self._commit_observer
-                            if callable(observer):
-                                try:
-                                    observer(command, tuple(mutation_manifest))
-                                except BaseException as observer_error:
-                                    # The authoritative transaction is already
-                                    # durable.  Notification is an optimization;
-                                    # backlog replay remains authoritative and a
-                                    # post-commit callback must not manufacture an
-                                    # ambiguous command failure for the client.
-                                    self._last_observer_error_type = type(
-                                        observer_error
-                                    ).__name__
+                            committed_command = command
+                            committed_manifest = tuple(mutation_manifest)
                         else:
                             self._connection.rollback()
+                            observer = None
+                            committed_command = None
+                            committed_manifest = ()
                         transaction_active = False
                         command = None
                         mutation_manifest = []
                         semantic_authority = {}
                         semantic_authority_captured = False
                         self._transaction_lock.release()
+                        if callable(observer):
+                            try:
+                                # The sole DuckDB transaction lock protects only
+                                # authoritative state.  Downstream notifications
+                                # run after it is released so a blocked observer
+                                # cannot stall unrelated owner operations.
+                                observer(committed_command, committed_manifest)
+                            except BaseException as observer_error:
+                                # The authoritative transaction is already
+                                # durable.  Notification is an optimization;
+                                # backlog replay remains authoritative and a
+                                # post-commit callback must not manufacture an
+                                # ambiguous command failure for the client.
+                                self._last_observer_error_type = type(
+                                    observer_error
+                                ).__name__
                         response = {"ok": True}
                     elif action == "close":
                         self._reject_unknown(
